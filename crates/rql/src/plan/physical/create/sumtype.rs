@@ -20,21 +20,17 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateSumTypeNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let namespace_name = if create.name.namespace.is_empty() {
-			"default".to_string()
-		} else {
-			create.name.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-		};
-		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let ns_segments: Vec<&str> = create.name.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.name.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&namespace_name)
+				interned.with_text(&ns_segments.join("::"))
 			} else {
 				Fragment::internal("default".to_string())
 			};
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
-				namespace: namespace_name.to_string(),
+				namespace: ns_segments.join("::"),
 				name: String::new(),
 				fragment: ns_fragment,
 			}

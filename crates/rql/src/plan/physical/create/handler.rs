@@ -29,21 +29,17 @@ impl<'bump> Compiler<'bump> {
 		let on_variant = create.on_variant.expect("handler must have on_variant");
 
 		// Resolve namespace for the handler itself (from the handler name)
-		let handler_ns_name = if create.procedure.namespace.is_empty() {
-			"default".to_string()
-		} else {
-			create.procedure.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-		};
-		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &handler_ns_name)? else {
+		let handler_ns_segments: Vec<&str> = create.procedure.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &handler_ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.procedure.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&handler_ns_name)
+				interned.with_text(&handler_ns_segments.join("::"))
 			} else {
 				Fragment::internal("default".to_string())
 			};
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
-				namespace: handler_ns_name.to_string(),
+				namespace: handler_ns_segments.join("::"),
 				name: String::new(),
 				fragment: ns_fragment,
 			}
@@ -51,16 +47,16 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		// Resolve event sumtype namespace
-		let event_ns_name = if on_event.namespace.is_empty() {
-			handler_ns_name.clone()
+		let event_ns_segments: Vec<&str> = if on_event.namespace.is_empty() {
+			handler_ns_segments.clone()
 		} else {
-			on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
+			on_event.namespace.iter().map(|n| n.text()).collect()
 		};
-		let Some(event_ns_def) = self.catalog.find_namespace_by_name(rx, &event_ns_name)? else {
-			let ns_fragment = Fragment::internal(event_ns_name.clone());
+		let Some(event_ns_def) = self.catalog.find_namespace_by_segments(rx, &event_ns_segments)? else {
+			let ns_fragment = Fragment::internal(event_ns_segments.join("::"));
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
-				namespace: event_ns_name.to_string(),
+				namespace: event_ns_segments.join("::"),
 				name: String::new(),
 				fragment: ns_fragment,
 			}
@@ -72,7 +68,7 @@ impl<'bump> Compiler<'bump> {
 		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, event_ns_def.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
-				namespace: event_ns_name.to_string(),
+				namespace: event_ns_segments.join("::"),
 				name: event_name.to_string(),
 				fragment: Fragment::internal(event_name.to_string()),
 			}

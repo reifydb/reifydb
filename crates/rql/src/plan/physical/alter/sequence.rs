@@ -14,7 +14,7 @@ use crate::{
 	Result,
 	nodes::AlterSequenceNode,
 	plan::{
-		logical::{self, resolver::DEFAULT_NAMESPACE},
+		logical::{self},
 		physical::{Compiler, PhysicalPlan},
 	},
 };
@@ -25,18 +25,14 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		alter: logical::AlterSequenceNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		// Get the namespace name from the sequence identifier
-		let namespace_name = if alter.sequence.namespace.is_empty() {
-			DEFAULT_NAMESPACE.to_string()
-		} else {
-			alter.sequence.namespace.iter().map(|f| f.text()).collect::<Vec<_>>().join("::")
-		};
+		// Get the namespace segments from the sequence identifier
+		let ns_segments: Vec<&str> = alter.sequence.namespace.iter().map(|n| n.text()).collect();
 
 		// Query the catalog for the actual namespace
 		let namespace = self
 			.catalog
-			.find_namespace_by_name(rx, &namespace_name)?
-			.unwrap_or_else(|| panic!("Namespace '{}' not found", namespace_name));
+			.find_namespace_by_segments(rx, &ns_segments)?
+			.unwrap_or_else(|| panic!("Namespace '{}' not found", ns_segments.join("::")));
 
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();

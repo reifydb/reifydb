@@ -22,16 +22,17 @@ impl<'bump> Compiler<'bump> {
 		dispatch: logical::DispatchNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
 		// Resolve namespace
-		let ns_name = if dispatch.on_event.namespace.is_empty() {
+		let ns_segments: Vec<&str> = dispatch.on_event.namespace.iter().map(|n| n.text()).collect();
+		let ns_name: String = if ns_segments.is_empty() {
 			"default".to_string()
 		} else {
-			dispatch.on_event.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
+			ns_segments.join("::")
 		};
-		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &ns_name)? else {
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = Fragment::internal(ns_name.clone());
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Namespace,
-				namespace: ns_name.to_string(),
+				namespace: ns_name,
 				name: String::new(),
 				fragment: ns_fragment,
 			}
@@ -43,7 +44,7 @@ impl<'bump> Compiler<'bump> {
 		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, namespace.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
-				namespace: ns_name.to_string(),
+				namespace: ns_name.clone(),
 				name: event_name.to_string(),
 				fragment: Fragment::internal(event_name.to_string()),
 			}

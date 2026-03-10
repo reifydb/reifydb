@@ -21,22 +21,18 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateColumnPropertyNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let (namespace_name, table_fragment) = match &create.column.primitive {
+		let (ns_segments, table_fragment) = match &create.column.primitive {
 			MaybeQualifiedColumnPrimitive::Primitive {
 				namespace,
 				primitive,
-			} => {
-				let ns = if namespace.is_empty() {
-					"default".to_string()
-				} else {
-					namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-				};
-				(ns, self.interner.intern_fragment(primitive))
-			}
-			_ => ("default".to_string(), Fragment::internal("_unknown")),
+			} => (
+				namespace.iter().map(|n| n.text()).collect::<Vec<&str>>(),
+				self.interner.intern_fragment(primitive),
+			),
+			_ => (vec![], Fragment::internal("_unknown")),
 		};
 
-		let Some(ns) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let Some(ns) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = match &create.column.primitive {
 				MaybeQualifiedColumnPrimitive::Primitive {
 					namespace,
@@ -44,14 +40,14 @@ impl<'bump> Compiler<'bump> {
 				} => {
 					if let Some(n) = namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&namespace_name)
+						interned.with_text(&ns_segments.join("::"))
 					} else {
 						Fragment::internal("default".to_string())
 					}
 				}
 				_ => Fragment::internal("default".to_string()),
 			};
-			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
 		let namespace_id = match &create.column.primitive {

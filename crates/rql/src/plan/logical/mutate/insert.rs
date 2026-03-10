@@ -59,17 +59,16 @@ impl<'bump> Compiler<'bump> {
 		source: LogicalPlan<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
-		let namespace_name = unresolved_target.namespace.first().map(|n| n.text().to_string());
-		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
 		let target_name = unresolved_target.name.text();
 		let name = unresolved_target.name;
 		let namespace = unresolved_target.namespace;
+		let ns_segments: Vec<&str> = namespace.iter().map(|n| n.text()).collect();
 
-		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name_str)? {
+		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? {
 			// Check if this is a remote namespace
 			if let Some(address) = ns.address() {
 				return Err(IdentifierError::RemoteNamespace {
-					namespace: namespace_name_str.to_string(),
+					namespace: ns_segments.join("::"),
 					name: target_name.to_string(),
 					address: address.to_string(),
 					fragment: name.to_owned(),
@@ -137,11 +136,15 @@ impl<'bump> Compiler<'bump> {
 		nodes: Vec<Ast<'bump>>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
-		let namespace_name = target.namespace.first().map(|n| n.text().to_string());
-		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
+		let ns_segments: Vec<&str> = target.namespace.iter().map(|n| n.text()).collect();
 		let target_name = target.name.text();
 
-		let column_names = self.catalog.resolve_column_names(tx, namespace_name_str, target_name)?;
+		let ns_name = if ns_segments.is_empty() {
+			"default".to_string()
+		} else {
+			ns_segments.join("::")
+		};
+		let column_names = self.catalog.resolve_column_names(tx, &ns_name, target_name)?;
 
 		let mut rows = Vec::with_capacity(nodes.len());
 		for node in nodes {

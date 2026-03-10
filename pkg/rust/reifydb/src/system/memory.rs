@@ -59,8 +59,10 @@ impl MemoryWatchdog {
 		unsafe {
 			let mut info: libc::mach_task_basic_info = mem::zeroed();
 			let mut count = libc::MACH_TASK_BASIC_INFO_COUNT;
+			#[allow(deprecated)]
+			let task = libc::mach_task_self();
 			let kr = libc::task_info(
-				libc::mach_task_self(),
+				task,
 				libc::MACH_TASK_BASIC_INFO,
 				&mut info as *mut _ as *mut i32,
 				&mut count,

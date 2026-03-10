@@ -20,19 +20,15 @@ impl<'bump> Compiler<'bump> {
 		create: logical::CreateTestNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
 		// Resolve namespace
-		let namespace_name = if create.test.namespace.is_empty() {
-			"default".to_string()
-		} else {
-			create.test.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-		};
-		let Some(namespace_def) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let ns_segments: Vec<&str> = create.test.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace_def) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.test.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&namespace_name)
+				interned.with_text(&ns_segments.join("::"))
 			} else {
 				Fragment::internal("default".to_string())
 			};
-			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
 		Ok(PhysicalPlan::CreateTest(nodes::CreateTestNode {

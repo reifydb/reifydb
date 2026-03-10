@@ -20,19 +20,15 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreatePrimaryKeyNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let namespace_name = if create.table.namespace.is_empty() {
-			"default".to_string()
-		} else {
-			create.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-		};
-		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let ns_segments: Vec<&str> = create.table.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.table.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&namespace_name)
+				interned.with_text(&ns_segments.join("::"))
 			} else {
 				Fragment::internal("default".to_string())
 			};
-			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
 		let namespace_id = if let Some(n) = create.table.namespace.first() {

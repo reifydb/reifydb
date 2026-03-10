@@ -65,14 +65,13 @@ impl<'bump> Compiler<'bump> {
 
 		// 5. Wrap in UPDATE node
 		// Check in the catalog whether the target is a table or ring buffer
-		let namespace_name = ast.target.namespace.first().map(|n| n.text().to_string());
-		let namespace_name_str = namespace_name.as_deref().unwrap_or("default");
 		let target_name = ast.target.name.text();
 		let name = ast.target.name;
 		let namespace = ast.target.namespace;
+		let ns_segments: Vec<&str> = namespace.iter().map(|n| n.text()).collect();
 
 		// Try to find namespace
-		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_name(tx, namespace_name_str)? {
+		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? {
 			ns.id()
 		} else {
 			// If namespace doesn't exist, default to table (will error during physical plan)

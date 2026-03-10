@@ -26,7 +26,7 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
-		let ringbuffer_namespace_name = ast.ringbuffer.namespace.first().map(|n| n.text()).unwrap_or("default");
+		let ringbuffer_ns_segments: Vec<&str> = ast.ringbuffer.namespace.iter().map(|n| n.text()).collect();
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
@@ -45,19 +45,20 @@ impl<'bump> Compiler<'bump> {
 				match property {
 					AstColumnProperty::AutoIncrement => auto_increment = true,
 					AstColumnProperty::Dictionary(dict_ident) => {
-						let dict_namespace_name = dict_ident
-							.namespace
-							.first()
-							.map(|n| n.text())
-							.unwrap_or(ringbuffer_namespace_name);
+						let dict_ns_segments: Vec<&str> = if dict_ident.namespace.is_empty() {
+							ringbuffer_ns_segments.clone()
+						} else {
+							dict_ident.namespace.iter().map(|n| n.text()).collect()
+						};
 						let dict_name = dict_ident.name.text();
 
-						let Some(namespace) =
-							self.catalog.find_namespace_by_name(tx, dict_namespace_name)?
+						let Some(namespace) = self
+							.catalog
+							.find_namespace_by_segments(tx, &dict_ns_segments)?
 						else {
 							return Err(CatalogError::NotFound {
 								kind: CatalogObjectKind::Dictionary,
-								namespace: dict_namespace_name.to_string(),
+								namespace: dict_ns_segments.join("::"),
 								name: dict_name.to_string(),
 								fragment: dict_ident.name.to_owned(),
 							}
@@ -72,7 +73,7 @@ impl<'bump> Compiler<'bump> {
 						else {
 							return Err(CatalogError::NotFound {
 								kind: CatalogObjectKind::Dictionary,
-								namespace: dict_namespace_name.to_string(),
+								namespace: dict_ns_segments.join("::"),
 								name: dict_name.to_string(),
 								fragment: dict_ident.name.to_owned(),
 							}

@@ -21,19 +21,15 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateSeriesNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let namespace_name = if create.series.namespace.is_empty() {
-			"default".to_string()
-		} else {
-			create.series.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-		};
-		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let ns_segments: Vec<&str> = create.series.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.series.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&namespace_name)
+				interned.with_text(&ns_segments.join("::"))
 			} else {
 				Fragment::internal("default".to_string())
 			};
-			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
 		let namespace_id = if let Some(n) = create.series.namespace.first() {
@@ -46,21 +42,21 @@ impl<'bump> Compiler<'bump> {
 
 		// Resolve optional tag type
 		let tag = if let Some(tag_ident) = create.tag {
-			let tag_namespace_name = if tag_ident.namespace.is_empty() {
-				namespace_name.clone()
+			let tag_ns_segments: Vec<&str> = if tag_ident.namespace.is_empty() {
+				ns_segments.clone()
 			} else {
-				tag_ident.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
+				tag_ident.namespace.iter().map(|n| n.text()).collect()
 			};
-			let Some(tag_ns) = self.catalog.find_namespace_by_name(rx, &tag_namespace_name)? else {
+			let Some(tag_ns) = self.catalog.find_namespace_by_segments(rx, &tag_ns_segments)? else {
 				let ns_fragment = if let Some(n) = tag_ident.namespace.first() {
 					let interned = self.interner.intern_fragment(n);
-					interned.with_text(&tag_namespace_name)
+					interned.with_text(&tag_ns_segments.join("::"))
 				} else {
-					Fragment::internal(tag_namespace_name.clone())
+					Fragment::internal(tag_ns_segments.join("::"))
 				};
 				return Err(CatalogError::NotFound {
 					kind: CatalogObjectKind::Tag,
-					namespace: tag_namespace_name,
+					namespace: tag_ns_segments.join("::"),
 					name: tag_ident.name.text().to_string(),
 					fragment: ns_fragment,
 				}
@@ -71,7 +67,7 @@ impl<'bump> Compiler<'bump> {
 			let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, tag_ns.id(), tag_name)? else {
 				return Err(CatalogError::NotFound {
 					kind: CatalogObjectKind::Tag,
-					namespace: tag_namespace_name,
+					namespace: tag_ns_segments.join("::"),
 					name: tag_name.to_string(),
 					fragment: self.interner.intern_fragment(&tag_ident.name),
 				}

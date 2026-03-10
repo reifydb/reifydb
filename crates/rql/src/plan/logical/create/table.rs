@@ -27,7 +27,7 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<LogicalPlan<'bump>> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
-		let table_namespace_name = ast.table.namespace.first().map(|n| n.text()).unwrap_or("default");
+		let table_ns_segments: Vec<&str> = ast.table.namespace.iter().map(|n| n.text()).collect();
 
 		for col in ast.columns.into_iter() {
 			let column_name = col.name.text().to_string();
@@ -38,7 +38,7 @@ impl<'bump> Compiler<'bump> {
 				} => {
 					let ns_name = namespace.text();
 					let type_name = name.text();
-					let ns = self.catalog.find_namespace_by_name(tx, ns_name)?;
+					let ns = self.catalog.find_namespace_by_segments(tx, &[ns_name])?;
 					let sumtype = ns
 						.and_then(|ns| {
 							self.catalog
@@ -86,25 +86,20 @@ impl<'bump> Compiler<'bump> {
 				match property {
 					AstColumnProperty::AutoIncrement => auto_increment = true,
 					AstColumnProperty::Dictionary(dict_ident) => {
-						let dict_namespace_name = if dict_ident.namespace.is_empty() {
-							table_namespace_name.to_string()
+						let dict_ns_segments: Vec<&str> = if dict_ident.namespace.is_empty() {
+							table_ns_segments.clone()
 						} else {
-							dict_ident
-								.namespace
-								.iter()
-								.map(|n| n.text())
-								.collect::<Vec<_>>()
-								.join("::")
+							dict_ident.namespace.iter().map(|n| n.text()).collect()
 						};
 						let dict_name = dict_ident.name.text();
 
 						let Some(namespace) = self
 							.catalog
-							.find_namespace_by_name(tx, &dict_namespace_name)?
+							.find_namespace_by_segments(tx, &dict_ns_segments)?
 						else {
 							return Err(CatalogError::NotFound {
 								kind: CatalogObjectKind::Dictionary,
-								namespace: dict_namespace_name.to_string(),
+								namespace: dict_ns_segments.join("::"),
 								name: dict_name.to_string(),
 								fragment: dict_ident.name.to_owned(),
 							}
@@ -119,7 +114,7 @@ impl<'bump> Compiler<'bump> {
 						else {
 							return Err(CatalogError::NotFound {
 								kind: CatalogObjectKind::Dictionary,
-								namespace: dict_namespace_name.to_string(),
+								namespace: dict_ns_segments.join("::"),
 								name: dict_name.to_string(),
 								fragment: dict_ident.name.to_owned(),
 							}

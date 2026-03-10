@@ -23,19 +23,16 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		alter: LogicalAlterTableNode<'bump>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let namespace_name = if alter.table.namespace.is_empty() {
-			"default".to_string()
-		} else {
-			alter.table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-		};
-		let Some(namespace) = self.catalog.find_namespace_by_name(rx, &namespace_name)? else {
+		let ns_segments: Vec<&str> = alter.table.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
 			let ns_fragment = if let Some(n) = alter.table.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&namespace_name)
+				interned.with_text(&ns_name)
 			} else {
 				Fragment::internal("default".to_string())
 			};
-			return_error!(namespace_not_found(ns_fragment, &namespace_name));
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};
 
 		let namespace_id = if let Some(n) = alter.table.namespace.first() {

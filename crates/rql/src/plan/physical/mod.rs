@@ -648,14 +648,11 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 					logical::RunTestsNode::Namespace(ns) => {
-						let namespace_name = ns
-							.segments
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::");
+						let ns_segments: Vec<&str> =
+							ns.segments.iter().map(|n| n.text()).collect();
+						let namespace_name = ns_segments.join("::");
 						let Some(namespace_def) =
-							self.catalog.find_namespace_by_name(rx, &namespace_name)?
+							self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 						else {
 							let ns_fragment = if let Some(n) = ns.segments.first() {
 								let interned = self.interner.intern_fragment(n);
@@ -681,17 +678,15 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 					logical::RunTestsNode::Single(test) => {
-						let namespace_name = if test.namespace.is_empty() {
+						let ns_segments: Vec<&str> =
+							test.namespace.iter().map(|n| n.text()).collect();
+						let namespace_name = if ns_segments.is_empty() {
 							"default".to_string()
 						} else {
-							test.namespace
-								.iter()
-								.map(|n| n.text())
-								.collect::<Vec<_>>()
-								.join("::")
+							ns_segments.join("::")
 						};
 						let Some(namespace_def) =
-							self.catalog.find_namespace_by_name(rx, &namespace_name)?
+							self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 						else {
 							let ns_fragment = if let Some(n) = test.namespace.first() {
 								let interned = self.interner.intern_fragment(n);
@@ -873,13 +868,11 @@ impl<'bump> Compiler<'bump> {
 							if segments.len() >= 2 {
 								// Check if the full path refers to a namespace
 								// (namespace-wide on nested ns, e.g. ON app::sub)
-								let full_path = segments
-									.iter()
-									.map(|s| s.text())
-									.collect::<Vec<_>>()
-									.join("::");
+								let seg_strs: Vec<&str> =
+									segments.iter().map(|s| s.text()).collect();
+								let full_path = seg_strs.join("::");
 								if self.catalog
-									.find_namespace_by_name(rx, &full_path)?
+									.find_namespace_by_segments(rx, &seg_strs)?
 									.is_some()
 								{
 									let ns_fragment = self
@@ -1123,18 +1116,11 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let target = if let Some(table_id) = delete.target {
-						let namespace_name = if table_id.namespace.is_empty() {
-							"default".to_string()
-						} else {
-							table_id.namespace
-								.iter()
-								.map(|n| n.text())
-								.collect::<Vec<_>>()
-								.join("::")
-						};
+						let ns_segments: Vec<&str> =
+							table_id.namespace.iter().map(|n| n.text()).collect();
 						let namespace = self
 							.catalog
-							.find_namespace_by_name(rx, &namespace_name)?
+							.find_namespace_by_segments(rx, &ns_segments)?
 							.unwrap();
 						let Some(table_def) = self.catalog.find_table_by_name(
 							rx,
@@ -1183,25 +1169,18 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let ringbuffer_id = delete.target;
-					let namespace_name = if ringbuffer_id.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						ringbuffer_id
-							.namespace
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::")
-					};
+					let ns_segments: Vec<&str> =
+						ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = ringbuffer_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
@@ -1241,20 +1220,17 @@ impl<'bump> Compiler<'bump> {
 						.expect("Insert source must produce a plan");
 
 					let table = insert.target;
-					let namespace_name = if table.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						table.namespace.iter().map(|n| n.text()).collect::<Vec<_>>().join("::")
-					};
+					let ns_segments: Vec<&str> = table.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = table
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(table_def) = self.catalog.find_table_by_name(
 						rx,
@@ -1294,25 +1270,18 @@ impl<'bump> Compiler<'bump> {
 						.expect("Insert source must produce a plan");
 
 					let ringbuffer_id = insert_rb.target;
-					let namespace_name = if ringbuffer_id.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						ringbuffer_id
-							.namespace
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::")
-					};
+					let ns_segments: Vec<&str> =
+						ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = ringbuffer_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
@@ -1352,25 +1321,18 @@ impl<'bump> Compiler<'bump> {
 						.expect("Insert source must produce a plan");
 
 					let dictionary_id = insert_dict.target;
-					let namespace_name = if dictionary_id.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						dictionary_id
-							.namespace
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::")
-					};
+					let ns_segments: Vec<&str> =
+						dictionary_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = dictionary_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(dictionary_def) = self.catalog.find_dictionary_by_name(
 						rx,
@@ -1410,25 +1372,18 @@ impl<'bump> Compiler<'bump> {
 						.expect("Insert source must produce a plan");
 
 					let series_id = insert_series.target;
-					let namespace_name = if series_id.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						series_id
-							.namespace
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::")
-					};
+					let ns_segments: Vec<&str> =
+						series_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = series_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
@@ -1473,25 +1428,18 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let series_id = delete_series.target;
-					let namespace_name = if series_id.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						series_id
-							.namespace
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::")
-					};
+					let ns_segments: Vec<&str> =
+						series_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = series_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
@@ -1536,24 +1484,18 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let target = if let Some(table_id) = update.target {
-						let namespace_name = if table_id.namespace.is_empty() {
-							"default".to_string()
-						} else {
-							table_id.namespace
-								.iter()
-								.map(|n| n.text())
-								.collect::<Vec<_>>()
-								.join("::")
-						};
+						let ns_segments: Vec<&str> =
+							table_id.namespace.iter().map(|n| n.text()).collect();
 						let Some(namespace) =
-							self.catalog.find_namespace_by_name(rx, &namespace_name)?
+							self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 						else {
+							let ns_name = ns_segments.join("::");
 							let fragment = table_id
 								.namespace
 								.first()
 								.map(|n| self.interner.intern_fragment(n))
-								.unwrap_or_else(|| Fragment::internal(&namespace_name));
-							return_error!(namespace_not_found(fragment, &namespace_name));
+								.unwrap_or_else(|| Fragment::internal(&ns_name));
+							return_error!(namespace_not_found(fragment, &ns_name));
 						};
 						let Some(table_def) = self.catalog.find_table_by_name(
 							rx,
@@ -1602,25 +1544,18 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let ringbuffer_id = update_rb.target;
-					let namespace_name = if ringbuffer_id.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						ringbuffer_id
-							.namespace
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::")
-					};
+					let ns_segments: Vec<&str> =
+						ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = ringbuffer_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
 						rx,
@@ -1665,25 +1600,18 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					let series_id = update_series.target;
-					let namespace_name = if series_id.namespace.is_empty() {
-						"default".to_string()
-					} else {
-						series_id
-							.namespace
-							.iter()
-							.map(|n| n.text())
-							.collect::<Vec<_>>()
-							.join("::")
-					};
+					let ns_segments: Vec<&str> =
+						series_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
-						self.catalog.find_namespace_by_name(rx, &namespace_name)?
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
+						let ns_name = ns_segments.join("::");
 						let fragment = series_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&namespace_name));
-						return_error!(namespace_not_found(fragment, &namespace_name));
+							.unwrap_or_else(|| Fragment::internal(&ns_name));
+						return_error!(namespace_not_found(fragment, &ns_name));
 					};
 					let Some(series_def) = self.catalog.find_series_by_name(
 						rx,
