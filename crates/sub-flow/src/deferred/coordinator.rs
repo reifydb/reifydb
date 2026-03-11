@@ -108,6 +108,10 @@ struct ConsumeContext {
 	all_changes: Vec<Change>,
 	/// Latest CDC version
 	latest_version: Option<CommitVersion>,
+	/// Flows downstream of view-producing flows in this batch.
+	/// These flows will have new CDC events in the next cycle from view changes,
+	/// so their checkpoints should NOT be advanced yet.
+	downstream_flows: collections::HashSet<FlowId>,
 }
 
 enum Phase {
@@ -278,6 +282,7 @@ impl CoordinatorActor {
 			consume_start,
 			all_changes,
 			latest_version,
+			downstream_flows: collections::HashSet::new(),
 		};
 
 		// Discover and load new flows from CDC events using engine.begin_query()
@@ -448,10 +453,13 @@ impl CoordinatorActor {
 					}
 				}
 
-				// Collect checkpoints for active flows
+				// Collect checkpoints for active flows, skipping downstream flows
+				// whose upstream view-producing flows were just submitted.
 				if let Some(to_version) = consume_ctx.latest_version {
 					for flow_id in state.states.active_flow_ids() {
-						consume_ctx.checkpoints.push((flow_id, to_version));
+						if !consume_ctx.downstream_flows.contains(&flow_id) {
+							consume_ctx.checkpoints.push((flow_id, to_version));
+						}
 					}
 				}
 
@@ -499,10 +507,10 @@ impl CoordinatorActor {
 		&self,
 		state: &mut CoordinatorState,
 		ctx: &Context<CoordinatorMsg>,
-		consume_ctx: ConsumeContext,
+		mut consume_ctx: ConsumeContext,
 	) {
 		if let Some(to_version) = consume_ctx.latest_version {
-			let worker_batches = self.route_and_group_changes(
+			let mut worker_batches = self.route_and_group_changes(
 				state,
 				&consume_ctx.all_changes,
 				to_version,
@@ -510,6 +518,43 @@ impl CoordinatorActor {
 			);
 
 			Span::current().record("batch_count", worker_batches.len());
+
+			// Identify flows downstream of view-producing flows in this batch.
+			// Their checkpoints should not be advanced until upstream view changes are committed.
+			let dependency_graph = state.analyzer.get_dependency_graph();
+			let submitted_flow_ids: collections::HashSet<FlowId> = worker_batches
+				.values()
+				.flat_map(|batch| batch.instructions.iter().map(|i| i.flow_id))
+				.collect();
+
+			for (view_id, producer_flow_id) in &dependency_graph.sink_views {
+				if submitted_flow_ids.contains(producer_flow_id) {
+					if let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id) {
+						for fid in consumer_flow_ids {
+							consume_ctx.downstream_flows.insert(*fid);
+						}
+					}
+				}
+			}
+
+			// Remove downstream flow instructions from batches — they would read
+			// stale (uncommitted) upstream view data. Demote them to Backfilling
+			// so they re-process in the next cycle with committed data.
+			if !consume_ctx.downstream_flows.is_empty() {
+				for batch in worker_batches.values_mut() {
+					batch.instructions
+						.retain(|i| !consume_ctx.downstream_flows.contains(&i.flow_id));
+				}
+				worker_batches.retain(|_, batch| !batch.instructions.is_empty());
+
+				for flow_id in &consume_ctx.downstream_flows {
+					if let Some(flow_state) = state.states.get_mut(flow_id) {
+						if flow_state.is_active() {
+							flow_state.deactivate();
+						}
+					}
+				}
+			}
 
 			if !worker_batches.is_empty() {
 				let self_ref = ctx.self_ref().clone();
@@ -538,11 +583,12 @@ impl CoordinatorActor {
 		}
 
 		// No batches to submit or no latest_version, skip to backfill
-		// Collect checkpoints for active flows
-		let mut consume_ctx = consume_ctx;
+		// Collect checkpoints for active flows, skipping downstream flows.
 		if let Some(to_version) = consume_ctx.latest_version {
 			for flow_id in state.states.active_flow_ids() {
-				consume_ctx.checkpoints.push((flow_id, to_version));
+				if !consume_ctx.downstream_flows.contains(&flow_id) {
+					consume_ctx.checkpoints.push((flow_id, to_version));
+				}
 			}
 		}
 
@@ -554,7 +600,7 @@ impl CoordinatorActor {
 		&self,
 		state: &mut CoordinatorState,
 		ctx: &Context<CoordinatorMsg>,
-		consume_ctx: ConsumeContext,
+		mut consume_ctx: ConsumeContext,
 	) {
 		if consume_ctx.latest_version.is_none() {
 			// No CDC data — finish immediately
@@ -563,6 +609,21 @@ impl CoordinatorActor {
 		}
 
 		let backfilling_flows: Vec<_> = state.states.backfilling_flow_ids();
+
+		// Identify backfilling flows downstream of other backfilling view-producers.
+		// These flows would read stale (uncommitted) view data if processed now,
+		// so they should be skipped and will backfill in the next cycle.
+		let dependency_graph = state.analyzer.get_dependency_graph();
+		for (view_id, producer_flow_id) in &dependency_graph.sink_views {
+			if backfilling_flows.contains(producer_flow_id) {
+				if let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id) {
+					for fid in consumer_flow_ids {
+						consume_ctx.downstream_flows.insert(*fid);
+					}
+				}
+			}
+		}
+
 		if backfilling_flows.is_empty() {
 			self.finish_consume(state, consume_ctx);
 			return;
@@ -583,6 +644,12 @@ impl CoordinatorActor {
 
 		while let Some(flow_id) = flows.first().copied() {
 			flows.remove(0);
+
+			// Skip downstream flows — they'll backfill in the next cycle
+			// with committed upstream view data.
+			if consume_ctx.downstream_flows.contains(&flow_id) {
+				continue;
+			}
 
 			// Get current checkpoint for this flow
 			let from_version = match self.engine.begin_query() {
