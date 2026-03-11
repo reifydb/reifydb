@@ -41,7 +41,7 @@ use reifydb_core::{
 		key::PrimaryKeyDef,
 		migration::{MigrationDef, MigrationEvent},
 		namespace::Namespace,
-		policy::{PolicyDef, PolicyId},
+		policy::{PolicyDef, PolicyId, PolicyOperationDef},
 		primitive::PrimitiveId,
 		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
@@ -165,6 +165,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicyDef>,
 	/// Index from policy name to policy ID for fast name lookups
 	pub(crate) policies_by_name: SkipMap<String, PolicyId>,
+	/// Policy operations indexed by policy ID for fast lookups (avoids KV store scans)
+	pub(crate) policy_operations: SkipMap<PolicyId, Vec<PolicyOperationDef>>,
 	/// MultiVersion migration definitions indexed by migration ID
 	pub(crate) migrations: SkipMap<MigrationId, MultiVersionMigrationDef>,
 	/// Index from migration name to migration ID for fast name lookups
@@ -241,6 +243,7 @@ impl MaterializedCatalog {
 			user_roles: SkipMap::new(),
 			policies: SkipMap::new(),
 			policies_by_name: SkipMap::new(),
+			policy_operations: SkipMap::new(),
 			migrations: SkipMap::new(),
 			migrations_by_name: SkipMap::new(),
 			migration_events: SkipMap::new(),

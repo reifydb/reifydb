@@ -3,12 +3,37 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::policy::{PolicyDef, PolicyId},
+	interface::catalog::policy::{PolicyDef, PolicyId, PolicyOperationDef},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionPolicyDef};
 
 impl MaterializedCatalog {
+	/// List all policies (returns latest version of each)
+	pub fn list_all_policies(&self) -> Vec<PolicyDef> {
+		self.policies.iter().filter_map(|entry| entry.value().get_latest()).collect()
+	}
+
+	/// List all policies at a specific version
+	pub fn list_all_policies_at(&self, version: CommitVersion) -> Vec<PolicyDef> {
+		self.policies.iter().filter_map(|entry| entry.value().get(version)).collect()
+	}
+
+	/// List policy operations for a specific policy
+	pub fn list_policy_operations(&self, policy_id: PolicyId) -> Option<Vec<PolicyOperationDef>> {
+		self.policy_operations.get(&policy_id).map(|entry| entry.value().clone())
+	}
+
+	/// Set policy operations for a specific policy
+	pub fn set_policy_operations(&self, policy_id: PolicyId, ops: Vec<PolicyOperationDef>) {
+		self.policy_operations.insert(policy_id, ops);
+	}
+
+	/// Remove policy operations for a specific policy
+	pub fn remove_policy_operations(&self, policy_id: PolicyId) {
+		self.policy_operations.remove(&policy_id);
+	}
+
 	/// Find a policy by ID at a specific version
 	pub fn find_policy_at(&self, id: PolicyId, version: CommitVersion) -> Option<PolicyDef> {
 		self.policies.get(&id).and_then(|entry| {
@@ -50,6 +75,7 @@ impl MaterializedCatalog {
 			multi.value().insert(version, new);
 		} else {
 			multi.value().remove(version);
+			self.policy_operations.remove(&id);
 		}
 	}
 }

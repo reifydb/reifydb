@@ -87,6 +87,7 @@ impl Catalog {
 	) -> Result<(PolicyDef, Vec<PolicyOperationDef>)> {
 		let (policy, ops) = CatalogStore::create_policy(txn, to_create)?;
 		txn.track_policy_def_created(policy.clone())?;
+		self.materialized.set_policy_operations(policy.id, ops.clone());
 		Ok((policy, ops))
 	}
 
@@ -116,6 +117,7 @@ impl Catalog {
 		} else {
 			CatalogStore::drop_policy(txn, policy_id)?;
 		}
+		self.materialized.remove_policy_operations(policy_id);
 		Ok(())
 	}
 
@@ -132,6 +134,10 @@ impl Catalog {
 	}
 
 	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<PolicyDef>> {
+		let cached = self.materialized.list_all_policies_at(txn.version());
+		if !cached.is_empty() {
+			return Ok(cached);
+		}
 		CatalogStore::list_all_policies(txn)
 	}
 
@@ -140,6 +146,9 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		policy_id: PolicyId,
 	) -> Result<Vec<PolicyOperationDef>> {
+		if let Some(ops) = self.materialized.list_policy_operations(policy_id) {
+			return Ok(ops);
+		}
 		CatalogStore::list_policy_operations(txn, policy_id)
 	}
 }

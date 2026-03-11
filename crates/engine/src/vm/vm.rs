@@ -686,28 +686,12 @@ impl Vm {
 									c.unwrap_or(Columns::scalar(Value::none())),
 								),
 								_ => {
-									if let Some(frame) = func_result.last() {
+									if let Some(frame) = func_result.pop() {
 										if !frame.columns.is_empty()
 											&& frame.columns[0].data.len()
 												> 0
 										{
-											let cols: Vec<Column> = frame
-												.columns
-												.iter()
-												.map(|fc| {
-													let mut data = ColumnData::none_typed(Type::Boolean, 0);
-													for i in 0..fc
-														.data
-														.len()
-													{
-														data.push_value(fc.data.get_value(i));
-													}
-													Column::new(fc.name.as_str(), data)
-												})
-												.collect();
-											Variable::Columns(Columns::new(
-												cols,
-											))
+											Variable::Columns(frame.into())
 										} else {
 											Variable::scalar(Value::none())
 										}
@@ -762,28 +746,12 @@ impl Vm {
 									c.unwrap_or(Columns::scalar(Value::none())),
 								),
 								_ => {
-									if let Some(frame) = closure_result.last() {
+									if let Some(frame) = closure_result.pop() {
 										if !frame.columns.is_empty()
 											&& frame.columns[0].data.len()
 												> 0
 										{
-											let cols: Vec<Column> = frame
-												.columns
-												.iter()
-												.map(|fc| {
-													let mut data = ColumnData::none_typed(Type::Boolean, 0);
-													for i in 0..fc
-														.data
-														.len()
-													{
-														data.push_value(fc.data.get_value(i));
-													}
-													Column::new(fc.name.as_str(), data)
-												})
-												.collect();
-											Variable::Columns(Columns::new(
-												cols,
-											))
+											Variable::Columns(frame.into())
 										} else {
 											Variable::scalar(Value::none())
 										}
@@ -941,7 +909,7 @@ impl Vm {
 												}
 												_ => {
 													if let Some(frame) =
-														proc_result.last()
+														proc_result.pop()
 													{
 														if !frame
 															.columns
@@ -951,18 +919,7 @@ impl Vm {
 															.len()
 															> 0
 														{
-															let cols: Vec<Column> =
-																frame.columns
-																	.iter()
-																	.map(|fc| {
-																		let mut data = ColumnData::none_typed(Type::Boolean, 0);
-																		for i in 0..fc.data.len() {
-																			data.push_value(fc.data.get_value(i));
-																		}
-																		Column::new(fc.name.as_str(), data)
-																	})
-																	.collect();
-															Variable::Columns(Columns::new(cols))
+															Variable::Columns(frame.into())
 														} else {
 															Variable::scalar(Value::none())
 														}
@@ -1058,22 +1015,11 @@ impl Vm {
 												))
 											}
 											_ => {
-												if let Some(frame) = proc_result.last() {
+												if let Some(frame) = proc_result.pop() {
 													if !frame.columns.is_empty()
 														&& frame.columns[0].data.len() > 0
 													{
-														let cols: Vec<Column> = frame
-															.columns
-															.iter()
-															.map(|fc| {
-																let mut data = ColumnData::none_typed(Type::Boolean, 0);
-																for i in 0..fc.data.len() {
-																	data.push_value(fc.data.get_value(i));
-																}
-																Column::new(fc.name.as_str(), data)
-															})
-															.collect();
-														Variable::Columns(Columns::new(cols))
+														Variable::Columns(frame.into())
 													} else {
 														Variable::scalar(Value::none())
 													}
