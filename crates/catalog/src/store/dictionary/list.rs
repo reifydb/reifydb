@@ -125,6 +125,7 @@ pub mod tests {
 			NamespaceToCreate {
 				namespace_fragment: None,
 				name: "namespace2".to_string(),
+				local_name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
 			},
@@ -174,6 +175,7 @@ pub mod tests {
 			NamespaceToCreate {
 				namespace_fragment: None,
 				name: "namespace2".to_string(),
+				local_name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
 			},

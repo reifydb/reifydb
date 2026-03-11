@@ -32,10 +32,18 @@ impl CatalogStore {
 						.try_get_utf8(&entry.values, namespace::GRPC)
 						.map(|s| s.to_string())
 						.filter(|s| !s.is_empty());
+					let local_name = namespace::SCHEMA
+						.try_get_utf8(&entry.values, namespace::LOCAL_NAME)
+						.filter(|s| !s.is_empty())
+						.unwrap_or_else(|| {
+							name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name)
+						})
+						.to_string();
 					let namespace = if let Some(address) = grpc {
 						Namespace::Remote {
 							id: namespace_id,
 							name,
+							local_name,
 							parent_id,
 							address,
 						}
@@ -43,6 +51,7 @@ impl CatalogStore {
 						Namespace::Local {
 							id: namespace_id,
 							name,
+							local_name,
 							parent_id,
 						}
 					};

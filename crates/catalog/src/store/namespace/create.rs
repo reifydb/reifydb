@@ -12,7 +12,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		namespace::schema::namespace::{GRPC, ID, NAME, PARENT_ID, SCHEMA},
+		namespace::schema::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SCHEMA},
 		sequence::system::SystemSequence,
 	},
 };
@@ -21,6 +21,7 @@ use crate::{
 pub struct NamespaceToCreate {
 	pub namespace_fragment: Option<Fragment>,
 	pub name: String,
+	pub local_name: String,
 	pub parent_id: NamespaceId,
 	pub grpc: Option<String>,
 }
@@ -48,6 +49,7 @@ impl CatalogStore {
 		if let Some(ref grpc) = to_create.grpc {
 			SCHEMA.set_utf8(&mut row, GRPC, grpc);
 		}
+		SCHEMA.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 
@@ -69,6 +71,7 @@ pub mod tests {
 		let to_create = NamespaceToCreate {
 			namespace_fragment: None,
 			name: "test_namespace".to_string(),
+			local_name: "test_namespace".to_string(),
 			parent_id: NamespaceId(0),
 			grpc: None,
 		};

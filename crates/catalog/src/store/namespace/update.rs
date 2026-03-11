@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::namespace::schema::namespace::{GRPC, ID, NAME, PARENT_ID, SCHEMA},
+	store::namespace::schema::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SCHEMA},
 };
 
 impl CatalogStore {
@@ -24,6 +24,7 @@ impl CatalogStore {
 		if let Some(ref grpc) = grpc {
 			SCHEMA.set_utf8(&mut row, GRPC, grpc);
 		}
+		SCHEMA.set_utf8(&mut row, LOCAL_NAME, existing.local_name());
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 		Ok(())

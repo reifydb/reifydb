@@ -23,11 +23,17 @@ pub(crate) fn convert_namespace(multi: MultiVersionValues) -> Namespace {
 	let parent_id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::PARENT_ID));
 	let grpc =
 		namespace::SCHEMA.try_get_utf8(&row, namespace::GRPC).map(|s| s.to_string()).filter(|s| !s.is_empty());
+	let local_name = namespace::SCHEMA
+		.try_get_utf8(&row, namespace::LOCAL_NAME)
+		.filter(|s| !s.is_empty())
+		.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
+		.to_string();
 
 	if let Some(address) = grpc {
 		Namespace::Remote {
 			id,
 			name,
+			local_name,
 			parent_id,
 			address,
 		}
@@ -35,6 +41,7 @@ pub(crate) fn convert_namespace(multi: MultiVersionValues) -> Namespace {
 		Namespace::Local {
 			id,
 			name,
+			local_name,
 			parent_id,
 		}
 	}

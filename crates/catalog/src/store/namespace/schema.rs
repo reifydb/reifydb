@@ -10,6 +10,7 @@ pub(crate) mod namespace {
 	pub(crate) const NAME: usize = 1;
 	pub(crate) const PARENT_ID: usize = 2;
 	pub(crate) const GRPC: usize = 3;
+	pub(crate) const LOCAL_NAME: usize = 4;
 
 	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
@@ -17,6 +18,7 @@ pub(crate) mod namespace {
 			SchemaField::unconstrained("name", Type::Utf8),
 			SchemaField::unconstrained("parent_id", Type::Uint8),
 			SchemaField::unconstrained("grpc", Type::Utf8),
+			SchemaField::unconstrained("local_name", Type::Utf8),
 		])
 	});
 }

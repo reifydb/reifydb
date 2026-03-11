@@ -469,7 +469,8 @@ impl DatabaseBuilder {
 					&mut admin,
 					NamespaceToCreate {
 						namespace_fragment: None,
-						name: "config".to_string(),
+						name: "system::config".to_string(),
+						local_name: "config".to_string(),
 						parent_id: NamespaceId(1),
 						grpc: None,
 					},

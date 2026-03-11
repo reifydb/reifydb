@@ -93,6 +93,7 @@ impl Runner for TestRunner {
 							NamespaceToCreate {
 								namespace_fragment: None,
 								name: "test".to_string(),
+								local_name: "test".to_string(),
 								parent_id: NamespaceId::ROOT,
 								grpc: None,
 							},

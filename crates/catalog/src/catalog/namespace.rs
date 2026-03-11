@@ -24,6 +24,7 @@ use crate::{
 pub struct NamespaceToCreate {
 	pub namespace_fragment: Option<Fragment>,
 	pub name: String,
+	pub local_name: String,
 	pub parent_id: NamespaceId,
 	pub grpc: Option<String>,
 }
@@ -33,6 +34,7 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 		StoreNamespaceToCreate {
 			namespace_fragment: to_create.namespace_fragment,
 			name: to_create.name,
+			local_name: to_create.local_name,
 			parent_id: to_create.parent_id,
 			grpc: to_create.grpc,
 		}
@@ -187,6 +189,50 @@ impl Catalog {
 		}
 	}
 
+	fn find_child_namespace(
+		&self,
+		txn: &mut Transaction<'_>,
+		parent_id: NamespaceId,
+		name: &str,
+	) -> Result<Option<Namespace>> {
+		match txn.reborrow() {
+			Transaction::Command(cmd) => {
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, cmd.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Command(&mut *cmd))?;
+				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
+			}
+			Transaction::Admin(admin) => {
+				if let Some(ns) = admin.changes.namespace.iter().rev().find_map(|change| {
+					change.post
+						.as_ref()
+						.filter(|ns| ns.local_name() == name && ns.parent_id() == parent_id)
+				}) {
+					return Ok(Some(ns.clone()));
+				}
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, admin.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Admin(&mut *admin))?;
+				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
+			}
+			Transaction::Query(qry) => {
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, qry.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Query(&mut *qry))?;
+				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
+			}
+		}
+	}
+
 	/// Resolve namespace from path segments (e.g. `["system", "config"]`).
 	/// Returns the "default" namespace when segments is empty.
 	pub fn find_namespace_by_segments(
@@ -197,11 +243,20 @@ impl Catalog {
 		if segments.is_empty() {
 			return self.find_namespace_by_name(txn, "default");
 		}
-		if segments.len() == 1 {
-			return self.find_namespace_by_name(txn, segments[0]);
+
+		let mut current = match self.find_namespace_by_name(txn, segments[0])? {
+			Some(ns) => ns,
+			None => return Ok(None),
+		};
+
+		for &segment in &segments[1..] {
+			match self.find_child_namespace(txn, current.id(), segment)? {
+				Some(ns) => current = ns,
+				None => return Ok(None),
+			}
 		}
-		let path = segments.join("::");
-		self.find_namespace_by_name(txn, &path)
+
+		Ok(Some(current))
 	}
 
 	/// Resolve a `::` separated path (e.g. `"system::config"`) to a `Namespace` by walking

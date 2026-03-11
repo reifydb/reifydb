@@ -105,6 +105,7 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 			NamespaceToCreate {
 				namespace_fragment: None,
 				name: "reifydb".to_string(),
+				local_name: "reifydb".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
 			},

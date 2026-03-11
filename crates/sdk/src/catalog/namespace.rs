@@ -100,9 +100,12 @@ unsafe fn unmarshal_namespace(ffi_ns: &NamespaceFFI) -> Result<Namespace, FFIErr
 		.map_err(|_| FFIError::Other("Invalid UTF-8 in namespace name".to_string()))?
 		.to_string();
 
+	let local_name = name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name).to_string();
+
 	Ok(Namespace::Local {
 		id: NamespaceId(ffi_ns.id),
 		name,
+		local_name,
 		parent_id: NamespaceId(ffi_ns.parent_id),
 	})
 }

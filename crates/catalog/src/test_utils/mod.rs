@@ -33,11 +33,13 @@ use crate::{
 };
 
 pub fn create_namespace(txn: &mut AdminTransaction, namespace: &str) -> Namespace {
+	let local_name = namespace.rsplit_once("::").map(|(_, s)| s).unwrap_or(namespace);
 	CatalogStore::create_namespace(
 		txn,
 		NamespaceToCreate {
 			namespace_fragment: None,
 			name: namespace.to_string(),
+			local_name: local_name.to_string(),
 			parent_id: reifydb_core::interface::catalog::id::NamespaceId::ROOT,
 			grpc: None,
 		},

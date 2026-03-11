@@ -33,6 +33,7 @@ pub(crate) fn create_remote_namespace(
 				NamespaceToCreate {
 					namespace_fragment: Some(plan.segments[i].clone()),
 					name: prefix,
+					local_name: plan.segments[i].text().to_string(),
 					parent_id,
 					grpc: None,
 				},
@@ -58,6 +59,7 @@ pub(crate) fn create_remote_namespace(
 		NamespaceToCreate {
 			namespace_fragment: plan.segments.last().cloned(),
 			name: full_name,
+			local_name: plan.segments.last().unwrap().text().to_string(),
 			parent_id,
 			grpc: Some(grpc_text),
 		},

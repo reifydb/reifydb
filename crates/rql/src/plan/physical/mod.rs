@@ -1759,6 +1759,7 @@ impl<'bump> Compiler<'bump> {
 							Namespace::Local {
 								id: NamespaceId(1),
 								name: "_context".to_string(),
+								local_name: "_context".to_string(),
 								parent_id: NamespaceId::ROOT,
 							},
 						);

@@ -50,7 +50,7 @@ impl MaterializedCatalog {
 	) -> Option<Namespace> {
 		self.namespaces.iter().find_map(|entry| {
 			let ns = entry.value().get(version)?;
-			if ns.name() == name && ns.parent_id() == parent_id {
+			if ns.local_name() == name && ns.parent_id() == parent_id {
 				Some(ns)
 			} else {
 				None
@@ -62,7 +62,7 @@ impl MaterializedCatalog {
 	pub fn find_child_namespace(&self, parent_id: NamespaceId, name: &str) -> Option<Namespace> {
 		self.namespaces.iter().find_map(|entry| {
 			let ns = entry.value().get_latest()?;
-			if ns.name() == name && ns.parent_id() == parent_id {
+			if ns.local_name() == name && ns.parent_id() == parent_id {
 				Some(ns)
 			} else {
 				None
@@ -96,9 +96,11 @@ pub mod tests {
 	use super::*;
 
 	fn create_test_namespace(id: NamespaceId, name: &str) -> Namespace {
+		let local_name = name.rsplit_once("::").map(|(_, s)| s).unwrap_or(name);
 		Namespace::Local {
 			id,
 			name: name.to_string(),
+			local_name: local_name.to_string(),
 			parent_id: NamespaceId::ROOT,
 		}
 	}

@@ -14,11 +14,13 @@ pub enum Namespace {
 	Local {
 		id: NamespaceId,
 		name: String,
+		local_name: String,
 		parent_id: NamespaceId,
 	},
 	Remote {
 		id: NamespaceId,
 		name: String,
+		local_name: String,
 		parent_id: NamespaceId,
 		address: String,
 	},
@@ -48,6 +50,19 @@ impl Namespace {
 				name,
 				..
 			} => name,
+		}
+	}
+
+	pub fn local_name(&self) -> &str {
+		match self {
+			Namespace::Local {
+				local_name,
+				..
+			}
+			| Namespace::Remote {
+				local_name,
+				..
+			} => local_name,
 		}
 	}
 
@@ -82,6 +97,7 @@ impl Namespace {
 		Self::Local {
 			id: NamespaceId(1),
 			name: "system".to_string(),
+			local_name: "system".to_string(),
 			parent_id: NamespaceId::ROOT,
 		}
 	}
@@ -90,6 +106,7 @@ impl Namespace {
 		Self::Local {
 			id: NamespaceId(2),
 			name: "default".to_string(),
+			local_name: "default".to_string(),
 			parent_id: NamespaceId::ROOT,
 		}
 	}

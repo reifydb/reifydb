@@ -1011,6 +1011,7 @@ pub mod tests {
 		Namespace::Local {
 			id: NamespaceId(1),
 			name: "public".to_string(),
+			local_name: "public".to_string(),
 			parent_id: NamespaceId::ROOT,
 		}
 	}
