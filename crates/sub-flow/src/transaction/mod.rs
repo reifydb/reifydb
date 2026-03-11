@@ -301,7 +301,7 @@ impl FlowTransaction {
 	}
 
 	/// Get access to the catalog for reading metadata
-	pub(crate) fn catalog(&self) -> &Catalog {
+	pub fn catalog(&self) -> &Catalog {
 		match self {
 			Self::Deferred {
 				catalog,
