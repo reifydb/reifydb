@@ -44,12 +44,14 @@ impl VTable for Namespaces {
 
 		let mut namespace_ids = Vec::new();
 		let mut namespace_names = Vec::new();
+		let mut namespace_local_names = Vec::new();
 		let mut namespace_parent_ids = Vec::new();
 
 		let namespaces = CatalogStore::list_namespaces_all(txn)?;
 		for namespace in namespaces {
 			namespace_ids.push(namespace.id().0);
 			namespace_names.push(namespace.name().to_string());
+			namespace_local_names.push(namespace.local_name().to_string());
 			namespace_parent_ids.push(namespace.parent_id().0);
 		}
 
@@ -61,6 +63,10 @@ impl VTable for Namespaces {
 			Column {
 				name: Fragment::internal("name"),
 				data: ColumnData::utf8(namespace_names),
+			},
+			Column {
+				name: Fragment::internal("local_name"),
+				data: ColumnData::utf8(namespace_local_names),
 			},
 			Column {
 				name: Fragment::internal("parent_id"),

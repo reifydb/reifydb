@@ -138,8 +138,9 @@ pub mod ids {
 			pub const ID: ColumnId = ColumnId(1);
 			pub const NAME: ColumnId = ColumnId(2);
 			pub const PARENT_ID: ColumnId = ColumnId(3);
+			pub const LOCAL_NAME: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 3] = [ID, NAME, PARENT_ID];
+			pub const ALL: [ColumnId; 4] = [ID, NAME, LOCAL_NAME, PARENT_ID];
 		}
 
 		pub mod tables {

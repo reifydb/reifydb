@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+#[cfg(not(target_os = "linux"))]
+use std::env;
 use std::path::{Path, PathBuf};
 
 use uuid::Uuid;
@@ -19,7 +21,7 @@ fn memory_dir() -> PathBuf {
 	}
 	#[cfg(not(target_os = "linux"))]
 	{
-		std::env::temp_dir()
+		env::temp_dir()
 	}
 }
 
