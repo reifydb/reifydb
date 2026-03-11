@@ -100,9 +100,45 @@ impl<'bump> Parser<'bump> {
 					Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
 					Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
 					Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
-					Keyword::Delete => Ok(Ast::Delete(self.parse_delete()?)),
-					Keyword::Insert => Ok(Ast::Insert(self.parse_insert()?)),
-					Keyword::Update => Ok(Ast::Update(self.parse_update()?)),
+					Keyword::Delete | Keyword::Insert | Keyword::Update => {
+						// If next token is an identifier or keyword, parse as statement.
+						// Otherwise treat as an identifier (e.g. `filter {update == 3}`).
+						if self.position + 1 < self.tokens.len()
+							&& matches!(
+								self.tokens[self.position + 1].kind,
+								TokenKind::Identifier | TokenKind::Keyword(_)
+							) {
+							match keyword {
+								Keyword::Delete => {
+									Ok(Ast::Delete(self.parse_delete()?))
+								}
+								Keyword::Insert => {
+									Ok(Ast::Insert(self.parse_insert()?))
+								}
+								Keyword::Update => {
+									Ok(Ast::Update(self.parse_update()?))
+								}
+								_ => unreachable!(),
+							}
+						} else if self.position + 1 < self.tokens.len()
+							&& unsafe { self.tokens.get_unchecked(self.position + 1) }
+								.is_operator(Operator::OpenParen)
+						{
+							let first_ident_token = self.consume_keyword_as_ident()?;
+							let open_paren_token = self.advance()?;
+							let arguments = self.parse_tuple_call(open_paren_token)?;
+							let function = MaybeQualifiedFunctionIdentifier::new(
+								first_ident_token.fragment,
+							);
+							Ok(Ast::CallFunction(AstCallFunction {
+								token: first_ident_token,
+								function,
+								arguments,
+							}))
+						} else {
+							Ok(Ast::Identifier(self.parse_as_identifier()?))
+						}
+					}
 					Keyword::Inner => Ok(Ast::Join(self.parse_inner_join()?)),
 					Keyword::Join => Ok(Ast::Join(self.parse_join()?)),
 					Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
