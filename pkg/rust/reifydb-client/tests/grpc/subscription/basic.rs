@@ -26,7 +26,7 @@ fn test_subscribe_returns_subscription_id() {
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
 		let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
-		assert!(sub.subscription_id() > 0, "Subscription ID should be > 0");
+		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		drop(sub);
 	});

@@ -28,7 +28,7 @@ fn test_basic_subscribe_to_query() {
 		let table = ctx.create_table("sub_basic", "id: int4, name: utf8, value: int4").await?;
 		let sub = ctx.subscribe(&table).await?;
 
-		assert!(sub.subscription_id() > 0, "Subscription ID should be > 0");
+		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		drop(sub);
 		Ok(())
@@ -41,7 +41,7 @@ fn test_basic_drop_subscription_success() {
 		let table = ctx.create_table("sub_unsub", "id: int4, name: utf8").await?;
 		let sub = ctx.subscribe(&table).await?;
 
-		assert!(sub.subscription_id() > 0, "Subscription ID should be > 0");
+		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		// Drop subscription should succeed
 		drop(sub);
@@ -306,7 +306,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
 		let sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
-		assert!(sub.subscription_id() > 0, "Subscription ID should be > 0");
+		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		// Drop and reconnect
 		drop(sub);

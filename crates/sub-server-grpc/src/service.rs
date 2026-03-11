@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
 	execute::{execute_admin, execute_command, execute_query},
@@ -149,7 +150,7 @@ impl ReifyDb for ReifyDbService {
 		// Send initial subscribed event
 		let subscribed_event = SubscriptionEvent {
 			event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
-				subscription_id: subscription_id.0,
+				subscription_id: subscription_id.0.to_string(),
 			})),
 		};
 		if tx.send(Ok(subscribed_event)).await.is_err() {
@@ -203,7 +204,11 @@ impl ReifyDb for ReifyDbService {
 	) -> Result<Response<UnsubscribeResponse>, Status> {
 		let _identity = self.extract_identity(&request)?;
 		let inner = request.into_inner();
-		let subscription_id = reifydb_core::interface::catalog::id::SubscriptionId(inner.subscription_id);
+		let subscription_id = SubscriptionId(
+			inner.subscription_id
+				.parse::<u64>()
+				.map_err(|_| Status::invalid_argument("Invalid subscription ID"))?,
+		);
 
 		// Unregister from poller
 		self.poller.unregister(&subscription_id);

@@ -17,15 +17,15 @@ message QueryRequest  { repeated string statements = 1; optional Params params =
 message QueryResponse { repeated Frame frames = 1; }
 
 message SubscribeRequest { string query = 1; }
-message UnsubscribeRequest { uint64 subscription_id = 1; }
-message UnsubscribeResponse { uint64 subscription_id = 1; }
+message UnsubscribeRequest { string subscription_id = 1; }
+message UnsubscribeResponse { string subscription_id = 1; }
 message SubscriptionEvent {
   oneof event {
     SubscribedEvent subscribed = 1;
     ChangeEvent change = 2;
   }
 }
-message SubscribedEvent { uint64 subscription_id = 1; }
+message SubscribedEvent { string subscription_id = 1; }
 message ChangeEvent { repeated Frame frames = 1; }
 
 message Params {

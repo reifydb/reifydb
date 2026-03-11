@@ -169,7 +169,7 @@ fn test_rapid_subscribe_unsubscribe() {
 
 		// Verify system still works after rapid cycles
 		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
-		assert!(sub.subscription_id() > 0, "Should get valid subscription after rapid cycles");
+		assert!(!sub.subscription_id().is_empty(), "Should get valid subscription after rapid cycles");
 
 		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();
 
@@ -225,7 +225,10 @@ fn test_client_disconnect_without_unsubscribe() {
 		new_client.authenticate("mysecrettoken");
 
 		let mut sub = new_client.subscribe(&format!("from test::{}", shared_table)).await.unwrap();
-		assert!(sub.subscription_id() > 0, "New client should be able to subscribe after abrupt disconnects");
+		assert!(
+			!sub.subscription_id().is_empty(),
+			"New client should be able to subscribe after abrupt disconnects"
+		);
 
 		// Insert and verify new client receives notification
 		new_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", shared_table), None).await.unwrap();
@@ -337,7 +340,7 @@ fn test_concurrent_connect_disconnect() {
 		final_client.authenticate("mysecrettoken");
 
 		let mut sub = final_client.subscribe(&format!("from test::{}", tables[0])).await.unwrap();
-		assert!(sub.subscription_id() > 0, "Server should still accept new subscriptions");
+		assert!(!sub.subscription_id().is_empty(), "Server should still accept new subscriptions");
 
 		final_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", tables[0]), None).await.unwrap();
 

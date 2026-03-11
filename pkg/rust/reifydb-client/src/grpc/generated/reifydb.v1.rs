@@ -55,25 +55,25 @@ pub mod subscription_event {
         Change(super::ChangeEvent),
     }
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SubscribedEvent {
-    #[prost(uint64, tag = "1")]
-    pub subscription_id: u64,
+    #[prost(string, tag = "1")]
+    pub subscription_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ChangeEvent {
     #[prost(message, repeated, tag = "1")]
     pub frames: ::prost::alloc::vec::Vec<Frame>,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UnsubscribeRequest {
-    #[prost(uint64, tag = "1")]
-    pub subscription_id: u64,
+    #[prost(string, tag = "1")]
+    pub subscription_id: ::prost::alloc::string::String,
 }
-#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UnsubscribeResponse {
-    #[prost(uint64, tag = "1")]
-    pub subscription_id: u64,
+    #[prost(string, tag = "1")]
+    pub subscription_id: ::prost::alloc::string::String,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Params {

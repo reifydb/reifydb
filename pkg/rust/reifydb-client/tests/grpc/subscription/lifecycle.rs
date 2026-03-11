@@ -92,7 +92,7 @@ fn test_rapid_subscribe_drop() {
 
 		// Should still work after rapid cycles
 		let mut sub = client.subscribe(&format!("from test::{}", table)).await.unwrap();
-		assert!(sub.subscription_id() > 0);
+		assert!(!sub.subscription_id().is_empty());
 
 		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();
 

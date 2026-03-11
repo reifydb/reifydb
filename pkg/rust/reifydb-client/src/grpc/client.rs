@@ -207,9 +207,9 @@ impl GrpcClient {
 		})
 	}
 
-	pub async fn unsubscribe(&self, subscription_id: u64) -> Result<(), Error> {
+	pub async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
 		let request = ProtoUnsubscribeRequest {
-			subscription_id,
+			subscription_id: subscription_id.to_string(),
 		};
 		let mut client = self.inner.clone();
 		let mut req = tonic::Request::new(request);
@@ -229,13 +229,13 @@ impl GrpcClient {
 }
 
 pub struct GrpcSubscription {
-	subscription_id: u64,
+	subscription_id: String,
 	stream: tonic::codec::Streaming<SubscriptionEvent>,
 }
 
 impl GrpcSubscription {
-	pub fn subscription_id(&self) -> u64 {
-		self.subscription_id
+	pub fn subscription_id(&self) -> &str {
+		&self.subscription_id
 	}
 
 	pub async fn recv(&mut self) -> Option<Vec<Frame>> {
