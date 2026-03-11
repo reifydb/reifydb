@@ -20,7 +20,7 @@ use crate::{
 	Result,
 	bump::{Bump, BumpVec},
 	token::{
-		identifier::{scan_identifier, scan_quoted_identifier},
+		identifier::{scan_digit_starting_identifier, scan_identifier, scan_quoted_identifier},
 		keyword::scan_keyword,
 		literal::scan_literal,
 		operator::scan_operator,
@@ -58,8 +58,34 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 				// String literals
 				'\'' | '"' => scan_literal(&mut cursor),
 
-				// Numbers
-				'0'..='9' => scan_literal(&mut cursor),
+				// Numbers or digit-starting identifiers (e.g., 10min, 5sec)
+				'0'..='9' => {
+					let state = cursor.save_state();
+					match scan_literal(&mut cursor) {
+						Some(tok) => {
+							// If the number is immediately followed by an alpha char,
+							// it's likely a digit-starting identifier like "10min"
+							if cursor.peek().map_or(false, |c| c.is_ascii_alphabetic()) {
+								let num_state = cursor.save_state();
+								cursor.restore_state(state);
+								scan_digit_starting_identifier(&mut cursor).or_else(
+									|| {
+										// Fallback: accept the number (e.g.,
+										// 3.14px)
+										cursor.restore_state(num_state);
+										Some(tok)
+									},
+								)
+							} else {
+								Some(tok)
+							}
+						}
+						None => {
+							cursor.restore_state(state);
+							scan_digit_starting_identifier(&mut cursor)
+						}
+					}
+				}
 
 				// Dot could be operator or start of decimal
 				// literal

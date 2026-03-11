@@ -44,22 +44,20 @@ impl<'bump> Parser<'bump> {
 			)
 		};
 
-		// Helper to check if two tokens are adjacent (no space between them)
-		let is_adjacent = |prev: &Token, next: &Token| {
-			prev.fragment.line() == next.fragment.line()
-				&& *prev.fragment.column() + prev.fragment.text().len() as u32
-					== *next.fragment.column()
-		};
-
-		// Build hyphenated identifier - start with first token
-
-		// Reject identifiers that start with a number
+		// Reject bare numbers as identifiers (e.g., `42`), but allow if followed by hyphen+identifier (e.g.,
+		// `10-min`)
 		if matches!(first_token.kind, TokenKind::Literal(Literal::Number)) {
-			return Err(AstError::UnexpectedToken {
-				expected: "identifier (identifiers cannot start with digits)".to_string(),
-				fragment: first_token.fragment.to_owned(),
+			let has_hyphen_continuation = !self.is_eof()
+				&& self.current_expect_operator(Operator::Minus).is_ok()
+				&& self.position + 1 < self.tokens.len()
+				&& is_identifier_like(&self.tokens[self.position + 1]);
+			if !has_hyphen_continuation {
+				return Err(AstError::UnexpectedToken {
+					expected: "identifier (identifiers cannot start with digits)".to_string(),
+					fragment: first_token.fragment.to_owned(),
+				}
+				.into());
 			}
-			.into());
 		}
 		let mut parts = vec![first_token.fragment.text().to_string()];
 		let start_line = first_token.fragment.line();
@@ -85,9 +83,7 @@ impl<'bump> Parser<'bump> {
 			return Ok(UnqualifiedIdentifier::from_fragment(fragment));
 		}
 
-		let mut last_token;
 		// Look for pattern: - (identifier | keyword | number)
-		// Also handle adjacent identifier after number (e.g., "10min" tokenizes as "10" + "min")
 		while !self.is_eof()
 			&& self.current_expect_operator(Operator::Minus).is_ok()
 			&& self.position + 1 < self.tokens.len()
@@ -97,17 +93,6 @@ impl<'bump> Parser<'bump> {
 			let next_token = self.advance()?; // consume identifier or keyword or number
 			parts.push("-".to_string());
 			parts.push(next_token.fragment.text().to_string());
-			last_token = next_token;
-
-			// Special case: if we just consumed a number, check if next token is an identifier
-			// that's adjacent (no space), e.g., "10" followed by "min" in "10min"
-			if matches!(last_token.kind, TokenKind::Literal(Literal::Number))
-				&& !self.is_eof() && matches!(self.tokens[self.position].kind, TokenKind::Identifier)
-				&& is_adjacent(&last_token, &self.tokens[self.position])
-			{
-				let adjacent_identifier = self.advance()?;
-				parts.push(adjacent_identifier.fragment.text().to_string());
-			}
 		}
 
 		let combined_text = parts.join("");
@@ -450,6 +435,44 @@ pub mod tests {
 
 		if let Namespace(ns) = create {
 			assert_eq!(ns.namespace.segments[0].text(), "create-2024-table");
+		} else {
+			panic!("Expected namespace creation");
+		}
+	}
+
+	#[test]
+	fn identifier_digit_starting() {
+		let bump = Bump::new();
+		let source = "CREATE NAMESPACE 10min";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!()
+		};
+
+		if let Namespace(ns) = create {
+			assert_eq!(ns.namespace.segments[0].text(), "10min");
+		} else {
+			panic!("Expected namespace creation");
+		}
+	}
+
+	#[test]
+	fn identifier_digit_starting_with_hyphen() {
+		let bump = Bump::new();
+		let source = "CREATE NAMESPACE 10min-window";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut result = parse(&bump, source, tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!()
+		};
+
+		if let Namespace(ns) = create {
+			assert_eq!(ns.namespace.segments[0].text(), "10min-window");
 		} else {
 			panic!("Expected namespace creation");
 		}

@@ -228,16 +228,12 @@ pub mod tests {
 	#[test]
 	fn test_leading_dot_decimal_with_identifier() {
 		let bump = Bump::new();
-		// Leading dot followed by digit and then identifier tokenizes as separate tokens
-		// This allows qualified identifiers like "namespace.5sec-cache"
-		// The parser will reject "5sec" as an identifier prefix
+		// Leading dot followed by digit and then identifier tokenizes as Dot + Identifier
 		let tokens = tokenize(&bump, ".5sec").unwrap();
-		assert_eq!(tokens.len(), 3); // Dot, Number("5"), Identifier("sec")
+		assert_eq!(tokens.len(), 2); // Dot, Identifier("5sec")
 		assert_eq!(tokens[0].kind, TokenKind::Operator(Operator::Dot));
-		assert_eq!(tokens[1].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[1].fragment.text(), "5");
-		assert_eq!(tokens[2].kind, TokenKind::Identifier);
-		assert_eq!(tokens[2].fragment.text(), "sec");
+		assert_eq!(tokens[1].kind, TokenKind::Identifier);
+		assert_eq!(tokens[1].fragment.text(), "5sec");
 	}
 
 	#[test]
@@ -253,16 +249,13 @@ pub mod tests {
 	#[test]
 	fn test_number_with_trailing() {
 		let bump = Bump::new();
-		// Numbers directly followed by letters now token as separate tokens
-		// This enables hyphenated identifiers like "twap-10min"
+		// Digit-starting tokens with alpha chars are now single Identifier tokens
 		let tokens = tokenize(&bump, "42abc").unwrap();
-		assert_eq!(tokens.len(), 2);
-		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
-		assert_eq!(tokens[0].fragment.text(), "42");
-		assert_eq!(tokens[1].kind, TokenKind::Identifier);
-		assert_eq!(tokens[1].fragment.text(), "abc");
+		assert_eq!(tokens.len(), 1);
+		assert_eq!(tokens[0].kind, TokenKind::Identifier);
+		assert_eq!(tokens[0].fragment.text(), "42abc");
 
-		// With proper spacing, it also works
+		// With proper spacing, they remain separate
 		let tokens = tokenize(&bump, "42 abc").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "42");
