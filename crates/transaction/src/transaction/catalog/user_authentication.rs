@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalUserAuthenticationChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackUserAuthenticationChangeOperations for AdminTransaction {
@@ -73,5 +73,33 @@ impl TransactionalUserAuthenticationChanges for AdminTransaction {
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|a| a.id) == Some(id))
+	}
+}
+
+impl CatalogTrackUserAuthenticationChangeOperations for SubscriptionTransaction {
+	fn track_user_authentication_def_created(&mut self, auth: UserAuthenticationDef) -> Result<()> {
+		self.inner.track_user_authentication_def_created(auth)
+	}
+
+	fn track_user_authentication_def_deleted(&mut self, auth: UserAuthenticationDef) -> Result<()> {
+		self.inner.track_user_authentication_def_deleted(auth)
+	}
+}
+
+impl TransactionalUserAuthenticationChanges for SubscriptionTransaction {
+	fn find_user_authentication(&self, id: UserAuthenticationId) -> Option<&UserAuthenticationDef> {
+		self.inner.find_user_authentication(id)
+	}
+
+	fn find_user_authentication_by_user_and_method(
+		&self,
+		user_id: UserId,
+		method: &str,
+	) -> Option<&UserAuthenticationDef> {
+		self.inner.find_user_authentication_by_user_and_method(user_id, method)
+	}
+
+	fn is_user_authentication_deleted(&self, id: UserAuthenticationId) -> bool {
+		self.inner.is_user_authentication_deleted(id)
 	}
 }

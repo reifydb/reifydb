@@ -12,7 +12,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalSumTypeChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackSumTypeChangeOperations for AdminTransaction {
@@ -88,5 +88,37 @@ impl TransactionalSumTypeChanges for AdminTransaction {
 					.map(|d| d.namespace == namespace && d.name == name)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackSumTypeChangeOperations for SubscriptionTransaction {
+	fn track_sumtype_def_created(&mut self, sumtype: SumTypeDef) -> Result<()> {
+		self.inner.track_sumtype_def_created(sumtype)
+	}
+
+	fn track_sumtype_def_updated(&mut self, pre: SumTypeDef, post: SumTypeDef) -> Result<()> {
+		self.inner.track_sumtype_def_updated(pre, post)
+	}
+
+	fn track_sumtype_def_deleted(&mut self, sumtype: SumTypeDef) -> Result<()> {
+		self.inner.track_sumtype_def_deleted(sumtype)
+	}
+}
+
+impl TransactionalSumTypeChanges for SubscriptionTransaction {
+	fn find_sumtype(&self, id: SumTypeId) -> Option<&SumTypeDef> {
+		self.inner.find_sumtype(id)
+	}
+
+	fn find_sumtype_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SumTypeDef> {
+		self.inner.find_sumtype_by_name(namespace, name)
+	}
+
+	fn is_sumtype_deleted(&self, id: SumTypeId) -> bool {
+		self.inner.is_sumtype_deleted(id)
+	}
+
+	fn is_sumtype_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.inner.is_sumtype_deleted_by_name(namespace, name)
 	}
 }

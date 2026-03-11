@@ -18,20 +18,25 @@ use crate::{
 	TransactionId,
 	change::RowChange,
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
+	transaction::{
+		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+		subscription::SubscriptionTransaction,
+	},
 };
 
 pub mod admin;
 pub mod catalog;
 pub mod command;
 pub mod query;
+pub mod subscription;
 
-/// An enum that can hold either a command, admin, or query transaction for flexible
-/// execution
+/// An enum that can hold either a command, admin, query, or subscription transaction
+/// for flexible execution
 pub enum Transaction<'a> {
 	Command(&'a mut CommandTransaction),
 	Admin(&'a mut AdminTransaction),
 	Query(&'a mut QueryTransaction),
+	Subscription(&'a mut SubscriptionTransaction),
 }
 
 impl<'a> Transaction<'a> {
@@ -41,6 +46,7 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.version(),
 			Self::Admin(txn) => txn.version(),
 			Self::Query(txn) => txn.version(),
+			Self::Subscription(txn) => txn.version(),
 		}
 	}
 
@@ -50,6 +56,7 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.id(),
 			Self::Admin(txn) => txn.id(),
 			Self::Query(txn) => txn.id(),
+			Self::Subscription(txn) => txn.id(),
 		}
 	}
 
@@ -59,6 +66,7 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.get(key),
 			Self::Admin(txn) => txn.get(key),
 			Self::Query(txn) => txn.get(key),
+			Self::Subscription(txn) => txn.get(key),
 		}
 	}
 
@@ -68,6 +76,7 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.contains_key(key),
 			Self::Admin(txn) => txn.contains_key(key),
 			Self::Query(txn) => txn.contains_key(key),
+			Self::Subscription(txn) => txn.contains_key(key),
 		}
 	}
 
@@ -77,6 +86,7 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.prefix(prefix),
 			Self::Admin(txn) => txn.prefix(prefix),
 			Self::Query(txn) => txn.prefix(prefix),
+			Self::Subscription(txn) => txn.prefix(prefix),
 		}
 	}
 
@@ -86,6 +96,7 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.prefix_rev(prefix),
 			Self::Admin(txn) => txn.prefix_rev(prefix),
 			Self::Query(txn) => txn.prefix_rev(prefix),
+			Self::Subscription(txn) => txn.prefix_rev(prefix),
 		}
 	}
 
@@ -95,6 +106,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Admin(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Query(txn) => txn.read_as_of_version_exclusive(version),
+			Transaction::Subscription(txn) => txn.read_as_of_version_exclusive(version),
 		}
 	}
 
@@ -108,6 +120,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.range(range, batch_size),
 			Transaction::Admin(txn) => txn.range(range, batch_size),
 			Transaction::Query(txn) => Ok(txn.range(range, batch_size)),
+			Transaction::Subscription(txn) => txn.range(range, batch_size),
 		}
 	}
 
@@ -121,6 +134,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.range_rev(range, batch_size),
 			Transaction::Admin(txn) => txn.range_rev(range, batch_size),
 			Transaction::Query(txn) => Ok(txn.range_rev(range, batch_size)),
+			Transaction::Subscription(txn) => txn.range_rev(range, batch_size),
 		}
 	}
 }
@@ -143,6 +157,12 @@ impl<'a> From<&'a mut QueryTransaction> for Transaction<'a> {
 	}
 }
 
+impl<'a> From<&'a mut SubscriptionTransaction> for Transaction<'a> {
+	fn from(txn: &'a mut SubscriptionTransaction) -> Self {
+		Self::Subscription(txn)
+	}
+}
+
 impl<'a> Transaction<'a> {
 	/// Re-borrow this transaction with a shorter lifetime, enabling
 	/// multiple sequential uses of the same transaction binding.
@@ -151,6 +171,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(cmd) => Transaction::Command(cmd),
 			Transaction::Admin(admin) => Transaction::Admin(admin),
 			Transaction::Query(qry) => Transaction::Query(qry),
+			Transaction::Subscription(sub) => Transaction::Subscription(sub),
 		}
 	}
 
@@ -159,8 +180,7 @@ impl<'a> Transaction<'a> {
 	pub fn command(self) -> &'a mut CommandTransaction {
 		match self {
 			Self::Command(txn) => txn,
-			Self::Admin(_) => panic!("Expected Command transaction but found Admin transaction"),
-			Self::Query(_) => panic!("Expected Command transaction but found Query transaction"),
+			_ => panic!("Expected Command transaction"),
 		}
 	}
 
@@ -169,18 +189,25 @@ impl<'a> Transaction<'a> {
 	pub fn admin(self) -> &'a mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
-			Self::Command(_) => panic!("Expected Admin transaction but found Command transaction"),
-			Self::Query(_) => panic!("Expected Admin transaction but found Query transaction"),
+			_ => panic!("Expected Admin transaction"),
 		}
 	}
 
-	/// Extract the underlying QueryTransaction, panics if this is a
-	/// Command transaction
+	/// Extract the underlying QueryTransaction, panics if this is
+	/// not a Query transaction
 	pub fn query(self) -> &'a mut QueryTransaction {
 		match self {
 			Self::Query(txn) => txn,
-			Self::Command(_) => panic!("Expected Query transaction but found Command transaction"),
-			Self::Admin(_) => panic!("Expected Query transaction but found Admin transaction"),
+			_ => panic!("Expected Query transaction"),
+		}
+	}
+
+	/// Extract the underlying SubscriptionTransaction, panics if this is
+	/// not a Subscription transaction
+	pub fn subscription(self) -> &'a mut SubscriptionTransaction {
+		match self {
+			Self::Subscription(txn) => txn,
+			_ => panic!("Expected Subscription transaction"),
 		}
 	}
 
@@ -189,8 +216,7 @@ impl<'a> Transaction<'a> {
 	pub fn command_mut(&mut self) -> &mut CommandTransaction {
 		match self {
 			Self::Command(txn) => txn,
-			Self::Admin(_) => panic!("Expected Command transaction but found Admin transaction"),
-			Self::Query(_) => panic!("Expected Command transaction but found Query transaction"),
+			_ => panic!("Expected Command transaction"),
 		}
 	}
 
@@ -199,8 +225,7 @@ impl<'a> Transaction<'a> {
 	pub fn admin_mut(&mut self) -> &mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
-			Self::Command(_) => panic!("Expected Admin transaction but found Command transaction"),
-			Self::Query(_) => panic!("Expected Admin transaction but found Query transaction"),
+			_ => panic!("Expected Admin transaction"),
 		}
 	}
 
@@ -209,8 +234,16 @@ impl<'a> Transaction<'a> {
 	pub fn query_mut(&mut self) -> &mut QueryTransaction {
 		match self {
 			Self::Query(txn) => txn,
-			Self::Command(_) => panic!("Expected Query transaction but found Command transaction"),
-			Self::Admin(_) => panic!("Expected Query transaction but found Admin transaction"),
+			_ => panic!("Expected Query transaction"),
+		}
+	}
+
+	/// Get a mutable reference to the underlying SubscriptionTransaction,
+	/// panics if this is not a Subscription transaction
+	pub fn subscription_mut(&mut self) -> &mut SubscriptionTransaction {
+		match self {
+			Self::Subscription(txn) => txn,
+			_ => panic!("Expected Subscription transaction"),
 		}
 	}
 
@@ -223,6 +256,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.begin_single_query(keys),
 			Transaction::Admin(txn) => txn.begin_single_query(keys),
 			Transaction::Query(txn) => txn.begin_single_query(keys),
+			Transaction::Subscription(txn) => txn.begin_single_query(keys),
 		}
 	}
 
@@ -236,6 +270,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.begin_single_command(keys),
 			Transaction::Admin(txn) => txn.begin_single_command(keys),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Subscription(txn) => txn.begin_single_command(keys),
 		}
 	}
 
@@ -245,6 +280,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.set(key, row),
 			Transaction::Admin(txn) => txn.set(key, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Subscription(txn) => txn.set(key, row),
 		}
 	}
 
@@ -254,6 +290,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.unset(key, values),
 			Transaction::Admin(txn) => txn.unset(key, values),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Subscription(txn) => txn.unset(key, values),
 		}
 	}
 
@@ -263,6 +300,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.remove(key),
 			Transaction::Admin(txn) => txn.remove(key),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Subscription(txn) => txn.remove(key),
 		}
 	}
 
@@ -272,6 +310,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.track_row_change(change),
 			Transaction::Admin(txn) => txn.track_row_change(change),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Subscription(txn) => txn.track_row_change(change),
 		}
 	}
 
@@ -281,6 +320,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.track_flow_change(change),
 			Transaction::Admin(txn) => txn.track_flow_change(change),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Subscription(txn) => txn.track_flow_change(change),
 		}
 	}
 }

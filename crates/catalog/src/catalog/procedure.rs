@@ -76,6 +76,24 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(sub, id) {
+					return Ok(Some(procedure.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalProcedureChanges::is_procedure_deleted(sub, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(procedure) = self.materialized.find_procedure_at(id, sub.version()) {
+					return Ok(Some(procedure));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -123,6 +141,28 @@ impl Catalog {
 				{
 					return Ok(Some(procedure));
 				}
+				Ok(None)
+			}
+			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(procedure) =
+					TransactionalProcedureChanges::find_procedure_by_name(sub, namespace, name)
+				{
+					return Ok(Some(procedure.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalProcedureChanges::is_procedure_deleted_by_name(sub, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(procedure) =
+					self.materialized.find_procedure_by_name_at(namespace, name, sub.version())
+				{
+					return Ok(Some(procedure));
+				}
+
 				Ok(None)
 			}
 		}
@@ -219,6 +259,35 @@ impl Catalog {
 				variant_tag,
 				qry.version(),
 			)),
+			Transaction::Subscription(sub) => {
+				// Check materialized catalog + transactional additions
+				let mut procedures = self.materialized.list_procedures_for_variant_at(
+					sumtype_id,
+					variant_tag,
+					sub.version(),
+				);
+
+				// Also check transactional changes for newly created procedures with event binding
+				for change in &sub.as_admin_mut().changes.procedure_def {
+					if let Some(p) = &change.post {
+						if let ProcedureTrigger::Event {
+							sumtype_id: sid,
+							variant_tag: vtag,
+						} = &p.trigger
+						{
+							if *sid == sumtype_id
+								&& *vtag == variant_tag && !procedures
+								.iter()
+								.any(|existing| existing.id == p.id)
+							{
+								procedures.push(p.clone());
+							}
+						}
+					}
+				}
+
+				Ok(procedures)
+			}
 		}
 	}
 

@@ -181,6 +181,31 @@ pub async fn execute_admin(
 	}
 }
 
+/// Execute a subscription operation with timeout.
+///
+/// Subscription operations are restricted to CREATE SUBSCRIPTION and DROP SUBSCRIPTION.
+/// This provides security isolation by not granting full admin access to subscription clients.
+pub async fn execute_subscription(
+	system: ActorSystem,
+	engine: StandardEngine,
+	statement: String,
+	identity: IdentityId,
+	params: Params,
+	timeout: Duration,
+) -> ExecuteResult<Vec<Frame>> {
+	// Execute synchronous subscription operation on actor system's compute pool with timeout
+	let task = system
+		.execute(move || retry_on_conflict(|| engine.subscription_as(identity, &statement, params.clone())));
+
+	let result = time::timeout(timeout, task).await;
+
+	match result {
+		Err(_elapsed) => Err(ExecuteError::Timeout),
+		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+	}
+}
+
 /// Execute a command with timeout.
 ///
 /// Commands are write operations (INSERT, UPDATE, DELETE) that modify

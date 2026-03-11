@@ -13,7 +13,7 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalUserRoleChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackUserRoleChangeOperations for AdminTransaction {
@@ -63,5 +63,25 @@ impl TransactionalUserRoleChanges for AdminTransaction {
 					.map(|ur| ur.user_id == user && ur.role_id == role)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackUserRoleChangeOperations for SubscriptionTransaction {
+	fn track_user_role_def_created(&mut self, user_role: UserRoleDef) -> Result<()> {
+		self.inner.track_user_role_def_created(user_role)
+	}
+
+	fn track_user_role_def_deleted(&mut self, user_role: UserRoleDef) -> Result<()> {
+		self.inner.track_user_role_def_deleted(user_role)
+	}
+}
+
+impl TransactionalUserRoleChanges for SubscriptionTransaction {
+	fn find_user_role(&self, user: UserId, role: RoleId) -> Option<&UserRoleDef> {
+		self.inner.find_user_role(user, role)
+	}
+
+	fn is_user_role_deleted(&self, user: UserId, role: RoleId) -> bool {
+		self.inner.is_user_role_deleted(user, role)
 	}
 }

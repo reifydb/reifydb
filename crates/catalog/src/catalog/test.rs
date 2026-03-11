@@ -52,6 +52,18 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Subscription(sub) => {
+				if let Some(test) = TransactionalTestChanges::find_test(sub, id) {
+					return Ok(Some(test.clone()));
+				}
+				if TransactionalTestChanges::is_test_deleted(sub, id) {
+					return Ok(None);
+				}
+				if let Some(test) = self.materialized.find_test_at(id, sub.version()) {
+					return Ok(Some(test));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -94,6 +106,20 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Subscription(sub) => {
+				if let Some(test) = TransactionalTestChanges::find_test_by_name(sub, namespace, name) {
+					return Ok(Some(test.clone()));
+				}
+				if TransactionalTestChanges::is_test_deleted_by_name(sub, namespace, name) {
+					return Ok(None);
+				}
+				if let Some(test) =
+					self.materialized.find_test_by_name_at(namespace, name, sub.version())
+				{
+					return Ok(Some(test));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -125,6 +151,20 @@ impl Catalog {
 			Transaction::Query(qry) => {
 				Ok(self.materialized.list_tests_in_namespace_at(namespace, qry.version()))
 			}
+			Transaction::Subscription(sub) => {
+				let mut tests = self.materialized.list_tests_in_namespace_at(namespace, sub.version());
+				// Add transactional additions
+				for change in &sub.as_admin_mut().changes.test_def {
+					if let Some(t) = &change.post {
+						if t.namespace == namespace
+							&& !tests.iter().any(|existing| existing.id == t.id)
+						{
+							tests.push(t.clone());
+						}
+					}
+				}
+				Ok(tests)
+			}
 		}
 	}
 
@@ -144,6 +184,17 @@ impl Catalog {
 				Ok(tests)
 			}
 			Transaction::Query(qry) => Ok(self.materialized.list_all_tests_at(qry.version())),
+			Transaction::Subscription(sub) => {
+				let mut tests = self.materialized.list_all_tests_at(sub.version());
+				for change in &sub.as_admin_mut().changes.test_def {
+					if let Some(t) = &change.post {
+						if !tests.iter().any(|existing| existing.id == t.id) {
+							tests.push(t.clone());
+						}
+					}
+				}
+				Ok(tests)
+			}
 		}
 	}
 

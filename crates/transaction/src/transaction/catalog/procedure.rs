@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalProcedureChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackProcedureChangeOperations for AdminTransaction {
@@ -90,5 +90,37 @@ impl TransactionalProcedureChanges for AdminTransaction {
 					.map(|p| p.namespace == namespace && p.name == name)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackProcedureChangeOperations for SubscriptionTransaction {
+	fn track_procedure_def_created(&mut self, procedure: ProcedureDef) -> Result<()> {
+		self.inner.track_procedure_def_created(procedure)
+	}
+
+	fn track_procedure_def_updated(&mut self, pre: ProcedureDef, post: ProcedureDef) -> Result<()> {
+		self.inner.track_procedure_def_updated(pre, post)
+	}
+
+	fn track_procedure_def_deleted(&mut self, procedure: ProcedureDef) -> Result<()> {
+		self.inner.track_procedure_def_deleted(procedure)
+	}
+}
+
+impl TransactionalProcedureChanges for SubscriptionTransaction {
+	fn find_procedure(&self, id: ProcedureId) -> Option<&ProcedureDef> {
+		self.inner.find_procedure(id)
+	}
+
+	fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&ProcedureDef> {
+		self.inner.find_procedure_by_name(namespace, name)
+	}
+
+	fn is_procedure_deleted(&self, id: ProcedureId) -> bool {
+		self.inner.is_procedure_deleted(id)
+	}
+
+	fn is_procedure_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.inner.is_procedure_deleted_by_name(namespace, name)
 	}
 }

@@ -13,7 +13,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalPolicyChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackPolicyChangeOperations for AdminTransaction {
@@ -85,5 +85,37 @@ impl TransactionalPolicyChanges for AdminTransaction {
 			change.op == Delete
 				&& change.pre.as_ref().map(|p| p.name.as_deref() == Some(name)).unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackPolicyChangeOperations for SubscriptionTransaction {
+	fn track_policy_def_created(&mut self, policy: PolicyDef) -> Result<()> {
+		self.inner.track_policy_def_created(policy)
+	}
+
+	fn track_policy_def_updated(&mut self, pre: PolicyDef, post: PolicyDef) -> Result<()> {
+		self.inner.track_policy_def_updated(pre, post)
+	}
+
+	fn track_policy_def_deleted(&mut self, policy: PolicyDef) -> Result<()> {
+		self.inner.track_policy_def_deleted(policy)
+	}
+}
+
+impl TransactionalPolicyChanges for SubscriptionTransaction {
+	fn find_policy(&self, id: PolicyId) -> Option<&PolicyDef> {
+		self.inner.find_policy(id)
+	}
+
+	fn find_policy_by_name(&self, name: &str) -> Option<&PolicyDef> {
+		self.inner.find_policy_by_name(name)
+	}
+
+	fn is_policy_deleted(&self, id: PolicyId) -> bool {
+		self.inner.is_policy_deleted(id)
+	}
+
+	fn is_policy_deleted_by_name(&self, name: &str) -> bool {
+		self.inner.is_policy_deleted_by_name(name)
 	}
 }

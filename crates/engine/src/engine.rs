@@ -36,7 +36,10 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
+	transaction::{
+		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+		subscription::SubscriptionTransaction,
+	},
 };
 use reifydb_type::{
 	error::Error,
@@ -54,7 +57,7 @@ use crate::{
 	interceptor::catalog::MaterializedCatalogInterceptor,
 	procedure::registry::Procedures,
 	transform::registry::Transforms,
-	vm::{Admin, Command, Query, executor::Executor},
+	vm::{Admin, Command, Query, Subscription, executor::Executor},
 };
 
 pub struct StandardEngine(Arc<Inner>);
@@ -82,6 +85,17 @@ impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
 	pub fn begin_query(&self) -> Result<QueryTransaction> {
 		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
+	}
+
+	#[instrument(name = "engine::transaction::begin_subscription", level = "debug", skip(self))]
+	pub fn begin_subscription(&self) -> Result<SubscriptionTransaction> {
+		let interceptors = self.interceptors.create();
+		SubscriptionTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			interceptors,
+		)
 	}
 
 	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
@@ -138,6 +152,27 @@ impl StandardEngine {
 					identity,
 				},
 			)
+		})()
+		.map_err(|mut err: Error| {
+			err.with_statement(rql.to_string());
+			err
+		})
+	}
+
+	#[instrument(name = "engine::subscription", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn subscription_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		(|| {
+			let mut txn = self.begin_subscription()?;
+			let frames = self.executor.subscription(
+				&mut txn,
+				Subscription {
+					rql,
+					params,
+					identity,
+				},
+			)?;
+			txn.commit()?;
+			Ok(frames)
 		})()
 		.map_err(|mut err: Error| {
 			err.with_statement(rql.to_string());

@@ -98,6 +98,31 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Subscription(sub) => {
+				if let Some(def) = TransactionalSumTypeChanges::find_sumtype(sub, id) {
+					return Ok(Some(def.clone()));
+				}
+
+				if TransactionalSumTypeChanges::is_sumtype_deleted(sub, id) {
+					return Ok(None);
+				}
+
+				if let Some(def) = self.materialized.find_sumtype_at(id, sub.version()) {
+					return Ok(Some(def));
+				}
+
+				if let Some(def) =
+					CatalogStore::find_sumtype(&mut Transaction::Subscription(&mut *sub), id)?
+				{
+					warn!(
+						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(def));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -170,6 +195,37 @@ impl Catalog {
 
 				if let Some(def) = CatalogStore::find_sumtype_by_name(
 					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(def));
+				}
+
+				Ok(None)
+			}
+			Transaction::Subscription(sub) => {
+				if let Some(def) =
+					TransactionalSumTypeChanges::find_sumtype_by_name(sub, namespace, name)
+				{
+					return Ok(Some(def.clone()));
+				}
+
+				if TransactionalSumTypeChanges::is_sumtype_deleted_by_name(sub, namespace, name) {
+					return Ok(None);
+				}
+
+				if let Some(def) =
+					self.materialized.find_sumtype_by_name_at(namespace, name, sub.version())
+				{
+					return Ok(Some(def));
+				}
+
+				if let Some(def) = CatalogStore::find_sumtype_by_name(
+					&mut Transaction::Subscription(&mut *sub),
 					namespace,
 					name,
 				)? {

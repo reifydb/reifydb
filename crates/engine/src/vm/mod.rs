@@ -24,6 +24,13 @@ pub struct Query<'a> {
 	pub identity: IdentityId,
 }
 
+#[derive(Debug)]
+pub struct Subscription<'a> {
+	pub rql: &'a str,
+	pub params: Params,
+	pub identity: IdentityId,
+}
+
 pub mod executor;
 pub mod instruction;
 pub(crate) mod scalar;

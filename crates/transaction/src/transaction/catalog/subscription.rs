@@ -12,7 +12,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalSubscriptionChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackSubscriptionChangeOperations for AdminTransaction {
@@ -69,5 +69,29 @@ impl TransactionalSubscriptionChanges for AdminTransaction {
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id) == Some(id))
+	}
+}
+
+impl CatalogTrackSubscriptionChangeOperations for SubscriptionTransaction {
+	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> Result<()> {
+		self.inner.track_subscription_def_created(subscription)
+	}
+
+	fn track_subscription_def_updated(&mut self, pre: SubscriptionDef, post: SubscriptionDef) -> Result<()> {
+		self.inner.track_subscription_def_updated(pre, post)
+	}
+
+	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> Result<()> {
+		self.inner.track_subscription_def_deleted(subscription)
+	}
+}
+
+impl TransactionalSubscriptionChanges for SubscriptionTransaction {
+	fn find_subscription(&self, id: SubscriptionId) -> Option<&SubscriptionDef> {
+		self.inner.find_subscription(id)
+	}
+
+	fn is_subscription_deleted(&self, id: SubscriptionId) -> bool {
+		self.inner.is_subscription_deleted(id)
 	}
 }

@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalFlowChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackFlowChangeOperations for AdminTransaction {
@@ -98,5 +98,37 @@ impl TransactionalFlowChanges for AdminTransaction {
 					.map(|f| f.namespace == namespace && f.name == name)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackFlowChangeOperations for SubscriptionTransaction {
+	fn track_flow_def_created(&mut self, flow: FlowDef) -> Result<()> {
+		self.inner.track_flow_def_created(flow)
+	}
+
+	fn track_flow_def_updated(&mut self, pre: FlowDef, post: FlowDef) -> Result<()> {
+		self.inner.track_flow_def_updated(pre, post)
+	}
+
+	fn track_flow_def_deleted(&mut self, flow: FlowDef) -> Result<()> {
+		self.inner.track_flow_def_deleted(flow)
+	}
+}
+
+impl TransactionalFlowChanges for SubscriptionTransaction {
+	fn find_flow(&self, id: FlowId) -> Option<&FlowDef> {
+		self.inner.find_flow(id)
+	}
+
+	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&FlowDef> {
+		self.inner.find_flow_by_name(namespace, name)
+	}
+
+	fn is_flow_deleted(&self, id: FlowId) -> bool {
+		self.inner.is_flow_deleted(id)
+	}
+
+	fn is_flow_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.inner.is_flow_deleted_by_name(namespace, name)
 	}
 }

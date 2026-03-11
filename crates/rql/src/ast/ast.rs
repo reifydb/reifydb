@@ -252,6 +252,12 @@ impl<'bump> Ast<'bump> {
 		)
 	}
 
+	/// Returns true if this AST node is a subscription DDL statement
+	/// (CREATE SUBSCRIPTION or DROP SUBSCRIPTION).
+	pub fn is_subscription_ddl(&self) -> bool {
+		matches!(self, Ast::Create(AstCreate::Subscription(_)) | Ast::Drop(AstDrop::Subscription(_)))
+	}
+
 	pub fn is_dispatch(&self) -> bool {
 		matches!(self, Ast::Dispatch(_))
 	}

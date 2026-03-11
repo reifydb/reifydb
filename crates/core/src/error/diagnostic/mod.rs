@@ -15,5 +15,6 @@ pub mod internal;
 pub mod operation;
 pub mod query;
 pub mod sequence;
+pub mod subscription;
 pub mod subsystem;
 pub mod transaction;

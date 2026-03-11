@@ -109,6 +109,35 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(sub, id) {
+					return Ok(Some(dict.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalDictionaryChanges::is_dictionary_deleted(sub, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(dict) = self.materialized.find_dictionary_at(id, sub.version()) {
+					return Ok(Some(dict));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(dict) =
+					CatalogStore::find_dictionary(&mut Transaction::Subscription(&mut *sub), id)?
+				{
+					warn!(
+						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(dict));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -190,6 +219,41 @@ impl Catalog {
 				// 2. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(
 					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(dict));
+				}
+
+				Ok(None)
+			}
+			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(dict) =
+					TransactionalDictionaryChanges::find_dictionary_by_name(sub, namespace, name)
+				{
+					return Ok(Some(dict.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(sub, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(dict) =
+					self.materialized.find_dictionary_by_name_at(namespace, name, sub.version())
+				{
+					return Ok(Some(dict));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(
+					&mut Transaction::Subscription(&mut *sub),
 					namespace,
 					name,
 				)? {

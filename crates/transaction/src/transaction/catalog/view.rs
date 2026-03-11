@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalViewChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackViewChangeOperations for AdminTransaction {
@@ -90,5 +90,37 @@ impl TransactionalViewChanges for AdminTransaction {
 					.map(|v| v.namespace == namespace && v.name == name)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackViewChangeOperations for SubscriptionTransaction {
+	fn track_view_def_created(&mut self, view: ViewDef) -> Result<()> {
+		self.inner.track_view_def_created(view)
+	}
+
+	fn track_view_def_updated(&mut self, pre: ViewDef, post: ViewDef) -> Result<()> {
+		self.inner.track_view_def_updated(pre, post)
+	}
+
+	fn track_view_def_deleted(&mut self, view: ViewDef) -> Result<()> {
+		self.inner.track_view_def_deleted(view)
+	}
+}
+
+impl TransactionalViewChanges for SubscriptionTransaction {
+	fn find_view(&self, id: ViewId) -> Option<&ViewDef> {
+		self.inner.find_view(id)
+	}
+
+	fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&ViewDef> {
+		self.inner.find_view_by_name(namespace, name)
+	}
+
+	fn is_view_deleted(&self, id: ViewId) -> bool {
+		self.inner.is_view_deleted(id)
+	}
+
+	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.inner.is_view_deleted_by_name(namespace, name)
 	}
 }

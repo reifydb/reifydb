@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalSeriesChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackSeriesChangeOperations for AdminTransaction {
@@ -98,5 +98,37 @@ impl TransactionalSeriesChanges for AdminTransaction {
 					.map(|s| s.namespace == namespace && s.name == name)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackSeriesChangeOperations for SubscriptionTransaction {
+	fn track_series_def_created(&mut self, series: SeriesDef) -> Result<()> {
+		self.inner.track_series_def_created(series)
+	}
+
+	fn track_series_def_updated(&mut self, pre: SeriesDef, post: SeriesDef) -> Result<()> {
+		self.inner.track_series_def_updated(pre, post)
+	}
+
+	fn track_series_def_deleted(&mut self, series: SeriesDef) -> Result<()> {
+		self.inner.track_series_def_deleted(series)
+	}
+}
+
+impl TransactionalSeriesChanges for SubscriptionTransaction {
+	fn find_series(&self, id: SeriesId) -> Option<&SeriesDef> {
+		self.inner.find_series(id)
+	}
+
+	fn find_series_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SeriesDef> {
+		self.inner.find_series_by_name(namespace, name)
+	}
+
+	fn is_series_deleted(&self, id: SeriesId) -> bool {
+		self.inner.is_series_deleted(id)
+	}
+
+	fn is_series_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.inner.is_series_deleted_by_name(namespace, name)
 	}
 }

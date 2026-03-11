@@ -21,7 +21,7 @@ use reifydb_type::{
 use tracing::{debug, error};
 
 use crate::{
-	execute::{ExecuteError, execute_admin},
+	execute::{ExecuteError, execute_subscription},
 	state::AppState,
 };
 
@@ -64,10 +64,10 @@ pub async fn create_subscription(
 	let statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
 	debug!("Subscription statement: {}", statement);
 
-	let frames = execute_admin(
+	let frames = execute_subscription(
 		state.actor_system(),
 		state.engine_clone(),
-		vec![statement],
+		statement,
 		identity,
 		Params::None,
 		state.query_timeout(),
@@ -93,13 +93,13 @@ pub async fn create_subscription(
 		.ok_or(CreateSubscriptionError::ExtractionFailed)
 }
 
-/// Synchronous cleanup: begin admin txn, drop flow, drop subscription, commit.
+/// Synchronous cleanup: begin subscription txn, drop flow, drop subscription, commit.
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let mut txn = engine.begin_admin()?;
+	let mut txn = engine.begin_subscription()?;
 	let flow_name = subscription_flow_name(subscription_id);
 	let namespace_id = subscription_flow_namespace();
-	drop_flow_by_name(&mut txn, namespace_id, &flow_name)?;
-	drop_subscription(&mut txn, subscription_id)?;
+	drop_flow_by_name(txn.as_admin_mut(), namespace_id, &flow_name)?;
+	drop_subscription(txn.as_admin_mut(), subscription_id)?;
 	txn.commit()?;
 	Ok(())
 }

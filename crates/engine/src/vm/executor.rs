@@ -3,20 +3,26 @@
 
 use std::{ops::Deref, sync::Arc};
 
+use bumpalo::Bump;
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::FlowOperatorStore};
-use reifydb_core::{util::ioc::IocContainer, value::column::columns::Columns};
+use reifydb_core::{error::diagnostic::subscription, util::ioc::IocContainer, value::column::columns::Columns};
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_policy::inject_read_policies;
-use reifydb_rql::compiler::{CompilationResult, constrain_policy};
+use reifydb_rql::{
+	ast::parse_str,
+	compiler::{CompilationResult, constrain_policy},
+};
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+	subscription::SubscriptionTransaction,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_type::error::{Diagnostic, Error};
+use reifydb_type::error::Diagnostic;
 use reifydb_type::{
+	error::Error,
 	params::Params,
 	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
@@ -30,7 +36,7 @@ use crate::{
 	procedure::registry::Procedures,
 	transform::registry::Transforms,
 	vm::{
-		Admin, Command, Query,
+		Admin, Command, Query, Subscription,
 		services::Services,
 		stack::{SymbolTable, Variable},
 		vm::Vm,
@@ -267,6 +273,75 @@ impl Executor {
 						output_results.append(&mut result);
 					}
 				}
+			}
+		}
+
+		let mut final_result = output_results;
+		final_result.append(&mut result);
+		Ok(final_result)
+	}
+
+	#[instrument(name = "executor::subscription", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
+	pub fn subscription(&self, txn: &mut SubscriptionTransaction, cmd: Subscription<'_>) -> Result<Vec<Frame>> {
+		// Pre-compilation validation: parse and check statement constraints
+		let bump = Bump::new();
+		let statements = parse_str(&bump, cmd.rql)?;
+
+		if statements.len() != 1 {
+			return Err(Error(subscription::single_statement_required(
+				"Subscription endpoint requires exactly one statement",
+			)));
+		}
+
+		let statement = &statements[0];
+		if statement.nodes.len() != 1 || !statement.nodes[0].is_subscription_ddl() {
+			return Err(Error(subscription::invalid_statement(
+				"Subscription endpoint only supports CREATE SUBSCRIPTION or DROP SUBSCRIPTION",
+			)));
+		}
+
+		// Proceed with standard compilation and execution
+		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
+		let mut symbol_table = SymbolTable::new();
+		populate_stack(&mut symbol_table, &cmd.params)?;
+
+		let identity = cmd.identity;
+		populate_identity(
+			&mut symbol_table,
+			&self.catalog,
+			&mut Transaction::Subscription(&mut *txn),
+			identity,
+		)?;
+
+		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
+			&mut Transaction::Subscription(&mut *txn),
+			identity,
+			"subscription",
+			true,
+		)?;
+
+		let compiled = match self.compiler.compile_with_policy(
+			&mut Transaction::Subscription(txn),
+			cmd.rql,
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
+		) {
+			Ok(CompilationResult::Ready(compiled)) => compiled,
+			Ok(CompilationResult::Incremental(_)) => {
+				unreachable!("Single subscription statement should not require incremental compilation")
+			}
+			Err(err) => return Err(err),
+		};
+
+		for compiled in compiled.iter() {
+			result.clear();
+			let mut tx = Transaction::Subscription(txn);
+			let mut vm = Vm::new(symbol_table, identity);
+			vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
+			symbol_table = vm.symbol_table;
+
+			if compiled.is_output {
+				output_results.append(&mut result);
 			}
 		}
 

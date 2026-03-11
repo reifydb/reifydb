@@ -145,6 +145,32 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(table) = TransactionalTableChanges::find_table(sub, id) {
+					return Ok(Some(table.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalTableChanges::is_table_deleted(sub, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(table) = self.materialized.find_table_at(id, sub.version()) {
+					return Ok(Some(table));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(table) =
+					CatalogStore::find_table(&mut Transaction::Subscription(&mut *sub), id)?
+				{
+					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					return Ok(Some(table));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -225,6 +251,40 @@ impl Catalog {
 				// 2. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Query(&mut *qry),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(table));
+				}
+
+				Ok(None)
+			}
+			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(table) = TransactionalTableChanges::find_table_by_name(sub, namespace, name)
+				{
+					return Ok(Some(table.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalTableChanges::is_table_deleted_by_name(sub, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(table) =
+					self.materialized.find_table_by_name_at(namespace, name, sub.version())
+				{
+					return Ok(Some(table));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(table) = CatalogStore::find_table_by_name(
+					&mut Transaction::Subscription(&mut *sub),
 					namespace,
 					name,
 				)? {

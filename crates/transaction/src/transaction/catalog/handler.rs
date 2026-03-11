@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalHandlerChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackHandlerChangeOperations for AdminTransaction {
@@ -72,5 +72,29 @@ impl TransactionalHandlerChanges for AdminTransaction {
 					.map(|h| h.namespace == namespace && h.name == name)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackHandlerChangeOperations for SubscriptionTransaction {
+	fn track_handler_def_created(&mut self, handler: HandlerDef) -> Result<()> {
+		self.inner.track_handler_def_created(handler)
+	}
+
+	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> Result<()> {
+		self.inner.track_handler_def_deleted(handler)
+	}
+}
+
+impl TransactionalHandlerChanges for SubscriptionTransaction {
+	fn find_handler_by_id(&self, id: HandlerId) -> Option<&HandlerDef> {
+		self.inner.find_handler_by_id(id)
+	}
+
+	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&HandlerDef> {
+		self.inner.find_handler_by_name(namespace, name)
+	}
+
+	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.inner.is_handler_deleted_by_name(namespace, name)
 	}
 }

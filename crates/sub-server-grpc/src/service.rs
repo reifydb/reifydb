@@ -21,8 +21,8 @@ use crate::{
 	error::GrpcError,
 	generated::{
 		AdminRequest, AdminResponse, CommandRequest, CommandResponse, Params as ProtoParams, QueryRequest,
-		QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, reify_db_server::ReifyDb,
-		subscription_event,
+		QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
+		UnsubscribeResponse, reify_db_server::ReifyDb, subscription_event,
 	},
 	subscription::GrpcSubscriptionRegistry,
 };
@@ -195,5 +195,36 @@ impl ReifyDb for ReifyDbService {
 		});
 
 		Ok(Response::new(ReceiverStream::new(rx)))
+	}
+
+	async fn unsubscribe(
+		&self,
+		request: Request<UnsubscribeRequest>,
+	) -> Result<Response<UnsubscribeResponse>, Status> {
+		let _identity = self.extract_identity(&request)?;
+		let inner = request.into_inner();
+		let subscription_id = reifydb_core::interface::catalog::id::SubscriptionId(inner.subscription_id);
+
+		// Unregister from poller
+		self.poller.unregister(&subscription_id);
+
+		// Unregister from registry
+		self.registry.unregister(&subscription_id);
+
+		// Cleanup the subscription from the database
+		let engine = self.state.engine_clone();
+		let system = self.state.actor_system();
+		let result = system.compute(move || cleanup_subscription_sync(&engine, subscription_id)).await;
+		match result {
+			Ok(Ok(())) => info!("gRPC subscription {} unsubscribed", subscription_id),
+			Ok(Err(e)) => {
+				warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e)
+			}
+			Err(e) => warn!("Compute pool error cleaning up subscription {}: {:?}", subscription_id, e),
+		}
+
+		Ok(Response::new(UnsubscribeResponse {
+			subscription_id: inner.subscription_id,
+		}))
 	}
 }

@@ -13,7 +13,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalUserChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackUserChangeOperations for AdminTransaction {
@@ -80,5 +80,37 @@ impl TransactionalUserChanges for AdminTransaction {
 		self.changes.user_def.iter().rev().any(|change| {
 			change.op == Delete && change.pre.as_ref().map(|u| u.name == name).unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackUserChangeOperations for SubscriptionTransaction {
+	fn track_user_def_created(&mut self, user: UserDef) -> Result<()> {
+		self.inner.track_user_def_created(user)
+	}
+
+	fn track_user_def_updated(&mut self, pre: UserDef, post: UserDef) -> Result<()> {
+		self.inner.track_user_def_updated(pre, post)
+	}
+
+	fn track_user_def_deleted(&mut self, user: UserDef) -> Result<()> {
+		self.inner.track_user_def_deleted(user)
+	}
+}
+
+impl TransactionalUserChanges for SubscriptionTransaction {
+	fn find_user(&self, id: UserId) -> Option<&UserDef> {
+		self.inner.find_user(id)
+	}
+
+	fn find_user_by_name(&self, name: &str) -> Option<&UserDef> {
+		self.inner.find_user_by_name(name)
+	}
+
+	fn is_user_deleted(&self, id: UserId) -> bool {
+		self.inner.is_user_deleted(id)
+	}
+
+	fn is_user_deleted_by_name(&self, name: &str) -> bool {
+		self.inner.is_user_deleted_by_name(name)
 	}
 }

@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::change::CatalogTrackChangeOperations;
 
-use crate::transaction::admin::AdminTransaction;
+use crate::transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction};
 
 pub mod dictionary;
 pub mod flow;
@@ -26,3 +26,6 @@ pub mod view;
 
 // Implement the umbrella trait for AdminTransaction
 impl CatalogTrackChangeOperations for AdminTransaction {}
+
+// Implement the umbrella trait for SubscriptionTransaction
+impl CatalogTrackChangeOperations for SubscriptionTransaction {}

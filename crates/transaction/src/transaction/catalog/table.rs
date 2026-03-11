@@ -14,7 +14,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalTableChanges,
 	},
-	transaction::admin::AdminTransaction,
+	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackTableChangeOperations for AdminTransaction {
@@ -90,5 +90,37 @@ impl TransactionalTableChanges for AdminTransaction {
 					.map(|t| t.namespace == namespace && t.name == name)
 					.unwrap_or(false)
 		})
+	}
+}
+
+impl CatalogTrackTableChangeOperations for SubscriptionTransaction {
+	fn track_table_def_created(&mut self, table: TableDef) -> Result<()> {
+		self.inner.track_table_def_created(table)
+	}
+
+	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> Result<()> {
+		self.inner.track_table_def_updated(pre, post)
+	}
+
+	fn track_table_def_deleted(&mut self, table: TableDef) -> Result<()> {
+		self.inner.track_table_def_deleted(table)
+	}
+}
+
+impl TransactionalTableChanges for SubscriptionTransaction {
+	fn find_table(&self, id: TableId) -> Option<&TableDef> {
+		self.inner.find_table(id)
+	}
+
+	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TableDef> {
+		self.inner.find_table_by_name(namespace, name)
+	}
+
+	fn is_table_deleted(&self, id: TableId) -> bool {
+		self.inner.is_table_deleted(id)
+	}
+
+	fn is_table_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
+		self.inner.is_table_deleted_by_name(namespace, name)
 	}
 }

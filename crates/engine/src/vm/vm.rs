@@ -1313,6 +1313,7 @@ impl Vm {
 				Instruction::CreateSubscription(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Subscription(txn) => txn.as_admin_mut(),
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1602,6 +1603,7 @@ impl Vm {
 				Instruction::DropSubscription(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Subscription(txn) => txn.as_admin_mut(),
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",

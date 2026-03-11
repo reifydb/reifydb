@@ -65,6 +65,16 @@ pub struct ChangeEvent {
     #[prost(message, repeated, tag = "1")]
     pub frames: ::prost::alloc::vec::Vec<Frame>,
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UnsubscribeRequest {
+    #[prost(uint64, tag = "1")]
+    pub subscription_id: u64,
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct UnsubscribeResponse {
+    #[prost(uint64, tag = "1")]
+    pub subscription_id: u64,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Params {
     #[prost(oneof = "params::Params", tags = "1, 2")]
@@ -290,6 +300,30 @@ pub mod reify_db_client {
                 .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Subscribe"));
             self.inner.server_streaming(req, path, codec).await
         }
+        pub async fn unsubscribe(
+            &mut self,
+            request: impl tonic::IntoRequest<super::UnsubscribeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::UnsubscribeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/Unsubscribe",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Unsubscribe"));
+            self.inner.unary(req, path, codec).await
+        }
     }
 }
 /// Generated server implementations.
@@ -327,6 +361,10 @@ pub mod reify_db_server {
             &self,
             request: tonic::Request<super::SubscribeRequest>,
         ) -> std::result::Result<tonic::Response<Self::SubscribeStream>, tonic::Status>;
+        async fn unsubscribe(
+            &self,
+            request: tonic::Request<super::UnsubscribeRequest>,
+        ) -> std::result::Result<tonic::Response<super::UnsubscribeResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct ReifyDbServer<T> {
@@ -575,6 +613,49 @@ pub mod reify_db_server {
                                 max_encoding_message_size,
                             );
                         let res = grpc.server_streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/reifydb.v1.ReifyDB/Unsubscribe" => {
+                    #[allow(non_camel_case_types)]
+                    struct UnsubscribeSvc<T: ReifyDb>(pub Arc<T>);
+                    impl<T: ReifyDb> tonic::server::UnaryService<super::UnsubscribeRequest>
+                    for UnsubscribeSvc<T> {
+                        type Response = super::UnsubscribeResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::UnsubscribeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReifyDb>::unsubscribe(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = UnsubscribeSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
                         Ok(res)
                     };
                     Box::pin(fut)

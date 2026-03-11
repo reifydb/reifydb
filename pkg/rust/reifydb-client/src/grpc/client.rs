@@ -31,7 +31,8 @@ use tonic::{metadata::MetadataValue, transport::Channel};
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, NamedParams,
 	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
-	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue, params::Params as ProtoParamsOneof,
+	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
+	UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
 	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{AdminResult, CommandResult, QueryResult};
@@ -204,6 +205,17 @@ impl GrpcClient {
 			subscription_id,
 			stream,
 		})
+	}
+
+	pub async fn unsubscribe(&self, subscription_id: u64) -> Result<(), Error> {
+		let request = ProtoUnsubscribeRequest {
+			subscription_id,
+		};
+		let mut client = self.inner.clone();
+		let mut req = tonic::Request::new(request);
+		self.attach_auth(&mut req);
+		client.unsubscribe(req).await.map_err(status_to_error)?;
+		Ok(())
 	}
 
 	fn attach_auth<T>(&self, request: &mut tonic::Request<T>) {

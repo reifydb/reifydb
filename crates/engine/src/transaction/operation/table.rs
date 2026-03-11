@@ -233,6 +233,9 @@ impl TableOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.insert_table(table, schema, row, row_number),
 			Transaction::Admin(txn) => txn.insert_table(table, schema, row, row_number),
+			Transaction::Subscription(txn) => {
+				txn.as_admin_mut().insert_table(table, schema, row, row_number)
+			}
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
@@ -241,6 +244,7 @@ impl TableOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.update_table(table, id, row),
 			Transaction::Admin(txn) => txn.update_table(table, id, row),
+			Transaction::Subscription(txn) => txn.as_admin_mut().update_table(table, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
@@ -249,6 +253,7 @@ impl TableOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_table(table, id),
 			Transaction::Admin(txn) => txn.remove_from_table(table, id),
+			Transaction::Subscription(txn) => txn.as_admin_mut().remove_from_table(table, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
