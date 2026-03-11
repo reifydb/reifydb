@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
+# Batch delete mutation tracking — DELETE affecting multiple rows generates one record per row
+
+CREATE NAMESPACE tbd;
+CREATE TABLE tbd::items { id: int4, active: int4 };
+INSERT tbd::items [{ id: 1, active: 0 }, { id: 2, active: 0 }, { id: 3, active: 1 }];
+
+CREATE TEST tbd::batch_delete_tracking {
+    DELETE tbd::items FILTER active == 0;
+    testing::tables::changed("tbd::items")
+        | AGGREGATE { n: math::count(sequence) }
+        | ASSERT { n == 2 };
+    testing::tables::changed("tbd::items")
+        | FILTER { sequence == 1 }
+        | ASSERT { op == "delete" }
+        | ASSERT { old_active == 0 }
+};
+
+RUN TESTS tbd

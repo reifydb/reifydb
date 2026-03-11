@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
 # Verify RUN TESTS output can be piped into query operators
 
 CREATE NAMESPACE ptest;

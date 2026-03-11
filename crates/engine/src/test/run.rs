@@ -175,6 +175,9 @@ pub(crate) fn run_tests(
 		match &test_def.cases {
 			None => {
 				// Non-parameterized: single run
+				if let Some(ctx) = vm.testing.as_mut() {
+					ctx.clear();
+				}
 				let start = Instant::now();
 				let savepoint = txn.savepoint();
 				let (outcome, message) = run_single(
@@ -224,6 +227,9 @@ pub(crate) fn run_tests(
 						named_vars.insert(name.clone(), value);
 					}
 
+					if let Some(ctx) = vm.testing.as_mut() {
+						ctx.clear();
+					}
 					let start = Instant::now();
 					let savepoint = txn.savepoint();
 					let (outcome, message) = run_single(

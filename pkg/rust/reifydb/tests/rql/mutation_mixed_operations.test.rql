@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
+# Mixed insert+update+delete mutation sequence tracking
+
+CREATE NAMESPACE tmo;
+CREATE TABLE tmo::items { id: int4, name: text };
+
+CREATE TEST tmo::mixed_ops_tracking {
+    INSERT tmo::items [{ id: 1, name: "Alice" }];
+    UPDATE tmo::items { name: "Alicia" } FILTER id == 1;
+    DELETE tmo::items FILTER id == 1;
+    testing::tables::changed("tmo::items")
+        | AGGREGATE { n: math::count(sequence) }
+        | ASSERT { n == 3 };
+    testing::tables::changed("tmo::items")
+        | FILTER { sequence == 1 }
+        | ASSERT { op == "insert" }
+        | ASSERT { new_name == "Alice" };
+    testing::tables::changed("tmo::items")
+        | FILTER { sequence == 2 }
+        | ASSERT { op == "update" }
+        | ASSERT { old_name == "Alice" }
+        | ASSERT { new_name == "Alicia" };
+    testing::tables::changed("tmo::items")
+        | FILTER { sequence == 3 }
+        | ASSERT { op == "delete" }
+        | ASSERT { old_name == "Alicia" }
+};
+
+RUN TESTS tmo

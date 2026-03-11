@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
+# Batch update mutation tracking — UPDATE affecting multiple rows generates one record per row
+
+CREATE NAMESPACE tbu;
+CREATE TABLE tbu::items { id: int4, status: text };
+INSERT tbu::items [{ id: 1, status: "pending" }, { id: 2, status: "pending" }, { id: 3, status: "done" }];
+
+CREATE TEST tbu::batch_update_tracking {
+    UPDATE tbu::items { status: "shipped" } FILTER status == "pending";
+    testing::tables::changed("tbu::items")
+        | AGGREGATE { n: math::count(sequence) }
+        | ASSERT { n == 2 };
+    testing::tables::changed("tbu::items")
+        | FILTER { sequence == 1 }
+        | ASSERT { op == "update" }
+        | ASSERT { old_status == "pending" }
+        | ASSERT { new_status == "shipped" }
+};
+
+RUN TESTS tbu

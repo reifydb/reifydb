@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
 # Verify each test file gets a fresh database.
 # If the DB were shared across files, this namespace might already exist.
 

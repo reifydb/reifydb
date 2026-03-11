@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
+# Batch insert mutation tracking — multi-row INSERT generates multiple mutation records
+
+CREATE NAMESPACE tbi;
+CREATE TABLE tbi::items { id: int4, name: text };
+
+CREATE TEST tbi::batch_insert_tracking {
+    INSERT tbi::items [{ id: 1, name: "A" }, { id: 2, name: "B" }, { id: 3, name: "C" }];
+    testing::tables::changed("tbi::items")
+        | AGGREGATE { n: math::count(sequence) }
+        | ASSERT { n == 3 };
+    testing::tables::changed("tbi::items")
+        | FILTER { sequence == 1 }
+        | ASSERT { new_id == 1 }
+        | ASSERT { new_name == "A" };
+    testing::tables::changed("tbi::items")
+        | FILTER { sequence == 3 }
+        | ASSERT { new_id == 3 }
+        | ASSERT { new_name == "C" }
+};
+
+RUN TESTS tbi

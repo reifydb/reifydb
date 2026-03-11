@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
+# Wipe (DELETE all) mutation tracking — unfiltered delete generates one record per row
+
+CREATE NAMESPACE twp;
+CREATE TABLE twp::items { id: int4, name: text };
+INSERT twp::items [{ id: 1, name: "A" }, { id: 2, name: "B" }];
+
+CREATE TEST twp::wipe_tracking {
+    DELETE twp::items FILTER true;
+    testing::tables::changed("twp::items")
+        | AGGREGATE { n: math::count(sequence) }
+        | ASSERT { n == 2 };
+    testing::tables::changed("twp::items")
+        | FILTER { sequence == 1 }
+        | ASSERT { op == "delete" }
+};
+
+RUN TESTS twp
