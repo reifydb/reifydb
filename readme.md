@@ -261,9 +261,12 @@ Quick links:
 
 ## Contributing
 
-ReifyDB is in early development. Feedback and contributions are welcome.
-- Check out the [issues](https://github.com/reifydb/reifydb/issues)
-- [Open](https://github.com/orgs/reifydb/discussions) a discussion on GitHub Discussions
+ReifyDB is in early development. Code contributions are not yet being accepted, but there are many ways to get involved.
+
+See **[contributing.md](contributing.md)** for details on how to participate.
+
+- Report bugs or suggest features via [GitHub Issues](https://github.com/reifydb/reifydb/issues)
+- Join the conversation on [GitHub Discussions](https://github.com/orgs/reifydb/discussions)
 - Star the project to help more people find it
 ---
 
