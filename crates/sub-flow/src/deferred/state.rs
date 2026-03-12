@@ -93,6 +93,11 @@ impl FlowStates {
 		self.states.get_mut(flow_id)
 	}
 
+	/// Returns true if this collection tracks the given flow.
+	pub fn contains(&self, flow_id: &FlowId) -> bool {
+		self.states.contains_key(flow_id)
+	}
+
 	/// Register a new flow in backfilling status.
 	pub fn register_backfilling(&mut self, flow_id: FlowId) {
 		self.states.insert(flow_id, FlowState::new_backfilling());

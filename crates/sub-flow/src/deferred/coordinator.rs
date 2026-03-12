@@ -271,7 +271,6 @@ impl CoordinatorActor {
 			// Collect changes directly (no conversion needed with columnar layout)
 			all_changes.extend(cdc.changes.iter().cloned());
 		}
-
 		let consume_ctx = ConsumeContext {
 			state_version,
 			current_version,
@@ -520,7 +519,9 @@ impl CoordinatorActor {
 			Span::current().record("batch_count", worker_batches.len());
 
 			// Identify flows downstream of view-producing flows in this batch.
-			// Their checkpoints should not be advanced until upstream view changes are committed.
+			// Only mark consumers that were actually routed in this same batch.
+			// If a downstream flow is not scheduled here, there is nothing to demote:
+			// it can stay active and wait for the upstream view's own CDC.
 			let dependency_graph = state.analyzer.get_dependency_graph();
 			let submitted_flow_ids: collections::HashSet<FlowId> = worker_batches
 				.values()
@@ -531,12 +532,13 @@ impl CoordinatorActor {
 				if submitted_flow_ids.contains(producer_flow_id) {
 					if let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id) {
 						for fid in consumer_flow_ids {
-							consume_ctx.downstream_flows.insert(*fid);
+							if submitted_flow_ids.contains(fid) {
+								consume_ctx.downstream_flows.insert(*fid);
+							}
 						}
 					}
 				}
 			}
-
 			// Remove downstream flow instructions from batches — they would read
 			// stale (uncommitted) upstream view data. Demote them to Backfilling
 			// so they re-process in the next cycle with committed data.
@@ -660,7 +662,6 @@ impl CoordinatorActor {
 					return;
 				}
 			};
-
 			// Check if already caught up
 			if from_version >= consume_ctx.current_version {
 				if let Some(flow_state) = state.states.get_mut(&flow_id) {
@@ -693,6 +694,12 @@ impl CoordinatorActor {
 				consume_ctx.checkpoints.push((flow_id, to_version));
 				if let Some(flow_state) = state.states.get_mut(&flow_id) {
 					flow_state.update_checkpoint(to_version);
+					if to_version >= consume_ctx.current_version {
+						flow_state.activate();
+					}
+				}
+				if to_version >= consume_ctx.current_version {
+					info!(flow_id = flow_id.0, "backfill complete after empty chunk, flow now active");
 				}
 				continue;
 			}
@@ -711,6 +718,15 @@ impl CoordinatorActor {
 				consume_ctx.checkpoints.push((flow_id, to_version));
 				if let Some(flow_state) = state.states.get_mut(&flow_id) {
 					flow_state.update_checkpoint(to_version);
+					if to_version >= consume_ctx.current_version {
+						flow_state.activate();
+					}
+				}
+				if to_version >= consume_ctx.current_version {
+					info!(
+						flow_id = flow_id.0,
+						"backfill complete after no-op chunk, flow now active"
+					);
 				}
 				continue;
 			}
@@ -791,7 +807,23 @@ impl CoordinatorActor {
 		for (key, pw) in consume_ctx.combined.iter_sorted() {
 			let result = match pw {
 				PendingWrite::Set(value) => transaction.set(key, value.clone()),
-				PendingWrite::Remove => transaction.remove(key),
+				PendingWrite::Remove => {
+					// Preserve deleted row values so CDC can emit Diff::Remove for
+					// downstream deferred flows that source from views.
+					if matches!(Key::kind(key), Some(KeyKind::Row)) {
+						match transaction.get(key) {
+							Ok(Some(existing)) => transaction.unset(key, existing.values),
+							Ok(None) => transaction.remove(key),
+							Err(e) => {
+								let _ = transaction.rollback();
+								(consume_ctx.original_reply)(coordinator_error(e));
+								return;
+							}
+						}
+					} else {
+						transaction.remove(key)
+					}
+				}
 			};
 			if let Err(e) = result {
 				let _ = transaction.rollback();
@@ -878,11 +910,23 @@ impl CoordinatorActor {
 			}
 		}
 
-		// Resolve transitive dependencies through views: if this flow depends on
-		// a view that is produced by another flow (e.g. a transactional view),
-		// also consider that producer flow's primitive sources as triggers.
+		// Resolve transitive dependencies through views only for non-deferred
+		// producer flows. Deferred views publish their own CDC, so waking a
+		// downstream deferred flow from the producer's base-table CDC creates
+		// a race where the consumer runs before the upstream view commit lands.
+		//
+		// Transactional views are different: they never publish CDC for the
+		// derived view rows, so their downstream consumers must be triggered
+		// from the producer flow's primitive sources instead.
 		for view_id in view_sources {
 			if let Some(producer_flow_id) = dependency_graph.sink_views.get(&view_id) {
+				// Deferred flows are tracked in coordinator state. If the
+				// producer is tracked here, wait for its view CDC instead of
+				// routing its primitive-source CDC to this consumer.
+				if state.states.contains(producer_flow_id) {
+					continue;
+				}
+
 				for (table_id, flow_ids) in &dependency_graph.source_tables {
 					if flow_ids.contains(producer_flow_id) {
 						flow_sources.insert(PrimitiveId::Table(*table_id));
@@ -913,7 +957,6 @@ impl CoordinatorActor {
 			})
 			.cloned()
 			.collect();
-
 		Span::current().record("output", result.len());
 		result
 	}
