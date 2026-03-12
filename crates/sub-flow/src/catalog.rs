@@ -6,7 +6,7 @@
 //! Caches source metadata (columns, types, dictionaries) to avoid redundant catalog lookups
 //! during CDC processing. The cache is invalidated when schema changes are observed via CDC.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::catalog::flow::FlowId;
@@ -18,14 +18,14 @@ use reifydb_type::Result;
 pub struct FlowCatalog {
 	catalog: Catalog,
 	/// Shared across all clones so the dispatcher and coordinator see the same cache.
-	flows: Arc<RwLock<HashMap<FlowId, FlowDag>>>,
+	flows: Arc<RwLock<BTreeMap<FlowId, FlowDag>>>,
 }
 
 impl FlowCatalog {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
 			catalog,
-			flows: Arc::new(RwLock::new(HashMap::new())),
+			flows: Arc::new(RwLock::new(BTreeMap::new())),
 		}
 	}
 

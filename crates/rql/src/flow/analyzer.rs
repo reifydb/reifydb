@@ -3,7 +3,7 @@
 
 //! Flow graph analysis for calculating dependencies and relationships between flows
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowNodeId},
@@ -52,11 +52,11 @@ pub struct FlowDependency {
 pub struct FlowDependencyGraph {
 	pub flows: Vec<FlowSummary>,
 	pub dependencies: Vec<FlowDependency>,
-	pub source_tables: HashMap<TableId, Vec<FlowId>>,
-	pub source_views: HashMap<ViewId, Vec<FlowId>>,
-	pub source_ringbuffers: HashMap<RingBufferId, Vec<FlowId>>,
-	pub source_series: HashMap<SeriesId, Vec<FlowId>>,
-	pub sink_views: HashMap<ViewId, FlowId>,
+	pub source_tables: BTreeMap<TableId, Vec<FlowId>>,
+	pub source_views: BTreeMap<ViewId, Vec<FlowId>>,
+	pub source_ringbuffers: BTreeMap<RingBufferId, Vec<FlowId>>,
+	pub source_series: BTreeMap<SeriesId, Vec<FlowId>>,
+	pub sink_views: BTreeMap<ViewId, FlowId>,
 }
 
 pub struct FlowGraphAnalyzer {
@@ -71,11 +71,11 @@ impl FlowGraphAnalyzer {
 			dependency_graph: FlowDependencyGraph {
 				flows: Vec::new(),
 				dependencies: Vec::new(),
-				source_tables: HashMap::new(),
-				source_views: HashMap::new(),
-				source_ringbuffers: HashMap::new(),
-				source_series: HashMap::new(),
-				sink_views: HashMap::new(),
+				source_tables: BTreeMap::new(),
+				source_views: BTreeMap::new(),
+				source_ringbuffers: BTreeMap::new(),
+				source_series: BTreeMap::new(),
+				sink_views: BTreeMap::new(),
 			},
 		}
 	}
@@ -162,11 +162,11 @@ impl FlowGraphAnalyzer {
 
 	fn calculate(&self) -> FlowDependencyGraph {
 		let mut flow_summaries = Vec::new();
-		let mut source_tables: HashMap<TableId, Vec<FlowId>> = HashMap::new();
-		let mut source_views: HashMap<ViewId, Vec<FlowId>> = HashMap::new();
-		let mut source_ringbuffers: HashMap<RingBufferId, Vec<FlowId>> = HashMap::new();
-		let mut source_series: HashMap<SeriesId, Vec<FlowId>> = HashMap::new();
-		let mut sink_views: HashMap<ViewId, FlowId> = HashMap::new();
+		let mut source_tables: BTreeMap<TableId, Vec<FlowId>> = BTreeMap::new();
+		let mut source_views: BTreeMap<ViewId, Vec<FlowId>> = BTreeMap::new();
+		let mut source_ringbuffers: BTreeMap<RingBufferId, Vec<FlowId>> = BTreeMap::new();
+		let mut source_series: BTreeMap<SeriesId, Vec<FlowId>> = BTreeMap::new();
+		let mut sink_views: BTreeMap<ViewId, FlowId> = BTreeMap::new();
 
 		// First pass: analyze all stored flows and build lookup maps
 		for flow in &self.flows {
@@ -220,7 +220,7 @@ impl FlowGraphAnalyzer {
 	fn find_flow_dependencies(
 		&self,
 		summaries: &[FlowSummary],
-		sink_views: &HashMap<ViewId, FlowId>,
+		sink_views: &BTreeMap<ViewId, FlowId>,
 	) -> Vec<FlowDependency> {
 		let mut dependencies = Vec::new();
 
@@ -288,18 +288,18 @@ impl FlowGraphAnalyzer {
 		self.dependency_graph = FlowDependencyGraph {
 			flows: Vec::new(),
 			dependencies: Vec::new(),
-			source_tables: HashMap::new(),
-			source_views: HashMap::new(),
-			source_ringbuffers: HashMap::new(),
-			source_series: HashMap::new(),
-			sink_views: HashMap::new(),
+			source_tables: BTreeMap::new(),
+			source_views: BTreeMap::new(),
+			source_ringbuffers: BTreeMap::new(),
+			source_series: BTreeMap::new(),
+			sink_views: BTreeMap::new(),
 		};
 	}
 
 	/// Calculate the execution order for all flows considering dependencies
 	pub fn calculate_execution_order(&self, dependency_graph: &FlowDependencyGraph) -> Vec<FlowId> {
-		let mut in_degree: HashMap<FlowId, usize> = HashMap::new();
-		let mut adjacency: HashMap<FlowId, Vec<FlowId>> = HashMap::new();
+		let mut in_degree: BTreeMap<FlowId, usize> = BTreeMap::new();
+		let mut adjacency: BTreeMap<FlowId, Vec<FlowId>> = BTreeMap::new();
 
 		for flow_summary in &dependency_graph.flows {
 			in_degree.insert(flow_summary.id, 0);

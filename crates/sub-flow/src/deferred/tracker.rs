@@ -3,7 +3,7 @@
 
 //! Tracks the latest CDC version where each primitive had changes.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_core::{common::CommitVersion, interface::catalog::primitive::PrimitiveId};
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -13,13 +13,13 @@ use reifydb_runtime::sync::rwlock::RwLock;
 /// This is used to compute flow lag by comparing a flow's current version
 /// to the latest version where its sources had changes.
 pub struct PrimitiveVersionTracker {
-	versions: Arc<RwLock<HashMap<PrimitiveId, CommitVersion>>>,
+	versions: Arc<RwLock<BTreeMap<PrimitiveId, CommitVersion>>>,
 }
 
 impl PrimitiveVersionTracker {
 	pub fn new() -> Self {
 		Self {
-			versions: Arc::new(RwLock::new(HashMap::new())),
+			versions: Arc::new(RwLock::new(BTreeMap::new())),
 		}
 	}
 
@@ -36,7 +36,7 @@ impl PrimitiveVersionTracker {
 	}
 
 	/// Get all tracked primitive versions.
-	pub fn all(&self) -> HashMap<PrimitiveId, CommitVersion> {
+	pub fn all(&self) -> BTreeMap<PrimitiveId, CommitVersion> {
 		let versions = self.versions.read();
 		versions.clone()
 	}

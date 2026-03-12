@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -81,7 +81,7 @@ where
 	}
 
 	fn process(&self, version: CommitVersion, timestamp: u64, deltas: Vec<Delta>) {
-		let mut diffs_by_primitive: HashMap<PrimitiveId, Vec<Diff>> = HashMap::new();
+		let mut diffs_by_primitive: BTreeMap<PrimitiveId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
 		let registry = self.host.schema_registry();
 

@@ -3,14 +3,18 @@
 
 //! Builder pattern for configuring the flow subsystem
 
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	path::PathBuf,
+	sync::Arc,
+};
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_type::{Result, value::Value};
 
 use crate::operator::BoxedOperator;
 
-pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &HashMap<String, Value>) -> Result<BoxedOperator> + Send + Sync>;
+pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &BTreeMap<String, Value>) -> Result<BoxedOperator> + Send + Sync>;
 
 pub struct FlowBuilder {
 	operators_dir: Option<PathBuf>,
@@ -51,7 +55,7 @@ impl FlowBuilder {
 	pub fn register_operator(
 		mut self,
 		name: impl Into<String>,
-		factory: impl Fn(FlowNodeId, &HashMap<String, Value>) -> Result<BoxedOperator> + Send + Sync + 'static,
+		factory: impl Fn(FlowNodeId, &BTreeMap<String, Value>) -> Result<BoxedOperator> + Send + Sync + 'static,
 	) -> Self {
 		self.custom_operators.insert(name.into(), Arc::new(factory));
 		self

@@ -8,7 +8,7 @@
 //! - [`CoordinatorMsg`]: Messages (Consume, PoolReply)
 //! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
 
-use std::{cmp::min, collections, collections::HashMap, fmt, mem, ops::Bound, sync::Arc};
+use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc};
 
 use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
@@ -931,9 +931,9 @@ impl CoordinatorActor {
 		changes: &[Change],
 		to_version: CommitVersion,
 		state_version: CommitVersion,
-	) -> HashMap<usize, WorkerBatch> {
+	) -> BTreeMap<usize, WorkerBatch> {
 		let start = self.clock.instant();
-		let mut worker_batches: HashMap<usize, WorkerBatch> = HashMap::new();
+		let mut worker_batches: BTreeMap<usize, WorkerBatch> = BTreeMap::new();
 
 		let active_flow_ids: Vec<_> = state.states.active_flow_ids();
 		Span::current().record("active_flows", active_flow_ids.len());

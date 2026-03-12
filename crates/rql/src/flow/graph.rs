@@ -3,7 +3,7 @@
 
 use std::{
 	cmp::Reverse,
-	collections::{BinaryHeap, HashMap, HashSet, VecDeque},
+	collections::{BTreeMap, BinaryHeap, HashSet, VecDeque},
 	ops,
 };
 
@@ -14,19 +14,19 @@ use super::node::FlowEdge;
 
 #[derive(Debug, Clone)]
 pub struct DirectedGraph<NodeData> {
-	nodes: HashMap<FlowNodeId, NodeData>,
+	nodes: BTreeMap<FlowNodeId, NodeData>,
 	edges: Vec<FlowEdge>,
-	outgoing: HashMap<FlowNodeId, Vec<FlowNodeId>>,
-	incoming: HashMap<FlowNodeId, Vec<FlowNodeId>>,
+	outgoing: BTreeMap<FlowNodeId, Vec<FlowNodeId>>,
+	incoming: BTreeMap<FlowNodeId, Vec<FlowNodeId>>,
 }
 
 impl<NodeData> DirectedGraph<NodeData> {
 	pub fn new() -> Self {
 		Self {
-			nodes: HashMap::new(),
+			nodes: BTreeMap::new(),
 			edges: Vec::new(),
-			outgoing: HashMap::new(),
-			incoming: HashMap::new(),
+			outgoing: BTreeMap::new(),
+			incoming: BTreeMap::new(),
 		}
 	}
 
@@ -89,7 +89,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 	}
 
 	pub fn topological_sort(&self) -> Vec<FlowNodeId> {
-		let mut in_degree = HashMap::new();
+		let mut in_degree = BTreeMap::new();
 		// Use a min-heap (via Reverse) to ensure deterministic ordering by node ID
 		let mut heap: BinaryHeap<Reverse<FlowNodeId>> = BinaryHeap::new();
 		let mut result = Vec::new();

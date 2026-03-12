@@ -6,7 +6,7 @@
 //! Tracks the status and checkpoint of each flow, enabling the coordinator
 //! to route changes appropriately and manage backfilling.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 
@@ -77,14 +77,14 @@ impl FlowState {
 /// Collection of flow states managed by the coordinator.
 #[derive(Debug, Default)]
 pub struct FlowStates {
-	states: HashMap<FlowId, FlowState>,
+	states: BTreeMap<FlowId, FlowState>,
 }
 
 impl FlowStates {
 	/// Create a new empty flow states collection.
 	pub fn new() -> Self {
 		Self {
-			states: HashMap::new(),
+			states: BTreeMap::new(),
 		}
 	}
 

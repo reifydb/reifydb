@@ -6,7 +6,7 @@ pub mod process;
 pub mod register;
 
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	sync::Arc,
 };
 
@@ -43,14 +43,14 @@ use crate::{builder::OperatorFactory, operator::Operators};
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
-	pub(crate) operators: HashMap<FlowNodeId, Arc<Operators>>,
-	pub(crate) flows: HashMap<FlowId, FlowDag>,
-	pub(crate) sources: HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: HashMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) operators: BTreeMap<FlowNodeId, Arc<Operators>>,
+	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
+	pub(crate) sources: BTreeMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sinks: BTreeMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
-	pub(crate) flow_creation_versions: HashMap<FlowId, CommitVersion>,
+	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) clock: Clock,
 	pub(crate) custom_operators: Arc<HashMap<String, OperatorFactory>>,
 }
@@ -71,13 +71,13 @@ impl FlowEngine {
 		Self {
 			catalog,
 			executor,
-			operators: HashMap::new(),
-			flows: HashMap::new(),
-			sources: HashMap::new(),
-			sinks: HashMap::new(),
+			operators: BTreeMap::new(),
+			flows: BTreeMap::new(),
+			sources: BTreeMap::new(),
+			sinks: BTreeMap::new(),
 			analyzer: FlowGraphAnalyzer::new(),
 			event_bus,
-			flow_creation_versions: HashMap::new(),
+			flow_creation_versions: BTreeMap::new(),
 			clock,
 			custom_operators,
 		}
@@ -90,7 +90,7 @@ impl FlowEngine {
 		&self,
 		operator: &str,
 		node_id: FlowNodeId,
-		config: &HashMap<String, Value>,
+		config: &BTreeMap<String, Value>,
 	) -> Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write().unwrap();
@@ -122,7 +122,7 @@ impl FlowEngine {
 	}
 
 	/// Returns a set of all currently registered flow IDs
-	pub fn flow_ids(&self) -> HashSet<FlowId> {
+	pub fn flow_ids(&self) -> BTreeSet<FlowId> {
 		self.flows.keys().copied().collect()
 	}
 

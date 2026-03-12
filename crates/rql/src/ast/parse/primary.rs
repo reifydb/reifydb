@@ -104,10 +104,15 @@ impl<'bump> Parser<'bump> {
 						// If next token is an identifier or keyword, parse as statement.
 						// Otherwise treat as an identifier (e.g. `filter {update == 3}`).
 						if self.position + 1 < self.tokens.len()
-							&& matches!(
+							&& (matches!(
 								self.tokens[self.position + 1].kind,
 								TokenKind::Identifier | TokenKind::Keyword(_)
-							) {
+							) || matches!(
+								self.tokens[self.position + 1].kind,
+								TokenKind::Operator(Operator::OpenBracket)
+									| TokenKind::Operator(Operator::OpenCurly)
+									| TokenKind::Variable
+							)) {
 							match keyword {
 								Keyword::Delete => {
 									Ok(Ast::Delete(self.parse_delete()?))

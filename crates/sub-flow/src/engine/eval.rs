@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::LazyLock};
+use std::{collections::BTreeMap, sync::LazyLock};
 
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::{
@@ -26,7 +26,7 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable:
 /// Evaluate a list of expressions into operator configuration
 ///
 /// Only processes `Expression::Alias` variants:
-/// - The alias name becomes the HashMap key
+/// - The alias name becomes the BTreeMap key
 /// - The inner expression is evaluated to become the value
 /// - Non-Alias expressions are skipped
 ///
@@ -36,7 +36,7 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable:
 /// * `clock` - The clock to use for time-based expressions
 ///
 /// # Returns
-/// HashMap<String, Value> where keys are alias names and values are evaluated results
+/// BTreeMap<String, Value> where keys are alias names and values are evaluated results
 ///
 /// # Errors
 /// Returns error if expression evaluation fails
@@ -44,8 +44,8 @@ pub fn evaluate_operator_config(
 	expressions: &[Expression],
 	functions: &Functions,
 	clock: &Clock,
-) -> Result<HashMap<String, Value>> {
-	let mut result = HashMap::new();
+) -> Result<BTreeMap<String, Value>> {
+	let mut result = BTreeMap::new();
 
 	let compile_ctx = CompileContext {
 		functions,

@@ -8,7 +8,7 @@
 //! - [`PoolMsg`]: Messages the pool can receive (RegisterFlow, Submit, SubmitToWorker, WorkerReply)
 //! - [`PoolResponse`]: Response sent back through callbacks
 
-use std::{collections::HashMap, mem::replace};
+use std::{collections::BTreeMap, mem::replace};
 
 use reifydb_core::internal;
 use reifydb_rql::flow::flow::FlowDag;
@@ -39,7 +39,7 @@ pub enum PoolMsg {
 	},
 	/// Submit batches to multiple workers
 	Submit {
-		batches: HashMap<usize, WorkerBatch>,
+		batches: BTreeMap<usize, WorkerBatch>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	},
 	/// Submit to a specific worker
@@ -231,7 +231,7 @@ impl PoolActor {
 		&self,
 		state: &mut PoolState,
 		ctx: &Context<PoolMsg>,
-		batches: HashMap<usize, WorkerBatch>,
+		batches: BTreeMap<usize, WorkerBatch>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	) {
 		let start = self.clock.instant();
