@@ -55,6 +55,11 @@ use crate::{
 impl FlowEngine {
 	#[instrument(name = "flow::register", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
+		self.register_with_transaction(&mut Transaction::Command(txn), flow)
+	}
+
+	#[instrument(name = "flow::register_with_transaction", level = "debug", skip(self, txn), fields(flow_id = ?flow.id))]
+	pub fn register_with_transaction(&mut self, txn: &mut Transaction<'_>, flow: FlowDag) -> Result<()> {
 		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
@@ -68,8 +73,8 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::register::add_node", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
-	fn add(&mut self, txn: &mut CommandTransaction, flow: &FlowDag, node: &FlowNode) -> Result<()> {
+	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
+	fn add(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag, node: &FlowNode) -> Result<()> {
 		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 
@@ -82,7 +87,7 @@ impl FlowEngine {
 			SourceTable {
 				table,
 			} => {
-				let table = self.catalog.get_table(&mut Transaction::Command(&mut *txn), table)?;
+				let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 
 				self.add_source(flow.id, node.id, PrimitiveId::table(table.id));
 				self.operators.insert(
@@ -93,7 +98,7 @@ impl FlowEngine {
 			SourceView {
 				view,
 			} => {
-				let view = self.catalog.get_view(&mut Transaction::Command(&mut *txn), view)?;
+				let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id));
 
 				// For transactional views, also register the underlying table/ringbuffer
@@ -104,14 +109,13 @@ impl FlowEngine {
 				if view.kind == ViewKind::Transactional {
 					let mut additional_sources = Vec::new();
 					if let Some(view_flow) = self.catalog.find_flow_by_name(
-						&mut Transaction::Command(&mut *txn),
+						&mut txn.reborrow(),
 						view.namespace,
 						&view.name,
 					)? {
-						let flow_nodes = self.catalog.list_flow_nodes_by_flow(
-							&mut Transaction::Command(&mut *txn),
-							view_flow.id,
-						)?;
+						let flow_nodes = self
+							.catalog
+							.list_flow_nodes_by_flow(&mut txn.reborrow(), view_flow.id)?;
 						for flow_node in &flow_nodes {
 							// SourceTable = 1, SourceRingBuffer = 17, SourceSeries = 18
 							if flow_node.node_type == 1
@@ -163,8 +167,7 @@ impl FlowEngine {
 			SourceFlow {
 				flow: source_flow,
 			} => {
-				let source_flow_def =
-					self.catalog.get_flow(&mut Transaction::Command(&mut *txn), source_flow)?;
+				let source_flow_def = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
@@ -176,9 +179,7 @@ impl FlowEngine {
 			SourceRingBuffer {
 				ringbuffer,
 			} => {
-				let rb = self
-					.catalog
-					.get_ringbuffer(&mut Transaction::Command(&mut *txn), ringbuffer)?;
+				let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
 				self.add_source(flow.id, node.id, PrimitiveId::ringbuffer(rb.id));
 				self.operators.insert(
 					node.id,
@@ -190,7 +191,7 @@ impl FlowEngine {
 			SourceSeries {
 				series,
 			} => {
-				let s = self.catalog.get_series(&mut Transaction::Command(&mut *txn), series)?;
+				let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
 				self.add_source(flow.id, node.id, PrimitiveId::series(s.id));
 				self.operators.insert(
 					node.id,
@@ -207,7 +208,7 @@ impl FlowEngine {
 					.clone();
 
 				self.add_sink(flow.id, node.id, PrimitiveId::view(*view));
-				let resolved = self.catalog.resolve_view(&mut Transaction::Command(&mut *txn), view)?;
+				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
@@ -230,9 +231,7 @@ impl FlowEngine {
 
 				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
 				// which uses PrimitiveId (u64-based). Subscriptions are ephemeral 1:1 mapped.
-				let resolved = self
-					.catalog
-					.resolve_subscription(&mut Transaction::Command(&mut *txn), subscription)?;
+				let resolved = self.catalog.resolve_subscription(&mut txn.reborrow(), subscription)?;
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(

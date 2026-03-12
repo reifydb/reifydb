@@ -699,7 +699,10 @@ impl CoordinatorActor {
 					}
 				}
 				if to_version >= consume_ctx.current_version {
-					info!(flow_id = flow_id.0, "backfill complete after empty chunk, flow now active");
+					info!(
+						flow_id = flow_id.0,
+						"backfill complete after empty chunk, flow now active"
+					);
 				}
 				continue;
 			}

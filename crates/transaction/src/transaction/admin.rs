@@ -128,6 +128,53 @@ impl AdminTransaction {
 		self.row_changes.truncate(sp.row_changes_len);
 		self.pending_flow_changes.truncate(sp.flow_changes_len);
 	}
+
+	/// Reset test-only flow bookkeeping so setup statements do not appear as
+	/// in-test mutations when `RUN TESTS` later performs an inline flush.
+	pub fn clear_test_flow_state(&mut self) {
+		self.pending_flow_changes.clear();
+		self.testing = None;
+	}
+
+	/// Execute test-only pre-commit style processing without committing.
+	///
+	/// This is used by testing helpers that need commit-time flow work
+	/// materialized while still staying inside the test savepoint.
+	pub fn capture_testing_pre_commit<F>(&mut self, f: F) -> Result<()>
+	where
+		F: FnOnce(&mut PreCommitContext) -> Result<()>,
+	{
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedValues>)> = self
+			.pending_writes()
+			.iter()
+			.map(|(key, pending)| match &pending.delta {
+				Delta::Set {
+					values,
+					..
+				} => (key.clone(), Some(values.clone())),
+				_ => (key.clone(), None),
+			})
+			.collect();
+
+		let mut ctx = PreCommitContext {
+			flow_changes: take(&mut self.pending_flow_changes),
+			pending_writes: Vec::new(),
+			transaction_writes,
+			testing: self.testing.take().or_else(|| Some(TestingContext::new())),
+		};
+
+		f(&mut ctx)?;
+		self.testing = ctx.testing;
+
+		for (key, value) in &ctx.pending_writes {
+			match value {
+				Some(v) => self.cmd.as_mut().unwrap().set(key, v.clone())?,
+				None => self.cmd.as_mut().unwrap().remove(key)?,
+			}
+		}
+
+		Ok(())
+	}
 }
 
 impl AdminTransaction {

@@ -651,7 +651,7 @@ impl Vm {
 							func_name,
 							&args,
 							&self.testing,
-							&services.catalog,
+							&services.ioc,
 							tx,
 						)?;
 						self.stack.push(Variable::Columns(columns));

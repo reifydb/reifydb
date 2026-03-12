@@ -63,91 +63,86 @@ pub struct TransactionalFlowPreCommitInterceptor {
 
 impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 	fn intercept(&self, ctx: &mut PreCommitContext) -> Result<()> {
-		if ctx.flow_changes.is_empty() {
-			return Ok(());
-		}
-
 		let engine = self.flow_engine.read().unwrap();
-		let execution_order = engine.calculate_execution_order();
-
-		if execution_order.is_empty() {
-			return Ok(());
-		}
-
-		// Stamp all incoming changes with the current read version so that
-		// downstream operators (including FFI round-trips) always see a
-		// non-zero version.
-		let read_version = {
-			let q: MultiReadTransaction = self.engine.multi().begin_query()?;
-			q.version()
-		};
-
-		// Merge per-row changes from the same origin into batched changes
-		// (matching the deferred/CDC path which batches multiple diffs per Change).
-		let mut available_changes: Vec<Change> = merge_changes_by_origin(&ctx.flow_changes, read_version);
-		let mut testing = ctx.testing.take();
-
-		for flow_id in execution_order {
-			// Filter changes relevant to this flow using existing source routing.
-			let relevant: Vec<Change> = available_changes
-				.iter()
-				.filter(|c| flow_is_interested_in(c, flow_id, &engine))
-				.cloned()
-				.collect();
-
-			if relevant.is_empty() {
-				continue;
-			}
-
-			// Create a flow transaction with no version restriction (reads latest committed).
-			let primitive_query: MultiReadTransaction = self.engine.multi().begin_query()?;
-			let state_query: MultiReadTransaction = self.engine.multi().begin_query()?;
-			let interceptors: Interceptors = self.engine.create_interceptors();
-
-			// Seed base_pending from the committing transaction's writes so
-			// flow operators can see uncommitted row data.
-			let mut base_pending = Pending::new();
-			for (key, value) in &ctx.transaction_writes {
-				match value {
-					Some(v) => base_pending.insert(key.clone(), v.clone()),
-					None => base_pending.remove(key.clone()),
-				}
-			}
-
-			let mut flow_txn = FlowTransaction::transactional(
-				read_version,
-				Pending::new(),
-				base_pending,
-				primitive_query,
-				state_query,
-				self.catalog.clone(),
-				interceptors,
-				testing.take(),
-			);
-
-			for change in relevant {
-				engine.process(&mut flow_txn, change, flow_id)?;
-			}
-
-			// Collect view changes emitted by SinkView for downstream flows.
-			available_changes.extend(flow_txn.take_view_changes());
-
-			// Retrieve testing context (with accumulated view mutations) for next flow.
-			testing = flow_txn.take_testing();
-
-			// Merge pending view writes into the commit context.
-			let flow_pending = flow_txn.take_pending();
-			for (key, pw) in flow_pending.iter_sorted() {
-				match pw {
-					PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
-					PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
-				}
-			}
-		}
-
-		ctx.testing = testing;
-		Ok(())
+		execute_inline_flow_changes(&engine, &self.engine, &self.catalog, ctx)
 	}
+}
+
+pub(crate) fn execute_inline_flow_changes(
+	flow_engine: &FlowEngine,
+	engine: &StandardEngine,
+	catalog: &Catalog,
+	ctx: &mut PreCommitContext,
+) -> Result<()> {
+	if ctx.flow_changes.is_empty() {
+		return Ok(());
+	}
+
+	let execution_order = flow_engine.calculate_execution_order();
+	if execution_order.is_empty() {
+		return Ok(());
+	}
+
+	let read_version = {
+		let q: MultiReadTransaction = engine.multi().begin_query()?;
+		q.version()
+	};
+
+	let mut available_changes: Vec<Change> = merge_changes_by_origin(&ctx.flow_changes, read_version);
+	let mut testing = ctx.testing.take();
+
+	for flow_id in execution_order {
+		let relevant: Vec<Change> = available_changes
+			.iter()
+			.filter(|c| flow_is_interested_in(c, flow_id, flow_engine))
+			.cloned()
+			.collect();
+
+		if relevant.is_empty() {
+			continue;
+		}
+
+		let primitive_query: MultiReadTransaction = engine.multi().begin_query()?;
+		let state_query: MultiReadTransaction = engine.multi().begin_query()?;
+		let interceptors: Interceptors = engine.create_interceptors();
+
+		let mut base_pending = Pending::new();
+		for (key, value) in &ctx.transaction_writes {
+			match value {
+				Some(v) => base_pending.insert(key.clone(), v.clone()),
+				None => base_pending.remove(key.clone()),
+			}
+		}
+
+		let mut flow_txn = FlowTransaction::transactional(
+			read_version,
+			Pending::new(),
+			base_pending,
+			primitive_query,
+			state_query,
+			catalog.clone(),
+			interceptors,
+			testing.take(),
+		);
+
+		for change in relevant {
+			flow_engine.process(&mut flow_txn, change, flow_id)?;
+		}
+
+		available_changes.extend(flow_txn.take_view_changes());
+		testing = flow_txn.take_testing();
+
+		let flow_pending = flow_txn.take_pending();
+		for (key, pw) in flow_pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
+				PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
+			}
+		}
+	}
+
+	ctx.testing = testing;
+	Ok(())
 }
 
 /// Merge individual per-row changes into batched changes grouped by origin.

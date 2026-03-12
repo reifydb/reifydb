@@ -77,7 +77,7 @@ impl QueryNode for CallFunctionQueryNode {
 			func_name,
 			&args,
 			&self.context.testing,
-			&self.context.services.catalog,
+			&self.context.services.ioc,
 			rx,
 		)?;
 

@@ -33,7 +33,9 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::Transaction};
+use reifydb_transaction::{
+	interceptor::interceptors::Interceptors, testing::TestingViewMutationCaptor, transaction::Transaction,
+};
 use reifydb_type::Result;
 use tracing::{info, warn};
 
@@ -48,6 +50,7 @@ use crate::{
 		worker::{FlowMsg, FlowWorkerActor},
 	},
 	engine::FlowEngine,
+	testing::ViewInlineTestingMutationCapture,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 		registrar::TransactionalFlowRegistrar,
@@ -258,6 +261,16 @@ impl FlowSubsystem {
 			engine.clone(),
 			flow_catalog.clone(),
 		)));
+
+		ioc.register_service::<Arc<dyn TestingViewMutationCaptor>>(Arc::new(
+			ViewInlineTestingMutationCapture {
+				engine: engine.clone(),
+				catalog: engine.catalog(),
+				event_bus: engine.event_bus().clone(),
+				clock: runtime.clock().clone(),
+				custom_operators: custom_operators.clone(),
+			},
+		));
 
 		let poll_config =
 			PollConsumerConfig::new(consumer_id, "flow-cdc-poll", Duration::from_millis(10), Some(100));

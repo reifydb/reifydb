@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::Catalog;
+use std::sync::Arc;
+
 use reifydb_core::{
 	internal_error,
 	testing::{MutationRecord, TestingContext},
+	util::ioc::IocContainer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{testing::TestingViewMutationCaptor, transaction::Transaction};
 use reifydb_type::value::{Value, r#type::Type};
 
 use crate::Result;
@@ -19,22 +21,46 @@ pub(crate) fn handle_testing_call(
 	func_name: &str,
 	args: &[Value],
 	testing: &Option<TestingContext>,
-	_catalog: &Catalog,
-	_tx: &mut Transaction<'_>,
+	ioc: &IocContainer,
+	tx: &mut Transaction<'_>,
 ) -> Result<Columns> {
-	let ctx = testing
+	let base_ctx = testing
 		.as_ref()
 		.ok_or_else(|| internal_error!("testing::* functions require an active test context"))?;
 
 	match func_name {
-		"testing::events::dispatched" => build_dispatched_events(ctx, args),
-		"testing::handlers::invoked" => build_handler_invocations(ctx, args),
-		"testing::tables::changed" => build_mutations(ctx, args, "tables"),
-		"testing::views::changed" => build_mutations(ctx, args, "views"),
-		"testing::series::changed" => build_mutations(ctx, args, "series"),
-		"testing::ringbuffers::changed" => build_mutations(ctx, args, "ringbuffers"),
-		"testing::dictionaries::changed" => build_mutations(ctx, args, "dictionaries"),
+		"testing::events::dispatched" => build_dispatched_events(base_ctx, args),
+		"testing::handlers::invoked" => build_handler_invocations(base_ctx, args),
+		"testing::tables::changed" => build_mutations(base_ctx, args, "tables"),
+		"testing::views::changed" => {
+			maybe_flush_view_mutations(ioc, tx)?;
+			let view_ctx = active_view_testing_context(base_ctx, tx);
+			build_mutations(view_ctx, args, "views")
+		}
+		"testing::series::changed" => build_mutations(base_ctx, args, "series"),
+		"testing::ringbuffers::changed" => build_mutations(base_ctx, args, "ringbuffers"),
+		"testing::dictionaries::changed" => build_mutations(base_ctx, args, "dictionaries"),
 		_ => Err(internal_error!("Unknown testing function: {}", func_name)),
+	}
+}
+
+fn maybe_flush_view_mutations(ioc: &IocContainer, tx: &mut Transaction<'_>) -> Result<()> {
+	let Ok(flusher) = ioc.resolve::<Arc<dyn TestingViewMutationCaptor>>() else {
+		return Ok(());
+	};
+
+	if let Transaction::Admin(admin) = tx {
+		flusher.capture(admin)?;
+	}
+
+	Ok(())
+}
+
+fn active_view_testing_context<'a>(base: &'a TestingContext, tx: &'a Transaction<'_>) -> &'a TestingContext {
+	match tx {
+		Transaction::Admin(admin) => admin.testing.as_ref().unwrap_or(base),
+		Transaction::Command(cmd) => cmd.testing.as_ref().unwrap_or(base),
+		Transaction::Query(_) => base,
 	}
 }
 

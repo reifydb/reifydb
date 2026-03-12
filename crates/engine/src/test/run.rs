@@ -178,6 +178,7 @@ pub(crate) fn run_tests(
 				if let Some(ctx) = vm.testing.as_mut() {
 					ctx.clear();
 				}
+				txn.clear_test_flow_state();
 				let start = Instant::now();
 				let savepoint = txn.savepoint();
 				let (outcome, message) = run_single(
@@ -230,6 +231,7 @@ pub(crate) fn run_tests(
 					if let Some(ctx) = vm.testing.as_mut() {
 						ctx.clear();
 					}
+					txn.clear_test_flow_state();
 					let start = Instant::now();
 					let savepoint = txn.savepoint();
 					let (outcome, message) = run_single(

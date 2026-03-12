@@ -6,6 +6,8 @@ use std::path::Path;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_type::{params::Params, value::Value};
 
+#[cfg(feature = "sub_flow")]
+use crate::WithSubsystem;
 use crate::embedded;
 
 /// Run a `.test.rql` file as plain RQL against a fresh in-memory database.
@@ -23,10 +25,10 @@ pub fn run_test_file(path: impl AsRef<Path>) -> Result<(), String> {
 pub fn run_test_str(content: &str) -> Result<(), String> {
 	let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
 
-	let mut db = embedded::memory()
-		.with_runtime(runtime)
-		.build()
-		.map_err(|e| format!("failed to create database: {}", e))?;
+	let builder = embedded::memory().with_runtime(runtime);
+	#[cfg(feature = "sub_flow")]
+	let builder = builder.with_flow(|flow| flow);
+	let mut db = builder.build().map_err(|e| format!("failed to create database: {}", e))?;
 
 	db.start().map_err(|e| format!("failed to start database: {}", e))?;
 
