@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-import type { Executor, ExecutionResult } from '../types';
+import type { Executor, ExecutionResult, Diagnostic } from '../types';
 
 export interface WasmDB {
   admin(rql: string): Promise<unknown> | unknown;
@@ -33,9 +33,24 @@ export class WasmExecutor implements Executor {
       };
     } catch (error) {
       const executionTime = Math.round(performance.now() - startTime);
+      let diagnostic: Diagnostic | undefined;
+      if (error && typeof error === 'object' && 'code' in error) {
+        const e = error as Record<string, unknown>;
+        diagnostic = {
+          code: String(e.code),
+          message: String(e.message ?? ''),
+          statement: e.statement as string | undefined,
+          fragment: e.fragment as Diagnostic['fragment'],
+          label: e.label as string | undefined,
+          help: e.help as string | undefined,
+          notes: Array.isArray(e.notes) ? e.notes.map(String) : [],
+          cause: e.cause as Diagnostic | undefined,
+        };
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
+        diagnostic,
         executionTime,
       };
     }

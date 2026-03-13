@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-import type { Executor, ExecutionResult } from '../types';
+import type { Executor, ExecutionResult, Diagnostic } from '../types';
+import { ReifyError } from '@reifydb/core';
 
 export interface WsClient {
   admin<const S extends readonly unknown[]>(
@@ -9,6 +10,36 @@ export interface WsClient {
     params: unknown,
     schemas: S
   ): Promise<unknown[][]>;
+}
+
+function normalizeFragment(raw: unknown): Diagnostic['fragment'] {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  if ('Statement' in obj && obj.Statement && typeof obj.Statement === 'object') {
+    const s = obj.Statement as Record<string, unknown>;
+    return { text: String(s.text ?? ''), line: s.line as number, column: s.column as number };
+  }
+  if ('Internal' in obj && obj.Internal && typeof obj.Internal === 'object') {
+    const s = obj.Internal as Record<string, unknown>;
+    return { text: String(s.text ?? '') };
+  }
+  if ('text' in obj) {
+    return { text: String(obj.text), line: obj.line as number | undefined, column: obj.column as number | undefined };
+  }
+  return undefined;
+}
+
+function toDiagnostic(error: ReifyError): Diagnostic {
+  return {
+    code: error.code,
+    statement: error.statement,
+    message: error.message.replace(/^\[.*?\]\s*/, ''),
+    fragment: normalizeFragment(error.fragment),
+    label: error.label,
+    help: error.help,
+    notes: error.notes,
+    cause: error.cause,
+  };
 }
 
 export class WsExecutor implements Executor {
@@ -46,15 +77,10 @@ export class WsExecutor implements Executor {
       return { success: true, data, executionTime };
     } catch (error) {
       const executionTime = Math.round(performance.now() - startTime);
-      let errorMessage: string;
-      if (error && typeof error === 'object' && 'diagnostic' in error) {
-        const diagnostic = (error as { diagnostic: { message: string } }).diagnostic;
-        errorMessage = diagnostic.message;
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
-      } else {
-        errorMessage = String(error);
+      if (error instanceof ReifyError) {
+        return { success: false, error: error.message, diagnostic: toDiagnostic(error), executionTime };
       }
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return { success: false, error: errorMessage, executionTime };
     }
   }

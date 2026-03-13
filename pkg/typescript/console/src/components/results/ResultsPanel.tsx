@@ -21,7 +21,7 @@ export function ResultsPanel({ result }: ResultsPanelProps) {
   }
 
   if (!result.success && result.error) {
-    return <ResultsError message={result.error} />;
+    return <ResultsError message={result.error} diagnostic={result.diagnostic} />;
   }
 
   const data = result.data ?? [];

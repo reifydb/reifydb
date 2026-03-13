@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+import type { Diagnostic } from '@reifydb/core';
+
+export type { Diagnostic };
+
 export interface ExecutionResult {
   success: boolean;
   data?: Record<string, unknown>[];
   error?: string;
+  diagnostic?: Diagnostic;
   executionTime: number;
 }
 
