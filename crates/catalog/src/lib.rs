@@ -11,6 +11,7 @@ use reifydb_core::interface::{
 	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+pub mod bootstrap;
 pub mod catalog;
 pub mod error;
 pub mod materialized;

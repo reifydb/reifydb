@@ -6,9 +6,12 @@ use std::{path::PathBuf, sync::Arc};
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
 	CatalogVersion,
-	catalog::{Catalog, namespace::NamespaceToCreate, procedure::ProcedureToCreate},
-	materialized::{MaterializedCatalog, load::MaterializedCatalogLoader},
-	schema::{SchemaRegistry, load::SchemaRegistryLoader},
+	bootstrap::{
+		bootstrap_config_defaults, bootstrap_system_procedures, load_materialized_catalog, load_schema_registry,
+	},
+	catalog::Catalog,
+	materialized::MaterializedCatalog,
+	schema::SchemaRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -24,13 +27,7 @@ use reifydb_core::{
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
 		transaction::PostCommitEvent,
 	},
-	interface::{
-		catalog::{
-			id::NamespaceId,
-			procedure::{ProcedureParamDef, ProcedureTrigger},
-		},
-		version::{ComponentType, HasVersion, SystemVersion},
-	},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{
@@ -60,17 +57,9 @@ use reifydb_sub_tracing::builder::TracingBuilder;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
-	TransactionVersion,
-	interceptor::{builder::InterceptorBuilder, interceptors::Interceptors},
-	multi::transaction::MultiTransaction,
+	TransactionVersion, interceptor::builder::InterceptorBuilder, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_type::{
-	fragment::Fragment,
-	value::{constraint::TypeConstraint, r#type::Type},
-};
-use tracing::debug;
 
 use crate::{
 	Migration, database::Database, health::HealthMonitor, subsystem::Subsystems, system::tasks::create_system_tasks,
@@ -262,10 +251,10 @@ impl DatabaseBuilder {
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		Self::load_materialized_catalog(&multi, &single, &catalog)?;
-		Self::bootstrap_config_defaults(&multi, &single, &catalog, &eventbus)?;
-		Self::bootstrap_system_procedures(&multi, &single, &catalog, &schema_registry, &eventbus)?;
-		Self::load_schema_registry(&multi, &single, &schema_registry)?;
+		load_materialized_catalog(&multi, &single, &catalog)?;
+		bootstrap_config_defaults(&multi, &single, &catalog, &eventbus)?;
+		bootstrap_system_procedures(&multi, &single, &catalog, &schema_registry, &eventbus)?;
+		load_schema_registry(&multi, &single, &schema_registry)?;
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
@@ -436,128 +425,5 @@ impl DatabaseBuilder {
 		self.ioc.register(system_catalog);
 
 		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system, self.migrations))
-	}
-
-	/// Bootstrap catalog entries for built-in system procedures.
-	///
-	/// Creates the `system::config` namespace and `system::config::set` procedure in the catalog
-	/// on every startup, since procedures are not persisted to storage.
-	fn bootstrap_system_procedures(
-		multi: &MultiTransaction,
-		single: &SingleTransaction,
-		catalog: &MaterializedCatalog,
-		schema_registry: &SchemaRegistry,
-		eventbus: &EventBus,
-	) -> crate::Result<()> {
-		let catalog_api = Catalog::new(catalog.clone(), schema_registry.clone());
-		let mut admin = AdminTransaction::new(
-			multi.clone(),
-			single.clone(),
-			eventbus.clone(),
-			Interceptors::default(),
-		)?;
-
-		// Ensure the system::config sub-namespace exists (persisted to storage).
-		// On first boot it won't exist; on subsequent boots it's already loaded into
-		// MaterializedCatalog by load_namespaces.
-		let ns_id = match catalog_api
-			.find_namespace_by_path(&mut Transaction::Admin(&mut admin), "system::config")?
-		{
-			Some(ns) => ns.id(),
-			None => {
-				let ns = catalog_api.create_namespace(
-					&mut admin,
-					NamespaceToCreate {
-						namespace_fragment: None,
-						name: "system::config".to_string(),
-						local_name: "config".to_string(),
-						parent_id: NamespaceId::SYSTEM,
-						grpc: None,
-					},
-				)?;
-				ns.id()
-			}
-		};
-
-		// Procedures are not persisted to storage, so create the procedure on every startup.
-		// The ID is allocated from the sequence (persistent) but the procedure data itself
-		// lives only in MaterializedCatalog for this session.
-		let proc_def = catalog_api.create_procedure(
-			&mut admin,
-			ProcedureToCreate {
-				name: Fragment::internal("set"),
-				namespace: ns_id,
-				params: vec![
-					ProcedureParamDef {
-						name: "key".to_string(),
-						param_type: TypeConstraint::unconstrained(Type::Utf8),
-					},
-					ProcedureParamDef {
-						name: "value".to_string(),
-						param_type: TypeConstraint::unconstrained(Type::Utf8),
-					},
-				],
-				return_type: None,
-				body: String::new(),
-				trigger: ProcedureTrigger::NativeCall {
-					native_name: "system::config::set".to_string(),
-				},
-				is_test: false,
-			},
-		)?;
-
-		let commit_version = admin.commit()?;
-
-		// Procedures are not loaded from storage at startup, so update MaterializedCatalog
-		// directly so this procedure is visible to CALL statements in the current session.
-		catalog.set_procedure(proc_def.id, commit_version, Some(proc_def));
-
-		Ok(())
-	}
-
-	/// Write any registered config defaults to storage for keys not yet stored (first-start only).
-	fn bootstrap_config_defaults(
-		multi: &MultiTransaction,
-		single: &SingleTransaction,
-		catalog: &MaterializedCatalog,
-		eventbus: &EventBus,
-	) -> crate::Result<()> {
-		let mut admin = AdminTransaction::new(
-			multi.clone(),
-			single.clone(),
-			eventbus.clone(),
-			Interceptors::default(),
-		)?;
-		MaterializedCatalogLoader::bootstrap_missing_defaults(&mut admin, catalog)?;
-		admin.commit()?;
-		Ok(())
-	}
-
-	/// Load the materialized catalog from storage
-	fn load_materialized_catalog(
-		multi: &MultiTransaction,
-		single: &SingleTransaction,
-		catalog: &MaterializedCatalog,
-	) -> crate::Result<()> {
-		let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
-
-		debug!("Loading materialized catalog");
-		MaterializedCatalogLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
-
-		Ok(())
-	}
-
-	/// Load the schema registry from storage
-	fn load_schema_registry(
-		multi: &MultiTransaction,
-		single: &SingleTransaction,
-		registry: &SchemaRegistry,
-	) -> crate::Result<()> {
-		let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
-
-		debug!("Loading schema registry");
-		SchemaRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
-
-		Ok(())
 	}
 }

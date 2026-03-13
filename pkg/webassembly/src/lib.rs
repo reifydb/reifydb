@@ -8,34 +8,63 @@
 
 use std::collections::HashMap;
 
-use reifydb_catalog::schema::SchemaRegistry;
-use reifydb_engine::{engine::StandardEngine, procedure::registry::Procedures};
-use wasm_bindgen::prelude::*;
-
-// Debug helper to log to browser console
-fn console_log(msg: &str) {
-	web_sys::console::log_1(&msg.into());
-}
+use reifydb_auth::AuthVersion;
+use reifydb_catalog::{
+	CatalogVersion,
+	bootstrap::{
+		bootstrap_config_defaults, bootstrap_system_procedures, load_materialized_catalog, load_schema_registry,
+	},
+	catalog::Catalog,
+	materialized::MaterializedCatalog,
+	schema::SchemaRegistry,
+	system::SystemCatalog,
+};
 use reifydb_cdc::{
+	CdcVersion,
 	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
 };
-use reifydb_core::event::transaction::PostCommitEvent;
-use reifydb_store_multi::MultiStore;
-use reifydb_store_single::SingleStore;
+use reifydb_core::{
+	CoreVersion,
+	config::SystemConfig,
+	event::{EventBus, transaction::PostCommitEvent},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+	util::ioc::IocContainer,
+};
+use reifydb_engine::{
+	EngineVersion,
+	engine::StandardEngine,
+	procedure::{registry::Procedures, system::set_config::SetConfigProcedure},
+};
+use reifydb_function::registry::Functions;
+use reifydb_rql::RqlVersion;
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_store_multi::{
+	MultiStore, MultiStoreVersion,
+	config::{HotConfig, MultiStoreConfig},
+	hot::storage::HotStorage,
+};
+use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowBuilderConfig, subsystem::FlowSubsystem};
+use reifydb_transaction::{
+	TransactionVersion,
+	interceptor::factory::InterceptorFactory,
+	multi::transaction::{MultiTransaction, register_oracle_defaults},
+	single::SingleTransaction,
+};
 use reifydb_type::{params::Params, value::identity::IdentityId};
+use wasm_bindgen::prelude::*;
 
 mod error;
 mod utils;
 
 pub use error::JsError;
-use reifydb_function::registry::Functions;
-use reifydb_store_multi::{
-	config::{HotConfig, MultiStoreConfig},
-	hot::storage::HotStorage,
-};
+
+// Debug helper to log to browser console
+fn console_log(msg: &str) {
+	web_sys::console::log_1(&msg.into());
+}
 
 /// WebAssembly ReifyDB Engine
 ///
@@ -61,15 +90,6 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Result<WasmDB, JsValue> {
-		use reifydb_catalog::{catalog::Catalog, materialized::MaterializedCatalog};
-		use reifydb_core::{config::SystemConfig, event::EventBus, util::ioc::IocContainer};
-		use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
-		use reifydb_transaction::{
-			interceptor::factory::InterceptorFactory,
-			multi::transaction::{MultiTransaction, register_oracle_defaults},
-			single::SingleTransaction,
-		};
-
 		// Set panic hook for better error messages in browser console
 
 		#[cfg(feature = "console_error_panic_hook")]
@@ -131,17 +151,33 @@ impl WasmDB {
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
-		// Build engine first — CDC producer needs it as CdcHost for schema registry access
+		// Create SchemaRegistry for bootstrap
+		let schema_registry = SchemaRegistry::new(single.clone());
+
+		// Run shared bootstrap: load catalog, config defaults, system procedures, schemas
+		load_materialized_catalog(&multi, &single, &materialized_catalog)
+			.map_err(|e| JsError::from_error(&e))?;
+		bootstrap_config_defaults(&multi, &single, &materialized_catalog, &eventbus)
+			.map_err(|e| JsError::from_error(&e))?;
+		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &schema_registry, &eventbus)
+			.map_err(|e| JsError::from_error(&e))?;
+		load_schema_registry(&multi, &single, &schema_registry).map_err(|e| JsError::from_error(&e))?;
+
+		// Build procedures with system::config::set native procedure
+		let procedures =
+			Procedures::builder().with_procedure("system::config::set", SetConfigProcedure::new).build();
+
+		// Build engine with bootstrap-initialized catalog
 		let eventbus_clone = eventbus.clone();
 		let inner = StandardEngine::new(
 			multi,
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog, SchemaRegistry::new(single)),
+			Catalog::new(materialized_catalog, schema_registry),
 			runtime.clock().clone(),
 			Functions::defaults().build(),
-			Procedures::empty(),
+			procedures,
 			reifydb_engine::transform::registry::Transforms::empty(),
 			ioc,
 			#[cfg(not(target_arch = "wasm32"))]
@@ -175,6 +211,27 @@ impl WasmDB {
 		console_log("[WASM] Starting FlowSubsystem...");
 		flow_subsystem.start().map_err(|e| JsError::from_error(&e))?;
 		console_log("[WASM] FlowSubsystem started successfully!");
+
+		// Collect all versions and register SystemCatalog
+		let mut all_versions = Vec::new();
+		all_versions.push(SystemVersion {
+			name: "reifydb-webassembly".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "ReifyDB WebAssembly Engine".to_string(),
+			r#type: ComponentType::Package,
+		});
+		all_versions.push(CoreVersion.version());
+		all_versions.push(EngineVersion.version());
+		all_versions.push(CatalogVersion.version());
+		all_versions.push(MultiStoreVersion.version());
+		all_versions.push(SingleStoreVersion.version());
+		all_versions.push(TransactionVersion.version());
+		all_versions.push(AuthVersion.version());
+		all_versions.push(RqlVersion.version());
+		all_versions.push(CdcVersion.version());
+		all_versions.push(flow_subsystem.version());
+
+		ioc_ref.register_service(SystemCatalog::new(all_versions));
 
 		Ok(WasmDB {
 			inner,

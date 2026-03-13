@@ -2422,6 +2422,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-function",
+ "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",

@@ -29,6 +29,7 @@ reifydb-transaction = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sub-flow = { workspace = true }
 reifydb-cdc = { workspace = true }
+reifydb-rql = { workspace = true }
 reifydb-sub-api = { workspace = true }
 
 wasm-bindgen = { workspace = true }
