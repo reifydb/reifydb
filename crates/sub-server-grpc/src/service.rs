@@ -13,7 +13,10 @@ use reifydb_sub_server::{
 };
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{params::Params, value::identity::IdentityId};
-use tokio::{select, spawn, sync::mpsc};
+use tokio::{
+	select, spawn,
+	sync::{mpsc, watch},
+};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use tracing::{debug, info, warn};
@@ -33,14 +36,21 @@ pub struct ReifyDbService {
 	state: AppState,
 	registry: Arc<GrpcSubscriptionRegistry>,
 	poller: Arc<SubscriptionPoller>,
+	shutdown_rx: watch::Receiver<bool>,
 }
 
 impl ReifyDbService {
-	pub fn new(state: AppState, registry: Arc<GrpcSubscriptionRegistry>, poller: Arc<SubscriptionPoller>) -> Self {
+	pub fn new(
+		state: AppState,
+		registry: Arc<GrpcSubscriptionRegistry>,
+		poller: Arc<SubscriptionPoller>,
+		shutdown_rx: watch::Receiver<bool>,
+	) -> Self {
 		Self {
 			state,
 			registry,
 			poller,
+			shutdown_rx,
 		}
 	}
 
@@ -89,32 +99,43 @@ impl ReifyDbService {
 
 		info!("gRPC subscription created: {}", subscription_id);
 
-		// Spawn cleanup task that monitors when the receiver is dropped
+		// Spawn cleanup task that monitors when the receiver is dropped or shutdown is signaled
 		let registry = self.registry.clone();
 		let poller = self.poller.clone();
 		let engine = self.state.engine_clone();
 		let system = self.state.actor_system();
+		let mut shutdown_rx = self.shutdown_rx.clone();
 		spawn(async move {
-			tx.closed().await;
+			let client_disconnected = select! {
+				_ = tx.closed() => true,
+				_ = shutdown_rx.changed() => { drop(tx); false }
+			};
 
-			debug!("gRPC subscription {} stream closed, cleaning up", subscription_id);
+			debug!(
+				"gRPC subscription {} stream closed, cleaning up (client_disconnected={})",
+				subscription_id, client_disconnected
+			);
 
 			poller.unregister(&subscription_id);
 			registry.unregister(&subscription_id);
 
-			let engine_clone = engine.clone();
-			let result =
-				system.compute(move || cleanup_subscription_sync(&engine_clone, subscription_id)).await;
-			match result {
-				Ok(Ok(())) => debug!("Cleaned up gRPC subscription {}", subscription_id),
-				Ok(Err(e)) => warn!(
-					"Failed to cleanup subscription {} from database: {:?}",
-					subscription_id, e
-				),
-				Err(e) => warn!(
-					"Compute pool error cleaning up subscription {}: {:?}",
-					subscription_id, e
-				),
+			// Only run database cleanup on client disconnect, not server shutdown
+			if client_disconnected {
+				let engine_clone = engine.clone();
+				let result = system
+					.compute(move || cleanup_subscription_sync(&engine_clone, subscription_id))
+					.await;
+				match result {
+					Ok(Ok(())) => debug!("Cleaned up gRPC subscription {}", subscription_id),
+					Ok(Err(e)) => warn!(
+						"Failed to cleanup subscription {} from database: {:?}",
+						subscription_id, e
+					),
+					Err(e) => warn!(
+						"Compute pool error cleaning up subscription {}: {:?}",
+						subscription_id, e
+					),
+				}
 			}
 		});
 
@@ -146,8 +167,9 @@ impl ReifyDbService {
 		tx.send(Ok(subscribed_event)).await.map_err(|_| Status::internal("channel closed"))?;
 
 		// Spawn proxy: remote stream → local channel
+		let shutdown_rx = self.shutdown_rx.clone();
 		spawn(async move {
-			proxy_remote_subscription(remote_sub, tx).await;
+			proxy_remote_subscription(remote_sub, tx, shutdown_rx).await;
 		});
 
 		Ok(Response::new(ReceiverStream::new(rx)))
@@ -157,6 +179,7 @@ impl ReifyDbService {
 async fn proxy_remote_subscription(
 	mut remote_sub: GrpcSubscription,
 	tx: mpsc::Sender<Result<SubscriptionEvent, Status>>,
+	mut shutdown_rx: watch::Receiver<bool>,
 ) {
 	loop {
 		select! {
@@ -174,6 +197,7 @@ async fn proxy_remote_subscription(
 				}
 			}
 			_ = tx.closed() => break,
+			_ = shutdown_rx.changed() => break,
 		}
 	}
 }

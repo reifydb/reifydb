@@ -42,6 +42,8 @@ pub struct GrpcSubsystem {
 	runtime: SharedRuntime,
 	poll_interval: Duration,
 	poll_batch_size: usize,
+	registry: Option<Arc<GrpcSubscriptionRegistry>>,
+	subscription_shutdown_tx: Option<watch::Sender<bool>>,
 }
 
 impl GrpcSubsystem {
@@ -62,6 +64,8 @@ impl GrpcSubsystem {
 			runtime,
 			poll_interval,
 			poll_batch_size,
+			registry: None,
+			subscription_shutdown_tx: None,
 		}
 	}
 
@@ -134,6 +138,11 @@ impl Subsystem for GrpcSubsystem {
 		let registry = Arc::new(GrpcSubscriptionRegistry::new());
 		let poller = Arc::new(SubscriptionPoller::new(self.poll_batch_size));
 
+		// Create shutdown signal for subscription tasks
+		let (sub_shutdown_tx, sub_shutdown_rx) = watch::channel(false);
+		self.subscription_shutdown_tx = Some(sub_shutdown_tx);
+		self.registry = Some(registry.clone());
+
 		// Spawn the subscription poller task
 		let poller_clone = poller.clone();
 		let poller_state = state.clone();
@@ -155,7 +164,7 @@ impl Subsystem for GrpcSubsystem {
 		runtime.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 
-			let service = ReifyDbService::new(state, registry, poller);
+			let service = ReifyDbService::new(state, registry, poller, sub_shutdown_rx);
 			let incoming = TcpListenerStream::new(listener);
 
 			let result = Server::builder()
@@ -184,6 +193,15 @@ impl Subsystem for GrpcSubsystem {
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
+		// Close all local subscription channels
+		if let Some(registry) = self.registry.take() {
+			registry.close_all();
+		}
+		// Signal proxy tasks and cleanup tasks to exit
+		if let Some(tx) = self.subscription_shutdown_tx.take() {
+			let _ = tx.send(true);
+		}
+		// Then signal tonic
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}

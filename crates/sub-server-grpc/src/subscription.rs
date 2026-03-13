@@ -34,6 +34,10 @@ impl GrpcSubscriptionRegistry {
 		self.subscriptions.remove(subscription_id);
 		debug!("Unregistered gRPC subscription {}", subscription_id);
 	}
+
+	pub fn close_all(&self) {
+		self.subscriptions.clear();
+	}
 }
 
 impl SubscriptionDelivery for GrpcSubscriptionRegistry {
