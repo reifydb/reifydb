@@ -65,6 +65,7 @@ pub mod tests {
 					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 				}],
+				storage: crate::store::view::create::ViewStorageConfig::default(),
 			},
 		)
 		.unwrap();

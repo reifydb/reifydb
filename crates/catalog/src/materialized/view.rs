@@ -73,8 +73,8 @@ pub mod tests {
 		config::SystemConfig,
 		interface::catalog::{
 			column::{ColumnDef, ColumnIndex},
-			id::ColumnId,
-			view::ViewKind,
+			id::{ColumnId, TableId},
+			view::{TableViewDef, ViewKind},
 		},
 	};
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
@@ -82,7 +82,7 @@ pub mod tests {
 	use super::*;
 
 	fn create_test_view(id: ViewId, namespace: NamespaceId, name: &str) -> ViewDef {
-		ViewDef {
+		ViewDef::Table(TableViewDef {
 			id,
 			namespace,
 			name: name.to_string(),
@@ -108,7 +108,8 @@ pub mod tests {
 				},
 			],
 			primary_key: None,
-		}
+			underlying: TableId(0),
+		})
 	}
 
 	#[test]
@@ -173,7 +174,7 @@ pub mod tests {
 
 		// Rename the view
 		let mut view_v2 = view_v1.clone();
-		view_v2.name = "new_name".to_string();
+		view_v2.set_name("new_name".to_string());
 		catalog.set_view(view_id, CommitVersion(2), Some(view_v2.clone()));
 
 		// Old name should be gone
@@ -209,7 +210,7 @@ pub mod tests {
 
 		// Move to namespace2
 		let mut view_v2 = view_v1.clone();
-		view_v2.namespace = namespace2;
+		view_v2.set_namespace(namespace2);
 		catalog.set_view(view_id, CommitVersion(2), Some(view_v2.clone()));
 
 		// Should no longer be in namespace1
@@ -273,9 +274,9 @@ pub mod tests {
 		// Create multiple versions
 		let view_v1 = create_test_view(view_id, namespace_id, "view_v1");
 		let mut view_v2 = view_v1.clone();
-		view_v2.name = "view_v2".to_string();
+		view_v2.set_name("view_v2".to_string());
 		let mut view_v3 = view_v2.clone();
-		view_v3.name = "view_v3".to_string();
+		view_v3.set_name("view_v3".to_string());
 
 		// Set at different versions
 		catalog.set_view(view_id, CommitVersion(10), Some(view_v1.clone()));
@@ -304,7 +305,7 @@ pub mod tests {
 		// Create multiple versions
 		let view_v1 = create_test_view(view_id, namespace_id, "view_v1");
 		let mut view_v2 = view_v1.clone();
-		view_v2.name = "view_v2".to_string();
+		view_v2.set_name("view_v2".to_string());
 
 		catalog.set_view(view_id, CommitVersion(10), Some(view_v1));
 		catalog.set_view(view_id, CommitVersion(20), Some(view_v2.clone()));
@@ -341,7 +342,7 @@ pub mod tests {
 		// Create view
 		let view_v1 = create_test_view(view_id, namespace_id, "test_view");
 		let mut view_v2 = view_v1.clone();
-		view_v2.name = "renamed_view".to_string();
+		view_v2.set_name("renamed_view".to_string());
 
 		catalog.set_view(view_id, CommitVersion(10), Some(view_v1));
 		catalog.set_view(view_id, CommitVersion(20), Some(view_v2.clone()));

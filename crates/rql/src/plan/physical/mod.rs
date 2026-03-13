@@ -40,7 +40,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	ast::ast::{AstAlterPolicyAction, AstPolicyScope},
+	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
 	bump::{Bump, BumpBox, FragmentInterner},
 	error::RqlError,
 	expression::{
@@ -189,6 +189,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
 }
 
 #[derive(Debug)]
@@ -198,6 +199,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
 }
 
 #[derive(Debug)]

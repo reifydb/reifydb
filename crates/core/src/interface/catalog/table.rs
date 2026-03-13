@@ -17,3 +17,9 @@ pub struct TableDef {
 	pub columns: Vec<ColumnDef>,
 	pub primary_key: Option<PrimaryKeyDef>,
 }
+
+impl TableDef {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+}

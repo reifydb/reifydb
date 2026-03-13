@@ -59,7 +59,7 @@ impl ViewScanNode {
 			internal_error!(
 				"Schema with fingerprint {:?} not found for view {}",
 				fingerprint,
-				self.view.def().name
+				self.view.def().name()
 			)
 		})?;
 
@@ -86,7 +86,7 @@ impl QueryNode for ViewScanNode {
 		}
 
 		let batch_size = stored_ctx.batch_size;
-		let range = RowKeyRange::scan_range(self.view.def().id.into(), self.last_key.as_ref());
+		let range = RowKeyRange::scan_range(self.view.def().underlying_id(), self.last_key.as_ref());
 
 		let mut batch_rows = Vec::new();
 		let mut row_numbers = Vec::new();

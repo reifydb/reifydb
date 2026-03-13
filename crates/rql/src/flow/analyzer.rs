@@ -143,10 +143,22 @@ impl FlowGraphAnalyzer {
 
 		for node_id in flow.get_node_ids() {
 			if let Some(node) = flow.get_node(&node_id) {
-				if let FlowNodeType::SinkView {
-					view,
-				} = &node.ty
-				{
+				let view = match &node.ty {
+					FlowNodeType::SinkTableView {
+						view,
+						..
+					}
+					| FlowNodeType::SinkRingBufferView {
+						view,
+						..
+					}
+					| FlowNodeType::SinkSeriesView {
+						view,
+						..
+					} => Some(view),
+					_ => None,
+				};
+				if let Some(view) = view {
 					sinks.push(SinkReference::View(*view));
 				}
 			}
@@ -350,7 +362,7 @@ impl Default for FlowGraphAnalyzer {
 
 #[cfg(test)]
 pub mod tests {
-	use FlowNodeType::{Filter, SinkView, SourceTable, SourceView};
+	use FlowNodeType::{Filter, SinkTableView, SourceTable, SourceView};
 	use reifydb_core::{
 		common::JoinType,
 		interface::catalog::{
@@ -386,8 +398,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -414,8 +427,9 @@ pub mod tests {
 				Filter {
 					conditions: vec![],
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(400),
+					table: TableId(0),
 				},
 			],
 		);
@@ -448,11 +462,13 @@ pub mod tests {
 					right: vec![],
 					alias: None,
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(700),
+					table: TableId(0),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(800),
+					table: TableId(0),
 				},
 			],
 		);
@@ -501,11 +517,13 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -527,8 +545,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -539,8 +558,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(200),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -573,8 +593,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -585,8 +606,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(101),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(201),
+					table: TableId(0),
 				},
 			],
 		);
@@ -600,8 +622,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(201),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -635,8 +658,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(100),
+					table: TableId(0),
 				},
 			],
 		);
@@ -658,8 +682,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -670,8 +695,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(201),
+					table: TableId(0),
 				},
 			],
 		);
@@ -682,8 +708,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(101),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(202),
+					table: TableId(0),
 				},
 			],
 		);
@@ -713,8 +740,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -725,8 +753,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(200),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -737,8 +766,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(300),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(400),
+					table: TableId(0),
 				},
 			],
 		);
@@ -766,8 +796,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -778,8 +809,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(101),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(201),
+					table: TableId(0),
 				},
 			],
 		);

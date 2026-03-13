@@ -8,6 +8,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
+		series::TimestampPrecision,
 	},
 	sort::SortKey,
 };
@@ -69,8 +70,21 @@ pub enum FlowNodeType {
 		operator: String,
 		expressions: Vec<Expression>,
 	},
-	SinkView {
+	SinkTableView {
 		view: ViewId,
+		table: TableId,
+	},
+	SinkRingBufferView {
+		view: ViewId,
+		ringbuffer: RingBufferId,
+		capacity: u64,
+		propagate_evictions: bool,
+	},
+	SinkSeriesView {
+		view: ViewId,
+		series: SeriesId,
+		timestamp_column: Option<String>,
+		precision: TimestampPrecision,
 	},
 	SinkSubscription {
 		subscription: SubscriptionId,
@@ -137,9 +151,15 @@ impl FlowNodeType {
 			FlowNodeType::Apply {
 				..
 			} => 13,
-			FlowNodeType::SinkView {
+			FlowNodeType::SinkTableView {
 				..
-			} => 14,
+			} => 20,
+			FlowNodeType::SinkRingBufferView {
+				..
+			} => 21,
+			FlowNodeType::SinkSeriesView {
+				..
+			} => 22,
 			FlowNodeType::SinkSubscription {
 				..
 			} => 15,

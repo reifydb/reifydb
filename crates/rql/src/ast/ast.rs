@@ -959,11 +959,32 @@ pub struct AstSubQuery<'bump> {
 }
 
 #[derive(Debug)]
+pub enum AstViewStorageKind {
+	Table,
+	RingBuffer {
+		capacity: u64,
+		propagate_evictions: Option<bool>,
+	},
+	Series {
+		timestamp_column: Option<String>,
+		precision: Option<AstTimestampPrecision>,
+	},
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AstTimestampPrecision {
+	Millisecond,
+	Microsecond,
+	Nanosecond,
+}
+
+#[derive(Debug)]
 pub struct AstCreateDeferredView<'bump> {
 	pub token: Token<'bump>,
 	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
+	pub storage_kind: AstViewStorageKind,
 }
 
 #[derive(Debug)]
@@ -972,6 +993,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
+	pub storage_kind: AstViewStorageKind,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1003,13 +1025,6 @@ pub struct AstCreateSeries<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum AstTimestampPrecision {
-	Millisecond,
-	Microsecond,
-	Nanosecond,
 }
 
 #[derive(Debug)]

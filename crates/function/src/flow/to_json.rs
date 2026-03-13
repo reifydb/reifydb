@@ -193,8 +193,17 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				operator: operator.clone(),
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::SinkView {
+			FlowNodeType::SinkTableView {
 				view,
+				..
+			}
+			| FlowNodeType::SinkRingBufferView {
+				view,
+				..
+			}
+			| FlowNodeType::SinkSeriesView {
+				view,
+				..
 			} => JsonFlowNodeType::SinkView {
 				view: view.0,
 			},

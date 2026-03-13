@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod ringbuffer_view;
+pub mod series_view;
 pub mod subscription;
 pub mod view;
 
@@ -37,7 +39,7 @@ use reifydb_type::{
 use crate::transaction::FlowTransaction;
 // All types are accessed directly from their submodules:
 // - crate::operator::sink::subscription::SinkSubscriptionOperator
-// - crate::operator::sink::view::SinkViewOperator
+// - crate::operator::sink::view::SinkTableViewOperator
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);

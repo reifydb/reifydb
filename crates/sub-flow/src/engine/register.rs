@@ -17,9 +17,9 @@ use reifydb_rql::flow::{
 	node::{
 		FlowNode,
 		FlowNodeType::{
-			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkSubscription,
-			SinkView, Sort, SourceFlow, SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable,
-			SourceView, Take, Window,
+			self, Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map, SinkRingBufferView,
+			SinkSeriesView, SinkSubscription, SinkTableView, Sort, SourceFlow, SourceInlineData,
+			SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take, Window,
 		},
 	},
 };
@@ -45,7 +45,10 @@ use crate::{
 			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
 			series::PrimitiveSeriesOperator, table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 		},
-		sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator},
+		sink::{
+			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
+			subscription::SinkSubscriptionOperator, view::SinkTableViewOperator,
+		},
 		sort::SortOperator,
 		take::TakeOperator,
 		window::WindowOperator,
@@ -100,6 +103,13 @@ impl FlowEngine {
 			} => {
 				let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
 				self.add_source(flow.id, node.id, PrimitiveId::view(view.id()));
+
+				// For deferred views, also register the underlying primitive as a source.
+				// Deferred view sinks write to the underlying primitive's key space,
+				// so CDC from upstream deferred view commits uses the underlying PrimitiveId.
+				if view.kind() == ViewKind::Deferred {
+					self.add_source(flow.id, node.id, view.underlying_id());
+				}
 
 				// For transactional views, also register the underlying table/ringbuffer
 				// sources so the deferred coordinator routes changes correctly. A transactional
@@ -198,8 +208,9 @@ impl FlowEngine {
 					Arc::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(node.id, s))),
 				);
 			}
-			SinkView {
+			SinkTableView {
 				view,
+				table,
 			} => {
 				let parent = self
 					.operators
@@ -211,7 +222,59 @@ impl FlowEngine {
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
-					Arc::new(Operators::SinkView(SinkViewOperator::new(parent, node.id, resolved))),
+					Arc::new(Operators::SinkTableView(SinkTableViewOperator::new(
+						parent, node.id, resolved, table,
+					))),
+				);
+			}
+			SinkRingBufferView {
+				view,
+				ringbuffer,
+				capacity,
+				propagate_evictions,
+			} => {
+				let parent = self
+					.operators
+					.get(&node.inputs[0])
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.clone();
+				self.add_sink(flow.id, node.id, PrimitiveId::view(*view));
+				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+				self.operators.insert(
+					node.id,
+					Arc::new(Operators::SinkRingBufferView(SinkRingBufferViewOperator::new(
+						parent,
+						node.id,
+						resolved,
+						ringbuffer,
+						capacity,
+						propagate_evictions,
+					))),
+				);
+			}
+			SinkSeriesView {
+				view,
+				series,
+				timestamp_column,
+				precision,
+			} => {
+				let parent = self
+					.operators
+					.get(&node.inputs[0])
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.clone();
+				self.add_sink(flow.id, node.id, PrimitiveId::view(*view));
+				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+				self.operators.insert(
+					node.id,
+					Arc::new(Operators::SinkSeriesView(SinkSeriesViewOperator::new(
+						parent,
+						node.id,
+						resolved,
+						series,
+						timestamp_column.clone(),
+						precision,
+					))),
 				);
 			}
 			SinkSubscription {

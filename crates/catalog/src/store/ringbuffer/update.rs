@@ -2,14 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferMetadata,
+	encoded::encoded::EncodedValues,
+	interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
 	key::ringbuffer::RingBufferMetadataKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
 
 use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer_metadata};
 
-fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedValues {
+pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedValues {
 	let mut row = ringbuffer_metadata::SCHEMA.allocate();
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
@@ -17,6 +18,16 @@ fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedValues {
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
 	row
+}
+
+pub fn decode_ringbuffer_metadata(row: &EncodedValues) -> RingBufferMetadata {
+	RingBufferMetadata {
+		id: RingBufferId(ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::ID)),
+		capacity: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::CAPACITY),
+		count: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::COUNT),
+		head: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::HEAD),
+		tail: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::TAIL),
+	}
 }
 
 impl CatalogStore {

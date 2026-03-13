@@ -4,7 +4,7 @@
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
-		catalog::{flow::FlowNodeId, primitive::PrimitiveId, view::ViewDef},
+		catalog::{flow::FlowNodeId, view::ViewDef},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -92,7 +92,7 @@ impl Operator for PrimitiveViewOperator {
 		let mut row_numbers = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
-			let key = RowKey::encoded(PrimitiveId::view(self.view.id()), *row_num);
+			let key = RowKey::encoded(self.view.underlying_id(), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				// Decode each column value directly

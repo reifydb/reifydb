@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::view::ViewToCreate;
+use reifydb_catalog::catalog::{
+	ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
+	series::{SeriesColumnToCreate, SeriesToCreate},
+	table::{TableColumnToCreate, TableToCreate},
+	view::{ViewStorageConfig, ViewToCreate},
+};
 use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists, interface::catalog::change::CatalogTrackViewChangeOperations,
 	value::column::columns::Columns,
 };
-use reifydb_rql::nodes::CreateTransactionalViewNode;
+use reifydb_rql::nodes::{CompiledViewStorageKind, CreateTransactionalViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{return_error, value::Value};
+use reifydb_type::{fragment::Fragment, return_error, value::Value};
 
 use super::create_deferred_view_flow;
 use crate::{Result, vm::services::Services};
@@ -34,12 +39,15 @@ pub(crate) fn create_transactional_view(
 		return_error!(view_already_exists(plan.view.clone(), &plan.namespace.name(), view.name(),));
 	}
 
+	let storage = create_underlying_primitive(services, txn, &plan)?;
+
 	let result = services.catalog.create_transactional_view(
 		txn,
 		ViewToCreate {
 			name: plan.view.clone(),
 			namespace: plan.namespace.id(),
 			columns: plan.columns,
+			storage,
 		},
 	)?;
 	txn.track_view_def_created(result.clone())?;
@@ -51,4 +59,113 @@ pub(crate) fn create_transactional_view(
 		("view", Value::Utf8(plan.view.text().to_string())),
 		("created", Value::Boolean(true)),
 	]))
+}
+
+fn create_underlying_primitive(
+	services: &Services,
+	txn: &mut AdminTransaction,
+	plan: &CreateTransactionalViewNode,
+) -> Result<ViewStorageConfig> {
+	let underlying_name = Fragment::internal(format!("__view_{}", plan.view.text()));
+	let namespace = plan.namespace.id();
+
+	match &plan.storage_kind {
+		CompiledViewStorageKind::Table => {
+			let columns: Vec<TableColumnToCreate> = plan
+				.columns
+				.iter()
+				.map(|c| TableColumnToCreate {
+					name: c.name.clone(),
+					fragment: c.fragment.clone(),
+					constraint: c.constraint.clone(),
+					properties: vec![],
+					auto_increment: false,
+					dictionary_id: None,
+				})
+				.collect();
+
+			let table = services.catalog.create_table(
+				txn,
+				TableToCreate {
+					name: underlying_name,
+					namespace,
+					columns,
+					retention_policy: None,
+					primary_key_columns: None,
+				},
+			)?;
+
+			Ok(ViewStorageConfig::Table {
+				underlying: table.id,
+			})
+		}
+		CompiledViewStorageKind::RingBuffer {
+			capacity,
+			propagate_evictions,
+		} => {
+			let columns: Vec<RingBufferColumnToCreate> = plan
+				.columns
+				.iter()
+				.map(|c| RingBufferColumnToCreate {
+					name: c.name.clone(),
+					fragment: c.fragment.clone(),
+					constraint: c.constraint.clone(),
+					properties: vec![],
+					auto_increment: false,
+					dictionary_id: None,
+				})
+				.collect();
+
+			let ringbuffer = services.catalog.create_ringbuffer(
+				txn,
+				RingBufferToCreate {
+					name: underlying_name,
+					namespace,
+					columns,
+					capacity: *capacity,
+				},
+			)?;
+
+			Ok(ViewStorageConfig::RingBuffer {
+				underlying: ringbuffer.id,
+				capacity: *capacity,
+				propagate_evictions: *propagate_evictions,
+			})
+		}
+		CompiledViewStorageKind::Series {
+			timestamp_column,
+			precision,
+		} => {
+			let columns: Vec<SeriesColumnToCreate> = plan
+				.columns
+				.iter()
+				.map(|c| SeriesColumnToCreate {
+					name: c.name.clone(),
+					fragment: c.fragment.clone(),
+					constraint: c.constraint.clone(),
+					properties: vec![],
+					auto_increment: false,
+					dictionary_id: None,
+				})
+				.collect();
+
+			let series = services.catalog.create_series(
+				txn,
+				SeriesToCreate {
+					name: underlying_name,
+					namespace,
+					columns,
+					tag: None,
+					precision: *precision,
+				},
+			)?;
+
+			Ok(ViewStorageConfig::Series {
+				underlying: series.id,
+				timestamp_column: timestamp_column.clone(),
+				precision: *precision,
+				tag: None,
+			})
+		}
+	}
 }

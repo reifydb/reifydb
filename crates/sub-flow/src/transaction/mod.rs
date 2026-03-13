@@ -264,7 +264,7 @@ impl FlowTransaction {
 		}
 	}
 
-	/// Append a view change (used by `SinkViewOperator`).
+	/// Append a view change (used by sink view operators).
 	pub fn push_view_change(&mut self, change: Change) {
 		match self {
 			Self::Deferred {

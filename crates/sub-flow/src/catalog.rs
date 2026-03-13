@@ -9,7 +9,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::catalog::flow::FlowId;
+use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, view::ViewDef};
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
@@ -53,6 +53,11 @@ impl FlowCatalog {
 	/// Remove a flow from the cache so it can be rediscovered as new.
 	pub fn remove(&self, flow_id: FlowId) {
 		self.flows.write().remove(&flow_id);
+	}
+
+	/// Look up a view definition from the materialized catalog (no transaction needed).
+	pub fn find_view(&self, view_id: ViewId) -> Option<ViewDef> {
+		self.catalog.materialized.find_view(view_id)
 	}
 
 	/// Get all registered flow IDs

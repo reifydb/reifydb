@@ -18,6 +18,7 @@ use crate::{
 			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
 			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKeyDef,
 			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariantDef,
+			AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -95,6 +96,16 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
+			// CREATE DEFERRED RINGBUFFER VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
+				self.consume_keyword(View)?;
+				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::RingBuffer);
+			}
+			// CREATE DEFERRED SERIES VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
+				self.consume_keyword(View)?;
+				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::Series);
+			}
 			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_deferred_view(token);
 			}
@@ -102,6 +113,17 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Transactional))?).is_some() {
+			// CREATE TRANSACTIONAL RINGBUFFER VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
+				self.consume_keyword(View)?;
+				return self
+					.parse_transactional_view_with_storage(token, ViewStorageKindHint::RingBuffer);
+			}
+			// CREATE TRANSACTIONAL SERIES VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
+				self.consume_keyword(View)?;
+				return self.parse_transactional_view_with_storage(token, ViewStorageKindHint::Series);
+			}
 			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_transactional_view(token);
 			}
@@ -858,6 +880,33 @@ impl<'bump> Parser<'bump> {
 			view,
 			columns,
 			as_clause,
+			storage_kind: AstViewStorageKind::Table,
+		}))
+	}
+
+	fn parse_deferred_view_with_storage(
+		&mut self,
+		token: Token<'bump>,
+		hint: ViewStorageKindHint,
+	) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let columns = self.parse_columns()?;
+
+		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
+
+		let storage_kind = self.parse_view_storage_with_clause(hint)?;
+
+		// Parse optional AS clause
+		let as_clause = self.parse_view_as_clause()?;
+
+		Ok(AstCreate::DeferredView(AstCreateDeferredView {
+			token,
+			view,
+			columns,
+			as_clause,
+			storage_kind,
 		}))
 	}
 
@@ -914,6 +963,33 @@ impl<'bump> Parser<'bump> {
 			view,
 			columns,
 			as_clause,
+			storage_kind: AstViewStorageKind::Table,
+		}))
+	}
+
+	fn parse_transactional_view_with_storage(
+		&mut self,
+		token: Token<'bump>,
+		hint: ViewStorageKindHint,
+	) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let columns = self.parse_columns()?;
+
+		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
+
+		let storage_kind = self.parse_view_storage_with_clause(hint)?;
+
+		// Parse optional AS clause
+		let as_clause = self.parse_view_as_clause()?;
+
+		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
+			token,
+			view,
+			columns,
+			as_clause,
+			storage_kind,
 		}))
 	}
 
@@ -1823,6 +1899,204 @@ impl<'bump> Parser<'bump> {
 			rollback_body_source,
 		}))
 	}
+
+	fn parse_view_as_clause(&mut self) -> Result<Option<AstStatement<'bump>>> {
+		if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
+
+			loop {
+				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let node = self.parse_node(Precedence::None)?;
+				query_nodes.push(node);
+
+				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?;
+					has_pipes = true;
+				} else {
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+
+			Ok(Some(AstStatement {
+				nodes: query_nodes,
+				has_pipes,
+				is_output: false,
+			}))
+		} else {
+			Ok(None)
+		}
+	}
+
+	fn parse_view_storage_with_clause(&mut self, hint: ViewStorageKindHint) -> Result<AstViewStorageKind> {
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		match hint {
+			ViewStorageKindHint::RingBuffer => {
+				let mut capacity: Option<u64> = None;
+				let mut propagate_evictions: Option<bool> = None;
+
+				loop {
+					self.skip_new_line()?;
+					if self.current()?.is_operator(Operator::CloseCurly) {
+						break;
+					}
+
+					let key = self.consume(TokenKind::Identifier)?;
+					self.consume_operator(Operator::Colon)?;
+
+					match key.fragment.text() {
+						"capacity" => {
+							let token =
+								self.consume(TokenKind::Literal(Literal::Number))?;
+							capacity =
+								Some(token.fragment.text().parse::<u64>().map_err(
+									|_| {
+										let fragment =
+											token.fragment.to_owned();
+										Error::from(TypeError::Ast {
+									kind: AstErrorKind::UnexpectedToken {
+										expected: "valid capacity number".to_string(),
+									},
+									message: format!("expected valid capacity number, got {}", fragment.text()),
+									fragment,
+								})
+									},
+								)?);
+						}
+						"propagate_evictions" => {
+							let token = self.consume(TokenKind::Identifier)?;
+							propagate_evictions =
+								Some(match token.fragment.text() {
+									"true" => true,
+									"false" => false,
+									_ => {
+										let fragment =
+											token.fragment.to_owned();
+										return Err(Error::from(TypeError::Ast {
+										kind: AstErrorKind::UnexpectedToken {
+											expected: "true or false".to_string(),
+										},
+										message: format!("expected true or false, got {}", fragment.text()),
+										fragment,
+									}));
+									}
+								});
+						}
+						other => {
+							let fragment = key.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'capacity' or 'propagate_evictions'"
+										.to_string(),
+								},
+								message: format!(
+									"unexpected key '{}' in WITH clause",
+									other
+								),
+								fragment,
+							}));
+						}
+					}
+
+					self.consume_if(TokenKind::Separator(Comma))?;
+				}
+
+				self.consume_operator(Operator::CloseCurly)?;
+
+				let capacity = capacity.ok_or_else(|| {
+					Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "capacity".to_string(),
+						},
+						message: "ringbuffer view requires 'capacity' in WITH clause"
+							.to_string(),
+						fragment: Fragment::internal("".to_string()),
+					})
+				})?;
+
+				Ok(AstViewStorageKind::RingBuffer {
+					capacity,
+					propagate_evictions,
+				})
+			}
+			ViewStorageKindHint::Series => {
+				let mut timestamp_column: Option<String> = None;
+				let mut precision: Option<AstTimestampPrecision> = None;
+
+				loop {
+					self.skip_new_line()?;
+					if self.current()?.is_operator(Operator::CloseCurly) {
+						break;
+					}
+
+					let key = self.consume(TokenKind::Identifier)?;
+					self.consume_operator(Operator::Colon)?;
+
+					match key.fragment.text() {
+						"timestamp" => {
+							let token = self.consume(TokenKind::Identifier)?;
+							timestamp_column = Some(token.fragment.text().to_string());
+						}
+						"precision" => {
+							let token = self.consume(TokenKind::Identifier)?;
+							precision = Some(match token.fragment.text() {
+								"millisecond" => AstTimestampPrecision::Millisecond,
+								"microsecond" => AstTimestampPrecision::Microsecond,
+								"nanosecond" => AstTimestampPrecision::Nanosecond,
+								_ => {
+									let fragment = token.fragment.to_owned();
+									return Err(Error::from(TypeError::Ast {
+										kind: AstErrorKind::UnexpectedToken {
+											expected: "millisecond, microsecond, or nanosecond".to_string(),
+										},
+										message: format!("unexpected precision '{}'", fragment.text()),
+										fragment,
+									}));
+								}
+							});
+						}
+						other => {
+							let fragment = key.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'timestamp' or 'precision'"
+										.to_string(),
+								},
+								message: format!(
+									"unexpected key '{}' in WITH clause",
+									other
+								),
+								fragment,
+							}));
+						}
+					}
+
+					self.consume_if(TokenKind::Separator(Comma))?;
+				}
+
+				self.consume_operator(Operator::CloseCurly)?;
+
+				Ok(AstViewStorageKind::Series {
+					timestamp_column,
+					precision,
+				})
+			}
+		}
+	}
+}
+
+enum ViewStorageKindHint {
+	RingBuffer,
+	Series,
 }
 
 #[cfg(test)]

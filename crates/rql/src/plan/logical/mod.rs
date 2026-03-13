@@ -42,7 +42,7 @@ use crate::{
 		ast::{
 			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstInfix, AstPolicyOperationEntry,
 			AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests, AstStatement, AstType,
-			AstVariantDef, InfixOperator,
+			AstVariantDef, AstViewStorageKind, InfixOperator,
 		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
@@ -594,6 +594,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
 }
 
 #[derive(Debug)]
@@ -602,6 +603,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
 }
 
 #[derive(Debug)]

@@ -92,7 +92,7 @@ use crate::vm::{
 fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	match plan {
 		RqlQueryPlan::TableScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
-		RqlQueryPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name().to_string())),
 		RqlQueryPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::SeriesScan(node) => Some(Fragment::internal(node.source.def().name.clone())),

@@ -449,7 +449,7 @@ impl TransactionalDefChanges {
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
-			.map(|v| v.id)
+			.map(|v| v.id())
 			.expect("Change must have either pre or post state");
 		let op = change.op;
 		self.view_def.push(change);

@@ -19,6 +19,12 @@ pub struct RingBufferDef {
 	pub primary_key: Option<PrimaryKeyDef>,
 }
 
+impl RingBufferDef {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RingBufferMetadata {
 	pub id: RingBufferId,

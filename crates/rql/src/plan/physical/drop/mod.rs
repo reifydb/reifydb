@@ -116,7 +116,7 @@ impl<'bump> Compiler<'bump> {
 			Some(def) => Ok(PhysicalPlan::DropView(nodes::DropViewNode {
 				namespace_name: ns_fragment,
 				view_name,
-				view_id: Some(def.id),
+				view_id: Some(def.id()),
 				if_exists: drop.if_exists,
 				cascade: drop.cascade,
 			})),

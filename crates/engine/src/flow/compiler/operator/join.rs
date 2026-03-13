@@ -52,7 +52,7 @@ impl From<JoinLeftNode> for JoinCompiler {
 fn extract_source_name(plan: &QueryPlan) -> Option<String> {
 	match plan {
 		QueryPlan::TableScan(node) => Some(node.source.def().name.clone()),
-		QueryPlan::ViewScan(node) => Some(node.source.def().name.clone()),
+		QueryPlan::ViewScan(node) => Some(node.source.def().name().to_string()),
 		QueryPlan::RingBufferScan(node) => Some(node.source.def().name.clone()),
 		QueryPlan::DictionaryScan(node) => Some(node.source.def().name.clone()),
 		// For other node types, try to recursively find the source

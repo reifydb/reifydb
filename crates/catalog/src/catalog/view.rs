@@ -17,6 +17,7 @@ use reifydb_transaction::{
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
 
+pub use crate::store::view::create::ViewStorageConfig;
 use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
@@ -35,6 +36,7 @@ pub struct ViewToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub storage: ViewStorageConfig,
 }
 
 impl From<ViewColumnToCreate> for StoreViewColumnToCreate {
@@ -53,6 +55,7 @@ impl From<ViewToCreate> for StoreViewToCreate {
 			name: to_create.name,
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
+			storage: to_create.storage,
 		}
 	}
 }

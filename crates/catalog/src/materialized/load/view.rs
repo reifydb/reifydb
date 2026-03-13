@@ -3,11 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::{
-			id::{NamespaceId, PrimaryKeyId, ViewId},
-			key::PrimaryKeyDef,
-			view::{ViewDef, ViewKind},
-		},
+		catalog::{id::PrimaryKeyId, view::ViewDef},
 		store::MultiVersionValues,
 	},
 	key::view::ViewKey,
@@ -17,9 +13,9 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{
 	Result,
 	materialized::MaterializedCatalog,
-	store::view::schema::{
-		view,
-		view::{ID, KIND, NAME, NAMESPACE, PRIMARY_KEY},
+	store::view::{
+		find::decode_view_def,
+		schema::view::{PRIMARY_KEY, SCHEMA},
 	},
 };
 
@@ -41,30 +37,15 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	Ok(())
 }
 
-fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
-	let row = multi.values;
-	let id = ViewId(view::SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(view::SCHEMA.get_u64(&row, NAMESPACE));
-	let name = view::SCHEMA.get_utf8(&row, NAME).to_string();
-
-	let kind = match view::SCHEMA.get_u8(&row, KIND) {
-		0 => ViewKind::Deferred,
-		1 => ViewKind::Transactional,
-		_ => unimplemented!(),
-	};
-
-	ViewDef {
-		id,
-		name,
-		namespace,
-		kind,
-		columns: vec![],
-		primary_key,
-	}
+fn convert_view(
+	multi: MultiVersionValues,
+	primary_key: Option<reifydb_core::interface::catalog::key::PrimaryKeyDef>,
+) -> ViewDef {
+	decode_view_def(&multi.values, vec![], primary_key)
 }
 
 fn get_view_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
-	let pk_id_raw = view::SCHEMA.get_u64(&multi.values, PRIMARY_KEY);
+	let pk_id_raw = SCHEMA.get_u64(&multi.values, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

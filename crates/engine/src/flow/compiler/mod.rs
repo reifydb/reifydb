@@ -158,15 +158,26 @@ impl FlowCompiler {
 		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(txn, plan)?;
 
-		// Only add SinkView node if sink is provided
 		if let Some(sink_view) = sink {
-			let result_node = self.add_node(
-				txn,
-				FlowNodeType::SinkView {
+			let node_type = match sink_view {
+				ViewDef::Table(t) => FlowNodeType::SinkTableView {
 					view: sink_view.id(),
+					table: t.underlying,
 				},
-			)?;
-
+				ViewDef::RingBuffer(rb) => FlowNodeType::SinkRingBufferView {
+					view: sink_view.id(),
+					ringbuffer: rb.underlying,
+					capacity: rb.capacity,
+					propagate_evictions: rb.propagate_evictions,
+				},
+				ViewDef::Series(s) => FlowNodeType::SinkSeriesView {
+					view: sink_view.id(),
+					series: s.underlying,
+					timestamp_column: s.timestamp_column.clone(),
+					precision: s.precision,
+				},
+			};
+			let result_node = self.add_node(txn, node_type)?;
 			self.add_edge(txn, &root_node_id, &result_node)?;
 		}
 

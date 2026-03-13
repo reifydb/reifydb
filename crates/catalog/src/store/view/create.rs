@@ -4,16 +4,21 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, ViewId},
+		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		series::TimestampPrecision,
 		view::{
 			ViewDef, ViewKind,
 			ViewKind::{Deferred, Transactional},
+			ViewStorageKind,
 		},
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, value::constraint::TypeConstraint};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, sumtype::SumTypeId},
+};
 
 use crate::{
 	CatalogStore, Result,
@@ -33,10 +38,37 @@ pub struct ViewColumnToCreate {
 }
 
 #[derive(Debug, Clone)]
+pub enum ViewStorageConfig {
+	Table {
+		underlying: TableId,
+	},
+	RingBuffer {
+		underlying: RingBufferId,
+		capacity: u64,
+		propagate_evictions: bool,
+	},
+	Series {
+		underlying: SeriesId,
+		timestamp_column: Option<String>,
+		precision: TimestampPrecision,
+		tag: Option<SumTypeId>,
+	},
+}
+
+impl Default for ViewStorageConfig {
+	fn default() -> Self {
+		ViewStorageConfig::Table {
+			underlying: TableId(0),
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct ViewToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub storage: ViewStorageConfig,
 }
 
 impl CatalogStore {
@@ -97,7 +129,61 @@ impl CatalogStore {
 				Transactional => 1,
 			},
 		);
-		view::SCHEMA.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
+		view::SCHEMA.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
+
+		// Write storage kind and configuration
+		match &to_create.storage {
+			ViewStorageConfig::Table {
+				underlying,
+			} => {
+				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
+				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
+				view::SCHEMA.set_utf8(&mut row, view::TIMESTAMP_COLUMN, "");
+				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
+				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
+			}
+			ViewStorageConfig::RingBuffer {
+				underlying,
+				capacity,
+				propagate_evictions,
+			} => {
+				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
+				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SCHEMA.set_u64(&mut row, view::CAPACITY, *capacity);
+				view::SCHEMA.set_u8(
+					&mut row,
+					view::PROPAGATE_EVICTIONS,
+					if *propagate_evictions {
+						1
+					} else {
+						0
+					},
+				);
+				view::SCHEMA.set_utf8(&mut row, view::TIMESTAMP_COLUMN, "");
+				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
+				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
+			}
+			ViewStorageConfig::Series {
+				underlying,
+				timestamp_column,
+				precision,
+				tag,
+			} => {
+				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
+				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
+				view::SCHEMA.set_utf8(
+					&mut row,
+					view::TIMESTAMP_COLUMN,
+					timestamp_column.as_deref().unwrap_or(""),
+				);
+				view::SCHEMA.set_u8(&mut row, view::PRECISION, *precision as u8);
+				view::SCHEMA.set_u64(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
+			}
+		}
 
 		txn.set(&ViewKey::encoded(view), row)?;
 
@@ -151,6 +237,7 @@ pub mod tests {
 	use reifydb_engine::test_utils::create_test_admin_transaction;
 	use reifydb_type::fragment::Fragment;
 
+	use super::ViewStorageConfig;
 	use crate::{
 		CatalogStore,
 		store::view::{create::ViewToCreate, schema::view_namespace},
@@ -167,6 +254,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		// First creation should succeed
@@ -188,6 +276,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
@@ -196,6 +285,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("another_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
@@ -226,6 +316,7 @@ pub mod tests {
 			namespace: NamespaceId(999), // Non-existent namespace
 			name: Fragment::internal("my_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();

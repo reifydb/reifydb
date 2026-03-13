@@ -151,12 +151,26 @@ pub enum PhysicalPlan {
 }
 
 #[derive(Debug, Clone)]
+pub enum CompiledViewStorageKind {
+	Table,
+	RingBuffer {
+		capacity: u64,
+		propagate_evictions: bool,
+	},
+	Series {
+		timestamp_column: Option<String>,
+		precision: TimestampPrecision,
+	},
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateDeferredViewNode {
 	pub namespace: Namespace, // FIXME REsolvedNamespace
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
+	pub storage_kind: CompiledViewStorageKind,
 }
 
 #[derive(Debug, Clone)]
@@ -166,6 +180,7 @@ pub struct CreateTransactionalViewNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
+	pub storage_kind: CompiledViewStorageKind,
 }
 
 #[derive(Debug, Clone)]

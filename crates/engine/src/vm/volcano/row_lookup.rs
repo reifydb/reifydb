@@ -337,7 +337,7 @@ fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> Result<(Co
 fn get_primitive_id(source: &ResolvedPrimitive) -> Result<PrimitiveId> {
 	match source {
 		ResolvedPrimitive::Table(table) => Ok(table.def().id.into()),
-		ResolvedPrimitive::View(view) => Ok(view.def().id.into()),
+		ResolvedPrimitive::View(view) => Ok(view.def().underlying_id()),
 		ResolvedPrimitive::RingBuffer(rb) => Ok(rb.def().id.into()),
 		_ => internal_err!("Row lookup not supported for this source type"),
 	}

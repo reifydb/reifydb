@@ -4,18 +4,22 @@
 use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::util::lru::LruCache;
+use reifydb_core::{interface::catalog::series::TimestampPrecision, util::lru::LruCache};
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment, value::Value};
 
 use crate::{
-	ast::parse_str,
+	ast::{
+		ast::{AstTimestampPrecision, AstViewStorageKind},
+		parse_str,
+	},
 	bump::{Bump, BumpBox, BumpVec},
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
 	instruction::{Addr, CompiledClosureDef, CompiledFunctionDef, Instruction, ScopeType},
 	nodes,
+	nodes::CompiledViewStorageKind,
 	plan::{
 		logical::LogicalPlan,
 		physical::{self, PhysicalPlan},
@@ -254,6 +258,32 @@ impl Compiler {
 	/// Return the cache capacity.
 	pub fn capacity(&self) -> usize {
 		self.0.cache.capacity()
+	}
+}
+
+fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind {
+	match ast {
+		AstViewStorageKind::Table => CompiledViewStorageKind::Table,
+		AstViewStorageKind::RingBuffer {
+			capacity,
+			propagate_evictions,
+		} => CompiledViewStorageKind::RingBuffer {
+			capacity,
+			propagate_evictions: propagate_evictions.unwrap_or(true),
+		},
+		AstViewStorageKind::Series {
+			timestamp_column,
+			precision,
+		} => CompiledViewStorageKind::Series {
+			timestamp_column,
+			precision: precision
+				.map(|p| match p {
+					AstTimestampPrecision::Millisecond => TimestampPrecision::Millisecond,
+					AstTimestampPrecision::Microsecond => TimestampPrecision::Microsecond,
+					AstTimestampPrecision::Nanosecond => TimestampPrecision::Nanosecond,
+				})
+				.unwrap_or(TimestampPrecision::Millisecond),
+		},
 	}
 }
 
@@ -954,6 +984,7 @@ impl InstructionCompiler {
 					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
 					))),
+					storage_kind: compile_view_storage_kind(node.storage_kind),
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -966,6 +997,7 @@ impl InstructionCompiler {
 					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
 					))),
+					storage_kind: compile_view_storage_kind(node.storage_kind),
 				}));
 				self.emit(Instruction::Emit);
 			}

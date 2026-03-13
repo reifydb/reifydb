@@ -221,6 +221,7 @@ pub mod tests {
 						constraint: TypeConstraint::unconstrained(Type::Utf8),
 					},
 				],
+				storage: crate::store::view::create::ViewStorageConfig::default(),
 			},
 		)
 		.unwrap();

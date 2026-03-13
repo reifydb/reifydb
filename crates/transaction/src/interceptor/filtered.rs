@@ -97,7 +97,7 @@ macro_rules! define_filtered_interceptor {
 			F: for<'a> Fn(&mut $context_type<'a>) -> Result<()> + Send + Sync,
 		{
 			fn intercept<'a>(&self, ctx: &mut $context_type<'a>) -> Result<()> {
-				let entity_name = ctx.$entity_field.name.as_str();
+				let entity_name = ctx.$entity_field.name();
 				let name_matches =
 					self.filter.name.as_ref().map_or(true, |n| n.as_str() == entity_name);
 				if name_matches {

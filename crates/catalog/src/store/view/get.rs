@@ -46,9 +46,9 @@ pub mod tests {
 
 		let result = CatalogStore::get_view(&mut Transaction::Admin(&mut txn), ViewId(1026)).unwrap();
 
-		assert_eq!(result.id, ViewId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
-		assert_eq!(result.name, "view_two");
+		assert_eq!(result.id(), ViewId(1026));
+		assert_eq!(result.namespace(), NamespaceId(1027));
+		assert_eq!(result.name(), "view_two");
 	}
 
 	#[test]

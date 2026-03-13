@@ -60,7 +60,7 @@ impl TransactionalFlowRegistrar {
 		Ok(())
 	}
 
-	/// Returns `true` if any `SinkView` node in the flow writes to a transactional view.
+	/// Returns `true` if any sink view node in the flow writes to a transactional view.
 	fn is_transactional_view_flow(&self, flow: &FlowDag) -> bool {
 		let mut query = match self.engine.begin_query() {
 			Ok(q) => q,
@@ -69,10 +69,22 @@ impl TransactionalFlowRegistrar {
 
 		for node_id in flow.get_node_ids() {
 			if let Some(node) = flow.get_node(&node_id) {
-				if let FlowNodeType::SinkView {
-					view,
-				} = &node.ty
-				{
+				let view = match &node.ty {
+					FlowNodeType::SinkTableView {
+						view,
+						..
+					}
+					| FlowNodeType::SinkRingBufferView {
+						view,
+						..
+					}
+					| FlowNodeType::SinkSeriesView {
+						view,
+						..
+					} => Some(view),
+					_ => None,
+				};
+				if let Some(view) = view {
 					if let Ok(Some(def)) =
 						self.catalog.find_view(&mut Transaction::Query(&mut query), *view)
 					{

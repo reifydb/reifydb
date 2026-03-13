@@ -17,7 +17,7 @@ pub(crate) mod primary_key;
 pub(crate) mod primitive;
 #[allow(dead_code)]
 pub(crate) mod retention_policy;
-pub(crate) mod ringbuffer;
+pub mod ringbuffer;
 pub(crate) mod role;
 pub(crate) mod schema;
 pub(crate) mod sequence;

@@ -36,7 +36,10 @@ use scan::{
 	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
 	table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 };
-use sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator};
+use sink::{
+	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
+	subscription::SinkSubscriptionOperator, view::SinkTableViewOperator,
+};
 use sort::SortOperator;
 use take::TakeOperator;
 use window::WindowOperator;
@@ -67,7 +70,9 @@ pub enum Operators {
 	Distinct(DistinctOperator),
 	Append(AppendOperator),
 	Apply(ApplyOperator),
-	SinkView(SinkViewOperator),
+	SinkTableView(SinkTableViewOperator),
+	SinkRingBufferView(SinkRingBufferViewOperator),
+	SinkSeriesView(SinkSeriesViewOperator),
 	SinkSubscription(SinkSubscriptionOperator),
 	Window(WindowOperator),
 	Custom(BoxedOperator),
@@ -86,7 +91,9 @@ impl Operators {
 			Operators::Distinct(op) => op.apply(txn, change),
 			Operators::Append(op) => op.apply(txn, change),
 			Operators::Apply(op) => op.apply(txn, change),
-			Operators::SinkView(op) => op.apply(txn, change),
+			Operators::SinkTableView(op) => op.apply(txn, change),
+			Operators::SinkRingBufferView(op) => op.apply(txn, change),
+			Operators::SinkSeriesView(op) => op.apply(txn, change),
 			Operators::SinkSubscription(op) => op.apply(txn, change),
 			Operators::Window(op) => op.apply(txn, change),
 			Operators::SourceTable(op) => op.apply(txn, change),
@@ -110,7 +117,9 @@ impl Operators {
 			Operators::Distinct(op) => op.pull(txn, rows),
 			Operators::Append(op) => op.pull(txn, rows),
 			Operators::Apply(op) => op.pull(txn, rows),
-			Operators::SinkView(op) => op.pull(txn, rows),
+			Operators::SinkTableView(op) => op.pull(txn, rows),
+			Operators::SinkRingBufferView(op) => op.pull(txn, rows),
+			Operators::SinkSeriesView(op) => op.pull(txn, rows),
 			Operators::SinkSubscription(op) => op.pull(txn, rows),
 			Operators::Window(op) => op.pull(txn, rows),
 			Operators::SourceTable(op) => op.pull(txn, rows),
