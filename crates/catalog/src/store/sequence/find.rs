@@ -20,14 +20,14 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn find_sequence(rx: &mut Transaction<'_>, sequence_id: SequenceId) -> Result<Option<Sequence>> {
 		let (namespace, name) = match sequence_id {
-			NAMESPACE => (NamespaceId(1), "namespace"),
-			SOURCE => (NamespaceId(1), "source"),
-			COLUMN => (NamespaceId(1), "column"),
-			COLUMN_PROPERTY => (NamespaceId(1), "column_property"),
-			FLOW => (NamespaceId(1), "flow"),
-			FLOW_NODE => (NamespaceId(1), "flow_node"),
-			FLOW_EDGE => (NamespaceId(1), "flow_edge"),
-			PRIMARY_KEY => (NamespaceId(1), "primary_key"),
+			NAMESPACE => (NamespaceId::SYSTEM, "namespace"),
+			SOURCE => (NamespaceId::SYSTEM, "source"),
+			COLUMN => (NamespaceId::SYSTEM, "column"),
+			COLUMN_PROPERTY => (NamespaceId::SYSTEM, "column_property"),
+			FLOW => (NamespaceId::SYSTEM, "flow"),
+			FLOW_NODE => (NamespaceId::SYSTEM, "flow_node"),
+			FLOW_EDGE => (NamespaceId::SYSTEM, "flow_edge"),
+			PRIMARY_KEY => (NamespaceId::SYSTEM, "primary_key"),
 			_ => return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id

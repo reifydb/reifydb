@@ -2231,6 +2231,7 @@ dependencies = [
  "dashmap",
  "num-bigint",
  "prost",
+ "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",

@@ -37,7 +37,7 @@ use crate::vtable::tables::{UserVTableDataFunction, VTables};
 ///         // Return column-oriented data
 ///         Columns::empty()
 ///     })
-///     .build(NamespaceId(1), VTableId(100));
+///     .build(NamespaceId::SYSTEM, VTableId(100));
 /// ```
 pub struct UserVTableBuilder {
 	name: String,

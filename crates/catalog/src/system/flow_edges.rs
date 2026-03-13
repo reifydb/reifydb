@@ -20,7 +20,7 @@ pub fn flow_edges() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: FLOW_EDGES,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "flow_edges".to_string(),
 			columns: vec![
 				ColumnDef {

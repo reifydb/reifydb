@@ -7,6 +7,8 @@ impl NamespaceId {
 	/// Root sentinel — all top-level namespaces have `parent_id: NamespaceId::ROOT`.
 	/// This is not a real namespace, just the tree root.
 	pub const ROOT: NamespaceId = NamespaceId(0);
+	pub const SYSTEM: NamespaceId = NamespaceId(1);
+	pub const DEFAULT: NamespaceId = NamespaceId(2);
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -95,7 +97,7 @@ impl Namespace {
 
 	pub fn system() -> Self {
 		Self::Local {
-			id: NamespaceId(1),
+			id: NamespaceId::SYSTEM,
 			name: "system".to_string(),
 			local_name: "system".to_string(),
 			parent_id: NamespaceId::ROOT,
@@ -104,7 +106,7 @@ impl Namespace {
 
 	pub fn default_namespace() -> Self {
 		Self::Local {
-			id: NamespaceId(2),
+			id: NamespaceId::DEFAULT,
 			name: "default".to_string(),
 			local_name: "default".to_string(),
 			parent_id: NamespaceId::ROOT,

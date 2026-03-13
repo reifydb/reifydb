@@ -8,7 +8,7 @@
 
 use reifydb_sub_server::{
 	state::AppState,
-	subscribe::{CreateSubscriptionError, create_subscription},
+	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::value::{identity::IdentityId, uuid::Uuid7};
@@ -54,7 +54,7 @@ pub(crate) async fn handle_subscribe(
 	let user_query = sub.query.clone();
 
 	match create_subscription(state, id, &user_query).await {
-		Ok(subscription_id) => {
+		Ok(Local(subscription_id)) => {
 			registry.subscribe(subscription_id, connection_id, user_query, push_tx);
 			poller.register(subscription_id);
 
@@ -62,6 +62,14 @@ pub(crate) async fn handle_subscribe(
 
 			Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 		}
+		Ok(Remote {
+			..
+		}) => Some(Response::internal_error(
+			request_id,
+			"REMOTE_SUBSCRIPTION_UNSUPPORTED",
+			"Remote subscriptions are not yet supported over WebSocket",
+		)
+		.to_json()),
 		Err(CreateSubscriptionError::Execute(e)) => Some(error_to_response(request_id, e)),
 		Err(CreateSubscriptionError::ExtractionFailed) => Some(Response::internal_error(
 			request_id,

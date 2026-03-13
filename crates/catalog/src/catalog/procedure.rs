@@ -200,9 +200,7 @@ impl Catalog {
 			}
 			Ok(None)
 		} else {
-			// No namespace qualifier — search in default namespace
-			let default_ns = NamespaceId(2); // default namespace ID
-			Ok(self.find_procedure_by_name(txn, default_ns, qualified_name)?.map(|p| {
+			Ok(self.find_procedure_by_name(txn, NamespaceId::DEFAULT, qualified_name)?.map(|p| {
 				if p.is_test {
 					ResolvedProcedure::Test(p)
 				} else {

@@ -113,7 +113,7 @@ pub mod tests {
 	fn test_set_and_find_table() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let table = create_test_table(table_id, namespace_id, "test_table");
 
 		// Set table at version 1
@@ -136,7 +136,7 @@ pub mod tests {
 	fn test_find_table_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let table = create_test_table(table_id, namespace_id, "named_table");
 
 		// Set table
@@ -151,7 +151,7 @@ pub mod tests {
 		assert_eq!(found, None);
 
 		// Shouldn't find in wrong namespace
-		let found = catalog.find_table_by_name_at(NamespaceId(2), "named_table", CommitVersion(1));
+		let found = catalog.find_table_by_name_at(NamespaceId::DEFAULT, "named_table", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -159,7 +159,7 @@ pub mod tests {
 	fn test_table_rename() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set initial table
 		let table_v1 = create_test_table(table_id, namespace_id, "old_name");
@@ -194,8 +194,8 @@ pub mod tests {
 	fn test_table_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace1 = NamespaceId(1);
-		let namespace2 = NamespaceId(2);
+		let namespace1 = NamespaceId::SYSTEM;
+		let namespace2 = NamespaceId::DEFAULT;
 
 		// Create table in namespace1
 		let table_v1 = create_test_table(table_id, namespace1, "movable_table");
@@ -221,7 +221,7 @@ pub mod tests {
 	fn test_table_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set table
 		let table = create_test_table(table_id, namespace_id, "deletable_table");
@@ -245,7 +245,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_tables_in_namespace() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		let table1 = create_test_table(TableId(1), namespace_id, "table1");
 		let table2 = create_test_table(TableId(2), namespace_id, "table2");
@@ -266,7 +266,7 @@ pub mod tests {
 	fn test_table_versioning() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create multiple versions
 		let table_v1 = create_test_table(table_id, namespace_id, "table_v1");
@@ -294,7 +294,7 @@ pub mod tests {
 	fn test_find_latest_table() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Empty catalog should return None
 		assert_eq!(catalog.find_table(table_id), None);
@@ -315,7 +315,7 @@ pub mod tests {
 	fn test_find_latest_table_deleted() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let table_id = TableId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		let table = create_test_table(table_id, namespace_id, "test_table");
 		catalog.set_table(table_id, CommitVersion(10), Some(table));
@@ -330,7 +330,7 @@ pub mod tests {
 	#[test]
 	fn test_find_latest_table_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let table_id = TableId(1);
 
 		// Empty catalog should return None

@@ -22,7 +22,7 @@ pub fn flow_lags() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: FLOW_LAGS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "flow_lags".to_string(),
 			columns: vec![
 				ColumnDef {

@@ -82,6 +82,11 @@ impl SubscriptionTransaction {
 		})
 	}
 
+	/// Get access to the inner AdminTransaction (immutable).
+	pub fn as_admin(&self) -> &AdminTransaction {
+		&self.inner
+	}
+
 	/// Get access to the inner AdminTransaction for instruction functions
 	/// that require `&mut AdminTransaction`.
 	pub fn as_admin_mut(&mut self) -> &mut AdminTransaction {

@@ -20,7 +20,7 @@ pub fn users() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: USERS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "users".to_string(),
 			columns: vec![
 				ColumnDef {

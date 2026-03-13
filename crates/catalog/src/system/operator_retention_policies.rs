@@ -20,7 +20,7 @@ pub fn operator_retention_policies() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: OPERATOR_RETENTION_POLICIES,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "operator_retention_policies".to_string(),
 			columns: vec![
 				ColumnDef {

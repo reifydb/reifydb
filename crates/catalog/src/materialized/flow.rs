@@ -86,7 +86,7 @@ pub mod tests {
 	fn test_set_and_find_flow() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let flow_id = FlowId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let flow = create_test_flow(flow_id, namespace_id, "test_flow");
 
 		// Set flow at version 1
@@ -109,7 +109,7 @@ pub mod tests {
 	fn test_find_flow_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let flow_id = FlowId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let flow = create_test_flow(flow_id, namespace_id, "named_flow");
 
 		// Set flow
@@ -124,7 +124,7 @@ pub mod tests {
 		assert_eq!(found, None);
 
 		// Shouldn't find in wrong namespace
-		let found = catalog.find_flow_by_name_at(NamespaceId(2), "named_flow", CommitVersion(1));
+		let found = catalog.find_flow_by_name_at(NamespaceId::DEFAULT, "named_flow", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -132,7 +132,7 @@ pub mod tests {
 	fn test_flow_rename() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let flow_id = FlowId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set initial flow
 		let flow_v1 = create_test_flow(flow_id, namespace_id, "old_name");
@@ -167,8 +167,8 @@ pub mod tests {
 	fn test_flow_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let flow_id = FlowId(1);
-		let namespace1 = NamespaceId(1);
-		let namespace2 = NamespaceId(2);
+		let namespace1 = NamespaceId::SYSTEM;
+		let namespace2 = NamespaceId::DEFAULT;
 
 		// Create flow in namespace1
 		let flow_v1 = create_test_flow(flow_id, namespace1, "movable_flow");
@@ -194,7 +194,7 @@ pub mod tests {
 	fn test_flow_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let flow_id = FlowId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set flow
 		let flow = create_test_flow(flow_id, namespace_id, "deletable_flow");
@@ -218,7 +218,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_flows_in_namespace() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		let flow1 = create_test_flow(FlowId(1), namespace_id, "flow1");
 		let flow2 = create_test_flow(FlowId(2), namespace_id, "flow2");
@@ -239,7 +239,7 @@ pub mod tests {
 	fn test_flow_versioning() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let flow_id = FlowId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create multiple versions
 		let flow_v1 = create_test_flow(flow_id, namespace_id, "flow_v1");

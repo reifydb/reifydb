@@ -20,7 +20,7 @@ pub fn cdc_consumers() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: CDC_CONSUMERS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "cdc_consumers".to_string(),
 			columns: vec![
 				ColumnDef {

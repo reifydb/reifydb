@@ -118,3 +118,20 @@ pub fn flow_dispatcher_unavailable() -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// Remote source unsupported in flow graphs
+pub fn flow_remote_source_unsupported() -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_007".to_string(),
+		statement: None,
+		message: "Cannot create flow for remote source".to_string(),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("Remote tables do not support local flow graphs. Use remote subscription proxying instead."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

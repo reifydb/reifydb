@@ -147,7 +147,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(2),
+			NamespaceId::DEFAULT,
 			"table_two",
 		)
 		.unwrap();

@@ -20,7 +20,7 @@ pub fn flow_operator_inputs() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: FLOW_OPERATOR_INPUTS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "flow_operator_inputs".to_string(),
 			columns: vec![
 				ColumnDef {

@@ -108,7 +108,7 @@ pub mod tests {
 	#[test]
 	fn test_set_and_find_namespace() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let namespace = create_test_namespace(namespace_id, "test_namespace");
 
 		// Set namespace at version 1
@@ -131,7 +131,7 @@ pub mod tests {
 	#[test]
 	fn test_find_namespace_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let namespace = create_test_namespace(namespace_id, "named_namespace");
 
 		// Set namespace
@@ -149,7 +149,7 @@ pub mod tests {
 	#[test]
 	fn test_namespace_rename() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set initial namespace
 		let namespace_v1 = create_test_namespace(namespace_id, "old_name");
@@ -179,7 +179,7 @@ pub mod tests {
 	#[test]
 	fn test_namespace_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set namespace
 		let namespace = create_test_namespace(namespace_id, "deletable_namespace");
@@ -204,13 +204,13 @@ pub mod tests {
 	fn test_multiple_namespaces() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 
-		let namespace1 = create_test_namespace(NamespaceId(1), "namespace1");
-		let namespace2 = create_test_namespace(NamespaceId(2), "namespace2");
+		let namespace1 = create_test_namespace(NamespaceId::SYSTEM, "namespace1");
+		let namespace2 = create_test_namespace(NamespaceId::DEFAULT, "namespace2");
 		let namespace3 = create_test_namespace(NamespaceId(3), "namespace3");
 
 		// Set multiple namespaces
-		catalog.set_namespace(NamespaceId(1), CommitVersion(1), Some(namespace1.clone()));
-		catalog.set_namespace(NamespaceId(2), CommitVersion(1), Some(namespace2.clone()));
+		catalog.set_namespace(NamespaceId::SYSTEM, CommitVersion(1), Some(namespace1.clone()));
+		catalog.set_namespace(NamespaceId::DEFAULT, CommitVersion(1), Some(namespace2.clone()));
 		catalog.set_namespace(NamespaceId(3), CommitVersion(1), Some(namespace3.clone()));
 
 		// All should be findable
@@ -266,7 +266,7 @@ pub mod tests {
 	#[test]
 	fn test_find_latest_namespace_deleted() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		let namespace = create_test_namespace(namespace_id, "test_namespace");
 		catalog.set_namespace(namespace_id, CommitVersion(10), Some(namespace));
@@ -281,7 +281,7 @@ pub mod tests {
 	#[test]
 	fn test_find_latest_namespace_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Empty catalog should return None
 		assert_eq!(catalog.find_namespace_by_name("test_namespace"), None);

@@ -49,8 +49,10 @@ fn maybe_flush_view_mutations(ioc: &IocContainer, tx: &mut Transaction<'_>) -> R
 		return Ok(());
 	};
 
-	if let Transaction::Admin(admin) = tx {
-		flusher.capture(admin)?;
+	match tx {
+		Transaction::Admin(admin) => flusher.capture(admin)?,
+		Transaction::Subscription(sub) => flusher.capture(sub.as_admin_mut())?,
+		_ => {}
 	}
 
 	Ok(())
@@ -61,6 +63,7 @@ fn active_view_testing_context<'a>(base: &'a TestingContext, tx: &'a Transaction
 		Transaction::Admin(admin) => admin.testing.as_ref().unwrap_or(base),
 		Transaction::Command(cmd) => cmd.testing.as_ref().unwrap_or(base),
 		Transaction::Query(_) => base,
+		Transaction::Subscription(sub) => sub.as_admin().testing.as_ref().unwrap_or(base),
 	}
 }
 

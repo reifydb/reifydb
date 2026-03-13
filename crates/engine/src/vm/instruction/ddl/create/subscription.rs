@@ -5,7 +5,7 @@ use reifydb_catalog::catalog::subscription::SubscriptionToCreate;
 use reifydb_core::{
 	interface::catalog::change::CatalogTrackSubscriptionChangeOperations, value::column::columns::Columns,
 };
-use reifydb_rql::nodes::CreateSubscriptionNode;
+use reifydb_rql::{nodes::CreateSubscriptionNode, query::QueryPlan};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
@@ -17,6 +17,16 @@ pub(crate) fn create_subscription(
 	txn: &mut AdminTransaction,
 	plan: CreateSubscriptionNode,
 ) -> Result<Columns> {
+	// Check if the plan targets a remote source
+	if let Some(ref as_clause) = plan.as_clause {
+		if let QueryPlan::RemoteScan(ref remote) = **as_clause {
+			return Ok(Columns::single_row([
+				("remote_address", Value::Utf8(remote.address.clone())),
+				("remote_rql", Value::Utf8(remote.remote_rql.clone())),
+			]));
+		}
+	}
+
 	let result = services.catalog.create_subscription(
 		txn,
 		SubscriptionToCreate {

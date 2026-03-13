@@ -20,7 +20,7 @@ pub fn migrations() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: MIGRATIONS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "migrations".to_string(),
 			columns: vec![
 				ColumnDef {

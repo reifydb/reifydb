@@ -19,7 +19,7 @@ pub fn flow_node_storage_stats() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: FLOW_NODE_STORAGE_STATS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "flow_node_storage_stats".to_string(),
 			columns: vec![
 				ColumnDef {

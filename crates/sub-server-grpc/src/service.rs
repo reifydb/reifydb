@@ -3,16 +3,17 @@
 
 use std::sync::Arc;
 
+use reifydb_client::{GrpcClient, GrpcSubscription};
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
 	execute::{execute_admin, execute_command, execute_query},
 	state::AppState,
-	subscribe::{cleanup_subscription_sync, create_subscription},
+	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
 };
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{params::Params, value::identity::IdentityId};
-use tokio::{spawn, sync::mpsc};
+use tokio::{select, spawn, sync::mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 use tracing::{debug, info, warn};
@@ -21,8 +22,8 @@ use crate::{
 	convert::{frames_to_proto, proto_params_to_params},
 	error::GrpcError,
 	generated::{
-		AdminRequest, AdminResponse, CommandRequest, CommandResponse, Params as ProtoParams, QueryRequest,
-		QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
+		AdminRequest, AdminResponse, ChangeEvent, CommandRequest, CommandResponse, Params as ProtoParams,
+		QueryRequest, QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
 		UnsubscribeResponse, reify_db_server::ReifyDb, subscription_event,
 	},
 	subscription::GrpcSubscriptionRegistry,
@@ -63,6 +64,116 @@ impl ReifyDbService {
 		match params {
 			None => Ok(Params::None),
 			Some(p) => proto_params_to_params(p),
+		}
+	}
+
+	async fn subscribe_local(
+		&self,
+		subscription_id: SubscriptionId,
+	) -> Result<Response<ReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
+		let (tx, rx) = mpsc::channel(256);
+
+		// Send initial subscribed event
+		let subscribed_event = SubscriptionEvent {
+			event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
+				subscription_id: subscription_id.0.to_string(),
+			})),
+		};
+		if tx.send(Ok(subscribed_event)).await.is_err() {
+			return Err(Status::internal("Failed to send subscribed event"));
+		}
+
+		// Register with registry and poller
+		self.registry.register(subscription_id, tx.clone());
+		self.poller.register(subscription_id);
+
+		info!("gRPC subscription created: {}", subscription_id);
+
+		// Spawn cleanup task that monitors when the receiver is dropped
+		let registry = self.registry.clone();
+		let poller = self.poller.clone();
+		let engine = self.state.engine_clone();
+		let system = self.state.actor_system();
+		spawn(async move {
+			tx.closed().await;
+
+			debug!("gRPC subscription {} stream closed, cleaning up", subscription_id);
+
+			poller.unregister(&subscription_id);
+			registry.unregister(&subscription_id);
+
+			let engine_clone = engine.clone();
+			let result =
+				system.compute(move || cleanup_subscription_sync(&engine_clone, subscription_id)).await;
+			match result {
+				Ok(Ok(())) => debug!("Cleaned up gRPC subscription {}", subscription_id),
+				Ok(Err(e)) => warn!(
+					"Failed to cleanup subscription {} from database: {:?}",
+					subscription_id, e
+				),
+				Err(e) => warn!(
+					"Compute pool error cleaning up subscription {}: {:?}",
+					subscription_id, e
+				),
+			}
+		});
+
+		Ok(Response::new(ReceiverStream::new(rx)))
+	}
+
+	async fn subscribe_remote(
+		&self,
+		address: String,
+		query: &str,
+	) -> Result<Response<ReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
+		let mut client = GrpcClient::connect(&address)
+			.await
+			.map_err(|e| Status::unavailable(format!("Failed to connect to remote: {}", e)))?;
+		client.authenticate("service-token");
+		let remote_sub = client
+			.subscribe(query)
+			.await
+			.map_err(|e| Status::internal(format!("Remote subscribe failed: {}", e)))?;
+
+		let (tx, rx) = mpsc::channel(256);
+
+		// Forward initial SubscribedEvent
+		let subscribed_event = SubscriptionEvent {
+			event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
+				subscription_id: remote_sub.subscription_id().to_string(),
+			})),
+		};
+		tx.send(Ok(subscribed_event)).await.map_err(|_| Status::internal("channel closed"))?;
+
+		// Spawn proxy: remote stream → local channel
+		spawn(async move {
+			proxy_remote_subscription(remote_sub, tx).await;
+		});
+
+		Ok(Response::new(ReceiverStream::new(rx)))
+	}
+}
+
+async fn proxy_remote_subscription(
+	mut remote_sub: GrpcSubscription,
+	tx: mpsc::Sender<Result<SubscriptionEvent, Status>>,
+) {
+	loop {
+		select! {
+			frames = remote_sub.recv() => {
+				match frames {
+					Some(frames) => {
+						let event = SubscriptionEvent {
+							event: Some(subscription_event::Event::Change(ChangeEvent {
+								frames: frames_to_proto(frames),
+							})),
+						};
+						if tx.send(Ok(event)).await.is_err() { break; }
+					}
+					None => break,
+				}
+			}
+			_ = tx.closed() => break,
 		}
 	}
 }
@@ -142,60 +253,13 @@ impl ReifyDb for ReifyDbService {
 		let identity = self.extract_identity(&request)?;
 		let inner = request.into_inner();
 
-		let subscription_id =
-			create_subscription(&self.state, identity, &inner.query).await.map_err(GrpcError::from)?;
-
-		let (tx, rx) = mpsc::channel(256);
-
-		// Send initial subscribed event
-		let subscribed_event = SubscriptionEvent {
-			event: Some(subscription_event::Event::Subscribed(SubscribedEvent {
-				subscription_id: subscription_id.0.to_string(),
-			})),
-		};
-		if tx.send(Ok(subscribed_event)).await.is_err() {
-			return Err(Status::internal("Failed to send subscribed event"));
+		match create_subscription(&self.state, identity, &inner.query).await.map_err(GrpcError::from)? {
+			CreateSubscriptionResult::Local(subscription_id) => self.subscribe_local(subscription_id).await,
+			CreateSubscriptionResult::Remote {
+				address,
+				query,
+			} => self.subscribe_remote(address, &query).await,
 		}
-
-		// Register with registry and poller
-		self.registry.register(subscription_id, tx.clone());
-		self.poller.register(subscription_id);
-
-		info!("gRPC subscription created: {}", subscription_id);
-
-		// Spawn cleanup task that monitors when the receiver is dropped
-		let registry = self.registry.clone();
-		let poller = self.poller.clone();
-		let engine = self.state.engine_clone();
-		let system = self.state.actor_system();
-		spawn(async move {
-			// Wait until the sender can no longer send (receiver dropped)
-			tx.closed().await;
-
-			debug!("gRPC subscription {} stream closed, cleaning up", subscription_id);
-
-			// Unregister from poller and registry
-			poller.unregister(&subscription_id);
-			registry.unregister(&subscription_id);
-
-			// Cleanup database subscription
-			let engine_clone = engine.clone();
-			let result =
-				system.compute(move || cleanup_subscription_sync(&engine_clone, subscription_id)).await;
-			match result {
-				Ok(Ok(())) => debug!("Cleaned up gRPC subscription {}", subscription_id),
-				Ok(Err(e)) => warn!(
-					"Failed to cleanup subscription {} from database: {:?}",
-					subscription_id, e
-				),
-				Err(e) => warn!(
-					"Compute pool error cleaning up subscription {}: {:?}",
-					subscription_id, e
-				),
-			}
-		});
-
-		Ok(Response::new(ReceiverStream::new(rx)))
 	}
 
 	async fn unsubscribe(

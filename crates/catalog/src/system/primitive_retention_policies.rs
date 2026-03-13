@@ -20,7 +20,7 @@ pub fn primitive_retention_policies() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: PRIMITIVE_RETENTION_POLICIES,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "primitive_retention_policies".to_string(),
 			columns: vec![
 				ColumnDef {

@@ -8,6 +8,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	error::diagnostic::flow::flow_remote_source_unsupported,
 	interface::catalog::{
 		flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId},
 		subscription::SubscriptionDef,
@@ -262,7 +263,7 @@ impl FlowCompiler {
 			}
 			QueryPlan::SeriesScan(series_scan) => SeriesScanCompiler::from(series_scan).compile(self, txn),
 			QueryPlan::RemoteScan(_) => {
-				unimplemented!("RemoteScan is not supported in flow graphs")
+				return Err(Error(flow_remote_source_unsupported()));
 			}
 			QueryPlan::RunTests(_) => {
 				panic!("RunTests is not supported in flow graphs");

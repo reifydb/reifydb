@@ -86,7 +86,7 @@ pub mod tests {
 	fn test_set_and_find_dictionary() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let dict_id = DictionaryId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let dict = create_test_dictionary(dict_id, namespace_id, "test_dict");
 
 		// Set dictionary at version 1
@@ -109,7 +109,7 @@ pub mod tests {
 	fn test_find_dictionary_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let dict_id = DictionaryId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let dict = create_test_dictionary(dict_id, namespace_id, "named_dict");
 
 		// Set dictionary
@@ -124,7 +124,7 @@ pub mod tests {
 		assert_eq!(found, None);
 
 		// Shouldn't find in wrong namespace
-		let found = catalog.find_dictionary_by_name_at(NamespaceId(2), "named_dict", CommitVersion(1));
+		let found = catalog.find_dictionary_by_name_at(NamespaceId::DEFAULT, "named_dict", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -132,7 +132,7 @@ pub mod tests {
 	fn test_dictionary_rename() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let dict_id = DictionaryId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set initial dictionary
 		let dict_v1 = create_test_dictionary(dict_id, namespace_id, "old_name");
@@ -167,8 +167,8 @@ pub mod tests {
 	fn test_dictionary_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let dict_id = DictionaryId(1);
-		let namespace1 = NamespaceId(1);
-		let namespace2 = NamespaceId(2);
+		let namespace1 = NamespaceId::SYSTEM;
+		let namespace2 = NamespaceId::DEFAULT;
 
 		// Create dictionary in namespace1
 		let dict_v1 = create_test_dictionary(dict_id, namespace1, "movable_dict");
@@ -194,7 +194,7 @@ pub mod tests {
 	fn test_dictionary_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let dict_id = DictionaryId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set dictionary
 		let dict = create_test_dictionary(dict_id, namespace_id, "deletable_dict");
@@ -218,7 +218,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_dictionaries_in_namespace() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		let dict1 = create_test_dictionary(DictionaryId(1), namespace_id, "dict1");
 		let dict2 = create_test_dictionary(DictionaryId(2), namespace_id, "dict2");
@@ -239,7 +239,7 @@ pub mod tests {
 	fn test_dictionary_versioning() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let dict_id = DictionaryId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create multiple versions
 		let dict_v1 = create_test_dictionary(dict_id, namespace_id, "dict_v1");

@@ -20,7 +20,7 @@ pub fn enums() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: ENUMS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "enums".to_string(),
 			columns: vec![
 				ColumnDef {

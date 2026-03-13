@@ -107,15 +107,15 @@ pub mod tests {
 	#[test]
 	fn test_order_preserving() {
 		let key1 = NamespaceViewKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			view: ViewId(100),
 		};
 		let key2 = NamespaceViewKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			view: ViewId(200),
 		};
 		let key3 = NamespaceViewKey {
-			namespace: NamespaceId(2),
+			namespace: NamespaceId::DEFAULT,
 			view: ViewId(1),
 		};
 

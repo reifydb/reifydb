@@ -18,7 +18,7 @@ pub fn user_authentications() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: USER_AUTHENTICATIONS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "user_authentications".to_string(),
 			columns: vec![
 				ColumnDef {

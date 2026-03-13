@@ -1757,7 +1757,7 @@ impl<'bump> Compiler<'bump> {
 						let namespace = ResolvedNamespace::new(
 							Fragment::internal("_context"),
 							Namespace::Local {
-								id: NamespaceId(1),
+								id: NamespaceId::SYSTEM,
 								name: "_context".to_string(),
 								local_name: "_context".to_string(),
 								parent_id: NamespaceId::ROOT,
@@ -1766,7 +1766,7 @@ impl<'bump> Compiler<'bump> {
 
 						let table_def = TableDef {
 							id: TableId(1),
-							namespace: NamespaceId(1),
+							namespace: NamespaceId::SYSTEM,
 							name: "_context".to_string(),
 							columns: vec![],
 							primary_key: None,

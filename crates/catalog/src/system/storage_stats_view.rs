@@ -19,7 +19,7 @@ pub fn view_storage_stats() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: VIEW_STORAGE_STATS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "view_storage_stats".to_string(),
 			columns: vec![
 				ColumnDef {

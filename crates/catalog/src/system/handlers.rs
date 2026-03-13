@@ -20,7 +20,7 @@ pub fn handlers() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: HANDLERS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "handlers".to_string(),
 			columns: vec![
 				ColumnDef {

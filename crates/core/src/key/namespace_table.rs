@@ -107,15 +107,15 @@ pub mod tests {
 	#[test]
 	fn test_order_preserving() {
 		let key1 = NamespaceTableKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			table: TableId(100),
 		};
 		let key2 = NamespaceTableKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			table: TableId(200),
 		};
 		let key3 = NamespaceTableKey {
-			namespace: NamespaceId(2),
+			namespace: NamespaceId::DEFAULT,
 			table: TableId(0),
 		};
 

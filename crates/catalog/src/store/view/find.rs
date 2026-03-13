@@ -152,9 +152,12 @@ pub mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result =
-			CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), NamespaceId(2), "view_two")
-				.unwrap();
+		let result = CatalogStore::find_view_by_name(
+			&mut Transaction::Admin(&mut txn),
+			NamespaceId::DEFAULT,
+			"view_two",
+		)
+		.unwrap();
 		assert!(result.is_none());
 	}
 }

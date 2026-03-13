@@ -20,7 +20,7 @@ pub fn policies() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: POLICIES,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "policies".to_string(),
 			columns: vec![
 				ColumnDef {

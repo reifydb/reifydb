@@ -50,7 +50,7 @@ pub(crate) fn drop_subscription(
 	// Also drop the associated flow (created in the system namespace)
 	let flow_name = subscription_flow_name(subscription.id);
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
-	if let Some(flow) = flows.iter().find(|f| f.namespace == NamespaceId(1) && f.name == flow_name) {
+	if let Some(flow) = flows.iter().find(|f| f.namespace == NamespaceId::SYSTEM && f.name == flow_name) {
 		services.catalog.drop_flow(txn, flow.clone())?;
 	}
 

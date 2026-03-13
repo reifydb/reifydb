@@ -20,7 +20,7 @@ pub fn events() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: EVENTS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "events".to_string(),
 			columns: vec![
 				ColumnDef {

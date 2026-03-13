@@ -20,7 +20,7 @@ pub fn virtual_tables() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: VIRTUAL_TABLES,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "virtual_tables".to_string(),
 			columns: vec![
 				ColumnDef {

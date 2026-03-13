@@ -1009,7 +1009,7 @@ pub mod tests {
 
 	fn test_namespace_def() -> Namespace {
 		Namespace::Local {
-			id: NamespaceId(1),
+			id: NamespaceId::SYSTEM,
 			name: "public".to_string(),
 			local_name: "public".to_string(),
 			parent_id: NamespaceId::ROOT,
@@ -1019,7 +1019,7 @@ pub mod tests {
 	fn test_table_def() -> TableDef {
 		TableDef {
 			id: TableId(1),
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "users".to_string(),
 			columns: vec![
 				ColumnDef {

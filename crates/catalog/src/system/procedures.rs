@@ -20,7 +20,7 @@ pub fn procedures() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: PROCEDURES,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "procedures".to_string(),
 			columns: vec![
 				ColumnDef {

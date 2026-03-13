@@ -99,15 +99,15 @@ pub mod tests {
 	#[test]
 	fn test_order_preserving() {
 		let key1 = NamespaceFlowKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			flow: FlowId(100),
 		};
 		let key2 = NamespaceFlowKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			flow: FlowId(200),
 		};
 		let key3 = NamespaceFlowKey {
-			namespace: NamespaceId(2),
+			namespace: NamespaceId::DEFAULT,
 			flow: FlowId(0),
 		};
 

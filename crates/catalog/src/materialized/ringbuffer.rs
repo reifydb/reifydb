@@ -114,7 +114,7 @@ pub mod tests {
 	fn test_set_and_find_ringbuffer() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let rb_id = RingBufferId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "test_rb");
 
 		// Set ringbuffer at version 1
@@ -137,7 +137,7 @@ pub mod tests {
 	fn test_find_ringbuffer_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let rb_id = RingBufferId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "named_rb");
 
 		// Set ringbuffer
@@ -152,7 +152,7 @@ pub mod tests {
 		assert_eq!(found, None);
 
 		// Shouldn't find in wrong namespace
-		let found = catalog.find_ringbuffer_by_name_at(NamespaceId(2), "named_rb", CommitVersion(1));
+		let found = catalog.find_ringbuffer_by_name_at(NamespaceId::DEFAULT, "named_rb", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -160,7 +160,7 @@ pub mod tests {
 	fn test_ringbuffer_rename() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let rb_id = RingBufferId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set initial ringbuffer
 		let rb_v1 = create_test_ringbuffer(rb_id, namespace_id, "old_name");
@@ -195,7 +195,7 @@ pub mod tests {
 	fn test_ringbuffer_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let rb_id = RingBufferId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set ringbuffer
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "deletable_rb");
@@ -220,7 +220,7 @@ pub mod tests {
 	fn test_find_latest_ringbuffer() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let rb_id = RingBufferId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Empty catalog should return None
 		assert_eq!(catalog.find_ringbuffer(rb_id), None);
@@ -240,7 +240,7 @@ pub mod tests {
 	#[test]
 	fn test_find_latest_ringbuffer_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let rb_id = RingBufferId(1);
 
 		// Empty catalog should return None

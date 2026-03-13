@@ -138,7 +138,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_handler_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(2),
+			NamespaceId::DEFAULT,
 			"handler_two",
 		)
 		.unwrap();

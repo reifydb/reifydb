@@ -108,15 +108,15 @@ pub mod tests {
 	#[test]
 	fn test_order_preserving() {
 		let key1 = NamespaceHandlerKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			handler: HandlerId(100),
 		};
 		let key2 = NamespaceHandlerKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			handler: HandlerId(200),
 		};
 		let key3 = NamespaceHandlerKey {
-			namespace: NamespaceId(2),
+			namespace: NamespaceId::DEFAULT,
 			handler: HandlerId(1),
 		};
 

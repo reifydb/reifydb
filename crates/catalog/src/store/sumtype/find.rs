@@ -134,10 +134,10 @@ pub mod tests {
 		create_event(&mut txn, "namespace_two", "event_two", vec![]);
 		create_event(&mut txn, "namespace_three", "event_three", vec![]);
 
-		// event_two is in NamespaceId(1027), not NamespaceId(2)
+		// event_two is in NamespaceId(1027), not NamespaceId::DEFAULT
 		let result = CatalogStore::find_sumtype_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(2),
+			NamespaceId::DEFAULT,
 			"event_two",
 		)
 		.unwrap();

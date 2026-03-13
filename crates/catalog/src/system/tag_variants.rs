@@ -20,7 +20,7 @@ pub fn tag_variants() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: TAG_VARIANTS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "tag_variants".to_string(),
 			columns: vec![
 				ColumnDef {

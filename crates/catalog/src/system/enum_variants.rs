@@ -20,7 +20,7 @@ pub fn enum_variants() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: ENUM_VARIANTS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "enum_variants".to_string(),
 			columns: vec![
 				ColumnDef {

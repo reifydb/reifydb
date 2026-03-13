@@ -252,7 +252,7 @@ pub mod tests {
 	fn test_dictionary() -> DictionaryDef {
 		DictionaryDef {
 			id: DictionaryId(1),
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "test_dict".to_string(),
 			value_type: Type::Utf8,
 			id_type: Type::Uint8,
@@ -350,7 +350,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let dict = DictionaryDef {
 			id: DictionaryId(2),
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "dict_u1".to_string(),
 			value_type: Type::Utf8,
 			id_type: Type::Uint1,
@@ -366,7 +366,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let dict = DictionaryDef {
 			id: DictionaryId(3),
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "dict_u2".to_string(),
 			value_type: Type::Utf8,
 			id_type: Type::Uint2,
@@ -382,7 +382,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let dict = DictionaryDef {
 			id: DictionaryId(4),
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "dict_u4".to_string(),
 			value_type: Type::Utf8,
 			id_type: Type::Uint4,

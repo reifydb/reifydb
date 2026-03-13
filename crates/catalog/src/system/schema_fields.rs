@@ -20,7 +20,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: SCHEMA_FIELDS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "schema_fields".to_string(),
 			columns: vec![
 				ColumnDef {

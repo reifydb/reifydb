@@ -18,7 +18,7 @@ pub fn configs() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: CONFIGS,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "configs".to_string(),
 			columns: vec![
 				ColumnDef {

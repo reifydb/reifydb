@@ -20,7 +20,7 @@ pub fn column_properties() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: COLUMN_PROPERTIES,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "column_properties".to_string(),
 			columns: vec![
 				ColumnDef {

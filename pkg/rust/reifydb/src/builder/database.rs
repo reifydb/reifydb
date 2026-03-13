@@ -471,7 +471,7 @@ impl DatabaseBuilder {
 						namespace_fragment: None,
 						name: "system::config".to_string(),
 						local_name: "config".to_string(),
-						parent_id: NamespaceId(1),
+						parent_id: NamespaceId::SYSTEM,
 						grpc: None,
 					},
 				)?;

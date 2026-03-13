@@ -18,7 +18,7 @@ pub fn versions() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: VERSIONS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "versions".to_string(),
 			columns: vec![
 				ColumnDef {

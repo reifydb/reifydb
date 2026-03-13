@@ -20,7 +20,7 @@ pub fn series() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: SERIES,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "series".to_string(),
 			columns: vec![
 				ColumnDef {

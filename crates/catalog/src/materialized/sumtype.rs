@@ -80,7 +80,7 @@ pub mod tests {
 	fn test_set_and_find_sumtype() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let id = SumTypeId(1);
-		let namespace = NamespaceId(1);
+		let namespace = NamespaceId::SYSTEM;
 		let def = create_test_sumtype(id, namespace, "Status");
 
 		catalog.set_sumtype(id, CommitVersion(1), Some(def.clone()));
@@ -99,7 +99,7 @@ pub mod tests {
 	fn test_find_sumtype_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let id = SumTypeId(1);
-		let namespace = NamespaceId(1);
+		let namespace = NamespaceId::SYSTEM;
 		let def = create_test_sumtype(id, namespace, "Direction");
 
 		catalog.set_sumtype(id, CommitVersion(1), Some(def.clone()));
@@ -110,7 +110,7 @@ pub mod tests {
 		let found = catalog.find_sumtype_by_name_at(namespace, "wrong_name", CommitVersion(1));
 		assert_eq!(found, None);
 
-		let found = catalog.find_sumtype_by_name_at(NamespaceId(2), "Direction", CommitVersion(1));
+		let found = catalog.find_sumtype_by_name_at(NamespaceId::DEFAULT, "Direction", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -118,7 +118,7 @@ pub mod tests {
 	fn test_sumtype_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let id = SumTypeId(1);
-		let namespace = NamespaceId(1);
+		let namespace = NamespaceId::SYSTEM;
 		let def = create_test_sumtype(id, namespace, "Deletable");
 
 		catalog.set_sumtype(id, CommitVersion(1), Some(def.clone()));
@@ -137,7 +137,7 @@ pub mod tests {
 	fn test_sumtype_versioning() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let id = SumTypeId(1);
-		let namespace = NamespaceId(1);
+		let namespace = NamespaceId::SYSTEM;
 
 		let v1 = create_test_sumtype(id, namespace, "v1");
 		let mut v2 = v1.clone();

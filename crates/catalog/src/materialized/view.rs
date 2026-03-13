@@ -115,7 +115,7 @@ pub mod tests {
 	fn test_set_and_find_view() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let view = create_test_view(view_id, namespace_id, "test_view");
 
 		// Set view at version 1
@@ -138,7 +138,7 @@ pub mod tests {
 	fn test_find_view_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let view = create_test_view(view_id, namespace_id, "named_view");
 
 		// Set view
@@ -153,7 +153,7 @@ pub mod tests {
 		assert_eq!(found, None);
 
 		// Shouldn't find in wrong namespace
-		let found = catalog.find_view_by_name_at(NamespaceId(2), "named_view", CommitVersion(1));
+		let found = catalog.find_view_by_name_at(NamespaceId::DEFAULT, "named_view", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -161,7 +161,7 @@ pub mod tests {
 	fn test_view_rename() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set initial view
 		let view_v1 = create_test_view(view_id, namespace_id, "old_name");
@@ -196,8 +196,8 @@ pub mod tests {
 	fn test_view_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace1 = NamespaceId(1);
-		let namespace2 = NamespaceId(2);
+		let namespace1 = NamespaceId::SYSTEM;
+		let namespace2 = NamespaceId::DEFAULT;
 
 		// Create view in namespace1
 		let view_v1 = create_test_view(view_id, namespace1, "movable_view");
@@ -223,7 +223,7 @@ pub mod tests {
 	fn test_view_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set view
 		let view = create_test_view(view_id, namespace_id, "deletable_view");
@@ -247,7 +247,7 @@ pub mod tests {
 	#[test]
 	fn test_multiple_views_in_namespace() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		let view1 = create_test_view(ViewId(1), namespace_id, "view1");
 		let view2 = create_test_view(ViewId(2), namespace_id, "view2");
@@ -268,7 +268,7 @@ pub mod tests {
 	fn test_view_versioning() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create multiple versions
 		let view_v1 = create_test_view(view_id, namespace_id, "view_v1");
@@ -296,7 +296,7 @@ pub mod tests {
 	fn test_find_latest_view() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		// Empty catalog should return None
 		assert_eq!(catalog.find_view(view_id), None);
@@ -317,7 +317,7 @@ pub mod tests {
 	fn test_find_latest_view_deleted() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
 		let view_id = ViewId(1);
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 
 		let view = create_test_view(view_id, namespace_id, "test_view");
 		catalog.set_view(view_id, CommitVersion(10), Some(view));
@@ -332,7 +332,7 @@ pub mod tests {
 	#[test]
 	fn test_find_latest_view_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let namespace_id = NamespaceId(1);
+		let namespace_id = NamespaceId::SYSTEM;
 		let view_id = ViewId(1);
 
 		// Empty catalog should return None

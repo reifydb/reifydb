@@ -20,7 +20,7 @@ pub fn primary_keys() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: PRIMARY_KEYS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "primary_keys".to_string(),
 			columns: vec![
 				ColumnDef {

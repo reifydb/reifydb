@@ -20,7 +20,7 @@ pub fn ringbuffers() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: RINGBUFFERS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "ringbuffers".to_string(),
 			columns: vec![
 				ColumnDef {

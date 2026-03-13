@@ -82,8 +82,8 @@ pub fn resolve_unresolved_source(
 	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
 		let def = VTableDef {
-			id: VTableId(0),           // Placeholder ID - compile.rs handles actual lookup
-			namespace: NamespaceId(1), // System namespace ID
+			id: VTableId(0), // Placeholder ID - compile.rs handles actual lookup
+			namespace: NamespaceId::SYSTEM,
 			name: name_str.to_string(),
 			columns: vec![], // Columns are populated at execution time
 		};

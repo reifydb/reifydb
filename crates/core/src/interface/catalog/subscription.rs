@@ -72,5 +72,5 @@ pub fn subscription_flow_name(id: SubscriptionId) -> String {
 
 /// Returns the namespace ID where subscription flows are created (system namespace).
 pub const fn subscription_flow_namespace() -> NamespaceId {
-	NamespaceId(1)
+	NamespaceId::SYSTEM
 }

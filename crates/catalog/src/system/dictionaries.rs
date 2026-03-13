@@ -20,7 +20,7 @@ pub fn dictionaries() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: DICTIONARIES,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "dictionaries".to_string(),
 			columns: vec![
 				ColumnDef {

@@ -20,7 +20,7 @@ pub fn roles() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: ROLES,
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			name: "roles".to_string(),
 			columns: vec![
 				ColumnDef {

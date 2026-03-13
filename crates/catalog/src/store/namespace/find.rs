@@ -45,11 +45,11 @@ impl CatalogStore {
 
 	pub(crate) fn find_namespace(rx: &mut Transaction<'_>, id: NamespaceId) -> Result<Option<Namespace>> {
 		// Special case for system namespace - hardcoded with fixed ID
-		if id == NamespaceId(1) {
+		if id == NamespaceId::SYSTEM {
 			return Ok(Some(Namespace::system()));
 		}
 
-		if id == NamespaceId(2) {
+		if id == NamespaceId::DEFAULT {
 			return Ok(Some(Namespace::default_namespace()));
 		}
 

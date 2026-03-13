@@ -19,7 +19,7 @@ pub fn dictionary_storage_stats() -> Arc<VTableDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
 			id: DICTIONARY_STORAGE_STATS,
-			namespace: NamespaceId(1), // system namespace
+			namespace: NamespaceId::SYSTEM,
 			name: "dictionary_storage_stats".to_string(),
 			columns: vec![
 				ColumnDef {

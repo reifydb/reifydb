@@ -528,7 +528,7 @@ pub(crate) fn compile<'a>(
 			{
 				// User-defined virtual table - registry returns VTableImpl directly
 				user_table
-			} else if namespace.id() == NamespaceId(1) {
+			} else if namespace.id() == NamespaceId::SYSTEM {
 				// Built-in system virtual tables
 				match table.name.as_str() {
 					"sequences" => VTables::Sequences(Sequences::new()),

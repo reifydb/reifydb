@@ -55,12 +55,21 @@ impl From<ExecuteError> for CreateSubscriptionError {
 	}
 }
 
+/// Result of creating a subscription: either local or remote.
+pub enum CreateSubscriptionResult {
+	Local(SubscriptionId),
+	Remote {
+		address: String,
+		query: String,
+	},
+}
+
 /// Execute `CREATE SUBSCRIPTION AS { query }` and extract the subscription ID from the result.
 pub async fn create_subscription(
 	state: &AppState,
 	identity: IdentityId,
 	query: &str,
-) -> Result<SubscriptionId, CreateSubscriptionError> {
+) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
 	let statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
 	debug!("Subscription statement: {}", statement);
 
@@ -74,8 +83,45 @@ pub async fn create_subscription(
 	)
 	.await?;
 
-	frames.first()
-		.and_then(|frame| frame.columns.iter().find(|c| c.name == "subscription_id"))
+	let frame = frames.first().ok_or(CreateSubscriptionError::ExtractionFailed)?;
+
+	// Check if result indicates a remote source
+	if let Some(addr_col) = frame.columns.iter().find(|c| c.name == "remote_address") {
+		let address = if addr_col.data.len() > 0 {
+			match addr_col.data.get_value(0) {
+				Value::Utf8(s) => s,
+				_ => return Err(CreateSubscriptionError::ExtractionFailed),
+			}
+		} else {
+			return Err(CreateSubscriptionError::ExtractionFailed);
+		};
+
+		let rql = frame
+			.columns
+			.iter()
+			.find(|c| c.name == "remote_rql")
+			.and_then(|col| {
+				if col.data.len() > 0 {
+					match col.data.get_value(0) {
+						Value::Utf8(s) => Some(s),
+						_ => None,
+					}
+				} else {
+					None
+				}
+			})
+			.ok_or(CreateSubscriptionError::ExtractionFailed)?;
+
+		return Ok(CreateSubscriptionResult::Remote {
+			address,
+			query: rql,
+		});
+	}
+
+	// Normal local path: extract subscription_id
+	frame.columns
+		.iter()
+		.find(|c| c.name == "subscription_id")
 		.and_then(|col| {
 			if col.data.len() > 0 {
 				Some(col.data.get_value(0))
@@ -90,6 +136,7 @@ pub async fn create_subscription(
 				None
 			}
 		})
+		.map(CreateSubscriptionResult::Local)
 		.ok_or(CreateSubscriptionError::ExtractionFailed)
 }
 

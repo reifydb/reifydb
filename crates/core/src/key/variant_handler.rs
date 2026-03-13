@@ -152,25 +152,25 @@ pub mod tests {
 	#[test]
 	fn test_order_preserving() {
 		let key1 = VariantHandlerKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			sumtype: SumTypeId(5),
 			variant_tag: 3,
 			handler: HandlerId(100),
 		};
 		let key2 = VariantHandlerKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			sumtype: SumTypeId(5),
 			variant_tag: 3,
 			handler: HandlerId(200),
 		};
 		let key3 = VariantHandlerKey {
-			namespace: NamespaceId(1),
+			namespace: NamespaceId::SYSTEM,
 			sumtype: SumTypeId(5),
 			variant_tag: 4,
 			handler: HandlerId(1),
 		};
 		let key4 = VariantHandlerKey {
-			namespace: NamespaceId(2),
+			namespace: NamespaceId::DEFAULT,
 			sumtype: SumTypeId(1),
 			variant_tag: 0,
 			handler: HandlerId(1),
@@ -188,7 +188,7 @@ pub mod tests {
 
 	#[test]
 	fn test_variant_scan() {
-		let ns = NamespaceId(1);
+		let ns = NamespaceId::SYSTEM;
 		let st = SumTypeId(10);
 		let tag = 5u8;
 
