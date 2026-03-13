@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
 use reifydb_rql::{
@@ -179,7 +179,7 @@ pub(crate) fn run_tests(
 					ctx.clear();
 				}
 				txn.clear_test_flow_state();
-				let start = Instant::now();
+				let start = services.clock.instant();
 				let savepoint = txn.savepoint();
 				let (outcome, message) = run_single(
 					vm,
@@ -232,7 +232,7 @@ pub(crate) fn run_tests(
 						ctx.clear();
 					}
 					txn.clear_test_flow_state();
-					let start = Instant::now();
+					let start = services.clock.instant();
 					let savepoint = txn.savepoint();
 					let (outcome, message) = run_single(
 						vm,

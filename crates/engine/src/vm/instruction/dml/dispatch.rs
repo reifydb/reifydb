@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	internal_error,
@@ -97,7 +97,7 @@ pub(crate) fn dispatch(
 
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
-				let handler_start = Instant::now();
+				let handler_start = services.clock.instant();
 				let saved_ip = vm.ip;
 
 				// Enter handler scope
