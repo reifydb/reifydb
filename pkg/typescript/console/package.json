@@ -14,6 +14,8 @@
   },
   "scripts": {
     "build": "tsup",
+    "test": "vitest run",
+    "test:unit": "vitest run",
     "prepublishOnly": "pnpm build",
     "publish:npm": "pnpm publish --access public"
   },
@@ -35,7 +37,8 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   },
   "engines": {
     "node": ">=16.0.0"

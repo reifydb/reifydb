@@ -768,11 +768,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-abi"
-version = "0.4.0"
+version = "0.4.1"
 
 [[package]]
 name = "reifydb-auth"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "argon2",
  "rand",
@@ -784,11 +784,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-build"
-version = "0.4.0"
+version = "0.4.1"
 
 [[package]]
 name = "reifydb-catalog"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "crossbeam-skiplist",
  "futures-util",
@@ -809,7 +809,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bigdecimal",
  "crossbeam-skiplist",
@@ -849,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-metric"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-rql"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bumpalo",
  "postcard",
@@ -876,7 +876,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-runtime"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "cfg-if",
  "crossbeam-channel",
@@ -897,11 +897,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sql"
-version = "0.4.0"
+version = "0.4.1"
 
 [[package]]
 name = "reifydb-store-multi"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-single"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -927,7 +927,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-transaction"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
@@ -945,7 +945,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-type"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bigdecimal",
  "num-bigint",

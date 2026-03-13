@@ -2,14 +2,34 @@
 // Copyright (c) 2025 ReifyDB
 
 //! WASM timer implementation using setTimeout/setInterval.
+//!
+//! Uses direct global bindings so the timers work in both browser and Node.js
+//! environments (web_sys::window() only works in browsers).
+//!
+//! Timer handles are stored as `JsValue` because browsers return numeric IDs
+//! while Node.js returns `Timeout` objects.
 
 use std::{cell::RefCell, rc::Rc, sync::atomic::Ordering, time::Duration};
 
+use js_sys::Function;
 use wasm_bindgen::prelude::*;
-use web_sys::window;
 
 use super::{TimerHandle, next_timer_id};
 use crate::actor::mailbox::ActorRef;
+
+// Global timer functions available in both browser and Node.js.
+// Return JsValue because browsers return numbers but Node.js returns Timeout objects.
+#[wasm_bindgen]
+extern "C" {
+	#[wasm_bindgen(js_name = setTimeout)]
+	fn global_set_timeout(handler: &Function, timeout: i32) -> JsValue;
+
+	#[wasm_bindgen(js_name = setInterval)]
+	fn global_set_interval(handler: &Function, timeout: i32) -> JsValue;
+
+	#[wasm_bindgen(js_name = clearInterval)]
+	fn global_clear_interval(handle: &JsValue);
+}
 
 /// Schedule a message to be sent after a delay.
 ///
@@ -29,9 +49,7 @@ pub fn schedule_once_fn<M: Send + 'static, F: FnOnce() -> M + Send + 'static>(
 		}
 	}) as Box<dyn FnOnce()>);
 
-	let window = window().expect("no global `window` exists");
-	let _ = window
-		.set_timeout_with_callback_and_timeout_and_arguments_0(closure.as_ref().unchecked_ref(), delay_ms);
+	global_set_timeout(closure.as_ref().unchecked_ref(), delay_ms);
 
 	closure.forget();
 
@@ -45,38 +63,28 @@ pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interv
 	let handle = TimerHandle::new(next_timer_id());
 	let cancelled = handle.cancelled_flag();
 
-	// Store the interval ID so we can clear it
-	let interval_id: Rc<RefCell<Option<i32>>> = Rc::new(RefCell::new(None));
-	let interval_id_clone = interval_id.clone();
+	// Store the interval handle so we can clear it.
+	let interval_handle: Rc<RefCell<Option<JsValue>>> = Rc::new(RefCell::new(None));
+	let interval_handle_clone = interval_handle.clone();
 
 	let closure = Closure::new(Box::new(move || {
 		if cancelled.load(Ordering::SeqCst) {
-			// Cancel the interval
-			if let Some(id) = *interval_id_clone.borrow() {
-				let window = window().expect("no global `window` exists");
-				window.clear_interval_with_handle(id);
+			if let Some(h) = interval_handle_clone.borrow().as_ref() {
+				global_clear_interval(h);
 			}
 			return;
 		}
 
 		if actor_ref.send(msg.clone()).is_err() {
-			// Actor is dead, cancel the interval
-			if let Some(id) = *interval_id_clone.borrow() {
-				let window = window().expect("no global `window` exists");
-				window.clear_interval_with_handle(id);
+			if let Some(h) = interval_handle_clone.borrow().as_ref() {
+				global_clear_interval(h);
 			}
 		}
 	}) as Box<dyn FnMut()>);
 
-	let window = window().expect("no global `window` exists");
-	let id = window
-		.set_interval_with_callback_and_timeout_and_arguments_0(
-			closure.as_ref().unchecked_ref(),
-			interval.as_millis() as i32,
-		)
-		.expect("failed to set interval");
+	let h = global_set_interval(closure.as_ref().unchecked_ref(), interval.as_millis() as i32);
 
-	*interval_id.borrow_mut() = Some(id);
+	*interval_handle.borrow_mut() = Some(h);
 
 	// Prevent closure from being dropped
 	closure.forget();

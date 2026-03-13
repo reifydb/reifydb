@@ -6,7 +6,7 @@
 //! This crate provides JavaScript-compatible bindings for running ReifyDB
 //! queries in a browser or Node.js environment with in-memory storage.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Write};
 
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
@@ -97,7 +97,11 @@ impl WasmDB {
 
 		// WASM runtime with minimal threads (single-threaded)
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().async_threads(1).compute_threads(1).compute_max_in_flight(8),
+			SharedRuntimeConfig::default()
+				.async_threads(1)
+				.compute_threads(1)
+				.compute_max_in_flight(8)
+				.mock_clock(0),
 		);
 
 		// Create actor system at the top level - this will be shared by
@@ -345,6 +349,48 @@ impl WasmDB {
 		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
 
 		utils::frames_to_js(&frames)
+	}
+
+	/// Execute a command and return Display-formatted text output
+	#[wasm_bindgen(js_name = commandText)]
+	pub fn command_text(&self, rql: &str) -> Result<String, JsValue> {
+		let frames = self
+			.inner
+			.command_as(IdentityId::root(), rql, Params::None)
+			.map_err(|e| JsError::from_error(&e))?;
+		let mut output = String::new();
+		for frame in &frames {
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+		}
+		Ok(output)
+	}
+
+	/// Execute an admin operation and return Display-formatted text output
+	#[wasm_bindgen(js_name = adminText)]
+	pub fn admin_text(&self, rql: &str) -> Result<String, JsValue> {
+		let frames = self
+			.inner
+			.admin_as(IdentityId::root(), rql, Params::None)
+			.map_err(|e| JsError::from_error(&e))?;
+		let mut output = String::new();
+		for frame in &frames {
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+		}
+		Ok(output)
+	}
+
+	/// Execute a query and return Display-formatted text output
+	#[wasm_bindgen(js_name = queryText)]
+	pub fn query_text(&self, rql: &str) -> Result<String, JsValue> {
+		let frames = self
+			.inner
+			.query_as(IdentityId::root(), rql, Params::None)
+			.map_err(|e| JsError::from_error(&e))?;
+		let mut output = String::new();
+		for frame in &frames {
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+		}
+		Ok(output)
 	}
 }
 

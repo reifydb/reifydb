@@ -6,3 +6,6 @@ directory = "vendor"
 
 [net]
 offline = true
+
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=-zstack-size=8388608"]

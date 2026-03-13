@@ -13,11 +13,16 @@ use std::{
 };
 
 use js_sys::Date;
+use web_sys::window;
 
 #[inline(always)]
 fn platform_now_nanos() -> u128 {
 	let millis = Date::now();
 	(millis * 1_000_000.0) as u128
+}
+
+fn performance_now_ms() -> f64 {
+	window().and_then(|w| w.performance()).map(|p| p.now()).unwrap_or_else(|| Date::now())
 }
 
 /// A clock that provides time - either real system time or mock time for testing.
@@ -57,7 +62,7 @@ impl Clock {
 		match self {
 			Clock::Real => Instant {
 				inner: InstantInner::Real {
-					millis: Date::now(),
+					timestamp_ms: performance_now_ms(),
 				},
 			},
 			Clock::Mock(mock) => Instant {
@@ -161,7 +166,7 @@ impl MockClock {
 #[derive(Clone)]
 enum InstantInner {
 	Real {
-		millis: f64,
+		timestamp_ms: f64,
 	},
 	Mock {
 		captured_nanos: u128,
@@ -179,11 +184,12 @@ impl Instant {
 	pub fn elapsed(&self) -> Duration {
 		match &self.inner {
 			InstantInner::Real {
-				millis,
+				timestamp_ms,
 			} => {
-				let now = Date::now();
-				let elapsed_millis = (now - millis).max(0.0);
-				Duration::from_millis(elapsed_millis as u64)
+				let now = performance_now_ms();
+				let elapsed_ms = (now - timestamp_ms).max(0.0);
+				let nanos = (elapsed_ms * 1_000_000.0) as u64;
+				Duration::from_nanos(nanos)
 			}
 			InstantInner::Mock {
 				captured_nanos,
@@ -201,14 +207,15 @@ impl Instant {
 		match (&self.inner, &earlier.inner) {
 			(
 				InstantInner::Real {
-					millis: this,
+					timestamp_ms: this,
 				},
 				InstantInner::Real {
-					millis: other,
+					timestamp_ms: other,
 				},
 			) => {
-				let elapsed_millis = (this - other).max(0.0);
-				Duration::from_millis(elapsed_millis as u64)
+				let elapsed_ms = (this - other).max(0.0);
+				let nanos = (elapsed_ms * 1_000_000.0) as u64;
+				Duration::from_nanos(nanos)
 			}
 			(
 				InstantInner::Mock {
@@ -232,8 +239,8 @@ impl fmt::Debug for Instant {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match &self.inner {
 			InstantInner::Real {
-				millis,
-			} => f.debug_tuple("Instant::Real").field(millis).finish(),
+				timestamp_ms,
+			} => f.debug_tuple("Instant::Real").field(timestamp_ms).finish(),
 			InstantInner::Mock {
 				captured_nanos,
 				..

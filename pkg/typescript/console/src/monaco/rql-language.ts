@@ -62,17 +62,47 @@ const KEYWORDS = [
 
   // Additional keywords (not in keyword.rs but valid RQL constructs)
   'derive', 'group', 'union', 'as',
+
+  // Word operators
+  'and', 'or', 'not', 'xor',
 ];
 
 const MODULES = ['date', 'math', 'text'];
 const BUILTIN_FUNCTIONS = ['case'];
 const LITERALS = ['none', 'true', 'false'];
 
+const TYPE_KEYWORDS = [
+  // Signed integers
+  'int1', 'int2', 'int4', 'int8', 'int16', 'int',
+  // Unsigned integers
+  'uint1', 'uint2', 'uint4', 'uint8', 'uint16', 'uint',
+  // Floating point
+  'float4', 'float8',
+  // Text & binary
+  'utf8', 'blob',
+  // Boolean
+  'bool', 'boolean',
+  // Numeric
+  'decimal',
+  // Temporal
+  'date', 'datetime', 'time', 'duration', 'interval',
+  // Identifiers & UUIDs
+  'uuid4', 'uuid7', 'identityid', 'identity_id', 'dictionaryid', 'dictionary_id',
+  // Special
+  'any',
+  // Container types
+  'Option', 'List', 'Record', 'Tuple',
+  // Alias
+  'text',
+];
+
 export const rqlLanguageDefinition: languages.IMonarchLanguage = {
-  defaultToken: 'invalid',
+  defaultToken: '',
   ignoreCase: true,
 
-  keywords: [...KEYWORDS, ...MODULES, ...BUILTIN_FUNCTIONS, ...LITERALS],
+  keywords: [...KEYWORDS, ...MODULES, ...BUILTIN_FUNCTIONS],
+  constants: LITERALS,
+  typeKeywords: TYPE_KEYWORDS,
 
   operators: ['+', '-', '*', '/', '//', '%', '=', '==', '!=', '->', '=>', '>', '<', '>=', '<=', '~=', '&&', '||', '??'],
 
@@ -81,15 +111,23 @@ export const rqlLanguageDefinition: languages.IMonarchLanguage = {
       // Comments
       [/#.*/, 'comment'],
 
-      // Named arguments
-      [/(\w+)\s*:/, 'key'],
+      // Namespace separator (must precede named arguments)
+      [/::/, 'operator'],
+
+      // Named arguments (negative lookahead prevents matching `::`)
+      [/(\w+)\s*:(?!:)/, 'key'],
+
+      // Variable references
+      [/\$[\w$]+/, 'variable'],
 
       // Identifiers and keywords (case insensitive)
       [
-        /[a-zA-Z_$][\w$]*/,
+        /[a-zA-Z_][\w$]*/,
         {
           cases: {
             '@keywords': 'keyword',
+            '@constants': 'constant',
+            '@typeKeywords': 'type',
             '@default': 'identifier',
           },
         },
@@ -101,8 +139,8 @@ export const rqlLanguageDefinition: languages.IMonarchLanguage = {
       // Brackets
       [/[{}()[\]]/, '@brackets'],
 
-      // Numbers with underscores support
-      [/[+-]?(?:[\d_]+(?:\.[\d_]+)?|\.[\d_]+)/, 'number'],
+      // Numbers with underscores and scientific notation support
+      [/[+-]?(?:[\d_]+(?:\.[\d_]+)?|\.[\d_]+)(?:[eE][+-]?\d+)?/, 'number'],
 
       // Strings
       [/"([^"\\]|\\.)*$/, 'string.invalid'],
@@ -112,11 +150,17 @@ export const rqlLanguageDefinition: languages.IMonarchLanguage = {
       [/'([^'\\]|\\.)*$/, 'string.invalid'],
       [/'/, { token: 'string.quote', bracket: '@open', next: '@singlestring' }],
 
-      // Operators
-      [/[+\-*/%]/, 'operator'],
-      [/\/\//, 'operator'],
-      [/==|!=|->|=>|>=|<=|~=|>|</, 'operator'],
+      // Operators — multi-char first for longest match
+      [/<<|>>|\.\./, 'operator'],
+      [/==|!=|->|=>|>=|<=|~=|:=/, 'operator'],
       [/&&|\|\||\?\?/, 'operator'],
+      [/\/\//, 'operator'],
+
+      // Single-char operators
+      [/[+\-*/%|.=<>!&^?]/, 'operator'],
+
+      // Delimiters
+      [/[;,]/, 'delimiter'],
     ],
 
     string: [
@@ -133,15 +177,6 @@ export const rqlLanguageDefinition: languages.IMonarchLanguage = {
 
     whitespace: [
       [/[ \t\r\n]+/, 'white'],
-      [/\/\*/, 'comment', '@comment'],
-      [/\/\/.*$/, 'comment'],
-    ],
-
-    comment: [
-      [/[^/*]+/, 'comment'],
-      [/\/\*/, 'comment', '@push'],
-      [/\*\//, 'comment', '@pop'],
-      [/[/*]/, 'comment'],
     ],
   },
 };
@@ -149,7 +184,6 @@ export const rqlLanguageDefinition: languages.IMonarchLanguage = {
 export const rqlLanguageConfiguration: languages.LanguageConfiguration = {
   comments: {
     lineComment: '#',
-    blockComment: ['/*', '*/'],
   },
   brackets: [
     ['{', '}'],
