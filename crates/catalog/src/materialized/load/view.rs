@@ -35,7 +35,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
 		let view_def = convert_view(multi, primary_key);
 
-		catalog.set_view(view_def.id, version, Some(view_def));
+		catalog.set_view(view_def.id(), version, Some(view_def));
 	}
 
 	Ok(())

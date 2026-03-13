@@ -106,24 +106,24 @@ pub mod tests {
 		.unwrap();
 
 		// Get primitive by ViewId
-		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
 		match primitive {
 			PrimitiveDef::View(v) => {
-				assert_eq!(v.id, view.id);
-				assert_eq!(v.name, view.name);
+				assert_eq!(v.id(), view.id());
+				assert_eq!(v.name(), view.name());
 			}
 			_ => panic!("Expected view"),
 		}
 
 		// Get primitive by PrimitiveId::View
 		let primitive =
-			CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::View(view.id))
+			CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::View(view.id()))
 				.unwrap();
 
 		match primitive {
 			PrimitiveDef::View(v) => {
-				assert_eq!(v.id, view.id);
+				assert_eq!(v.id(), view.id());
 			}
 			_ => panic!("Expected view"),
 		}

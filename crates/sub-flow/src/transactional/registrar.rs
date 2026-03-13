@@ -76,7 +76,7 @@ impl TransactionalFlowRegistrar {
 					if let Ok(Some(def)) =
 						self.catalog.find_view(&mut Transaction::Query(&mut query), *view)
 					{
-						if def.kind == ViewKind::Transactional {
+						if def.kind() == ViewKind::Transactional {
 							return true;
 						}
 					}

@@ -362,7 +362,7 @@ impl Columns {
 	/// Create empty Columns (0 rows) with schema from a ViewDef
 	pub fn from_view_def(view: &ViewDef) -> Self {
 		let columns: Vec<Column> = view
-			.columns
+			.columns()
 			.iter()
 			.map(|col| Column {
 				name: Fragment::internal(&col.name),

@@ -281,7 +281,7 @@ impl Catalog {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_def_created(view.clone())?;
 
-		let schema = Schema::from(view.columns.as_slice());
+		let schema = Schema::from(view.columns());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		Ok(view)
@@ -296,7 +296,7 @@ impl Catalog {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_def_created(view.clone())?;
 
-		let schema = Schema::from(view.columns.as_slice());
+		let schema = Schema::from(view.columns());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		Ok(view)
@@ -304,7 +304,7 @@ impl Catalog {
 
 	#[instrument(name = "catalog::view::drop", level = "debug", skip(self, txn))]
 	pub fn drop_view(&self, txn: &mut AdminTransaction, view: ViewDef) -> Result<()> {
-		CatalogStore::drop_view(txn, view.id)?;
+		CatalogStore::drop_view(txn, view.id())?;
 		txn.track_view_def_deleted(view)?;
 		Ok(())
 	}

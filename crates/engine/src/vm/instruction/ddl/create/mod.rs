@@ -52,8 +52,8 @@ pub(crate) fn create_deferred_view_flow(
 	let flow_def = catalog.create_flow(
 		txn,
 		FlowToCreate {
-			name: Fragment::internal(&view.name),
-			namespace: view.namespace,
+			name: Fragment::internal(view.name()),
+			namespace: view.namespace(),
 			status: FlowStatus::Active,
 		},
 	)?;

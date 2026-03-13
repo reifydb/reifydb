@@ -53,11 +53,11 @@ impl TransactionalViewChanges for AdminTransaction {
 	fn find_view(&self, id: ViewId) -> Option<&ViewDef> {
 		for change in self.changes.view_def.iter().rev() {
 			if let Some(view) = &change.post {
-				if view.id == id {
+				if view.id() == id {
 					return Some(view);
 				}
 			} else if let Some(view) = &change.pre {
-				if view.id == id && change.op == Delete {
+				if view.id() == id && change.op == Delete {
 					return None;
 				}
 			}
@@ -66,11 +66,9 @@ impl TransactionalViewChanges for AdminTransaction {
 	}
 
 	fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&ViewDef> {
-		self.changes
-			.view_def
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|v| v.namespace == namespace && v.name == name))
+		self.changes.view_def.iter().rev().find_map(|change| {
+			change.post.as_ref().filter(|v| v.namespace() == namespace && v.name() == name)
+		})
 	}
 
 	fn is_view_deleted(&self, id: ViewId) -> bool {
@@ -78,7 +76,7 @@ impl TransactionalViewChanges for AdminTransaction {
 			.view_def
 			.iter()
 			.rev()
-			.any(|change| change.op == Delete && change.pre.as_ref().map(|v| v.id) == Some(id))
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|v| v.id()) == Some(id))
 	}
 
 	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
@@ -87,7 +85,7 @@ impl TransactionalViewChanges for AdminTransaction {
 				&& change
 					.pre
 					.as_ref()
-					.map(|v| v.namespace == namespace && v.name == name)
+					.map(|v| v.namespace() == namespace && v.name() == name)
 					.unwrap_or(false)
 		})
 	}

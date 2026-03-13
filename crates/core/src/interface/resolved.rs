@@ -461,7 +461,7 @@ impl ResolvedView {
 	}
 
 	pub fn name(&self) -> &str {
-		&self.0.def.name
+		self.0.def.name()
 	}
 
 	pub fn def(&self) -> &ViewDef {
@@ -477,7 +477,7 @@ impl ResolvedView {
 	}
 
 	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
+		self.0.def.columns()
 	}
 
 	pub fn fully_qualified_name(&self) -> String {
@@ -514,7 +514,7 @@ impl ResolvedDeferredView {
 	}
 
 	pub fn name(&self) -> &str {
-		&self.0.def.name
+		self.0.def.name()
 	}
 
 	pub fn def(&self) -> &ViewDef {
@@ -530,7 +530,7 @@ impl ResolvedDeferredView {
 	}
 
 	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
+		self.0.def.columns()
 	}
 
 	/// Convert to owned version with 'static lifetime
@@ -563,7 +563,7 @@ impl ResolvedTransactionalView {
 	}
 
 	pub fn name(&self) -> &str {
-		&self.0.def.name
+		self.0.def.name()
 	}
 
 	pub fn def(&self) -> &ViewDef {
@@ -579,7 +579,7 @@ impl ResolvedTransactionalView {
 	}
 
 	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
+		self.0.def.columns()
 	}
 
 	/// Convert to owned version with 'static lifetime

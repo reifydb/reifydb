@@ -99,19 +99,19 @@ impl FlowEngine {
 				view,
 			} => {
 				let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
-				self.add_source(flow.id, node.id, PrimitiveId::view(view.id));
+				self.add_source(flow.id, node.id, PrimitiveId::view(view.id()));
 
 				// For transactional views, also register the underlying table/ringbuffer
 				// sources so the deferred coordinator routes changes correctly. A transactional
 				// view is computed on-the-fly; its changes are never published to CDC. By
 				// registering the view's upstream primitives, the deferred flow is triggered
 				// when the underlying data changes.
-				if view.kind == ViewKind::Transactional {
+				if view.kind() == ViewKind::Transactional {
 					let mut additional_sources = Vec::new();
 					if let Some(view_flow) = self.catalog.find_flow_by_name(
 						&mut txn.reborrow(),
-						view.namespace,
-						&view.name,
+						view.namespace(),
+						view.name(),
 					)? {
 						let flow_nodes = self
 							.catalog

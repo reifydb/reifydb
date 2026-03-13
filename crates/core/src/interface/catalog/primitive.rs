@@ -330,7 +330,7 @@ impl PrimitiveDef {
 	pub fn id(&self) -> PrimitiveId {
 		match self {
 			PrimitiveDef::Table(table) => table.id.into(),
-			PrimitiveDef::View(view) => view.id.into(),
+			PrimitiveDef::View(view) => view.id().into(),
 			PrimitiveDef::TableVirtual(vtable) => vtable.id.into(),
 		}
 	}
@@ -338,7 +338,7 @@ impl PrimitiveDef {
 	pub fn primitive_type(&self) -> PrimitiveId {
 		match self {
 			PrimitiveDef::Table(table) => PrimitiveId::Table(table.id),
-			PrimitiveDef::View(view) => PrimitiveId::View(view.id),
+			PrimitiveDef::View(view) => PrimitiveId::View(view.id()),
 			PrimitiveDef::TableVirtual(vtable) => PrimitiveId::TableVirtual(vtable.id),
 		}
 	}

@@ -44,8 +44,8 @@ impl Catalog {
 	#[instrument(name = "catalog::resolve::view", level = "trace", skip(self, txn))]
 	pub fn resolve_view(&self, txn: &mut Transaction<'_>, view_id: ViewId) -> Result<ResolvedView> {
 		let view_def = self.get_view(txn, view_id)?;
-		let resolved_namespace = self.resolve_namespace(txn, view_def.namespace)?;
-		let view_ident = Fragment::internal(view_def.name.clone());
+		let resolved_namespace = self.resolve_namespace(txn, view_def.namespace())?;
+		let view_ident = Fragment::internal(view_def.name().to_string());
 
 		Ok(ResolvedView::new(view_ident, resolved_namespace, view_def))
 	}

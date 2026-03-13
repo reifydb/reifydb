@@ -53,11 +53,11 @@ impl VTable for Views {
 		let mut primary_keys = ColumnData::uint4_with_capacity(views.len());
 
 		for view in views {
-			ids.push(view.id.0);
-			namespaces.push(view.namespace.0);
-			names.push(view.name.as_str());
+			ids.push(view.id().0);
+			namespaces.push(view.namespace().0);
+			names.push(view.name());
 			primary_keys.push_value(
-				view.primary_key
+				view.primary_key()
 					.map(|pk| pk.id.0)
 					.map(Value::Uint8)
 					.unwrap_or(Value::none_of(Type::Uint8)),

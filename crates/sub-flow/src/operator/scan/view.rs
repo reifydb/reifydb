@@ -78,7 +78,7 @@ impl Operator for PrimitiveViewOperator {
 			return Ok(Columns::from_view_def(&self.view));
 		}
 
-		let schema: Schema = (&self.view.columns).into();
+		let schema: Schema = self.view.columns().into();
 		let fields = schema.fields();
 
 		// Pre-allocate columns with capacity
@@ -92,7 +92,7 @@ impl Operator for PrimitiveViewOperator {
 		let mut row_numbers = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
-			let key = RowKey::encoded(PrimitiveId::view(self.view.id), *row_num);
+			let key = RowKey::encoded(PrimitiveId::view(self.view.id()), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				// Decode each column value directly

@@ -63,7 +63,7 @@ impl CatalogStore {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::View,
 				namespace: namespace.name().to_string(),
-				name: view.name,
+				name: view.name().to_string(),
 				fragment: to_create.name.clone(),
 			}
 			.into());
@@ -171,9 +171,9 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, ViewId(1025));
-		assert_eq!(result.namespace, NamespaceId(1025));
-		assert_eq!(result.name, "test_view");
+		assert_eq!(result.id(), ViewId(1025));
+		assert_eq!(result.namespace(), NamespaceId(1025));
+		assert_eq!(result.name(), "test_view");
 
 		let err = CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");

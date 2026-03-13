@@ -226,14 +226,14 @@ pub mod tests {
 		.unwrap();
 
 		// Get column IDs for the view
-		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Create primary key on first column only
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::View(view.id),
+				primitive: PrimitiveId::View(view.id()),
 				column_ids: vec![columns[0].id],
 			},
 		)
@@ -243,7 +243,7 @@ pub mod tests {
 		assert_eq!(primary_key_id, PrimaryKeyId(1));
 
 		// Find and verify the primary key
-		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), view.id)
+		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), view.id())
 			.unwrap()
 			.expect("Primary key should exist");
 

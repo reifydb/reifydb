@@ -31,7 +31,7 @@ pub(crate) fn create_transactional_view(
 			]));
 		}
 
-		return_error!(view_already_exists(plan.view.clone(), &plan.namespace.name(), &view.name,));
+		return_error!(view_already_exists(plan.view.clone(), &plan.namespace.name(), view.name(),));
 	}
 
 	let result = services.catalog.create_transactional_view(

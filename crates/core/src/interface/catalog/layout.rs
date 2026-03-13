@@ -16,7 +16,7 @@ impl GetSchema for TableDef {
 
 impl GetSchema for ViewDef {
 	fn get_schema(&self) -> Schema {
-		Schema::from(&self.columns)
+		Schema::from(self.columns())
 	}
 }
 

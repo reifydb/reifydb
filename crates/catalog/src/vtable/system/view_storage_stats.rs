@@ -65,7 +65,7 @@ impl VTable for ViewStorageStats {
 				if let MetricId::Source(PrimitiveId::View(view_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id = match CatalogStore::find_view(txn, view_id)? {
-						Some(view_def) => view_def.namespace.0,
+						Some(view_def) => view_def.namespace().0,
 						None => 0,
 					};
 

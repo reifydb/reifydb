@@ -163,7 +163,7 @@ impl FlowCompiler {
 			let result_node = self.add_node(
 				txn,
 				FlowNodeType::SinkView {
-					view: sink_view.id,
+					view: sink_view.id(),
 				},
 			)?;
 

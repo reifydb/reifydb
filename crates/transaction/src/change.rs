@@ -735,11 +735,11 @@ impl TransactionalDefChanges {
 		// Find the last change for this view ID
 		for change in self.view_def.iter().rev() {
 			if let Some(view) = &change.post {
-				if view.id == id {
+				if view.id() == id {
 					return Some(view);
 				}
 			} else if let Some(view) = &change.pre {
-				if view.id == id && change.op == Delete {
+				if view.id() == id && change.op == Delete {
 					// View was deleted
 					return None;
 				}

@@ -14,8 +14,8 @@ impl CatalogStore {
 		// First, find the view to get its namespace and primary key
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
 			// Remove the namespace-view link (secondary index)
-			txn.remove(&NamespaceViewKey::encoded(view_def.namespace, view))?;
-			view_def.primary_key.as_ref().map(|pk| pk.id)
+			txn.remove(&NamespaceViewKey::encoded(view_def.namespace(), view))?;
+			view_def.primary_key().map(|pk| pk.id)
 		} else {
 			None
 		};
@@ -60,7 +60,7 @@ pub mod tests {
 		assert!(found.is_some());
 
 		// Drop it
-		CatalogStore::drop_view(&mut txn, created.id).unwrap();
+		CatalogStore::drop_view(&mut txn, created.id()).unwrap();
 
 		// Verify it's gone
 		let found = CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "test_view")
@@ -103,14 +103,14 @@ pub mod tests {
 		);
 
 		// Verify columns exist before drop
-		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Drop the view
-		CatalogStore::drop_view(&mut txn, view.id).unwrap();
+		CatalogStore::drop_view(&mut txn, view.id()).unwrap();
 
 		// Verify columns are cleaned up
-		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 		assert!(columns.is_empty());
 
 		// Verify view itself is gone

@@ -43,7 +43,7 @@ impl Operator for SinkViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view_def = self.view.def().clone();
-		let schema: Schema = (&view_def.columns).into();
+		let schema: Schema = view_def.columns().into();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -51,7 +51,7 @@ impl Operator for SinkViewOperator {
 					post,
 				} => {
 					// Coerce columns to match view schema types (already decoded at source)
-					let coerced = coerce_columns(post, &view_def.columns)?;
+					let coerced = coerce_columns(post, view_def.columns())?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						let row_number = coerced.row_numbers[row_idx];
@@ -59,7 +59,7 @@ impl Operator for SinkViewOperator {
 							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
 						ViewInterceptor::pre_insert(txn, &view_def, row_number, &encoded)?;
-						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
+						let key = RowKey::encoded(PrimitiveId::view(view_def.id()), row_number);
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
 
@@ -78,7 +78,7 @@ impl Operator for SinkViewOperator {
 					// Emit view change for downstream transactional flows
 					let version = txn.version();
 					txn.push_view_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id)),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
@@ -90,8 +90,8 @@ impl Operator for SinkViewOperator {
 					post,
 				} => {
 					// Coerce columns to match view schema types (already decoded at source)
-					let coerced_pre = coerce_columns(pre, &view_def.columns)?;
-					let coerced_post = coerce_columns(post, &view_def.columns)?;
+					let coerced_pre = coerce_columns(pre, view_def.columns())?;
+					let coerced_post = coerce_columns(post, view_def.columns())?;
 					let row_count = coerced_post.row_count();
 					for row_idx in 0..row_count {
 						let pre_row_number = coerced_pre.row_numbers[row_idx];
@@ -115,10 +115,12 @@ impl Operator for SinkViewOperator {
 							post_row_number,
 							&post_encoded,
 						)?;
-						let old_key =
-							RowKey::encoded(PrimitiveId::view(view_def.id), pre_row_number);
+						let old_key = RowKey::encoded(
+							PrimitiveId::view(view_def.id()),
+							pre_row_number,
+						);
 						let new_key = RowKey::encoded(
-							PrimitiveId::view(view_def.id),
+							PrimitiveId::view(view_def.id()),
 							post_row_number,
 						);
 						txn.remove(&old_key)?;
@@ -149,7 +151,7 @@ impl Operator for SinkViewOperator {
 					// Emit view change for downstream transactional flows
 					let version = txn.version();
 					txn.push_view_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id)),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Update {
 							pre: coerced_pre,
@@ -161,7 +163,7 @@ impl Operator for SinkViewOperator {
 					pre,
 				} => {
 					// Coerce columns to match view schema types (already decoded at source)
-					let coerced = coerce_columns(pre, &view_def.columns)?;
+					let coerced = coerce_columns(pre, view_def.columns())?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						let row_number = coerced.row_numbers[row_idx];
@@ -169,7 +171,7 @@ impl Operator for SinkViewOperator {
 							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
 						ViewInterceptor::pre_delete(txn, &view_def, row_number)?;
-						let key = RowKey::encoded(PrimitiveId::view(view_def.id), row_number);
+						let key = RowKey::encoded(PrimitiveId::view(view_def.id()), row_number);
 						txn.remove(&key)?;
 						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
 
@@ -188,7 +190,7 @@ impl Operator for SinkViewOperator {
 					// Emit view change for downstream transactional flows
 					let version = txn.version();
 					txn.push_view_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id)),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,

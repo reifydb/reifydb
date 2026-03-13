@@ -122,7 +122,7 @@ pub fn resolve_unresolved_source(
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		let primitive = match view.kind {
+		let primitive = match view.kind() {
 			ViewKind::Deferred => ResolvedPrimitive::DeferredView(ResolvedDeferredView::new(
 				name_fragment,
 				namespace,

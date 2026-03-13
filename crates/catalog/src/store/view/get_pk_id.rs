@@ -68,20 +68,20 @@ pub mod tests {
 		.unwrap();
 
 		// Get column IDs for the view
-		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
 		// Create primary key
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::View(view.id),
+				primitive: PrimitiveId::View(view.id()),
 				column_ids: vec![columns[0].id],
 			},
 		)
 		.unwrap();
 
 		// Get the primary key ID
-		let retrieved_pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id)
+		let retrieved_pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id())
 			.unwrap()
 			.expect("Primary key ID should exist");
 
@@ -109,7 +109,7 @@ pub mod tests {
 		.unwrap();
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
 		assert!(pk_id.is_none());
 	}

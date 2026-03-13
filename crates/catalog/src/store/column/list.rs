@@ -70,15 +70,15 @@ impl CatalogStore {
 		// Get all views
 		let views = CatalogStore::list_views_all(rx)?;
 		for view in views {
-			let columns = CatalogStore::list_columns(rx, view.id)?;
+			let columns = CatalogStore::list_columns(rx, view.id())?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					source_id: view.id.into(),
+					source_id: view.id().into(),
 					is_view: true,
 					entity_kind: "view",
-					entity_name: view.name.clone(),
-					namespace: view.namespace,
+					entity_name: view.name().to_string(),
+					namespace: view.namespace(),
 				});
 			}
 		}

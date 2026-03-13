@@ -70,7 +70,7 @@ pub mod tests {
 		.unwrap();
 
 		// Set primary key
-		CatalogStore::set_view_primary_key(&mut txn, view.id, PrimaryKeyId(42)).unwrap();
+		CatalogStore::set_view_primary_key(&mut txn, view.id(), PrimaryKeyId(42)).unwrap();
 
 		// The test succeeds if no error is thrown.
 		// In real usage, create_primary_key would create both the
