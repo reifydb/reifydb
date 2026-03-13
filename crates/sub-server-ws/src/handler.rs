@@ -4,11 +4,13 @@
 use std::{sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_core::interface::catalog::id::SubscriptionId as DbSubscriptionId;
+use reifydb_core::{
+	interface::catalog::id::SubscriptionId as DbSubscriptionId, value::frame::response::convert_frames,
+};
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	execute::{ExecuteError, execute_admin, execute_command, execute_query},
-	response::{convert_frames, resolve_response_json},
+	response::resolve_response_json,
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
@@ -427,7 +429,7 @@ fn build_response_body(frames: Vec<Frame>, format: Option<&str>, unwrap: bool) -
 			Err(e) => (CONTENT_TYPE_JSON.to_string(), JsonValue::String(e)),
 		}
 	} else {
-		let ws_frames = convert_frames(frames);
+		let ws_frames = convert_frames(&frames);
 		let body = json!({ "frames": ws_frames });
 		(CONTENT_TYPE_FRAMES.to_string(), body)
 	}

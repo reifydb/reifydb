@@ -14,10 +14,11 @@ use axum::{
 	http::{HeaderMap, StatusCode, header},
 	response::{IntoResponse, Response},
 };
+use reifydb_core::value::frame::response::{ResponseFrame, convert_frames};
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
 	execute::{execute_admin, execute_command, execute_query},
-	response::{ResponseFrame, convert_frames, resolve_response_json},
+	response::resolve_response_json,
 	state::AppState,
 	wire::WireParams,
 };
@@ -134,7 +135,7 @@ pub async fn handle_query(
 		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
 	} else {
 		Ok(Json(QueryResponse {
-			frames: convert_frames(frames),
+			frames: convert_frames(&frames),
 		})
 		.into_response())
 	}
@@ -182,7 +183,7 @@ pub async fn handle_admin(
 		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
 	} else {
 		Ok(Json(QueryResponse {
-			frames: convert_frames(frames),
+			frames: convert_frames(&frames),
 		})
 		.into_response())
 	}
@@ -246,7 +247,7 @@ pub async fn handle_command(
 		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
 	} else {
 		Ok(Json(QueryResponse {
-			frames: convert_frames(frames),
+			frames: convert_frames(&frames),
 		})
 		.into_response())
 	}

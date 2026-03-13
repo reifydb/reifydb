@@ -3,3 +3,4 @@
 
 // Presentation-only module
 pub mod render;
+pub mod response;

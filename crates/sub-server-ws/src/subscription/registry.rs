@@ -7,8 +7,13 @@
 //! and push channels to enable server-initiated message delivery.
 
 use dashmap::DashMap;
-use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
-use reifydb_sub_server::response::{ResponseColumn, ResponseFrame};
+use reifydb_core::{
+	interface::catalog::id::SubscriptionId,
+	value::{
+		column::columns::Columns,
+		frame::response::{ResponseColumn, ResponseFrame},
+	},
+};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::uuid::Uuid7;
 use serde_json::{Value as JsonValue, json};
