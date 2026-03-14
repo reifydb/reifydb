@@ -5,7 +5,7 @@
 //!
 //! Provides static methods for reading, converting, and deleting subscription rows.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use reifydb_catalog::find_subscription;
 use reifydb_core::{
@@ -70,6 +70,7 @@ impl SubscriptionConsumer {
 
 		let mut row_numbers = Vec::new();
 		let mut row_keys = Vec::new();
+		let mut row_count: usize = 0;
 
 		// Process collected entries
 		for entry in entries {
@@ -91,18 +92,38 @@ impl SubscriptionConsumer {
 						)))
 					})?;
 
+				let mut seen_in_this_entry = HashSet::new();
+
 				// Decode each field using the resolved schema
 				for (idx, field) in schema.fields().iter().enumerate() {
 					let value = schema.get_value(&entry.values, idx);
+					seen_in_this_entry.insert(field.name.clone());
 
 					// Get or create column data for this field
 					column_data
 						.entry(field.name.clone())
 						.or_insert_with(|| {
-							ColumnData::with_capacity(field.constraint.get_type(), 0)
+							// New column — backfill with None for all prior rows
+							let mut cd = ColumnData::with_capacity(
+								field.constraint.get_type(),
+								0,
+							);
+							for _ in 0..row_count {
+								cd.push_none();
+							}
+							cd
 						})
 						.push_value(value);
 				}
+
+				// Pad columns not seen in this entry with None
+				for (name, col) in column_data.iter_mut() {
+					if !seen_in_this_entry.contains(name) {
+						col.push_none();
+					}
+				}
+
+				row_count += 1;
 			}
 		}
 

@@ -62,7 +62,7 @@ export class JsonHttpClient {
 
         let response: Response;
         try {
-            response = await fetch(`${baseUrl}/v1/${endpoint}?format=json`, {
+            response = await fetch(`${baseUrl}/v1/${endpoint}`, {
                 method: "POST",
                 headers,
                 body: JSON.stringify({
