@@ -315,8 +315,12 @@ impl CoordinatorActor {
 						}
 					}
 					Err(e) => {
-						(consume_ctx.original_reply)(coordinator_error(e));
-						return;
+						warn!(
+							flow_id = flow_id.0,
+							error = %e,
+							"failed to load flow in coordinator, skipping"
+						);
+						continue;
 					}
 				}
 			}
