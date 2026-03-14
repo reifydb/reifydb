@@ -8,7 +8,7 @@ describe('JsonHttpClient', () => {
 
     beforeAll(() => {
         client = Client.connect_json_http(process.env.REIFYDB_HTTP_URL, {
-            token: process.env.REIFYDB_TOKEN,
+            token: "mysecrettoken",
             timeoutMs: 10000,
         });
     });

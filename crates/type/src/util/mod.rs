@@ -3,6 +3,7 @@
 
 pub mod bitvec;
 pub mod cowvec;
+pub mod float_format;
 
 pub mod base58;
 pub mod base64;

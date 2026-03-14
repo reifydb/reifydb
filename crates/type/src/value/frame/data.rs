@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	storage::DataBitVec,
-	util::bitvec::BitVec,
+	util::{
+		bitvec::BitVec,
+		float_format::{format_f32, format_f64},
+	},
 	value::{
 		Value,
 		container::{
@@ -214,8 +217,20 @@ impl FrameColumnData {
 	pub fn as_string(&self, index: usize) -> String {
 		match self {
 			FrameColumnData::Bool(container) => container.as_string(index),
-			FrameColumnData::Float4(container) => container.as_string(index),
-			FrameColumnData::Float8(container) => container.as_string(index),
+			FrameColumnData::Float4(container) => {
+				if let Some(&v) = container.get(index) {
+					format_f32(v)
+				} else {
+					"none".to_string()
+				}
+			}
+			FrameColumnData::Float8(container) => {
+				if let Some(&v) = container.get(index) {
+					format_f64(v)
+				} else {
+					"none".to_string()
+				}
+			}
 			FrameColumnData::Int1(container) => container.as_string(index),
 			FrameColumnData::Int2(container) => container.as_string(index),
 			FrameColumnData::Int4(container) => container.as_string(index),

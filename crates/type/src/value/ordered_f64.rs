@@ -11,7 +11,10 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
-use crate::error::{Error, TypeError};
+use crate::{
+	error::{Error, TypeError},
+	util::float_format::format_f64,
+};
 
 /// A wrapper around f64 that provides total ordering by rejecting NaN values.
 /// This type is sortable and can be used in collections that require Ord,
@@ -80,7 +83,7 @@ impl Deref for OrderedF64 {
 
 impl Display for OrderedF64 {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		Display::fmt(&self.0, f)
+		f.write_str(&format_f64(self.0))
 	}
 }
 

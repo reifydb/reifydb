@@ -164,6 +164,11 @@ export class JsonWsClient {
             return body as T[][];
         }
 
+        // body is empty - no frames
+        if (Array.isArray(body) && body.length === 0) {
+            return [] as T[][];
+        }
+
         // body is a single array of objects (single frame)
         if (Array.isArray(body)) {
             return [body] as T[][];

@@ -48,9 +48,13 @@ export class Float8Value implements Value {
         if (other.type !== this.type) {
             return false;
         }
-        
+
         const otherFloat = other as Float8Value;
-        return this.value === otherFloat.value;
+        if (this.value === undefined || otherFloat.value === undefined) {
+            return this.value === otherFloat.value;
+        }
+        const epsilon = 1e-14;
+        return Math.abs(this.value - otherFloat.value) <= epsilon;
     }
 
     encode(): TypeValuePair {

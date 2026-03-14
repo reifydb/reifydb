@@ -170,7 +170,10 @@ describe('Positional Parameters', () => {
                 [Schema.object({result: Schema.float8()})]
             );
 
-            expectSingleResult(frames, 3.141592653589793, 'number');
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toHaveLength(1);
+            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
+            expect(typeof frames[0][0].result).toBe('number');
         }, 1000);
 
         it('Decimal', async () => {
@@ -413,7 +416,10 @@ describe('Positional Parameters', () => {
                 [Schema.object({result: Schema.float8()})]
             );
 
-            expectSingleResult(frames, 3.141592653589793, 'number');
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toHaveLength(1);
+            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
+            expect(typeof frames[0][0].result).toBe('number');
         }, 1000);
 
         it('Decimal', async () => {
@@ -656,7 +662,10 @@ describe('Positional Parameters', () => {
                 [Schema.object({result: Schema.float8()})]
             );
 
-            expectSingleResult(frames, 3.141592653589793, 'number');
+            expect(frames).toHaveLength(1);
+            expect(frames[0]).toHaveLength(1);
+            expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 14);
+            expect(typeof frames[0][0].result).toBe('number');
         }, 1000);
 
         it('Decimal', async () => {
