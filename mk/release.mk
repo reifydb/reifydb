@@ -179,7 +179,8 @@ release:
 	echo "$(GREEN)✓ All packages published$(NC)"; \
 	echo ""; \
 	echo "$(YELLOW)[7/7] Pushing to remote...$(NC)"; \
-	git push origin release --follow-tags || exit 1; \
+	git push origin release || exit 1; \
+	git push origin "v$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Pushed to remote$(NC)"; \
 	echo ""; \
 	echo "$(GREEN)=====================================$(NC)"; \
