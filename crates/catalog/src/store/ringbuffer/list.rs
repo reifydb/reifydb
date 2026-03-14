@@ -17,7 +17,7 @@ impl CatalogStore {
 		let mut result = Vec::new();
 
 		// Collect ringbuffer data first to avoid holding stream borrow
-		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64)> = Vec::new();
+		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>)> = Vec::new();
 		{
 			let mut stream = rx.range(RingBufferKey::full_scan(), 1024)?;
 
@@ -39,14 +39,28 @@ impl CatalogStore {
 						let capacity =
 							ringbuffer::SCHEMA.get_u64(&entry.values, ringbuffer::CAPACITY);
 
-						ringbuffer_data.push((ringbuffer_id, namespace_id, name, capacity));
+						let partition_by_str = ringbuffer::SCHEMA
+							.get_utf8(&entry.values, ringbuffer::PARTITION_BY);
+						let partition_by = if partition_by_str.is_empty() {
+							vec![]
+						} else {
+							partition_by_str.split(',').map(|s| s.to_string()).collect()
+						};
+
+						ringbuffer_data.push((
+							ringbuffer_id,
+							namespace_id,
+							name,
+							capacity,
+							partition_by,
+						));
 					}
 				}
 			}
 		}
 
 		// Now fetch additional details for each ringbuffer
-		for (ringbuffer_id, namespace_id, name, capacity) in ringbuffer_data {
+		for (ringbuffer_id, namespace_id, name, capacity, partition_by) in ringbuffer_data {
 			let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
 			let columns = Self::list_columns(rx, ringbuffer_id)?;
 
@@ -57,6 +71,7 @@ impl CatalogStore {
 				capacity,
 				columns,
 				primary_key,
+				partition_by,
 			};
 
 			result.push(ringbuffer_def);
@@ -100,6 +115,7 @@ pub mod tests {
 			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -109,6 +125,7 @@ pub mod tests {
 			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
@@ -143,6 +160,7 @@ pub mod tests {
 			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -152,6 +170,7 @@ pub mod tests {
 			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 

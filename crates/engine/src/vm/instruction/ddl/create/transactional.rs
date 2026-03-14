@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::{
-	ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
-	series::{SeriesColumnToCreate, SeriesToCreate},
-	table::{TableColumnToCreate, TableToCreate},
-	view::{ViewStorageConfig, ViewToCreate},
+use reifydb_catalog::{
+	catalog::{
+		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
+		series::{SeriesColumnToCreate, SeriesToCreate},
+		table::{TableColumnToCreate, TableToCreate},
+		view::ViewToCreate,
+	},
+	store::view::create::ViewStorageConfig,
 };
 use reifydb_core::{
 	error::diagnostic::catalog::view_already_exists, interface::catalog::change::CatalogTrackViewChangeOperations,
@@ -123,6 +126,7 @@ fn create_underlying_primitive(
 					namespace,
 					columns,
 					capacity: *capacity,
+					partition_by: vec![],
 				},
 			)?;
 

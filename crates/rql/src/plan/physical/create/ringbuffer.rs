@@ -46,6 +46,7 @@ impl<'bump> Compiler<'bump> {
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 			capacity: create.capacity,
+			partition_by: create.partition_by,
 		}))
 	}
 }

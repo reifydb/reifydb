@@ -42,7 +42,7 @@ pub mod tests {
 		CatalogStore,
 		store::{
 			primary_key::create::PrimaryKeyToCreate,
-			view::create::{ViewColumnToCreate, ViewToCreate},
+			view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
 		},
 		test_utils::ensure_test_namespace,
 	};
@@ -63,7 +63,7 @@ pub mod tests {
 					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 				}],
-				storage: crate::store::view::create::ViewStorageConfig::default(),
+				storage: ViewStorageConfig::default(),
 			},
 		)
 		.unwrap();
@@ -105,7 +105,7 @@ pub mod tests {
 					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 				}],
-				storage: crate::store::view::create::ViewStorageConfig::default(),
+				storage: ViewStorageConfig::default(),
 			},
 		)
 		.unwrap();

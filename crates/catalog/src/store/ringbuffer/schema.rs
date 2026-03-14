@@ -13,6 +13,7 @@ pub(crate) mod ringbuffer {
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const CAPACITY: usize = 3;
 	pub(crate) const PRIMARY_KEY: usize = 4;
+	pub(crate) const PARTITION_BY: usize = 5;
 
 	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
@@ -21,6 +22,7 @@ pub(crate) mod ringbuffer {
 			SchemaField::unconstrained("name", Type::Utf8),
 			SchemaField::unconstrained("capacity", Type::Uint8),
 			SchemaField::unconstrained("primary_key", Type::Uint8),
+			SchemaField::unconstrained("partition_by", Type::Utf8),
 		])
 	});
 }

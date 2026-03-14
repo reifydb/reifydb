@@ -8,11 +8,13 @@ use reifydb_type::value::{
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
+	dictionary::DictionaryEntryId,
 	duration::Duration,
 	identity::IdentityId,
 	int::Int,
 	row_number::RowNumber,
 	time::Time,
+	r#type::Type,
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 };
@@ -237,7 +239,7 @@ impl KeySerializer {
 			_ => 1,
 		});
 		self.extend_u32(bytes.len() as u32);
-		self.extend_bytes(&bytes);
+		self.buffer.extend_from_slice(&bytes);
 		self
 	}
 
@@ -246,7 +248,7 @@ impl KeySerializer {
 		// For arbitrary precision unsigned, encode as bytes with length prefix
 		let (_sign, bytes) = uint.0.to_bytes_be();
 		self.extend_u32(bytes.len() as u32);
-		self.extend_bytes(&bytes);
+		self.buffer.extend_from_slice(&bytes);
 		self
 	}
 
@@ -259,95 +261,175 @@ impl KeySerializer {
 		self
 	}
 
-	/// Extend with a Value based on its type
+	/// Extend with a Value based on its type, including a type marker byte for self-describing encoding.
+	/// The marker is written as a raw byte (not complement-encoded) so that `read_value()` can decode it.
 	pub fn extend_value(&mut self, value: &Value) -> &mut Self {
 		match value {
 			Value::None {
+				inner,
 				..
 			} => {
-				// For undefined, use a special marker byte
 				self.buffer.push(0x00);
+				self.buffer.push(match inner {
+					Type::Any => 0x00,
+					Type::Boolean => 0x01,
+					Type::Float4 => 0x02,
+					Type::Float8 => 0x03,
+					Type::Int1 => 0x04,
+					Type::Int2 => 0x05,
+					Type::Int4 => 0x06,
+					Type::Int8 => 0x07,
+					Type::Int16 => 0x08,
+					Type::Utf8 => 0x09,
+					Type::Uint1 => 0x0a,
+					Type::Uint2 => 0x0b,
+					Type::Uint4 => 0x0c,
+					Type::Uint8 => 0x0d,
+					Type::Uint16 => 0x0e,
+					Type::Date => 0x0f,
+					Type::DateTime => 0x10,
+					Type::Time => 0x11,
+					Type::Duration => 0x12,
+					Type::IdentityId => 0x14,
+					Type::Uuid4 => 0x15,
+					Type::Uuid7 => 0x16,
+					Type::Blob => 0x17,
+					Type::Int => 0x18,
+					Type::Uint => 0x19,
+					Type::Decimal => 0x1a,
+					Type::DictionaryId => 0x1b,
+					_ => unreachable!(
+						"Option/List/Record/Tuple types cannot be encoded as None inner type in keys"
+					),
+				});
 			}
 			Value::Boolean(b) => {
+				self.buffer.push(0x01);
 				self.extend_bool(*b);
 			}
 			Value::Float4(f) => {
+				self.buffer.push(0x02);
 				self.extend_f32(**f);
 			}
 			Value::Float8(f) => {
+				self.buffer.push(0x03);
 				self.extend_f64(**f);
 			}
 			Value::Int1(i) => {
+				self.buffer.push(0x04);
 				self.extend_i8(*i);
 			}
 			Value::Int2(i) => {
+				self.buffer.push(0x05);
 				self.extend_i16(*i);
 			}
 			Value::Int4(i) => {
+				self.buffer.push(0x06);
 				self.extend_i32(*i);
 			}
 			Value::Int8(i) => {
+				self.buffer.push(0x07);
 				self.extend_i64(*i);
 			}
 			Value::Int16(i) => {
+				self.buffer.push(0x08);
 				self.extend_i128(*i);
 			}
 			Value::Utf8(s) => {
+				self.buffer.push(0x09);
 				self.extend_str(s);
 			}
 			Value::Uint1(u) => {
+				self.buffer.push(0x0a);
 				self.extend_u8(*u);
 			}
 			Value::Uint2(u) => {
+				self.buffer.push(0x0b);
 				self.extend_u16(*u);
 			}
 			Value::Uint4(u) => {
+				self.buffer.push(0x0c);
 				self.extend_u32(*u);
 			}
 			Value::Uint8(u) => {
+				self.buffer.push(0x0d);
 				self.extend_u64(*u);
 			}
 			Value::Uint16(u) => {
+				self.buffer.push(0x0e);
 				self.extend_u128(*u);
 			}
 			Value::Date(d) => {
+				self.buffer.push(0x0f);
 				self.extend_date(d);
 			}
 			Value::DateTime(dt) => {
+				self.buffer.push(0x10);
 				self.extend_datetime(dt);
 			}
 			Value::Time(t) => {
+				self.buffer.push(0x11);
 				self.extend_time(t);
 			}
 			Value::Duration(i) => {
+				self.buffer.push(0x12);
 				self.extend_duration(i);
 			}
 			Value::IdentityId(id) => {
+				self.buffer.push(0x14);
 				self.extend_identity_id(id);
 			}
 			Value::Uuid4(uuid) => {
+				self.buffer.push(0x15);
 				self.extend_uuid4(uuid);
 			}
 			Value::Uuid7(uuid) => {
+				self.buffer.push(0x16);
 				self.extend_uuid7(uuid);
 			}
 			Value::Blob(b) => {
+				self.buffer.push(0x17);
 				self.extend_blob(b);
 			}
 			Value::Int(i) => {
+				self.buffer.push(0x18);
 				self.extend_int(i);
 			}
 			Value::Uint(u) => {
+				self.buffer.push(0x19);
 				self.extend_uint(u);
 			}
 			Value::Decimal(d) => {
+				self.buffer.push(0x1a);
 				self.extend_decimal(d);
 			}
 			Value::Any(_) | Value::Type(_) | Value::List(_) | Value::Record(_) | Value::Tuple(_) => {
 				unreachable!("Any/Type/List/Record/Tuple values cannot be serialized in keys");
 			}
 			Value::DictionaryId(id) => {
-				self.extend_u128(id.to_u128());
+				self.buffer.push(0x1b);
+				match id {
+					DictionaryEntryId::U1(v) => {
+						self.buffer.push(0x00);
+						self.extend_u8(*v);
+					}
+					DictionaryEntryId::U2(v) => {
+						self.buffer.push(0x01);
+						self.extend_u16(*v);
+					}
+					DictionaryEntryId::U4(v) => {
+						self.buffer.push(0x02);
+						self.extend_u32(*v);
+					}
+					DictionaryEntryId::U8(v) => {
+						self.buffer.push(0x03);
+						self.extend_u64(*v);
+					}
+					DictionaryEntryId::U16(v) => {
+						self.buffer.push(0x04);
+						self.extend_u128(*v);
+					}
+				}
 			}
 		}
 		self
@@ -373,11 +455,15 @@ pub mod tests {
 			date::Date,
 			datetime::DateTime,
 			decimal::Decimal,
+			dictionary::DictionaryEntryId,
 			duration::Duration,
 			identity::IdentityId,
 			int::Int,
+			ordered_f32::OrderedF32,
+			ordered_f64::OrderedF64,
 			row_number::RowNumber,
 			time::Time,
+			r#type::Type,
 			uint::Uint,
 			uuid::{Uuid4, Uuid7},
 		},
@@ -959,29 +1045,494 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_value() {
-		// Test undefined
+		// Test None (Any inner type)
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::none());
 		let result = serializer.finish();
-		assert_eq!(result, vec![0x00]);
+		assert_eq!(result, vec![0x00, 0x00]); // marker + Any inner type marker
+
+		// Test None with typed inner
+		let mut serializer = KeySerializer::new();
+		serializer.extend_value(&Value::none_of(Type::Int4));
+		let result = serializer.finish();
+		assert_eq!(result, vec![0x00, 0x06]); // marker + Int4 inner type marker
 
 		// Test boolean
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::Boolean(true));
 		let result = serializer.finish();
-		assert_eq!(result, vec![0x00]);
+		assert_eq!(result[0], 0x01); // Boolean marker
+		assert_eq!(result.len(), 2); // marker + encoded bool
 
 		// Test integer
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::Int4(42));
 		let result = serializer.finish();
-		assert_eq!(result.len(), 4);
+		assert_eq!(result[0], 0x06); // Int4 marker
+		assert_eq!(result.len(), 5); // marker + 4 bytes
 
 		// Test string
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::Utf8("test".to_string()));
 		let result = serializer.finish();
+		assert_eq!(result[0], 0x09); // Utf8 marker
 		assert!(result.ends_with(&[0xff, 0xff]));
+	}
+
+	#[test]
+	fn test_roundtrip_none() {
+		let value = Value::none();
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_none_typed() {
+		let value = Value::none_of(Type::Int4);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_boolean_true() {
+		let value = Value::Boolean(true);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_boolean_false() {
+		let value = Value::Boolean(false);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_float4() {
+		let value = Value::Float4(OrderedF32::try_from(3.14f32).unwrap());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_float8() {
+		let value = Value::Float8(OrderedF64::try_from(3.14).unwrap());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_int1() {
+		let value = Value::Int1(-42);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_int2() {
+		let value = Value::Int2(-1000);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_int4() {
+		let value = Value::Int4(42);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_int8() {
+		let value = Value::Int8(-1_000_000);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_int16() {
+		let value = Value::Int16(123_456_789);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_utf8() {
+		let value = Value::Utf8("hello world".to_string());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uint1() {
+		let value = Value::Uint1(255);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uint2() {
+		let value = Value::Uint2(65535);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uint4() {
+		let value = Value::Uint4(100_000);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uint8() {
+		let value = Value::Uint8(999);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uint16() {
+		let value = Value::Uint16(u128::MAX);
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_date() {
+		let value = Value::Date(Date::from_ymd(2024, 6, 15).unwrap());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_datetime() {
+		let value = Value::DateTime(DateTime::from_ymd_hms(2024, 6, 15, 12, 30, 45).unwrap());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_time() {
+		let value = Value::Time(Time::from_hms(12, 30, 45).unwrap());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_duration() {
+		let value = Value::Duration(Duration::from_nanoseconds(1_000_000));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_identity_id() {
+		let value = Value::IdentityId(IdentityId::generate());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uuid4() {
+		let value = Value::Uuid4(Uuid4::generate());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uuid7() {
+		let value = Value::Uuid7(Uuid7::generate());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_blob() {
+		let value = Value::Blob(Blob::from(vec![0x01, 0x02, 0x03]));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_int() {
+		let value = Value::Int(Int(BigInt::from(-42)));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_uint() {
+		let value = Value::Uint(Uint(BigInt::from(42)));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_decimal() {
+		let value = Value::Decimal(Decimal::from_str("3.14").unwrap());
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_dictionary_id_u1() {
+		let value = Value::DictionaryId(DictionaryEntryId::U1(42));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_dictionary_id_u2() {
+		let value = Value::DictionaryId(DictionaryEntryId::U2(1000));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_dictionary_id_u4() {
+		let value = Value::DictionaryId(DictionaryEntryId::U4(100_000));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_dictionary_id_u8() {
+		let value = Value::DictionaryId(DictionaryEntryId::U8(10_000_000_000));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_dictionary_id_u16() {
+		let value = Value::DictionaryId(DictionaryEntryId::U16(u128::MAX));
+		let mut ser = KeySerializer::new();
+		ser.extend_value(&value);
+		let bytes = ser.finish();
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_value().unwrap(), value);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_roundtrip_all() {
+		let values = vec![
+			Value::none(),
+			Value::none_of(Type::Int4),
+			Value::Boolean(true),
+			Value::Boolean(false),
+			Value::Float4(OrderedF32::try_from(3.14f32).unwrap()),
+			Value::Float8(OrderedF64::try_from(3.14).unwrap()),
+			Value::Int1(-42),
+			Value::Int2(-1000),
+			Value::Int4(42),
+			Value::Int8(-1_000_000),
+			Value::Int16(123_456_789),
+			Value::Utf8("hello world".to_string()),
+			Value::Uint1(255),
+			Value::Uint2(65535),
+			Value::Uint4(100_000),
+			Value::Uint8(999),
+			Value::Uint16(u128::MAX),
+			Value::Date(Date::from_ymd(2024, 6, 15).unwrap()),
+			Value::DateTime(DateTime::from_ymd_hms(2024, 6, 15, 12, 30, 45).unwrap()),
+			Value::Time(Time::from_hms(12, 30, 45).unwrap()),
+			Value::Duration(Duration::from_nanoseconds(1_000_000)),
+			Value::IdentityId(IdentityId::generate()),
+			Value::Uuid4(Uuid4::generate()),
+			Value::Uuid7(Uuid7::generate()),
+			Value::Blob(Blob::from(vec![0x01, 0x02, 0x03])),
+			Value::Int(Int(BigInt::from(-42))),
+			Value::Uint(Uint(BigInt::from(42))),
+			Value::Decimal(Decimal::from_str("3.14").unwrap()),
+			Value::DictionaryId(DictionaryEntryId::U8(42)),
+		];
+
+		let mut ser = KeySerializer::new();
+		for v in &values {
+			ser.extend_value(v);
+		}
+		let bytes = ser.finish();
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		for expected in &values {
+			let actual = de.read_value().unwrap();
+			assert_eq!(&actual, expected);
+		}
+		assert!(de.is_empty());
+	}
+
+	/// Compile-time exhaustiveness guard: if a new Value variant is added,
+	/// this test will fail to compile. Add a corresponding `test_roundtrip_<variant>`
+	/// test above, then add the new variant arm here.
+	#[test]
+	fn test_roundtrip_exhaustiveness_guard() {
+		let value = Value::none();
+		match value {
+			Value::None {
+				..
+			} => {}
+			Value::Boolean(_) => {}
+			Value::Float4(_) => {}
+			Value::Float8(_) => {}
+			Value::Int1(_) => {}
+			Value::Int2(_) => {}
+			Value::Int4(_) => {}
+			Value::Int8(_) => {}
+			Value::Int16(_) => {}
+			Value::Utf8(_) => {}
+			Value::Uint1(_) => {}
+			Value::Uint2(_) => {}
+			Value::Uint4(_) => {}
+			Value::Uint8(_) => {}
+			Value::Uint16(_) => {}
+			Value::Date(_) => {}
+			Value::DateTime(_) => {}
+			Value::Time(_) => {}
+			Value::Duration(_) => {}
+			Value::IdentityId(_) => {}
+			Value::Uuid4(_) => {}
+			Value::Uuid7(_) => {}
+			Value::Blob(_) => {}
+			Value::Int(_) => {}
+			Value::Uint(_) => {}
+			Value::Decimal(_) => {}
+			Value::DictionaryId(_) => {}
+			// Not serializable in keys:
+			Value::Any(_) => {}
+			Value::Type(_) => {}
+			Value::List(_) => {}
+			Value::Record(_) => {}
+			Value::Tuple(_) => {}
+		}
 	}
 
 	#[test]

@@ -107,6 +107,7 @@ pub mod tests {
 			],
 			capacity: 1000,
 			primary_key: None,
+			partition_by: vec![],
 		}
 	}
 

@@ -1106,6 +1106,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

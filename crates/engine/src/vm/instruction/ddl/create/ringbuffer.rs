@@ -40,6 +40,7 @@ pub(crate) fn create_ringbuffer(
 			namespace: plan.namespace.def().id(),
 			columns: plan.columns,
 			capacity: plan.capacity,
+			partition_by: plan.partition_by,
 		},
 	)?;
 	txn.track_ringbuffer_def_created(result)?;

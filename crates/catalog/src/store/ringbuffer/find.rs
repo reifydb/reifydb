@@ -4,18 +4,23 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
-		ringbuffer::{RingBufferDef, RingBufferMetadata},
+		ringbuffer::{PartitionedMetadata, RingBufferDef, RingBufferMetadata},
 	},
 	key::{
 		namespace_ringbuffer::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
+	util::encoding::keycode::deserializer::KeyDeserializer,
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::Value;
 
 use crate::{
 	CatalogStore, Result,
-	store::ringbuffer::schema::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
+	store::ringbuffer::{
+		schema::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
+		update::decode_ringbuffer_metadata,
+	},
 };
 
 impl CatalogStore {
@@ -33,6 +38,13 @@ impl CatalogStore {
 		let name = ringbuffer::SCHEMA.get_utf8(&row, ringbuffer::NAME).to_string();
 		let capacity = ringbuffer::SCHEMA.get_u64(&row, ringbuffer::CAPACITY);
 
+		let partition_by_str = ringbuffer::SCHEMA.get_utf8(&row, ringbuffer::PARTITION_BY);
+		let partition_by = if partition_by_str.is_empty() {
+			vec![]
+		} else {
+			partition_by_str.split(',').map(|s| s.to_string()).collect()
+		};
+
 		Ok(Some(RingBufferDef {
 			id,
 			namespace,
@@ -40,6 +52,7 @@ impl CatalogStore {
 			capacity,
 			columns: Self::list_columns(rx, id)?,
 			primary_key: Self::find_primary_key(rx, id)?,
+			partition_by,
 		}))
 	}
 
@@ -65,6 +78,81 @@ impl CatalogStore {
 			head,
 			tail,
 		}))
+	}
+
+	pub(crate) fn find_ringbuffer_partition_metadata(
+		rx: &mut Transaction<'_>,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+	) -> Result<Option<RingBufferMetadata>> {
+		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
+		let Some(multi) = rx.get(&key)? else {
+			return Ok(None);
+		};
+
+		Ok(Some(decode_ringbuffer_metadata(&multi.values)))
+	}
+
+	pub(crate) fn list_ringbuffer_partition_metadata(
+		rx: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+	) -> Result<Vec<PartitionedMetadata>> {
+		let range = RingBufferMetadataKey::full_scan_for_ringbuffer(ringbuffer.id);
+		let mut stream = rx.range(range, 4096)?;
+		let mut results = Vec::new();
+
+		while let Some(entry) = stream.next() {
+			let multi = entry?;
+			let metadata = decode_ringbuffer_metadata(&multi.values);
+			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
+			// Skip version (u8), kind (u8), ringbuffer_id (u64)
+			let _ = (de.read_u8(), de.read_u8(), de.read_u64());
+			let mut partition_values = vec![];
+			while !de.is_empty() {
+				if let Ok(value) = de.read_value() {
+					partition_values.push(value);
+				} else {
+					break;
+				}
+			}
+			results.push(PartitionedMetadata {
+				metadata,
+				partition_values,
+			});
+		}
+
+		Ok(results)
+	}
+
+	/// Returns all partitions for a ringbuffer. Global = 1-element vec, partitioned = N-element vec.
+	pub(crate) fn list_ringbuffer_partitions(
+		rx: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+	) -> Result<Vec<PartitionedMetadata>> {
+		if ringbuffer.partition_by.is_empty() {
+			Ok(Self::find_ringbuffer_metadata(rx, ringbuffer.id)?
+				.into_iter()
+				.map(|metadata| PartitionedMetadata {
+					metadata,
+					partition_values: vec![],
+				})
+				.collect())
+		} else {
+			Self::list_ringbuffer_partition_metadata(rx, ringbuffer)
+		}
+	}
+
+	/// Find metadata for a specific partition. Global uses empty key → RingBufferMetadataKey.
+	pub(crate) fn find_partition_metadata(
+		rx: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+		partition_key: &[Value],
+	) -> Result<Option<RingBufferMetadata>> {
+		if ringbuffer.partition_by.is_empty() {
+			Self::find_ringbuffer_metadata(rx, ringbuffer.id)
+		} else {
+			Self::find_ringbuffer_partition_metadata(rx, ringbuffer.id, partition_key)
+		}
 	}
 
 	pub(crate) fn find_ringbuffer_by_name(
@@ -188,6 +276,7 @@ pub mod tests {
 				auto_increment: false,
 				dictionary_id: None,
 			}],
+			partition_by: vec![],
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -246,6 +335,7 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			capacity: 50,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -299,6 +389,7 @@ pub mod tests {
 					dictionary_id: None,
 				},
 			],
+			partition_by: vec![],
 		};
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

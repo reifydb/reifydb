@@ -11,6 +11,7 @@ use reifydb_type::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -18,6 +19,7 @@ use reifydb_type::{
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
 		time::Time,
+		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -315,11 +317,41 @@ impl<'a> KeyDeserializer<'a> {
 
 		match type_marker {
 			0x00 => {
-				if self.remaining() > 0 && self.buffer[self.position] == 0x00 {
-					Ok(Value::Boolean(true))
-				} else {
-					Ok(Value::none())
+				if self.remaining() < 1 {
+					return Ok(Value::none());
 				}
+				let inner_marker = self.buffer[self.position];
+				self.position += 1;
+				let inner = match inner_marker {
+					0x01 => Type::Boolean,
+					0x02 => Type::Float4,
+					0x03 => Type::Float8,
+					0x04 => Type::Int1,
+					0x05 => Type::Int2,
+					0x06 => Type::Int4,
+					0x07 => Type::Int8,
+					0x08 => Type::Int16,
+					0x09 => Type::Utf8,
+					0x0a => Type::Uint1,
+					0x0b => Type::Uint2,
+					0x0c => Type::Uint4,
+					0x0d => Type::Uint8,
+					0x0e => Type::Uint16,
+					0x0f => Type::Date,
+					0x10 => Type::DateTime,
+					0x11 => Type::Time,
+					0x12 => Type::Duration,
+					0x14 => Type::IdentityId,
+					0x15 => Type::Uuid4,
+					0x16 => Type::Uuid7,
+					0x17 => Type::Blob,
+					0x18 => Type::Int,
+					0x19 => Type::Uint,
+					0x1a => Type::Decimal,
+					0x1b => Type::DictionaryId,
+					_ => Type::Any,
+				};
+				Ok(Value::none_of(inner))
 			}
 			0x01 => {
 				let b = self.read_bool()?;
@@ -430,6 +462,23 @@ impl<'a> KeyDeserializer<'a> {
 			0x1a => {
 				let d = self.read_decimal()?;
 				Ok(Value::Decimal(d))
+			}
+			0x1b => {
+				let sub = self.read_exact(1)?[0];
+				match sub {
+					0x00 => Ok(Value::DictionaryId(DictionaryEntryId::U1(self.read_u8()?))),
+					0x01 => Ok(Value::DictionaryId(DictionaryEntryId::U2(self.read_u16()?))),
+					0x02 => Ok(Value::DictionaryId(DictionaryEntryId::U4(self.read_u32()?))),
+					0x03 => Ok(Value::DictionaryId(DictionaryEntryId::U8(self.read_u64()?))),
+					0x04 => Ok(Value::DictionaryId(DictionaryEntryId::U16(self.read_u128()?))),
+					_ => Err(Error::from(TypeError::SerdeKeycode {
+						message: format!(
+							"unknown DictionaryEntryId sub-marker 0x{:02x} at position {}",
+							sub,
+							self.position - 1
+						),
+					})),
+				}
 			}
 			_ => Err(Error::from(TypeError::SerdeKeycode {
 				message: format!(

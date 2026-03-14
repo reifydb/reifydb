@@ -30,6 +30,7 @@ pub enum CatalogObjectKind {
 	Role,
 	Policy,
 	Migration,
+	Column,
 }
 
 impl Display for CatalogObjectKind {
@@ -51,6 +52,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Role => f.write_str("role"),
 			CatalogObjectKind::Policy => f.write_str("policy"),
 			CatalogObjectKind::Migration => f.write_str("migration"),
+			CatalogObjectKind::Column => f.write_str("column"),
 		}
 	}
 }
@@ -279,6 +281,9 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Migration => {
 						("CA_046", "migration", "choose a different name for the migration")
 					}
+					CatalogObjectKind::Column => {
+						("CA_003", "column", "ensure the column exists in the definition")
+					}
 				};
 				let message = if matches!(
 					kind,
@@ -388,6 +393,11 @@ impl IntoDiagnostic for CatalogError {
 						"CA_047",
 						"migration",
 						"ensure the migration exists or create it first using `CREATE MIGRATION`".to_string(),
+					),
+					CatalogObjectKind::Column => (
+						"CA_004",
+						"column",
+						"ensure the column exists in the definition".to_string(),
 					),
 				};
 				let message = match kind {

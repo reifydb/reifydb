@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
+	encoded::{encoded::EncodedValues, schema::Schema},
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
-		catalog::policy::PolicyTargetType,
+		catalog::{policy::PolicyTargetType, ringbuffer::RingBufferMetadata},
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	},
 	internal_error,
+	key::row::RowKey,
 	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
@@ -59,12 +61,6 @@ pub(crate) fn insert_ringbuffer<'a>(
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
 
-	// Get current metadata
-	let Some(mut metadata) = services.catalog.find_ringbuffer_metadata(txn, ringbuffer.id)? else {
-		let fragment = Fragment::internal(plan.target.name());
-		return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
-	};
-
 	// Get or create schema with proper field names and constraints
 	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
 
@@ -90,6 +86,16 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 	let mut inserted_count = 0;
 
+	// Resolve partition column indices once (empty vec for global)
+	let partition_col_indices: Vec<usize> = ringbuffer
+		.partition_by
+		.iter()
+		.map(|pb_col| ringbuffer.columns.iter().position(|c| c.name == *pb_col).unwrap())
+		.collect();
+
+	// Cache metadata for all partitions encountered
+	let mut partition_metadata_cache: HashMap<Vec<Value>, RingBufferMetadata> = HashMap::new();
+
 	// Initialize the operator before execution
 	input_node.initialize(txn, &execution_context)?;
 
@@ -111,6 +117,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 		for row_idx in 0..row_count {
 			let mut row = schema.allocate();
+			let mut row_values: Vec<Value> = Vec::with_capacity(ringbuffer.columns.len());
 
 			// For each ring buffer column, find if it exists in the input columns
 			for (rb_idx, rb_column) in ringbuffer.columns.iter().enumerate() {
@@ -163,16 +170,65 @@ pub(crate) fn insert_ringbuffer<'a>(
 					value
 				};
 
+				row_values.push(value.clone());
 				schema.set_value(&mut row, rb_idx, &value);
 			}
 
-			// If buffer is full, delete the oldest entry first
-			if metadata.is_full() {
-				let oldest_row = RowNumber(metadata.head);
-				txn.remove_from_ringbuffer(&ringbuffer, oldest_row)?;
-				// Advance head to next oldest item
-				metadata.head += 1;
-				metadata.count -= 1;
+			// Extract partition key (empty vec for global → single partition)
+			let partition_key: Vec<Value> =
+				partition_col_indices.iter().map(|&idx| row_values[idx].clone()).collect();
+
+			// Get or create partition metadata
+			if !partition_metadata_cache.contains_key(&partition_key) {
+				let existing =
+					services.catalog.find_partition_metadata(txn, &ringbuffer, &partition_key)?;
+				let m = existing
+					.unwrap_or_else(|| RingBufferMetadata::new(ringbuffer.id, ringbuffer.capacity));
+				partition_metadata_cache.insert(partition_key.clone(), m);
+			}
+			let current_metadata = partition_metadata_cache.get_mut(&partition_key).unwrap();
+
+			// If buffer is full, delete the oldest entry for THIS partition
+			if current_metadata.is_full() {
+				// Find the actual oldest row belonging to this partition
+				let mut evict_pos = current_metadata.head;
+				loop {
+					let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
+					if let Some(row_data) = txn.get(&key)? {
+						if partition_col_indices.is_empty()
+							|| row_matches_partition(
+								&schema,
+								&row_data.values,
+								&partition_col_indices,
+								&partition_key,
+							) {
+							txn.remove_from_ringbuffer(&ringbuffer, RowNumber(evict_pos))?;
+							break;
+						}
+					}
+					evict_pos += 1;
+					if evict_pos >= current_metadata.tail {
+						break;
+					}
+				}
+				// Advance head to next row belonging to this partition
+				current_metadata.head = evict_pos + 1;
+				while current_metadata.head < current_metadata.tail {
+					let key = RowKey::encoded(ringbuffer.id, RowNumber(current_metadata.head));
+					if let Some(row_data) = txn.get(&key)? {
+						if partition_col_indices.is_empty()
+							|| row_matches_partition(
+								&schema,
+								&row_data.values,
+								&partition_col_indices,
+								&partition_key,
+							) {
+							break;
+						}
+					}
+					current_metadata.head += 1;
+				}
+				current_metadata.count -= 1;
 			}
 
 			// Get next row number from sequence (monotonically increasing)
@@ -188,18 +244,20 @@ pub(crate) fn insert_ringbuffer<'a>(
 			}
 
 			// Update metadata
-			if metadata.is_empty() {
-				metadata.head = row_number.0;
+			if current_metadata.is_empty() {
+				current_metadata.head = row_number.0;
 			}
-			metadata.count += 1;
-			metadata.tail = row_number.0 + 1; // Next insert position
+			current_metadata.count += 1;
+			current_metadata.tail = row_number.0 + 1; // Next insert position
 
 			inserted_count += 1;
 		}
 	}
 
-	// Save updated metadata
-	services.catalog.update_ringbuffer_metadata_txn(txn, metadata)?;
+	// Save all modified partition metadata via unified API
+	for (partition_key, m) in &partition_metadata_cache {
+		services.catalog.save_partition_metadata(txn, &ringbuffer, partition_key, m)?;
+	}
 
 	// Return summary
 	Ok(Columns::single_row([
@@ -207,4 +265,16 @@ pub(crate) fn insert_ringbuffer<'a>(
 		("ringbuffer", Value::Utf8(ringbuffer.name)),
 		("inserted", Value::Uint8(inserted_count as u64)),
 	]))
+}
+
+fn row_matches_partition(
+	schema: &Schema,
+	row: &EncodedValues,
+	partition_col_indices: &[usize],
+	expected_values: &[Value],
+) -> bool {
+	partition_col_indices
+		.iter()
+		.zip(expected_values)
+		.all(|(&idx, expected)| schema.get_value(row, idx) == *expected)
 }

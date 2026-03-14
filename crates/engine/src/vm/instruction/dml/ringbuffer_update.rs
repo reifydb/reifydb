@@ -61,11 +61,8 @@ pub(crate) fn update_ringbuffer<'a>(
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
 
-	// Get current metadata - we need it to validate that rows exist
-	let Some(metadata) = services.catalog.find_ringbuffer_metadata(txn, ringbuffer.id)? else {
-		let fragment = Fragment::internal(plan.target.name());
-		return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
-	};
+	// Load all partitions — unified across global and partitioned
+	let partitions = services.catalog.list_ringbuffer_partitions(txn, &ringbuffer)?;
 
 	// Get or create schema with proper field names and constraints
 	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
@@ -188,22 +185,11 @@ pub(crate) fn update_ringbuffer<'a>(
 				// Update the encoded using the existing RowNumber from the columns
 				let row_number = row_numbers[row_idx];
 
-				// Validate that the encoded number is within the valid range for this ring
-				// buffer Ring buffer positions are from 0 to capacity-1
-				if row_number.0 >= metadata.capacity {
-					// Skip invalid encoded numbers silently or could return an error
-					continue;
-				}
-
-				// Check if the encoded exists in the ring buffer
-				// A encoded exists if it's within the current entries
-				if metadata.is_empty() {
-					// No entries, can't update
-					continue;
-				}
-
-				// Check if row is in the valid occupied range [head, tail)
-				let is_occupied = row_number.0 >= metadata.head && row_number.0 < metadata.tail;
+				// Find which partition this row belongs to
+				let is_occupied = partitions.iter().any(|p| {
+					!p.metadata.is_empty()
+						&& row_number.0 >= p.metadata.head && row_number.0 < p.metadata.tail
+				});
 
 				if !is_occupied {
 					continue;

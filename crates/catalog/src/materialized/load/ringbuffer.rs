@@ -48,6 +48,13 @@ fn convert_ringbuffer(multi: MultiVersionValues, primary_key: Option<PrimaryKeyD
 	let name = ringbuffer::SCHEMA.get_utf8(&row, NAME).to_string();
 	let capacity = ringbuffer::SCHEMA.get_u64(&row, CAPACITY);
 
+	let partition_by_str = ringbuffer::SCHEMA.get_utf8(&row, ringbuffer::PARTITION_BY);
+	let partition_by = if partition_by_str.is_empty() {
+		vec![]
+	} else {
+		partition_by_str.split(',').map(|s| s.to_string()).collect()
+	};
+
 	RingBufferDef {
 		id,
 		name,
@@ -55,6 +62,7 @@ fn convert_ringbuffer(multi: MultiVersionValues, primary_key: Option<PrimaryKeyD
 		columns: vec![],
 		capacity,
 		primary_key,
+		partition_by,
 	}
 }
 

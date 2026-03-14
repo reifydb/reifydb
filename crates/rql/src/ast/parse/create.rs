@@ -1028,6 +1028,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut capacity: Option<u64> = None;
+		let mut partition_by: Vec<String> = Vec::new();
 
 		loop {
 			self.skip_new_line()?;
@@ -1050,10 +1051,10 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'tag' or 'precision'".to_string(),
+								expected: "'capacity' or 'partition_by'".to_string(),
 							},
 							message: format!(
-								"expected 'tag' or 'precision', found `{}`",
+								"expected 'capacity' or 'partition_by', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -1082,15 +1083,30 @@ impl<'bump> Parser<'bump> {
 							})
 						})?);
 				}
+				"partition_by" => {
+					self.consume_operator(Operator::OpenCurly)?;
+					loop {
+						self.skip_new_line()?;
+						if self.current()?.is_operator(Operator::CloseCurly) {
+							break;
+						}
+						let col = self.consume(TokenKind::Identifier)?;
+						partition_by.push(col.fragment.text().to_string());
+						if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+							break;
+						}
+					}
+					self.consume_operator(Operator::CloseCurly)?;
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity'".to_string(),
+							expected: "'capacity' or 'partition_by'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'capacity'",
+							"'capacity' or 'partition_by'",
 							fragment.text()
 						),
 						fragment,
@@ -1137,6 +1153,7 @@ impl<'bump> Parser<'bump> {
 			ringbuffer,
 			columns,
 			capacity,
+			partition_by,
 		}))
 	}
 

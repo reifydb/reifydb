@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::{id::PrimaryKeyId, view::ViewDef},
+		catalog::{id::PrimaryKeyId, key::PrimaryKeyDef, view::ViewDef},
 		store::MultiVersionValues,
 	},
 	key::view::ViewKey,
@@ -39,7 +39,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 
 fn convert_view(
 	multi: MultiVersionValues,
-	primary_key: Option<reifydb_core::interface::catalog::key::PrimaryKeyDef>,
+	primary_key: Option<PrimaryKeyDef>,
 ) -> ViewDef {
 	decode_view_def(&multi.values, vec![], primary_key)
 }

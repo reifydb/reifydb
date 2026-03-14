@@ -127,7 +127,7 @@ pub mod tests {
 		store::{
 			column::create::ColumnToCreate,
 			table::create::TableToCreate,
-			view::create::{ViewColumnToCreate, ViewToCreate},
+			view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
 		},
 		test_utils::{ensure_test_namespace, ensure_test_table},
 	};
@@ -221,7 +221,7 @@ pub mod tests {
 						constraint: TypeConstraint::unconstrained(Type::Utf8),
 					},
 				],
-				storage: crate::store::view::create::ViewStorageConfig::default(),
+				storage: ViewStorageConfig::default(),
 			},
 		)
 		.unwrap();

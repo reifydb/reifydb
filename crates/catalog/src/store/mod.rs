@@ -28,4 +28,4 @@ pub(crate) mod table;
 pub(crate) mod user;
 pub(crate) mod user_authentication;
 pub(crate) mod user_role;
-pub(crate) mod view;
+pub mod view;

@@ -7,7 +7,7 @@ use reifydb_core::{
 		change::CatalogTrackRingBufferChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
-		ringbuffer::{RingBufferDef, RingBufferMetadata},
+		ringbuffer::{PartitionedMetadata, RingBufferDef, RingBufferMetadata},
 	},
 	internal,
 };
@@ -15,7 +15,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, com
 use reifydb_type::{
 	error,
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId},
+	value::{Value, constraint::TypeConstraint, dictionary::DictionaryId},
 };
 use tracing::instrument;
 
@@ -44,6 +44,7 @@ pub struct RingBufferToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
@@ -66,6 +67,7 @@ impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			capacity: to_create.capacity,
+			partition_by: to_create.partition_by,
 		}
 	}
 }
@@ -200,6 +202,77 @@ impl Catalog {
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
 		CatalogStore::update_ringbuffer_metadata_txn(txn, metadata)
+	}
+
+	#[instrument(name = "catalog::ringbuffer::find_partition_metadata", level = "trace", skip(self, txn))]
+	pub fn find_ringbuffer_partition_metadata(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+	) -> Result<Option<RingBufferMetadata>> {
+		CatalogStore::find_ringbuffer_partition_metadata(txn, ringbuffer, partition_values)
+	}
+
+	#[instrument(name = "catalog::ringbuffer::list_partition_metadata", level = "trace", skip(self, txn))]
+	pub fn list_ringbuffer_partition_metadata(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+	) -> Result<Vec<PartitionedMetadata>> {
+		CatalogStore::list_ringbuffer_partition_metadata(txn, ringbuffer)
+	}
+
+	#[instrument(name = "catalog::ringbuffer::update_partition_metadata", level = "debug", skip(self, txn))]
+	pub fn update_ringbuffer_partition_metadata(
+		&self,
+		txn: &mut CommandTransaction,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		CatalogStore::update_ringbuffer_partition_metadata(txn, ringbuffer, partition_values, metadata)
+	}
+
+	#[instrument(name = "catalog::ringbuffer::update_partition_metadata_txn", level = "debug", skip(self, txn))]
+	pub fn update_ringbuffer_partition_metadata_txn(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		CatalogStore::update_ringbuffer_partition_metadata_txn(txn, ringbuffer, partition_values, metadata)
+	}
+
+	#[instrument(name = "catalog::ringbuffer::list_partitions", level = "trace", skip(self, txn))]
+	pub fn list_ringbuffer_partitions(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+	) -> Result<Vec<PartitionedMetadata>> {
+		CatalogStore::list_ringbuffer_partitions(txn, ringbuffer)
+	}
+
+	#[instrument(name = "catalog::ringbuffer::find_partition_metadata", level = "trace", skip(self, txn))]
+	pub fn find_partition_metadata(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+		partition_key: &[Value],
+	) -> Result<Option<RingBufferMetadata>> {
+		CatalogStore::find_partition_metadata(txn, ringbuffer, partition_key)
+	}
+
+	#[instrument(name = "catalog::ringbuffer::save_partition_metadata", level = "debug", skip(self, txn))]
+	pub fn save_partition_metadata(
+		&self,
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+		partition_key: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		CatalogStore::save_partition_metadata(txn, ringbuffer, partition_key, metadata)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::set_primary_key", level = "debug", skip(self, txn))]

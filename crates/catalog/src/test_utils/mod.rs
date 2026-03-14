@@ -28,7 +28,7 @@ use crate::{
 		namespace::create::NamespaceToCreate,
 		ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
 		table::create::{TableColumnToCreate, TableToCreate},
-		view::create::{ViewColumnToCreate, ViewToCreate},
+		view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
 	},
 };
 
@@ -131,7 +131,7 @@ pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, colu
 			name: Fragment::internal(view),
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
-			storage: crate::store::view::create::ViewStorageConfig::default(),
+			storage: ViewStorageConfig::default(),
 		},
 	)
 	.unwrap()
@@ -171,6 +171,7 @@ pub fn create_ringbuffer(
 			namespace: namespace.id(),
 			capacity,
 			columns: columns.to_vec(),
+			partition_by: vec![],
 		},
 	)
 	.unwrap()

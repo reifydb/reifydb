@@ -45,6 +45,7 @@ pub struct RingBufferToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 impl CatalogStore {
@@ -75,9 +76,12 @@ impl CatalogStore {
 		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
 
 		let capacity = to_create.capacity;
+		let is_partitioned = !to_create.partition_by.is_empty();
 
 		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
-		Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+		if !is_partitioned {
+			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+		}
 
 		Ok(Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)?)
 	}
@@ -95,6 +99,7 @@ impl CatalogStore {
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
 		// Initialize with no primary key
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
+		ringbuffer::SCHEMA.set_utf8(&mut row, ringbuffer::PARTITION_BY, &to_create.partition_by.join(","));
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 
@@ -200,6 +205,7 @@ pub mod tests {
 					dictionary_id: None,
 				},
 			],
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -224,6 +230,7 @@ pub mod tests {
 			name: Fragment::internal("empty_buffer"),
 			capacity: 100,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -245,6 +252,7 @@ pub mod tests {
 			name: Fragment::internal("test_ringbuffer"),
 			capacity: 50,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		// First creation should succeed
@@ -268,6 +276,7 @@ pub mod tests {
 			name: Fragment::internal("buffer1"),
 			capacity: 10,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -277,6 +286,7 @@ pub mod tests {
 			name: Fragment::internal("buffer2"),
 			capacity: 20,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -314,6 +324,7 @@ pub mod tests {
 			name: Fragment::internal("metadata_buffer"),
 			capacity: 500,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -341,6 +352,7 @@ pub mod tests {
 			name: Fragment::internal("small_buffer"),
 			capacity: 10,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
@@ -351,6 +363,7 @@ pub mod tests {
 			name: Fragment::internal("medium_buffer"),
 			capacity: 1000,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
@@ -361,6 +374,7 @@ pub mod tests {
 			name: Fragment::internal("large_buffer"),
 			capacity: 1000000,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
@@ -408,6 +422,7 @@ pub mod tests {
 			name: Fragment::internal("ordered_buffer"),
 			capacity: 100,
 			columns: columns.clone(),
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

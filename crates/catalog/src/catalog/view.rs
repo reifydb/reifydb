@@ -17,11 +17,12 @@ use reifydb_transaction::{
 use reifydb_type::{error, fragment::Fragment, value::constraint::TypeConstraint};
 use tracing::{instrument, warn};
 
-pub use crate::store::view::create::ViewStorageConfig;
 use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
-	store::view::create::{ViewColumnToCreate as StoreViewColumnToCreate, ViewToCreate as StoreViewToCreate},
+	store::view::create::{
+		ViewColumnToCreate as StoreViewColumnToCreate, ViewStorageConfig, ViewToCreate as StoreViewToCreate,
+	},
 };
 
 #[derive(Debug, Clone)]

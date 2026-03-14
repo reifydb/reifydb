@@ -644,6 +644,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 #[derive(Debug)]

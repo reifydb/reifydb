@@ -3,10 +3,14 @@
 
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
-	interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
+	interface::catalog::{
+		id::RingBufferId,
+		ringbuffer::{RingBufferDef, RingBufferMetadata},
+	},
 	key::ringbuffer::RingBufferMetadataKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
+use reifydb_type::value::Value;
 
 use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer_metadata};
 
@@ -55,6 +59,44 @@ impl CatalogStore {
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);
 		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
+		Ok(())
+	}
+
+	pub(crate) fn update_ringbuffer_partition_metadata(
+		txn: &mut CommandTransaction,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		let row = encode_ringbuffer_metadata(metadata);
+		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
+		txn.set(&key, row)?;
+		Ok(())
+	}
+
+	/// Save metadata for a specific partition. Global uses empty key → RingBufferMetadataKey.
+	pub(crate) fn save_partition_metadata(
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBufferDef,
+		partition_key: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		if ringbuffer.partition_by.is_empty() {
+			Self::update_ringbuffer_metadata_txn(txn, metadata.clone())
+		} else {
+			Self::update_ringbuffer_partition_metadata_txn(txn, ringbuffer.id, partition_key, metadata)
+		}
+	}
+
+	pub(crate) fn update_ringbuffer_partition_metadata_txn(
+		txn: &mut Transaction<'_>,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		let row = encode_ringbuffer_metadata(metadata);
+		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
+		txn.set(&key, row)?;
 		Ok(())
 	}
 }
