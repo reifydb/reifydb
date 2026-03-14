@@ -411,11 +411,12 @@ async fn process_message(
 				info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			} else {
-				Some(build_error(
-					&request.id,
-					"SUBSCRIPTION_NOT_FOUND",
-					"Subscription not found or already unsubscribed",
-				))
+				// Already removed (e.g., by cleanup_connection) — treat as success
+				info!(
+					"Connection {} unsubscribe for {} (already removed)",
+					connection_id, subscription_id
+				);
+				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			}
 		}
 	}

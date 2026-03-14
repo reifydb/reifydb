@@ -3,8 +3,11 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_core::interface::catalog::flow::{FlowId, FlowNodeId};
-use reifydb_type::Result;
+use reifydb_core::{
+	interface::catalog::flow::{FlowId, FlowNodeId},
+	internal,
+};
+use reifydb_type::{Result, error::Error};
 
 use super::{
 	graph::DirectedGraph,
@@ -61,6 +64,13 @@ impl FlowBuilder {
 	pub fn add_edge(&mut self, edge: FlowEdge) -> Result<()> {
 		let source = edge.source;
 		let target = edge.target;
+
+		if self.graph.get_node(&source).is_none() {
+			return Err(Error(internal!("Flow edge references missing source node {:?}", source)));
+		}
+		if self.graph.get_node(&target).is_none() {
+			return Err(Error(internal!("Flow edge references missing target node {:?}", target)));
+		}
 
 		self.graph.add_edge(edge);
 
