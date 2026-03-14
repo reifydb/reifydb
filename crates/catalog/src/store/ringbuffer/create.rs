@@ -150,8 +150,8 @@ impl CatalogStore {
 		let mut row = ringbuffer_metadata::SCHEMA.allocate();
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::HEAD, 0u64);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, 0u64);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::HEAD, 1u64);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, 1u64);
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
 
 		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
@@ -326,8 +326,8 @@ pub mod tests {
 		assert_eq!(metadata.id, result.id);
 		assert_eq!(metadata.capacity, 500);
 		assert_eq!(metadata.count, 0);
-		assert_eq!(metadata.head, 0);
-		assert_eq!(metadata.tail, 0);
+		assert_eq!(metadata.head, 1);
+		assert_eq!(metadata.tail, 1);
 	}
 
 	#[test]

@@ -79,8 +79,8 @@ pub mod tests {
 				.expect("Metadata should exist");
 
 		assert_eq!(metadata.count, 0);
-		assert_eq!(metadata.head, 0);
-		assert_eq!(metadata.tail, 0);
+		assert_eq!(metadata.head, 1);
+		assert_eq!(metadata.tail, 1);
 
 		// Update metadata
 		metadata.count = 5;
