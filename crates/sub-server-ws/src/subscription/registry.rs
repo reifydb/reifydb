@@ -32,6 +32,10 @@ pub enum PushMessage {
 		content_type: String,
 		body: JsonValue,
 	},
+	/// The remote subscription has closed (upstream stream ended).
+	Closed {
+		subscription_id: SubscriptionId,
+	},
 }
 
 /// Internal state for a subscription.
@@ -283,6 +287,9 @@ pub mod tests {
 				assert_eq!(subscription_id, sub_id);
 				assert_eq!(received_body, body);
 			}
+			PushMessage::Closed {
+				..
+			} => panic!("Unexpected Closed message"),
 		}
 
 		// Unsubscribe

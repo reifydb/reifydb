@@ -15,6 +15,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-client = { workspace = true, features = ["grpc"] }
 reifydb-type = { workspace = true }
 
 futures-util = { workspace = true }

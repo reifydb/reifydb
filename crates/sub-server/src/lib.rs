@@ -16,6 +16,7 @@
 
 pub mod auth;
 pub mod execute;
+pub mod remote;
 pub mod response;
 pub mod state;
 pub mod subscribe;

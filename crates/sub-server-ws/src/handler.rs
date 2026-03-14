@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
@@ -24,6 +24,7 @@ use tokio::{
 	net::TcpStream,
 	select,
 	sync::{mpsc, watch},
+	task::JoinHandle,
 	time::timeout,
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
@@ -90,6 +91,9 @@ pub async fn handle_connection(
 	// Connection starts unauthenticated
 	let mut identity: Option<IdentityId> = None;
 
+	// Track remote subscription proxy tasks (not registered in registry/poller)
+	let mut remote_tasks: HashMap<String, JoinHandle<()>> = HashMap::new();
+
 	loop {
 		select! {
 			biased;
@@ -105,15 +109,19 @@ pub async fn handle_connection(
 
 			// Handle push messages from the subscription registry
 			Some(push) = push_rx.recv() => {
-
-				let msg = match push {
+				match push {
 					PushMessage::Change { subscription_id, content_type, body } => {
-						ServerPush::change(subscription_id.to_string(), content_type, body).to_json()
+						let msg = ServerPush::change(subscription_id.to_string(), content_type, body).to_json();
+						if sender.send(Message::Text(msg.into())).await.is_err() {
+							debug!("Failed to send push message to {:?}", peer);
+							break;
+						}
 					}
-				};
-				if sender.send(Message::Text(msg.into())).await.is_err() {
-					debug!("Failed to send push message to {:?}", peer);
-					break;
+					PushMessage::Closed { .. } => {
+						debug!("Remote subscription closed for {:?}, closing connection", peer);
+						let _ = sender.send(Message::Close(None)).await;
+						break;
+					}
 				}
 			}
 
@@ -129,6 +137,8 @@ pub async fn handle_connection(
 							&registry,
 							&poller,
 							push_tx.clone(),
+							&mut remote_tasks,
+							shutdown.clone(),
 						).await;
 						if let Some(resp) = response {
 							if sender.send(Message::Text(resp.into())).await.is_err() {
@@ -169,6 +179,11 @@ pub async fn handle_connection(
 		}
 	}
 
+	// Abort all remote proxy tasks
+	for (_, handle) in remote_tasks {
+		handle.abort();
+	}
+
 	// Cleanup all subscriptions for this connection
 	let subscription_ids = registry.cleanup_connection(connection_id);
 
@@ -201,6 +216,8 @@ async fn process_message(
 	registry: &SubscriptionRegistry,
 	poller: &SubscriptionPoller,
 	push_tx: mpsc::Sender<PushMessage>,
+	remote_tasks: &mut HashMap<String, JoinHandle<()>>,
+	shutdown: watch::Receiver<bool>,
 ) -> Option<String> {
 	let request: Request = match from_str(text) {
 		Ok(r) => r,
@@ -339,11 +356,32 @@ async fn process_message(
 		}
 
 		RequestPayload::Subscribe(sub) => {
-			handle_subscribe(&request.id, sub, *identity, connection_id, state, registry, poller, push_tx)
-				.await
+			handle_subscribe(
+				&request.id,
+				sub,
+				*identity,
+				connection_id,
+				state,
+				registry,
+				poller,
+				push_tx,
+				remote_tasks,
+				shutdown,
+			)
+			.await
 		}
 
 		RequestPayload::Unsubscribe(unsub) => {
+			// Check remote tasks first (not registered in registry/poller)
+			if let Some(handle) = remote_tasks.remove(&unsub.subscription_id) {
+				handle.abort();
+				info!(
+					"Connection {} unsubscribed from remote {}",
+					connection_id, unsub.subscription_id
+				);
+				return Some(Response::unsubscribed(&request.id, unsub.subscription_id).to_json());
+			}
+
 			let subscription_id = match unsub.subscription_id.parse::<u64>() {
 				Ok(id) => DbSubscriptionId(id),
 				Err(_) => {

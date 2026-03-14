@@ -6,19 +6,28 @@
 //! Handles WebSocket subscription requests by creating database subscriptions
 //! and registering them with the registry and poller for real-time updates.
 
+use std::collections::HashMap;
+
+use reifydb_core::{interface::catalog::id::SubscriptionId, value::frame::response::convert_frames};
 use reifydb_sub_server::{
+	remote::{connect_remote, proxy_remote},
 	state::AppState,
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
 use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::value::{identity::IdentityId, uuid::Uuid7};
-use tokio::sync::mpsc;
+use serde_json::json;
+use tokio::{
+	spawn,
+	sync::{mpsc, watch},
+	task::JoinHandle,
+};
 use tracing::info;
 
 use crate::{
 	handler::error_to_response,
 	protocol::SubscribeRequest,
-	response::Response,
+	response::{CONTENT_TYPE_FRAMES, Response},
 	subscription::{PushMessage, SubscriptionRegistry},
 };
 
@@ -36,6 +45,8 @@ type ConnectionId = Uuid7;
 /// * `registry` - Subscription registry for tracking subscriptions
 /// * `poller` - Subscription poller for consuming subscription data
 /// * `push_tx` - Channel for sending push messages to the client
+/// * `remote_tasks` - Map of remote subscription ID → proxy task handle
+/// * `shutdown` - Watch channel for shutdown signal
 ///
 /// # Returns
 ///
@@ -49,6 +60,8 @@ pub(crate) async fn handle_subscribe(
 	registry: &SubscriptionRegistry,
 	poller: &SubscriptionPoller,
 	push_tx: mpsc::Sender<PushMessage>,
+	remote_tasks: &mut HashMap<String, JoinHandle<()>>,
+	shutdown: watch::Receiver<bool>,
 ) -> Option<String> {
 	let id: IdentityId = identity.unwrap_or_else(IdentityId::root);
 	let user_query = sub.query.clone();
@@ -63,13 +76,57 @@ pub(crate) async fn handle_subscribe(
 			Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 		}
 		Ok(Remote {
-			..
-		}) => Some(Response::internal_error(
-			request_id,
-			"REMOTE_SUBSCRIPTION_UNSUPPORTED",
-			"Remote subscriptions are not yet supported over WebSocket",
-		)
-		.to_json()),
+			address,
+			query,
+		}) => {
+			let remote_sub = match connect_remote(&address, &query).await {
+				Ok(s) => s,
+				Err(e) => {
+					return Some(Response::internal_error(
+						request_id,
+						"REMOTE_SUBSCRIBE_FAILED",
+						&e.to_string(),
+					)
+					.to_json());
+				}
+			};
+
+			let remote_id = remote_sub.subscription_id().to_string();
+			let subscription_id = match remote_id.parse::<u64>() {
+				Ok(id) => SubscriptionId(id),
+				Err(_) => {
+					return Some(Response::internal_error(
+						request_id,
+						"REMOTE_SUBSCRIBE_FAILED",
+						"Invalid remote subscription ID format",
+					)
+					.to_json());
+				}
+			};
+
+			let push_tx_close = push_tx.clone();
+			let handle = spawn(async move {
+				proxy_remote(remote_sub, push_tx, shutdown, move |frames| {
+					let ws_frames = convert_frames(&frames);
+					PushMessage::Change {
+						subscription_id,
+						content_type: CONTENT_TYPE_FRAMES.to_string(),
+						body: json!({ "frames": ws_frames }),
+					}
+				})
+				.await;
+				let _ = push_tx_close
+					.send(PushMessage::Closed {
+						subscription_id,
+					})
+					.await;
+			});
+			remote_tasks.insert(remote_id.clone(), handle);
+
+			info!("Connection {} subscribed to remote: subscription_id={}", connection_id, remote_id);
+
+			Some(Response::subscribed(request_id, remote_id).to_json())
+		}
 		Err(CreateSubscriptionError::Execute(e)) => Some(error_to_response(request_id, e)),
 		Err(CreateSubscriptionError::ExtractionFailed) => Some(Response::internal_error(
 			request_id,

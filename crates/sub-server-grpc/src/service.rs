@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, GrpcSubscription};
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
 	execute::{execute_admin, execute_command, execute_query},
+	remote::{connect_remote, proxy_remote},
 	state::AppState,
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
 };
@@ -147,14 +147,8 @@ impl ReifyDbService {
 		address: String,
 		query: &str,
 	) -> Result<Response<ReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
-		let mut client = GrpcClient::connect(&address)
-			.await
-			.map_err(|e| Status::unavailable(format!("Failed to connect to remote: {}", e)))?;
-		client.authenticate("service-token");
-		let remote_sub = client
-			.subscribe(query)
-			.await
-			.map_err(|e| Status::internal(format!("Remote subscribe failed: {}", e)))?;
+		let remote_sub =
+			connect_remote(&address, query).await.map_err(|e| Status::unavailable(e.to_string()))?;
 
 		let (tx, rx) = mpsc::channel(256);
 
@@ -168,37 +162,15 @@ impl ReifyDbService {
 
 		// Spawn proxy: remote stream → local channel
 		let shutdown_rx = self.shutdown_rx.clone();
-		spawn(async move {
-			proxy_remote_subscription(remote_sub, tx, shutdown_rx).await;
-		});
+		spawn(proxy_remote(remote_sub, tx, shutdown_rx, |frames| {
+			Ok(SubscriptionEvent {
+				event: Some(subscription_event::Event::Change(ChangeEvent {
+					frames: frames_to_proto(frames),
+				})),
+			})
+		}));
 
 		Ok(Response::new(ReceiverStream::new(rx)))
-	}
-}
-
-async fn proxy_remote_subscription(
-	mut remote_sub: GrpcSubscription,
-	tx: mpsc::Sender<Result<SubscriptionEvent, Status>>,
-	mut shutdown_rx: watch::Receiver<bool>,
-) {
-	loop {
-		select! {
-			frames = remote_sub.recv() => {
-				match frames {
-					Some(frames) => {
-						let event = SubscriptionEvent {
-							event: Some(subscription_event::Event::Change(ChangeEvent {
-								frames: frames_to_proto(frames),
-							})),
-						};
-						if tx.send(Ok(event)).await.is_err() { break; }
-					}
-					None => break,
-				}
-			}
-			_ = tx.closed() => break,
-			_ = shutdown_rx.changed() => break,
-		}
 	}
 }
 
