@@ -76,11 +76,21 @@ pub mod tests {
 		)
 		.unwrap();
 
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE test_namespace::src { id: Int4 }",
+				params: Params::default(),
+				identity,
+			},
+		)
+		.unwrap();
+
 		let frames = instance
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
 					params: Params::default(),
 					identity,
 				},
@@ -97,7 +107,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
 					params: Params::default(),
 					identity,
 				},
@@ -131,11 +141,30 @@ pub mod tests {
 		)
 		.unwrap();
 
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE test_namespace::src { id: Int4 }",
+				params: Params::default(),
+				identity,
+			},
+		)
+		.unwrap();
+		instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE another_schema::src { id: Int4 }",
+				params: Params::default(),
+				identity,
+			},
+		)
+		.unwrap();
+
 		let frames = instance
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
 					params: Params::default(),
 					identity,
 				},
@@ -151,7 +180,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW another_schema::test_view { id: Int4 } AS { FROM [] }",
+					rql: "CREATE DEFERRED VIEW another_schema::test_view { id: Int4 } AS { FROM another_schema::src }",
 					params: Params::default(),
 					identity,
 				},

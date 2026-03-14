@@ -8,7 +8,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	error::diagnostic::flow::flow_remote_source_unsupported,
+	error::diagnostic::flow::{flow_remote_source_unsupported, flow_source_required},
 	interface::catalog::{
 		flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId},
 		subscription::SubscriptionDef,
@@ -170,7 +170,13 @@ impl FlowCompiler {
 			self.add_edge(txn, &root_node_id, &result_node)?;
 		}
 
-		Ok(self.builder.build())
+		let flow = self.builder.build();
+
+		if !has_real_source(&flow) {
+			return Err(Error(flow_source_required()));
+		}
+
+		Ok(flow)
 	}
 
 	/// Compiles a query plan into a FlowGraph with a subscription sink
@@ -192,7 +198,13 @@ impl FlowCompiler {
 
 		self.add_edge(txn, &root_node_id, &result_node)?;
 
-		Ok(self.builder.build())
+		let flow = self.builder.build();
+
+		if !has_real_source(&flow) {
+			return Err(Error(flow_source_required()));
+		}
+
+		Ok(flow)
 	}
 
 	/// Compiles a query plan operator into the FlowGraph
@@ -273,6 +285,24 @@ impl FlowCompiler {
 			}
 		}
 	}
+}
+
+/// Returns true if the flow contains at least one real source node
+/// (i.e., not just inline data).
+fn has_real_source(flow: &FlowDag) -> bool {
+	flow.get_node_ids().any(|node_id| {
+		if let Some(node) = flow.get_node(&node_id) {
+			matches!(
+				node.ty,
+				FlowNodeType::SourceTable { .. }
+					| FlowNodeType::SourceView { .. } | FlowNodeType::SourceFlow { .. }
+					| FlowNodeType::SourceRingBuffer { .. }
+					| FlowNodeType::SourceSeries { .. }
+			)
+		} else {
+			false
+		}
+	})
 }
 
 /// Trait for compiling operator from physical plans to flow nodes

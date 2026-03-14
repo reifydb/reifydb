@@ -115,3 +115,30 @@ fn test_multiple_queries() {
 	db.query(r#"FROM [{ y: 2 }]"#).expect("Second query failed");
 	db.query(r#"FROM [{ z: 3 }]"#).expect("Third query failed");
 }
+
+#[wasm_bindgen_test]
+fn test_create_transactional_view_with_table_source() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE NAMESPACE ns").expect("CREATE NAMESPACE failed");
+	db.admin(r#"CREATE TABLE ns::t { id: int4, name: utf8 }"#).expect("CREATE TABLE failed");
+	db.admin(r#"CREATE TRANSACTIONAL VIEW ns::v { id: int4, name: utf8 } AS { FROM ns::t }"#)
+		.expect("CREATE TRANSACTIONAL VIEW failed");
+
+	db.command(r#"INSERT ns::t [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }]"#).expect("INSERT failed");
+
+	let result = db.query_text("FROM ns::v").expect("Query on transactional view should succeed");
+	assert!(result.contains("Alice"), "View should contain Alice, got: {}", result);
+	assert!(result.contains("Bob"), "View should contain Bob, got: {}", result);
+}
+
+#[wasm_bindgen_test]
+fn test_create_view_with_inline_data_returns_error() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE NAMESPACE ns2").expect("CREATE NAMESPACE failed");
+
+	let result = db.admin(r#"CREATE TRANSACTIONAL VIEW ns2::v { id: int4 } AS { FROM [{ id: 1 }] }"#);
+
+	assert!(result.is_err(), "Creating a view with only inline data should return an error, not panic");
+}

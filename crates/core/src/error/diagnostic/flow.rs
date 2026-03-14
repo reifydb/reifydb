@@ -135,3 +135,21 @@ pub fn flow_remote_source_unsupported() -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// Flow requires at least one real source
+pub fn flow_source_required() -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_008".to_string(),
+		statement: None,
+		message: "Flow requires at least one source".to_string(),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("A view flow must read from a table, view, ring buffer, or series. \
+			Inline data (FROM [...]) cannot be used as the source for a view."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
