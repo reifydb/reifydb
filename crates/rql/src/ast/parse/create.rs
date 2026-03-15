@@ -1960,6 +1960,7 @@ impl<'bump> Parser<'bump> {
 			ViewStorageKindHint::RingBuffer => {
 				let mut capacity: Option<u64> = None;
 				let mut propagate_evictions: Option<bool> = None;
+				let mut partition_by: Vec<String> = Vec::new();
 
 				loop {
 					self.skip_new_line()?;
@@ -2008,11 +2009,28 @@ impl<'bump> Parser<'bump> {
 									}
 								});
 						}
+						"partition_by" => {
+							self.consume_operator(Operator::OpenCurly)?;
+							loop {
+								self.skip_new_line()?;
+								if self.current()?.is_operator(Operator::CloseCurly) {
+									break;
+								}
+								let col = self.consume(TokenKind::Identifier)?;
+								partition_by.push(col.fragment.text().to_string());
+								if self.consume_if(TokenKind::Separator(Comma))?
+									.is_none()
+								{
+									break;
+								}
+							}
+							self.consume_operator(Operator::CloseCurly)?;
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity' or 'propagate_evictions'"
+									expected: "'capacity', 'propagate_evictions', or 'partition_by'"
 										.to_string(),
 								},
 								message: format!(
@@ -2043,6 +2061,7 @@ impl<'bump> Parser<'bump> {
 				Ok(AstViewStorageKind::RingBuffer {
 					capacity,
 					propagate_evictions,
+					partition_by,
 				})
 			}
 			ViewStorageKindHint::Series => {

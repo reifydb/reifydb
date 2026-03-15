@@ -37,10 +37,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	Ok(())
 }
 
-fn convert_view(
-	multi: MultiVersionValues,
-	primary_key: Option<PrimaryKeyDef>,
-) -> ViewDef {
+fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
 	decode_view_def(&multi.values, vec![], primary_key)
 }
 
