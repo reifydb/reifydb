@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
@@ -14,7 +16,11 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
 };
-use reifydb_type::Result;
+use reifydb_type::{
+	Result,
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 
 use crate::{
 	TransactionId,
@@ -56,7 +62,7 @@ use crate::{
 	},
 	multi::{pending::PendingWrites, transaction::MultiTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::admin::AdminTransaction,
+	transaction::{RqlExecutor, Transaction, admin::AdminTransaction},
 };
 
 /// A subscription transaction that wraps AdminTransaction with restricted access.
@@ -67,6 +73,12 @@ use crate::{
 /// subscription DDL is executed through this transaction type.
 pub struct SubscriptionTransaction {
 	pub(crate) inner: AdminTransaction,
+
+	/// The identity executing this transaction — own field, NOT delegated to inner AdminTransaction.
+	pub identity: IdentityId,
+
+	/// Optional RQL executor — own field, NOT delegated to inner AdminTransaction.
+	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 }
 
 impl SubscriptionTransaction {
@@ -76,10 +88,31 @@ impl SubscriptionTransaction {
 		single: SingleTransaction,
 		event_bus: EventBus,
 		interceptors: Interceptors,
+		identity: IdentityId,
 	) -> Result<Self> {
 		Ok(Self {
-			inner: AdminTransaction::new(multi, single, event_bus, interceptors)?,
+			inner: AdminTransaction::new(multi, single, event_bus, interceptors, identity)?,
+			identity,
+			executor: None,
 		})
+	}
+
+	/// Set the RQL executor for this transaction.
+	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
+		self.executor = Some(executor);
+	}
+
+	/// Execute RQL within this transaction using the attached executor.
+	///
+	/// Panics if no `RqlExecutor` has been set on this transaction.
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		self.inner.check_active()?;
+		let executor = self.executor.clone().expect("RqlExecutor not set");
+		let result = executor.rql(&mut Transaction::Subscription(self), rql, params);
+		if let Err(ref e) = result {
+			self.inner.poison(e.0.clone());
+		}
+		result
 	}
 
 	/// Get access to the inner AdminTransaction (immutable).

@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_engine::test_utils::create_test_engine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::util::cowvec::CowVec;
+use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
 
 fn make_cdc(version: u64) -> Cdc {
 	Cdc::new(
@@ -31,11 +31,11 @@ fn make_cdc(version: u64) -> Cdc {
 #[test]
 fn test_compute_watermark_with_single_consumer() {
 	let engine = create_test_engine();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(42)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark, CommitVersion(42), "Watermark should match single consumer checkpoint");
@@ -46,13 +46,13 @@ fn test_compute_watermark_with_multiple_consumers_at_same_checkpoint() {
 	let engine = create_test_engine();
 	let checkpoint = CommitVersion(100);
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), checkpoint).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), checkpoint).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer3"), checkpoint).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark, checkpoint, "Watermark should match when all consumers at same checkpoint");
@@ -62,14 +62,14 @@ fn test_compute_watermark_with_multiple_consumers_at_same_checkpoint() {
 fn test_compute_watermark_finds_minimum_across_consumers() {
 	let engine = create_test_engine();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(100)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), CommitVersion(85)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer3"), CommitVersion(95)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer4"), CommitVersion(110)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark, CommitVersion(85), "Watermark should be minimum across all consumers");
@@ -79,30 +79,30 @@ fn test_compute_watermark_finds_minimum_across_consumers() {
 fn test_compute_watermark_advances_as_slow_consumer_catches_up() {
 	let engine = create_test_engine();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(100)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(50)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark1 = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark1, CommitVersion(50));
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(80)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark2 = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark2, CommitVersion(80));
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(100)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark3 = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark3, CommitVersion(100));
@@ -111,11 +111,11 @@ fn test_compute_watermark_advances_as_slow_consumer_catches_up() {
 #[test]
 fn test_compute_watermark_with_consumer_at_version_one() {
 	let engine = create_test_engine();
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(1)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark, CommitVersion(1), "Watermark should handle consumer at version 1");
@@ -125,13 +125,13 @@ fn test_compute_watermark_with_consumer_at_version_one() {
 fn test_compute_watermark_with_very_large_version_numbers() {
 	let engine = create_test_engine();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(u64::MAX - 100)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), CommitVersion(u64::MAX - 200)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer3"), CommitVersion(u64::MAX - 50)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark, CommitVersion(u64::MAX - 200), "Watermark should handle large version numbers");
@@ -141,20 +141,20 @@ fn test_compute_watermark_with_very_large_version_numbers() {
 fn test_compute_watermark_changes_when_new_consumer_added() {
 	let engine = create_test_engine();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer1"), CommitVersion(500)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer2"), CommitVersion(510)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark_before = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark_before, CommitVersion(500));
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("new_consumer"), CommitVersion(100)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark_after = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark_after, CommitVersion(100), "Watermark should be pulled down by new lagging consumer");
 }
@@ -164,27 +164,27 @@ fn test_compute_watermark_stability_with_consumer_updates() {
 	let engine = create_test_engine();
 
 	// Initial checkpoint
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(10)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	assert_eq!(compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap(), CommitVersion(10));
 
 	// Update to higher checkpoint
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(20)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	assert_eq!(compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap(), CommitVersion(20));
 
 	// Update again
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(30)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	assert_eq!(compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap(), CommitVersion(30));
 }
 
@@ -192,7 +192,7 @@ fn test_compute_watermark_stability_with_consumer_updates() {
 fn test_compute_watermark_with_many_consumers() {
 	let engine = create_test_engine();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	for i in 0..100 {
 		let consumer_id = CdcConsumerId::new(&format!("consumer_{}", i));
 		let version = CommitVersion(100 + (i * 10)); // Spread out versions
@@ -203,7 +203,7 @@ fn test_compute_watermark_with_many_consumers() {
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("minimum_consumer"), CommitVersion(50)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	assert_eq!(watermark, CommitVersion(50), "Watermark should find minimum among many consumers");
@@ -221,13 +221,13 @@ fn test_slow_consumer_prevents_cdc_cleanup_until_caught_up() {
 	assert_eq!(storage.len(), 5);
 
 	// Fast consumer at 50, slow consumer at 20
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(50)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(20)).unwrap();
 	txn.commit().unwrap();
 
 	// Watermark = min(50, 20) = 20
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(20));
 
@@ -239,12 +239,12 @@ fn test_slow_consumer_prevents_cdc_cleanup_until_caught_up() {
 	assert_eq!(storage.len(), 4);
 
 	// Slow consumer catches up to 50
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(50)).unwrap();
 	txn.commit().unwrap();
 
 	// Watermark = min(50, 50) = 50
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(50));
 
@@ -266,11 +266,11 @@ fn test_cdc_entry_at_watermark_is_retained() {
 	}
 
 	// Consumer at exactly version 3
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("consumer"), CommitVersion(3)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 
 	let result = storage.drop_before(watermark).unwrap();
@@ -291,13 +291,13 @@ fn test_incremental_cleanup_as_slow_consumer_advances() {
 	assert_eq!(storage.len(), 10);
 
 	// Fast consumer at 100, slow consumer starts at 10
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(100)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(10)).unwrap();
 	txn.commit().unwrap();
 
 	// Initial watermark = min(100, 10) = 10, no cleanup possible
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(10));
 	let result = storage.drop_before(watermark).unwrap();
@@ -305,11 +305,11 @@ fn test_incremental_cleanup_as_slow_consumer_advances() {
 	assert_eq!(storage.len(), 10);
 
 	// Slow consumer advances to 30
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(30)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(30));
 	let result = storage.drop_before(watermark).unwrap();
@@ -317,11 +317,11 @@ fn test_incremental_cleanup_as_slow_consumer_advances() {
 	assert_eq!(storage.len(), 8);
 
 	// Slow consumer advances to 70
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(70)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(70));
 	let result = storage.drop_before(watermark).unwrap();
@@ -347,14 +347,14 @@ fn test_multiple_slow_consumers_constrain_cleanup() {
 	assert_eq!(storage.len(), 5);
 
 	// Three consumers: fast=50, medium=30, slow=20
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("fast_consumer"), CommitVersion(50)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("medium_consumer"), CommitVersion(30)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(20)).unwrap();
 	txn.commit().unwrap();
 
 	// Watermark = min(50, 30, 20) = 20
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(20));
 
@@ -364,11 +364,11 @@ fn test_multiple_slow_consumers_constrain_cleanup() {
 	assert_eq!(storage.len(), 4);
 
 	// Slow consumer catches up to medium (30), but medium is still the minimum
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(35)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(30)); // medium_consumer is now the slowest
 
@@ -378,12 +378,12 @@ fn test_multiple_slow_consumers_constrain_cleanup() {
 	assert_eq!(storage.len(), 3); // Versions 30, 40, 50 remain
 
 	// All consumers catch up to 50
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("slow_consumer"), CommitVersion(50)).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new("medium_consumer"), CommitVersion(50)).unwrap();
 	txn.commit().unwrap();
 
-	let mut query_txn = engine.begin_query().unwrap();
+	let mut query_txn = engine.begin_query(IdentityId::system()).unwrap();
 	let watermark = compute_watermark(&mut Transaction::Query(&mut query_txn)).unwrap();
 	assert_eq!(watermark, CommitVersion(50));
 

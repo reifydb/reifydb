@@ -46,7 +46,6 @@ pub(crate) fn insert_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertSeriesNode,
 	params: Params,
-	identity: IdentityId,
 	symbol_table: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
@@ -105,7 +104,6 @@ pub(crate) fn insert_series<'a>(
 		// Enforce write policies before processing rows
 		PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
 			txn,
-			identity,
 			namespace_name,
 			series_name,
 			"insert",

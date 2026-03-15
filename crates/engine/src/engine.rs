@@ -71,43 +71,63 @@ impl WithEventBus for StandardEngine {
 // Engine methods (formerly from Engine trait in reifydb-core)
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> Result<CommandTransaction> {
+	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
 		let interceptors = self.interceptors.create();
-		CommandTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
-	}
-
-	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
-	pub fn begin_admin(&self) -> Result<AdminTransaction> {
-		let interceptors = self.interceptors.create();
-		AdminTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
-	}
-
-	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	pub fn begin_query(&self) -> Result<QueryTransaction> {
-		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
-	}
-
-	#[instrument(name = "engine::transaction::begin_subscription", level = "debug", skip(self))]
-	pub fn begin_subscription(&self) -> Result<SubscriptionTransaction> {
-		let interceptors = self.interceptors.create();
-		SubscriptionTransaction::new(
+		let mut txn = CommandTransaction::new(
 			self.multi.clone(),
 			self.single.clone(),
 			self.event_bus.clone(),
 			interceptors,
-		)
+			identity,
+		)?;
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
+	}
+
+	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
+	pub fn begin_admin(&self, identity: IdentityId) -> Result<AdminTransaction> {
+		let interceptors = self.interceptors.create();
+		let mut txn = AdminTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			interceptors,
+			identity,
+		)?;
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
+	}
+
+	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
+	pub fn begin_query(&self, identity: IdentityId) -> Result<QueryTransaction> {
+		let mut txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), identity);
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
+	}
+
+	#[instrument(name = "engine::transaction::begin_subscription", level = "debug", skip(self))]
+	pub fn begin_subscription(&self, identity: IdentityId) -> Result<SubscriptionTransaction> {
+		let interceptors = self.interceptors.create();
+		let mut txn = SubscriptionTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			interceptors,
+			identity,
+		)?;
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
 	}
 
 	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_admin()?;
+			let mut txn = self.begin_admin(identity)?;
 			let frames = self.executor.admin(
 				&mut txn,
 				Admin {
 					rql,
 					params,
-					identity,
 				},
 			)?;
 			txn.commit()?;
@@ -122,13 +142,12 @@ impl StandardEngine {
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_command()?;
+			let mut txn = self.begin_command(identity)?;
 			let frames = self.executor.command(
 				&mut txn,
 				Command {
 					rql,
 					params,
-					identity,
 				},
 			)?;
 			txn.commit()?;
@@ -143,13 +162,12 @@ impl StandardEngine {
 	#[instrument(name = "engine::query", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_query()?;
+			let mut txn = self.begin_query(identity)?;
 			self.executor.query(
 				&mut txn,
 				Query {
 					rql,
 					params,
-					identity,
 				},
 			)
 		})()
@@ -162,13 +180,12 @@ impl StandardEngine {
 	#[instrument(name = "engine::subscription", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn subscription_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_subscription()?;
+			let mut txn = self.begin_subscription(identity)?;
 			let frames = self.executor.subscription(
 				&mut txn,
 				Subscription {
 					rql,
 					params,
-					identity,
 				},
 			)?;
 			txn.commit()?;
@@ -183,8 +200,8 @@ impl StandardEngine {
 	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
 	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>> {
-		let mut txn = self.begin_command()?;
-		let frames = self.executor.call_procedure(&mut txn, identity, name, &params)?;
+		let mut txn = self.begin_command(identity)?;
+		let frames = self.executor.call_procedure(&mut txn, name, &params)?;
 		txn.commit()?;
 		Ok(frames)
 	}
@@ -263,11 +280,11 @@ impl StandardEngine {
 
 impl CdcHost for StandardEngine {
 	fn begin_command(&self) -> Result<CommandTransaction> {
-		StandardEngine::begin_command(self)
+		StandardEngine::begin_command(self, IdentityId::system())
 	}
 
 	fn begin_query(&self) -> Result<QueryTransaction> {
-		StandardEngine::begin_query(self)
+		StandardEngine::begin_query(self, IdentityId::system())
 	}
 
 	fn current_version(&self) -> Result<CommitVersion> {
@@ -384,8 +401,14 @@ impl StandardEngine {
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
     ))]
-	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<QueryTransaction> {
-		Ok(QueryTransaction::new(self.multi.begin_query_at_version(version)?, self.single.clone()))
+	pub fn begin_query_at_version(&self, version: CommitVersion, identity: IdentityId) -> Result<QueryTransaction> {
+		let mut txn = QueryTransaction::new(
+			self.multi.begin_query_at_version(version)?,
+			self.single.clone(),
+			identity,
+		);
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
 	}
 
 	#[inline]

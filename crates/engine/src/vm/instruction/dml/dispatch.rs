@@ -15,7 +15,7 @@ use crate::{
 	Result,
 	expression::{context::EvalContext, eval::evaluate},
 	procedure::context::ProcedureContext,
-	vm::{executor::Executor, services::Services, stack::Variable, vm::Vm},
+	vm::{services::Services, stack::Variable, vm::Vm},
 };
 
 pub(crate) const MAX_DISPATCH_DEPTH: u8 = 32;
@@ -74,7 +74,7 @@ pub(crate) fn dispatch(
 			functions: &services.functions,
 			clock: &services.clock,
 			arena: None,
-			identity: vm.identity,
+			identity: tx.identity(),
 		};
 		let col = evaluate(&eval_ctx, expr, &services.functions, &services.clock)?;
 		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
@@ -167,17 +167,13 @@ pub(crate) fn dispatch(
 			}
 		}
 		let call_params = Params::Named(named_map);
-		let identity = vm.identity;
-		let executor = Executor::from_services(services.clone());
 
 		for native_proc in native_handlers {
 			let ctx = ProcedureContext {
-				identity,
 				params: &call_params,
 				catalog: &services.catalog,
 				functions: &services.functions,
 				clock: &services.clock,
-				executor: &executor,
 			};
 			let _result = native_proc.call(&ctx, tx)?;
 		}

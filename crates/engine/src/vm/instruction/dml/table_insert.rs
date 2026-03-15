@@ -50,7 +50,6 @@ pub(crate) fn insert_table<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,
 	stack: &mut SymbolTable,
-	identity: IdentityId,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
@@ -100,7 +99,6 @@ pub(crate) fn insert_table<'a>(
 		// Enforce write policies before processing rows
 		PolicyEvaluator::new(services, stack).enforce_write_policies(
 			txn,
-			identity,
 			namespace_name,
 			table_name,
 			"insert",

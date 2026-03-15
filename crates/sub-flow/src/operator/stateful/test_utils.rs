@@ -13,7 +13,7 @@ pub mod test {
 	use reifydb_type::{
 		Result,
 		util::cowvec::CowVec,
-		value::{row_number::RowNumber, r#type::Type},
+		value::{identity::IdentityId, row_number::RowNumber, r#type::Type},
 	};
 
 	use crate::{operator::Operator, transaction::FlowTransaction};
@@ -86,6 +86,6 @@ pub mod test {
 	/// Helper to create a test transaction
 	pub fn create_test_transaction() -> AdminTransaction {
 		let engine = create_test_engine();
-		engine.begin_admin().unwrap()
+		engine.begin_admin(IdentityId::system()).unwrap()
 	}
 }

@@ -45,7 +45,7 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type},
 };
 
 use crate::{engine::StandardEngine, procedure::registry::Procedures, transform::registry::Transforms};
@@ -69,7 +69,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	)
 	.unwrap();
 
-	AdminTransaction::new(multi, single, event_bus, Interceptors::new()).unwrap()
+	AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap()
 }
 
 pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction {
@@ -93,7 +93,14 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 		system_config,
 	)
 	.unwrap();
-	let mut result = AdminTransaction::new(multi, single.clone(), event_bus.clone(), Interceptors::new()).unwrap();
+	let mut result = AdminTransaction::new(
+		multi,
+		single.clone(),
+		event_bus.clone(),
+		Interceptors::new(),
+		IdentityId::system(),
+	)
+	.unwrap();
 
 	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
 	let schema_registry = SchemaRegistry::new(single);

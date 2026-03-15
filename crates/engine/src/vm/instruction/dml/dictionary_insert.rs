@@ -37,7 +37,6 @@ pub(crate) fn insert_dictionary<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,
 	stack: &mut SymbolTable,
-	identity: IdentityId,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
@@ -77,7 +76,6 @@ pub(crate) fn insert_dictionary<'a>(
 		// Enforce write policies before processing rows
 		PolicyEvaluator::new(services, stack).enforce_write_policies(
 			txn,
-			identity,
 			namespace_name,
 			dictionary_name,
 			"insert",

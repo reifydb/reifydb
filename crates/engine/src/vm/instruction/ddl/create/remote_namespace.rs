@@ -89,7 +89,6 @@ pub mod tests {
 	fn test_create_remote_namespace() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		let frames = instance
 			.admin(
@@ -97,7 +96,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -111,7 +109,6 @@ pub mod tests {
 	fn test_create_remote_namespace_if_not_exists() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// First creation
 		instance.admin(
@@ -119,7 +116,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -131,7 +127,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE REMOTE NAMESPACE IF NOT EXISTS remote_ns WITH { grpc: 'localhost:50051' }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -152,21 +147,20 @@ pub mod tests {
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'http://localhost:50051' }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
 		txn.commit().unwrap();
 
 		// Query compiles to RemoteScan; without a RemoteRegistry it returns empty frames
-		let mut qt = QueryTransaction::new(txn.multi.clone().begin_query().unwrap(), txn.single.clone());
+		let mut qt =
+			QueryTransaction::new(txn.multi.clone().begin_query().unwrap(), txn.single.clone(), identity);
 		let frames = instance
 			.query(
 				&mut qt,
 				Query {
 					rql: "FROM remote_ns::some_table",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -179,7 +173,6 @@ pub mod tests {
 	fn test_create_remote_namespace_nested() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		let frames = instance
 			.admin(
@@ -187,7 +180,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE REMOTE NAMESPACE blockchain::protocol WITH { grpc: '10.0.0.5:50051' }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();

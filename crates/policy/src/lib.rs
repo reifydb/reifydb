@@ -19,7 +19,7 @@ use reifydb_rql::{
 	plan::logical::{FilterNode, LogicalPlan, PipelineNode, compile_logical},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, fragment::Fragment, value::identity::IdentityId};
+use reifydb_type::{Result, fragment::Fragment};
 
 /// Inject read policies into logical plans.
 ///
@@ -33,8 +33,8 @@ pub fn inject_read_policies<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: IdentityId,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
+	let identity = tx.identity();
 	// Root bypasses all policies
 	if identity.is_privileged() {
 		return Ok(plans);
@@ -181,12 +181,12 @@ fn scope_matches(policy: &PolicyDef, target_ns: &str, target_obj: &str) -> bool 
 pub fn resolve_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: IdentityId,
 	target_namespace: &str,
 	target_object: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
 ) -> Result<Vec<(PolicyDef, PolicyOperationDef)>> {
+	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(vec![]);
 	}

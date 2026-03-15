@@ -53,7 +53,6 @@ pub(crate) fn update_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateSeriesNode,
 	params: Params,
-	identity: IdentityId,
 	symbol_table_ref: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
@@ -328,7 +327,6 @@ pub(crate) fn update_series<'a>(
 			let filtered = Columns::new(filtered_cols);
 			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
 				txn,
-				identity,
 				namespace_name,
 				series_name,
 				"update",

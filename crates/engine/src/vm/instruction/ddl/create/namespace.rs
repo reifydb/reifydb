@@ -73,10 +73,7 @@ pub(crate) fn create_namespace(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
-		params::Params,
-		value::{Value, identity::IdentityId},
-	};
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
 		test_utils::create_test_admin_transaction,
@@ -87,7 +84,6 @@ pub mod tests {
 	fn test_create_namespace() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// First creation should succeed
 		let frames = instance
@@ -96,7 +92,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE NAMESPACE my_schema",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -113,7 +108,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE NAMESPACE IF NOT EXISTS my_schema",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -129,7 +123,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE NAMESPACE my_schema",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap_err();

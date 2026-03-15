@@ -36,7 +36,7 @@ use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, testing::TestingViewMutationCaptor, transaction::Transaction,
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::{info, warn};
 
 use crate::{
@@ -71,7 +71,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 		// Check for newly-created flows that might be transactional views.
 		let new_flow_ids = extract_new_flow_ids(&cdcs);
 		if !new_flow_ids.is_empty() {
-			if let Ok(mut query) = self.engine.begin_query() {
+			if let Ok(mut query) = self.engine.begin_query(IdentityId::system()) {
 				for flow_id in new_flow_ids {
 					match self
 						.flow_catalog

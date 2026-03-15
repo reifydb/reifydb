@@ -467,7 +467,7 @@ pub mod tests {
 		single::SingleTransaction,
 		transaction::{command::CommandTransaction, query::QueryTransaction},
 	};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
 	use crate::storage::memory::MemoryCdcStorage;
@@ -522,11 +522,12 @@ pub mod tests {
 				self.single.clone(),
 				self.event_bus.clone(),
 				Interceptors::new(),
+				IdentityId::system(),
 			)
 		}
 
 		fn begin_query(&self) -> Result<QueryTransaction> {
-			Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
+			Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), IdentityId::system()))
 		}
 
 		fn current_version(&self) -> Result<CommitVersion> {

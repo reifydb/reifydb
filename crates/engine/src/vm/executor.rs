@@ -16,7 +16,7 @@ use reifydb_rql::{
 use reifydb_runtime::clock::Clock;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
-	Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
+	RqlExecutor, Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 	subscription::SubscriptionTransaction,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -24,7 +24,7 @@ use reifydb_type::error::Diagnostic;
 use reifydb_type::{
 	error::Error,
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
+	value::{Value, frame::frame::Frame, r#type::Type},
 };
 use tracing::instrument;
 
@@ -116,6 +116,12 @@ impl Executor {
 	}
 }
 
+impl RqlExecutor for Executor {
+	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		Executor::rql(self, tx, rql, params)
+	}
+}
+
 /// Populate a stack with parameters so they can be accessed as variables.
 fn populate_stack(stack: &mut SymbolTable, params: &Params) -> Result<()> {
 	match params {
@@ -137,12 +143,8 @@ fn populate_stack(stack: &mut SymbolTable, params: &Params) -> Result<()> {
 
 /// Populate the `$identity` variable in the symbol table so policy bodies
 /// (and user RQL) can reference `$identity.id`, `$identity.name`, and `$identity.roles`.
-fn populate_identity(
-	stack: &mut SymbolTable,
-	catalog: &Catalog,
-	tx: &mut Transaction<'_>,
-	identity: IdentityId,
-) -> Result<()> {
+fn populate_identity(stack: &mut SymbolTable, catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<()> {
+	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(());
 	}
@@ -174,21 +176,16 @@ impl Executor {
 	/// This is the universal RQL execution interface: it compiles and runs
 	/// arbitrary RQL within whatever transaction variant the caller provides.
 	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
-	pub fn rql(
-		&self,
-		tx: &mut Transaction<'_>,
-		identity: IdentityId,
-		rql: &str,
-		params: Params,
-	) -> Result<Vec<Frame>> {
+	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		let mut result = vec![];
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &params)?;
-		populate_identity(&mut symbol_table, &self.catalog, tx, identity)?;
+		populate_identity(&mut symbol_table, &self.catalog, tx)?;
 
-		let compiled = match self.compiler.compile_with_policy(tx, rql, |plans, bump, cat, tx| {
-			inject_read_policies(plans, bump, cat, tx, identity)
-		}) {
+		let compiled = match self
+			.compiler
+			.compile_with_policy(tx, rql, |plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx))
+		{
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("incremental compilation not supported in rql()")
@@ -204,7 +201,7 @@ impl Executor {
 
 		for compiled in compiled.iter() {
 			result.clear();
-			let mut vm = Vm::new(symbol_table, identity);
+			let mut vm = Vm::new(symbol_table);
 			vm.run(&self.0, tx, &compiled.instructions, &params, &mut result)?;
 			symbol_table = vm.symbol_table;
 		}
@@ -219,12 +216,10 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		let identity = cmd.identity;
-		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Admin(&mut *txn), identity)?;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Admin(&mut *txn))?;
 
 		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
 			&mut Transaction::Admin(&mut *txn),
-			identity,
 			"admin",
 			true,
 		)?;
@@ -232,7 +227,7 @@ impl Executor {
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Admin(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
 		) {
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
@@ -245,7 +240,7 @@ impl Executor {
 				for compiled in compiled.iter() {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbol_table, identity);
+					let mut vm = Vm::new(symbol_table);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
@@ -256,7 +251,7 @@ impl Executor {
 			}
 			Ok(CompilationResult::Incremental(mut state)) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
-					inject_read_policies(plans, bump, cat, tx, identity)
+					inject_read_policies(plans, bump, cat, tx)
 				});
 				while let Some(compiled) = self.compiler.compile_next_with_policy(
 					&mut Transaction::Admin(txn),
@@ -265,7 +260,7 @@ impl Executor {
 				)? {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
-					let mut vm = Vm::new(symbol_table, identity);
+					let mut vm = Vm::new(symbol_table);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbol_table = vm.symbol_table;
 
@@ -306,17 +301,10 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		let identity = cmd.identity;
-		populate_identity(
-			&mut symbol_table,
-			&self.catalog,
-			&mut Transaction::Subscription(&mut *txn),
-			identity,
-		)?;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Subscription(&mut *txn))?;
 
 		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
 			&mut Transaction::Subscription(&mut *txn),
-			identity,
 			"subscription",
 			true,
 		)?;
@@ -324,7 +312,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Subscription(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
@@ -336,7 +324,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Subscription(txn);
-			let mut vm = Vm::new(symbol_table, identity);
+			let mut vm = Vm::new(symbol_table);
 			vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 
@@ -357,12 +345,10 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &cmd.params)?;
 
-		let identity = cmd.identity;
-		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn), identity)?;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn))?;
 
 		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
 			&mut Transaction::Command(&mut *txn),
-			identity,
 			"command",
 			false,
 		)?;
@@ -370,7 +356,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
@@ -395,7 +381,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbol_table, identity);
+			let mut vm = Vm::new(symbol_table);
 			vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 
@@ -411,19 +397,13 @@ impl Executor {
 
 	/// Call a procedure by fully-qualified name (e.g., "banking.transfer_funds").
 	#[instrument(name = "executor::call_procedure", level = "debug", skip(self, txn, params), fields(name = %name))]
-	pub fn call_procedure(
-		&self,
-		txn: &mut CommandTransaction,
-		identity: IdentityId,
-		name: &str,
-		params: &Params,
-	) -> Result<Vec<Frame>> {
+	pub fn call_procedure(&self, txn: &mut CommandTransaction, name: &str, params: &Params) -> Result<Vec<Frame>> {
 		// Compile and execute CALL <name>(<params>)
 		let rql = format!("CALL {}()", name);
 		let mut result = vec![];
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, params)?;
-		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn), identity)?;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Command(&mut *txn))?;
 
 		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), &rql)? {
 			CompilationResult::Ready(compiled) => compiled,
@@ -435,7 +415,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Command(txn);
-			let mut vm = Vm::new(symbol_table, identity);
+			let mut vm = Vm::new(symbol_table);
 			vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result)?;
 			symbol_table = vm.symbol_table;
 		}
@@ -450,12 +430,10 @@ impl Executor {
 		let mut symbol_table = SymbolTable::new();
 		populate_stack(&mut symbol_table, &qry.params)?;
 
-		let identity = qry.identity;
-		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Query(&mut *txn), identity)?;
+		populate_identity(&mut symbol_table, &self.catalog, &mut Transaction::Query(&mut *txn))?;
 
 		PolicyEvaluator::new(&self.0, &symbol_table).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
-			identity,
 			"query",
 			false,
 		)?;
@@ -463,7 +441,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx, identity),
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
@@ -481,7 +459,7 @@ impl Executor {
 		for compiled in compiled.iter() {
 			result.clear();
 			let mut tx = Transaction::Query(txn);
-			let mut vm = Vm::new(symbol_table, identity);
+			let mut vm = Vm::new(symbol_table);
 			vm.run(&self.0, &mut tx, &compiled.instructions, &qry.params, &mut result)?;
 			symbol_table = vm.symbol_table;
 

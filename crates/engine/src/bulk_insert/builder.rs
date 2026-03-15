@@ -67,7 +67,7 @@ pub mod sealed {
 /// Type parameter `V` tracks the validation mode at compile time.
 pub struct BulkInsertBuilder<'e, V: ValidationMode = Validated> {
 	engine: &'e StandardEngine,
-	_identity: IdentityId,
+	identity: IdentityId,
 	pending_tables: Vec<PendingTableInsert>,
 	pending_ringbuffers: Vec<PendingRingBufferInsert>,
 	_validation: PhantomData<V>,
@@ -78,7 +78,7 @@ impl<'e> BulkInsertBuilder<'e, Validated> {
 	pub(crate) fn new(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
-			_identity: identity,
+			identity,
 			pending_tables: Vec::new(),
 			pending_ringbuffers: Vec::new(),
 			_validation: PhantomData,
@@ -91,7 +91,7 @@ impl<'e> BulkInsertBuilder<'e, Trusted> {
 	pub(crate) fn new_trusted(engine: &'e StandardEngine, identity: IdentityId) -> Self {
 		Self {
 			engine,
-			_identity: identity,
+			identity,
 			pending_tables: Vec::new(),
 			pending_ringbuffers: Vec::new(),
 			_validation: PhantomData,
@@ -133,7 +133,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	/// Returns a summary of what was inserted. On error, the entire
 	/// transaction is rolled back (no partial inserts).
 	pub fn execute(self) -> Result<BulkInsertResult> {
-		let mut txn = self.engine.begin_command()?;
+		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
 		let mut result = BulkInsertResult::default();
 

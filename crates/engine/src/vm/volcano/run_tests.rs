@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_type::params::Params;
 
 use crate::{
 	Result,
@@ -26,7 +26,6 @@ pub(crate) struct RunTestsQueryNode {
 	node: RunTestsNode,
 	services: Arc<Services>,
 	stack: SymbolTable,
-	identity: IdentityId,
 	executed: bool,
 }
 
@@ -36,7 +35,6 @@ impl RunTestsQueryNode {
 			node,
 			services: context.services.clone(),
 			stack: context.stack.clone(),
-			identity: context.identity,
 			executed: false,
 		}
 	}
@@ -53,7 +51,7 @@ impl QueryNode for RunTestsQueryNode {
 		}
 		self.executed = true;
 
-		let mut vm = Vm::new(self.stack.clone(), self.identity);
+		let mut vm = Vm::new(self.stack.clone());
 		vm.in_test_context = true;
 		vm.testing = Some(TestingContext::new());
 		let columns = run_tests(&mut vm, &self.services, rx, self.node.clone(), &Params::None)?;

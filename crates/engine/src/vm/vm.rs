@@ -22,7 +22,7 @@ use reifydb_type::{
 	error::{Diagnostic, Error, ProcedureErrorKind, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
+	value::{Value, frame::frame::Frame, r#type::Type},
 };
 
 use super::{
@@ -71,24 +71,21 @@ use crate::{
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
 	testing,
-	vm::{
-		executor::Executor,
-		instruction::{
-			ddl::{
-				alter::policy::alter_policy,
-				create::{
-					authentication::create_authentication, event::create_event,
-					policy::create_policy, role::create_role, user::create_user,
-				},
-				drop::{
-					authentication::drop_authentication, policy::drop_policy, role::drop_role,
-					user::drop_user,
-				},
-				grant::grant,
-				revoke::revoke,
+	vm::instruction::{
+		ddl::{
+			alter::policy::alter_policy,
+			create::{
+				authentication::create_authentication, event::create_event, policy::create_policy,
+				role::create_role, user::create_user,
 			},
-			dml::dispatch::dispatch,
+			drop::{
+				authentication::drop_authentication, policy::drop_policy, role::drop_role,
+				user::drop_user,
+			},
+			grant::grant,
+			revoke::revoke,
 		},
+		dml::dispatch::dispatch,
 	},
 };
 
@@ -109,14 +106,13 @@ pub struct Vm {
 	pub symbol_table: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
-	pub(crate) identity: IdentityId,
 	pub(crate) in_test_context: bool,
 	/// Test audit log. Only `Some` when in test context. Zero cost in production.
 	pub(crate) testing: Option<TestingContext>,
 }
 
 impl Vm {
-	pub fn new(symbol_table: SymbolTable, identity: IdentityId) -> Self {
+	pub fn new(symbol_table: SymbolTable) -> Self {
 		Self {
 			ip: 0,
 			iteration_count: 0,
@@ -124,7 +120,6 @@ impl Vm {
 			symbol_table,
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
-			identity,
 			in_test_context: false,
 			testing: None,
 		}
@@ -791,7 +786,6 @@ impl Vm {
 								PolicyEvaluator::new(services, &self.symbol_table)
 									.enforce_identity_policy(
 										tx,
-										self.identity,
 										&pol_ns,
 										&pol_name,
 										"call",
@@ -811,21 +805,13 @@ impl Vm {
 												Params::Positional(
 													args,
 												);
-											let identity = self.identity;
-											let executor =
-												Executor::from_services(
-													services.clone(
-													),
-												);
 											let ctx = ProcedureContext {
-												identity,
 												params: &call_params,
 												catalog: &services
 													.catalog,
 												functions: &services
 													.functions,
 												clock: &services.clock,
-												executor: &executor,
 											};
 											let columns = proc_impl
 												.call(&ctx, tx)?;
@@ -1104,28 +1090,22 @@ impl Vm {
 									// Runtime-registered native procedure (no
 									// catalog entry needed)
 									let call_params = Params::Positional(args);
-									let identity = self.identity;
-									let executor = Executor::from_services(
-										services.clone(),
-									);
 									let ctx = ProcedureContext {
-										identity,
 										params: &call_params,
 										catalog: &services.catalog,
 										functions: &services.functions,
 										clock: &services.clock,
-										executor: &executor,
 									};
 									let columns = proc_impl.call(&ctx, tx)?;
 
 									// Special handling: identity::inject updates
-									// the VM's identity
+									// the transaction's identity
 									if func_name == "identity::inject" {
 										if let Some(col) = columns.get(0) {
 											if let Value::IdentityId(id) =
 												col.data().get_value(0)
 											{
-												self.identity = id;
+												tx.set_identity(id);
 											}
 										}
 									}
@@ -1154,7 +1134,7 @@ impl Vm {
 										functions: &services.functions,
 										clock: &services.clock,
 										arena: None,
-										identity: self.identity,
+										identity: tx.identity(),
 									};
 
 									let mut arg_exprs = Vec::with_capacity(arity);
@@ -1635,7 +1615,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1656,7 +1635,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1677,7 +1655,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						&mut self.symbol_table,
-						self.identity,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1697,7 +1674,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1718,7 +1694,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						&mut self.symbol_table,
-						self.identity,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1738,7 +1713,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1759,7 +1733,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1780,7 +1753,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1801,7 +1773,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1822,7 +1793,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
 						&self.symbol_table,
 						&mut self.testing,
 					)?;
@@ -1837,7 +1807,6 @@ impl Vm {
 						plan.clone(),
 						params.clone(),
 						&mut self.symbol_table,
-						self.identity,
 						&self.testing,
 					)? {
 						self.stack.push(Variable::Columns(columns));
@@ -2165,9 +2134,9 @@ fn run_query_plan(
 	plan: QueryPlan,
 	params: Params,
 	symbol_table: &mut SymbolTable,
-	identity: IdentityId,
 	testing: &Option<TestingContext>,
 ) -> Result<Option<Columns>> {
+	let identity = txn.identity();
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,

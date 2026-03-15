@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
@@ -12,7 +14,12 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionValues},
 	},
 };
-use reifydb_type::Result;
+use reifydb_type::{
+	Result,
+	error::Diagnostic,
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 
 use crate::{
 	TransactionId,
@@ -23,6 +30,15 @@ use crate::{
 		subscription::SubscriptionTransaction,
 	},
 };
+
+/// Trait for executing RQL within a transaction.
+///
+/// This trait decouples RQL execution from the transaction layer, allowing
+/// any component (procedures, ProcedureContext, tests, etc.) to execute
+/// RQL through a transaction without a direct dependency on the engine crate.
+pub trait RqlExecutor: Send + Sync {
+	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>>;
+}
 
 pub mod admin;
 pub mod catalog;
@@ -164,6 +180,60 @@ impl<'a> From<&'a mut SubscriptionTransaction> for Transaction<'a> {
 }
 
 impl<'a> Transaction<'a> {
+	/// Get the identity associated with this transaction.
+	pub fn identity(&self) -> IdentityId {
+		match self {
+			Self::Command(txn) => txn.identity,
+			Self::Admin(txn) => txn.identity,
+			Self::Query(txn) => txn.identity,
+			Self::Subscription(txn) => txn.identity,
+		}
+	}
+
+	/// Set the identity associated with this transaction.
+	pub fn set_identity(&mut self, identity: IdentityId) {
+		match self {
+			Self::Command(txn) => txn.identity = identity,
+			Self::Admin(txn) => txn.identity = identity,
+			Self::Query(txn) => txn.identity = identity,
+			Self::Subscription(txn) => txn.identity = identity,
+		}
+	}
+
+	/// Clone the RQL executor, if one is set.
+	fn executor_clone(&self) -> Option<Arc<dyn RqlExecutor>> {
+		match self {
+			Self::Command(txn) => txn.executor.clone(),
+			Self::Admin(txn) => txn.executor.clone(),
+			Self::Query(txn) => txn.executor.clone(),
+			Self::Subscription(txn) => txn.executor.clone(),
+		}
+	}
+
+	/// Execute RQL within this transaction using the attached executor.
+	///
+	/// Panics if no `RqlExecutor` has been set on the underlying transaction.
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		let executor = self.executor_clone().expect("RqlExecutor not set");
+		let mut tx = self.reborrow();
+		let result = executor.rql(&mut tx, rql, params);
+		if let Err(ref e) = result {
+			self.poison(e.0.clone());
+		}
+		result
+	}
+
+	/// Mark this transaction as poisoned, storing the original error diagnostic.
+	/// No-op for Query transactions.
+	fn poison(&mut self, cause: Diagnostic) {
+		match self {
+			Transaction::Command(txn) => txn.poison(cause),
+			Transaction::Admin(txn) => txn.poison(cause),
+			Transaction::Query(_) => {}
+			Transaction::Subscription(txn) => txn.inner.poison(cause),
+		}
+	}
+
 	/// Re-borrow this transaction with a shorter lifetime, enabling
 	/// multiple sequential uses of the same transaction binding.
 	pub fn reborrow(&mut self) -> Transaction<'_> {

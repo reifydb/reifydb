@@ -12,6 +12,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::identity::IdentityId;
 
 use super::tracker::PrimitiveVersionTracker;
 use crate::catalog::FlowCatalog;
@@ -50,7 +51,7 @@ impl FlowLagsProvider for FlowLags {
 	fn all_lags(&self) -> Vec<FlowLagRow> {
 		let primitive_versions = self.primitive_tracker.all();
 
-		let mut txn = match self.engine.begin_query() {
+		let mut txn = match self.engine.begin_query(IdentityId::system()) {
 			Ok(txn) => txn,
 			Err(_) => return Vec::new(),
 		};

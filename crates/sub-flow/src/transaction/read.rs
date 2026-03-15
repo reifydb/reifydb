@@ -522,7 +522,7 @@ pub mod tests {
 	};
 	use reifydb_engine::test_utils::create_test_engine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;
@@ -560,13 +560,13 @@ pub mod tests {
 
 		// Set value in first transaction and commit
 		{
-			let mut cmd_txn = engine.begin_admin().unwrap();
+			let mut cmd_txn = engine.begin_admin(IdentityId::system()).unwrap();
 			cmd_txn.set(&key, value.clone()).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
 		// Create new command transaction to read committed data
-		let parent = engine.begin_admin().unwrap();
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 
 		// Create FlowTransaction - should see committed value
@@ -644,13 +644,13 @@ pub mod tests {
 
 		// Set value in first transaction and commit
 		{
-			let mut cmd_txn = engine.begin_admin().unwrap();
+			let mut cmd_txn = engine.begin_admin(IdentityId::system()).unwrap();
 			cmd_txn.set(&key, make_value("value1")).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
 		// Create new command transaction
-		let parent = engine.begin_admin().unwrap();
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		let mut txn = FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new());
 

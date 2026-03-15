@@ -14,11 +14,10 @@ use reifydb_abi::{
 	data::buffer::BufferFFI,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_type::params::Params;
 use tracing::error;
 
 use super::memory::host_alloc;
-use crate::vm::executor::Executor;
 
 /// Host RQL callback for FFI procedures.
 ///
@@ -59,13 +58,12 @@ pub extern "C" fn host_rql(
 				}
 			};
 
-			// Reconstruct Transaction and Executor from context pointers
+			// Reconstruct Transaction from context pointer
 			let ctx_ref = &mut *ctx;
 			let tx = &mut *(ctx_ref.txn_ptr as *mut Transaction<'_>);
-			let executor = &*(ctx_ref.executor_ptr as *const Executor);
 
 			// Execute RQL
-			let frames = match executor.rql(tx, IdentityId::root(), rql_str, params) {
+			let frames = match tx.rql(rql_str, params) {
 				Ok(f) => f,
 				Err(e) => {
 					error!("host_rql: rql execution failed: {}", e);

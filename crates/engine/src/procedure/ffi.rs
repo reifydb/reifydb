@@ -9,6 +9,7 @@ use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	process::abort,
+	ptr,
 };
 
 use reifydb_abi::{
@@ -28,10 +29,7 @@ use reifydb_type;
 use tracing::{error, instrument};
 
 use super::{Procedure, context::ProcedureContext};
-use crate::{
-	ffi::callbacks::{logging, memory, rql},
-	vm::executor::Executor,
-};
+use crate::ffi::callbacks::{logging, memory, rql};
 
 /// FFI procedure that wraps an external procedure implementation
 pub struct NativeProcedureFFI {
@@ -111,7 +109,7 @@ impl Procedure for NativeProcedureFFI {
 		let callbacks = create_procedure_host_callbacks();
 		let mut ctx_ffi = ContextFFI {
 			txn_ptr: tx as *mut Transaction<'_> as *mut c_void,
-			executor_ptr: ctx.executor as *const Executor as *const c_void,
+			executor_ptr: ptr::null(),
 			operator_id: 0,
 			callbacks,
 		};

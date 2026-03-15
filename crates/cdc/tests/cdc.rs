@@ -29,7 +29,7 @@ use reifydb_type::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::row_number::RowNumber,
+	value::{identity::IdentityId, row_number::RowNumber},
 };
 
 #[test]
@@ -142,7 +142,7 @@ fn test_checkpoint_persistence() {
 	let changes_second_run = consumer2_clone.get_total_changes();
 	assert_eq!(changes_second_run, 2, "Should have processed only 2 new changes");
 
-	let mut txn = engine.begin_query().expect("Failed to begin transaction");
+	let mut txn = engine.begin_query(IdentityId::system()).expect("Failed to begin transaction");
 	let consumer_key = CdcConsumerKey {
 		consumer: consumer_id,
 	}
@@ -268,7 +268,7 @@ fn test_multiple_consumers() {
 	assert_eq!(changes1_after, 5, "Consumer 1 should have processed 5 changes total");
 	assert_eq!(changes2_after, 5, "Consumer 2 should have processed 5 changes total");
 
-	let mut txn = engine.begin_query().expect("Failed to begin transaction");
+	let mut txn = engine.begin_query(IdentityId::system()).expect("Failed to begin transaction");
 
 	let consumer1_key = CdcConsumerKey {
 		consumer: consumer_id1,
@@ -310,7 +310,7 @@ fn test_non_table_events_filtered() {
 	let consumer = TestConsumer::new(engine.clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 
-	let mut txn = engine.begin_command().expect("Failed to begin transaction");
+	let mut txn = engine.begin_command(IdentityId::system()).expect("Failed to begin transaction");
 
 	let table_key = RowKey::encoded(PrimitiveId::table(1), RowNumber(1));
 	txn.set(&table_key, EncodedValues(CowVec::new(b"table_value".to_vec()))).expect("Failed to set table encoded");
@@ -702,7 +702,7 @@ impl CdcConsume for TestConsumer {
 		// Persist consumer checkpoint (so PollActor sees progress)
 		let latest_version = transactions.last().map(|c| c.version);
 		if let Some(version) = latest_version {
-			match self.host.begin_command() {
+			match self.host.begin_command(IdentityId::system()) {
 				Ok(mut txn) => {
 					if let Err(e) = CdcCheckpoint::persist(&mut txn, &self.consumer_key, version) {
 						(reply)(Err(e));
@@ -729,7 +729,7 @@ impl CdcConsume for TestConsumer {
 
 fn insert_test_events(engine: &StandardEngine, count: usize) {
 	for i in 0..count {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let key = RowKey::encoded(PrimitiveId::table(1), RowNumber((i + 1) as u64));
 		let value = format!("value_{}", i);
 		txn.set(&key, EncodedValues(CowVec::new(value.into_bytes()))).unwrap();

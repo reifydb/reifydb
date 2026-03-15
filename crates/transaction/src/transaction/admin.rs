@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::mem::take;
+use std::{mem::take, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -18,7 +18,12 @@ use reifydb_core::{
 	},
 	testing::TestingContext,
 };
-use reifydb_type::Result;
+use reifydb_type::{
+	Result,
+	error::Diagnostic,
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use tracing::instrument;
 
 use crate::{
@@ -68,7 +73,7 @@ use crate::{
 		},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::query::QueryTransaction,
+	transaction::{RqlExecutor, Transaction, query::QueryTransaction},
 };
 
 /// An active admin transaction that supports Query + DML + DDL operations.
@@ -96,6 +101,15 @@ pub struct AdminTransaction {
 
 	/// Testing audit log. Set by the VM when in test context.
 	pub testing: Option<TestingContext>,
+
+	/// The identity executing this transaction.
+	pub identity: IdentityId,
+
+	/// Optional RQL executor for running RQL within this transaction.
+	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
+
+	/// When the transaction has been poisoned, stores the original error diagnostic.
+	poison_cause: Option<Diagnostic>,
 }
 
 /// Opaque savepoint for per-test transaction isolation.
@@ -110,6 +124,7 @@ enum TransactionState {
 	Active,
 	Committed,
 	RolledBack,
+	Poisoned,
 }
 
 impl AdminTransaction {
@@ -185,6 +200,7 @@ impl AdminTransaction {
 		single: SingleTransaction,
 		event_bus: EventBus,
 		interceptors: Interceptors,
+		identity: IdentityId,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		let txn_id = cmd.tm.id();
@@ -199,7 +215,28 @@ impl AdminTransaction {
 			row_changes: Vec::new(),
 			pending_flow_changes: Vec::new(),
 			testing: None,
+			identity,
+			executor: None,
+			poison_cause: None,
 		})
+	}
+
+	/// Set the RQL executor for this transaction.
+	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
+		self.executor = Some(executor);
+	}
+
+	/// Execute RQL within this transaction using the attached executor.
+	///
+	/// Panics if no `RqlExecutor` has been set on this transaction.
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		self.check_active()?;
+		let executor = self.executor.clone().expect("RqlExecutor not set");
+		let result = executor.rql(&mut Transaction::Admin(self), rql, params);
+		if let Err(ref e) = result {
+			self.poison(e.0.clone());
+		}
+		result
 	}
 
 	#[instrument(name = "transaction::admin::event_bus", level = "trace", skip(self))]
@@ -209,7 +246,7 @@ impl AdminTransaction {
 
 	/// Check if transaction is still active and return appropriate error if
 	/// not
-	fn check_active(&self) -> Result<()> {
+	pub(crate) fn check_active(&self) -> Result<()> {
 		match self.state {
 			TransactionState::Active => Ok(()),
 			TransactionState::Committed => {
@@ -218,7 +255,19 @@ impl AdminTransaction {
 			TransactionState::RolledBack => {
 				return Err(TransactionError::AlreadyRolledBack.into());
 			}
+			TransactionState::Poisoned => {
+				return Err(TransactionError::Poisoned {
+					cause: self.poison_cause.clone().unwrap(),
+				}
+				.into());
+			}
 		}
+	}
+
+	/// Mark this transaction as poisoned, storing the original error diagnostic.
+	pub(crate) fn poison(&mut self, cause: Diagnostic) {
+		self.state = TransactionState::Poisoned;
+		self.poison_cause = Some(cause);
 	}
 
 	/// Commit the transaction.
@@ -330,7 +379,8 @@ impl AdminTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn =
+			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
 
 		f(&mut query_txn)
 	}
@@ -342,7 +392,8 @@ impl AdminTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn =
+			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
 
 		query_txn.read_as_of_version_exclusive(version)?;
 
@@ -356,7 +407,8 @@ impl AdminTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn =
+			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
 
 		query_txn.multi.read_as_of_version_inclusive(version);
 
@@ -675,8 +727,8 @@ impl TransactionalChanges for AdminTransaction {}
 impl Drop for AdminTransaction {
 	fn drop(&mut self) {
 		if let Some(mut multi) = self.cmd.take() {
-			// Auto-rollback if still active (not committed or rolled back)
-			if self.state == TransactionState::Active {
+			// Auto-rollback if still active or poisoned (not committed or rolled back)
+			if self.state == TransactionState::Active || self.state == TransactionState::Poisoned {
 				let _ = multi.rollback();
 			}
 		}

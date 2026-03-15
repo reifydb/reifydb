@@ -48,7 +48,6 @@ pub(crate) fn delete_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteSeriesNode,
 	params: Params,
-	identity: IdentityId,
 	symbol_table: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
@@ -231,7 +230,6 @@ pub(crate) fn delete_series<'a>(
 				let filtered = Columns::new(filtered_cols);
 				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
 					txn,
-					identity,
 					namespace_name,
 					series_name,
 					"delete",

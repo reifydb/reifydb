@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::{EncodedKey, EncodedKeyRange},
@@ -32,7 +34,8 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	Result,
-	value::{dictionary::DictionaryId, sumtype::SumTypeId},
+	params::Params,
+	value::{dictionary::DictionaryId, frame::frame::Frame, identity::IdentityId, sumtype::SumTypeId},
 };
 use tracing::instrument;
 
@@ -49,6 +52,7 @@ use crate::{
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
+	transaction::{RqlExecutor, Transaction},
 };
 
 /// An active query transaction that holds a multi query transaction
@@ -56,16 +60,37 @@ use crate::{
 pub struct QueryTransaction {
 	pub(crate) multi: MultiReadTransaction,
 	pub(crate) single: SingleTransaction,
+
+	/// The identity executing this transaction.
+	pub identity: IdentityId,
+
+	/// Optional RQL executor for running RQL within this transaction.
+	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 }
 
 impl QueryTransaction {
 	/// Creates a new active query transaction
 	#[instrument(name = "transaction::query::new", level = "debug", skip_all)]
-	pub fn new(multi: MultiReadTransaction, single: SingleTransaction) -> Self {
+	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, identity: IdentityId) -> Self {
 		Self {
 			multi,
 			single,
+			identity,
+			executor: None,
 		}
+	}
+
+	/// Set the RQL executor for this transaction.
+	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
+		self.executor = Some(executor);
+	}
+
+	/// Execute RQL within this transaction using the attached executor.
+	///
+	/// Panics if no `RqlExecutor` has been set on this transaction.
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		let executor = self.executor.clone().expect("RqlExecutor not set");
+		executor.rql(&mut Transaction::Query(self), rql, params)
 	}
 
 	/// Get the transaction version

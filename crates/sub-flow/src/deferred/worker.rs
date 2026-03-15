@@ -18,7 +18,7 @@ use reifydb_runtime::actor::{
 	system::ActorConfig,
 	traits::{Actor, Directive},
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::{Span, error, field, instrument};
 
 use super::instruction::WorkerBatch;
@@ -109,7 +109,7 @@ impl Actor for FlowWorkerActor {
 			} => {
 				let result = self
 					.engine
-					.begin_command()
+					.begin_command(IdentityId::system())
 					.and_then(|mut txn| state.flow_engine.register(&mut txn, flow));
 
 				let resp = match result {

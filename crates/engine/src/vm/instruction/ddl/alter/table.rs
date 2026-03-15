@@ -62,27 +62,22 @@ pub(crate) fn execute_alter_table(
 #[cfg(test)]
 mod tests {
 	use reifydb_transaction::transaction::admin::AdminTransaction;
-	use reifydb_type::{
-		params::Params,
-		value::{Value, identity::IdentityId},
-	};
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
 		test_utils::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 
-	fn setup() -> (Executor, AdminTransaction, IdentityId) {
+	fn setup() -> (Executor, AdminTransaction) {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -92,17 +87,16 @@ mod tests {
 			Admin {
 				rql: "CREATE TABLE app::users { id: Int4, name: Utf8 }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
 
-		(instance, txn, identity)
+		(instance, txn)
 	}
 
 	#[test]
 	fn test_alter_table_add_column() {
-		let (instance, mut txn, identity) = setup();
+		let (instance, mut txn) = setup();
 
 		let frames = instance
 			.admin(
@@ -110,7 +104,6 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users ADD COLUMN email: Utf8",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -123,7 +116,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_table_drop_column() {
-		let (instance, mut txn, identity) = setup();
+		let (instance, mut txn) = setup();
 
 		let frames = instance
 			.admin(
@@ -131,7 +124,6 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users DROP COLUMN name",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -144,7 +136,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_table_rename_column() {
-		let (instance, mut txn, identity) = setup();
+		let (instance, mut txn) = setup();
 
 		let frames = instance
 			.admin(
@@ -152,7 +144,6 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users RENAME COLUMN name TO full_name",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -165,7 +156,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_table_drop_nonexistent_column() {
-		let (instance, mut txn, identity) = setup();
+		let (instance, mut txn) = setup();
 
 		let err = instance
 			.admin(
@@ -173,7 +164,6 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users DROP COLUMN nonexistent",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap_err();
@@ -182,7 +172,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_table_rename_nonexistent_column() {
-		let (instance, mut txn, identity) = setup();
+		let (instance, mut txn) = setup();
 
 		let err = instance
 			.admin(
@@ -190,7 +180,6 @@ mod tests {
 				Admin {
 					rql: "ALTER TABLE app::users RENAME COLUMN nonexistent TO new_name",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap_err();

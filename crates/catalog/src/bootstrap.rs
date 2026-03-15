@@ -16,7 +16,7 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type},
 };
 
 use crate::{
@@ -32,7 +32,7 @@ pub fn load_materialized_catalog(
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
 ) -> Result<()> {
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
 	MaterializedCatalogLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
 	Ok(())
 }
@@ -44,8 +44,13 @@ pub fn bootstrap_config_defaults(
 	catalog: &MaterializedCatalog,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	let mut admin =
-		AdminTransaction::new(multi.clone(), single.clone(), eventbus.clone(), Interceptors::default())?;
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+	)?;
 	MaterializedCatalogLoader::bootstrap_missing_defaults(&mut admin, catalog)?;
 	admin.commit()?;
 	Ok(())
@@ -62,8 +67,13 @@ pub fn bootstrap_system_procedures(
 	eventbus: &EventBus,
 ) -> Result<()> {
 	let catalog_api = Catalog::new(catalog.clone(), schema_registry.clone());
-	let mut admin =
-		AdminTransaction::new(multi.clone(), single.clone(), eventbus.clone(), Interceptors::default())?;
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+	)?;
 
 	// Ensure the system::config sub-namespace exists (persisted to storage).
 	// On first boot it won't exist; on subsequent boots it's already loaded into
@@ -127,7 +137,7 @@ pub fn load_schema_registry(
 	single: &SingleTransaction,
 	registry: &SchemaRegistry,
 ) -> Result<()> {
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
 	SchemaRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
 	Ok(())
 }

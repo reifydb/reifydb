@@ -37,7 +37,7 @@ use reifydb_runtime::{
 	clock::{Clock, Instant},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::Error};
+use reifydb_type::{Result, error::Error, value::identity::IdentityId};
 use tracing::{Span, debug, field, info, instrument, warn};
 
 use super::{
@@ -248,7 +248,7 @@ impl CoordinatorActor {
 		let latest_version = cdcs.last().map(|c| c.version);
 
 		// Get state_version from a read-only query
-		let state_version = match self.engine.begin_query() {
+		let state_version = match self.engine.begin_query(IdentityId::system()) {
 			Ok(q) => q.version(),
 			Err(e) => {
 				(reply)(coordinator_error(e));
@@ -288,7 +288,7 @@ impl CoordinatorActor {
 		let new_flow_ids = extract_new_flow_ids(&cdcs);
 		let mut new_flows = Vec::new();
 		if !new_flow_ids.is_empty() {
-			let mut query = match self.engine.begin_query() {
+			let mut query = match self.engine.begin_query(IdentityId::system()) {
 				Ok(q) => q,
 				Err(e) => {
 					(consume_ctx.original_reply)(coordinator_error(e));
@@ -658,7 +658,7 @@ impl CoordinatorActor {
 			}
 
 			// Get current checkpoint for this flow
-			let from_version = match self.engine.begin_query() {
+			let from_version = match self.engine.begin_query(IdentityId::system()) {
 				Ok(mut query) => CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &flow_id)
 					.unwrap_or(CommitVersion(0)),
 				Err(e) => {
@@ -802,7 +802,7 @@ impl CoordinatorActor {
 		state.phase = Phase::Idle;
 
 		// Begin a command transaction to apply all writes and checkpoints
-		let mut transaction = match self.engine.begin_command() {
+		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,
 			Err(e) => {
 				(consume_ctx.original_reply)(coordinator_error(e));

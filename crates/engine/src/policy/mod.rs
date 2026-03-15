@@ -43,7 +43,6 @@ impl<'a> PolicyEvaluator<'a> {
 	pub fn enforce_write_policies(
 		&self,
 		tx: &mut Transaction<'_>,
-		identity: IdentityId,
 		target_namespace: &str,
 		target_object: &str,
 		operation: &str,
@@ -53,7 +52,6 @@ impl<'a> PolicyEvaluator<'a> {
 		enforce_write_policies(
 			&self.services.catalog,
 			tx,
-			identity,
 			target_namespace,
 			target_object,
 			operation,
@@ -66,17 +64,15 @@ impl<'a> PolicyEvaluator<'a> {
 	pub fn enforce_session_policy(
 		&self,
 		tx: &mut Transaction<'_>,
-		identity: IdentityId,
 		session_type: &str,
 		default_deny: bool,
 	) -> Result<()> {
-		enforce_session_policy(&self.services.catalog, tx, identity, session_type, default_deny, self)
+		enforce_session_policy(&self.services.catalog, tx, session_type, default_deny, self)
 	}
 
 	pub fn enforce_identity_policy(
 		&self,
 		tx: &mut Transaction<'_>,
-		identity: IdentityId,
 		target_namespace: &str,
 		target_object: &str,
 		operation: &str,
@@ -85,7 +81,6 @@ impl<'a> PolicyEvaluator<'a> {
 		enforce_identity_policy(
 			&self.services.catalog,
 			tx,
-			identity,
 			target_namespace,
 			target_object,
 			operation,

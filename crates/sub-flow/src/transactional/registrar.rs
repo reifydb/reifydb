@@ -13,7 +13,7 @@ use reifydb_core::interface::catalog::{flow::FlowId, view::ViewKind};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, node::FlowNodeType};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_type::{Result, value::identity::IdentityId};
 
 use crate::engine::FlowEngine;
 
@@ -42,7 +42,7 @@ impl TransactionalFlowRegistrar {
 			return Ok(true);
 		}
 
-		let mut cmd = self.engine.begin_command()?;
+		let mut cmd = self.engine.begin_command(IdentityId::system())?;
 		engine.register(&mut cmd, flow)?;
 		// Registration performs only catalog reads — no writes were made to cmd.
 		// Dropping cmd without commit is safe (auto-rollback is a no-op).
@@ -54,7 +54,7 @@ impl TransactionalFlowRegistrar {
 	/// Used by the post-commit interceptor to eagerly register transactional flows
 	/// at commit time, before CDC polling picks them up.
 	pub fn try_register_by_id(&self, flow_id: FlowId) -> Result<()> {
-		let mut query = self.engine.begin_query()?;
+		let mut query = self.engine.begin_query(IdentityId::system())?;
 		let flow = load_flow_dag(&self.catalog, &mut Transaction::Query(&mut query), flow_id)?;
 		self.try_register(flow)?;
 		Ok(())
@@ -62,7 +62,7 @@ impl TransactionalFlowRegistrar {
 
 	/// Returns `true` if any sink view node in the flow writes to a transactional view.
 	fn is_transactional_view_flow(&self, flow: &FlowDag) -> bool {
-		let mut query = match self.engine.begin_query() {
+		let mut query = match self.engine.begin_query(IdentityId::system()) {
 			Ok(q) => q,
 			Err(_) => return false,
 		};

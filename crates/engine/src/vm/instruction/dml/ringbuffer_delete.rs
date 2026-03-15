@@ -46,7 +46,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteRingBufferNode,
 	params: Params,
-	identity: IdentityId,
 	symbol_table: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
@@ -114,7 +113,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 			while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
 					txn,
-					identity,
 					&namespace.name(),
 					&ringbuffer.name,
 					"delete",

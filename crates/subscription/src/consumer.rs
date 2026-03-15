@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::Error, fragment::Fragment};
+use reifydb_type::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
 use tracing::{debug, warn};
 
 /// Static methods for consuming subscription data.
@@ -36,7 +36,7 @@ impl SubscriptionConsumer {
 		last_consumed_key: Option<&EncodedKey>,
 		batch_size: usize,
 	) -> Result<(Columns, Vec<EncodedKey>)> {
-		let mut cmd_txn = engine.begin_command()?;
+		let mut cmd_txn = engine.begin_command(IdentityId::system())?;
 
 		// Get subscription definition using catalog function
 		let _sub_def = match find_subscription(&mut Transaction::Command(&mut cmd_txn), db_subscription_id)? {
@@ -145,7 +145,7 @@ impl SubscriptionConsumer {
 			return Ok(());
 		}
 
-		let mut delete_txn = engine.begin_command()?;
+		let mut delete_txn = engine.begin_command(IdentityId::system())?;
 
 		for key in row_keys {
 			delete_txn.remove(key)?;

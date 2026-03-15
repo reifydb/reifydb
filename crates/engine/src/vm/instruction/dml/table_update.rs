@@ -48,7 +48,6 @@ pub(crate) fn update_table<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateTableNode,
 	params: Params,
-	identity: IdentityId,
 	symbol_table_ref: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
@@ -103,7 +102,6 @@ pub(crate) fn update_table<'a>(
 			// Enforce write policies before processing rows
 			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
 				txn,
-				identity,
 				&namespace.name(),
 				&table.name,
 				"update",

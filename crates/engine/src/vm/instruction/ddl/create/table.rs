@@ -108,10 +108,7 @@ fn expand_sumtype_columns(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
-		params::Params,
-		value::{Value, identity::IdentityId},
-	};
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
 		test_utils::create_test_admin_transaction,
@@ -122,7 +119,6 @@ pub mod tests {
 	fn test_create_table() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// Create namespace first
 		instance.admin(
@@ -130,7 +126,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -142,7 +137,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -158,7 +152,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap_err();
@@ -169,7 +162,6 @@ pub mod tests {
 	fn test_create_same_table_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// Create both namespaces
 		instance.admin(
@@ -177,7 +169,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -186,7 +177,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE another_schema",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -198,7 +188,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -214,7 +203,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE TABLE another_schema::test_table { id: Int4 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -228,14 +216,12 @@ pub mod tests {
 	fn test_create_table_with_sumtype_column() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -245,7 +231,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -256,7 +241,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -268,14 +252,12 @@ pub mod tests {
 	fn test_create_table_with_unit_sumtype_column() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -285,7 +267,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE ENUM app::Status { Active, Inactive, Pending }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -296,7 +277,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE TABLE app::tasks { id: Int4, status: app::Status }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -308,14 +288,12 @@ pub mod tests {
 	fn test_insert_with_sumtype_constructor() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -325,7 +303,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -335,7 +312,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -346,7 +322,6 @@ pub mod tests {
 				Admin {
 					rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -358,14 +333,12 @@ pub mod tests {
 	fn test_insert_with_unit_sumtype_constructor() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -375,7 +348,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE ENUM app::Status { Active, Inactive, Pending }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -385,7 +357,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE TABLE app::tasks { id: Int4, status: app::Status }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -396,7 +367,6 @@ pub mod tests {
 				Admin {
 					rql: "INSERT app::tasks [{ id: 1, status: app::Status::Active }]",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -408,14 +378,12 @@ pub mod tests {
 	fn test_filter_is_variant() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -425,7 +393,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -435,7 +402,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -445,7 +411,6 @@ pub mod tests {
 			Admin {
 				rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -455,7 +420,6 @@ pub mod tests {
 			Admin {
 				rql: "INSERT app::drawings [{ id: 2, shape: app::Shape::Rectangle { width: 3.0, height: 4.0 } }]",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -465,7 +429,6 @@ pub mod tests {
 			Admin {
 				rql: "INSERT app::drawings [{ id: 3, shape: app::Shape::Circle { radius: 10.0 } }]",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -476,7 +439,6 @@ pub mod tests {
 				Admin {
 					rql: "FROM app::drawings | FILTER shape IS app::Shape::Circle",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();

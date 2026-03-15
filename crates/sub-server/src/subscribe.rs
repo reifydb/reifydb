@@ -142,7 +142,7 @@ pub async fn create_subscription(
 
 /// Synchronous cleanup: begin subscription txn, drop flow, drop subscription, commit.
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let mut txn = engine.begin_subscription()?;
+	let mut txn = engine.begin_subscription(IdentityId::system())?;
 	let flow_name = subscription_flow_name(subscription_id);
 	let namespace_id = subscription_flow_namespace();
 	drop_flow_by_name(txn.as_admin_mut(), namespace_id, &flow_name)?;
