@@ -1,24 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
+use postcard::{from_bytes, to_stdvec};
 use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, encode_ringbuffer_metadata};
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::{Schema, SchemaField},
 	interface::{
 		catalog::{flow::FlowNodeId, id::RingBufferId, primitive::PrimitiveId, ringbuffer::RingBufferMetadata},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
+	internal,
 	key::{ringbuffer::RingBufferMetadataKey, row::RowKey},
 	value::column::columns::Columns,
 };
 use reifydb_transaction::interceptor::view::ViewInterceptor;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	error::Error,
+	value::{blob::Blob, row_number::RowNumber, r#type::Type},
+};
+use serde::{Deserialize, Serialize};
 
 use super::{coerce_columns, encode_row_at_index};
-use crate::{Operator, operator::Operators, transaction::FlowTransaction};
+use crate::{
+	Operator,
+	operator::{
+		Operators,
+		stateful::{raw::RawStatefulOperator, single::SingleStateful},
+	},
+	transaction::FlowTransaction,
+};
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct RingBufferState {
+	forward: BTreeMap<RowNumber, RowNumber>, // source_rn → ringbuffer_key
+	reverse: BTreeMap<RowNumber, RowNumber>, // ringbuffer_key → source_rn
+}
 
 pub struct SinkRingBufferViewOperator {
 	#[allow(dead_code)]
@@ -28,6 +48,7 @@ pub struct SinkRingBufferViewOperator {
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
 	propagate_evictions: bool,
+	state_schema: Schema,
 }
 
 impl SinkRingBufferViewOperator {
@@ -46,6 +67,7 @@ impl SinkRingBufferViewOperator {
 			ringbuffer_id,
 			capacity,
 			propagate_evictions,
+			state_schema: Schema::new(vec![SchemaField::unconstrained("state", Type::Blob)]),
 		}
 	}
 
@@ -62,6 +84,40 @@ impl SinkRingBufferViewOperator {
 		let row = encode_ringbuffer_metadata(metadata);
 		txn.set(&key, row)
 	}
+
+	fn load(&self, txn: &mut FlowTransaction) -> Result<RingBufferState> {
+		let state_row = self.load_state(txn)?;
+
+		if state_row.is_empty() || !state_row.is_defined(0) {
+			return Ok(RingBufferState::default());
+		}
+
+		let blob = self.state_schema.get_blob(&state_row, 0);
+		if blob.is_empty() {
+			return Ok(RingBufferState::default());
+		}
+
+		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize RingBufferState: {}", e)))
+	}
+
+	fn save(&self, txn: &mut FlowTransaction, state: &RingBufferState) -> Result<()> {
+		let serialized =
+			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize RingBufferState: {}", e)))?;
+
+		let mut state_row = self.state_schema.allocate();
+		let blob = Blob::from(serialized);
+		self.state_schema.set_blob(&mut state_row, 0, &blob);
+
+		self.save_state(txn, state_row)
+	}
+}
+
+impl RawStatefulOperator for SinkRingBufferViewOperator {}
+
+impl SingleStateful for SinkRingBufferViewOperator {
+	fn layout(&self) -> Schema {
+		self.state_schema.clone()
+	}
 }
 
 impl Operator for SinkRingBufferViewOperator {
@@ -74,6 +130,7 @@ impl Operator for SinkRingBufferViewOperator {
 		let schema: Schema = view_def.columns().into();
 		let primitive_id = PrimitiveId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = self.read_metadata(txn)?;
+		let mut state = self.load(txn)?;
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -85,11 +142,16 @@ impl Operator for SinkRingBufferViewOperator {
 					for row_idx in 0..row_count {
 						// Evict oldest if full
 						if metadata.is_full() {
-							let oldest_row = RowNumber(metadata.head);
-							let old_key = RowKey::encoded(primitive_id, oldest_row);
+							let oldest_rn = RowNumber(metadata.head);
+							let old_key = RowKey::encoded(primitive_id, oldest_rn);
 							txn.remove(&old_key)?;
 							metadata.head += 1;
 							metadata.count -= 1;
+
+							// Clean up alias for evicted row
+							if let Some(source_rn) = state.reverse.remove(&oldest_rn) {
+								state.forward.remove(&source_rn);
+							}
 
 							if self.propagate_evictions {
 								// We could read the old row and emit a Remove diff,
@@ -98,14 +160,21 @@ impl Operator for SinkRingBufferViewOperator {
 							}
 						}
 
-						let row_number = RowNumber(metadata.tail);
+						let source_rn = coerced.row_numbers[row_idx];
+						let assigned_rn = RowNumber(metadata.tail);
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &schema, row_number);
+							encode_row_at_index(&coerced, row_idx, &schema, assigned_rn);
 
-						ViewInterceptor::pre_insert(txn, &view_def, row_number, &encoded)?;
-						let key = RowKey::encoded(primitive_id, row_number);
+						// Track alias when source row number differs from assigned key
+						if source_rn != assigned_rn {
+							state.forward.insert(source_rn, assigned_rn);
+							state.reverse.insert(assigned_rn, source_rn);
+						}
+
+						ViewInterceptor::pre_insert(txn, &view_def, assigned_rn, &encoded)?;
+						let key = RowKey::encoded(primitive_id, assigned_rn);
 						txn.set(&key, encoded.clone())?;
-						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
+						ViewInterceptor::post_insert(txn, &view_def, assigned_rn, &encoded)?;
 
 						if let Some(log) = txn.testing_mut() {
 							let new = Columns::single_row(coerced.iter().map(|col| {
@@ -120,10 +189,10 @@ impl Operator for SinkRingBufferViewOperator {
 						}
 
 						if metadata.is_empty() {
-							metadata.head = row_number.0;
+							metadata.head = assigned_rn.0;
 						}
 						metadata.count += 1;
-						metadata.tail = row_number.0 + 1;
+						metadata.tail = assigned_rn.0 + 1;
 					}
 					let version = txn.version();
 					txn.push_view_change(Change {
@@ -143,35 +212,46 @@ impl Operator for SinkRingBufferViewOperator {
 					let coerced_post = coerce_columns(post, view_def.columns())?;
 					let row_count = coerced_post.row_count();
 					for row_idx in 0..row_count {
-						let pre_row_number = coerced_pre.row_numbers[row_idx];
-						let post_row_number = coerced_post.row_numbers[row_idx];
+						let pre_source_rn = coerced_pre.row_numbers[row_idx];
+						let post_source_rn = coerced_post.row_numbers[row_idx];
+						// Resolve state to storage keys
+						let pre_storage_rn = state
+							.forward
+							.get(&pre_source_rn)
+							.copied()
+							.unwrap_or(pre_source_rn);
+						let post_storage_rn = state
+							.forward
+							.get(&post_source_rn)
+							.copied()
+							.unwrap_or(post_source_rn);
 						let (_, pre_encoded) = encode_row_at_index(
 							&coerced_pre,
 							row_idx,
 							&schema,
-							pre_row_number,
+							pre_storage_rn,
 						);
 						let (_, post_encoded) = encode_row_at_index(
 							&coerced_post,
 							row_idx,
 							&schema,
-							post_row_number,
+							post_storage_rn,
 						);
 
 						ViewInterceptor::pre_update(
 							txn,
 							&view_def,
-							post_row_number,
+							post_storage_rn,
 							&post_encoded,
 						)?;
-						let old_key = RowKey::encoded(primitive_id, pre_row_number);
-						let new_key = RowKey::encoded(primitive_id, post_row_number);
+						let old_key = RowKey::encoded(primitive_id, pre_storage_rn);
+						let new_key = RowKey::encoded(primitive_id, post_storage_rn);
 						txn.remove(&old_key)?;
 						txn.set(&new_key, post_encoded.clone())?;
 						ViewInterceptor::post_update(
 							txn,
 							&view_def,
-							post_row_number,
+							post_storage_rn,
 							&post_encoded,
 							&pre_encoded,
 						)?;
@@ -192,13 +272,17 @@ impl Operator for SinkRingBufferViewOperator {
 					let coerced = coerce_columns(pre, view_def.columns())?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
-						let row_number = coerced.row_numbers[row_idx];
+						let source_rn = coerced.row_numbers[row_idx];
+						// Resolve alias to storage key
+						let storage_rn =
+							state.forward.remove(&source_rn).unwrap_or(source_rn);
+						state.reverse.remove(&storage_rn);
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &schema, row_number);
-						ViewInterceptor::pre_delete(txn, &view_def, row_number)?;
-						let key = RowKey::encoded(primitive_id, row_number);
+							encode_row_at_index(&coerced, row_idx, &schema, storage_rn);
+						ViewInterceptor::pre_delete(txn, &view_def, storage_rn)?;
+						let key = RowKey::encoded(primitive_id, storage_rn);
 						txn.remove(&key)?;
-						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
+						ViewInterceptor::post_delete(txn, &view_def, storage_rn, &encoded)?;
 					}
 					let version = txn.version();
 					txn.push_view_change(Change {
@@ -213,6 +297,7 @@ impl Operator for SinkRingBufferViewOperator {
 		}
 
 		self.write_metadata(txn, &metadata)?;
+		self.save(txn, &state)?;
 
 		Ok(Change::from_flow(self.node, change.version, Vec::new()))
 	}
