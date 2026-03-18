@@ -274,8 +274,7 @@ impl Operator for SinkRingBufferViewOperator {
 					for row_idx in 0..row_count {
 						let source_rn = coerced.row_numbers[row_idx];
 						// Resolve alias to storage key
-						let storage_rn =
-							state.forward.remove(&source_rn).unwrap_or(source_rn);
+						let storage_rn = state.forward.remove(&source_rn).unwrap_or(source_rn);
 						state.reverse.remove(&storage_rn);
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, storage_rn);

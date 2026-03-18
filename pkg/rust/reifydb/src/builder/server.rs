@@ -26,13 +26,14 @@ use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
-	Database,
+	Database, Migration,
 	api::{StorageFactory, transaction},
 };
 
 pub struct ServerBuilder {
 	storage_factory: StorageFactory,
 	runtime_config: Option<SharedRuntimeConfig>,
+	migrations: Vec<Migration>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
@@ -53,6 +54,7 @@ impl ServerBuilder {
 		Self {
 			storage_factory,
 			runtime_config: None,
+			migrations: Vec::new(),
 			interceptors: InterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
@@ -74,6 +76,11 @@ impl ServerBuilder {
 	/// If not set, a default configuration will be used.
 	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
+		self
+	}
+
+	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
+		self.migrations = migrations;
 		self
 	}
 
@@ -200,6 +207,10 @@ impl ServerBuilder {
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)
 			.with_stores(multi_store, single_store);
+
+		if !self.migrations.is_empty() {
+			database_builder = database_builder.with_migrations(self.migrations);
+		}
 
 		if let Some(configurator) = self.functions_configurator {
 			database_builder = database_builder.with_functions_configurator(configurator);
