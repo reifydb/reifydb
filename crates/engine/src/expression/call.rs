@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, view::group_by::GroupByView};
-use reifydb_function::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
+use reifydb_function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
 use reifydb_rql::{
-	expression::{CallExpression, Expression},
+	expression::CallExpression,
 	instruction::{CompiledFunctionDef, Instruction, ScopeType},
 	query::QueryPlan,
 };
@@ -49,24 +49,46 @@ fn column_data_from_values(values: &[Value]) -> ColumnData {
 	data
 }
 
-pub(crate) fn call_eval(
+/// Evaluate a call expression with pre-evaluated arguments (avoids re-compiling argument expressions).
+pub(crate) fn call_eval_with_args(
 	ctx: &EvalContext,
 	call: &CallExpression,
+	arguments: Columns,
 	functions: &Functions,
 	clock: &Clock,
 ) -> Result<Column> {
 	let function_name = call.func.0.text();
 
 	// Check if we're in aggregation context and if function exists as aggregate
-	// FIXME this is a quick hack - this should be derived from a call stack
 	if ctx.is_aggregate_context {
-		if let Some(aggregate_fn) = functions.get_aggregate(function_name) {
-			return handle_aggregate_function(ctx, call, aggregate_fn, functions, clock);
+		if let Some(mut aggregate_fn) = functions.get_aggregate(function_name) {
+			let column = if call.args.is_empty() {
+				Column {
+					name: Fragment::internal("dummy"),
+					data: ColumnData::with_capacity(Type::Int4, ctx.row_count),
+				}
+			} else {
+				arguments[0].clone()
+			};
+
+			let mut group_view = GroupByView::new();
+			let all_indices: Vec<usize> = (0..ctx.row_count).collect();
+			group_view.insert(Vec::<Value>::new(), all_indices);
+
+			aggregate_fn.aggregate(AggregateFunctionContext {
+				fragment: call.func.0.clone(),
+				column: &column,
+				groups: &group_view,
+			})?;
+
+			let (_keys, result_data) = aggregate_fn.finalize()?;
+
+			return Ok(Column {
+				name: call.full_fragment_owned(),
+				data: result_data,
+			});
 		}
 	}
-
-	// Evaluate arguments first (needed for both user-defined and built-in functions)
-	let arguments = evaluate_arguments(ctx, &call.args, functions, clock)?;
 
 	// Try user-defined function from symbol table first
 	if let Some(func_def) = ctx.symbol_table.get_function(function_name) {
@@ -483,81 +505,4 @@ fn execute_function_body_for_scalar(
 
 	// Return top of stack or Undefined
 	Ok(stack.pop().unwrap_or(Value::none()))
-}
-
-fn handle_aggregate_function(
-	ctx: &EvalContext,
-	call: &CallExpression,
-	mut aggregate_fn: Box<dyn AggregateFunction>,
-	functions: &Functions,
-	clock: &Clock,
-) -> Result<Column> {
-	// Create a single group containing all row indices for aggregation
-	let mut group_view = GroupByView::new();
-	let all_indices: Vec<usize> = (0..ctx.row_count).collect();
-	group_view.insert(Vec::<Value>::new(), all_indices); // Empty group key for single group
-
-	// Determine which column to aggregate over
-	let column = if call.args.is_empty() {
-		// For count() with no arguments, create a dummy column
-		Column {
-			name: Fragment::internal("dummy"),
-			data: ColumnData::int4_with_capacity(ctx.row_count),
-		}
-	} else {
-		// For functions with arguments like sum(amount), use the first argument column
-		let arguments = evaluate_arguments(ctx, &call.args, functions, clock)?;
-		arguments[0].clone()
-	};
-
-	// Call the aggregate function
-	aggregate_fn.aggregate(AggregateFunctionContext {
-		fragment: call.func.0.clone(),
-		column: &column,
-		groups: &group_view,
-	})?;
-
-	// Finalize and get results
-	let (_keys, result_data) = aggregate_fn.finalize()?;
-
-	Ok(Column {
-		name: call.full_fragment_owned(),
-		data: result_data,
-	})
-}
-
-fn evaluate_arguments(
-	ctx: &EvalContext,
-	expressions: &Vec<Expression>,
-	functions: &Functions,
-	clock: &Clock,
-) -> Result<Columns> {
-	let inner_ctx = EvalContext {
-		target: None,
-		columns: ctx.columns.clone(),
-		row_count: ctx.row_count,
-		take: ctx.take,
-		params: ctx.params,
-		symbol_table: ctx.symbol_table,
-		is_aggregate_context: ctx.is_aggregate_context,
-		functions: ctx.functions,
-		clock: ctx.clock,
-		arena: None,
-		identity: ctx.identity,
-	};
-	let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
-
-	for expression in expressions {
-		match expression {
-			Expression::Type(type_expr) => {
-				let values: Vec<Box<Value>> = (0..ctx.row_count)
-					.map(|_| Box::new(Value::Type(type_expr.ty.clone())))
-					.collect();
-				result.push(Column::new(type_expr.fragment.text(), ColumnData::any(values)));
-			}
-			_ => result.push(evaluate(&inner_ctx, expression, functions, clock)?),
-		}
-	}
-
-	Ok(Columns::new(result))
 }
