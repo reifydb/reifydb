@@ -24,8 +24,7 @@ impl<'bump> Parser<'bump> {
 	/// Parse an identifier or keyword as an identifier (simple, no hyphen handling)
 	/// Used in expression contexts where hyphens should remain as operators
 	pub(crate) fn parse_as_identifier(&mut self) -> Result<UnqualifiedIdentifier<'bump>> {
-		let token = self.advance()?;
-		debug_assert!(matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)));
+		let token = self.consume_name()?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
@@ -59,20 +58,18 @@ impl<'bump> Parser<'bump> {
 				.into());
 			}
 		}
-		let mut parts = vec![first_token.fragment.text().to_string()];
 		let start_line = first_token.fragment.line();
 		let start_column = first_token.fragment.column();
 		let first_fragment = first_token.fragment;
 
 		// Check if next token is hyphen followed by identifier or keyword
-		// If not, return what we have so far
+		// If not, return what we have so far (no allocations beyond bump)
 		if self.is_eof()
 			|| self.current_expect_operator(Operator::Minus).is_err()
 			|| self.position + 1 >= self.tokens.len()
 			|| !is_identifier_like(&self.tokens[self.position + 1])
 		{
-			let combined_text = parts.join("");
-			let text = self.bump().alloc_str(&combined_text);
+			let text = self.bump().alloc_str(first_token.fragment.text());
 			let fragment = BumpFragment::Statement {
 				text,
 				offset: 0,
@@ -83,6 +80,9 @@ impl<'bump> Parser<'bump> {
 			return Ok(UnqualifiedIdentifier::from_fragment(fragment));
 		}
 
+		// Build combined string in place for hyphenated identifiers
+		let mut combined = String::from(first_token.fragment.text());
+
 		// Look for pattern: - (identifier | keyword | number)
 		while !self.is_eof()
 			&& self.current_expect_operator(Operator::Minus).is_ok()
@@ -91,14 +91,12 @@ impl<'bump> Parser<'bump> {
 		{
 			self.consume_operator(Operator::Minus)?; // consume hyphen
 			let next_token = self.advance()?; // consume identifier or keyword or number
-			parts.push("-".to_string());
-			parts.push(next_token.fragment.text().to_string());
+			combined.push('-');
+			combined.push_str(next_token.fragment.text());
 		}
 
-		let combined_text = parts.join("");
-
 		// Validate: no consecutive hyphens
-		if combined_text.contains("--") {
+		if combined.contains("--") {
 			return Err(AstError::UnexpectedToken {
 				expected: "identifier without consecutive hyphens".to_string(),
 				fragment: first_fragment.to_owned(),
@@ -107,7 +105,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		// Create Fragment with combined text
-		let text = self.bump().alloc_str(&combined_text);
+		let text = self.bump().alloc_str(&combined);
 		let fragment = BumpFragment::Statement {
 			text,
 			offset: 0,
@@ -184,38 +182,6 @@ impl<'bump> Parser<'bump> {
 					col.into_fragment(),
 				))
 			}
-		}
-	}
-
-	/// Parse a column identifier, but also accept keywords as column names
-	pub(crate) fn parse_column_identifier_or_keyword(&mut self) -> Result<MaybeQualifiedColumnIdentifier<'bump>> {
-		// Parse :: separated identifiers for namespace::table qualification
-		let mut ns_table_segments = vec![self.advance()?];
-		while !self.is_eof() && self.current_expect_operator(Operator::DoubleColon).is_ok() {
-			self.consume_operator(Operator::DoubleColon)?;
-			ns_table_segments.push(self.advance()?);
-		}
-
-		// Check for .column (dot-separated column access)
-		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
-			self.consume_operator(Operator::Dot)?;
-			let col = self.advance()?;
-
-			let table = ns_table_segments.pop().unwrap();
-			let namespace: Vec<_> = ns_table_segments
-				.into_iter()
-				.map(|t| UnqualifiedIdentifier::new(t).into_fragment())
-				.collect();
-
-			Ok(MaybeQualifiedColumnIdentifier::with_primitive(
-				namespace,
-				UnqualifiedIdentifier::new(table).into_fragment(),
-				UnqualifiedIdentifier::new(col).into_fragment(),
-			))
-		} else {
-			let identifiers: Vec<_> =
-				ns_table_segments.into_iter().map(|t| UnqualifiedIdentifier::new(t)).collect();
-			Self::segments_to_column_identifier(identifiers)
 		}
 	}
 }

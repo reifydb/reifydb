@@ -4,29 +4,18 @@
 use crate::{
 	Result,
 	ast::{ast::AstExtend, parse::Parser},
-	error::{OperationKind, RqlError},
+	error::OperationKind,
 	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_extend(&mut self) -> Result<AstExtend<'bump>> {
-		let start = self.current()?.fragment.offset();
-		let token = self.consume_keyword(Keyword::Extend)?;
-
-		let (nodes, has_braces) = self.parse_expressions(true, false)?;
-
-		if !has_braces {
-			return Err(RqlError::OperatorMissingBraces {
-				kind: OperationKind::Extend,
-				fragment: token.fragment.to_owned(),
-			}
-			.into());
-		}
-
+		let (token, nodes, rql) =
+			self.parse_keyword_with_braced_expressions(Keyword::Extend, OperationKind::Extend)?;
 		Ok(AstExtend {
 			token,
 			nodes,
-			rql: self.source_since(start),
+			rql,
 		})
 	}
 }

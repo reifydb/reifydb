@@ -3,41 +3,17 @@
 
 use crate::{
 	Result,
-	ast::{
-		ast::{Ast, AstFilter},
-		parse::{Parser, Precedence},
-	},
-	bump::BumpBox,
-	token::{keyword::Keyword, operator::Operator},
+	ast::{ast::AstFilter, parse::Parser},
+	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_filter(&mut self) -> Result<AstFilter<'bump>> {
-		let start = self.current()?.fragment.offset();
-		let token = self.consume_keyword(Keyword::Filter)?;
-
-		// Check if braces are used (optional)
-		let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
-
-		if has_braces {
-			self.advance()?; // consume opening brace
-		}
-
-		let node = if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
-			// Empty braces: filter {}
-			Ast::Nop
-		} else {
-			self.parse_node(Precedence::None)?
-		};
-
-		if has_braces {
-			self.consume_operator(Operator::CloseCurly)?;
-		}
-
+		let (token, node, rql) = self.parse_keyword_with_optional_braces_single(Keyword::Filter)?;
 		Ok(AstFilter {
 			token,
-			node: BumpBox::new_in(node, self.bump()),
-			rql: self.source_since(start),
+			node,
+			rql,
 		})
 	}
 }

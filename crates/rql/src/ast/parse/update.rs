@@ -41,7 +41,7 @@ impl<'bump> Parser<'bump> {
 			}
 			.into());
 		}
-		let (assignments, _) = self.parse_expressions(true, false)?;
+		let (assignments, _) = self.parse_expressions(true, false, None)?;
 		if assignments.is_empty() {
 			return Err(RqlError::UpdateEmptyAssignmentsBlock {
 				fragment: token.fragment.to_owned(),

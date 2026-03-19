@@ -3,16 +3,9 @@
 
 use crate::{
 	Result,
-	ast::{
-		ast::AstAggregate,
-		parse::{Parser, Precedence},
-	},
+	ast::{ast::AstAggregate, parse::Parser},
 	error::{OperationKind, RqlError},
-	token::{
-		keyword::Keyword,
-		operator::Operator::{CloseCurly, OpenCurly},
-		separator::Separator::Comma,
-	},
+	token::{keyword::Keyword, operator::Operator::OpenCurly},
 };
 
 impl<'bump> Parser<'bump> {
@@ -20,9 +13,8 @@ impl<'bump> Parser<'bump> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Aggregate)?;
 
-		let mut projections = Vec::new();
-
-		if !self.current()?.is_keyword(Keyword::By) {
+		// Parse optional projections: AGGREGATE { expr, ... } or skip if BY follows
+		let projections = if !self.current()?.is_keyword(Keyword::By) {
 			if !self.current()?.is_operator(OpenCurly) {
 				return Err(RqlError::OperatorMissingBraces {
 					kind: OperationKind::Aggregate,
@@ -30,91 +22,27 @@ impl<'bump> Parser<'bump> {
 				}
 				.into());
 			}
-
-			self.advance()?;
-
-			if !self.current()?.is_operator(CloseCurly) {
-				loop {
-					if self.current()?.is_keyword(Keyword::By) {
-						break;
-					}
-
-					// Try colon alias syntax first (alias: expr), otherwise parse with LogicOr
-					// precedence to prevent AS keyword from being parsed
-					if let Ok(alias_expr) = self.try_parse_colon_alias() {
-						projections.push(alias_expr);
-					} else {
-						projections.push(self.parse_node(Precedence::LogicOr)?);
-					}
-
-					if self.is_eof() {
-						break;
-					}
-
-					if self.current()?.is_operator(CloseCurly) {
-						self.advance()?;
-						break;
-					}
-
-					if self.current()?.is_separator(Comma) {
-						self.advance()?;
-					} else {
-						break;
-					}
-				}
-			} else {
-				self.advance()?;
-			}
-		}
-
-		let has_by_keyword = self.current().map_or(false, |t| t.is_keyword(Keyword::By));
-
-		if !has_by_keyword {
-			return Ok(AstAggregate {
-				token,
-				by: Vec::new(),
-				map: projections,
-				rql: self.source_since(start),
-			});
-		}
-
-		let by_token = self.consume_keyword(Keyword::By)?;
-
-		if !self.current()?.is_operator(OpenCurly) {
-			return Err(RqlError::OperatorMissingBraces {
-				kind: OperationKind::AggregateBy,
-				fragment: by_token.fragment.to_owned(),
-			}
-			.into());
-		}
-
-		self.advance()?;
-
-		let mut by = Vec::new();
-
-		if !self.current()?.is_operator(CloseCurly) {
-			loop {
-				// Use LogicOr precedence to prevent AS keyword from being parsed
-				by.push(self.parse_node(Precedence::LogicOr)?);
-
-				if self.is_eof() {
-					break;
-				}
-
-				if self.current()?.is_operator(CloseCurly) {
-					self.advance()?;
-					break;
-				}
-
-				if self.current()?.is_separator(Comma) {
-					self.advance()?;
-				} else {
-					break;
-				}
-			}
+			let (nodes, _) = self.parse_expressions(true, false, Some(Keyword::By))?;
+			nodes
 		} else {
-			self.advance()?;
-		}
+			Vec::new()
+		};
+
+		// Parse optional BY clause
+		let by = if !self.is_eof() && self.current().map_or(false, |t| t.is_keyword(Keyword::By)) {
+			let by_token = self.consume_keyword(Keyword::By)?;
+			if !self.current()?.is_operator(OpenCurly) {
+				return Err(RqlError::OperatorMissingBraces {
+					kind: OperationKind::AggregateBy,
+					fragment: by_token.fragment.to_owned(),
+				}
+				.into());
+			}
+			let (nodes, _) = self.parse_expressions(false, false, None)?;
+			nodes
+		} else {
+			Vec::new()
+		};
 
 		Ok(AstAggregate {
 			token,

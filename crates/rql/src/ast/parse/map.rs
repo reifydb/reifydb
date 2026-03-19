@@ -4,30 +4,18 @@
 use crate::{
 	Result,
 	ast::{ast::AstMap, parse::Parser},
-	error::{OperationKind, RqlError},
+	error::OperationKind,
 	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_map(&mut self) -> Result<AstMap<'bump>> {
-		let start = self.current()?.fragment.offset();
-		let token = self.consume_keyword(Keyword::Map)?;
-
-		let (nodes, has_braces) = self.parse_expressions(true, false)?;
-
-		// Always require braces
-		if !has_braces {
-			return Err(RqlError::OperatorMissingBraces {
-				kind: OperationKind::Map,
-				fragment: token.fragment.to_owned(),
-			}
-			.into());
-		}
-
+		let (token, nodes, rql) =
+			self.parse_keyword_with_braced_expressions(Keyword::Map, OperationKind::Map)?;
 		Ok(AstMap {
 			token,
 			nodes,
-			rql: self.source_since(start),
+			rql,
 		})
 	}
 }

@@ -85,7 +85,7 @@ impl<'bump> Parser<'bump> {
 			if is_generatortion {
 				// Parse as generator function
 				let function_name = first_identifier;
-				let (nodes, _has_braces) = self.parse_expressions(true, false)?;
+				let (nodes, _has_braces) = self.parse_expressions(true, false, None)?;
 
 				return Ok(AstFrom::Generator(AstGenerator {
 					token,

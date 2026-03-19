@@ -134,84 +134,95 @@ impl<'bump> Parser<'bump> {
 			Ok(false)
 		}
 	}
-	fn parse_drop_table(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+	/// Parse a standard DROP entity: IF EXISTS, qualified identifier, CASCADE.
+	/// Calls `make_identifier` with (name, namespace) and `wrap` to produce the AstDrop variant.
+	fn parse_drop_qualified<I>(
+		&mut self,
+		token: Token<'bump>,
+		make_identifier: impl FnOnce(crate::bump::BumpFragment<'bump>, Vec<crate::bump::BumpFragment<'bump>>) -> I,
+		wrap: impl FnOnce(Token<'bump>, bool, I, bool) -> AstDrop<'bump>,
+	) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let table = if namespace.is_empty() {
-			MaybeQualifiedTableIdentifier::new(name)
-		} else {
-			MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace)
-		};
-
+		let identifier = make_identifier(name, namespace);
 		let cascade = self.parse_cascade()?;
+		Ok(wrap(token, if_exists, identifier, cascade))
+	}
 
-		Ok(AstDrop::Table(AstDropTable {
+	fn parse_drop_table(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		self.parse_drop_qualified(
 			token,
-			if_exists,
-			table,
-			cascade,
-		}))
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedTableIdentifier::new(name)
+				} else {
+					MaybeQualifiedTableIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, table, cascade| {
+				AstDrop::Table(AstDropTable {
+					token,
+					if_exists,
+					table,
+					cascade,
+				})
+			},
+		)
 	}
 
 	fn parse_drop_view(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
-		let if_exists = self.parse_if_exists()?;
-
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let view = if namespace.is_empty() {
-			MaybeQualifiedViewIdentifier::new(name)
-		} else {
-			MaybeQualifiedViewIdentifier::new(name).with_namespace(namespace)
-		};
-
-		let cascade = self.parse_cascade()?;
-
-		Ok(AstDrop::View(AstDropView {
+		self.parse_drop_qualified(
 			token,
-			if_exists,
-			view,
-			cascade,
-		}))
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedViewIdentifier::new(name)
+				} else {
+					MaybeQualifiedViewIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, view, cascade| {
+				AstDrop::View(AstDropView {
+					token,
+					if_exists,
+					view,
+					cascade,
+				})
+			},
+		)
 	}
 
 	fn parse_drop_ringbuffer(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
-		let if_exists = self.parse_if_exists()?;
-
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let ringbuffer = if namespace.is_empty() {
-			MaybeQualifiedRingBufferIdentifier::new(name)
-		} else {
-			MaybeQualifiedRingBufferIdentifier::new(name).with_namespace(namespace)
-		};
-
-		let cascade = self.parse_cascade()?;
-
-		Ok(AstDrop::RingBuffer(AstDropRingBuffer {
+		self.parse_drop_qualified(
 			token,
-			if_exists,
-			ringbuffer,
-			cascade,
-		}))
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedRingBufferIdentifier::new(name)
+				} else {
+					MaybeQualifiedRingBufferIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, ringbuffer, cascade| {
+				AstDrop::RingBuffer(AstDropRingBuffer {
+					token,
+					if_exists,
+					ringbuffer,
+					cascade,
+				})
+			},
+		)
 	}
 
 	fn parse_drop_namespace(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-
 		let segments: Vec<_> = self
 			.parse_double_colon_separated_identifiers()?
 			.into_iter()
 			.map(|s| s.into_fragment())
 			.collect();
 		let namespace = MaybeQualifiedNamespaceIdentifier::new(segments);
-
 		let cascade = self.parse_cascade()?;
-
 		Ok(AstDrop::Namespace(AstDropNamespace {
 			token,
 			if_exists,
@@ -221,78 +232,72 @@ impl<'bump> Parser<'bump> {
 	}
 
 	fn parse_drop_dictionary(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
-		let if_exists = self.parse_if_exists()?;
-
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let dictionary = if namespace.is_empty() {
-			MaybeQualifiedDictionaryIdentifier::new(name)
-		} else {
-			MaybeQualifiedDictionaryIdentifier::new(name).with_namespace(namespace)
-		};
-
-		let cascade = self.parse_cascade()?;
-
-		Ok(AstDrop::Dictionary(AstDropDictionary {
+		self.parse_drop_qualified(
 			token,
-			if_exists,
-			dictionary,
-			cascade,
-		}))
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedDictionaryIdentifier::new(name)
+				} else {
+					MaybeQualifiedDictionaryIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, dictionary, cascade| {
+				AstDrop::Dictionary(AstDropDictionary {
+					token,
+					if_exists,
+					dictionary,
+					cascade,
+				})
+			},
+		)
 	}
 
 	fn parse_drop_enum(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
-		let if_exists = self.parse_if_exists()?;
-
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let sumtype = if namespace.is_empty() {
-			MaybeQualifiedSumTypeIdentifier::new(name)
-		} else {
-			MaybeQualifiedSumTypeIdentifier::new(name).with_namespace(namespace)
-		};
-
-		let cascade = self.parse_cascade()?;
-
-		Ok(AstDrop::Enum(AstDropSumType {
+		self.parse_drop_qualified(
 			token,
-			if_exists,
-			sumtype,
-			cascade,
-		}))
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedSumTypeIdentifier::new(name)
+				} else {
+					MaybeQualifiedSumTypeIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, sumtype, cascade| {
+				AstDrop::Enum(AstDropSumType {
+					token,
+					if_exists,
+					sumtype,
+					cascade,
+				})
+			},
+		)
 	}
 
 	fn parse_drop_series(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
-		let if_exists = self.parse_if_exists()?;
-
-		let mut segments = self.parse_double_colon_separated_identifiers()?;
-		let name = segments.pop().unwrap().into_fragment();
-		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let series = if namespace.is_empty() {
-			MaybeQualifiedSeriesIdentifier::new(name)
-		} else {
-			MaybeQualifiedSeriesIdentifier::new(name).with_namespace(namespace)
-		};
-
-		let cascade = self.parse_cascade()?;
-
-		Ok(AstDrop::Series(AstDropSeries {
+		self.parse_drop_qualified(
 			token,
-			if_exists,
-			series,
-			cascade,
-		}))
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedSeriesIdentifier::new(name)
+				} else {
+					MaybeQualifiedSeriesIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, series, cascade| {
+				AstDrop::Series(AstDropSeries {
+					token,
+					if_exists,
+					series,
+					cascade,
+				})
+			},
+		)
 	}
 
 	fn parse_drop_subscription(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
-
 		let identifier = self.parse_identifier_with_hyphens()?.into_fragment();
-
 		let cascade = self.parse_cascade()?;
-
 		Ok(AstDrop::Subscription(AstDropSubscription {
 			token,
 			if_exists,

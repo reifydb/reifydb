@@ -26,7 +26,7 @@ impl<'bump> Parser<'bump> {
 			current = if self.current()?.is_identifier() {
 				self.consume(TokenKind::Identifier)?
 			} else {
-				self.consume_keyword_as_ident()?
+				self.consume_name()?
 			};
 		}
 
@@ -83,7 +83,7 @@ impl<'bump> Parser<'bump> {
 			let next_ident_token = if self.current()?.is_identifier() {
 				self.consume(TokenKind::Identifier)?
 			} else {
-				self.consume_keyword_as_ident()?
+				self.consume_name()?
 			};
 
 			// Check if this is the function name (followed by
