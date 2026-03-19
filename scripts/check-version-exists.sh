@@ -54,7 +54,6 @@ RUST_CRATES=(
     "reifydb-cdc"
     "reifydb-client"
     "reifydb-client-derive"
-    "reifydb-compression"
     "reifydb-core"
     "reifydb-derive"
     "reifydb-engine"

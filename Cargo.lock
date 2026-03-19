@@ -1899,15 +1899,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-compression"
-version = "0.4.2"
-dependencies = [
- "postcard",
- "reifydb-core",
- "reifydb-type",
-]
-
-[[package]]
 name = "reifydb-core"
 version = "0.4.2"
 dependencies = [
@@ -2111,7 +2102,6 @@ name = "reifydb-store-column"
 version = "0.4.2"
 dependencies = [
  "crossbeam-skiplist",
- "reifydb-compression",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-type",
