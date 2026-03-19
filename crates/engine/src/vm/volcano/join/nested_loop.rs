@@ -15,7 +15,7 @@ use crate::{
 	Result,
 	expression::{
 		compile::compile_expression,
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
@@ -107,6 +107,7 @@ impl QueryNode for NestedLoopJoinNode {
 		// Resolve column names with conflict detection
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
+		let session = EvalSession::from_query(ctx);
 		let mut result_rows = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
@@ -126,19 +127,7 @@ impl QueryNode for NestedLoopJoinNode {
 					&self.alias,
 				);
 
-				let exec_ctx = EvalContext {
-					target: None,
-					columns: Columns::new(eval_columns),
-					row_count: 1,
-					take: Some(1),
-					params: &ctx.params,
-					symbol_table: &ctx.stack,
-					is_aggregate_context: false,
-					functions: &ctx.services.functions,
-					clock: &ctx.services.clock,
-					arena: None,
-					identity: ctx.identity,
-				};
+				let exec_ctx = session.eval_join(Columns::new(eval_columns));
 
 				let all_true = self.context.compiled.iter().fold(true, |acc, compiled_expr| {
 					let col = compiled_expr.execute(&exec_ctx).unwrap();

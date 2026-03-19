@@ -18,7 +18,7 @@ use crate::{
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -137,23 +137,12 @@ impl Transform for ExtendNode {
 		// Collect existing column names for duplicate checking
 		let existing_names: Vec<Fragment> = input.iter().map(|c| c.name().clone()).collect();
 
+		let session = EvalSession::from_transform(ctx, stored_ctx);
 		let mut new_columns = input.into_iter().collect::<Vec<_>>();
 
 		let mut new_names = Vec::with_capacity(compiled.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = EvalContext {
-				target: None,
-				columns: Columns::new(new_columns.clone()),
-				row_count,
-				take: None,
-				params: ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: ctx.functions,
-				clock: ctx.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let mut exec_ctx = session.eval(Columns::new(new_columns.clone()), row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -253,23 +242,11 @@ impl QueryNode for ExtendWithoutInputNode {
 			return Ok(None);
 		}
 
-		let columns = Columns::empty();
+		let session = EvalSession::from_query(stored_ctx);
 		let mut new_columns = Vec::with_capacity(self.expressions.len());
 
 		for compiled_expr in compiled {
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count: 1,
-				take: None,
-				params: &stored_ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: &stored_ctx.services.functions,
-				clock: &stored_ctx.services.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let exec_ctx = session.eval_empty();
 
 			let column = compiled_expr.execute(&exec_ctx)?;
 			new_columns.push(column);

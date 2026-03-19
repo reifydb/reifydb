@@ -67,7 +67,7 @@ use crate::{
 	Result,
 	arena::QueryArena,
 	error::EngineError,
-	expression::{context::EvalContext, eval::evaluate},
+	expression::{context::EvalSession, eval::evaluate},
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
 	testing,
@@ -1123,19 +1123,17 @@ impl Vm {
 								} else {
 									// Built-in function: evaluate via column
 									// evaluator
-									let evaluation_context = EvalContext {
-										target: None,
-										columns: Columns::empty(),
-										row_count: 1,
-										take: None,
+									let vm_session = EvalSession {
 										params,
 										symbol_table: &self.symbol_table,
-										is_aggregate_context: false,
 										functions: &services.functions,
 										clock: &services.clock,
 										arena: None,
 										identity: tx.identity(),
+										is_aggregate_context: false,
 									};
+									let evaluation_context =
+										vm_session.eval_empty();
 
 									let mut arg_exprs = Vec::with_capacity(arity);
 									for arg in &args {

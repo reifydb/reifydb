@@ -24,7 +24,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	expression::{cast::cast_column_data, context::EvalContext},
+	expression::{cast::cast_column_data, context::EvalSession},
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
@@ -66,24 +66,22 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 		// Create context with Undefined saturation policy for this column
 		// This ensures overflow during cast produces undefined instead of errors
 		// FIXME how to handle failing views ?!
-		let ctx = EvalContext {
-			target: Some(TargetColumn::Partial {
-				source_name: None,
-				column_name: Some(target_col.name.clone()),
-				column_type: target_type.clone(),
-				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
-			}),
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
 			functions: &EMPTY_FUNCTIONS,
 			clock: &DEFAULT_CLOCK,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let mut ctx = session.eval(columns.clone(), row_count);
+		ctx.target = Some(TargetColumn::Partial {
+			source_name: None,
+			column_name: Some(target_col.name.clone()),
+			column_type: target_type.clone(),
+			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
+		});
 
 		if let Some(source_col) = columns.column(&target_col.name) {
 			// Cast to target type
@@ -133,24 +131,22 @@ pub(crate) fn coerce_subscription_columns(
 		let target_type = target_col.ty.clone();
 
 		// Create context with Undefined saturation policy for this column
-		let ctx = EvalContext {
-			target: Some(TargetColumn::Partial {
-				source_name: None,
-				column_name: Some(target_col.name.clone()),
-				column_type: target_type.clone(),
-				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
-			}),
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
 			functions: &EMPTY_FUNCTIONS,
 			clock: &DEFAULT_CLOCK,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let mut ctx = session.eval(columns.clone(), row_count);
+		ctx.target = Some(TargetColumn::Partial {
+			source_name: None,
+			column_name: Some(target_col.name.clone()),
+			column_type: target_type.clone(),
+			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
+		});
 
 		if let Some(source_col) = columns.column(&target_col.name) {
 			// Cast to target type

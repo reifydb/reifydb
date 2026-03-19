@@ -33,7 +33,7 @@ use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	policy::PolicyEvaluator,
 	vm::{
@@ -164,21 +164,18 @@ pub(crate) fn delete_series<'a>(
 				.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
 				.collect();
 
+			let session = EvalSession {
+				params: &params,
+				symbol_table: &stack,
+				functions: &services.functions,
+				clock: &services.clock,
+				arena: None,
+				identity: IdentityId::root(),
+				is_aggregate_context: false,
+			};
 			let mut filter_mask = BitVec::repeat(row_count, true);
 			for compiled_expr in &compiled_exprs {
-				let exec_ctx = EvalContext {
-					target: None,
-					columns: columns.clone(),
-					row_count,
-					take: None,
-					params: &params,
-					symbol_table: &stack,
-					is_aggregate_context: false,
-					functions: &services.functions,
-					clock: &services.clock,
-					arena: None,
-					identity: IdentityId::root(),
-				};
+				let exec_ctx = session.eval(columns.clone(), row_count);
 
 				let result = compiled_expr.execute(&exec_ctx)?;
 				match result.data() {

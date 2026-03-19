@@ -20,7 +20,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{cast::cast_column_data, context::EvalContext, eval::evaluate},
+	expression::{cast::cast_column_data, context::EvalSession, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -421,6 +421,8 @@ impl<'a> InlineDataNode {
 			rows_data.push(row_map);
 		}
 
+		let session = EvalSession::from_query(ctx);
+
 		// Create columns - start with wide types
 		let mut columns = Vec::new();
 
@@ -435,25 +437,13 @@ impl<'a> InlineDataNode {
 					if column_fragment.is_none() {
 						column_fragment = Some(alias_expr.fragment.clone());
 					}
-					let ctx = EvalContext {
-						target: None,
-						columns: Columns::empty(),
-						row_count: 1,
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let eval_ctx = session.eval_empty();
 
 					let evaluated = evaluate(
-						&ctx,
+						&eval_ctx,
 						&alias_expr.expression,
-						&self.context.as_ref().unwrap().services.functions,
-						&self.context.as_ref().unwrap().services.clock,
+						&ctx.services.functions,
+						&ctx.services.clock,
 					)?;
 
 					// Take the first value from the
@@ -507,22 +497,10 @@ impl<'a> InlineDataNode {
 					} else {
 						// Cast to the wide type
 						let temp_data = ColumnData::from(value.clone());
-						let ctx = EvalContext {
-							target: None,
-							columns: Columns::empty(),
-							row_count: 1,
-							take: None,
-							params: &ctx.params,
-							symbol_table: &ctx.stack,
-							is_aggregate_context: false,
-							functions: &self.context.as_ref().unwrap().services.functions,
-							clock: &self.context.as_ref().unwrap().services.clock,
-							arena: None,
-							identity: self.context.as_ref().unwrap().identity,
-						};
+						let eval_ctx = session.eval_empty();
 
 						match cast_column_data(
-							&ctx,
+							&eval_ctx,
 							&temp_data,
 							wide_type.clone().unwrap(),
 							|| Fragment::none(),
@@ -550,23 +528,12 @@ impl<'a> InlineDataNode {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
 					// Demote to the optimal type
-					let ctx = EvalContext {
-						target: None,
-						columns: Columns::empty(),
-						row_count: column_data.len(),
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let eval_ctx = session.eval(Columns::empty(), column_data.len());
 
 					if let Ok(demoted) =
-						cast_column_data(&ctx, &column_data, optimal_type, || Fragment::none())
-					{
+						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
+							Fragment::none()
+						}) {
 						column_data = demoted;
 					}
 				}
@@ -589,6 +556,7 @@ impl<'a> InlineDataNode {
 	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
 		let source = ctx.source.as_ref().unwrap(); // Safe because headers is Some
 		let headers = self.headers.as_ref().unwrap(); // Safe because we're in this path
+		let session = EvalSession::from_query(ctx);
 
 		// Convert rows to HashMap for easier column lookup
 		let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
@@ -622,34 +590,23 @@ impl<'a> InlineDataNode {
 					if column_fragment.is_none() {
 						column_fragment = Some(alias_expr.fragment.clone());
 					}
-					let eval_ctx = EvalContext {
-						target: table_column.map(|tc| TargetColumn::Partial {
-							source_name: Some(source.identifier().text().to_string()),
-							column_name: Some(tc.name.clone()),
-							column_type: tc.constraint.get_type(),
-							properties: tc
-								.properties
-								.iter()
-								.map(|cp| cp.property.clone())
-								.collect(),
-						}),
-						columns: Columns::empty(),
-						row_count: 1,
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let mut eval_ctx = session.eval_empty();
+					eval_ctx.target = table_column.map(|tc| TargetColumn::Partial {
+						source_name: Some(source.identifier().text().to_string()),
+						column_name: Some(tc.name.clone()),
+						column_type: tc.constraint.get_type(),
+						properties: tc
+							.properties
+							.iter()
+							.map(|cp| cp.property.clone())
+							.collect(),
+					});
 
 					let evaluated = evaluate(
 						&eval_ctx,
 						&alias_expr.expression,
-						&self.context.as_ref().unwrap().services.functions,
-						&self.context.as_ref().unwrap().services.clock,
+						&ctx.services.functions,
+						&ctx.services.clock,
 					)?;
 
 					// Ensure we always add exactly one
@@ -707,19 +664,7 @@ impl<'a> InlineDataNode {
 			if table_column.is_none() {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
-					let eval_ctx = EvalContext {
-						target: None,
-						columns: Columns::empty(),
-						row_count: column_data.len(),
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let eval_ctx = session.eval(Columns::empty(), column_data.len());
 					if let Ok(demoted) =
 						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
 							Fragment::none()

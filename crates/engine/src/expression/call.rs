@@ -20,7 +20,7 @@ use super::eval::evaluate;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::context::EvalContext,
+	expression::context::{EvalContext, EvalSession},
 	vm::{
 		scalar,
 		stack::{SymbolTable, Variable},
@@ -398,19 +398,16 @@ fn execute_function_body_for_scalar(
 			Instruction::Query(plan) => match plan {
 				QueryPlan::Map(map_node) => {
 					if map_node.input.is_none() && !map_node.map.is_empty() {
-						let evaluation_context = EvalContext {
-							target: None,
-							columns: Columns::empty(),
-							row_count: 1,
-							take: None,
+						let call_session = EvalSession {
 							params,
 							symbol_table,
-							is_aggregate_context: false,
 							functions,
 							clock,
 							arena: None,
 							identity,
+							is_aggregate_context: false,
 						};
+						let evaluation_context = call_session.eval_empty();
 						let result_column = evaluate(
 							&evaluation_context,
 							&map_node.map[0],

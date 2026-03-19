@@ -18,7 +18,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{context::EvalContext, eval::evaluate},
+	expression::{context::EvalSession, eval::evaluate},
 	vm::{services::Services, stack::SymbolTable},
 };
 
@@ -54,29 +54,23 @@ pub(crate) fn alter_table_sequence<'a>(
 	static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
-	let value = evaluate(
-		&EvalContext {
-			target: Some(TargetColumn::Partial {
-				source_name: None,
-				column_name: None,
-				column_type: column.constraint.get_type(),
-				properties: column.properties.into_iter().map(|p| p.property).collect(),
-			}),
-			columns: Columns::empty(),
-			row_count: 1,
-			take: None,
-			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
-			functions: &services.functions,
-			clock: &services.clock,
-			arena: None,
-			identity: IdentityId::root(),
-		},
-		&plan.value,
-		&services.functions,
-		&services.clock,
-	)?;
+	let session = EvalSession {
+		params: &EMPTY_PARAMS,
+		symbol_table: &EMPTY_SYMBOL_TABLE,
+		functions: &services.functions,
+		clock: &services.clock,
+		arena: None,
+		identity: IdentityId::root(),
+		is_aggregate_context: false,
+	};
+	let mut eval_ctx = session.eval_empty();
+	eval_ctx.target = Some(TargetColumn::Partial {
+		source_name: None,
+		column_name: None,
+		column_type: column.constraint.get_type(),
+		properties: column.properties.into_iter().map(|p| p.property).collect(),
+	});
+	let value = evaluate(&eval_ctx, &plan.value, &services.functions, &services.clock)?;
 
 	let data = value.data();
 	debug_assert_eq!(data.len(), 1);

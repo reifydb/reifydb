@@ -14,7 +14,99 @@ use reifydb_function::registry::Functions;
 use reifydb_runtime::clock::Clock;
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
-use crate::{arena::QueryArena, vm::stack::SymbolTable};
+use crate::{
+	arena::QueryArena,
+	transform::context::TransformContext,
+	vm::{stack::SymbolTable, volcano::query::QueryContext},
+};
+
+/// Session-scoped evaluation context — holds the 7 fields that are invariant
+/// within a given operator. Provides factory methods to produce `EvalContext`
+/// values that vary only in `columns` and `row_count`.
+#[derive(Clone, Copy)]
+pub struct EvalSession<'a> {
+	pub params: &'a Params,
+	pub symbol_table: &'a SymbolTable,
+	pub functions: &'a Functions,
+	pub clock: &'a Clock,
+	pub arena: Option<&'a QueryArena>,
+	pub identity: IdentityId,
+	pub is_aggregate_context: bool,
+}
+
+impl<'a> EvalSession<'a> {
+	/// Main constructor — produces an `EvalContext` with `target=None` and `take=None`.
+	pub fn eval(&self, columns: Columns, row_count: usize) -> EvalContext<'a> {
+		EvalContext {
+			target: None,
+			columns,
+			row_count,
+			take: None,
+			params: self.params,
+			symbol_table: self.symbol_table,
+			is_aggregate_context: self.is_aggregate_context,
+			functions: self.functions,
+			clock: self.clock,
+			arena: self.arena,
+			identity: self.identity,
+		}
+	}
+
+	/// Shorthand for `eval(Columns::empty(), 1)`.
+	pub fn eval_empty(&self) -> EvalContext<'a> {
+		self.eval(Columns::empty(), 1)
+	}
+
+	/// Shorthand for `eval(columns, 1)` with `take=Some(1)`.
+	pub fn eval_join(&self, columns: Columns) -> EvalContext<'a> {
+		let mut ctx = self.eval(columns, 1);
+		ctx.take = Some(1);
+		ctx
+	}
+
+	/// Build from a `TransformContext` + stored `QueryContext` (volcano nodes with input).
+	pub fn from_transform(ctx: &'a TransformContext, stored: &'a QueryContext) -> Self {
+		Self {
+			params: ctx.params,
+			symbol_table: &stored.stack,
+			functions: ctx.functions,
+			clock: ctx.clock,
+			arena: None,
+			identity: stored.identity,
+			is_aggregate_context: false,
+		}
+	}
+
+	/// Build from a `QueryContext` (without-input nodes, joins, inline).
+	pub fn from_query(ctx: &'a QueryContext) -> Self {
+		Self {
+			params: &ctx.params,
+			symbol_table: &ctx.stack,
+			functions: &ctx.services.functions,
+			clock: &ctx.services.clock,
+			arena: None,
+			identity: ctx.identity,
+			is_aggregate_context: false,
+		}
+	}
+
+	/// Build a testing session with static empty values.
+	pub fn testing() -> EvalSession<'static> {
+		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
+		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(|| Functions::empty());
+		static DEFAULT_CLOCK: LazyLock<Clock> = LazyLock::new(|| Clock::default());
+		EvalSession {
+			params: &EMPTY_PARAMS,
+			symbol_table: &EMPTY_SYMBOL_TABLE,
+			functions: &EMPTY_FUNCTIONS,
+			clock: &DEFAULT_CLOCK,
+			arena: None,
+			identity: IdentityId::root(),
+			is_aggregate_context: false,
+		}
+	}
+}
 
 pub struct EvalContext<'a> {
 	pub target: Option<TargetColumn>,
@@ -34,23 +126,7 @@ pub struct EvalContext<'a> {
 
 impl<'a> EvalContext<'a> {
 	pub fn testing() -> Self {
-		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
-		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
-		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(|| Functions::empty());
-		static DEFAULT_CLOCK: LazyLock<Clock> = LazyLock::new(|| Clock::default());
-		Self {
-			target: None,
-			columns: Columns::empty(),
-			row_count: 1,
-			take: None,
-			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
-			functions: &EMPTY_FUNCTIONS,
-			clock: &DEFAULT_CLOCK,
-			arena: None,
-			identity: IdentityId::root(),
-		}
+		EvalSession::testing().eval_empty()
 	}
 
 	pub(crate) fn saturation_policy(&self) -> ColumnSaturationPolicy {

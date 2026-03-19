@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::stack::SymbolTable,
 };
@@ -228,19 +228,16 @@ impl DistinctOperator {
 			}
 			Ok(hashes)
 		} else {
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
+			let session = EvalSession {
 				params: &EMPTY_PARAMS,
 				symbol_table: &EMPTY_SYMBOL_TABLE,
-				is_aggregate_context: false,
 				functions: &self.functions,
 				clock: &self.clock,
 				arena: None,
 				identity: IdentityId::root(),
+				is_aggregate_context: false,
 			};
+			let exec_ctx = session.eval(columns.clone(), row_count);
 			let mut expr_columns = Vec::new();
 			for compiled_expr in &self.compiled_expressions {
 				let col = compiled_expr.execute(&exec_ctx)?;

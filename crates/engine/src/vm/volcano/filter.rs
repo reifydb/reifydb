@@ -21,7 +21,7 @@ use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -121,6 +121,7 @@ impl Transform for FilterNode {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
+		let session = EvalSession::from_transform(ctx, stored_ctx);
 		let mut columns = input;
 		let mut row_count = columns.row_count();
 
@@ -129,19 +130,7 @@ impl Transform for FilterNode {
 				break;
 			}
 
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
-				params: ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: ctx.functions,
-				clock: ctx.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let exec_ctx = session.eval(columns.clone(), row_count);
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 
@@ -206,22 +195,11 @@ impl FilterNode {
 			return Ok(Some(BitVec::empty()));
 		}
 
+		let session = EvalSession::from_query(ctx);
 		let mut mask = BitVec::repeat(row_count, true);
 
 		for compiled_expr in compiled {
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
-				params: &ctx.params,
-				symbol_table: &ctx.stack,
-				is_aggregate_context: false,
-				functions: &ctx.services.functions,
-				clock: &ctx.services.clock,
-				arena: None,
-				identity: ctx.identity,
-			};
+			let exec_ctx = session.eval(columns.clone(), row_count);
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 

@@ -8,16 +8,13 @@ use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_function::{GeneratorContext, GeneratorFunction};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, fragment::Fragment, params::Params};
+use reifydb_type::{error::Error, fragment::Fragment};
 
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{context::EvalContext, eval::evaluate},
-	vm::{
-		stack::SymbolTable,
-		volcano::query::{QueryContext, QueryNode},
-	},
+	expression::{context::EvalSession, eval::evaluate},
+	vm::volcano::query::{QueryContext, QueryNode},
 };
 
 pub(crate) struct GeneratorNode {
@@ -67,19 +64,8 @@ impl QueryNode for GeneratorNode {
 		let generator = self.generator.as_ref().unwrap();
 
 		let stored_ctx = self.context.as_ref().unwrap();
-		let evaluation_ctx = EvalContext {
-			target: None,
-			columns: Columns::empty(), // No input columns for generator functions
-			row_count: 1,              // Single evaluation context
-			take: None,
-			params: unsafe { mem::transmute::<&Params, &'a Params>(&stored_ctx.params) },
-			symbol_table: unsafe { mem::transmute::<&SymbolTable, &'a SymbolTable>(&stored_ctx.stack) },
-			is_aggregate_context: false,
-			functions: &stored_ctx.services.functions,
-			clock: &stored_ctx.services.clock,
-			arena: None,
-			identity: stored_ctx.identity,
-		};
+		let session = EvalSession::from_query(stored_ctx);
+		let evaluation_ctx = session.eval_empty();
 
 		// Evaluate all parameter expressions into columns
 		let mut evaluated_columns = Vec::new();

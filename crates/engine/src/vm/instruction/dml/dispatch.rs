@@ -13,7 +13,7 @@ use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use crate::{
 	Result,
-	expression::{context::EvalContext, eval::evaluate},
+	expression::{context::EvalSession, eval::evaluate},
 	procedure::context::ProcedureContext,
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
@@ -61,21 +61,18 @@ pub(crate) fn dispatch(
 	let handler_count = procedures.len();
 
 	// Evaluate dispatch fields into a Columns payload
+	let session = EvalSession {
+		params,
+		symbol_table: &vm.symbol_table,
+		functions: &services.functions,
+		clock: &services.clock,
+		arena: None,
+		identity: tx.identity(),
+		is_aggregate_context: false,
+	};
 	let mut event_columns = Vec::with_capacity(plan.fields.len());
 	for (field_name, expr) in &plan.fields {
-		let eval_ctx = EvalContext {
-			target: None,
-			columns: Columns::empty(),
-			row_count: 1,
-			take: None,
-			params,
-			symbol_table: &vm.symbol_table,
-			is_aggregate_context: false,
-			functions: &services.functions,
-			clock: &services.clock,
-			arena: None,
-			identity: tx.identity(),
-		};
+		let eval_ctx = session.eval_empty();
 		let col = evaluate(&eval_ctx, expr, &services.functions, &services.clock)?;
 		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
 	}

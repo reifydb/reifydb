@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
-	value::column::{columns::Columns, data::ColumnData},
+	value::column::data::ColumnData,
 };
 use reifydb_type::{
 	fragment::Fragment,
@@ -13,7 +13,7 @@ use reifydb_type::{
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{cast::cast_column_data, context::EvalContext},
+	expression::{cast::cast_column_data, context::EvalSession},
 	vm::volcano::query::QueryContext,
 };
 
@@ -61,24 +61,10 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 	let temp_column_data = ColumnData::from(value.clone());
 	let value_str = value.to_string();
 
-	let coerced_column = cast_column_data(
-		&EvalContext {
-			target: Some(TargetColumn::Resolved(column)),
-			columns: Columns::empty(),
-			row_count: 1,
-			take: None,
-			params: &ctx.params,
-			symbol_table: &ctx.stack,
-			is_aggregate_context: false,
-			functions: &ctx.services.functions,
-			clock: &ctx.services.clock,
-			arena: None,
-			identity: ctx.identity,
-		},
-		&temp_column_data,
-		target,
-		|| Fragment::internal(&value_str),
-	)?;
+	let session = EvalSession::from_query(ctx);
+	let mut eval_ctx = session.eval_empty();
+	eval_ctx.target = Some(TargetColumn::Resolved(column));
+	let coerced_column = cast_column_data(&eval_ctx, &temp_column_data, target, || Fragment::internal(&value_str))?;
 
 	Ok(coerced_column.get_value(0))
 }

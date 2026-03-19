@@ -17,7 +17,7 @@ use crate::{
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
@@ -91,22 +91,11 @@ impl Transform for MapNode {
 			self.context.as_ref().expect("MapNode::apply() called before initialize()");
 
 		let row_count = input.row_count();
+		let session = EvalSession::from_transform(ctx, stored_ctx);
 		let mut new_columns = Vec::with_capacity(compiled.len());
 
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = EvalContext {
-				target: None,
-				columns: input.clone(),
-				row_count,
-				take: None,
-				params: ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: ctx.functions,
-				clock: ctx.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let mut exec_ctx = session.eval(input.clone(), row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -187,22 +176,11 @@ impl QueryNode for MapWithoutInputNode {
 			return Ok(None);
 		}
 
+		let session = EvalSession::from_query(stored_ctx);
 		let mut columns = vec![];
 
 		for compiled_expr in compiled {
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: Columns::empty(),
-				row_count: 1,
-				take: None,
-				params: &stored_ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: &stored_ctx.services.functions,
-				clock: &stored_ctx.services.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let exec_ctx = session.eval_empty();
 
 			let column = compiled_expr.execute(&exec_ctx)?;
 

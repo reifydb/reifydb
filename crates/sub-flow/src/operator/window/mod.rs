@@ -42,7 +42,7 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::stack::SymbolTable,
 };
@@ -230,19 +230,16 @@ impl WindowOperator {
 			return Ok(vec![Hash128::from(0u128); row_count]);
 		}
 
-		let exec_ctx = EvalContext {
-			target: None,
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
 			functions: &self.functions,
 			clock: &self.clock,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let exec_ctx = session.eval(columns.clone(), row_count);
 
 		let mut group_columns: Vec<Column> = Vec::new();
 		for compiled_expr in &self.compiled_group_by {
@@ -413,19 +410,16 @@ impl WindowOperator {
 
 		let columns = self.events_to_columns(events)?;
 
-		let exec_ctx = EvalContext {
-			target: None,
-			columns,
-			row_count: events.len(),
-			take: None,
+		let agg_session = EvalSession {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: true, // Use aggregate functions for window aggregations
 			functions: &self.functions,
 			clock: &self.clock,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: true, // Use aggregate functions for window aggregations
 		};
+		let exec_ctx = agg_session.eval(columns, events.len());
 
 		let (group_values, group_names) = self.extract_group_values(events)?;
 

@@ -41,7 +41,7 @@ use crate::{
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	policy::PolicyEvaluator,
 	vm::{services::Services, stack::SymbolTable, volcano::scan::series::build_data_column},
@@ -177,6 +177,16 @@ pub(crate) fn update_series<'a>(
 		};
 
 		// Evaluate filter to get mask of matching rows
+		let session = EvalSession {
+			params: &params,
+			symbol_table: &stack,
+			functions: &services.functions,
+			clock: &services.clock,
+			arena: None,
+			identity: IdentityId::root(),
+			is_aggregate_context: false,
+		};
+
 		let mut filter_mask = BitVec::repeat(row_count, true);
 		if !conditions.is_empty() {
 			let compiled_filters: Vec<CompiledExpr> = conditions
@@ -185,19 +195,7 @@ pub(crate) fn update_series<'a>(
 				.collect();
 
 			for compiled_expr in &compiled_filters {
-				let exec_ctx = EvalContext {
-					target: None,
-					columns: columns.clone(),
-					row_count,
-					take: None,
-					params: &params,
-					symbol_table: &stack,
-					is_aggregate_context: false,
-					functions: &services.functions,
-					clock: &services.clock,
-					arena: None,
-					identity: IdentityId::root(),
-				};
+				let exec_ctx = session.eval(columns.clone(), row_count);
 
 				let result = compiled_expr.execute(&exec_ctx)?;
 				match result.data() {
@@ -243,19 +241,7 @@ pub(crate) fn update_series<'a>(
 		// Evaluate patch expressions on ALL rows (we'll only use results for matching ones)
 		let mut patch_columns = Vec::with_capacity(assignments.len());
 		for (expr, compiled_expr) in assignments.iter().zip(compiled_patches.iter()) {
-			let mut exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
-				params: &params,
-				symbol_table: &stack,
-				is_aggregate_context: false,
-				functions: &services.functions,
-				clock: &services.clock,
-				arena: None,
-				identity: IdentityId::root(),
-			};
+			let mut exec_ctx = session.eval(columns.clone(), row_count);
 
 			// Set target column for type coercion
 			if let Expression::Alias(alias_expr) = expr {

@@ -7,7 +7,7 @@ use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::{
 	expression::{
 		compile::compile_expression,
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::stack::SymbolTable,
 };
@@ -54,19 +54,16 @@ pub fn evaluate_operator_config(
 
 	let empty_columns = Columns::empty();
 
-	let exec_ctx = EvalContext {
-		target: None,
-		columns: empty_columns,
-		row_count: 1, // Need at least 1 row to evaluate constants
-		take: None,
+	let session = EvalSession {
 		params: &EMPTY_PARAMS,
 		symbol_table: &EMPTY_SYMBOL_TABLE,
-		is_aggregate_context: false,
 		functions,
 		clock,
 		arena: None,
 		identity: IdentityId::root(),
+		is_aggregate_context: false,
 	};
+	let exec_ctx = session.eval(empty_columns, 1);
 
 	for expr in expressions {
 		match expr {

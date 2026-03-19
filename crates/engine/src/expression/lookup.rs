@@ -157,7 +157,7 @@ pub mod tests {
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 	use super::column_lookup;
-	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};
+	use crate::{expression::context::EvalSession, vm::stack::SymbolTable};
 
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
@@ -165,19 +165,16 @@ pub mod tests {
 		let columns =
 			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
 
-		let ctx = EvalContext {
-			target: None,
-			columns,
-			row_count: 5,
-			take: None,
+		let session = EvalSession {
 			params: &Params::None,
 			symbol_table: &SymbolTable::new(),
-			is_aggregate_context: false,
 			functions: &Functions::empty(),
 			clock: &Clock::default(),
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let ctx = session.eval(columns, 5);
 
 		// Try to access a column that doesn't exist
 		let result = column_lookup(
