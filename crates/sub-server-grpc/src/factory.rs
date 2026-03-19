@@ -14,7 +14,11 @@ use crate::subsystem::GrpcSubsystem;
 
 #[derive(Clone, Debug)]
 pub struct GrpcConfig {
-	pub bind_addr: String,
+	pub bind_addr: Option<String>,
+	/// Address to bind the admin gRPC server to.
+	/// When set, admin operations are only available on this port.
+	/// When not set, admin operations are not available.
+	pub admin_bind_addr: Option<String>,
 	pub max_connections: usize,
 	pub query_timeout: Duration,
 	pub request_timeout: Duration,
@@ -26,7 +30,8 @@ pub struct GrpcConfig {
 impl Default for GrpcConfig {
 	fn default() -> Self {
 		Self {
-			bind_addr: "0.0.0.0:50051".to_string(),
+			bind_addr: None,
+			admin_bind_addr: None,
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
@@ -43,7 +48,14 @@ impl GrpcConfig {
 	}
 
 	pub fn bind_addr(mut self, addr: impl Into<String>) -> Self {
-		self.bind_addr = addr.into();
+		self.bind_addr = Some(addr.into());
+		self
+	}
+
+	/// Set the admin bind address.
+	/// When set, admin operations are served on this separate port.
+	pub fn admin_bind_addr(mut self, addr: impl Into<String>) -> Self {
+		self.admin_bind_addr = Some(addr.into());
 		self
 	}
 
@@ -105,6 +117,7 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 		let state = AppState::new(runtime.actor_system(), engine, query_config);
 		let subsystem = GrpcSubsystem::new(
 			self.config.bind_addr.clone(),
+			self.config.admin_bind_addr.clone(),
 			state,
 			runtime,
 			self.config.poll_interval,

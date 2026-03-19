@@ -33,22 +33,28 @@ use crate::{
 };
 
 pub struct GrpcSubsystem {
-	bind_addr: String,
+	bind_addr: Option<String>,
+	admin_bind_addr: Option<String>,
 	actual_addr: RwLock<Option<SocketAddr>>,
+	admin_actual_addr: RwLock<Option<SocketAddr>>,
 	state: AppState,
 	running: Arc<AtomicBool>,
 	shutdown_tx: Option<oneshot::Sender<()>>,
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	admin_shutdown_tx: Option<oneshot::Sender<()>>,
+	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	runtime: SharedRuntime,
 	poll_interval: Duration,
 	poll_batch_size: usize,
 	registry: Option<Arc<GrpcSubscriptionRegistry>>,
 	subscription_shutdown_tx: Option<watch::Sender<bool>>,
+	poller_stop_tx: Option<watch::Sender<bool>>,
 }
 
 impl GrpcSubsystem {
 	pub fn new(
-		bind_addr: String,
+		bind_addr: Option<String>,
+		admin_bind_addr: Option<String>,
 		state: AppState,
 		runtime: SharedRuntime,
 		poll_interval: Duration,
@@ -56,21 +62,26 @@ impl GrpcSubsystem {
 	) -> Self {
 		Self {
 			bind_addr,
+			admin_bind_addr,
 			actual_addr: RwLock::new(None),
+			admin_actual_addr: RwLock::new(None),
 			state,
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
+			admin_shutdown_tx: None,
+			admin_shutdown_complete_rx: None,
 			runtime,
 			poll_interval,
 			poll_batch_size,
 			registry: None,
 			subscription_shutdown_tx: None,
+			poller_stop_tx: None,
 		}
 	}
 
-	pub fn bind_addr(&self) -> &str {
-		&self.bind_addr
+	pub fn bind_addr(&self) -> Option<&str> {
+		self.bind_addr.as_deref()
 	}
 
 	pub fn local_addr(&self) -> Option<SocketAddr> {
@@ -79,6 +90,16 @@ impl GrpcSubsystem {
 
 	pub fn port(&self) -> Option<u16> {
 		self.local_addr().map(|a| a.port())
+	}
+
+	/// Get the actual bound address for the admin server (available after start).
+	pub fn admin_local_addr(&self) -> Option<SocketAddr> {
+		*self.admin_actual_addr.read().unwrap()
+	}
+
+	/// Get the actual bound port for the admin server (available after start).
+	pub fn admin_port(&self) -> Option<u16> {
+		self.admin_local_addr().map(|a| a.port())
 	}
 }
 
@@ -106,32 +127,7 @@ impl Subsystem for GrpcSubsystem {
 			return Ok(());
 		}
 
-		let addr = self.bind_addr.clone();
-		let runtime = self.runtime.clone();
-		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
-			let err: Error = CoreError::SubsystemBindFailed {
-				addr: addr.clone(),
-				reason: e.to_string(),
-			}
-			.into();
-			err
-		})?;
-
-		let actual_addr = listener.local_addr().map_err(|e| {
-			let err: Error = CoreError::SubsystemAddressUnavailable {
-				reason: e.to_string(),
-			}
-			.into();
-			err
-		})?;
-		*self.actual_addr.write().unwrap() = Some(actual_addr);
-		info!("gRPC server bound to {}", actual_addr);
-
-		let (shutdown_tx, shutdown_rx) = oneshot::channel();
-		let (complete_tx, complete_rx) = oneshot::channel();
-
 		let state = self.state.clone();
-		let running = self.running.clone();
 		let runtime = self.runtime.clone();
 
 		// Create subscription infrastructure
@@ -161,34 +157,130 @@ impl Subsystem for GrpcSubsystem {
 				.await;
 		});
 
-		runtime.spawn(async move {
-			running.store(true, Ordering::SeqCst);
+		// Clone poller for admin service (shares the same instance)
+		let admin_poller = poller.clone();
 
-			let service = ReifyDbService::new(state, registry, poller, sub_shutdown_rx);
-			let incoming = TcpListenerStream::new(listener);
+		// Bind main listener if configured
+		if let Some(addr) = &self.bind_addr {
+			let addr = addr.clone();
+			let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
+				let err: Error = CoreError::SubsystemBindFailed {
+					addr: addr.clone(),
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
 
-			let result = Server::builder()
-				.add_service(ReifyDbServer::new(service))
-				.serve_with_incoming_shutdown(incoming, async {
-					shutdown_rx.await.ok();
-					info!("gRPC server received shutdown signal");
-				})
-				.await;
+			let actual_addr = listener.local_addr().map_err(|e| {
+				let err: Error = CoreError::SubsystemAddressUnavailable {
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
+			*self.actual_addr.write().unwrap() = Some(actual_addr);
+			info!("gRPC server bound to {}", actual_addr);
 
-			// Stop the poller
-			let _ = poller_stop_tx.send(true);
+			let (shutdown_tx, shutdown_rx) = oneshot::channel();
+			let (complete_tx, complete_rx) = oneshot::channel();
 
-			if let Err(e) = result {
-				error!("gRPC server error: {}", e);
-			}
+			let running = self.running.clone();
 
-			running.store(false, Ordering::SeqCst);
-			let _ = complete_tx.send(());
-			info!("gRPC server stopped");
-		});
+			runtime.spawn(async move {
+				running.store(true, Ordering::SeqCst);
 
-		self.shutdown_tx = Some(shutdown_tx);
-		self.shutdown_complete_rx = Some(complete_rx);
+				let service = ReifyDbService::new(state, false, registry, poller, sub_shutdown_rx);
+				let incoming = TcpListenerStream::new(listener);
+
+				let result = Server::builder()
+					.add_service(ReifyDbServer::new(service))
+					.serve_with_incoming_shutdown(incoming, async {
+						shutdown_rx.await.ok();
+						info!("gRPC server received shutdown signal");
+					})
+					.await;
+
+				// Stop the poller
+				let _ = poller_stop_tx.send(true);
+
+				if let Err(e) = result {
+					error!("gRPC server error: {}", e);
+				}
+
+				running.store(false, Ordering::SeqCst);
+				let _ = complete_tx.send(());
+				info!("gRPC server stopped");
+			});
+
+			self.shutdown_tx = Some(shutdown_tx);
+			self.shutdown_complete_rx = Some(complete_rx);
+		} else {
+			// No main listener — mark running synchronously
+			self.running.store(true, Ordering::SeqCst);
+			self.poller_stop_tx = Some(poller_stop_tx);
+		}
+
+		// Start admin listener if configured
+		if let Some(admin_addr) = &self.admin_bind_addr {
+			let admin_addr = admin_addr.clone();
+			let runtime = self.runtime.clone();
+			let admin_listener = runtime.block_on(TcpListener::bind(&admin_addr)).map_err(|e| {
+				let err: Error = CoreError::SubsystemBindFailed {
+					addr: admin_addr.clone(),
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
+
+			let admin_actual_addr = admin_listener.local_addr().map_err(|e| {
+				let err: Error = CoreError::SubsystemAddressUnavailable {
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
+			*self.admin_actual_addr.write().unwrap() = Some(admin_actual_addr);
+			info!("gRPC admin server bound to {}", admin_actual_addr);
+
+			let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();
+			let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
+
+			let admin_state = self.state.clone();
+			let admin_registry = self.registry.as_ref().unwrap().clone();
+			let admin_sub_shutdown_rx = self.subscription_shutdown_tx.as_ref().unwrap().subscribe();
+
+			runtime.spawn(async move {
+				let admin_service = ReifyDbService::new(
+					admin_state,
+					true,
+					admin_registry,
+					admin_poller,
+					admin_sub_shutdown_rx,
+				);
+				let incoming = TcpListenerStream::new(admin_listener);
+
+				let result = Server::builder()
+					.add_service(ReifyDbServer::new(admin_service))
+					.serve_with_incoming_shutdown(incoming, async {
+						admin_shutdown_rx.await.ok();
+						info!("gRPC admin server received shutdown signal");
+					})
+					.await;
+
+				if let Err(e) = result {
+					error!("gRPC admin server error: {}", e);
+				}
+
+				let _ = admin_complete_tx.send(());
+				info!("gRPC admin server stopped");
+			});
+
+			self.admin_shutdown_tx = Some(admin_shutdown_tx);
+			self.admin_shutdown_complete_rx = Some(admin_complete_rx);
+		}
+
 		Ok(())
 	}
 
@@ -201,13 +293,25 @@ impl Subsystem for GrpcSubsystem {
 		if let Some(tx) = self.subscription_shutdown_tx.take() {
 			let _ = tx.send(true);
 		}
-		// Then signal tonic
+		// Stop the poller if managed directly (no main listener)
+		if let Some(tx) = self.poller_stop_tx.take() {
+			let _ = tx.send(true);
+		}
+		// Shutdown admin server first
+		if let Some(tx) = self.admin_shutdown_tx.take() {
+			let _ = tx.send(());
+		}
+		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
+			let _ = self.runtime.block_on(rx);
+		}
+		// Then signal main tonic server
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(());
 		}
 		if let Some(rx) = self.shutdown_complete_rx.take() {
 			let _ = self.runtime.block_on(rx);
 		}
+		self.running.store(false, Ordering::SeqCst);
 		Ok(())
 	}
 

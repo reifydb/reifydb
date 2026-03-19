@@ -61,9 +61,13 @@ use crate::{handler::handle_connection, subscription::registry::SubscriptionRegi
 /// ```
 pub struct WsSubsystem {
 	/// Address to bind the server to.
-	bind_addr: String,
+	bind_addr: Option<String>,
+	/// Address to bind the admin server to.
+	admin_bind_addr: Option<String>,
 	/// Actual bound address (available after start).
 	actual_addr: RwLock<Option<SocketAddr>>,
+	/// Actual bound address for admin server (available after start).
+	admin_actual_addr: RwLock<Option<SocketAddr>>,
 	/// Shared application state.
 	state: AppState,
 	/// Flag indicating if the server is running.
@@ -74,6 +78,8 @@ pub struct WsSubsystem {
 	shutdown_tx: Option<watch::Sender<bool>>,
 	/// Channel to receive shutdown completion.
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	/// Channel to receive admin shutdown completion.
+	admin_shutdown_complete_rx: Option<oneshot::Receiver<()>>,
 	/// Semaphore for connection limiting.
 	connection_semaphore: Arc<Semaphore>,
 	/// Shared tokio runtime.
@@ -97,7 +103,8 @@ impl WsSubsystem {
 	/// * `poll_interval` - Subscription polling interval
 	/// * `poll_batch_size` - Maximum rows to read per subscription per poll
 	pub fn new(
-		bind_addr: String,
+		bind_addr: Option<String>,
+		admin_bind_addr: Option<String>,
 		state: AppState,
 		runtime: SharedRuntime,
 		poll_interval: Duration,
@@ -106,12 +113,15 @@ impl WsSubsystem {
 		let max_connections = state.max_connections();
 		Self {
 			bind_addr,
+			admin_bind_addr,
 			actual_addr: RwLock::new(None),
+			admin_actual_addr: RwLock::new(None),
 			state,
 			running: Arc::new(AtomicBool::new(false)),
 			active_connections: Arc::new(AtomicUsize::new(0)),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
+			admin_shutdown_complete_rx: None,
 			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
 			runtime,
 			registry: Arc::new(SubscriptionRegistry::new()),
@@ -121,8 +131,8 @@ impl WsSubsystem {
 	}
 
 	/// Get the bind address.
-	pub fn bind_addr(&self) -> &str {
-		&self.bind_addr
+	pub fn bind_addr(&self) -> Option<&str> {
+		self.bind_addr.as_deref()
 	}
 
 	/// Get the actual bound address (available after start).
@@ -138,6 +148,16 @@ impl WsSubsystem {
 	/// Get the current number of active connections.
 	pub fn active_connections(&self) -> usize {
 		self.active_connections.load(Ordering::SeqCst)
+	}
+
+	/// Get the actual bound address for the admin server (available after start).
+	pub fn admin_local_addr(&self) -> Option<SocketAddr> {
+		*self.admin_actual_addr.read().unwrap()
+	}
+
+	/// Get the actual bound port for the admin server (available after start).
+	pub fn admin_port(&self) -> Option<u16> {
+		self.admin_local_addr().map(|a| a.port())
 	}
 }
 
@@ -166,41 +186,18 @@ impl Subsystem for WsSubsystem {
 			return Ok(());
 		}
 
-		let addr = self.bind_addr.clone();
 		let runtime = self.runtime.clone();
-		let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
-			let err: Error = CoreError::SubsystemBindFailed {
-				addr: addr.clone(),
-				reason: e.to_string(),
-			}
-			.into();
-			err
-		})?;
-
-		let actual_addr = listener.local_addr().map_err(|e| {
-			let err: Error = CoreError::SubsystemAddressUnavailable {
-				reason: e.to_string(),
-			}
-			.into();
-			err
-		})?;
-		*self.actual_addr.write().unwrap() = Some(actual_addr);
-		info!("WebSocket server bound to {}", actual_addr);
-
-		let (tx, mut rx) = watch::channel(false);
-		let (complete_tx, complete_rx) = oneshot::channel();
 		let state = self.state.clone();
-		let running = self.running.clone();
-		let active_connections = self.active_connections.clone();
-		let semaphore = self.connection_semaphore.clone();
-		let runtime = self.runtime.clone();
-		let runtime_inner = runtime.clone();
 		let registry = self.registry.clone();
+
+		// Create shutdown watch channel (shared by main, admin, and poller)
+		let (tx, rx) = watch::channel(false);
 
 		// Create subscription poller with configured values
 		let poll_interval = self.poll_interval;
 		let batch_size = self.poll_batch_size;
 		let poller = Arc::new(SubscriptionPoller::new(batch_size));
+		let admin_poller = poller.clone();
 
 		// Spawn the subscription poller thread
 		let poller_clone = poller.clone();
@@ -219,76 +216,209 @@ impl Subsystem for WsSubsystem {
 				.await;
 		});
 
-		runtime.spawn(async move {
-			running.store(true, Ordering::SeqCst);
+		// Bind main listener if configured
+		if let Some(addr) = &self.bind_addr {
+			let addr = addr.clone();
+			let listener = runtime.block_on(TcpListener::bind(&addr)).map_err(|e| {
+				let err: Error = CoreError::SubsystemBindFailed {
+					addr: addr.clone(),
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
 
-			loop {
-				select! {
-					biased;
+			let actual_addr = listener.local_addr().map_err(|e| {
+				let err: Error = CoreError::SubsystemAddressUnavailable {
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
+			*self.actual_addr.write().unwrap() = Some(actual_addr);
+			info!("WebSocket server bound to {}", actual_addr);
 
-					// Check shutdown first
-					result = rx.changed() => {
-						if result.is_err() || *rx.borrow() {
-							info!("WebSocket server shutting down");
-							break;
-						}
-					}
+			let (complete_tx, complete_rx) = oneshot::channel();
+			let running = self.running.clone();
+			let active_connections = self.active_connections.clone();
+			let semaphore = self.connection_semaphore.clone();
+			let runtime_inner = runtime.clone();
+			let mut shutdown_rx = rx;
 
-					// Accept new connections
-					accept = listener.accept() => {
-						match accept {
-							Ok((stream, peer)) => {
-								// Try to acquire a permit (non-blocking)
-								let permit = match semaphore.clone().try_acquire_owned() {
-									Ok(p) => p,
-									Err(_) => {
-										warn!("Connection limit reached, rejecting {}", peer);
-										// Connection will be dropped, closing it
-										continue;
-									}
-								};
+			runtime.spawn(async move {
+				running.store(true, Ordering::SeqCst);
 
-								let conn_state = state.clone();
-								let conn_registry = registry.clone();
-								let conn_poller = poller.clone();
-								let shutdown_rx = rx.clone();
-								let active = active_connections.clone();
-								let runtime_handle = runtime_inner.clone();
+				loop {
+					select! {
+						biased;
 
-								active.fetch_add(1, Ordering::SeqCst);
-								debug!("Accepted connection from {}", peer);
-
-								runtime_handle.spawn(async move {
-									handle_connection(stream, conn_state, conn_registry, conn_poller, shutdown_rx).await;
-									active.fetch_sub(1, Ordering::SeqCst);
-									drop(permit); // Release connection slot
-								});
+						// Check shutdown first
+						result = shutdown_rx.changed() => {
+							if result.is_err() || *shutdown_rx.borrow() {
+								info!("WebSocket server shutting down");
+								break;
 							}
-							Err(e) => {
-								warn!("Accept error: {}", e);
+						}
+
+						// Accept new connections
+						accept = listener.accept() => {
+							match accept {
+								Ok((stream, peer)) => {
+									// Try to acquire a permit (non-blocking)
+									let permit = match semaphore.clone().try_acquire_owned() {
+										Ok(p) => p,
+										Err(_) => {
+											warn!("Connection limit reached, rejecting {}", peer);
+											// Connection will be dropped, closing it
+											continue;
+										}
+									};
+
+									let conn_state = state.clone();
+									let conn_registry = registry.clone();
+									let conn_poller = poller.clone();
+									let shutdown_rx = shutdown_rx.clone();
+									let active = active_connections.clone();
+									let runtime_handle = runtime_inner.clone();
+
+									active.fetch_add(1, Ordering::SeqCst);
+									debug!("Accepted connection from {}", peer);
+
+									runtime_handle.spawn(async move {
+										handle_connection(stream, conn_state, conn_registry, conn_poller, shutdown_rx).await;
+										active.fetch_sub(1, Ordering::SeqCst);
+										drop(permit); // Release connection slot
+									});
+								}
+								Err(e) => {
+									warn!("Accept error: {}", e);
+								}
 							}
 						}
 					}
 				}
-			}
 
-			running.store(false, Ordering::SeqCst);
-			let _ = complete_tx.send(());
-			info!("WebSocket server stopped");
-		});
+				running.store(false, Ordering::SeqCst);
+				let _ = complete_tx.send(());
+				info!("WebSocket server stopped");
+			});
+
+			self.shutdown_complete_rx = Some(complete_rx);
+		} else {
+			// No main listener — mark running synchronously
+			self.running.store(true, Ordering::SeqCst);
+		}
 
 		self.shutdown_tx = Some(tx);
-		self.shutdown_complete_rx = Some(complete_rx);
+
+		// Start admin listener if configured
+		if let Some(admin_addr) = &self.admin_bind_addr {
+			let admin_addr = admin_addr.clone();
+			let runtime = self.runtime.clone();
+			let admin_listener = runtime.block_on(TcpListener::bind(&admin_addr)).map_err(|e| {
+				let err: Error = CoreError::SubsystemBindFailed {
+					addr: admin_addr.clone(),
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
+
+			let admin_actual_addr = admin_listener.local_addr().map_err(|e| {
+				let err: Error = CoreError::SubsystemAddressUnavailable {
+					reason: e.to_string(),
+				}
+				.into();
+				err
+			})?;
+			*self.admin_actual_addr.write().unwrap() = Some(admin_actual_addr);
+			info!("WebSocket admin server bound to {}", admin_actual_addr);
+
+			let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
+
+			// Create admin state with admin_enabled = true
+			let admin_config = self.state.config().clone().admin_enabled(true);
+			let admin_state =
+				AppState::new(self.state.actor_system(), self.state.engine_clone(), admin_config);
+
+			// Share the same registry and poller
+			let admin_registry = self.registry.clone();
+			let admin_semaphore = self.connection_semaphore.clone();
+			let admin_active = self.active_connections.clone();
+			let mut admin_shutdown_rx = self.shutdown_tx.as_ref().unwrap().subscribe();
+			let runtime_inner = runtime.clone();
+
+			runtime.spawn(async move {
+				loop {
+					select! {
+						biased;
+
+						result = admin_shutdown_rx.changed() => {
+							if result.is_err() || *admin_shutdown_rx.borrow() {
+								info!("WebSocket admin server shutting down");
+								break;
+							}
+						}
+
+						accept = admin_listener.accept() => {
+							match accept {
+								Ok((stream, peer)) => {
+									let permit = match admin_semaphore.clone().try_acquire_owned() {
+										Ok(p) => p,
+										Err(_) => {
+											warn!("Connection limit reached on admin, rejecting {}", peer);
+											continue;
+										}
+									};
+
+									let conn_state = admin_state.clone();
+									let conn_registry = admin_registry.clone();
+									let conn_poller = admin_poller.clone();
+									let shutdown_rx = admin_shutdown_rx.clone();
+									let active = admin_active.clone();
+									let runtime_handle = runtime_inner.clone();
+
+									active.fetch_add(1, Ordering::SeqCst);
+									debug!("Accepted admin connection from {}", peer);
+
+									runtime_handle.spawn(async move {
+										handle_connection(stream, conn_state, conn_registry, conn_poller, shutdown_rx).await;
+										active.fetch_sub(1, Ordering::SeqCst);
+										drop(permit);
+									});
+								}
+								Err(e) => {
+									warn!("Admin accept error: {}", e);
+								}
+							}
+						}
+					}
+				}
+
+				let _ = admin_complete_tx.send(());
+				info!("WebSocket admin server stopped");
+			});
+
+			self.admin_shutdown_complete_rx = Some(admin_complete_rx);
+		}
+
 		Ok(())
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
+		// Signal shutdown (both main and admin listen on the same watch channel)
 		if let Some(tx) = self.shutdown_tx.take() {
 			let _ = tx.send(true);
 		}
+		// Wait for admin server to stop
+		if let Some(rx) = self.admin_shutdown_complete_rx.take() {
+			let _ = self.runtime.block_on(rx);
+		}
+		// Wait for main server to stop
 		if let Some(rx) = self.shutdown_complete_rx.take() {
 			let _ = self.runtime.block_on(rx);
 		}
+		self.running.store(false, Ordering::SeqCst);
 		Ok(())
 	}
 

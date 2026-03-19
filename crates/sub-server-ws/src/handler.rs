@@ -235,6 +235,10 @@ async fn process_message(
 			Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
 		},
 
+		RequestPayload::Admin(_) if !state.admin_enabled() => {
+			return Some(build_error(&request.id, "NOT_FOUND", "Unknown request type"));
+		}
+
 		RequestPayload::Admin(a) => {
 			let id: IdentityId = match identity.as_ref() {
 				Some(id) => *id,

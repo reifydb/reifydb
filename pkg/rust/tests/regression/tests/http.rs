@@ -12,16 +12,21 @@ use tokio::runtime::Runtime;
 pub struct HttpRunner {
 	instance: Option<Database>,
 	client: Option<HttpClient>,
+	admin_client: Option<HttpClient>,
 	runtime: Arc<Runtime>,
 }
 
 impl HttpRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
-		let instance = server::memory().with_http(HttpConfig::default().bind_addr("::1:0")).build().unwrap();
+		let instance = server::memory()
+			.with_http(HttpConfig::default().bind_addr("::1:0").admin_bind_addr("::1:0"))
+			.build()
+			.unwrap();
 
 		Self {
 			instance: Some(instance),
 			client: None,
+			admin_client: None,
 			runtime,
 		}
 	}
@@ -35,11 +40,12 @@ impl testscript::runner::Runner for HttpRunner {
 
 		match command.name.as_str() {
 			"admin" => {
+				let admin_client = self.admin_client.as_ref().ok_or("No admin client available")?;
 				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
 				println!("admin: {rql}");
 
-				let result = self.runtime.block_on(client.admin(&rql, None))?;
+				let result = self.runtime.block_on(admin_client.admin(&rql, None))?;
 				for frame in result.frames {
 					writeln!(output, "{}", frame).unwrap();
 				}
@@ -78,19 +84,26 @@ impl testscript::runner::Runner for HttpRunner {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
 
-		let port = server.sub_server_http().unwrap().port().unwrap();
+		let http = server.sub_server_http().unwrap();
+		let port = http.port().unwrap();
+		let admin_port = http.admin_port().unwrap();
 
 		let mut client = self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", port)))?;
 		client.authenticate("mysecrettoken");
-
 		self.client = Some(client);
+
+		let mut admin_client =
+			self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port)))?;
+		admin_client.authenticate("mysecrettoken");
+		self.admin_client = Some(admin_client);
 
 		Ok(())
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		// Drop the client
+		// Drop the clients
 		self.client = None;
+		self.admin_client = None;
 
 		// Stop the server
 		if let Some(mut server) = self.instance.take() {

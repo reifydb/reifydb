@@ -12,8 +12,8 @@ fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
 
 fn main() {
 	let mut db = server::memory()
-		.with_http(HttpConfig::default().bind_addr("0.0.0.0:8090"))
-		.with_ws(WsConfig::default().bind_addr("0.0.0.0:8091"))
+		.with_http(HttpConfig::default().bind_addr("0.0.0.0:8090").admin_bind_addr("127.0.0.1:9090"))
+		.with_ws(WsConfig::default().bind_addr("0.0.0.0:8091").admin_bind_addr("127.0.0.1:9091"))
 		.with_admin(AdminConfig::default().bind_addr("127.0.0.1:9092"))
 		.with_tracing(tracing_configuration)
 		.build()

@@ -18,32 +18,32 @@ use tokio::runtime::Runtime;
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
 		.with_flow(|f| f)
-		.with_grpc(GrpcConfig::default().bind_addr("[::1]:0"))
-		.with_http(HttpConfig::default().bind_addr("::1:0"))
-		.with_ws(WsConfig::default().bind_addr("::1:0"))
+		.with_grpc(GrpcConfig::default().admin_bind_addr("[::1]:0"))
+		.with_http(HttpConfig::default().admin_bind_addr("::1:0"))
+		.with_ws(WsConfig::default().admin_bind_addr("::1:0"))
 		.build()
 		.unwrap()
 }
 
-/// Start server and return WebSocket port
+/// Start server and return WebSocket admin port
 #[allow(dead_code)]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server_ws().unwrap().port().unwrap())
+	Ok(server.sub_server_ws().unwrap().admin_port().unwrap())
 }
 
-/// Start server and return gRPC port
+/// Start server and return gRPC admin port
 #[allow(dead_code)]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server_grpc().unwrap().port().unwrap())
+	Ok(server.sub_server_grpc().unwrap().admin_port().unwrap())
 }
 
-/// Start server and return HTTP port
+/// Start server and return HTTP admin port
 #[allow(dead_code)]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server_http().unwrap().port().unwrap())
+	Ok(server.sub_server_http().unwrap().admin_port().unwrap())
 }
 
 /// Parse RQL command from testscript Command

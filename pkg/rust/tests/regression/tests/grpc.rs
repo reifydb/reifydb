@@ -12,16 +12,21 @@ use tokio::runtime::Runtime;
 pub struct GrpcRunner {
 	instance: Option<Database>,
 	client: Option<GrpcClient>,
+	admin_client: Option<GrpcClient>,
 	runtime: Arc<Runtime>,
 }
 
 impl GrpcRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
-		let instance = server::memory().with_grpc(GrpcConfig::default().bind_addr("::1:0")).build().unwrap();
+		let instance = server::memory()
+			.with_grpc(GrpcConfig::default().bind_addr("::1:0").admin_bind_addr("::1:0"))
+			.build()
+			.unwrap();
 
 		Self {
 			instance: Some(instance),
 			client: None,
+			admin_client: None,
 			runtime,
 		}
 	}
@@ -35,11 +40,12 @@ impl testscript::runner::Runner for GrpcRunner {
 
 		match command.name.as_str() {
 			"admin" => {
+				let admin_client = self.admin_client.as_ref().ok_or("No admin client available")?;
 				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
 				println!("admin: {rql}");
 
-				let result = self.runtime.block_on(client.admin(&rql, None))?;
+				let result = self.runtime.block_on(admin_client.admin(&rql, None))?;
 				for frame in result.frames {
 					writeln!(output, "{}", frame).unwrap();
 				}
@@ -78,18 +84,25 @@ impl testscript::runner::Runner for GrpcRunner {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
 
-		let port = server.sub_server_grpc().unwrap().port().unwrap();
+		let grpc = server.sub_server_grpc().unwrap();
+		let port = grpc.port().unwrap();
+		let admin_port = grpc.admin_port().unwrap();
 
 		let mut client = self.runtime.block_on(GrpcClient::connect(&format!("http://[::1]:{}", port)))?;
 		client.authenticate("mysecrettoken");
-
 		self.client = Some(client);
+
+		let mut admin_client =
+			self.runtime.block_on(GrpcClient::connect(&format!("http://[::1]:{}", admin_port)))?;
+		admin_client.authenticate("mysecrettoken");
+		self.admin_client = Some(admin_client);
 
 		Ok(())
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
 		self.client = None;
+		self.admin_client = None;
 
 		if let Some(mut server) = self.instance.take() {
 			let _ = server.stop();

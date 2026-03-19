@@ -34,6 +34,7 @@ use crate::{
 
 pub struct ReifyDbService {
 	state: AppState,
+	admin_enabled: bool,
 	registry: Arc<GrpcSubscriptionRegistry>,
 	poller: Arc<SubscriptionPoller>,
 	shutdown_rx: watch::Receiver<bool>,
@@ -42,12 +43,14 @@ pub struct ReifyDbService {
 impl ReifyDbService {
 	pub fn new(
 		state: AppState,
+		admin_enabled: bool,
 		registry: Arc<GrpcSubscriptionRegistry>,
 		poller: Arc<SubscriptionPoller>,
 		shutdown_rx: watch::Receiver<bool>,
 	) -> Self {
 		Self {
 			state,
+			admin_enabled,
 			registry,
 			poller,
 			shutdown_rx,
@@ -177,6 +180,9 @@ impl ReifyDbService {
 #[tonic::async_trait]
 impl ReifyDb for ReifyDbService {
 	async fn admin(&self, request: Request<AdminRequest>) -> Result<Response<AdminResponse>, Status> {
+		if !self.admin_enabled {
+			return Err(Status::not_found("not found"));
+		}
 		let identity = self.extract_identity(&request)?;
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;

@@ -41,16 +41,22 @@ use crate::handlers::{handle_admin, handle_command, handle_query, health};
 /// Configured Axum Router ready to serve requests.
 pub fn router(state: AppState) -> Router {
 	let max_connections = state.max_connections();
+	let admin_enabled = state.admin_enabled();
 
-	Router::new()
+	let mut app = Router::new()
 		// Health check (no auth required)
 		.route("/health", get(health))
 		// Query endpoint (auth required)
 		.route("/v1/query", post(handle_query))
-		// Admin endpoint (auth required, DDL + DML + Query)
-		.route("/v1/admin", post(handle_admin))
 		// Command endpoint (auth required, DML + Query)
-		.route("/v1/command", post(handle_command))
+		.route("/v1/command", post(handle_command));
+
+	if admin_enabled {
+		// Admin endpoint (auth required, DDL + DML + Query)
+		app = app.route("/v1/admin", post(handle_admin));
+	}
+
+	app
 		// Apply middleware layers - order matters!
 		// TraceLayer must be outermost for proper request/response logging
 		.layer(TraceLayer::new_for_http())

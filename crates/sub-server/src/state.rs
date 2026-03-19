@@ -23,6 +23,8 @@ pub struct StateConfig {
 	/// Maximum concurrent connections allowed.
 	/// New connections beyond this limit will be rejected.
 	pub max_connections: usize,
+	/// Whether admin (DDL) operations are enabled on this listener.
+	pub admin_enabled: bool,
 }
 
 impl Default for StateConfig {
@@ -31,6 +33,7 @@ impl Default for StateConfig {
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
 			max_connections: 10_000,
+			admin_enabled: false,
 		}
 	}
 }
@@ -56,6 +59,12 @@ impl StateConfig {
 	/// Set the maximum connections.
 	pub fn max_connections(mut self, max: usize) -> Self {
 		self.max_connections = max;
+		self
+	}
+
+	/// Set whether admin operations are enabled.
+	pub fn admin_enabled(mut self, enabled: bool) -> Self {
+		self.admin_enabled = enabled;
 		self
 	}
 }
@@ -138,6 +147,12 @@ impl AppState {
 	#[inline]
 	pub fn max_connections(&self) -> usize {
 		self.config.max_connections
+	}
+
+	/// Get whether admin operations are enabled.
+	#[inline]
+	pub fn admin_enabled(&self) -> bool {
+		self.config.admin_enabled
 	}
 }
 
