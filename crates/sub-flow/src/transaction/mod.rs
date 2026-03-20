@@ -10,7 +10,15 @@ use reifydb_transaction::{
 	interceptor::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
-		dictionary::{DictionaryPostInsertInterceptor, DictionaryPreInsertInterceptor},
+		dictionary::{
+			DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor,
+			DictionaryPostUpdateInterceptor, DictionaryPreDeleteInterceptor,
+			DictionaryPreInsertInterceptor, DictionaryPreUpdateInterceptor,
+		},
+		dictionary_def::{
+			DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
+			DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
+		},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -28,6 +36,10 @@ use reifydb_transaction::{
 		series::{
 			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
 			SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
+		},
+		series_def::{
+			SeriesDefPostCreateInterceptor, SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteInterceptor,
+			SeriesDefPreUpdateInterceptor,
 		},
 		table::{
 			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
@@ -444,6 +456,39 @@ impl WithInterceptors for FlowTransaction {
 		dictionary_post_insert,
 		DictionaryPostInsertInterceptor
 	);
+	interceptor_method!(dictionary_pre_update_interceptors, dictionary_pre_update, DictionaryPreUpdateInterceptor);
+	interceptor_method!(
+		dictionary_post_update_interceptors,
+		dictionary_post_update,
+		DictionaryPostUpdateInterceptor
+	);
+	interceptor_method!(dictionary_pre_delete_interceptors, dictionary_pre_delete, DictionaryPreDeleteInterceptor);
+	interceptor_method!(
+		dictionary_post_delete_interceptors,
+		dictionary_post_delete,
+		DictionaryPostDeleteInterceptor
+	);
+
+	interceptor_method!(
+		dictionary_def_post_create_interceptors,
+		dictionary_def_post_create,
+		DictionaryDefPostCreateInterceptor
+	);
+	interceptor_method!(
+		dictionary_def_pre_update_interceptors,
+		dictionary_def_pre_update,
+		DictionaryDefPreUpdateInterceptor
+	);
+	interceptor_method!(
+		dictionary_def_post_update_interceptors,
+		dictionary_def_post_update,
+		DictionaryDefPostUpdateInterceptor
+	);
+	interceptor_method!(
+		dictionary_def_pre_delete_interceptors,
+		dictionary_def_pre_delete,
+		DictionaryDefPreDeleteInterceptor
+	);
 
 	interceptor_method!(series_pre_insert_interceptors, series_pre_insert, SeriesPreInsertInterceptor);
 	interceptor_method!(series_post_insert_interceptors, series_post_insert, SeriesPostInsertInterceptor);
@@ -451,4 +496,17 @@ impl WithInterceptors for FlowTransaction {
 	interceptor_method!(series_post_update_interceptors, series_post_update, SeriesPostUpdateInterceptor);
 	interceptor_method!(series_pre_delete_interceptors, series_pre_delete, SeriesPreDeleteInterceptor);
 	interceptor_method!(series_post_delete_interceptors, series_post_delete, SeriesPostDeleteInterceptor);
+
+	interceptor_method!(
+		series_def_post_create_interceptors,
+		series_def_post_create,
+		SeriesDefPostCreateInterceptor
+	);
+	interceptor_method!(series_def_pre_update_interceptors, series_def_pre_update, SeriesDefPreUpdateInterceptor);
+	interceptor_method!(
+		series_def_post_update_interceptors,
+		series_def_post_update,
+		SeriesDefPostUpdateInterceptor
+	);
+	interceptor_method!(series_def_pre_delete_interceptors, series_def_pre_delete, SeriesDefPreDeleteInterceptor);
 }

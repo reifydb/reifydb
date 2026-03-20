@@ -14,3 +14,9 @@ pub struct DictionaryDef {
 	pub value_type: Type,
 	pub id_type: Type,
 }
+
+impl DictionaryDef {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+}

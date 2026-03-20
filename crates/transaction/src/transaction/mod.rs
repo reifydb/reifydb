@@ -27,7 +27,15 @@ use crate::{
 	interceptor::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
-		dictionary::{DictionaryPostInsertInterceptor, DictionaryPreInsertInterceptor},
+		dictionary::{
+			DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor,
+			DictionaryPostUpdateInterceptor, DictionaryPreDeleteInterceptor,
+			DictionaryPreInsertInterceptor, DictionaryPreUpdateInterceptor,
+		},
+		dictionary_def::{
+			DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
+			DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
+		},
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 			NamespacePreUpdateInterceptor,
@@ -44,6 +52,10 @@ use crate::{
 		series::{
 			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
 			SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
+		},
+		series_def::{
+			SeriesDefPostCreateInterceptor, SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteInterceptor,
+			SeriesDefPreUpdateInterceptor,
 		},
 		table::{
 			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
@@ -558,6 +570,38 @@ impl WithInterceptors for Transaction<'_> {
 		dictionary_post_insert_interceptors,
 		&mut Chain<dyn DictionaryPostInsertInterceptor + Send + Sync>
 	);
+	delegate_interceptor!(
+		dictionary_pre_update_interceptors,
+		&mut Chain<dyn DictionaryPreUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_post_update_interceptors,
+		&mut Chain<dyn DictionaryPostUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_pre_delete_interceptors,
+		&mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_post_delete_interceptors,
+		&mut Chain<dyn DictionaryPostDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_def_post_create_interceptors,
+		&mut Chain<dyn DictionaryDefPostCreateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_def_pre_update_interceptors,
+		&mut Chain<dyn DictionaryDefPreUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_def_post_update_interceptors,
+		&mut Chain<dyn DictionaryDefPostUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_def_pre_delete_interceptors,
+		&mut Chain<dyn DictionaryDefPreDeleteInterceptor + Send + Sync>
+	);
 	delegate_interceptor!(series_pre_insert_interceptors, &mut Chain<dyn SeriesPreInsertInterceptor + Send + Sync>);
 	delegate_interceptor!(
 		series_post_insert_interceptors,
@@ -572,5 +616,21 @@ impl WithInterceptors for Transaction<'_> {
 	delegate_interceptor!(
 		series_post_delete_interceptors,
 		&mut Chain<dyn SeriesPostDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		series_def_post_create_interceptors,
+		&mut Chain<dyn SeriesDefPostCreateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		series_def_pre_update_interceptors,
+		&mut Chain<dyn SeriesDefPreUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		series_def_post_update_interceptors,
+		&mut Chain<dyn SeriesDefPostUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		series_def_pre_delete_interceptors,
+		&mut Chain<dyn SeriesDefPreDeleteInterceptor + Send + Sync>
 	);
 }

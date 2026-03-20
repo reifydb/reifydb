@@ -35,6 +35,12 @@ pub struct SeriesDef {
 	pub primary_key: Option<PrimaryKeyDef>,
 }
 
+impl SeriesDef {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeriesMetadata {
 	pub id: SeriesId,

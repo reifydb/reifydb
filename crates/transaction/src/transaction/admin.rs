@@ -33,7 +33,15 @@ use crate::{
 	interceptor::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
-		dictionary::{DictionaryPostInsertInterceptor, DictionaryPreInsertInterceptor},
+		dictionary::{
+			DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor,
+			DictionaryPostUpdateInterceptor, DictionaryPreDeleteInterceptor,
+			DictionaryPreInsertInterceptor, DictionaryPreUpdateInterceptor,
+		},
+		dictionary_def::{
+			DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
+			DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
+		},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -51,6 +59,10 @@ use crate::{
 		series::{
 			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
 			SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
+		},
+		series_def::{
+			SeriesDefPostCreateInterceptor, SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteInterceptor,
+			SeriesDefPreUpdateInterceptor,
 		},
 		table::{
 			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
@@ -738,6 +750,54 @@ impl WithInterceptors for AdminTransaction {
 		&mut self.interceptors.dictionary_post_insert
 	}
 
+	fn dictionary_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_pre_update
+	}
+
+	fn dictionary_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_post_update
+	}
+
+	fn dictionary_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_pre_delete
+	}
+
+	fn dictionary_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_post_delete
+	}
+
+	fn dictionary_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_def_post_create
+	}
+
+	fn dictionary_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_def_pre_update
+	}
+
+	fn dictionary_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_def_post_update
+	}
+
+	fn dictionary_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_def_pre_delete
+	}
+
 	fn series_pre_insert_interceptors(&mut self) -> &mut Chain<dyn SeriesPreInsertInterceptor + Send + Sync> {
 		&mut self.interceptors.series_pre_insert
 	}
@@ -760,6 +820,30 @@ impl WithInterceptors for AdminTransaction {
 
 	fn series_post_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPostDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.series_post_delete
+	}
+
+	fn series_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesDefPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_def_post_create
+	}
+
+	fn series_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesDefPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_def_pre_update
+	}
+
+	fn series_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesDefPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_def_post_update
+	}
+
+	fn series_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesDefPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.series_def_pre_delete
 	}
 }
 

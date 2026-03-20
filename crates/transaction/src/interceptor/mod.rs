@@ -5,6 +5,7 @@
 pub mod builder;
 pub mod chain;
 pub mod dictionary;
+pub mod dictionary_def;
 pub mod factory;
 pub mod filter;
 pub mod filtered;
@@ -13,6 +14,7 @@ pub mod namespace;
 pub mod ringbuffer;
 pub mod ringbuffer_def;
 pub mod series;
+pub mod series_def;
 pub mod table;
 pub mod table_def;
 pub mod transaction;
@@ -21,7 +23,14 @@ pub mod view_def;
 
 // Re-import types for use in WithInterceptors trait
 use chain::InterceptorChain;
-use dictionary::{DictionaryPostInsertInterceptor, DictionaryPreInsertInterceptor};
+use dictionary::{
+	DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor, DictionaryPostUpdateInterceptor,
+	DictionaryPreDeleteInterceptor, DictionaryPreInsertInterceptor, DictionaryPreUpdateInterceptor,
+};
+use dictionary_def::{
+	DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor, DictionaryDefPreDeleteInterceptor,
+	DictionaryDefPreUpdateInterceptor,
+};
 use namespace::{
 	NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 	NamespacePreUpdateInterceptor,
@@ -37,6 +46,10 @@ use ringbuffer_def::{
 use series::{
 	SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
 	SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
+};
+use series_def::{
+	SeriesDefPostCreateInterceptor, SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteInterceptor,
+	SeriesDefPreUpdateInterceptor,
 };
 use table::{
 	TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
@@ -204,6 +217,46 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn DictionaryPostInsertInterceptor + Send + Sync>;
 
+	/// Access dictionary pre-update interceptor chain
+	fn dictionary_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPreUpdateInterceptor + Send + Sync>;
+
+	/// Access dictionary post-update interceptor chain
+	fn dictionary_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPostUpdateInterceptor + Send + Sync>;
+
+	/// Access dictionary pre-delete interceptor chain
+	fn dictionary_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync>;
+
+	/// Access dictionary post-delete interceptor chain
+	fn dictionary_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPostDeleteInterceptor + Send + Sync>;
+
+	/// Access dictionary definition post-create interceptor chain
+	fn dictionary_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPostCreateInterceptor + Send + Sync>;
+
+	/// Access dictionary definition pre-update interceptor chain
+	fn dictionary_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPreUpdateInterceptor + Send + Sync>;
+
+	/// Access dictionary definition post-update interceptor chain
+	fn dictionary_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPostUpdateInterceptor + Send + Sync>;
+
+	/// Access dictionary definition pre-delete interceptor chain
+	fn dictionary_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryDefPreDeleteInterceptor + Send + Sync>;
+
 	/// Access series pre-insert interceptor chain
 	fn series_pre_insert_interceptors(&mut self) -> &mut Chain<dyn SeriesPreInsertInterceptor + Send + Sync>;
 
@@ -221,4 +274,22 @@ pub trait WithInterceptors {
 
 	/// Access series post-delete interceptor chain
 	fn series_post_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPostDeleteInterceptor + Send + Sync>;
+
+	/// Access series definition post-create interceptor chain
+	fn series_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesDefPostCreateInterceptor + Send + Sync>;
+
+	/// Access series definition pre-update interceptor chain
+	fn series_def_pre_update_interceptors(&mut self)
+	-> &mut Chain<dyn SeriesDefPreUpdateInterceptor + Send + Sync>;
+
+	/// Access series definition post-update interceptor chain
+	fn series_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesDefPostUpdateInterceptor + Send + Sync>;
+
+	/// Access series definition pre-delete interceptor chain
+	fn series_def_pre_delete_interceptors(&mut self)
+	-> &mut Chain<dyn SeriesDefPreDeleteInterceptor + Send + Sync>;
 }
