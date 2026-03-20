@@ -189,6 +189,7 @@ Authentication => "AUTHENTICATION",
 Contains => "CONTAINS",
 Remote => "REMOTE",
 Error => "ERROR",
+Returning => "RETURNING",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -317,6 +318,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("CONTAINS", Keyword::Contains);
 	map.insert("REMOTE", Keyword::Remote);
 	map.insert("ERROR", Keyword::Error);
+	map.insert("RETURNING", Keyword::Returning);
 	map
 });
 

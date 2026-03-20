@@ -5,7 +5,7 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
-	encoded::key::EncodedKeyRange,
+	encoded::{encoded::EncodedValues, key::EncodedKeyRange},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -24,10 +24,14 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
-use super::{primary_key, schema::get_or_create_table_schema};
+use super::{
+	primary_key,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_table_schema,
+};
 use crate::{
 	Result,
 	error::EngineError,
@@ -89,6 +93,11 @@ pub(crate) fn delete<'a>(
 	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
 
 	let mut deleted_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	if let Some(input_plan) = plan.input {
 		// Delete specific rows based on input plan
@@ -186,7 +195,10 @@ pub(crate) fn delete<'a>(
 				log.record_delete(key, old);
 			}
 
-			txn.remove_from_table(table.clone(), row_number)?;
+			let deleted_values = txn.remove_from_table(table.clone(), row_number)?;
+			if plan.returning.is_some() {
+				returned_rows.push((row_number, deleted_values));
+			}
 			deleted_count += 1;
 		}
 	} else {
@@ -232,9 +244,19 @@ pub(crate) fn delete<'a>(
 			}
 
 			let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");
-			txn.remove_from_table(table.clone(), row_key.row)?;
+			let deleted_values = txn.remove_from_table(table.clone(), row_key.row)?;
+			if plan.returning.is_some() {
+				returned_rows.push((row_key.row, deleted_values));
+			}
 			deleted_count += 1;
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against deleted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbol_table_ref, returning_exprs, columns);
 	}
 
 	// Return summary columns

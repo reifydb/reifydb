@@ -5,6 +5,7 @@ pub mod coerce;
 pub mod dictionary_insert;
 pub mod dispatch;
 pub(crate) mod primary_key;
+pub(crate) mod returning;
 pub mod ringbuffer_delete;
 pub mod ringbuffer_insert;
 pub mod ringbuffer_update;

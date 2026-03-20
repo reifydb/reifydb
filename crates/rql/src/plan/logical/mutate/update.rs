@@ -26,6 +26,16 @@ impl<'bump> Compiler<'bump> {
 		ast: AstUpdate<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
+		let returning = if let Some(returning_asts) = ast.returning {
+			let mut exprs = Vec::with_capacity(returning_asts.len());
+			for ast_node in returning_asts {
+				exprs.push(ExpressionCompiler::compile(ast_node)?);
+			}
+			Some(exprs)
+		} else {
+			None
+		};
+
 		// Build internal pipeline: FROM -> FILTER -> MAP
 
 		// 1. Create FROM scan from target
@@ -82,6 +92,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::Update(UpdateTableNode {
 				target: Some(target),
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		};
 
@@ -94,6 +105,7 @@ impl<'bump> Compiler<'bump> {
 			Ok(LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}))
 		} else if self.catalog.find_series_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut target = MaybeQualifiedSeriesIdentifier::new(name);
@@ -103,6 +115,7 @@ impl<'bump> Compiler<'bump> {
 			Ok(LogicalPlan::UpdateSeries(UpdateSeriesNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}))
 		} else {
 			// Assume it's a table (will error during physical plan if not found)
@@ -113,6 +126,7 @@ impl<'bump> Compiler<'bump> {
 			Ok(LogicalPlan::Update(UpdateTableNode {
 				target: Some(target),
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}))
 		}
 	}

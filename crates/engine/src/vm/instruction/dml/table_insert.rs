@@ -24,11 +24,15 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
 
-use super::{primary_key, schema::get_or_create_table_schema};
+use super::{
+	primary_key,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_table_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -205,9 +209,19 @@ pub(crate) fn insert_table<'a>(
 	};
 
 	// PASS 2: Insert all validated rows using the pre-allocated row numbers
+	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+		Vec::with_capacity(total_rows)
+	} else {
+		Vec::new()
+	};
+
 	for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 		// Insert the row directly into storage
-		txn.insert_table(&table, &schema, row.clone(), row_number)?;
+		let stored_row = txn.insert_table(&table, &schema, row.clone(), row_number)?;
+
+		if plan.returning.is_some() {
+			returned_rows.push((row_number, stored_row));
+		}
 
 		if let Some(log) = testing.as_mut() {
 			let new = columns_from_encoded(&table.columns, &schema, row);
@@ -238,6 +252,12 @@ pub(crate) fn insert_table<'a>(
 
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against inserted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, stack, returning_exprs, columns);
 	}
 
 	// Return summary columns

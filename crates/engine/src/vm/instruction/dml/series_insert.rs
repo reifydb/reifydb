@@ -5,6 +5,7 @@ use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::encoded::EncodedValues,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{policy::PolicyTargetType, primitive::PrimitiveId, series::TimestampPrecision},
@@ -26,7 +27,10 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::schema::get_or_create_series_schema;
+use super::{
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_series_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -88,6 +92,11 @@ pub(crate) fn insert_series<'a>(
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 	let mut inserted_count = 0u64;
+	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+		Vec::with_capacity(16)
+	} else {
+		Vec::new()
+	};
 
 	// Initialize the operator before execution
 	input_node.initialize(txn, &execution_context)?;
@@ -186,6 +195,10 @@ pub(crate) fn insert_series<'a>(
 			txn.set(&encoded_key, row.clone())?;
 			SeriesInterceptor::post_insert(txn, &series_def, &row)?;
 
+			if plan.returning.is_some() {
+				returned_rows.push((RowNumber::from(sequence as u64), row.clone()));
+			}
+
 			if let Some(log) = testing.as_mut() {
 				let new = Columns::single_row(
 					iter::once(("timestamp", Value::Int8(timestamp))).chain(series_def
@@ -244,6 +257,12 @@ pub(crate) fn insert_series<'a>(
 
 	// Save updated metadata
 	services.catalog.update_series_metadata_txn(txn, metadata)?;
+
+	// If RETURNING clause is present, evaluate expressions against inserted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbol_table, returning_exprs, columns);
+	}
 
 	// Return summary
 	Ok(Columns::single_row([

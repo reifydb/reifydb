@@ -500,48 +500,56 @@ pub struct GateNode {
 pub struct DeleteTableNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertTableNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedTable,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertRingBufferNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertDictionaryNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedDictionary,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateTableNode {
 	pub input: Box<QueryPlan>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeleteRingBufferNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateRingBufferNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateSeriesNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
@@ -657,12 +665,14 @@ pub struct SeriesScanNode {
 pub struct InsertSeriesNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeleteSeriesNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]

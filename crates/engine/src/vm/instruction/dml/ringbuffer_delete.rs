@@ -26,7 +26,10 @@ use reifydb_type::{
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
-use super::schema::get_or_create_ringbuffer_schema;
+use super::{
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_ringbuffer_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -77,6 +80,11 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
 	let mut deleted_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	if let Some(input_plan) = plan.input {
 		// Filtered delete: collect row numbers to delete from the filter
@@ -168,7 +176,11 @@ pub(crate) fn delete_ringbuffer<'a>(
 							log.record_delete(mutation_key, old);
 						}
 
-						txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
+						let deleted_values =
+							txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
+						if plan.returning.is_some() {
+							returned_rows.push((row_num, deleted_values));
+						}
 						partition_deleted += 1;
 						deleted_count += 1;
 					} else {
@@ -234,7 +246,10 @@ pub(crate) fn delete_ringbuffer<'a>(
 						log.record_delete(mutation_key, old);
 					}
 
-					txn.remove_from_ringbuffer(&ringbuffer, row_number)?;
+					let deleted_values = txn.remove_from_ringbuffer(&ringbuffer, row_number)?;
+					if plan.returning.is_some() {
+						returned_rows.push((row_number, deleted_values));
+					}
 					deleted_count += 1;
 				}
 			}
@@ -244,6 +259,12 @@ pub(crate) fn delete_ringbuffer<'a>(
 			partition.head = partition.tail;
 			services.catalog.save_partition_metadata(txn, &ringbuffer, &partition_key, &partition)?;
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against deleted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbol_table, returning_exprs, columns);
 	}
 
 	// Return summary

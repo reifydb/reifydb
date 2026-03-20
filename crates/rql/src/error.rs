@@ -25,6 +25,7 @@ pub enum OperationKind {
 	Take,
 	Aggregate,
 	AggregateBy,
+	Returning,
 }
 
 impl Display for OperationKind {
@@ -40,6 +41,7 @@ impl Display for OperationKind {
 			OperationKind::Take => f.write_str("TAKE"),
 			OperationKind::Aggregate => f.write_str("AGGREGATE"),
 			OperationKind::AggregateBy => f.write_str("AGGREGATE BY"),
+			OperationKind::Returning => f.write_str("RETURNING"),
 		}
 	}
 }
@@ -419,6 +421,16 @@ impl IntoDiagnostic for RqlError {
 							"AGGREGATE BY always requires curly braces: BY {columns}".to_string(),
 							"Global aggregation (no grouping): BY {}".to_string(),
 							"Multiple columns: BY {col1, col2}".to_string(),
+						],
+					),
+					OperationKind::Returning => (
+						"RETURNING_001",
+						"RETURNING requires curly braces around expressions",
+						"Wrap RETURNING expressions in curly braces, e.g., 'RETURNING {id, name}'",
+						vec![
+							"RETURNING always requires curly braces: RETURNING {expressions}".to_string(),
+							"All columns: RETURNING {*}".to_string(),
+							"Computed: RETURNING {id, total: price * qty}".to_string(),
 						],
 					),
 				};

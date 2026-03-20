@@ -29,6 +29,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
+use super::returning::{decode_rows_to_columns, evaluate_returning};
 use crate::{
 	Result,
 	expression::{
@@ -70,6 +71,7 @@ pub(crate) fn delete_series<'a>(
 
 	let has_tag = series_def.tag.is_some();
 	let mut deleted_count = 0u64;
+	let mut returning_columns: Option<Columns> = None;
 
 	if let Some(input_plan) = plan.input {
 		// Extract filter conditions and scan bounds from the plan.
@@ -301,6 +303,28 @@ pub(crate) fn delete_series<'a>(
 					deleted_count += 1;
 				}
 			}
+
+			// Capture RETURNING data for filtered path
+			if plan.returning.is_some() {
+				let row_count = columns.row_count();
+				let matching = (0..row_count).filter(|&i| filter_mask.get(i)).count();
+				let mut filtered_cols = Vec::new();
+				for col in columns.iter() {
+					let mut data = ColumnData::with_capacity(col.data().get_type(), matching);
+					for i in 0..row_count {
+						if filter_mask.get(i) {
+							data.push_value(col.data().get_value(i));
+						}
+					}
+					filtered_cols.push(Column {
+						name: col.name().clone(),
+						data,
+					});
+				}
+				returning_columns = Some(Columns::new(filtered_cols));
+			}
+		} else if plan.returning.is_some() {
+			returning_columns = Some(Columns::empty());
 		}
 	} else {
 		// Delete all rows - scan the full range and delete
@@ -377,6 +401,18 @@ pub(crate) fn delete_series<'a>(
 			SeriesInterceptor::post_delete(txn, &series_def, encoded_values)?;
 			deleted_count += 1;
 		}
+
+		// Capture RETURNING data for delete-all path
+		if plan.returning.is_some() {
+			let mut returned_rows: Vec<(RowNumber, EncodedValues)> = Vec::new();
+			for (key, encoded) in entries_to_delete.iter() {
+				if let Some(decoded_key) = SeriesRowKey::decode(key) {
+					returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));
+				}
+			}
+			let columns = decode_rows_to_columns(&delete_all_schema, &returned_rows);
+			returning_columns = Some(columns);
+		}
 	}
 
 	// Update metadata
@@ -387,6 +423,12 @@ pub(crate) fn delete_series<'a>(
 	}
 
 	services.catalog.update_series_metadata_txn(txn, metadata)?;
+
+	// If RETURNING clause is present, evaluate expressions against deleted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let cols = returning_columns.unwrap_or_else(Columns::empty);
+		return evaluate_returning(services, symbol_table, returning_exprs, cols);
+	}
 
 	// Return summary
 	Ok(Columns::single_row([

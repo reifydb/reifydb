@@ -234,60 +234,70 @@ pub enum AlterTableAction {
 pub struct DeleteTableNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteRingBufferNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertTableNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedTable,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertRingBufferNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertDictionaryNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedDictionary,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertSeriesNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteSeriesNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateTableNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateRingBufferNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateSeriesNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
@@ -1157,6 +1167,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Delete(DeleteTableNode {
 						input,
 						target,
+						returning: delete.returning,
 					}))
 				}
 
@@ -1213,6 +1224,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
 						input,
 						target,
+						returning: delete.returning,
 					}))
 				}
 
@@ -1263,6 +1275,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert.returning,
 					}))
 				}
 
@@ -1314,6 +1327,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert_rb.returning,
 					}))
 				}
 
@@ -1365,6 +1379,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertDictionary(InsertDictionaryNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert_dict.returning,
 					}))
 				}
 
@@ -1416,6 +1431,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertSeries(InsertSeriesNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert_series.returning,
 					}))
 				}
 
@@ -1472,6 +1488,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::DeleteSeries(DeleteSeriesNode {
 						input,
 						target,
+						returning: delete_series.returning,
 					}))
 				}
 
@@ -1532,6 +1549,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Update(UpdateTableNode {
 						input,
 						target,
+						returning: update.returning,
 					}))
 				}
 
@@ -1588,6 +1606,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
 						input,
 						target,
+						returning: update_rb.returning,
 					}))
 				}
 
@@ -1644,6 +1663,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::UpdateSeries(UpdateSeriesNode {
 						input,
 						target,
+						returning: update_series.returning,
 					}))
 				}
 

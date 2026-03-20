@@ -18,6 +18,7 @@ use reifydb_type::{
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type},
 };
 
+use super::returning::evaluate_returning;
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -125,6 +126,17 @@ pub(crate) fn insert_dictionary<'a>(
 			ids.push(id_value);
 			values.push(coerced_value);
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against inserted rows
+	if let Some(returning_exprs) = &plan.returning {
+		if ids.is_empty() {
+			return evaluate_returning(services, stack, returning_exprs, Columns::empty());
+		}
+		let id_column = build_id_column(&ids, dictionary.id_type)?;
+		let value_column = build_value_column(&values, dictionary.value_type)?;
+		let columns = Columns::new(vec![id_column, value_column]);
+		return evaluate_returning(services, stack, returning_exprs, columns);
 	}
 
 	// Return result with inserted entries

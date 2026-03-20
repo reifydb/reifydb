@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::{encoded::EncodedValues, schema::Schema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
@@ -24,10 +24,14 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
-use super::{primary_key, schema::get_or_create_table_schema};
+use super::{
+	primary_key,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_table_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -91,6 +95,11 @@ pub(crate) fn update_table<'a>(
 	};
 
 	let mut updated_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	{
 		let mut input_node = compile(*plan.input, txn, Arc::new(context.clone()));
@@ -217,11 +226,21 @@ pub(crate) fn update_table<'a>(
 					log.record_update(key, old, new);
 				}
 
-				txn.update_table(table.clone(), row_number, row)?;
+				let stored_row = txn.update_table(table.clone(), row_number, row)?;
+
+				if plan.returning.is_some() {
+					returned_rows.push((row_number, stored_row));
+				}
 
 				updated_count += 1;
 			}
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against updated rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbol_table_ref, returning_exprs, columns);
 	}
 
 	Ok(Columns::single_row([

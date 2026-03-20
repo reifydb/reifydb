@@ -26,6 +26,16 @@ impl<'bump> Compiler<'bump> {
 		ast: AstDelete<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
+		let returning = if let Some(returning_asts) = ast.returning {
+			let mut exprs = Vec::with_capacity(returning_asts.len());
+			for ast_node in returning_asts {
+				exprs.push(ExpressionCompiler::compile(ast_node)?);
+			}
+			Some(exprs)
+		} else {
+			None
+		};
+
 		// Build internal pipeline: FROM -> FILTER
 
 		// 1. Create FROM scan from target
@@ -73,6 +83,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::DeleteTable(DeleteTableNode {
 				target: Some(target),
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		};
 
@@ -85,6 +96,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		}
 
@@ -97,6 +109,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::DeleteSeries(DeleteSeriesNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		}
 
@@ -108,6 +121,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::DeleteTable(DeleteTableNode {
 			target: Some(target),
 			input: Some(BumpBox::new_in(pipeline, self.bump)),
+			returning,
 		}))
 	}
 }

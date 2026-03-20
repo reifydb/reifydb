@@ -4,6 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
+	encoded::encoded::EncodedValues,
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
@@ -23,10 +24,14 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
-use super::{coerce::coerce_value_to_column_type, schema::get_or_create_ringbuffer_schema};
+use super::{
+	coerce::coerce_value_to_column_type,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_ringbuffer_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -86,6 +91,11 @@ pub(crate) fn update_ringbuffer<'a>(
 	};
 
 	let mut updated_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	// Process all input batches
 	{
@@ -206,11 +216,20 @@ pub(crate) fn update_ringbuffer<'a>(
 				}
 
 				// Update the encoded using interceptors
-				txn.update_ringbuffer(ringbuffer.clone(), row_number, row)?;
+				let stored_row = txn.update_ringbuffer(ringbuffer.clone(), row_number, row)?;
+				if plan.returning.is_some() {
+					returned_rows.push((row_number, stored_row));
+				}
 
 				updated_count += 1;
 			}
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against updated rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbol_table_ref, returning_exprs, columns);
 	}
 
 	// Return summary columns

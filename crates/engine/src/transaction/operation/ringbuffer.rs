@@ -92,11 +92,16 @@ pub(crate) trait RingBufferOperations {
 		schema: &Schema,
 		row_number: RowNumber,
 		row: EncodedValues,
-	) -> Result<()>;
+	) -> Result<EncodedValues>;
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()>;
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		id: RowNumber,
+		row: EncodedValues,
+	) -> Result<EncodedValues>;
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()>;
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<EncodedValues>;
 }
 
 impl RingBufferOperations for CommandTransaction {
@@ -115,7 +120,7 @@ impl RingBufferOperations for CommandTransaction {
 		schema: &Schema,
 		row_number: RowNumber,
 		row: EncodedValues,
-	) -> Result<()> {
+	) -> Result<EncodedValues> {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
 		// Check if we're overwriting existing data (for ring buffer circular behavior)
@@ -145,10 +150,15 @@ impl RingBufferOperations for CommandTransaction {
 			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, schema, row_number, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		id: RowNumber,
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		// Get the current encoded before updating (for post-update interceptor)
@@ -163,16 +173,16 @@ impl RingBufferOperations for CommandTransaction {
 			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()> {
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<EncodedValues> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		// Get the encoded before removing (for post-delete interceptor)
 		let deleted_row = match self.get(&key)? {
 			Some(v) => v.values,
-			None => return Ok(()), // Nothing to delete
+			None => return Ok(EncodedValues(CowVec::new(vec![]))),
 		};
 
 		// Execute pre-delete interceptors
@@ -185,7 +195,7 @@ impl RingBufferOperations for CommandTransaction {
 
 		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
 
-		Ok(())
+		Ok(deleted_row)
 	}
 }
 
@@ -202,7 +212,7 @@ impl RingBufferOperations for AdminTransaction {
 		schema: &Schema,
 		row_number: RowNumber,
 		row: EncodedValues,
-	) -> Result<()> {
+	) -> Result<EncodedValues> {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
 		let old_row = self.get(&key)?.map(|v| v.values);
@@ -229,10 +239,15 @@ impl RingBufferOperations for AdminTransaction {
 			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, schema, row_number, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		id: RowNumber,
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		let old_row = self.get(&key)?.map(|v| v.values);
@@ -246,15 +261,15 @@ impl RingBufferOperations for AdminTransaction {
 			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()> {
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<EncodedValues> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		let deleted_row = match self.get(&key)? {
 			Some(v) => v.values,
-			None => return Ok(()),
+			None => return Ok(EncodedValues(CowVec::new(vec![]))),
 		};
 
 		RingBufferInterceptor::pre_delete(self, ringbuffer, id)?;
@@ -265,7 +280,7 @@ impl RingBufferOperations for AdminTransaction {
 
 		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
 
-		Ok(())
+		Ok(deleted_row)
 	}
 }
 
@@ -282,7 +297,7 @@ impl RingBufferOperations for Transaction<'_> {
 		schema: &Schema,
 		row_number: RowNumber,
 		row: EncodedValues,
-	) -> Result<()> {
+	) -> Result<EncodedValues> {
 		match self {
 			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
 			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
@@ -293,7 +308,12 @@ impl RingBufferOperations for Transaction<'_> {
 		}
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_ringbuffer(
+		&mut self,
+		ringbuffer: RingBufferDef,
+		id: RowNumber,
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		match self {
 			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, id, row),
 			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, id, row),
@@ -302,7 +322,7 @@ impl RingBufferOperations for Transaction<'_> {
 		}
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()> {
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<EncodedValues> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, id),

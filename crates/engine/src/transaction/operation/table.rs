@@ -91,11 +91,11 @@ pub(crate) trait TableOperations {
 		schema: &Schema,
 		row: EncodedValues,
 		row_number: RowNumber,
-	) -> Result<()>;
+	) -> Result<EncodedValues>;
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()>;
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<EncodedValues>;
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()>;
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<EncodedValues>;
 }
 
 impl TableOperations for CommandTransaction {
@@ -105,7 +105,7 @@ impl TableOperations for CommandTransaction {
 		schema: &Schema,
 		row: EncodedValues,
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<EncodedValues> {
 		let row = TableInterceptor::pre_insert(self, table, row_number, row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
@@ -122,15 +122,15 @@ impl TableOperations for CommandTransaction {
 		// Track flow change for transactional view pre-commit processing
 		self.track_flow_change(build_table_insert_change(table, schema, row_number, &row));
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<EncodedValues> {
 		let key = RowKey::encoded(table.id, id);
 
 		let old_values = match self.get(&key)? {
 			Some(v) => v.values,
-			None => return Ok(()),
+			None => return Ok(row),
 		};
 
 		let row = TableInterceptor::pre_update(self, &table, id, row)?;
@@ -139,15 +139,15 @@ impl TableOperations for CommandTransaction {
 
 		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<EncodedValues> {
 		let key = RowKey::encoded(table.id, id);
 
 		let deleted_values = match self.get(&key)? {
 			Some(v) => v.values,
-			None => return Ok(()),
+			None => return Ok(EncodedValues(CowVec::new(vec![]))),
 		};
 
 		TableInterceptor::pre_delete(self, &table, id)?;
@@ -156,7 +156,7 @@ impl TableOperations for CommandTransaction {
 
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 
-		Ok(())
+		Ok(deleted_values)
 	}
 }
 
@@ -167,7 +167,7 @@ impl TableOperations for AdminTransaction {
 		schema: &Schema,
 		row: EncodedValues,
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<EncodedValues> {
 		let row = TableInterceptor::pre_insert(self, table, row_number, row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
@@ -184,15 +184,15 @@ impl TableOperations for AdminTransaction {
 		// Track flow change for transactional view pre-commit processing
 		self.track_flow_change(build_table_insert_change(table, schema, row_number, &row));
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<EncodedValues> {
 		let key = RowKey::encoded(table.id, id);
 
 		let old_values = match self.get(&key)? {
 			Some(v) => v.values,
-			None => return Ok(()),
+			None => return Ok(row),
 		};
 
 		let row = TableInterceptor::pre_update(self, &table, id, row)?;
@@ -201,15 +201,15 @@ impl TableOperations for AdminTransaction {
 
 		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<EncodedValues> {
 		let key = RowKey::encoded(table.id, id);
 
 		let deleted_values = match self.get(&key)? {
 			Some(v) => v.values,
-			None => return Ok(()),
+			None => return Ok(EncodedValues(CowVec::new(vec![]))),
 		};
 
 		TableInterceptor::pre_delete(self, &table, id)?;
@@ -218,7 +218,7 @@ impl TableOperations for AdminTransaction {
 
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 
-		Ok(())
+		Ok(deleted_values)
 	}
 }
 
@@ -229,7 +229,7 @@ impl TableOperations for Transaction<'_> {
 		schema: &Schema,
 		row: EncodedValues,
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<EncodedValues> {
 		match self {
 			Transaction::Command(txn) => txn.insert_table(table, schema, row, row_number),
 			Transaction::Admin(txn) => txn.insert_table(table, schema, row, row_number),
@@ -240,7 +240,7 @@ impl TableOperations for Transaction<'_> {
 		}
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<EncodedValues> {
 		match self {
 			Transaction::Command(txn) => txn.update_table(table, id, row),
 			Transaction::Admin(txn) => txn.update_table(table, id, row),
@@ -249,7 +249,7 @@ impl TableOperations for Transaction<'_> {
 		}
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<EncodedValues> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_table(table, id),
 			Transaction::Admin(txn) => txn.remove_from_table(table, id),

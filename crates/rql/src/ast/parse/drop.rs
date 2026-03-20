@@ -17,6 +17,7 @@ use crate::{
 		},
 		parse::Parser,
 	},
+	bump::BumpFragment,
 	token::{
 		keyword::Keyword,
 		token::{Token, TokenKind},
@@ -139,7 +140,7 @@ impl<'bump> Parser<'bump> {
 	fn parse_drop_qualified<I>(
 		&mut self,
 		token: Token<'bump>,
-		make_identifier: impl FnOnce(crate::bump::BumpFragment<'bump>, Vec<crate::bump::BumpFragment<'bump>>) -> I,
+		make_identifier: impl FnOnce(BumpFragment<'bump>, Vec<BumpFragment<'bump>>) -> I,
 		wrap: impl FnOnce(Token<'bump>, bool, I, bool) -> AstDrop<'bump>,
 	) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;

@@ -1050,6 +1050,7 @@ impl InstructionCompiler {
 						.input
 						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1059,6 +1060,7 @@ impl InstructionCompiler {
 						.input
 						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1066,6 +1068,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertTable(nodes::InsertTableNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1073,6 +1076,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertRingBuffer(nodes::InsertRingBufferNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1080,6 +1084,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertDictionary(nodes::InsertDictionaryNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1087,6 +1092,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertSeries(nodes::InsertSeriesNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1096,6 +1102,7 @@ impl InstructionCompiler {
 						.input
 						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1103,6 +1110,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Update(nodes::UpdateTableNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1110,6 +1118,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::UpdateRingBuffer(nodes::UpdateRingBufferNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1117,6 +1126,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::UpdateSeries(nodes::UpdateSeriesNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}

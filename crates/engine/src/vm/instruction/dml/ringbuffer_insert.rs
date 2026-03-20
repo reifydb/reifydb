@@ -25,7 +25,11 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::{coerce::coerce_value_to_column_type, schema::get_or_create_ringbuffer_schema};
+use super::{
+	coerce::coerce_value_to_column_type,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_ringbuffer_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -84,6 +88,11 @@ pub(crate) fn insert_ringbuffer<'a>(
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 	let mut inserted_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	// Resolve partition column indices once (empty vec for global)
 	let partition_col_indices: Vec<usize> = ringbuffer
@@ -233,7 +242,10 @@ pub(crate) fn insert_ringbuffer<'a>(
 			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 			// Store the row
-			txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row.clone())?;
+			let stored_row = txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row.clone())?;
+			if plan.returning.is_some() {
+				returned_rows.push((row_number, stored_row));
+			}
 
 			if let Some(log) = testing.as_mut() {
 				let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
@@ -255,6 +267,12 @@ pub(crate) fn insert_ringbuffer<'a>(
 	// Save all modified partition metadata via unified API
 	for (partition_key, m) in &partition_metadata_cache {
 		services.catalog.save_partition_metadata(txn, &ringbuffer, partition_key, m)?;
+	}
+
+	// If RETURNING clause is present, evaluate expressions against inserted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbol_table, returning_exprs, columns);
 	}
 
 	// Return summary

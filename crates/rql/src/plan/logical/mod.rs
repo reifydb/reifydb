@@ -694,60 +694,70 @@ pub struct IndexColumn<'bump> {
 pub struct DeleteTableNode<'bump> {
 	pub target: Option<MaybeQualifiedTableIdentifier<'bump>>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertTableNode<'bump> {
 	pub target: MaybeQualifiedTableIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertDictionaryNode<'bump> {
 	pub target: MaybeQualifiedDictionaryIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertSeriesNode<'bump> {
 	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteSeriesNode<'bump> {
 	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateTableNode<'bump> {
 	pub target: Option<MaybeQualifiedTableIdentifier<'bump>>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateSeriesNode<'bump> {
 	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]

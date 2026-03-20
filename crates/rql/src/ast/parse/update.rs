@@ -9,7 +9,7 @@ use crate::{
 		parse::Parser,
 	},
 	bump::BumpBox,
-	error::RqlError,
+	error::{OperationKind, RqlError},
 	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
@@ -58,11 +58,27 @@ impl<'bump> Parser<'bump> {
 		}
 		let filter = self.parse_filter()?;
 
+		let returning = if !self.is_eof() && self.current()?.is_keyword(Keyword::Returning) {
+			let returning_token = self.advance()?;
+			let (exprs, had_braces) = self.parse_expressions(true, false, None)?;
+			if !had_braces {
+				return Err(RqlError::OperatorMissingBraces {
+					kind: OperationKind::Returning,
+					fragment: returning_token.fragment.to_owned(),
+				}
+				.into());
+			}
+			Some(exprs)
+		} else {
+			None
+		};
+
 		Ok(AstUpdate {
 			token,
 			target,
 			assignments,
 			filter: BumpBox::new_in(Ast::Filter(filter), self.bump()),
+			returning,
 		})
 	}
 }

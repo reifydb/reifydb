@@ -35,7 +35,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::schema::get_or_create_series_schema;
+use super::{returning::evaluate_returning, schema::get_or_create_series_schema};
 use crate::{
 	Result,
 	expression::{
@@ -440,6 +440,28 @@ pub(crate) fn update_series<'a>(
 					post,
 				}],
 			});
+		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against updated rows
+	if let Some(returning_exprs) = &plan.returning {
+		if let Some(post) = &post_columns {
+			let matching = updated_row_indices.len();
+			let mut filtered_cols = Vec::new();
+			for col in post.iter() {
+				let mut data = ColumnData::with_capacity(col.data().get_type(), matching);
+				for &idx in &updated_row_indices {
+					data.push_value(col.data().get_value(idx));
+				}
+				filtered_cols.push(Column {
+					name: col.name().clone(),
+					data,
+				});
+			}
+			let filtered = Columns::new(filtered_cols);
+			return evaluate_returning(services, symbol_table_ref, returning_exprs, filtered);
+		} else {
+			return evaluate_returning(services, symbol_table_ref, returning_exprs, Columns::empty());
 		}
 	}
 
