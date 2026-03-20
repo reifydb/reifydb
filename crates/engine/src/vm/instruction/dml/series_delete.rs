@@ -19,7 +19,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -295,7 +295,9 @@ pub(crate) fn delete_series<'a>(
 						log.record_delete(mutation_key, old);
 					}
 
+					SeriesInterceptor::pre_delete(txn, &series_def)?;
 					txn.unset(key, encoded_values[i].clone())?;
+					SeriesInterceptor::post_delete(txn, &series_def, &encoded_values[i])?;
 					deleted_count += 1;
 				}
 			}
@@ -370,7 +372,9 @@ pub(crate) fn delete_series<'a>(
 				}
 			}
 
+			SeriesInterceptor::pre_delete(txn, &series_def)?;
 			txn.unset(key, encoded_values.clone())?;
+			SeriesInterceptor::post_delete(txn, &series_def, encoded_values)?;
 			deleted_count += 1;
 		}
 	}

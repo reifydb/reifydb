@@ -3,6 +3,7 @@
 
 use super::{
 	chain::InterceptorChain,
+	dictionary::{DictionaryPostInsertInterceptor, DictionaryPreInsertInterceptor},
 	namespace::{
 		NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 		NamespacePreUpdateInterceptor,
@@ -14,6 +15,10 @@ use super::{
 	ringbuffer_def::{
 		RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
 		RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+	},
+	series::{
+		SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
+		SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
 	},
 	table::{
 		TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
@@ -83,6 +88,16 @@ pub struct Interceptors {
 	pub ringbuffer_def_pre_update: Chain<dyn RingBufferDefPreUpdateInterceptor + Send + Sync>,
 	pub ringbuffer_def_post_update: Chain<dyn RingBufferDefPostUpdateInterceptor + Send + Sync>,
 	pub ringbuffer_def_pre_delete: Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync>,
+	// Dictionary data interceptors
+	pub dictionary_pre_insert: Chain<dyn DictionaryPreInsertInterceptor + Send + Sync>,
+	pub dictionary_post_insert: Chain<dyn DictionaryPostInsertInterceptor + Send + Sync>,
+	// Series data interceptors
+	pub series_pre_insert: Chain<dyn SeriesPreInsertInterceptor + Send + Sync>,
+	pub series_post_insert: Chain<dyn SeriesPostInsertInterceptor + Send + Sync>,
+	pub series_pre_update: Chain<dyn SeriesPreUpdateInterceptor + Send + Sync>,
+	pub series_post_update: Chain<dyn SeriesPostUpdateInterceptor + Send + Sync>,
+	pub series_pre_delete: Chain<dyn SeriesPreDeleteInterceptor + Send + Sync>,
+	pub series_post_delete: Chain<dyn SeriesPostDeleteInterceptor + Send + Sync>,
 }
 
 impl Default for Interceptors {
@@ -130,6 +145,14 @@ impl Interceptors {
 			ringbuffer_def_pre_update: InterceptorChain::new(),
 			ringbuffer_def_post_update: InterceptorChain::new(),
 			ringbuffer_def_pre_delete: InterceptorChain::new(),
+			dictionary_pre_insert: InterceptorChain::new(),
+			dictionary_post_insert: InterceptorChain::new(),
+			series_pre_insert: InterceptorChain::new(),
+			series_post_insert: InterceptorChain::new(),
+			series_pre_update: InterceptorChain::new(),
+			series_post_update: InterceptorChain::new(),
+			series_pre_delete: InterceptorChain::new(),
+			series_post_delete: InterceptorChain::new(),
 		}
 	}
 }
@@ -178,6 +201,14 @@ impl Clone for Interceptors {
 			ringbuffer_def_pre_update: self.ringbuffer_def_pre_update.clone(),
 			ringbuffer_def_post_update: self.ringbuffer_def_post_update.clone(),
 			ringbuffer_def_pre_delete: self.ringbuffer_def_pre_delete.clone(),
+			dictionary_pre_insert: self.dictionary_pre_insert.clone(),
+			dictionary_post_insert: self.dictionary_post_insert.clone(),
+			series_pre_insert: self.series_pre_insert.clone(),
+			series_post_insert: self.series_post_insert.clone(),
+			series_pre_update: self.series_pre_update.clone(),
+			series_post_update: self.series_post_update.clone(),
+			series_pre_delete: self.series_pre_delete.clone(),
+			series_post_delete: self.series_post_delete.clone(),
 		}
 	}
 }

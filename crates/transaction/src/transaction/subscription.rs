@@ -28,6 +28,7 @@ use crate::{
 	interceptor::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
+		dictionary::{DictionaryPostInsertInterceptor, DictionaryPreInsertInterceptor},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -41,6 +42,10 @@ use crate::{
 		ringbuffer_def::{
 			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
 			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		},
+		series::{
+			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
+			SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
 		},
 		table::{
 			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
@@ -402,6 +407,42 @@ impl WithInterceptors for SubscriptionTransaction {
 		&mut self,
 	) -> &mut Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync> {
 		self.inner.ringbuffer_def_pre_delete_interceptors()
+	}
+
+	fn dictionary_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPreInsertInterceptor + Send + Sync> {
+		self.inner.dictionary_pre_insert_interceptors()
+	}
+
+	fn dictionary_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPostInsertInterceptor + Send + Sync> {
+		self.inner.dictionary_post_insert_interceptors()
+	}
+
+	fn series_pre_insert_interceptors(&mut self) -> &mut Chain<dyn SeriesPreInsertInterceptor + Send + Sync> {
+		self.inner.series_pre_insert_interceptors()
+	}
+
+	fn series_post_insert_interceptors(&mut self) -> &mut Chain<dyn SeriesPostInsertInterceptor + Send + Sync> {
+		self.inner.series_post_insert_interceptors()
+	}
+
+	fn series_pre_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPreUpdateInterceptor + Send + Sync> {
+		self.inner.series_pre_update_interceptors()
+	}
+
+	fn series_post_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPostUpdateInterceptor + Send + Sync> {
+		self.inner.series_post_update_interceptors()
+	}
+
+	fn series_pre_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPreDeleteInterceptor + Send + Sync> {
+		self.inner.series_pre_delete_interceptors()
+	}
+
+	fn series_post_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPostDeleteInterceptor + Send + Sync> {
+		self.inner.series_post_delete_interceptors()
 	}
 }
 

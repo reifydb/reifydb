@@ -25,7 +25,7 @@ use reifydb_rql::{
 	nodes::UpdateSeriesNode,
 	query::QueryPlan,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -360,9 +360,10 @@ pub(crate) fn update_series<'a>(
 		post_columns = Some(patched_columns);
 	}
 
-	// Apply all collected updates
-	for (key, row) in &updates_to_apply {
-		txn.set(key, row.clone())?;
+	for (key, row) in updates_to_apply {
+		let row = SeriesInterceptor::pre_update(txn, &series_def, row)?;
+		txn.set(&key, row.clone())?;
+		SeriesInterceptor::post_update(txn, &series_def, &row, &row)?;
 		updated_count += 1;
 	}
 

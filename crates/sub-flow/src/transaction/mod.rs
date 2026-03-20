@@ -10,6 +10,7 @@ use reifydb_transaction::{
 	interceptor::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
+		dictionary::{DictionaryPostInsertInterceptor, DictionaryPreInsertInterceptor},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -23,6 +24,10 @@ use reifydb_transaction::{
 		ringbuffer_def::{
 			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
 			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		},
+		series::{
+			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
+			SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
 		},
 		table::{
 			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
@@ -432,4 +437,18 @@ impl WithInterceptors for FlowTransaction {
 		ringbuffer_def_pre_delete,
 		RingBufferDefPreDeleteInterceptor
 	);
+
+	interceptor_method!(dictionary_pre_insert_interceptors, dictionary_pre_insert, DictionaryPreInsertInterceptor);
+	interceptor_method!(
+		dictionary_post_insert_interceptors,
+		dictionary_post_insert,
+		DictionaryPostInsertInterceptor
+	);
+
+	interceptor_method!(series_pre_insert_interceptors, series_pre_insert, SeriesPreInsertInterceptor);
+	interceptor_method!(series_post_insert_interceptors, series_post_insert, SeriesPostInsertInterceptor);
+	interceptor_method!(series_pre_update_interceptors, series_pre_update, SeriesPreUpdateInterceptor);
+	interceptor_method!(series_post_update_interceptors, series_post_update, SeriesPostUpdateInterceptor);
+	interceptor_method!(series_pre_delete_interceptors, series_pre_delete, SeriesPreDeleteInterceptor);
+	interceptor_method!(series_post_delete_interceptors, series_post_delete, SeriesPostDeleteInterceptor);
 }

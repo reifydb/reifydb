@@ -12,7 +12,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::hash::xxh3_128;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
+use reifydb_transaction::{
+	interceptor::dictionary::DictionaryInterceptor,
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
+};
 use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId},
@@ -43,8 +46,10 @@ pub(crate) trait DictionaryOperations {
 
 impl DictionaryOperations for CommandTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
+		let value = DictionaryInterceptor::pre_insert(self, dictionary, value.clone())?;
+
 		// 1. Serialize value and compute hash
-		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		// 2. Check if value already exists (lookup by hash)
@@ -79,6 +84,8 @@ impl DictionaryOperations for CommandTransaction {
 
 		// 7. Update sequence
 		self.set(&seq_key, EncodedValues(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+
+		DictionaryInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
 
 		Ok(entry_id)
 	}
@@ -118,8 +125,10 @@ impl DictionaryOperations for CommandTransaction {
 
 impl DictionaryOperations for AdminTransaction {
 	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
+		let value = DictionaryInterceptor::pre_insert(self, dictionary, value.clone())?;
+
 		// 1. Serialize value and compute hash
-		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		// 2. Check if value already exists (lookup by hash)
@@ -152,6 +161,8 @@ impl DictionaryOperations for AdminTransaction {
 
 		// 7. Update sequence
 		self.set(&seq_key, EncodedValues(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+
+		DictionaryInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
 
 		Ok(entry_id)
 	}

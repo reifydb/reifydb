@@ -16,7 +16,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -182,8 +182,9 @@ pub(crate) fn insert_series<'a>(
 				schema.set_value(&mut row, i + 1, value);
 			}
 
-			// Write to storage
-			txn.set(&encoded_key, row)?;
+			let row = SeriesInterceptor::pre_insert(txn, &series_def, row)?;
+			txn.set(&encoded_key, row.clone())?;
+			SeriesInterceptor::post_insert(txn, &series_def, &row)?;
 
 			if let Some(log) = testing.as_mut() {
 				let new = Columns::single_row(
