@@ -106,7 +106,7 @@ impl TableOperations for CommandTransaction {
 		row: EncodedValues,
 		row_number: RowNumber,
 	) -> Result<()> {
-		TableInterceptor::pre_insert(self, table, row_number, &row)?;
+		let row = TableInterceptor::pre_insert(self, table, row_number, row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
 
@@ -133,7 +133,7 @@ impl TableOperations for CommandTransaction {
 			None => return Ok(()),
 		};
 
-		TableInterceptor::pre_update(self, &table, id, &row)?;
+		let row = TableInterceptor::pre_update(self, &table, id, row)?;
 
 		self.set(&key, row.clone())?;
 
@@ -168,7 +168,7 @@ impl TableOperations for AdminTransaction {
 		row: EncodedValues,
 		row_number: RowNumber,
 	) -> Result<()> {
-		TableInterceptor::pre_insert(self, table, row_number, &row)?;
+		let row = TableInterceptor::pre_insert(self, table, row_number, row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
 
@@ -195,7 +195,7 @@ impl TableOperations for AdminTransaction {
 			None => return Ok(()),
 		};
 
-		TableInterceptor::pre_update(self, &table, id, &row)?;
+		let row = TableInterceptor::pre_update(self, &table, id, row)?;
 
 		self.set(&key, row.clone())?;
 

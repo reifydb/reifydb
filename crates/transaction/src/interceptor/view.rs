@@ -12,11 +12,11 @@ use crate::interceptor::chain::InterceptorChain;
 pub struct ViewPreInsertContext<'a> {
 	pub view: &'a ViewDef,
 	pub rn: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: EncodedValues,
 }
 
 impl<'a> ViewPreInsertContext<'a> {
-	pub fn new(view: &'a ViewDef, rn: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(view: &'a ViewDef, rn: RowNumber, row: EncodedValues) -> Self {
 		Self {
 			view,
 			rn,
@@ -30,11 +30,11 @@ pub trait ViewPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn ViewPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: ViewPreInsertContext) -> Result<EncodedValues> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
-		Ok(())
+		Ok(ctx.row)
 	}
 }
 
@@ -164,11 +164,11 @@ where
 pub struct ViewPreUpdateContext<'a> {
 	pub view: &'a ViewDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: EncodedValues,
 }
 
 impl<'a> ViewPreUpdateContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(view: &'a ViewDef, id: RowNumber, row: EncodedValues) -> Self {
 		Self {
 			view,
 			id,
@@ -182,11 +182,11 @@ pub trait ViewPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn ViewPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<EncodedValues> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
-		Ok(())
+		Ok(ctx.row)
 	}
 }
 
@@ -471,8 +471,8 @@ impl ViewInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &ViewDef,
 		rn: RowNumber,
-		row: &EncodedValues,
-	) -> Result<()> {
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let ctx = ViewPreInsertContext::new(view, rn, row);
 		txn.view_pre_insert_interceptors().execute(ctx)
 	}
@@ -491,8 +491,8 @@ impl ViewInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &ViewDef,
 		id: RowNumber,
-		row: &EncodedValues,
-	) -> Result<()> {
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let ctx = ViewPreUpdateContext::new(view, id, row);
 		txn.view_pre_update_interceptors().execute(ctx)
 	}

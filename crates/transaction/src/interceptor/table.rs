@@ -12,11 +12,11 @@ use crate::interceptor::chain::InterceptorChain;
 pub struct TablePreInsertContext<'a> {
 	pub table: &'a TableDef,
 	pub rn: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: EncodedValues,
 }
 
 impl<'a> TablePreInsertContext<'a> {
-	pub fn new(table: &'a TableDef, rn: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(table: &'a TableDef, rn: RowNumber, row: EncodedValues) -> Self {
 		Self {
 			table,
 			rn,
@@ -30,11 +30,11 @@ pub trait TablePreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn TablePreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TablePreInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TablePreInsertContext) -> Result<EncodedValues> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
-		Ok(())
+		Ok(ctx.row)
 	}
 }
 
@@ -164,11 +164,11 @@ where
 pub struct TablePreUpdateContext<'a> {
 	pub table: &'a TableDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: EncodedValues,
 }
 
 impl<'a> TablePreUpdateContext<'a> {
-	pub fn new(table: &'a TableDef, id: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(table: &'a TableDef, id: RowNumber, row: EncodedValues) -> Self {
 		Self {
 			table,
 			id,
@@ -182,11 +182,11 @@ pub trait TablePreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn TablePreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TablePreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: TablePreUpdateContext) -> Result<EncodedValues> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
-		Ok(())
+		Ok(ctx.row)
 	}
 }
 
@@ -471,8 +471,8 @@ impl TableInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &TableDef,
 		rn: RowNumber,
-		row: &EncodedValues,
-	) -> Result<()> {
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let ctx = TablePreInsertContext::new(table, rn, row);
 		txn.table_pre_insert_interceptors().execute(ctx)
 	}
@@ -491,8 +491,8 @@ impl TableInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &TableDef,
 		id: RowNumber,
-		row: &EncodedValues,
-	) -> Result<()> {
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let ctx = TablePreUpdateContext::new(table, id, row);
 		txn.table_pre_update_interceptors().execute(ctx)
 	}

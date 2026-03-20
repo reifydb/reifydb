@@ -74,7 +74,9 @@ impl Operator for SinkSeriesViewOperator {
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
-						ViewInterceptor::pre_insert(txn, &view_def, row_number, &encoded)?;
+						let encoded = ViewInterceptor::pre_insert(
+							txn, &view_def, row_number, encoded,
+						)?;
 						let key = RowKey::encoded(primitive_id, row_number);
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;

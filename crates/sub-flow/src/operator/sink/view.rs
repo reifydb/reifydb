@@ -60,7 +60,9 @@ impl Operator for SinkTableViewOperator {
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
-						ViewInterceptor::pre_insert(txn, &view_def, row_number, &encoded)?;
+						let encoded = ViewInterceptor::pre_insert(
+							txn, &view_def, row_number, encoded,
+						)?;
 						let key = RowKey::encoded(primitive_id, row_number);
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
@@ -109,11 +111,11 @@ impl Operator for SinkTableViewOperator {
 							post_row_number,
 						);
 
-						ViewInterceptor::pre_update(
+						let post_encoded = ViewInterceptor::pre_update(
 							txn,
 							&view_def,
 							post_row_number,
-							&post_encoded,
+							post_encoded,
 						)?;
 						let old_key = RowKey::encoded(primitive_id, pre_row_number);
 						let new_key = RowKey::encoded(primitive_id, post_row_number);

@@ -11,11 +11,11 @@ use crate::interceptor::chain::InterceptorChain;
 /// Context for ringbuffer pre-insert interceptors
 pub struct RingBufferPreInsertContext<'a> {
 	pub ringbuffer: &'a RingBufferDef,
-	pub row: &'a EncodedValues,
+	pub row: EncodedValues,
 }
 
 impl<'a> RingBufferPreInsertContext<'a> {
-	pub fn new(ringbuffer: &'a RingBufferDef, row: &'a EncodedValues) -> Self {
+	pub fn new(ringbuffer: &'a RingBufferDef, row: EncodedValues) -> Self {
 		Self {
 			ringbuffer,
 			row,
@@ -28,11 +28,11 @@ pub trait RingBufferPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn RingBufferPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferPreInsertContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RingBufferPreInsertContext) -> Result<EncodedValues> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
-		Ok(())
+		Ok(ctx.row)
 	}
 }
 
@@ -162,11 +162,11 @@ where
 pub struct RingBufferPreUpdateContext<'a> {
 	pub ringbuffer: &'a RingBufferDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: EncodedValues,
 }
 
 impl<'a> RingBufferPreUpdateContext<'a> {
-	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, row: EncodedValues) -> Self {
 		Self {
 			ringbuffer,
 			id,
@@ -180,11 +180,11 @@ pub trait RingBufferPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferPreUpdateContext) -> Result<()> {
+	pub fn execute(&self, mut ctx: RingBufferPreUpdateContext) -> Result<EncodedValues> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
-		Ok(())
+		Ok(ctx.row)
 	}
 }
 
@@ -473,8 +473,8 @@ impl RingBufferInterceptor {
 	pub fn pre_insert(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBufferDef,
-		row: &EncodedValues,
-	) -> Result<()> {
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let ctx = RingBufferPreInsertContext::new(ringbuffer, row);
 		txn.ringbuffer_pre_insert_interceptors().execute(ctx)
 	}
@@ -493,8 +493,8 @@ impl RingBufferInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
-		row: &EncodedValues,
-	) -> Result<()> {
+		row: EncodedValues,
+	) -> Result<EncodedValues> {
 		let ctx = RingBufferPreUpdateContext::new(ringbuffer, id, row);
 		txn.ringbuffer_pre_update_interceptors().execute(ctx)
 	}

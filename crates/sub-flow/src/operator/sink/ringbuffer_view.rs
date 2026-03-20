@@ -171,7 +171,12 @@ impl Operator for SinkRingBufferViewOperator {
 							state.reverse.insert(assigned_rn, source_rn);
 						}
 
-						ViewInterceptor::pre_insert(txn, &view_def, assigned_rn, &encoded)?;
+						let encoded = ViewInterceptor::pre_insert(
+							txn,
+							&view_def,
+							assigned_rn,
+							encoded,
+						)?;
 						let key = RowKey::encoded(primitive_id, assigned_rn);
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, assigned_rn, &encoded)?;
@@ -238,11 +243,11 @@ impl Operator for SinkRingBufferViewOperator {
 							post_storage_rn,
 						);
 
-						ViewInterceptor::pre_update(
+						let post_encoded = ViewInterceptor::pre_update(
 							txn,
 							&view_def,
 							post_storage_rn,
-							&post_encoded,
+							post_encoded,
 						)?;
 						let old_key = RowKey::encoded(primitive_id, pre_storage_rn);
 						let new_key = RowKey::encoded(primitive_id, post_storage_rn);

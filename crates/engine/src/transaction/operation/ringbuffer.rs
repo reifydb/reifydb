@@ -128,7 +128,7 @@ impl RingBufferOperations for CommandTransaction {
 			RingBufferInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
 		}
 
-		RingBufferInterceptor::pre_insert(self, ringbuffer, &row)?;
+		let row = RingBufferInterceptor::pre_insert(self, ringbuffer, row)?;
 
 		self.set(&key, row.clone())?;
 
@@ -154,7 +154,7 @@ impl RingBufferOperations for CommandTransaction {
 		// Get the current encoded before updating (for post-update interceptor)
 		let old_row = self.get(&key)?.map(|v| v.values);
 
-		RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row)?;
+		let row = RingBufferInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
 		self.set(&key, row.clone())?;
 
@@ -212,7 +212,7 @@ impl RingBufferOperations for AdminTransaction {
 			RingBufferInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
 		}
 
-		RingBufferInterceptor::pre_insert(self, ringbuffer, &row)?;
+		let row = RingBufferInterceptor::pre_insert(self, ringbuffer, row)?;
 
 		self.set(&key, row.clone())?;
 
@@ -237,7 +237,7 @@ impl RingBufferOperations for AdminTransaction {
 
 		let old_row = self.get(&key)?.map(|v| v.values);
 
-		RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row)?;
+		let row = RingBufferInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
 		self.set(&key, row.clone())?;
 
