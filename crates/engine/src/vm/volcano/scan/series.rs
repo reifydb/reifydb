@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
-	value::{Value, r#type::Type},
+	value::{Value, row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
 
@@ -101,6 +101,7 @@ impl QueryNode for SeriesScanNode {
 
 		let mut timestamps: Vec<i64> = Vec::new();
 		let mut tags: Vec<u8> = Vec::new();
+		let mut sequences: Vec<u64> = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 		let mut new_last_key = None;
 
@@ -116,6 +117,7 @@ impl QueryNode for SeriesScanNode {
 			// Decode the key to get timestamp and optional tag
 			if let Some(key) = SeriesRowKey::decode(&entry.key) {
 				timestamps.push(key.timestamp);
+				sequences.push(key.sequence);
 				if has_tag {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
@@ -193,7 +195,8 @@ impl QueryNode for SeriesScanNode {
 			result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
 		}
 
-		Ok(Some(Columns::new(result_columns)))
+		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
+		Ok(Some(Columns::with_row_numbers(result_columns, row_numbers)))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

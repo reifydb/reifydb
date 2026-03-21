@@ -64,10 +64,28 @@ impl<'bump> Compiler<'bump> {
 		};
 		let patch_plan = self.compile_patch(patch_ast)?;
 
-		// 4. Build pipeline: FROM -> FILTER -> PATCH
-		let mut steps = BumpVec::with_capacity_in(3, self.bump);
+		// 4. Build pipeline: FROM -> FILTER -> [TAKE] -> PATCH
+		let take_plan = if let Some(take_box) = ast.take {
+			let take_ast = match BumpBox::into_inner(take_box) {
+				Ast::Take(t) => t,
+				_ => unreachable!("take should always be Ast::Take"),
+			};
+			Some(self.compile_take(take_ast)?)
+		} else {
+			None
+		};
+
+		let capacity = if take_plan.is_some() {
+			4
+		} else {
+			3
+		};
+		let mut steps = BumpVec::with_capacity_in(capacity, self.bump);
 		steps.push(from_plan);
 		steps.push(filter_plan);
+		if let Some(take) = take_plan {
+			steps.push(take);
+		}
 		steps.push(patch_plan);
 		let pipeline = LogicalPlan::Pipeline(PipelineNode {
 			steps,

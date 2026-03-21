@@ -56,10 +56,28 @@ impl<'bump> Compiler<'bump> {
 			rql: filter_ast.rql.to_string(),
 		});
 
-		// 3. Build pipeline: FROM -> FILTER
-		let mut steps = BumpVec::with_capacity_in(2, self.bump);
+		// 3. Build pipeline: FROM -> FILTER -> [TAKE]
+		let take_plan = if let Some(take_box) = ast.take {
+			let take_ast = match BumpBox::into_inner(take_box) {
+				Ast::Take(t) => t,
+				_ => unreachable!("take should always be Ast::Take"),
+			};
+			Some(self.compile_take(take_ast)?)
+		} else {
+			None
+		};
+
+		let capacity = if take_plan.is_some() {
+			3
+		} else {
+			2
+		};
+		let mut steps = BumpVec::with_capacity_in(capacity, self.bump);
 		steps.push(from_plan);
 		steps.push(filter_plan);
+		if let Some(take) = take_plan {
+			steps.push(take);
+		}
 		let pipeline = LogicalPlan::Pipeline(PipelineNode {
 			steps,
 		});

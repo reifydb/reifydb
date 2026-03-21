@@ -1107,6 +1107,7 @@ pub struct AstDelete<'bump> {
 	pub token: Token<'bump>,
 	pub target: UnresolvedPrimitiveIdentifier<'bump>,
 	pub filter: BumpBox<'bump, Ast<'bump>>,
+	pub take: Option<BumpBox<'bump, Ast<'bump>>>,
 	pub returning: Option<Vec<Ast<'bump>>>,
 }
 
@@ -1124,6 +1125,7 @@ pub struct AstUpdate<'bump> {
 	pub target: UnresolvedPrimitiveIdentifier<'bump>,
 	pub assignments: Vec<Ast<'bump>>,
 	pub filter: BumpBox<'bump, Ast<'bump>>,
+	pub take: Option<BumpBox<'bump, Ast<'bump>>>,
 	pub returning: Option<Vec<Ast<'bump>>>,
 }
 

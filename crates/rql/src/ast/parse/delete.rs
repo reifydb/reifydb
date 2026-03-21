@@ -43,6 +43,13 @@ impl<'bump> Parser<'bump> {
 		}
 		let filter = self.parse_filter()?;
 
+		let take = if !self.is_eof() && self.current()?.is_keyword(Keyword::Take) {
+			let take = self.parse_take()?;
+			Some(BumpBox::new_in(Ast::Take(take), self.bump()))
+		} else {
+			None
+		};
+
 		let returning = if !self.is_eof() && self.current()?.is_keyword(Keyword::Returning) {
 			let returning_token = self.advance()?;
 			let (exprs, had_braces) = self.parse_expressions(true, false, None)?;
@@ -62,6 +69,7 @@ impl<'bump> Parser<'bump> {
 			token,
 			target,
 			filter: BumpBox::new_in(Ast::Filter(filter), self.bump()),
+			take,
 			returning,
 		})
 	}
@@ -71,7 +79,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{Ast, InfixOperator},
+			ast::{Ast, AstTakeValue, InfixOperator},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -133,6 +141,60 @@ pub mod tests {
 		let filter = delete.filter.as_filter();
 		let condition = filter.node.as_infix();
 		assert!(matches!(condition.operator, InfixOperator::And(_)));
+	}
+
+	#[test]
+	fn test_delete_with_take() {
+		let bump = Bump::new();
+		let source = r#"
+        DELETE users FILTER {id > 0} TAKE 5
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let delete = result.first_unchecked().as_delete();
+
+		let take = delete.take.as_ref().unwrap().as_take();
+		assert_eq!(take.take, AstTakeValue::Literal(5));
+	}
+
+	#[test]
+	fn test_delete_with_take_and_returning() {
+		let bump = Bump::new();
+		let source = r#"
+        DELETE users FILTER {id > 0} TAKE 5 RETURNING { id }
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let delete = result.first_unchecked().as_delete();
+
+		let take = delete.take.as_ref().unwrap().as_take();
+		assert_eq!(take.take, AstTakeValue::Literal(5));
+		assert!(delete.returning.is_some());
+	}
+
+	#[test]
+	fn test_delete_without_take() {
+		let bump = Bump::new();
+		let source = r#"
+        DELETE users FILTER {id > 0}
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let delete = result.first_unchecked().as_delete();
+
+		assert!(delete.take.is_none());
 	}
 
 	#[test]

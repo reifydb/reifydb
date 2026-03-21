@@ -10,6 +10,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
 		change::{Change, ChangeOrigin, Diff},
+		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
 	},
 	key::{
 		EncodableKey,
@@ -18,13 +19,13 @@ use reifydb_core::{
 	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
+use reifydb_rql::nodes::DeleteSeriesNode;
 use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::cowvec::CowVec,
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
@@ -32,14 +33,15 @@ use tracing::instrument;
 use super::returning::{decode_rows_to_columns, evaluate_returning};
 use crate::{
 	Result,
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalSession},
-	},
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::schema::get_or_create_series_schema, services::Services, stack::SymbolTable,
-		volcano::scan::series::build_data_column,
+		instruction::dml::schema::get_or_create_series_schema,
+		services::Services,
+		stack::SymbolTable,
+		volcano::{
+			compile::compile,
+			query::{QueryContext, QueryNode},
+		},
 	},
 };
 
@@ -63,7 +65,6 @@ pub(crate) fn delete_series<'a>(
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	// Get current metadata
 	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series_def.id)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
@@ -74,256 +75,171 @@ pub(crate) fn delete_series<'a>(
 	let mut returning_columns: Option<Columns> = None;
 
 	if let Some(input_plan) = plan.input {
-		// Extract filter conditions and scan bounds from the plan.
-		// The physical plan optimizer may push timestamp/tag predicates into the
-		// SeriesScan node and remove the Filter node entirely. We need to recover
-		// those bounds so the scan is properly limited.
-		let (conditions, scan_start, scan_end, scan_tag) = match *input_plan {
-			QueryPlan::Filter(filter) => {
-				let (start, end, tag) = match *filter.input {
-					QueryPlan::SeriesScan(scan) => {
-						(scan.time_range_start, scan.time_range_end, scan.variant_tag)
-					}
-					_ => (None, None, None),
-				};
-				(filter.conditions, start, end, tag)
-			}
-			QueryPlan::SeriesScan(scan) => {
-				(vec![], scan.time_range_start, scan.time_range_end, scan.variant_tag)
-			}
-			_ => (vec![], None, None, None),
+		let namespace_ident = Fragment::internal(namespace.name());
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+		let series_ident = Fragment::internal(series_def.name.clone());
+		let resolved_series = ResolvedSeries::new(
+			series_ident,
+			resolved_namespace,
+			series_def.clone(),
+		);
+		let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
+
+		let context = QueryContext {
+			services: services.clone(),
+			source: resolved_source,
+			batch_size: 1024,
+			params: params.clone(),
+			stack: SymbolTable::new(),
+			identity: IdentityId::root(),
+			testing: None,
 		};
 
-		// Use bounded scan when time range or tag is available from predicate pushdown
-		let range = if scan_start.is_some() || scan_end.is_some() || scan_tag.is_some() {
-			SeriesRowKeyRange::scan_range(series_def.id, scan_tag, scan_start, scan_end, None)
-		} else {
-			SeriesRowKeyRange::full_scan(series_def.id, None)
-		};
-		let mut keys = Vec::new();
-		let mut encoded_values = Vec::new();
-		let mut timestamps = Vec::new();
-		let mut sequences = Vec::new();
-		let mut tags = Vec::new();
-		let mut data_rows: Vec<Vec<Value>> = Vec::new();
+		let mut input_node = compile(*input_plan, txn, Arc::new(context.clone()));
+		input_node.initialize(txn, &context)?;
 
-		// Get the schema for decoding series values
-		let read_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
-
-		{
-			let mut stream = txn.range(range, 4096)?;
-			while let Some(entry) = stream.next() {
-				let entry = entry?;
-				if let Some(key) = SeriesRowKey::decode(&entry.key) {
-					keys.push(entry.key);
-					timestamps.push(key.timestamp);
-					sequences.push(key.sequence);
-					if has_tag {
-						tags.push(key.variant_tag.unwrap_or(0));
-					}
-					let mut values = Vec::with_capacity(series_def.columns.len());
-					for (i, _col) in series_def.columns.iter().enumerate() {
-						values.push(read_schema.get_value(&entry.values, i + 1));
-					}
-					data_rows.push(values);
-					encoded_values.push(entry.values);
-				}
-			}
-		}
-
-		if !keys.is_empty() {
-			// Build Columns from scanned data
-			let mut result_columns = Vec::new();
-			result_columns.push(Column {
-				name: Fragment::internal("timestamp"),
-				data: ColumnData::int8(timestamps),
-			});
-			if has_tag {
-				result_columns.push(Column {
-					name: Fragment::internal("tag"),
-					data: ColumnData::uint1(tags),
-				});
-			}
-			for (col_idx, col_def) in series_def.columns.iter().enumerate() {
-				let col_type = col_def.constraint.get_type();
-				let col_values: Vec<Value> = data_rows
-					.iter()
-					.map(|row| row.get(col_idx).cloned().unwrap_or(Value::none()))
-					.collect();
-				result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
-			}
-			let columns = Columns::new(result_columns);
+		let mut mutable_context = context.clone();
+		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			let row_count = columns.row_count();
-
-			// Compile and evaluate filter conditions
-			let stack = SymbolTable::new();
-			let compile_ctx = CompileContext {
-				functions: &services.functions,
-				symbol_table: &stack,
-			};
-			let compiled_exprs: Vec<CompiledExpr> = conditions
-				.iter()
-				.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-				.collect();
-
-			let session = EvalSession {
-				params: &params,
-				symbol_table: &stack,
-				functions: &services.functions,
-				clock: &services.clock,
-				arena: None,
-				identity: IdentityId::root(),
-				is_aggregate_context: false,
-			};
-			let mut filter_mask = BitVec::repeat(row_count, true);
-			for compiled_expr in &compiled_exprs {
-				let exec_ctx = session.eval(columns.clone(), row_count);
-
-				let result = compiled_expr.execute(&exec_ctx)?;
-				match result.data() {
-					ColumnData::Bool(container) => {
-						for i in 0..row_count {
-							if filter_mask.get(i) {
-								let valid = container.is_defined(i);
-								let filter_result = container.data().get(i);
-								filter_mask.set(i, valid & filter_result);
-							}
-						}
-					}
-					ColumnData::Option {
-						inner,
-						bitvec,
-					} => match inner.as_ref() {
-						ColumnData::Bool(container) => {
-							for i in 0..row_count {
-								if filter_mask.get(i) {
-									let defined = i < bitvec.len() && bitvec.get(i);
-									let valid = defined && container.is_defined(i);
-									let value = valid && container.data().get(i);
-									filter_mask.set(i, value);
-								}
-							}
-						}
-						_ => panic!("filter expression must evaluate to a boolean column"),
-					},
-					_ => panic!("filter expression must evaluate to a boolean column"),
-				}
+			if row_count == 0 {
+				continue;
 			}
 
-			// Enforce write policies only on rows that match the filter
-			let matching_count = (0..row_count).filter(|&i| filter_mask.get(i)).count();
-			if matching_count > 0 {
-				let mut filtered_cols = Vec::new();
+			PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
+				txn,
+				namespace_name,
+				series_name,
+				"delete",
+				&columns,
+				PolicyTargetType::Series,
+			)?;
+
+			let row_numbers = &columns.row_numbers;
+
+			for row_idx in 0..row_count {
+				let sequence = u64::from(row_numbers[row_idx]);
+
+				let timestamp = columns
+					.iter()
+					.find(|c| c.name().text() == "timestamp")
+					.map(|c| match c.data().get_value(row_idx) {
+						Value::Int8(v) => v,
+						_ => 0,
+					})
+					.unwrap_or(0);
+
+				let variant_tag = if has_tag {
+					columns.iter()
+						.find(|c| c.name().text() == "tag")
+						.map(|c| match c.data().get_value(row_idx) {
+							Value::Uint1(v) => Some(v),
+							_ => None,
+						})
+						.flatten()
+				} else {
+					None
+				};
+
+				let key = SeriesRowKey {
+					series: series_def.id,
+					variant_tag,
+					timestamp,
+					sequence,
+				};
+				let encoded_key = key.encode();
+
+				let Some(old_entry) = txn.get(&encoded_key)? else {
+					continue;
+				};
+				let encoded_values = old_entry.values;
+
+				let row_number = RowNumber::from(sequence);
+				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+				pre_col_vec.push(Column {
+					name: Fragment::internal("timestamp"),
+					data: ColumnData::int8(vec![timestamp]),
+				});
 				for col in columns.iter() {
-					let mut data = ColumnData::with_capacity(col.data().get_type(), matching_count);
-					for i in 0..row_count {
-						if filter_mask.get(i) {
-							data.push_value(col.data().get_value(i));
-						}
-					}
-					filtered_cols.push(Column {
-						name: col.name().clone(),
-						data,
-					});
-				}
-				let filtered = Columns::new(filtered_cols);
-				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
-					txn,
-					namespace_name,
-					series_name,
-					"delete",
-					&filtered,
-					PolicyTargetType::Series,
-				)?;
-			}
-
-			// Delete matching rows
-			for (i, key) in keys.iter().enumerate() {
-				if filter_mask.get(i) {
-					// Track flow change for deleted row before removing
-					let row_number = RowNumber::from(sequences[i]);
-					let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
-					// Get timestamp from the columns Columns struct
-					if let Some(ts_col) = columns.iter().find(|c| c.name().text() == "timestamp") {
-						let mut data = ColumnData::with_capacity(ts_col.data().get_type(), 1);
-						data.push_value(ts_col.data().get_value(i));
+					if col.name().text() != "timestamp" && col.name().text() != "tag" {
+						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
+						data.push_value(col.data().get_value(row_idx));
 						pre_col_vec.push(Column {
-							name: Fragment::internal("timestamp"),
+							name: col.name().clone(),
 							data,
 						});
 					}
-					for col in columns.iter() {
-						if col.name().text() != "timestamp" && col.name().text() != "tag" {
-							let mut data =
-								ColumnData::with_capacity(col.data().get_type(), 1);
-							data.push_value(col.data().get_value(i));
-							pre_col_vec.push(Column {
-								name: col.name().clone(),
-								data,
-							});
-						}
-					}
-					let pre = Columns {
-						row_numbers: CowVec::new(vec![row_number]),
-						columns: CowVec::new(pre_col_vec),
-					};
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
-						version: CommitVersion(0),
-						diffs: vec![Diff::Remove {
-							pre,
-						}],
-					});
-
-					if let Some(log) = testing.as_mut() {
-						let old = Columns::single_row(
-							iter::once((
-								"timestamp",
-								columns.iter()
-									.find(|c| c.name().text() == "timestamp")
-									.map(|c| c.data().get_value(i))
-									.unwrap_or(Value::Int8(0)),
-							))
-							.chain(columns
-								.iter()
-								.filter(|c| {
-									c.name().text() != "timestamp"
-										&& c.name().text() != "tag"
-								})
-								.map(|c| (c.name().text(), c.data().get_value(i)))),
-						);
-						let mutation_key =
-							format!("series::{}::{}", namespace.name(), series_def.name);
-						log.record_delete(mutation_key, old);
-					}
-
-					SeriesInterceptor::pre_delete(txn, &series_def)?;
-					txn.unset(key, encoded_values[i].clone())?;
-					SeriesInterceptor::post_delete(txn, &series_def, &encoded_values[i])?;
-					deleted_count += 1;
 				}
+				let pre = Columns {
+					row_numbers: CowVec::new(vec![row_number]),
+					columns: CowVec::new(pre_col_vec),
+				};
+				txn.track_flow_change(Change {
+					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					version: CommitVersion(0),
+					diffs: vec![Diff::Remove {
+						pre,
+					}],
+				});
+
+				if let Some(log) = testing.as_mut() {
+					let old = Columns::single_row(
+						iter::once((
+							"timestamp",
+							columns.iter()
+								.find(|c| c.name().text() == "timestamp")
+								.map(|c| c.data().get_value(row_idx))
+								.unwrap_or(Value::Int8(0)),
+						))
+						.chain(columns
+							.iter()
+							.filter(|c| {
+								c.name().text() != "timestamp"
+									&& c.name().text() != "tag"
+							})
+							.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
+					);
+					let mutation_key = format!("series::{}::{}", namespace.name(), series_def.name);
+					log.record_delete(mutation_key, old);
+				}
+
+				SeriesInterceptor::pre_delete(txn, &series_def)?;
+				txn.unset(&encoded_key, encoded_values.clone())?;
+				SeriesInterceptor::post_delete(txn, &series_def, &encoded_values)?;
+				deleted_count += 1;
 			}
 
-			// Capture RETURNING data for filtered path
 			if plan.returning.is_some() {
-				let row_count = columns.row_count();
-				let matching = (0..row_count).filter(|&i| filter_mask.get(i)).count();
-				let mut filtered_cols = Vec::new();
-				for col in columns.iter() {
-					let mut data = ColumnData::with_capacity(col.data().get_type(), matching);
-					for i in 0..row_count {
-						if filter_mask.get(i) {
-							data.push_value(col.data().get_value(i));
+				returning_columns = Some(match returning_columns {
+					Some(existing) => {
+						let mut cols = Vec::new();
+						for (i, col) in columns.iter().enumerate() {
+							if let Some(existing_col) = existing.iter().nth(i) {
+								let mut data = ColumnData::with_capacity(
+									col.data().get_type(),
+									existing_col.data().len() + col.data().len(),
+								);
+								for j in 0..existing_col.data().len() {
+									data.push_value(
+										existing_col.data().get_value(j),
+									);
+								}
+								for j in 0..col.data().len() {
+									data.push_value(col.data().get_value(j));
+								}
+								cols.push(Column {
+									name: col.name().clone(),
+									data,
+								});
+							}
 						}
+						Columns::new(cols)
 					}
-					filtered_cols.push(Column {
-						name: col.name().clone(),
-						data,
-					});
-				}
-				returning_columns = Some(Columns::new(filtered_cols));
+					None => columns,
+				});
 			}
-		} else if plan.returning.is_some() {
+		}
+
+		if plan.returning.is_some() && returning_columns.is_none() {
 			returning_columns = Some(Columns::empty());
 		}
 	} else {
@@ -341,7 +257,6 @@ pub(crate) fn delete_series<'a>(
 		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 
 		for (key, encoded_values) in entries_to_delete.iter() {
-			// Track flow change before removing
 			if let Some(decoded_key) = SeriesRowKey::decode(key) {
 				let row_number = RowNumber::from(decoded_key.sequence);
 				let data_values: Vec<Value> = series_def
@@ -402,7 +317,6 @@ pub(crate) fn delete_series<'a>(
 			deleted_count += 1;
 		}
 
-		// Capture RETURNING data for delete-all path
 		if plan.returning.is_some() {
 			let mut returned_rows: Vec<(RowNumber, EncodedValues)> = Vec::new();
 			for (key, encoded) in entries_to_delete.iter() {
@@ -415,7 +329,6 @@ pub(crate) fn delete_series<'a>(
 		}
 	}
 
-	// Update metadata
 	metadata.row_count = metadata.row_count.saturating_sub(deleted_count);
 	if metadata.row_count == 0 {
 		metadata.oldest_timestamp = 0;
@@ -424,13 +337,11 @@ pub(crate) fn delete_series<'a>(
 
 	services.catalog.update_series_metadata_txn(txn, metadata)?;
 
-	// If RETURNING clause is present, evaluate expressions against deleted rows
 	if let Some(returning_exprs) = &plan.returning {
 		let cols = returning_columns.unwrap_or_else(Columns::empty);
 		return evaluate_returning(services, symbol_table, returning_exprs, cols);
 	}
 
-	// Return summary
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(namespace.name().to_string())),
 		("series", Value::Utf8(series_def.name)),
