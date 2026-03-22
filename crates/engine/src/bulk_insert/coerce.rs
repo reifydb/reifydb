@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{columns::Columns, data::ColumnData},
 };
 use reifydb_function::registry::Functions;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{
@@ -27,7 +27,7 @@ pub(super) fn coerce_columns(
 		params: &Params::None,
 		symbol_table: &SymbolTable::new(),
 		functions: &Functions::empty(),
-		clock: &Clock::default(),
+		runtime_context: &RuntimeContext::default(),
 		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,

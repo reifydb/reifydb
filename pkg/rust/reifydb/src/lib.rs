@@ -34,7 +34,7 @@ pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::ActorSystem,
-	clock::{Clock, MockClock},
+	context::clock::{Clock, MockClock},
 };
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::hot::{sqlite::config::SqliteConfig, storage::HotStorage};

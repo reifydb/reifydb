@@ -45,6 +45,7 @@ members = [
     "bin/playground",
     "bin/testcontainer",
     "bin/load-test",
+    "bin/forge",
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -99,6 +100,7 @@ default-members = [
     "bin/playground",
     "bin/testcontainer",
     "bin/load-test",
+    "bin/forge",
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",

@@ -8,7 +8,7 @@ use reifydb_rql::{
 	instruction::{CompiledFunctionDef, Instruction, ScopeType},
 	query::QueryPlan,
 };
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -55,7 +55,6 @@ pub(crate) fn call_eval_with_args(
 	call: &CallExpression,
 	arguments: Columns,
 	functions: &Functions,
-	clock: &Clock,
 ) -> Result<Column> {
 	let function_name = call.func.0.text();
 
@@ -92,7 +91,7 @@ pub(crate) fn call_eval_with_args(
 
 	// Try user-defined function from symbol table first
 	if let Some(func_def) = ctx.symbol_table.get_function(function_name) {
-		return call_user_defined_function(ctx, call, func_def.clone(), &arguments, functions, clock);
+		return call_user_defined_function(ctx, call, func_def.clone(), &arguments, functions);
 	}
 
 	// Fall back to built-in scalar function handling
@@ -110,7 +109,7 @@ pub(crate) fn call_eval_with_args(
 		fragment: call.func.0.clone(),
 		columns: &arguments,
 		row_count,
-		clock,
+		runtime_context: ctx.runtime_context,
 		identity: ctx.identity,
 	})?;
 
@@ -127,7 +126,6 @@ fn call_user_defined_function(
 	func_def: CompiledFunctionDef,
 	arguments: &Columns,
 	functions: &Functions,
-	clock: &Clock,
 ) -> Result<Column> {
 	let row_count = ctx.row_count;
 	let mut results: Vec<Value> = Vec::with_capacity(row_count);
@@ -155,7 +153,7 @@ fn call_user_defined_function(
 			&mut func_symbol_table,
 			ctx.params,
 			functions,
-			clock,
+			ctx.runtime_context,
 			ctx.identity,
 		)?;
 
@@ -181,7 +179,7 @@ fn execute_function_body_for_scalar(
 	symbol_table: &mut SymbolTable,
 	params: &Params,
 	functions: &Functions,
-	clock: &Clock,
+	runtime_context: &RuntimeContext,
 	identity: IdentityId,
 ) -> Result<Value> {
 	let mut ip = 0;
@@ -402,18 +400,13 @@ fn execute_function_body_for_scalar(
 							params,
 							symbol_table,
 							functions,
-							clock,
+							runtime_context,
 							arena: None,
 							identity,
 							is_aggregate_context: false,
 						};
 						let evaluation_context = call_session.eval_empty();
-						let result_column = evaluate(
-							&evaluation_context,
-							&map_node.map[0],
-							functions,
-							clock,
-						)?;
+						let result_column = evaluate(&evaluation_context, &map_node.map[0])?;
 						if result_column.data.len() > 0 {
 							stack.push(result_column.data.get_value(0));
 						}
@@ -459,7 +452,7 @@ fn execute_function_body_for_scalar(
 						symbol_table,
 						params,
 						functions,
-						clock,
+						runtime_context,
 						identity,
 					)?;
 					while symbol_table.scope_depth() > base_depth {
@@ -478,7 +471,7 @@ fn execute_function_body_for_scalar(
 						fragment: name.clone(),
 						columns: &columns,
 						row_count: 1,
-						clock,
+						runtime_context,
 						identity,
 					})?;
 					if result_data.len() > 0 {

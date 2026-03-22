@@ -32,7 +32,7 @@ impl ScalarFunction for Now {
 			});
 		}
 
-		let millis = ctx.clock.now_millis() as i64;
+		let millis = ctx.runtime_context.clock.now_millis() as i64;
 		let data = vec![millis; row_count];
 		let bitvec = vec![true; row_count];
 

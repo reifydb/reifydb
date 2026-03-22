@@ -30,7 +30,7 @@ use reifydb_core::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
-use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
+use reifydb_runtime::{actor::system::ActorSystem, context::RuntimeContext};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
@@ -335,7 +335,7 @@ impl StandardEngine {
 		event_bus: EventBus,
 		interceptors: InterceptorFactory,
 		catalog: Catalog,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 		functions: Functions,
 		procedures: Procedures,
 		transforms: Transforms,
@@ -366,7 +366,7 @@ impl StandardEngine {
 			event_bus,
 			executor: Executor::new(
 				catalog.clone(),
-				clock,
+				runtime_context,
 				functions,
 				procedures,
 				transforms,

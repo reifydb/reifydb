@@ -274,8 +274,8 @@ pub(crate) fn insert_series<'a>(
 
 fn generate_timestamp(services: &Services, precision: TimestampPrecision) -> i64 {
 	match precision {
-		TimestampPrecision::Millisecond => services.clock.now_millis() as i64,
-		TimestampPrecision::Microsecond => services.clock.now_micros() as i64,
-		TimestampPrecision::Nanosecond => services.clock.now_nanos() as i64,
+		TimestampPrecision::Millisecond => services.runtime_context.clock.now_millis() as i64,
+		TimestampPrecision::Microsecond => services.runtime_context.clock.now_micros() as i64,
+		TimestampPrecision::Nanosecond => services.runtime_context.clock.now_nanos() as i64,
 	}
 }

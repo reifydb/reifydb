@@ -18,7 +18,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::{MultiVersionContains, MultiVersionGet},
 };
-use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_type::{Result, util::hex};
 use tracing::instrument;

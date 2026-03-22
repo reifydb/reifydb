@@ -3,7 +3,7 @@
 
 use std::env;
 
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
 /// Creates a detailed internal error diagnostic with source location and

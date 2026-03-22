@@ -27,7 +27,7 @@ use reifydb_runtime::{
 		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
-	clock::Clock,
+	context::clock::Clock,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
@@ -458,7 +458,7 @@ pub mod tests {
 		config::SystemConfig,
 		encoded::{encoded::EncodedValues, key::EncodedKey},
 	};
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
+	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{

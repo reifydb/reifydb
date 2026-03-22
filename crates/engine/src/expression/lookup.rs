@@ -153,7 +153,7 @@ pub mod tests {
 	};
 	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
-	use reifydb_runtime::clock::Clock;
+	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 	use super::column_lookup;
@@ -169,7 +169,7 @@ pub mod tests {
 			params: &Params::None,
 			symbol_table: &SymbolTable::new(),
 			functions: &Functions::empty(),
-			clock: &Clock::default(),
+			runtime_context: &RuntimeContext::default(),
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,

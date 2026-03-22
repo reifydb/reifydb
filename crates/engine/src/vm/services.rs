@@ -12,7 +12,7 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_function::{is, math, registry::Functions, series, subscription};
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::Compiler;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
 use reifydb_type::value::sumtype::SumTypeId;
 
@@ -29,7 +29,7 @@ use crate::{
 /// query operators, and other components need access to.
 pub struct Services {
 	pub catalog: Catalog,
-	pub clock: Clock,
+	pub runtime_context: RuntimeContext,
 	pub compiler: Compiler,
 	pub functions: Functions,
 	pub procedures: Procedures,
@@ -46,7 +46,7 @@ pub struct Services {
 impl Services {
 	pub fn new(
 		catalog: Catalog,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 		functions: Functions,
 		procedures: Procedures,
 		transforms: Transforms,
@@ -58,7 +58,7 @@ impl Services {
 		Self {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,
-			clock,
+			runtime_context,
 			functions,
 			procedures,
 			transforms,
@@ -85,7 +85,7 @@ impl Services {
 		let store = SingleStore::testing_memory();
 		let mut services = Self::new(
 			Catalog::testing(),
-			Clock::default(),
+			RuntimeContext::default(),
 			Functions::builder()
 				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
 				.register_aggregate("math::min", math::aggregate::min::Min::new)

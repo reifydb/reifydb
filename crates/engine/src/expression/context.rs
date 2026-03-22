@@ -11,7 +11,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_function::registry::Functions;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
 use crate::{
@@ -28,7 +28,7 @@ pub struct EvalSession<'a> {
 	pub params: &'a Params,
 	pub symbol_table: &'a SymbolTable,
 	pub functions: &'a Functions,
-	pub clock: &'a Clock,
+	pub runtime_context: &'a RuntimeContext,
 	pub arena: Option<&'a QueryArena>,
 	pub identity: IdentityId,
 	pub is_aggregate_context: bool,
@@ -46,7 +46,7 @@ impl<'a> EvalSession<'a> {
 			symbol_table: self.symbol_table,
 			is_aggregate_context: self.is_aggregate_context,
 			functions: self.functions,
-			clock: self.clock,
+			runtime_context: self.runtime_context,
 			arena: self.arena,
 			identity: self.identity,
 		}
@@ -70,7 +70,7 @@ impl<'a> EvalSession<'a> {
 			params: ctx.params,
 			symbol_table: &stored.stack,
 			functions: ctx.functions,
-			clock: ctx.clock,
+			runtime_context: ctx.runtime_context,
 			arena: None,
 			identity: stored.identity,
 			is_aggregate_context: false,
@@ -83,7 +83,7 @@ impl<'a> EvalSession<'a> {
 			params: &ctx.params,
 			symbol_table: &ctx.stack,
 			functions: &ctx.services.functions,
-			clock: &ctx.services.clock,
+			runtime_context: &ctx.services.runtime_context,
 			arena: None,
 			identity: ctx.identity,
 			is_aggregate_context: false,
@@ -95,12 +95,12 @@ impl<'a> EvalSession<'a> {
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(|| Functions::empty());
-		static DEFAULT_CLOCK: LazyLock<Clock> = LazyLock::new(|| Clock::default());
+		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::default());
 		EvalSession {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
-			clock: &DEFAULT_CLOCK,
+			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
@@ -119,7 +119,7 @@ pub struct EvalContext<'a> {
 	// Should be replaced with proper function detection or separate aggregation methods
 	pub is_aggregate_context: bool,
 	pub functions: &'a Functions,
-	pub clock: &'a Clock,
+	pub runtime_context: &'a RuntimeContext,
 	pub arena: Option<&'a QueryArena>,
 	pub identity: IdentityId,
 }

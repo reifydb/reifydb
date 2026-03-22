@@ -45,7 +45,7 @@ impl QueryNode for ApplyTransformNode {
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let transform_ctx = TransformContext {
 				functions: &stored_ctx.services.functions,
-				clock: &stored_ctx.services.clock,
+				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
 			let result = self.transform.apply(&transform_ctx, columns)?;

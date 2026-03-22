@@ -60,6 +60,8 @@ mod error;
 mod utils;
 
 pub use error::JsError;
+use reifydb_engine::transform::registry::Transforms;
+use reifydb_runtime::context::RuntimeContext;
 
 // Debug helper to log to browser console
 fn console_log(msg: &str) {
@@ -179,10 +181,12 @@ impl WasmDB {
 			eventbus,
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, schema_registry),
-			runtime.clock().clone(),
+			RuntimeContext::with_clock(
+				runtime.clock().clone()
+			),
 			Functions::defaults().build(),
 			procedures,
-			reifydb_engine::transform::registry::Transforms::empty(),
+			Transforms::empty(),
 			ioc,
 			#[cfg(not(target_arch = "wasm32"))]
 			None,

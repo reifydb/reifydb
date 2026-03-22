@@ -34,7 +34,7 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	clock::{Clock, Instant},
+	context::clock::{Clock, Instant},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error, value::identity::IdentityId};

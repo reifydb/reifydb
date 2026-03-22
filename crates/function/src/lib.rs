@@ -9,7 +9,7 @@ use reifydb_core::value::column::{
 	data::ColumnData,
 	view::group_by::{GroupByView, GroupKey},
 };
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -34,6 +34,7 @@ pub mod series;
 pub mod subscription;
 pub mod text;
 pub mod time;
+pub mod uuid;
 pub mod wasm;
 
 use error::{AggregateFunctionResult, GeneratorFunctionResult, ScalarFunctionResult};
@@ -55,7 +56,7 @@ pub struct ScalarFunctionContext<'a> {
 	pub fragment: Fragment,
 	pub columns: &'a Columns,
 	pub row_count: usize,
-	pub clock: &'a Clock,
+	pub runtime_context: &'a RuntimeContext,
 	pub identity: IdentityId,
 }
 pub trait ScalarFunction: Send + Sync {
@@ -123,7 +124,7 @@ pub fn propagate_options(
 		fragment: ctx.fragment.clone(),
 		columns: &unwrapped_columns,
 		row_count: ctx.row_count,
-		clock: ctx.clock,
+		runtime_context: ctx.runtime_context,
 		identity: ctx.identity,
 	});
 

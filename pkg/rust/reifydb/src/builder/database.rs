@@ -45,7 +45,7 @@ use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
+use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
@@ -337,7 +337,7 @@ impl DatabaseBuilder {
 			eventbus.clone(),
 			self.interceptors.build(),
 			Catalog::new(catalog, schema_registry),
-			runtime.clock().clone(),
+			RuntimeContext::with_clock(runtime.clock().clone()),
 			functions,
 			procedures,
 			transforms,

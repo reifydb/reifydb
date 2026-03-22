@@ -33,7 +33,7 @@ use reifydb_metric::worker::{
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::{ActorHandle, ActorSystem, ActorSystemConfig},
-	clock::Clock,
+	context::{RuntimeContext, clock::Clock},
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -213,7 +213,7 @@ pub fn create_test_engine() -> StandardEngine {
 		eventbus.clone(),
 		InterceptorFactory::default(),
 		Catalog::new(materialized_catalog, schema_registry),
-		runtime.clock().clone(),
+		RuntimeContext::with_clock(runtime.clock().clone()),
 		Functions::builder().build(),
 		Procedures::empty(),
 		Transforms::empty(),

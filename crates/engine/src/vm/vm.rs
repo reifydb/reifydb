@@ -811,7 +811,9 @@ impl Vm {
 													.catalog,
 												functions: &services
 													.functions,
-												clock: &services.clock,
+												runtime_context:
+													&services
+														.runtime_context,
 											};
 											let columns = proc_impl
 												.call(&ctx, tx)?;
@@ -1094,7 +1096,8 @@ impl Vm {
 										params: &call_params,
 										catalog: &services.catalog,
 										functions: &services.functions,
-										clock: &services.clock,
+										runtime_context: &services
+											.runtime_context,
 									};
 									let columns = proc_impl.call(&ctx, tx)?;
 
@@ -1127,7 +1130,8 @@ impl Vm {
 										params,
 										symbol_table: &self.symbol_table,
 										functions: &services.functions,
-										clock: &services.clock,
+										runtime_context: &services
+											.runtime_context,
 										arena: None,
 										identity: tx.identity(),
 										is_aggregate_context: false,
@@ -1153,8 +1157,6 @@ impl Vm {
 									let result_column = evaluate(
 										&evaluation_context,
 										&proper_call,
-										&services.functions,
-										&services.clock,
 									)?;
 									let value = if result_column.data.len() > 0 {
 										result_column.data.get_value(0)

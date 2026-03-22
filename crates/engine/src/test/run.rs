@@ -179,7 +179,7 @@ pub(crate) fn run_tests(
 					ctx.clear();
 				}
 				txn.clear_test_flow_state();
-				let start = services.clock.instant();
+				let start = services.runtime_context.clock.instant();
 				let savepoint = txn.savepoint();
 				let (outcome, message) = run_single(
 					vm,
@@ -232,7 +232,7 @@ pub(crate) fn run_tests(
 						ctx.clear();
 					}
 					txn.clear_test_flow_state();
-					let start = services.clock.instant();
+					let start = services.runtime_context.clock.instant();
 					let savepoint = txn.savepoint();
 					let (outcome, message) = run_single(
 						vm,

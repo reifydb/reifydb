@@ -130,14 +130,12 @@ pub fn cast_column_data(
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::value::column::data::ColumnData;
-	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::{
 		CastExpression, ConstantExpression,
 		ConstantExpression::Number,
 		Expression::{Cast, Constant, Prefix},
 		PrefixExpression, PrefixOperator, TypeExpression,
 	};
-	use reifydb_runtime::clock::Clock;
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 	use crate::expression::{context::EvalContext, eval::evaluate};
@@ -157,8 +155,6 @@ pub mod tests {
 					ty: Type::Int4,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -184,8 +180,6 @@ pub mod tests {
 					ty: Type::Int4,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -211,8 +205,6 @@ pub mod tests {
 					ty: Type::Int1,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -234,8 +226,6 @@ pub mod tests {
 					ty: Type::Float8,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -257,8 +247,6 @@ pub mod tests {
 					ty: Type::Float4,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -280,8 +268,6 @@ pub mod tests {
 					ty: Type::Float4,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -303,8 +289,6 @@ pub mod tests {
 					ty: Type::Float8,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -326,8 +310,6 @@ pub mod tests {
 					ty: Type::Boolean,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 
@@ -349,8 +331,6 @@ pub mod tests {
 					ty: Type::Boolean,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		);
 
 		assert!(result.is_err());
@@ -380,8 +360,6 @@ pub mod tests {
 					ty: Type::Date,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		);
 
 		assert!(result.is_err());
@@ -408,8 +386,6 @@ pub mod tests {
 					ty: Type::Decimal,
 				},
 			}),
-			&Functions::empty(),
-			&Clock::default(),
 		)
 		.unwrap();
 

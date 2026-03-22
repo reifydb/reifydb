@@ -40,7 +40,7 @@
 
 #![allow(dead_code)]
 
-pub mod clock;
+pub mod context;
 
 pub mod hash;
 
@@ -54,7 +54,7 @@ use std::{mem::ManuallyDrop, time::Duration};
 
 use crate::{
 	actor::system::{ActorSystem, ActorSystemConfig},
-	clock::{Clock, MockClock},
+	context::clock::{Clock, MockClock},
 };
 
 /// Configuration for creating a [`SharedRuntime`].

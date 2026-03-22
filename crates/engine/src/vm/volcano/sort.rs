@@ -68,7 +68,7 @@ impl QueryNode for SortNode {
 
 		let transform_ctx = TransformContext {
 			functions: &ctx.services.functions,
-			clock: &ctx.services.clock,
+			runtime_context: &ctx.services.runtime_context,
 			params: &ctx.params,
 		};
 		Ok(Some(self.apply(&transform_ctx, columns)?))

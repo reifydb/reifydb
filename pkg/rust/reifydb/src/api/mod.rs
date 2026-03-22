@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{config::SystemConfig, event::EventBus};
-use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},

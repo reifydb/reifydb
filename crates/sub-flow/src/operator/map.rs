@@ -19,7 +19,7 @@ use reifydb_engine::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	fragment::Fragment,
@@ -39,7 +39,7 @@ pub struct MapOperator {
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl MapOperator {
@@ -48,7 +48,7 @@ impl MapOperator {
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
 		functions: Functions,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 	) -> Self {
 		let compile_ctx = CompileContext {
 			functions: &functions,
@@ -66,7 +66,7 @@ impl MapOperator {
 			expressions,
 			compiled_expressions,
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
@@ -81,7 +81,7 @@ impl MapOperator {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,

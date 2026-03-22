@@ -24,7 +24,7 @@ use reifydb_engine::{
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
-	clock::Clock,
+	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_type::{
@@ -175,7 +175,7 @@ pub struct DistinctOperator {
 	compiled_expressions: Vec<CompiledExpr>,
 	schema: Schema,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl DistinctOperator {
@@ -184,7 +184,7 @@ impl DistinctOperator {
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
 		functions: Functions,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 	) -> Self {
 		let symbol_table = SymbolTable::new();
 		let compile_ctx = CompileContext {
@@ -203,7 +203,7 @@ impl DistinctOperator {
 			compiled_expressions,
 			schema: Schema::testing(&[Type::Blob]),
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
@@ -232,7 +232,7 @@ impl DistinctOperator {
 				params: &EMPTY_PARAMS,
 				symbol_table: &EMPTY_SYMBOL_TABLE,
 				functions: &self.functions,
-				clock: &self.clock,
+				runtime_context: &self.runtime_context,
 				arena: None,
 				identity: IdentityId::root(),
 				is_aggregate_context: false,

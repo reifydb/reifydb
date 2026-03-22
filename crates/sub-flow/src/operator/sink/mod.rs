@@ -28,7 +28,7 @@ use reifydb_engine::{
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	fragment::Fragment,
@@ -44,7 +44,7 @@ use crate::transaction::FlowTransaction;
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
-static DEFAULT_CLOCK: LazyLock<Clock> = LazyLock::new(Clock::default);
+static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(RuntimeContext::default);
 
 /// Coerce columns to match target schema types
 pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> Result<Columns> {
@@ -70,7 +70,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
-			clock: &DEFAULT_CLOCK,
+			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
@@ -135,7 +135,7 @@ pub(crate) fn coerce_subscription_columns(
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
-			clock: &DEFAULT_CLOCK,
+			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,

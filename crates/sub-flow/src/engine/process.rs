@@ -86,11 +86,11 @@ impl FlowEngine {
 		apply_time_us = field::Empty
 	))]
 	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
-		let lock_start = self.clock.instant();
+		let lock_start = self.runtime_context.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
-		let apply_start = self.clock.instant();
+		let apply_start = self.runtime_context.clock.instant();
 		let result = operator.apply(txn, change)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
@@ -124,7 +124,7 @@ impl FlowEngine {
 			}
 		};
 
-		let propagation_start = self.clock.instant();
+		let propagation_start = self.runtime_context.clock.instant();
 		if changes.is_empty() {
 		} else if changes.len() == 1 {
 			let output_id = changes[0];

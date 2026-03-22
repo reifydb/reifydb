@@ -54,12 +54,7 @@ impl QueryNode for AssertNode {
 			for assert_expr in &self.expressions {
 				let eval_ctx = session.eval(columns.clone(), row_count);
 
-				let result = evaluate(
-					&eval_ctx,
-					assert_expr,
-					&stored_ctx.services.functions,
-					&stored_ctx.services.clock,
-				)?;
+				let result = evaluate(&eval_ctx, assert_expr)?;
 
 				let frag = assert_expr.full_fragment_owned();
 				match result.data() {
@@ -143,12 +138,7 @@ impl QueryNode for AssertWithoutInputNode {
 		for assert_expr in &self.expressions {
 			let eval_ctx = session.eval_empty();
 
-			let result = evaluate(
-				&eval_ctx,
-				assert_expr,
-				&stored_ctx.services.functions,
-				&stored_ctx.services.clock,
-			)?;
+			let result = evaluate(&eval_ctx, assert_expr)?;
 
 			let frag = assert_expr.full_fragment_owned();
 			match result.data() {

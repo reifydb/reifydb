@@ -65,7 +65,7 @@ pub(crate) fn dispatch(
 		params,
 		symbol_table: &vm.symbol_table,
 		functions: &services.functions,
-		clock: &services.clock,
+		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: tx.identity(),
 		is_aggregate_context: false,
@@ -73,7 +73,7 @@ pub(crate) fn dispatch(
 	let mut event_columns = Vec::with_capacity(plan.fields.len());
 	for (field_name, expr) in &plan.fields {
 		let eval_ctx = session.eval_empty();
-		let col = evaluate(&eval_ctx, expr, &services.functions, &services.clock)?;
+		let col = evaluate(&eval_ctx, expr)?;
 		event_columns.push(Column::new(Fragment::internal(field_name), col.data));
 	}
 	let event_payload = Columns::new(event_columns);
@@ -94,7 +94,7 @@ pub(crate) fn dispatch(
 
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
-				let handler_start = services.clock.instant();
+				let handler_start = services.runtime_context.clock.instant();
 				let saved_ip = vm.ip;
 
 				// Enter handler scope
@@ -170,7 +170,7 @@ pub(crate) fn dispatch(
 				params: &call_params,
 				catalog: &services.catalog,
 				functions: &services.functions,
-				clock: &services.clock,
+				runtime_context: &services.runtime_context,
 			};
 			let _result = native_proc.call(&ctx, tx)?;
 		}

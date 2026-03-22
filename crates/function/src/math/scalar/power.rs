@@ -917,7 +917,7 @@ impl ScalarFunction for Power {
 					fragment: ctx.fragment.clone(),
 					columns: &promoted_columns,
 					row_count,
-					clock: ctx.clock,
+					runtime_context: ctx.runtime_context,
 					identity: ctx.identity,
 				};
 				self.scalar(new_ctx)

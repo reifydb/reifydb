@@ -11,7 +11,7 @@ use reifydb_core::{
 	internal_err,
 	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
-use reifydb_runtime::clock::{Clock, Instant};
+use reifydb_runtime::context::clock::{Clock, Instant};
 use reifydb_type::Result;
 
 use crate::{ColumnStatistics, ColumnStore, backend::Backend, config::ColumnStoreConfig, statistics::merge};

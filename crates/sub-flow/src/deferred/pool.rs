@@ -19,7 +19,7 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	clock::{Clock, Instant},
+	context::clock::{Clock, Instant},
 };
 use reifydb_type::util::hex::encode;
 use tracing::{Span, field, instrument};

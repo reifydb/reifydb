@@ -31,7 +31,7 @@ impl ScalarFunction for TimeNow {
 			});
 		}
 
-		let millis = ctx.clock.now_millis();
+		let millis = ctx.runtime_context.clock.now_millis();
 		let dt = DateTime::from_timestamp_millis(millis);
 		let time = dt.time();
 

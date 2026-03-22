@@ -317,7 +317,7 @@ impl FlowEngine {
 						node.id,
 						conditions,
 						self.executor.functions.clone(),
-						self.clock.clone(),
+						self.runtime_context.clone(),
 					))),
 				);
 			}
@@ -336,7 +336,7 @@ impl FlowEngine {
 						node.id,
 						conditions,
 						self.executor.functions.clone(),
-						self.clock.clone(),
+						self.runtime_context.clone(),
 					))),
 				);
 			}
@@ -355,7 +355,7 @@ impl FlowEngine {
 						node.id,
 						expressions,
 						self.executor.functions.clone(),
-						self.clock.clone(),
+						self.runtime_context.clone(),
 					))),
 				);
 			}
@@ -455,7 +455,7 @@ impl FlowEngine {
 						node.id,
 						expressions,
 						self.executor.functions.clone(),
-						self.clock.clone(),
+						self.runtime_context.clone(),
 					))),
 				);
 			}
@@ -497,7 +497,7 @@ impl FlowEngine {
 				let config = evaluate_operator_config(
 					expressions.as_slice(),
 					&self.executor.functions,
-					&self.clock,
+					&self.runtime_context,
 				)?;
 
 				if let Some(factory) = self.custom_operators.get(operator.as_str()) {
@@ -564,7 +564,7 @@ impl FlowEngine {
 					min_events.clone(),
 					max_window_count.clone(),
 					max_window_age.clone(),
-					self.clock.clone(),
+					self.runtime_context.clone(),
 					self.executor.functions.clone(),
 				);
 				self.operators.insert(node.id, Arc::new(Operators::Window(operator)));

@@ -97,7 +97,7 @@ pub(crate) fn evaluate_returning(
 		params: &Params::None,
 		symbol_table: stack,
 		functions: &services.functions,
-		clock: &services.clock,
+		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,

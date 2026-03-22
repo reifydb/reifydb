@@ -58,7 +58,7 @@ pub(crate) fn alter_table_sequence<'a>(
 		params: &EMPTY_PARAMS,
 		symbol_table: &EMPTY_SYMBOL_TABLE,
 		functions: &services.functions,
-		clock: &services.clock,
+		runtime_context: &services.runtime_context,
 		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,
@@ -70,7 +70,7 @@ pub(crate) fn alter_table_sequence<'a>(
 		column_type: column.constraint.get_type(),
 		properties: column.properties.into_iter().map(|p| p.property).collect(),
 	});
-	let value = evaluate(&eval_ctx, &plan.value, &services.functions, &services.clock)?;
+	let value = evaluate(&eval_ctx, &plan.value)?;
 
 	let data = value.data();
 	debug_assert_eq!(data.len(), 1);

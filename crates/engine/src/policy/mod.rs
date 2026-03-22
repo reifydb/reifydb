@@ -108,7 +108,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 			params: &Params::None,
 			symbol_table: self.symbol_table,
 			functions: &self.services.functions,
-			clock: &self.services.clock,
+			runtime_context: &self.services.runtime_context,
 			arena: None,
 			identity,
 			is_aggregate_context: false,

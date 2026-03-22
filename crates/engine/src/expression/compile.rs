@@ -650,7 +650,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					arg_columns.push(compiled_arg.execute(ctx)?);
 				}
 				let arguments = Columns::new(arg_columns);
-				call_eval_with_args(ctx, &expr, arguments, ctx.functions, ctx.clock)
+				call_eval_with_args(ctx, &expr, arguments, ctx.functions)
 			})
 		}
 

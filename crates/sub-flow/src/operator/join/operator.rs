@@ -26,7 +26,7 @@ use reifydb_engine::{
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
-	clock::Clock,
+	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_type::{
@@ -70,7 +70,7 @@ pub struct JoinOperator {
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl JoinOperator {
@@ -109,9 +109,9 @@ impl JoinOperator {
 			.collect::<Result<Vec<_>>>()
 			.expect("Failed to compile right expressions");
 
-		// Extract Functions and Clock from executor
+		// Extract Functions and RuntimeContext from executor
 		let functions = executor.functions.clone();
-		let clock = executor.clock.clone();
+		let runtime_context = executor.runtime_context.clone();
 
 		Self {
 			left_parent,
@@ -129,7 +129,7 @@ impl JoinOperator {
 			row_number_provider,
 			executor,
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
@@ -153,7 +153,7 @@ impl JoinOperator {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,

@@ -439,12 +439,7 @@ impl<'a> InlineDataNode {
 					}
 					let eval_ctx = session.eval_empty();
 
-					let evaluated = evaluate(
-						&eval_ctx,
-						&alias_expr.expression,
-						&ctx.services.functions,
-						&ctx.services.clock,
-					)?;
+					let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
 
 					// Take the first value from the
 					// evaluated result
@@ -602,12 +597,7 @@ impl<'a> InlineDataNode {
 							.collect(),
 					});
 
-					let evaluated = evaluate(
-						&eval_ctx,
-						&alias_expr.expression,
-						&ctx.services.functions,
-						&ctx.services.clock,
-					)?;
+					let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
 
 					// Ensure we always add exactly one
 					// value

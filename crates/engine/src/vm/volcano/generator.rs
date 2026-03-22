@@ -70,12 +70,7 @@ impl QueryNode for GeneratorNode {
 		// Evaluate all parameter expressions into columns
 		let mut evaluated_columns = Vec::new();
 		for expr in &self.expressions {
-			let column = evaluate(
-				&evaluation_ctx,
-				expr,
-				&stored_ctx.services.functions,
-				&stored_ctx.services.clock,
-			)?;
+			let column = evaluate(&evaluation_ctx, expr)?;
 			evaluated_columns.push(column);
 		}
 		let evaluated_params = Columns::new(evaluated_columns);

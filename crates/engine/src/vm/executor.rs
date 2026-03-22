@@ -13,7 +13,7 @@ use reifydb_rql::{
 	ast::parse_str,
 	compiler::{CompilationResult, constrain_policy},
 };
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	RqlExecutor, Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
@@ -63,7 +63,7 @@ impl Deref for Executor {
 impl Executor {
 	pub fn new(
 		catalog: Catalog,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 		functions: Functions,
 		procedures: Procedures,
 		transforms: Transforms,
@@ -74,7 +74,7 @@ impl Executor {
 	) -> Self {
 		Self(Arc::new(Services::new(
 			catalog,
-			clock,
+			runtime_context,
 			functions,
 			procedures,
 			transforms,

@@ -3,12 +3,12 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_function::registry::Functions;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::params::Params;
 
 pub struct ProcedureContext<'a> {
 	pub params: &'a Params,
 	pub catalog: &'a Catalog,
 	pub functions: &'a Functions,
-	pub clock: &'a Clock,
+	pub runtime_context: &'a RuntimeContext,
 }

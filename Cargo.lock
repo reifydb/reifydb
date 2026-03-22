@@ -646,6 +646,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
+name = "forge"
+version = "0.4.2"
+dependencies = [
+ "axum",
+ "clap",
+ "reifydb",
+ "reifydb-client",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-transaction",
+ "reifydb-type",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1986,6 +2005,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -2062,8 +2082,10 @@ dependencies = [
  "crossbeam-channel",
  "dashmap",
  "futures-util",
+ "getrandom 0.4.1",
  "js-sys",
  "parking_lot",
+ "rand 0.10.0",
  "rayon",
  "reifydb-build",
  "serde",

@@ -31,7 +31,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle};
+use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle, context::RuntimeContext};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, testing::TestingViewMutationCaptor, transaction::Transaction,
@@ -147,7 +147,8 @@ impl FlowSubsystem {
 
 		let runtime = ioc.resolve::<SharedRuntime>().expect("SharedRuntime must be registered");
 		let clock = runtime.clock().clone();
-		let clock_for_factory = clock.clone();
+		let runtime_context = RuntimeContext::with_clock(clock.clone());
+		let runtime_context_for_factory = runtime_context.clone();
 
 		let custom_operators = Arc::new(config.custom_operators);
 		let custom_operators_for_factory = custom_operators.clone();
@@ -156,10 +157,10 @@ impl FlowSubsystem {
 			let cat = catalog.clone();
 			let exec = executor.clone();
 			let bus = event_bus.clone();
-			let clk = clock_for_factory.clone();
+			let rc = runtime_context_for_factory.clone();
 			let co = custom_operators_for_factory.clone();
 
-			move || FlowEngine::new(cat, exec, bus, clk, co)
+			move || FlowEngine::new(cat, exec, bus, rc, co)
 		};
 
 		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
@@ -216,7 +217,7 @@ impl FlowSubsystem {
 			engine.catalog(),
 			engine.executor(),
 			engine.event_bus().clone(),
-			runtime.clock().clone(),
+			RuntimeContext::with_clock(runtime.clock().clone()),
 			custom_operators.clone(),
 		)));
 
@@ -267,7 +268,7 @@ impl FlowSubsystem {
 				engine: engine.clone(),
 				catalog: engine.catalog(),
 				event_bus: engine.event_bus().clone(),
-				clock: runtime.clock().clone(),
+				runtime_context: RuntimeContext::with_clock(runtime.clock().clone()),
 				custom_operators: custom_operators.clone(),
 			},
 		));

@@ -20,7 +20,7 @@ use reifydb_engine::{
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	params::Params,
@@ -40,7 +40,7 @@ pub struct FilterOperator {
 	node: FlowNodeId,
 	compiled_conditions: Vec<CompiledExpr>,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl FilterOperator {
@@ -49,7 +49,7 @@ impl FilterOperator {
 		node: FlowNodeId,
 		conditions: Vec<Expression>,
 		functions: Functions,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 	) -> Self {
 		let compile_ctx = CompileContext {
 			functions: &functions,
@@ -65,7 +65,7 @@ impl FilterOperator {
 			node,
 			compiled_conditions,
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
@@ -81,7 +81,7 @@ impl FilterOperator {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,

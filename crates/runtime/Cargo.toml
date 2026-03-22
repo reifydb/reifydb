@@ -23,6 +23,8 @@ tracing = { workspace = true }
 serde = { workspace = true }
 xxhash-rust = { workspace = true }
 futures-util = { workspace = true }
+rand = { workspace = true }
+getrandom = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true }

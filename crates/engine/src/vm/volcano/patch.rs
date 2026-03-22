@@ -69,7 +69,7 @@ impl QueryNode for PatchNode {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
 			let transform_ctx = TransformContext {
 				functions: &stored_ctx.services.functions,
-				clock: &stored_ctx.services.clock,
+				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
 			let result = self.apply(&transform_ctx, columns)?;

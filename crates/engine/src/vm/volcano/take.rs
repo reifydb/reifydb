@@ -49,7 +49,7 @@ impl QueryNode for TakeNode {
 			}
 			let transform_ctx = TransformContext {
 				functions: &ctx.services.functions,
-				clock: &ctx.services.clock,
+				runtime_context: &ctx.services.runtime_context,
 				params: &ctx.params,
 			};
 			let result = self.apply(&transform_ctx, columns)?;

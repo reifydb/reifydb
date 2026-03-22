@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::clock::Clock;
 use reifydb_type::value::r#type::Type;
 
 use crate::{
@@ -67,7 +67,7 @@ impl ScalarFunction for Set {
 			}
 		};
 
-		match ctx.clock {
+		match &ctx.runtime_context.clock {
 			Clock::Mock(mock) => {
 				mock.set_millis(millis_u64);
 				let millis = mock.now_millis() as i64;

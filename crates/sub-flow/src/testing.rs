@@ -7,7 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::event::EventBus;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::{
 	testing::TestingViewMutationCaptor,
 	transaction::{Transaction, admin::AdminTransaction},
@@ -20,7 +20,7 @@ pub(crate) struct ViewInlineTestingMutationCapture {
 	pub engine: StandardEngine,
 	pub catalog: Catalog,
 	pub event_bus: EventBus,
-	pub clock: Clock,
+	pub runtime_context: RuntimeContext,
 	pub custom_operators: Arc<HashMap<String, OperatorFactory>>,
 }
 
@@ -30,7 +30,7 @@ impl ViewInlineTestingMutationCapture {
 			self.catalog.clone(),
 			self.engine.executor(),
 			self.event_bus.clone(),
-			self.clock.clone(),
+			self.runtime_context.clone(),
 			self.custom_operators.clone(),
 		);
 

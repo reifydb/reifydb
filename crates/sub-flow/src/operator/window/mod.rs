@@ -49,7 +49,7 @@ use reifydb_engine::{
 use reifydb_function::registry::Functions;
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_runtime::{
-	clock::Clock,
+	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_type::{
@@ -158,7 +158,7 @@ pub struct WindowOperator {
 	pub min_events: usize,               // Minimum events required before window becomes visible
 	pub max_window_count: Option<usize>, // Maximum number of windows to keep per group
 	pub max_window_age: Option<time::Duration>, // Maximum age of windows before expiration
-	pub clock: Clock,
+	pub runtime_context: RuntimeContext,
 }
 
 impl WindowOperator {
@@ -173,7 +173,7 @@ impl WindowOperator {
 		min_events: usize,
 		max_window_count: Option<usize>,
 		max_window_age: Option<time::Duration>,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 		functions: Functions,
 	) -> Self {
 		let symbol_table = SymbolTable::new();
@@ -210,13 +210,13 @@ impl WindowOperator {
 			min_events: min_events.max(1), // Ensure at least 1 event is required
 			max_window_count,
 			max_window_age,
-			clock,
+			runtime_context,
 		}
 	}
 
 	/// Get the current timestamp in milliseconds
 	pub fn current_timestamp(&self) -> u64 {
-		self.clock.now_millis()
+		self.runtime_context.clock.now_millis()
 	}
 
 	/// Compute group keys for all rows in Columns
@@ -234,7 +234,7 @@ impl WindowOperator {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
@@ -414,7 +414,7 @@ impl WindowOperator {
 			params: &EMPTY_PARAMS,
 			symbol_table: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: true, // Use aggregate functions for window aggregations
