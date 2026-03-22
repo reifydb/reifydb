@@ -12,6 +12,9 @@ mod utils;
 pub mod ws;
 
 // Re-export client types
+#[cfg(any(feature = "http", feature = "ws"))]
+use std::sync::Arc;
+
 #[cfg(feature = "grpc")]
 pub use grpc::{GrpcClient, GrpcSubscription};
 #[cfg(feature = "http")]
@@ -20,7 +23,6 @@ pub use http::HttpClient;
 pub use reifydb_client_derive::FromFrame;
 // Re-export commonly used types from reifydb-type
 pub use reifydb_type as r#type;
-#[cfg(any(feature = "http", feature = "ws"))]
 use reifydb_type::error::Diagnostic;
 pub use reifydb_type::{
 	params::Params,
@@ -133,12 +135,12 @@ fn value_to_wire(value: Value) -> WireValue {
 pub fn params_to_wire(params: Params) -> Option<WireParams> {
 	match params {
 		Params::None => None,
-		Params::Positional(values) => {
-			Some(WireParams::Positional(values.into_iter().map(value_to_wire).collect()))
-		}
-		Params::Named(map) => {
-			Some(WireParams::Named(map.into_iter().map(|(k, v)| (k, value_to_wire(v))).collect()))
-		}
+		Params::Positional(values) => Some(WireParams::Positional(
+			Arc::unwrap_or_clone(values).into_iter().map(value_to_wire).collect(),
+		)),
+		Params::Named(map) => Some(WireParams::Named(
+			Arc::unwrap_or_clone(map).into_iter().map(|(k, v)| (k, value_to_wire(v))).collect(),
+		)),
 	}
 }
 

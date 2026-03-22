@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use num_bigint::BigInt;
 use reifydb_type::{
@@ -40,7 +40,7 @@ pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcEr
 		Some(ProtoParamsOneof::Positional(pos)) => {
 			let values: Result<Vec<Value>, GrpcError> =
 				pos.values.into_iter().map(typed_value_to_value).collect();
-			Ok(Params::Positional(values?))
+			Ok(Params::Positional(Arc::new(values?)))
 		}
 		Some(ProtoParamsOneof::Named(named)) => {
 			let map: Result<HashMap<String, Value>, GrpcError> = named
@@ -48,7 +48,7 @@ pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcEr
 				.into_iter()
 				.map(|(k, tv)| typed_value_to_value(tv).map(|v| (k, v)))
 				.collect();
-			Ok(Params::Named(map?))
+			Ok(Params::Named(Arc::new(map?)))
 		}
 	}
 }

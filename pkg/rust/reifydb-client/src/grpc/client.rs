@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
@@ -260,12 +262,15 @@ fn params_to_proto(params: Params) -> Option<ProtoParams> {
 		Params::None => None,
 		Params::Positional(values) => Some(ProtoParams {
 			params: Some(ProtoParamsOneof::Positional(PositionalParams {
-				values: values.into_iter().map(value_to_typed_value).collect(),
+				values: Arc::unwrap_or_clone(values).into_iter().map(value_to_typed_value).collect(),
 			})),
 		}),
 		Params::Named(map) => Some(ProtoParams {
 			params: Some(ProtoParamsOneof::Named(NamedParams {
-				values: map.into_iter().map(|(k, v)| (k, value_to_typed_value(v))).collect(),
+				values: Arc::unwrap_or_clone(map)
+					.into_iter()
+					.map(|(k, v)| (k, value_to_typed_value(v)))
+					.collect(),
 			})),
 		}),
 	}

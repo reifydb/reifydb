@@ -163,7 +163,7 @@ pub(crate) fn dispatch(
 				named_map.insert(key, val);
 			}
 		}
-		let call_params = Params::Named(named_map);
+		let call_params = Params::Named(Arc::new(named_map));
 
 		for native_proc in native_handlers {
 			let ctx = ProcedureContext {

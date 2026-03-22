@@ -132,7 +132,7 @@ fn populate_symbols(symbols: &mut SymbolTable, params: &Params) -> Result<()> {
 			}
 		}
 		Params::Named(map) => {
-			for (name, value) in map {
+			for (name, value) in map.iter() {
 				symbols.set(name.clone(), Variable::scalar(value.clone()), false)?;
 			}
 		}

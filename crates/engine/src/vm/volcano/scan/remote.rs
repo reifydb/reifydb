@@ -3,7 +3,7 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
@@ -60,12 +60,12 @@ impl QueryNode for RemoteFetchNode {
 					// Merge: existing named params take precedence
 					if let Params::Named(ref existing) = _ctx.params {
 						let mut merged = named_params;
-						for (k, v) in existing {
+						for (k, v) in existing.iter() {
 							merged.insert(k.clone(), v.clone());
 						}
-						Params::Named(merged)
+						Params::Named(Arc::new(merged))
 					} else {
-						Params::Named(named_params)
+						Params::Named(Arc::new(named_params))
 					}
 				};
 

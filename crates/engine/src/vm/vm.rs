@@ -795,7 +795,7 @@ impl Vm {
 										{
 											let call_params =
 												Params::Positional(
-													args,
+													Arc::new(args),
 												);
 											let ctx = ProcedureContext {
 												params: &call_params,
@@ -1039,7 +1039,7 @@ impl Vm {
 									let frames = registry.forward_query(
 										&address,
 										&remote_rql,
-										Params::Positional(args),
+										Params::Positional(Arc::new(args)),
 									)?;
 									if let Some(frame) = frames.into_iter().next() {
 										let cols: Columns = frame.into();
@@ -1083,7 +1083,8 @@ impl Vm {
 								{
 									// Runtime-registered native procedure (no
 									// catalog entry needed)
-									let call_params = Params::Positional(args);
+									let call_params =
+										Params::Positional(Arc::new(args));
 									let ctx = ProcedureContext {
 										params: &call_params,
 										catalog: &services.catalog,

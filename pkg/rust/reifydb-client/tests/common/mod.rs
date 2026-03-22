@@ -59,13 +59,13 @@ pub fn parse_positional_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
 	if args.is_empty() {
-		return (String::new(), Params::Positional(vec![]));
+		return (String::new(), Params::Positional(Arc::new(vec![])));
 	}
 
 	let sql = args[0].to_string();
-	let params = args[1..].iter().map(|s| parse_param_value(s)).collect();
+	let params: Vec<_> = args[1..].iter().map(|s| parse_param_value(s)).collect();
 
-	(sql, Params::Positional(params))
+	(sql, Params::Positional(Arc::new(params)))
 }
 
 /// Parse named parameters from command arguments
@@ -75,7 +75,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
 	if args.is_empty() {
-		return (String::new(), Params::Named(HashMap::new()));
+		return (String::new(), Params::Named(Arc::new(HashMap::new())));
 	}
 
 	let sql = args[0].to_string();
@@ -87,7 +87,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 		}
 	}
 
-	(sql, Params::Named(params))
+	(sql, Params::Named(Arc::new(params)))
 }
 
 /// Parse a parameter value from string
