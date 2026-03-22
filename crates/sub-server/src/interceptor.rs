@@ -20,7 +20,7 @@
 //!         -> Pin<Box<dyn Future<Output = Result<(), ExecuteError>> + Send + '_>>
 //!     {
 //!         Box::pin(async move {
-//!             if ctx.metadata.get("x-api-key").is_none() {
+//!             if ctx.metadata.get("authorization").is_none() {
 //!                 return Err(ExecuteError::Rejected {
 //!                     code: "AUTH_REQUIRED".into(),
 //!                     message: "Missing API key".into(),

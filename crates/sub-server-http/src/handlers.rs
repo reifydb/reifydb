@@ -16,7 +16,7 @@ use axum::{
 };
 use reifydb_core::value::frame::response::{ResponseFrame, convert_frames};
 use reifydb_sub_server::{
-	auth::{AuthError, extract_identity_from_auth_header, extract_identity_from_auth_token},
+	auth::{AuthError, extract_identity_from_auth_header},
 	execute::execute,
 	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
@@ -94,7 +94,6 @@ fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
 ///
 /// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <token>` header
 /// - No credentials (anonymous access)
 ///
 /// # Request Body
@@ -131,7 +130,6 @@ pub async fn handle_query(
 ///
 /// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <token>` header
 /// - No credentials (anonymous access)
 pub async fn handle_admin(
 	State(state): State<AppState>,
@@ -150,7 +148,6 @@ pub async fn handle_admin(
 ///
 /// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <token>` header
 /// - No credentials (anonymous access)
 pub async fn handle_command(
 	State(state): State<AppState>,
@@ -212,21 +209,13 @@ async fn execute_and_respond(
 ///
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
-/// 2. X-Api-Key header (auth token)
-/// 3. Falls back to anonymous identity
+/// 2. Falls back to anonymous identity
 fn extract_identity(headers: &HeaderMap) -> Result<IdentityId, AppError> {
-	// Try Authorization header first
+	// Try Authorization header
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 
 		return extract_identity_from_auth_header(auth_str).map_err(AppError::Auth);
-	}
-
-	// Try X-Api-Key header
-	if let Some(auth_token) = headers.get("x-api-key") {
-		let token = auth_token.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
-
-		return extract_identity_from_auth_token(token).map_err(AppError::Auth);
 	}
 
 	// No credentials provided — anonymous access
