@@ -376,11 +376,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "139ef39800118c7683f2fd3c98c1b23c09ae076556b435f8e9064ae108aaeeec"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi",
  "rand_core",
  "wasip2",
  "wasip3",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -768,11 +770,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-abi"
-version = "0.4.1"
+version = "0.4.2"
 
 [[package]]
 name = "reifydb-auth"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "argon2",
  "rand",
@@ -784,11 +786,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-build"
-version = "0.4.1"
+version = "0.4.2"
 
 [[package]]
 name = "reifydb-catalog"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "crossbeam-skiplist",
  "futures-util",
@@ -809,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "bigdecimal",
  "crossbeam-skiplist",
@@ -849,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-metric"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
@@ -859,7 +861,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-rql"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "bumpalo",
  "postcard",
@@ -876,14 +878,16 @@ dependencies = [
 
 [[package]]
 name = "reifydb-runtime"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "cfg-if",
  "crossbeam-channel",
  "dashmap",
  "futures-util",
+ "getrandom 0.4.1",
  "js-sys",
  "parking_lot",
+ "rand",
  "rayon",
  "reifydb-build",
  "serde",
@@ -897,11 +901,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sql"
-version = "0.4.1"
+version = "0.4.2"
 
 [[package]]
 name = "reifydb-store-multi"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -914,7 +918,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-single"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -927,7 +931,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-transaction"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
@@ -945,7 +949,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-type"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "bigdecimal",
  "num-bigint",

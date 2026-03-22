@@ -89,8 +89,8 @@ pub async fn handle_connection(
 	// Channel for receiving push messages from the registry
 	let (push_tx, mut push_rx) = mpsc::channel::<PushMessage>(100);
 
-	// Connection starts unauthenticated
-	let mut identity: Option<IdentityId> = None;
+	// Connection starts with anonymous identity; Auth message upgrades it
+	let mut identity: Option<IdentityId> = Some(IdentityId::anonymous());
 
 	// Track remote subscription proxy tasks (not registered in registry/poller)
 	let mut remote_tasks: HashMap<String, JoinHandle<()>> = HashMap::new();

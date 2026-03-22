@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-import {Client, WsClient, type WsClientOptions} from '@reifydb/client';
+import {Client, WsClient, HttpClient, type WsClientOptions} from '@reifydb/client';
 
 interface ConnectionState {
-    client: WsClient | null;
+    client: WsClient | HttpClient | null;
     isConnected: boolean;
     isConnecting: boolean;
     connectionError: string | null;
@@ -13,15 +13,16 @@ interface ConnectionState {
 
 export interface ConnectionConfig {
     url?: string;
-    options?: Omit<WsClientOptions, 'url'>;
+    token?: string;
+    options?: Omit<WsClientOptions, 'url' | 'token'>;
 }
 
 export const DEFAULT_CONFIG: ConnectionConfig = {
     url: 'ws://127.0.0.1:8090',
-    options: {
-        timeoutMs: 1000,
-    }
+    options: {timeoutMs: 30_000},
 };
+
+export const DEFAULT_URL = 'ws://127.0.0.1:8090';
 
 export class Connection {
     private state: ConnectionState = {
@@ -33,12 +34,12 @@ export class Connection {
     };
     private config: ConnectionConfig;
 
-    constructor(config?: ConnectionConfig) {
-        this.config = { ...DEFAULT_CONFIG, ...config };
+    constructor(config: ConnectionConfig = DEFAULT_CONFIG) {
+        this.config = {...DEFAULT_CONFIG, ...config};
     }
 
     setConfig(config: ConnectionConfig): void {
-        this.config = {...DEFAULT_CONFIG, ...config};
+        this.config = config;
     }
 
     getConfig(): ConnectionConfig {
@@ -52,7 +53,7 @@ export class Connection {
         }
 
         const connectUrl = url || this.config.url || DEFAULT_CONFIG.url!;
-        const connectOptions = {...this.config.options, ...options};
+        const connectOptions = {token: this.config.token, ...this.config.options, ...options};
 
         this.updateState({
             isConnecting: true,
@@ -60,14 +61,24 @@ export class Connection {
         });
 
         try {
-            const client = await Client.connect_ws(connectUrl, connectOptions);
-
-            this.updateState({
-                client,
-                isConnected: true,
-                isConnecting: false,
-                connectionError: null,
-            });
+            const isHttp = connectUrl.startsWith('http://') || connectUrl.startsWith('https://');
+            if (isHttp) {
+                const client = Client.connect_http(connectUrl, connectOptions);
+                this.updateState({
+                    client,
+                    isConnected: true,
+                    isConnecting: false,
+                    connectionError: null,
+                });
+            } else {
+                const client = await Client.connect_ws(connectUrl, connectOptions);
+                this.updateState({
+                    client,
+                    isConnected: true,
+                    isConnecting: false,
+                    connectionError: null,
+                });
+            }
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to connect to ReifyDB';
             console.error('[Connection] Connection failed:', errorMessage, err);
@@ -84,9 +95,11 @@ export class Connection {
     async disconnect(): Promise<void> {
         if (this.state.client) {
             try {
-                this.state.client.disconnect();
-                // Small delay to ensure WebSocket closes cleanly
-                await new Promise(resolve => setTimeout(resolve, 10));
+                if ('disconnect' in this.state.client) {
+                    (this.state.client as WsClient).disconnect();
+                    // Small delay to ensure WebSocket closes cleanly
+                    await new Promise(resolve => setTimeout(resolve, 10));
+                }
             } catch (err) {
                 console.error('Error disconnecting:', err);
             }
@@ -105,7 +118,7 @@ export class Connection {
         await this.connect(url, options);
     }
 
-    getClient(): WsClient | null {
+    getClient(): WsClient | HttpClient | null {
         return this.state.client;
     }
 

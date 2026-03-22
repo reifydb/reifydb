@@ -11,7 +11,7 @@ import React from 'react';
 
 describe('useSubscription Hook', () => {
     const wrapper = ({children}: { children: React.ReactNode }) => (
-        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
     );
 
     beforeAll(async () => {
@@ -359,7 +359,7 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const overrideConfig = {url: 'ws://127.0.0.1:8090', options: {timeoutMs: 2000}};
+            const overrideConfig = {url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN, options: {timeoutMs: 2000}};
             const schema = Schema.object({id: Schema.number()});
 
             const {result, unmount} = renderHook(

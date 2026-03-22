@@ -23,6 +23,7 @@ describe('WebSocket Subscriptions', () => {
     beforeEach(async () => {
         wsClient = await Client.connect_ws(testUrl, {
             timeoutMs: 10000,
+            token: process.env.REIFYDB_TOKEN,
             reconnectDelayMs: 100  // Fast reconnection for tests
         });
     }, 15000);

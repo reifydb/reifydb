@@ -10,7 +10,7 @@ import { createTestTableForHook } from './subscription-test-helpers';
 describe('useSubscriptionExecutor - Value Object Schema Transformations', () => {
     beforeAll(async () => {
         await waitForDatabase();
-        const conn = getConnection();
+        const conn = getConnection({token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 

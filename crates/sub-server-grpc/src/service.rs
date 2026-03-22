@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_server::{
-	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
+	auth::{AuthError, extract_identity_from_auth_header, extract_identity_from_auth_token},
 	execute::execute,
 	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	remote::{connect_remote, proxy_remote},
@@ -66,12 +66,15 @@ impl ReifyDbService {
 			return Ok(extract_identity_from_auth_header(header)?);
 		}
 
-		if let Some(api_key) = metadata.get("x-api-key") {
-			let key = api_key.to_str().map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
-			return Ok(extract_identity_from_api_key(key)?);
+		if let Some(auth_token) = metadata.get("x-api-key") {
+			let token = auth_token
+				.to_str()
+				.map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
+			return Ok(extract_identity_from_auth_token(token)?);
 		}
 
-		Err(GrpcError::Unauthenticated(AuthError::MissingCredentials))
+		// No credentials provided — anonymous access
+		Ok(IdentityId::anonymous())
 	}
 
 	fn build_metadata<T>(request: &Request<T>) -> RequestMetadata {

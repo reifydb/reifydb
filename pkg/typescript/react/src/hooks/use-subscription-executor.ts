@@ -98,6 +98,11 @@ export function useSubscriptionExecutor<T = any>(
             return;
         }
 
+        if (!('subscribe' in currentClient)) {
+            setState(prev => ({ ...prev, error: 'Subscriptions require a WebSocket connection' }));
+            return;
+        }
+
         // Store refs for reconnection
         queryRef.current = query;
         paramsRef.current = params;
@@ -135,6 +140,7 @@ export function useSubscriptionExecutor<T = any>(
     const unsubscribe = useCallback(async () => {
         const currentClient = clientRef.current;
         if (!currentClient || !subscriptionIdRef.current) return;
+        if (!('unsubscribe' in currentClient)) return;
 
         try {
             await currentClient.unsubscribe(subscriptionIdRef.current);
@@ -167,7 +173,7 @@ export function useSubscriptionExecutor<T = any>(
     // Cleanup on unmount
     useEffect(() => {
         return () => {
-            if (subscriptionIdRef.current && clientRef.current) {
+            if (subscriptionIdRef.current && clientRef.current && 'unsubscribe' in clientRef.current) {
                 clientRef.current.unsubscribe(subscriptionIdRef.current).catch(console.error);
             }
         };

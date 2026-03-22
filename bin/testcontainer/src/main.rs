@@ -10,8 +10,8 @@ use reifydb::{
 use tracing::info;
 
 fn main() {
-	let http_config = HttpConfig::default();
-	let ws_config = WsConfig::default();
+	let http_config = HttpConfig::default().admin_bind_addr("0.0.0.0:8091");
+	let ws_config = WsConfig::default().admin_bind_addr("0.0.0.0:8090");
 
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
@@ -21,8 +21,7 @@ fn main() {
 				.endpoint("http://localhost:4317")
 				.sample_ratio(1.0)
 				.scheduled_delay(Duration::from_millis(500)),
-			|t| t
-				.without_console()  // Disable console logging for better performance
+			|t| t.without_console()  // Disable console logging for better performance
 				.with_filter("trace"),  // Only affects OpenTelemetry layer
 		)
 		.with_http(http_config)

@@ -110,7 +110,9 @@ export class WsClient {
             });
         }
 
-        socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
+        if (options.token) {
+            socket.send(JSON.stringify({id: "auth-1", type: "Auth", payload: {token: options.token}}));
+        }
 
         return new WsClient(socket, options);
     }
@@ -521,7 +523,9 @@ export class WsClient {
                 });
             }
 
-            socket.send("{\"id\":\"auth-1\",\"type\":\"Auth\",\"payload\":{\"token\":\"mysecrettoken\"}}");
+            if (this.options.token) {
+                socket.send(JSON.stringify({id: "auth-1", type: "Auth", payload: {token: this.options.token}}));
+            }
 
             this.socket = socket;
             this.setupSocketHandlers();

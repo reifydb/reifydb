@@ -23,7 +23,7 @@ describe('useQuery Hooks', () => {
     beforeAll(async () => {
         await waitForDatabase();
         // Ensure we're connected before tests
-        const conn = getConnection();
+        const conn = getConnection({token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 
@@ -357,7 +357,7 @@ describe('useQuery Hooks', () => {
         it('should work with ConnectionProvider', async () => {
             // @ts-ignore
             const wrapper = ({children}: { children: React.ReactNode }) => (
-                <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+                <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
             );
 
             const schema = Schema.object({value: Schema.number()});

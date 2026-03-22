@@ -14,7 +14,7 @@ import React from "react";
 describe('useCommand Hooks', () => {
     // Wrapper to provide ConnectionProvider to all hooks
     const wrapper = ({children}: { children: React.ReactNode }) => (
-        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
     );
 
     beforeAll(async () => {
@@ -356,7 +356,7 @@ describe('useCommand Hooks', () => {
         it('should work with ConnectionProvider', async () => {
             // @ts-ignore
             const wrapper = ({children}: { children: React.ReactNode }) => (
-                <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+                <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
             );
 
             const schema = Schema.object({value: Schema.number()});

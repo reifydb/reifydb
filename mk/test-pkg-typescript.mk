@@ -31,6 +31,7 @@ start-testcontainer:
 	@docker run -d \
 		--name reifydb-test \
 		-p 8090:8090 \
+		-p 8091:8091 \
 		reifydb/testcontainer
 
 # Alias for backward compatibility

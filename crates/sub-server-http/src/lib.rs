@@ -12,7 +12,7 @@
 //! # Features
 //!
 //! - REST API for query and command execution
-//! - Bearer token and API key authentication
+//! - Bearer token and auth token authentication
 //! - Request timeouts and connection limits
 //! - Graceful shutdown support
 //! - Health check endpoint

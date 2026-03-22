@@ -51,7 +51,7 @@ describe.sequential('useConnection Hook', () => {
 
     it.sequential('should auto-connect with ConnectionProvider', async () => {
         const wrapper = ({children}: { children: React.ReactNode }) => (
-            <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+            <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
         );
 
         const {result} = renderHook(() => useConnection(), {wrapper});
@@ -154,7 +154,7 @@ describe.sequential('useConnection Hook', () => {
 
     it.sequential('should share state within ConnectionProvider', async () => {
         const wrapper = ({children}: { children: React.ReactNode }) => (
-            <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+            <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
         );
 
         const {result: result1} = renderHook(() => useConnection(), {wrapper});

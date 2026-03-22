@@ -4,7 +4,7 @@
 //! Authentication and identity extraction for HTTP and WebSocket connections.
 //!
 //! This module provides functions to extract user identity from request headers,
-//! tokens, and WebSocket authentication messages.
+//! auth tokens, and WebSocket authentication messages.
 //!
 //! # Security Note
 //!
@@ -21,7 +21,7 @@ use reifydb_type::value::identity::IdentityId;
 pub enum AuthError {
 	/// The authorization header is malformed or contains invalid UTF-8.
 	InvalidHeader,
-	/// No credentials were provided (no Authorization header or API key).
+	/// No credentials were provided (no Authorization header or auth token).
 	MissingCredentials,
 	/// The provided token is invalid or cannot be verified.
 	InvalidToken,
@@ -78,18 +78,18 @@ pub fn extract_identity_from_auth_header(auth_header: &str) -> AuthResult<Identi
 	}
 }
 
-/// Extract identity from an API key.
+/// Extract identity from an auth token.
 ///
 /// # Arguments
 ///
-/// * `api_key` - The API key value
+/// * `auth_token` - The auth token value
 ///
 /// # Returns
 ///
-/// * `Ok(Identity)` - The identity associated with the API key
-/// * `Err(AuthError)` - API key validation failed
-pub fn extract_identity_from_api_key(api_key: &str) -> AuthResult<IdentityId> {
-	validate_api_key(api_key)
+/// * `Ok(Identity)` - The identity associated with the auth token
+/// * `Err(AuthError)` - Auth token validation failed
+pub fn extract_identity_from_auth_token(auth_token: &str) -> AuthResult<IdentityId> {
+	validate_auth_token(auth_token)
 }
 
 /// Extract identity from WebSocket authentication message.
@@ -103,12 +103,11 @@ pub fn extract_identity_from_api_key(api_key: &str) -> AuthResult<IdentityId> {
 /// # Returns
 ///
 /// * `Ok(Identity)` - The authenticated user identity
-/// * `Err(AuthError::MissingCredentials)` - No token provided
 /// * `Err(AuthError)` - Token validation failed
 pub fn extract_identity_from_ws_auth(token: Option<&str>) -> AuthResult<IdentityId> {
 	match token {
 		Some(t) if !t.is_empty() => validate_bearer_token(t),
-		_ => Err(AuthError::MissingCredentials),
+		_ => Ok(IdentityId::anonymous()),
 	}
 }
 
@@ -160,24 +159,24 @@ fn validate_basic_auth(credentials: &str) -> AuthResult<IdentityId> {
 	Err(AuthError::InvalidToken)
 }
 
-/// Validate an API key and return the associated identity.
+/// Validate an auth token and return the associated identity.
 ///
 /// # TODO: Implementation
 ///
 /// This function should:
-/// 1. Look up the API key in the database
-/// 2. Check if the key is active and not expired
+/// 1. Look up the auth token in the database
+/// 2. Check if the token is active and not expired
 /// 3. Return the associated Identity
-fn validate_api_key(api_key: &str) -> AuthResult<IdentityId> {
-	// TODO: Implement API key validation
+fn validate_auth_token(auth_token: &str) -> AuthResult<IdentityId> {
+	// TODO: Implement auth token validation
 	//
-	// 1. Hash the API key
+	// 1. Hash the auth token
 	// 2. Look up in database
-	// 3. Verify key is active
+	// 3. Verify token is active
 	// 4. Return the associated Identity
 	//
-	// For now, accept any non-empty API key and return a root identity
-	if api_key.is_empty() {
+	// For now, accept any non-empty auth token and return a root identity
+	if auth_token.is_empty() {
 		Err(AuthError::InvalidToken)
 	} else {
 		// TODO: Implement actual token validation and return real IdentityId
@@ -215,13 +214,15 @@ pub mod tests {
 	#[test]
 	fn test_extract_from_ws_auth_none() {
 		let result = extract_identity_from_ws_auth(None);
-		assert!(matches!(result, Err(AuthError::MissingCredentials)));
+		assert!(result.is_ok());
+		assert!(result.unwrap().is_anonymous());
 	}
 
 	#[test]
 	fn test_extract_from_ws_auth_empty() {
 		let result = extract_identity_from_ws_auth(Some(""));
-		assert!(matches!(result, Err(AuthError::MissingCredentials)));
+		assert!(result.is_ok());
+		assert!(result.unwrap().is_anonymous());
 	}
 
 	#[test]

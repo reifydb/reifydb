@@ -16,7 +16,7 @@ use axum::{
 };
 use reifydb_core::value::frame::response::{ResponseFrame, convert_frames};
 use reifydb_sub_server::{
-	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
+	auth::{AuthError, extract_identity_from_auth_header, extract_identity_from_auth_token},
 	execute::execute,
 	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
@@ -92,9 +92,10 @@ fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
 ///
 /// # Authentication
 ///
-/// Requires one of:
+/// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <key>` header
+/// - `X-Api-Key: <token>` header
+/// - No credentials (anonymous access)
 ///
 /// # Request Body
 ///
@@ -128,9 +129,10 @@ pub async fn handle_query(
 ///
 /// # Authentication
 ///
-/// Requires one of:
+/// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <key>` header
+/// - `X-Api-Key: <token>` header
+/// - No credentials (anonymous access)
 pub async fn handle_admin(
 	State(state): State<AppState>,
 	Query(format_params): Query<FormatParams>,
@@ -146,9 +148,10 @@ pub async fn handle_admin(
 ///
 /// # Authentication
 ///
-/// Requires one of:
+/// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <key>` header
+/// - `X-Api-Key: <token>` header
+/// - No credentials (anonymous access)
 pub async fn handle_command(
 	State(state): State<AppState>,
 	Query(format_params): Query<FormatParams>,
@@ -208,7 +211,8 @@ async fn execute_and_respond(
 ///
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
-/// 2. X-Api-Key header
+/// 2. X-Api-Key header (auth token)
+/// 3. Falls back to anonymous identity
 fn extract_identity(headers: &HeaderMap) -> Result<IdentityId, AppError> {
 	// Try Authorization header first
 	if let Some(auth_header) = headers.get("authorization") {
@@ -218,14 +222,14 @@ fn extract_identity(headers: &HeaderMap) -> Result<IdentityId, AppError> {
 	}
 
 	// Try X-Api-Key header
-	if let Some(api_key) = headers.get("x-api-key") {
-		let key = api_key.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
+	if let Some(auth_token) = headers.get("x-api-key") {
+		let token = auth_token.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 
-		return extract_identity_from_api_key(key).map_err(AppError::Auth);
+		return extract_identity_from_auth_token(token).map_err(AppError::Auth);
 	}
 
-	// No credentials provided
-	Err(AppError::Auth(AuthError::MissingCredentials))
+	// No credentials provided — anonymous access
+	Ok(IdentityId::anonymous())
 }
 
 #[cfg(test)]

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
+#[cfg(feature = "sub_server")]
+use std::sync::Arc;
 
 use reifydb_core::config::SystemConfig;
 use reifydb_engine::procedure::registry::ProceduresBuilder;

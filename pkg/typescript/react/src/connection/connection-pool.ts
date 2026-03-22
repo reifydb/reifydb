@@ -16,18 +16,18 @@ let defaultConnection: Connection | null = null;
  * @returns The singleton Connection instance
  */
 export function getConnection(config?: ConnectionConfig): Connection {
-    const effectiveConfig = config ? { ...DEFAULT_CONFIG, ...config } : DEFAULT_CONFIG;
-
     // Create singleton on first call
     if (!defaultConnection) {
-        defaultConnection = new Connection(effectiveConfig);
+        const mergedConfig = {...DEFAULT_CONFIG, ...config};
+        defaultConnection = new Connection(mergedConfig);
         // Start connection immediately - don't wait for React's useEffect
         defaultConnection.connect().catch(err => {
             console.error('[ConnectionPool] Eager connect failed:', err);
         });
-    } else {
-        // Update config on existing connection if provided
-        defaultConnection.setConfig(effectiveConfig);
+    } else if (config) {
+        // Only update config when explicitly provided, to avoid
+        // stripping fields (e.g. token) that were set on creation.
+        defaultConnection.setConfig({...DEFAULT_CONFIG, ...config});
     }
 
     return defaultConnection;

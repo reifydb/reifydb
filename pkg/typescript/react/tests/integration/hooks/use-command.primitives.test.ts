@@ -8,7 +8,7 @@ import {waitForDatabase} from '../setup';
 describe('useCommand with TypeScript Primitive Types', () => {
     beforeAll(async () => {
         await waitForDatabase();
-        const conn = getConnection();
+        const conn = getConnection({token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 

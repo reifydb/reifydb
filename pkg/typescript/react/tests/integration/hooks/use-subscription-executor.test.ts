@@ -12,7 +12,7 @@ import {
 describe('useSubscriptionExecutor Hook', () => {
     beforeAll(async () => {
         await waitForDatabase();
-        const conn = getConnection();
+        const conn = getConnection({token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 
