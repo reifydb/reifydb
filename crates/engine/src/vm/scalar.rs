@@ -2,15 +2,23 @@
 // Copyright (c) 2025 ReifyDB
 
 use Value::*;
+use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::{
-	error::Error,
 	fragment::Fragment,
 	value::{Value, try_from::TryFromValueCoerce, r#type::Type as ValueType},
 };
 
-use crate::{Result, error::CastError};
+use crate::{
+	Result,
+	error::CastError,
+	expression::{cast::cast_column_data, context::EvalContext},
+};
 
-/// Convert a Value to the given target type (widening/promotion).
+/// Convert a Value to the given target type.
+///
+/// TODO(perf): This delegates to cast_column_data by wrapping the scalar Value into a
+/// single-element ColumnData and extracting it back. This is wasteful and should be replaced
+/// with a shared scalar-level cast using SafeConvert directly on Value primitives.
 pub fn convert_to(value: Value, target: ValueType) -> Result<Value> {
 	if value.get_type() == target {
 		return Ok(value);
@@ -22,65 +30,21 @@ pub fn convert_to(value: Value, target: ValueType) -> Result<Value> {
 			},
 			_,
 		) => Ok(Value::none_of(target)),
-		// To Float8
-		(_, ValueType::Float8) => {
-			let f = f64::try_from_value_coerce(&value).map_err(|_| {
-				Error::from(CastError::UnsupportedCast {
-					fragment: Fragment::internal(""),
-					from_type: value.get_type(),
-					to_type: target.clone(),
-				})
-			})?;
-			Ok(Value::float8(f))
-		}
-		// To Int2
-		(Int1(v), ValueType::Int2) => Ok(Int2(*v as i16)),
-		(Uint1(v), ValueType::Int2) => Ok(Int2(*v as i16)),
-		// To Int4
-		(Int1(v), ValueType::Int4) => Ok(Int4(*v as i32)),
-		(Int2(v), ValueType::Int4) => Ok(Int4(*v as i32)),
-		(Uint1(v), ValueType::Int4) => Ok(Int4(*v as i32)),
-		(Uint2(v), ValueType::Int4) => Ok(Int4(*v as i32)),
-		// To Int8
-		(Int1(v), ValueType::Int8) => Ok(Int8(*v as i64)),
-		(Int2(v), ValueType::Int8) => Ok(Int8(*v as i64)),
-		(Int4(v), ValueType::Int8) => Ok(Int8(*v as i64)),
-		(Uint1(v), ValueType::Int8) => Ok(Int8(*v as i64)),
-		(Uint2(v), ValueType::Int8) => Ok(Int8(*v as i64)),
-		(Uint4(v), ValueType::Int8) => Ok(Int8(*v as i64)),
-		// To Int16
-		(Int1(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		(Int2(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		(Int4(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		(Int8(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		(Uint1(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		(Uint2(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		(Uint4(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		(Uint8(v), ValueType::Int16) => Ok(Int16(*v as i128)),
-		// To Uint2
-		(Uint1(v), ValueType::Uint2) => Ok(Uint2(*v as u16)),
-		// To Uint4
-		(Uint1(v), ValueType::Uint4) => Ok(Uint4(*v as u32)),
-		(Uint2(v), ValueType::Uint4) => Ok(Uint4(*v as u32)),
-		// To Uint8
-		(Uint1(v), ValueType::Uint8) => Ok(Uint8(*v as u64)),
-		(Uint2(v), ValueType::Uint8) => Ok(Uint8(*v as u64)),
-		(Uint4(v), ValueType::Uint8) => Ok(Uint8(*v as u64)),
-		// To Uint16
-		(Uint1(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
-		(Uint2(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
-		(Uint4(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
-		(Uint8(v), ValueType::Uint16) => Ok(Uint16(*v as u128)),
-		// To Utf8
 		(_, ValueType::Utf8) => Ok(Utf8(format!("{}", value))),
-		// To Boolean
 		(_, ValueType::Boolean) => Ok(Boolean(value_is_truthy(&value))),
-		_ => Err(CastError::UnsupportedCast {
-			fragment: Fragment::internal(""),
-			from_type: value.get_type(),
-			to_type: target,
+		_ => {
+			let from_type = value.get_type();
+			let data = ColumnData::from(value);
+			let ctx = EvalContext::testing();
+			let result = cast_column_data(&ctx, &data, target.clone(), Fragment::internal("")).map_err(
+				|_| CastError::UnsupportedCast {
+					fragment: Fragment::internal(""),
+					from_type,
+					to_type: target,
+				},
+			)?;
+			Ok(result.get_value(0))
 		}
-		.into()),
 	}
 }
 

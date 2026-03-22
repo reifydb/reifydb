@@ -28,10 +28,9 @@ use reifydb_abi::{
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::ffi::arena::Arena;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type;
 use tracing::{error, instrument};
 
-use super::{Procedure, context::ProcedureContext};
+use super::{Procedure, context::ProcedureContext, error::ProcedureError};
 use crate::ffi::callbacks::{logging, memory, rql};
 
 /// FFI procedure that wraps an external procedure implementation
@@ -98,7 +97,7 @@ fn create_procedure_host_callbacks() -> HostCallbacks {
 
 impl Procedure for NativeProcedureFFI {
 	#[instrument(name = "procedure::ffi::call", level = "debug", skip_all)]
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let mut arena = self.arena.borrow_mut();
 
 		// Set thread-local arena for host_alloc
@@ -169,7 +168,6 @@ use reifydb_abi::{
 	context::iterators::{StateIteratorFFI, StoreIteratorFFI},
 };
 use reifydb_sdk::error::FFIError;
-use reifydb_type::Result;
 
 fn stub_state_callbacks() -> StateCallbacks {
 	StateCallbacks {

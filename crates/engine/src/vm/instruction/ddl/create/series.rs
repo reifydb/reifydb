@@ -21,7 +21,7 @@ pub(crate) fn create_series(
 			namespace: plan.namespace.def().id(),
 			columns: plan.columns,
 			tag: plan.tag,
-			precision: plan.precision,
+			key: plan.key,
 		},
 	)?;
 

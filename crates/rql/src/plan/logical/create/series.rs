@@ -5,9 +5,13 @@ use reifydb_catalog::{
 	catalog::series::SeriesColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_core::interface::catalog::series::TimestampPrecision;
+use reifydb_core::interface::catalog::series::{SeriesKey, TimestampPrecision};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{
+	error::{AstErrorKind, TypeError},
+	fragment::Fragment,
+	value::r#type::Type,
+};
 
 use crate::{
 	Result,
@@ -93,18 +97,93 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
-		let precision = match ast.precision {
-			Some(AstTimestampPrecision::Millisecond) => TimestampPrecision::Millisecond,
-			Some(AstTimestampPrecision::Microsecond) => TimestampPrecision::Microsecond,
-			Some(AstTimestampPrecision::Nanosecond) => TimestampPrecision::Nanosecond,
-			None => TimestampPrecision::Millisecond,
+		// Resolve key column
+		let key_fragment = ast.key.expect("key is required by parser");
+		let key_column_name = key_fragment.text().to_string();
+
+		// Validate key column exists in declared columns
+		let key_col = columns.iter().find(|c| c.name.text() == key_column_name.as_str());
+		let key_col = match key_col {
+			Some(c) => c,
+			None => {
+				return Err(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: format!(
+							"key column '{}' to be a declared column",
+							key_column_name
+						),
+					},
+					message: format!(
+						"key column '{}' is not declared in the column list",
+						key_column_name
+					),
+					fragment: key_fragment.to_owned(),
+				}
+				.into());
+			}
+		};
+
+		// Determine key from column type
+		let key_type = key_col.constraint.get_type();
+		let key = match key_type {
+			Type::DateTime => {
+				let precision = match ast.precision {
+					Some(AstTimestampPrecision::Second) => TimestampPrecision::Second,
+					Some(AstTimestampPrecision::Millisecond) => TimestampPrecision::Millisecond,
+					Some(AstTimestampPrecision::Microsecond) => TimestampPrecision::Microsecond,
+					Some(AstTimestampPrecision::Nanosecond) => TimestampPrecision::Nanosecond,
+					None => TimestampPrecision::Millisecond,
+				};
+				SeriesKey::DateTime {
+					column: key_column_name,
+					precision,
+				}
+			}
+			Type::Int1
+			| Type::Int2
+			| Type::Int4
+			| Type::Int8
+			| Type::Int16
+			| Type::Uint1
+			| Type::Uint2
+			| Type::Uint4
+			| Type::Uint8
+			| Type::Uint16 => {
+				if ast.precision.is_some() {
+					return Err(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "no precision for integer key columns".to_string(),
+						},
+						message: "precision can only be specified for datetime key columns"
+							.to_string(),
+						fragment: key_fragment.to_owned(),
+					}
+					.into());
+				}
+				SeriesKey::Integer {
+					column: key_column_name,
+				}
+			}
+			_ => {
+				return Err(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "datetime or integer type for key column".to_string(),
+					},
+					message: format!(
+						"key column '{}' has type {:?}, but only datetime and integer types are allowed as series keys",
+						key_column_name, key_type
+					),
+					fragment: key_fragment.to_owned(),
+				}
+				.into());
+			}
 		};
 
 		Ok(LogicalPlan::CreateSeries(CreateSeriesNode {
 			series: ast.series,
 			columns,
 			tag: ast.tag,
-			precision,
+			key,
 		}))
 	}
 }

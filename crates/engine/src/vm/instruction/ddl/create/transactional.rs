@@ -138,8 +138,7 @@ fn create_underlying_primitive(
 			})
 		}
 		CompiledViewStorageKind::Series {
-			timestamp_column,
-			precision,
+			key,
 		} => {
 			let columns: Vec<SeriesColumnToCreate> = plan
 				.columns
@@ -161,14 +160,13 @@ fn create_underlying_primitive(
 					namespace,
 					columns,
 					tag: None,
-					precision: *precision,
+					key: key.clone(),
 				},
 			)?;
 
 			Ok(ViewStorageConfig::Series {
 				underlying: series.id,
-				timestamp_column: timestamp_column.clone(),
-				precision: *precision,
+				key: key.clone(),
 				tag: None,
 			})
 		}

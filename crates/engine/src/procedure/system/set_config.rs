@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_core::value::column::columns::Columns;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
-use super::super::{Procedure, context::ProcedureContext};
+use super::super::{Procedure, context::ProcedureContext, error::ProcedureError};
 
 /// Native procedure that sets a system configuration value.
 ///
@@ -19,20 +23,34 @@ impl SetConfigProcedure {
 }
 
 impl Procedure for SetConfigProcedure {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let (key, value) = match ctx.params {
 			Params::Positional(args) if args.len() == 2 => (args[0].clone(), args[1].clone()),
+			Params::Positional(args) => {
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("system::config::set"),
+					expected: 2,
+					actual: args.len(),
+				});
+			}
 			_ => {
-				return Err(internal_error!(
-					"system::config::set requires exactly 2 positional arguments"
-				));
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("system::config::set"),
+					expected: 2,
+					actual: 0,
+				});
 			}
 		};
 
 		let key_str = match &key {
 			Value::Utf8(s) => s.as_str().to_string(),
 			_ => {
-				return Err(internal_error!("system::config::set: first argument (key) must be Utf8"));
+				return Err(ProcedureError::InvalidArgumentType {
+					procedure: Fragment::internal("system::config::set"),
+					argument_index: 0,
+					expected: vec![Type::Utf8],
+					actual: key.get_type(),
+				});
 			}
 		};
 
@@ -41,7 +59,10 @@ impl Procedure for SetConfigProcedure {
 		match tx {
 			Transaction::Admin(admin) => ctx.catalog.set_config(admin, &key_str, value)?,
 			_ => {
-				return Err(internal_error!("system::config::set must run in a write transaction"));
+				return Err(ProcedureError::ExecutionFailed {
+					procedure: Fragment::internal("system::config::set"),
+					reason: "must run in an admin transaction".to_string(),
+				});
 			}
 		}
 

@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
-		series::TimestampPrecision,
+		series::SeriesKey,
 	},
 	sort::SortKey,
 };
@@ -83,8 +83,7 @@ pub enum FlowNodeType {
 	SinkSeriesView {
 		view: ViewId,
 		series: SeriesId,
-		timestamp_column: Option<String>,
-		precision: TimestampPrecision,
+		key: SeriesKey,
 	},
 	SinkSubscription {
 		subscription: SubscriptionId,

@@ -35,7 +35,10 @@ use crate::{
 	Result,
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::schema::get_or_create_series_schema,
+		instruction::dml::{
+			schema::get_or_create_series_schema,
+			series_key::{column_data_from_i64_keys, value_from_i64, value_to_i64},
+		},
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -71,6 +74,8 @@ pub(crate) fn delete_series<'a>(
 	};
 
 	let has_tag = series_def.tag.is_some();
+	let key_type =
+		series_def.columns.iter().find(|c| c.name == series_def.key.column()).map(|c| c.constraint.get_type());
 	let mut deleted_count = 0u64;
 	let mut returning_columns: Option<Columns> = None;
 
@@ -115,13 +120,10 @@ pub(crate) fn delete_series<'a>(
 			for row_idx in 0..row_count {
 				let sequence = u64::from(row_numbers[row_idx]);
 
-				let timestamp = columns
+				let key_value = columns
 					.iter()
-					.find(|c| c.name().text() == "timestamp")
-					.map(|c| match c.data().get_value(row_idx) {
-						Value::Int8(v) => v,
-						_ => 0,
-					})
+					.find(|c| c.name().text() == series_def.key.column())
+					.and_then(|c| value_to_i64(c.data().get_value(row_idx), &series_def.key))
 					.unwrap_or(0);
 
 				let variant_tag = if has_tag {
@@ -139,7 +141,7 @@ pub(crate) fn delete_series<'a>(
 				let key = SeriesRowKey {
 					series: series_def.id,
 					variant_tag,
-					timestamp,
+					key: key_value,
 					sequence,
 				};
 				let encoded_key = key.encode();
@@ -152,11 +154,11 @@ pub(crate) fn delete_series<'a>(
 				let row_number = RowNumber::from(sequence);
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				pre_col_vec.push(Column {
-					name: Fragment::internal("timestamp"),
-					data: ColumnData::int8(vec![timestamp]),
+					name: Fragment::internal(series_def.key.column()),
+					data: column_data_from_i64_keys(vec![key_value], &series_def, &series_def.key),
 				});
 				for col in columns.iter() {
-					if col.name().text() != "timestamp" && col.name().text() != "tag" {
+					if col.name().text() != series_def.key.column() && col.name().text() != "tag" {
 						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
 						data.push_value(col.data().get_value(row_idx));
 						pre_col_vec.push(Column {
@@ -180,16 +182,13 @@ pub(crate) fn delete_series<'a>(
 				if let Some(log) = testing.as_mut() {
 					let old = Columns::single_row(
 						iter::once((
-							"timestamp",
-							columns.iter()
-								.find(|c| c.name().text() == "timestamp")
-								.map(|c| c.data().get_value(row_idx))
-								.unwrap_or(Value::Int8(0)),
+							series_def.key.column(),
+							value_from_i64(key_value, key_type.as_ref(), &series_def.key),
 						))
 						.chain(columns
 							.iter()
 							.filter(|c| {
-								c.name().text() != "timestamp"
+								c.name().text() != series_def.key.column()
 									&& c.name().text() != "tag"
 							})
 							.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
@@ -256,17 +255,20 @@ pub(crate) fn delete_series<'a>(
 			if let Some(decoded_key) = SeriesRowKey::decode(key) {
 				let row_number = RowNumber::from(decoded_key.sequence);
 				let data_values: Vec<Value> = series_def
-					.columns
-					.iter()
+					.data_columns()
 					.enumerate()
 					.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
 					.collect();
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				pre_col_vec.push(Column {
-					name: Fragment::internal("timestamp"),
-					data: ColumnData::int8(vec![decoded_key.timestamp]),
+					name: Fragment::internal(series_def.key.column()),
+					data: column_data_from_i64_keys(
+						vec![decoded_key.key],
+						&series_def,
+						&series_def.key,
+					),
 				});
-				for (col_idx, col_def) in series_def.columns.iter().enumerate() {
+				for (col_idx, col_def) in series_def.data_columns().enumerate() {
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(data_values.get(col_idx).cloned().unwrap_or(Value::none()));
 					pre_col_vec.push(Column {
@@ -290,17 +292,23 @@ pub(crate) fn delete_series<'a>(
 			if let Some(log) = testing.as_mut() {
 				if let Some(decoded_key) = SeriesRowKey::decode(key) {
 					let data_values: Vec<Value> = series_def
-						.columns
-						.iter()
+						.data_columns()
 						.enumerate()
 						.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
 						.collect();
 					let old = Columns::single_row(
-						iter::once(("timestamp", Value::Int8(decoded_key.timestamp))).chain(
-							series_def.columns.iter().enumerate().map(|(i, col)| {
-								(col.name.as_str(), data_values[i].clone())
-							}),
-						),
+						iter::once((
+							series_def.key.column(),
+							value_from_i64(
+								decoded_key.key,
+								key_type.as_ref(),
+								&series_def.key,
+							),
+						))
+						.chain(series_def
+							.data_columns()
+							.enumerate()
+							.map(|(i, col)| (col.name.as_str(), data_values[i].clone()))),
 					);
 					let mutation_key = format!("series::{}::{}", namespace.name(), series_def.name);
 					log.record_delete(mutation_key, old);
@@ -327,8 +335,8 @@ pub(crate) fn delete_series<'a>(
 
 	metadata.row_count = metadata.row_count.saturating_sub(deleted_count);
 	if metadata.row_count == 0 {
-		metadata.oldest_timestamp = 0;
-		metadata.newest_timestamp = 0;
+		metadata.oldest_key = 0;
+		metadata.newest_key = 0;
 	}
 
 	services.catalog.update_series_metadata_txn(txn, metadata)?;

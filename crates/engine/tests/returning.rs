@@ -174,14 +174,14 @@ fn test_table_insert_without_returning() {
 fn test_series_insert_returning() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
 
-	let frames = command(&engine, "INSERT test::s [{ timestamp: 1000, val: 42 }] RETURNING { timestamp, val }");
+	let frames = command(&engine, "INSERT test::s [{ ts: 1000, val: 42 }] RETURNING { ts, val }");
 	let frame = &frames[0];
 
 	let rows: Vec<_> = frame.rows().collect();
 	assert_eq!(rows.len(), 1);
-	assert_eq!(rows[0].get::<i64>("timestamp").unwrap().unwrap(), 1000);
+	assert_eq!(rows[0].get::<i64>("ts").unwrap().unwrap(), 1000);
 	assert_eq!(rows[0].get::<i64>("val").unwrap().unwrap(), 42);
 }
 
@@ -189,18 +189,15 @@ fn test_series_insert_returning() {
 fn test_series_update_returning() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
-	command(&engine, "INSERT test::s [{ timestamp: 1000, val: 42 }]");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
+	command(&engine, "INSERT test::s [{ ts: 1000, val: 42 }]");
 
-	let frames = command(
-		&engine,
-		"UPDATE test::s { val: 99 } FILTER { timestamp == 1000 } RETURNING { timestamp, val }",
-	);
+	let frames = command(&engine, "UPDATE test::s { val: 99 } FILTER { ts == 1000 } RETURNING { ts, val }");
 	let frame = &frames[0];
 
 	let rows: Vec<_> = frame.rows().collect();
 	assert_eq!(rows.len(), 1);
-	assert_eq!(rows[0].get::<i64>("timestamp").unwrap().unwrap(), 1000);
+	assert_eq!(rows[0].get::<i64>("ts").unwrap().unwrap(), 1000);
 	assert_eq!(rows[0].get::<i64>("val").unwrap().unwrap(), 99);
 }
 
@@ -208,15 +205,15 @@ fn test_series_update_returning() {
 fn test_series_delete_returning() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
-	command(&engine, "INSERT test::s [{ timestamp: 1000, val: 42 }]");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
+	command(&engine, "INSERT test::s [{ ts: 1000, val: 42 }]");
 
-	let frames = command(&engine, "DELETE test::s FILTER { timestamp == 1000 } RETURNING { timestamp, val }");
+	let frames = command(&engine, "DELETE test::s FILTER { ts == 1000 } RETURNING { ts, val }");
 	let frame = &frames[0];
 
 	let rows: Vec<_> = frame.rows().collect();
 	assert_eq!(rows.len(), 1);
-	assert_eq!(rows[0].get::<i64>("timestamp").unwrap().unwrap(), 1000);
+	assert_eq!(rows[0].get::<i64>("ts").unwrap().unwrap(), 1000);
 	assert_eq!(rows[0].get::<i64>("val").unwrap().unwrap(), 42);
 }
 

@@ -140,7 +140,7 @@ fn test_dictionary_pre_insert_mutates_value() {
 
 fn series_schema() -> Schema {
 	Schema::new(vec![
-		SchemaField::new("timestamp", TypeConstraint::unconstrained(Type::Int8)),
+		SchemaField::new("ts", TypeConstraint::unconstrained(Type::Int8)),
 		SchemaField::new("val", TypeConstraint::unconstrained(Type::Int8)),
 	])
 }
@@ -158,8 +158,8 @@ fn test_series_pre_insert_mutates_row() {
 	}));
 
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
-	command(&engine, "INSERT test::s [{ timestamp: 1000, val: 42 }]");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
+	command(&engine, "INSERT test::s [{ ts: 1000, val: 42 }]");
 
 	let frames = query(&engine, "FROM test::s");
 	let row = frames[0].rows().next().unwrap();
@@ -179,9 +179,9 @@ fn test_series_pre_update_mutates_row() {
 	}));
 
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
-	command(&engine, "INSERT test::s [{ timestamp: 1000, val: 42 }]");
-	command(&engine, "UPDATE test::s { val: 100 } FILTER { timestamp == 1000 }");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
+	command(&engine, "INSERT test::s [{ ts: 1000, val: 42 }]");
+	command(&engine, "UPDATE test::s { val: 100 } FILTER { ts == 1000 }");
 
 	let frames = query(&engine, "FROM test::s");
 	let row = frames[0].rows().next().unwrap();

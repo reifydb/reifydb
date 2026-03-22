@@ -29,7 +29,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 
 		let pk_id = get_view_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let view_def = convert_view(multi, primary_key);
+		let view_def = convert_view(multi, primary_key)?;
 
 		catalog.set_view(view_def.id(), version, Some(view_def));
 	}
@@ -37,7 +37,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	Ok(())
 }
 
-fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
+fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> Result<ViewDef> {
 	decode_view_def(&multi.values, vec![], primary_key)
 }
 

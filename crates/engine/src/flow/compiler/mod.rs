@@ -173,8 +173,7 @@ impl FlowCompiler {
 				ViewDef::Series(s) => FlowNodeType::SinkSeriesView {
 					view: sink_view.id(),
 					series: s.underlying,
-					timestamp_column: s.timestamp_column.clone(),
-					precision: s.precision,
+					key: s.key.clone(),
 				},
 			};
 			let result_node = self.add_node(txn, node_type)?;

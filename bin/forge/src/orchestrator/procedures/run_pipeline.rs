@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_engine::procedure::{Procedure, context::ProcedureContext};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_engine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
 /// Creates a new pipeline run with job_runs and step_runs for every job/step in the pipeline.
 ///
@@ -15,13 +19,22 @@ use reifydb_type::{Result, params::Params, value::Value};
 pub struct RunPipelineProcedure;
 
 impl Procedure for RunPipelineProcedure {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let pipeline_id = match ctx.params {
 			Params::Positional(args) if !args.is_empty() => args[0].clone(),
+			Params::Positional(args) => {
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("forge::run_pipeline"),
+					expected: 1,
+					actual: args.len(),
+				});
+			}
 			_ => {
-				return Err(internal_error!(
-					"forge::run_pipeline requires 1 positional argument: pipeline_id"
-				));
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("forge::run_pipeline"),
+					expected: 1,
+					actual: 0,
+				});
 			}
 		};
 
@@ -29,7 +42,12 @@ impl Procedure for RunPipelineProcedure {
 			Value::Uuid4(u) => u.to_string(),
 			Value::Utf8(s) => s.clone(),
 			_ => {
-				return Err(internal_error!("forge::run_pipeline: pipeline_id must be Uuid4 or Utf8"));
+				return Err(ProcedureError::InvalidArgumentType {
+					procedure: Fragment::internal("forge::run_pipeline"),
+					argument_index: 0,
+					expected: vec![Type::Uuid4, Type::Utf8],
+					actual: pipeline_id.get_type(),
+				});
 			}
 		};
 
@@ -39,7 +57,10 @@ impl Procedure for RunPipelineProcedure {
 			Params::None,
 		)?;
 		if pipelines.is_empty() || pipelines[0].rows().next().is_none() {
-			return Err(internal_error!("Pipeline not found: {}", pipeline_id_str));
+			return Err(ProcedureError::ExecutionFailed {
+				procedure: Fragment::internal("forge::run_pipeline"),
+				reason: format!("Pipeline not found: {}", pipeline_id_str),
+			});
 		}
 
 		// Create the run
@@ -62,7 +83,12 @@ impl Procedure for RunPipelineProcedure {
 
 		if let Some(job_frame) = jobs.first() {
 			for job_row in job_frame.rows() {
-				let job_id = job_row.get_value("id").map(|v| v.to_string()).unwrap_or_default();
+				let job_id = job_row.get_value("id").map(|v| v.to_string()).ok_or_else(|| {
+					ProcedureError::ExecutionFailed {
+						procedure: Fragment::internal("forge::run_pipeline"),
+						reason: "jobs row is missing required field 'id'".to_string(),
+					}
+				})?;
 
 				// Check if this job has any dependencies
 				let deps = tx.rql(
@@ -101,7 +127,11 @@ impl Procedure for RunPipelineProcedure {
 						let step_id = step_row
 							.get_value("id")
 							.map(|v| v.to_string())
-							.unwrap_or_default();
+							.ok_or_else(|| ProcedureError::ExecutionFailed {
+								procedure: Fragment::internal("forge::run_pipeline"),
+								reason: "steps row is missing required field 'id'"
+									.to_string(),
+							})?;
 						let step_run_id = uuid::Uuid::new_v4();
 
 						tx.rql(

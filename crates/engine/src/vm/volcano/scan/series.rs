@@ -22,15 +22,15 @@ use tracing::instrument;
 use crate::{
 	Result,
 	vm::{
-		instruction::dml::schema::get_or_create_series_schema,
+		instruction::dml::{schema::get_or_create_series_schema, series_key::column_data_from_i64_keys},
 		volcano::query::{QueryContext, QueryNode},
 	},
 };
 
 pub struct SeriesScanNode {
 	series: ResolvedSeries,
-	time_range_start: Option<i64>,
-	time_range_end: Option<i64>,
+	key_range_start: Option<i64>,
+	key_range_end: Option<i64>,
 	variant_tag: Option<u8>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
@@ -41,13 +41,13 @@ pub struct SeriesScanNode {
 impl SeriesScanNode {
 	pub fn new(
 		series: ResolvedSeries,
-		time_range_start: Option<i64>,
-		time_range_end: Option<i64>,
+		key_range_start: Option<i64>,
+		key_range_end: Option<i64>,
 		variant_tag: Option<u8>,
 		context: Arc<QueryContext>,
 	) -> Result<Self> {
-		// Build headers: timestamp, optional tag, then data columns
-		let mut columns = vec![Fragment::internal("timestamp")];
+		// Build headers: key column, optional tag, then data columns
+		let mut columns = vec![Fragment::internal(series.def().key.column())];
 		if series.def().tag.is_some() {
 			columns.push(Fragment::internal("tag"));
 		}
@@ -60,8 +60,8 @@ impl SeriesScanNode {
 
 		Ok(Self {
 			series,
-			time_range_start,
-			time_range_end,
+			key_range_start,
+			key_range_end,
 			variant_tag,
 			context: Some(context),
 			headers,
@@ -94,12 +94,12 @@ impl QueryNode for SeriesScanNode {
 		let range = SeriesRowKeyRange::scan_range(
 			series_def.id,
 			self.variant_tag,
-			self.time_range_start,
-			self.time_range_end,
+			self.key_range_start,
+			self.key_range_end,
 			self.last_key.as_ref(),
 		);
 
-		let mut timestamps: Vec<i64> = Vec::new();
+		let mut key_values: Vec<i64> = Vec::new();
 		let mut tags: Vec<u8> = Vec::new();
 		let mut sequences: Vec<u64> = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
@@ -116,15 +116,15 @@ impl QueryNode for SeriesScanNode {
 
 			// Decode the key to get timestamp and optional tag
 			if let Some(key) = SeriesRowKey::decode(&entry.key) {
-				timestamps.push(key.timestamp);
+				key_values.push(key.key);
 				sequences.push(key.sequence);
 				if has_tag {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
 
 				// Decode data columns from value using schema
-				let mut values = Vec::with_capacity(series_def.columns.len());
-				for (i, _) in series_def.columns.iter().enumerate() {
+				let mut values = Vec::with_capacity(series_def.data_columns().count());
+				for (i, _) in series_def.data_columns().enumerate() {
 					values.push(read_schema.get_value(&entry.values, i + 1));
 				}
 				data_rows.push(values);
@@ -139,14 +139,20 @@ impl QueryNode for SeriesScanNode {
 
 		drop(stream);
 
-		if timestamps.is_empty() {
+		if key_values.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
 				// Empty series: return empty columns with correct types to preserve schema
+				let key_type = series_def
+					.columns
+					.iter()
+					.find(|c| c.name == series_def.key.column())
+					.map(|c| c.constraint.get_type())
+					.unwrap_or(Type::Int8);
 				let mut result_columns = Vec::new();
 				result_columns.push(Column {
-					name: Fragment::internal("timestamp"),
-					data: ColumnData::none_typed(Type::Int8, 0),
+					name: Fragment::internal(series_def.key.column()),
+					data: ColumnData::none_typed(key_type, 0),
 				});
 				if has_tag {
 					result_columns.push(Column {
@@ -154,7 +160,7 @@ impl QueryNode for SeriesScanNode {
 						data: ColumnData::none_typed(Type::Uint1, 0),
 					});
 				}
-				for col_def in series_def.columns.iter() {
+				for col_def in series_def.data_columns() {
 					result_columns.push(Column {
 						name: Fragment::internal(&col_def.name),
 						data: ColumnData::none_typed(col_def.constraint.get_type(), 0),
@@ -170,10 +176,10 @@ impl QueryNode for SeriesScanNode {
 		// Build output columns
 		let mut result_columns = Vec::new();
 
-		// Timestamp column (always Int8)
+		// Key column
 		result_columns.push(Column {
-			name: Fragment::internal("timestamp"),
-			data: ColumnData::int8(timestamps),
+			name: Fragment::internal(series_def.key.column()),
+			data: column_data_from_i64_keys(key_values, series_def, &series_def.key),
 		});
 
 		// Tag column (Uint1) if present
@@ -185,7 +191,7 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		// Data columns
-		for (col_idx, col_def) in series_def.columns.iter().enumerate() {
+		for (col_idx, col_def) in series_def.data_columns().enumerate() {
 			let col_type = col_def.constraint.get_type();
 			let col_values: Vec<Value> = data_rows
 				.iter()

@@ -255,8 +255,7 @@ impl FlowEngine {
 			SinkSeriesView {
 				view,
 				series,
-				timestamp_column,
-				precision,
+				key,
 			} => {
 				let parent = self
 					.operators
@@ -272,8 +271,7 @@ impl FlowEngine {
 						node.id,
 						resolved,
 						series,
-						timestamp_column.clone(),
-						precision,
+						key.clone(),
 					))),
 				);
 			}

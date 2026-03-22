@@ -1056,15 +1056,16 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 
-					// Try to push down timestamp/tag predicates into SeriesScan
+					// Try to push down key/tag predicates into SeriesScan
 					if let PhysicalPlan::SeriesScan(ref scan) = input {
-						if let Some(sp) = extract_series_predicate(&filter.condition) {
+						let key_col_name = scan.source.def().key.column();
+						if let Some(sp) =
+							extract_series_predicate(&filter.condition, key_col_name)
+						{
 							let rewritten = PhysicalPlan::SeriesScan(SeriesScanNode {
 								source: scan.source.clone(),
-								time_range_start: sp
-									.time_start
-									.or(scan.time_range_start),
-								time_range_end: sp.time_end.or(scan.time_range_end),
+								key_range_start: sp.key_start.or(scan.key_range_start),
+								key_range_end: sp.key_end.or(scan.key_range_end),
 								variant_tag: sp.variant_tag.or(scan.variant_tag),
 							});
 							if sp.remaining.is_empty() {
@@ -2006,8 +2007,8 @@ impl<'bump> Compiler<'bump> {
 						}
 						stack.push(PhysicalPlan::SeriesScan(SeriesScanNode {
 							source: resolved_series.clone(),
-							time_range_start: None,
-							time_range_end: None,
+							key_range_start: None,
+							key_range_end: None,
 							variant_tag: None,
 						}));
 					}

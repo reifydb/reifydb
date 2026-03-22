@@ -7,7 +7,7 @@ use reifydb_core::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{SeriesDef, SeriesMetadata, TimestampPrecision},
+		series::{SeriesDef, SeriesKey, SeriesMetadata},
 	},
 	internal,
 };
@@ -43,7 +43,7 @@ pub struct SeriesToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 }
 
 impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
@@ -66,7 +66,7 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			tag: to_create.tag,
-			precision: to_create.precision,
+			key: to_create.key,
 		}
 	}
 }

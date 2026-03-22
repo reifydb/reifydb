@@ -34,7 +34,13 @@ use reifydb_core::{
 use reifydb_engine::{
 	EngineVersion,
 	engine::StandardEngine,
-	procedure::{registry::Procedures, system::set_config::SetConfigProcedure},
+	procedure::{
+		registry::Procedures,
+		system::{
+			clock_advance::ClockAdvanceProcedure, clock_set::ClockSetProcedure,
+			set_config::SetConfigProcedure,
+		},
+	},
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::RqlVersion;
@@ -169,9 +175,12 @@ impl WasmDB {
 			.map_err(|e| JsError::from_error(&e))?;
 		load_schema_registry(&multi, &single, &schema_registry).map_err(|e| JsError::from_error(&e))?;
 
-		// Build procedures with system::config::set native procedure
-		let procedures =
-			Procedures::builder().with_procedure("system::config::set", SetConfigProcedure::new).build();
+		// Build procedures with native procedures
+		let procedures = Procedures::builder()
+			.with_procedure("system::config::set", SetConfigProcedure::new)
+			.with_procedure("clock::set", ClockSetProcedure::new)
+			.with_procedure("clock::advance", ClockAdvanceProcedure::new)
+			.build();
 
 		// Build engine with bootstrap-initialized catalog
 		let eventbus_clone = eventbus.clone();

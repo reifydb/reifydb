@@ -509,8 +509,8 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::SeriesScan(node) => Box::new(
 			VolcanoSeriesScanNode::new(
 				node.source.clone(),
-				node.time_range_start,
-				node.time_range_end,
+				node.key_range_start,
+				node.key_range_end,
 				node.variant_tag,
 				context,
 			)

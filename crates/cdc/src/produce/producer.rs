@@ -17,7 +17,10 @@ use reifydb_core::{
 		change::{Change, Diff},
 		store::MultiVersionGetPrevious,
 	},
-	key::{EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey},
+	key::{
+		EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey,
+		series_row::SeriesRowKey,
+	},
 };
 use reifydb_runtime::{
 	actor::{
@@ -30,7 +33,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_type::{Result, value::row_number::RowNumber};
 use tracing::{debug, error, trace};
 
 use super::decode::{build_insert_diff, build_remove_diff, build_update_diff};
@@ -98,6 +101,58 @@ where
 
 				// Row deltas → try to decode into columnar Diff, fall back to SystemChange
 				if kind == KeyKind::Row {
+					// Try series key first (more specific encoding)
+					if let Some(series_key) = SeriesRowKey::decode(&key) {
+						let primitive = PrimitiveId::Series(series_key.series);
+						let row_number = RowNumber::from(series_key.sequence);
+						let decoded = match &delta {
+							Delta::Set {
+								key,
+								values,
+							} => {
+								let pre = self
+									.transaction_store
+									.get_previous_version(key, version)
+									.ok()
+									.flatten();
+								if let Some(prev) = pre {
+									build_update_diff(
+										registry,
+										row_number,
+										prev.values,
+										values.clone(),
+									)
+								} else {
+									build_insert_diff(
+										registry,
+										row_number,
+										values.clone(),
+									)
+								}
+							}
+							Delta::Unset {
+								values,
+								..
+							} => {
+								if !values.is_empty() {
+									build_remove_diff(
+										registry,
+										row_number,
+										values.clone(),
+									)
+								} else {
+									None
+								}
+							}
+							_ => None,
+						};
+						if let Some(diff) = decoded {
+							diffs_by_primitive.entry(primitive).or_default().push(diff);
+							continue;
+						}
+					}
+
+					// Table/view/ringbuffer row key
 					if let Some(row_key) = RowKey::decode(&key) {
 						let decoded = match &delta {
 							Delta::Set {

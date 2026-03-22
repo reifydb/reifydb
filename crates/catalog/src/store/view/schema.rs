@@ -15,9 +15,10 @@ pub(crate) mod view {
 	pub(crate) const UNDERLYING_PRIMITIVE_ID: usize = 6;
 	pub(crate) const CAPACITY: usize = 7;
 	pub(crate) const PROPAGATE_EVICTIONS: usize = 8;
-	pub(crate) const TIMESTAMP_COLUMN: usize = 9;
-	pub(crate) const PRECISION: usize = 10;
-	pub(crate) const TAG_ID: usize = 11;
+	pub(crate) const KEY_COLUMN: usize = 9;
+	pub(crate) const KEY_KIND: usize = 10;
+	pub(crate) const PRECISION: usize = 11;
+	pub(crate) const TAG_ID: usize = 12;
 
 	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
@@ -30,7 +31,8 @@ pub(crate) mod view {
 			SchemaField::unconstrained("underlying_primitive_id", Type::Uint8),
 			SchemaField::unconstrained("capacity", Type::Uint8),
 			SchemaField::unconstrained("propagate_evictions", Type::Uint1),
-			SchemaField::unconstrained("timestamp_column", Type::Utf8),
+			SchemaField::unconstrained("key_column", Type::Utf8),
+			SchemaField::unconstrained("key_kind", Type::Uint1),
 			SchemaField::unconstrained("precision", Type::Uint1),
 			SchemaField::unconstrained("tag_id", Type::Uint8),
 		])

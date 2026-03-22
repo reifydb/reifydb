@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_engine::procedure::{Procedure, context::ProcedureContext};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_engine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
 /// Cancels a pipeline run: skips all pending/blocked job_runs and pending step_runs.
 ///
@@ -12,13 +16,22 @@ use reifydb_type::{Result, params::Params, value::Value};
 pub struct CancelRunProcedure;
 
 impl Procedure for CancelRunProcedure {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let run_id = match ctx.params {
 			Params::Positional(args) if !args.is_empty() => args[0].clone(),
+			Params::Positional(args) => {
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("forge::cancel_run"),
+					expected: 1,
+					actual: args.len(),
+				});
+			}
 			_ => {
-				return Err(internal_error!(
-					"forge::cancel_run requires 1 positional argument: run_id"
-				));
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("forge::cancel_run"),
+					expected: 1,
+					actual: 0,
+				});
 			}
 		};
 
@@ -26,7 +39,12 @@ impl Procedure for CancelRunProcedure {
 			Value::Uuid4(u) => u.to_string(),
 			Value::Utf8(s) => s.clone(),
 			_ => {
-				return Err(internal_error!("forge::cancel_run: run_id must be Uuid4 or Utf8"));
+				return Err(ProcedureError::InvalidArgumentType {
+					procedure: Fragment::internal("forge::cancel_run"),
+					argument_index: 0,
+					expected: vec![Type::Uuid4, Type::Utf8],
+					actual: run_id.get_type(),
+				});
 			}
 		};
 

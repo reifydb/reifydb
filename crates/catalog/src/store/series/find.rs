@@ -4,11 +4,11 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, SeriesId},
-		series::{SeriesDef, SeriesMetadata, TimestampPrecision},
+		series::{SeriesDef, SeriesKey, SeriesMetadata},
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
-		series::{SeriesKey, SeriesMetadataKey},
+		series::{SeriesKey as SeriesStorageKey, SeriesMetadataKey},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -21,7 +21,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<SeriesDef>> {
-		let Some(multi) = rx.get(&SeriesKey::encoded(series_id))? else {
+		let Some(multi) = rx.get(&SeriesStorageKey::encoded(series_id))? else {
 			return Ok(None);
 		};
 
@@ -35,12 +35,10 @@ impl CatalogStore {
 		} else {
 			Some(SumTypeId(tag_raw))
 		};
+		let key_column = series::SCHEMA.get_utf8(&row, series::KEY_COLUMN).to_string();
+		let key_kind_raw = series::SCHEMA.get_u8(&row, series::KEY_KIND);
 		let precision_raw = series::SCHEMA.get_u8(&row, series::PRECISION);
-		let precision = match precision_raw {
-			1 => TimestampPrecision::Microsecond,
-			2 => TimestampPrecision::Nanosecond,
-			_ => TimestampPrecision::Millisecond,
-		};
+		let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
 
 		Ok(Some(SeriesDef {
 			id,
@@ -48,7 +46,7 @@ impl CatalogStore {
 			name,
 			columns: Self::list_columns(rx, id)?,
 			tag,
-			precision,
+			key,
 			primary_key: Self::find_primary_key(rx, id)?,
 		}))
 	}
@@ -64,15 +62,15 @@ impl CatalogStore {
 		let row = multi.values;
 		let id = SeriesId(series_metadata::SCHEMA.get_u64(&row, series_metadata::ID));
 		let row_count = series_metadata::SCHEMA.get_u64(&row, series_metadata::ROW_COUNT);
-		let oldest_timestamp = series_metadata::SCHEMA.get_i64(&row, series_metadata::OLDEST_TIMESTAMP);
-		let newest_timestamp = series_metadata::SCHEMA.get_i64(&row, series_metadata::NEWEST_TIMESTAMP);
+		let oldest_key = series_metadata::SCHEMA.get_i64(&row, series_metadata::OLDEST_KEY);
+		let newest_key = series_metadata::SCHEMA.get_i64(&row, series_metadata::NEWEST_KEY);
 		let sequence_counter = series_metadata::SCHEMA.get_u64(&row, series_metadata::SEQUENCE_COUNTER);
 
 		Ok(Some(SeriesMetadata {
 			id,
 			row_count,
-			oldest_timestamp,
-			newest_timestamp,
+			oldest_key,
+			newest_key,
 			sequence_counter,
 		}))
 	}

@@ -308,9 +308,10 @@ pub mod ids {
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TAG_ID: ColumnId = ColumnId(4);
-			pub const PRECISION: ColumnId = ColumnId(5);
+			pub const KEY_COLUMN: ColumnId = ColumnId(5);
+			pub const KEY_KIND: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, TAG_ID, PRECISION];
+			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, TAG_ID, KEY_COLUMN, KEY_KIND];
 		}
 
 		pub mod handlers {

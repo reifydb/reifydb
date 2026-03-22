@@ -4,7 +4,10 @@
 use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{interface::catalog::series::TimestampPrecision, util::lru::LruCache};
+use reifydb_core::{
+	interface::catalog::series::{SeriesKey, TimestampPrecision},
+	util::lru::LruCache,
+};
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment, value::Value};
@@ -274,18 +277,24 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 			partition_by,
 		},
 		AstViewStorageKind::Series {
-			timestamp_column,
+			key_column,
 			precision,
-		} => CompiledViewStorageKind::Series {
-			timestamp_column,
-			precision: precision
+		} => {
+			let precision = precision
 				.map(|p| match p {
+					AstTimestampPrecision::Second => TimestampPrecision::Second,
 					AstTimestampPrecision::Millisecond => TimestampPrecision::Millisecond,
 					AstTimestampPrecision::Microsecond => TimestampPrecision::Microsecond,
 					AstTimestampPrecision::Nanosecond => TimestampPrecision::Nanosecond,
 				})
-				.unwrap_or(TimestampPrecision::Millisecond),
-		},
+				.unwrap_or(TimestampPrecision::Millisecond);
+			CompiledViewStorageKind::Series {
+				key: SeriesKey::DateTime {
+					column: key_column,
+					precision,
+				},
+			}
+		}
 	}
 }
 

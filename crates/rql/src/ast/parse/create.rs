@@ -619,8 +619,9 @@ impl<'bump> Parser<'bump> {
 
 		let series = MaybeQualifiedSeriesIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH block
+		// Parse required WITH block
 		let mut tag = None;
+		let mut key_field = None;
 		let mut precision = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
@@ -633,7 +634,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let key = {
+				let with_key = {
 					let current = self.current()?;
 					match current.kind {
 						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
@@ -647,10 +648,11 @@ impl<'bump> Parser<'bump> {
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'tag' or 'precision'".to_string(),
+									expected: "'key', 'tag', or 'precision'"
+										.to_string(),
 								},
 								message: format!(
-									"expected 'tag' or 'precision', found `{}`",
+									"expected 'key', 'tag', or 'precision', found `{}`",
 									current.fragment.text()
 								),
 								fragment: current.fragment.to_owned(),
@@ -660,7 +662,11 @@ impl<'bump> Parser<'bump> {
 				};
 				self.consume_operator(Operator::Colon)?;
 
-				match key.fragment.text() {
+				match with_key.fragment.text() {
+					"key" => {
+						let key_token = self.consume(TokenKind::Identifier)?;
+						key_field = Some(key_token.fragment);
+					}
 					"tag" => {
 						let mut tag_segments =
 							self.parse_double_colon_separated_identifiers()?;
@@ -673,6 +679,7 @@ impl<'bump> Parser<'bump> {
 					"precision" => {
 						let prec_token = self.consume(TokenKind::Identifier)?;
 						precision = Some(match prec_token.fragment.text() {
+							"second" => AstTimestampPrecision::Second,
 							"millisecond" => AstTimestampPrecision::Millisecond,
 							"microsecond" => AstTimestampPrecision::Microsecond,
 							"nanosecond" => AstTimestampPrecision::Nanosecond,
@@ -680,12 +687,12 @@ impl<'bump> Parser<'bump> {
 								let fragment = prec_token.fragment.to_owned();
 								return Err(Error::from(TypeError::Ast {
 									kind: AstErrorKind::UnexpectedToken {
-										expected: "'millisecond', 'microsecond', or 'nanosecond'"
+										expected: "'second', 'millisecond', 'microsecond', or 'nanosecond'"
 											.to_string(),
 									},
 									message: format!(
 										"Unexpected token: expected {}, got {}",
-										"'millisecond', 'microsecond', or 'nanosecond'",
+										"'second', 'millisecond', 'microsecond', or 'nanosecond'",
 										fragment.text()
 									),
 									fragment,
@@ -694,14 +701,14 @@ impl<'bump> Parser<'bump> {
 						});
 					}
 					_other => {
-						let fragment = key.fragment.to_owned();
+						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'tag' or 'precision'".to_string(),
+								expected: "'key', 'tag', or 'precision'".to_string(),
 							},
 							message: format!(
 								"Unexpected token: expected {}, got {}",
-								"'tag' or 'precision'",
+								"'key', 'tag', or 'precision'",
 								fragment.text()
 							),
 							fragment,
@@ -723,11 +730,26 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::CloseCurly)?;
 		}
 
+		// key is required
+		let key_fragment = match key_field {
+			Some(k) => Some(k),
+			None => {
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "WITH block containing 'key' field".to_string(),
+					},
+					message: "CREATE SERIES requires a WITH block with a 'key' field specifying the ordering column".to_string(),
+					fragment: token.fragment.to_owned(),
+				}));
+			}
+		};
+
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
 			series,
 			columns,
 			tag,
+			key: key_fragment,
 			precision,
 		}))
 	}
@@ -2065,7 +2087,7 @@ impl<'bump> Parser<'bump> {
 				})
 			}
 			ViewStorageKindHint::Series => {
-				let mut timestamp_column: Option<String> = None;
+				let mut key_column: Option<String> = None;
 				let mut precision: Option<AstTimestampPrecision> = None;
 
 				loop {
@@ -2078,13 +2100,14 @@ impl<'bump> Parser<'bump> {
 					self.consume_operator(Operator::Colon)?;
 
 					match key.fragment.text() {
-						"timestamp" => {
+						"key" => {
 							let token = self.consume(TokenKind::Identifier)?;
-							timestamp_column = Some(token.fragment.text().to_string());
+							key_column = Some(token.fragment.text().to_string());
 						}
 						"precision" => {
 							let token = self.consume(TokenKind::Identifier)?;
 							precision = Some(match token.fragment.text() {
+								"second" => AstTimestampPrecision::Second,
 								"millisecond" => AstTimestampPrecision::Millisecond,
 								"microsecond" => AstTimestampPrecision::Microsecond,
 								"nanosecond" => AstTimestampPrecision::Nanosecond,
@@ -2092,7 +2115,7 @@ impl<'bump> Parser<'bump> {
 									let fragment = token.fragment.to_owned();
 									return Err(Error::from(TypeError::Ast {
 										kind: AstErrorKind::UnexpectedToken {
-											expected: "millisecond, microsecond, or nanosecond".to_string(),
+											expected: "second, millisecond, microsecond, or nanosecond".to_string(),
 										},
 										message: format!("unexpected precision '{}'", fragment.text()),
 										fragment,
@@ -2104,8 +2127,7 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'timestamp' or 'precision'"
-										.to_string(),
+									expected: "'key' or 'precision'".to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2121,8 +2143,9 @@ impl<'bump> Parser<'bump> {
 
 				self.consume_operator(Operator::CloseCurly)?;
 
+				let key_column = key_column.unwrap_or_default();
 				Ok(AstViewStorageKind::Series {
-					timestamp_column,
+					key_column,
 					precision,
 				})
 			}
@@ -2477,7 +2500,7 @@ pub mod tests {
 	fn test_create_series() {
 		let bump = Bump::new();
 		let source = r#"
-            create series test::metrics{value: Int2}
+            create series test::metrics{ts: datetime, value: Int2} WITH { key: ts }
         "#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
@@ -2491,21 +2514,33 @@ pub mod tests {
 			AstCreate::Series(AstCreateSeries {
 				series,
 				columns,
+				key,
 				..
 			}) => {
 				assert_eq!(series.namespace[0].text(), "test");
 				assert_eq!(series.name.text(), "metrics");
 
-				assert_eq!(columns.len(), 1);
+				assert_eq!(columns.len(), 2);
 
-				assert_eq!(columns[0].name.text(), "value");
+				assert_eq!(columns[0].name.text(), "ts");
 				match &columns[0].ty {
+					AstType::Unconstrained(ident) => {
+						assert_eq!(ident.text(), "datetime")
+					}
+					_ => panic!("Expected simple type"),
+				}
+
+				assert_eq!(columns[1].name.text(), "value");
+				match &columns[1].ty {
 					AstType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "Int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
-				assert!(columns[0].properties.is_empty());
+				assert!(columns[1].properties.is_empty());
+
+				assert!(key.is_some());
+				assert_eq!(key.as_ref().unwrap().text(), "ts");
 			}
 			_ => unreachable!(),
 		}

@@ -14,14 +14,14 @@ const VERSION: u8 = 1;
 
 /// Key for series data rows.
 ///
-/// Layout without tag: `[Version | Row(0x03) | PrimitiveId::Series(id) | timestamp(i64) | sequence(u64)]`
-/// Layout with tag:    `[Version | Row(0x03) | PrimitiveId::Series(id) | variant_tag(u8) | timestamp(i64) |
+/// Layout without tag: `[Version | Row(0x03) | PrimitiveId::Series(id) | ordering_value(i64) | sequence(u64)]`
+/// Layout with tag:    `[Version | Row(0x03) | PrimitiveId::Series(id) | variant_tag(u8) | ordering_value(i64) |
 /// sequence(u64)]`
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesRowKey {
 	pub series: SeriesId,
 	pub variant_tag: Option<u8>,
-	pub timestamp: i64,
+	pub key: i64,
 	pub sequence: u64,
 }
 
@@ -40,7 +40,7 @@ impl EncodableKey for SeriesRowKey {
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
-		serializer.extend_i64(self.timestamp).extend_u64(self.sequence);
+		serializer.extend_i64(self.key).extend_u64(self.sequence);
 		serializer.to_encoded_key()
 	}
 
@@ -73,13 +73,13 @@ impl EncodableKey for SeriesRowKey {
 			None
 		};
 
-		let timestamp = de.read_i64().ok()?;
+		let key = de.read_i64().ok()?;
 		let sequence = de.read_u64().ok()?;
 
 		Some(Self {
 			series,
 			variant_tag,
-			timestamp,
+			key,
 			sequence,
 		})
 	}
@@ -90,8 +90,8 @@ impl EncodableKey for SeriesRowKey {
 pub struct SeriesRowKeyRange {
 	pub series: SeriesId,
 	pub variant_tag: Option<u8>,
-	pub time_start: Option<i64>,
-	pub time_end: Option<i64>,
+	pub key_start: Option<i64>,
+	pub key_end: Option<i64>,
 }
 
 impl SeriesRowKeyRange {
@@ -100,25 +100,25 @@ impl SeriesRowKeyRange {
 		let range = SeriesRowKeyRange {
 			series,
 			variant_tag,
-			time_start: None,
-			time_end: None,
+			key_start: None,
+			key_end: None,
 		};
 		EncodedKeyRange::new(Bound::Included(range.start_key()), Bound::Included(range.end_key()))
 	}
 
-	/// Create a range scan with optional time bounds.
+	/// Create a range scan with optional key bounds.
 	pub fn scan_range(
 		series: SeriesId,
 		variant_tag: Option<u8>,
-		time_start: Option<i64>,
-		time_end: Option<i64>,
+		key_start: Option<i64>,
+		key_end: Option<i64>,
 		last_key: Option<&EncodedKey>,
 	) -> EncodedKeyRange {
 		let range = SeriesRowKeyRange {
 			series,
 			variant_tag,
-			time_start,
-			time_end,
+			key_start,
+			key_end,
 		};
 
 		let start = if let Some(last_key) = last_key {
@@ -137,20 +137,20 @@ impl SeriesRowKeyRange {
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
-		// Descending key encoding: higher timestamps have lower key values.
-		// The start key (lower bound) uses time_end (the highest timestamp in
+		// Descending key encoding: higher key values have lower encoded values.
+		// The start key (lower bound) uses key_end (the highest key value in
 		// the desired range) to begin scanning from the newest matching row.
-		if let Some(ts) = self.time_end {
-			serializer.extend_i64(ts);
+		if let Some(key_val) = self.key_end {
+			serializer.extend_i64(key_val);
 		}
 		serializer.to_encoded_key()
 	}
 
 	fn end_key(&self) -> EncodedKey {
-		// Descending key encoding: lower timestamps have higher key values.
-		// The end key (upper bound) uses time_start (the lowest timestamp in
+		// Descending key encoding: lower key values have higher encoded values.
+		// The end key (upper bound) uses key_start (the lowest key value in
 		// the desired range) to stop scanning after the oldest matching row.
-		if let Some(ts) = self.time_start {
+		if let Some(key_val) = self.key_start {
 			let primitive = PrimitiveId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(28);
 			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_primitive_id(primitive);
@@ -158,8 +158,8 @@ impl SeriesRowKeyRange {
 				serializer.extend_u8(tag);
 			}
 			// Use sequence 0 which encodes to max bytes in descending encoding,
-			// ensuring all rows at this timestamp are included.
-			serializer.extend_i64(ts).extend_u64(0u64);
+			// ensuring all rows at this key value are included.
+			serializer.extend_i64(key_val).extend_u64(0u64);
 			serializer.to_encoded_key()
 		} else {
 			// Use PrimitiveId ordering trick to get end of range
@@ -183,14 +183,14 @@ mod tests {
 		let key = SeriesRowKey {
 			series: SeriesId(42),
 			variant_tag: None,
-			timestamp: 1706745600000,
+			key: 1706745600000,
 			sequence: 1,
 		};
 		let encoded = key.encode();
 		let decoded = SeriesRowKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.series, SeriesId(42));
 		assert_eq!(decoded.variant_tag, None);
-		assert_eq!(decoded.timestamp, 1706745600000);
+		assert_eq!(decoded.key, 1706745600000);
 		assert_eq!(decoded.sequence, 1);
 	}
 
@@ -199,36 +199,36 @@ mod tests {
 		let key = SeriesRowKey {
 			series: SeriesId(42),
 			variant_tag: Some(3),
-			timestamp: 1706745600000,
+			key: 1706745600000,
 			sequence: 5,
 		};
 		let encoded = key.encode();
 		let decoded = SeriesRowKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.series, SeriesId(42));
 		assert_eq!(decoded.variant_tag, Some(3));
-		assert_eq!(decoded.timestamp, 1706745600000);
+		assert_eq!(decoded.key, 1706745600000);
 		assert_eq!(decoded.sequence, 5);
 	}
 
 	#[test]
-	fn test_ordering_by_timestamp() {
+	fn test_ordering_by_key() {
 		let key1 = SeriesRowKey {
 			series: SeriesId(1),
 			variant_tag: None,
-			timestamp: 100,
+			key: 100,
 			sequence: 0,
 		};
 		let key2 = SeriesRowKey {
 			series: SeriesId(1),
 			variant_tag: None,
-			timestamp: 200,
+			key: 200,
 			sequence: 0,
 		};
 		let e1 = key1.encode();
 		let e2 = key2.encode();
 		// Keycode encoding uses NOT of big-endian, producing descending order
-		// Earlier timestamps (smaller values) sort AFTER later timestamps
-		assert!(e1 > e2, "timestamp descending ordering not preserved");
+		// Smaller key values sort AFTER larger key values
+		assert!(e1 > e2, "key descending ordering not preserved");
 	}
 
 	#[test]
@@ -236,13 +236,13 @@ mod tests {
 		let key1 = SeriesRowKey {
 			series: SeriesId(1),
 			variant_tag: None,
-			timestamp: 100,
+			key: 100,
 			sequence: 1,
 		};
 		let key2 = SeriesRowKey {
 			series: SeriesId(1),
 			variant_tag: None,
-			timestamp: 100,
+			key: 100,
 			sequence: 2,
 		};
 		let e1 = key1.encode();

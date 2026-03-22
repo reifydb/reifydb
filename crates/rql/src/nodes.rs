@@ -15,7 +15,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			procedure::{ProcedureParamDef, ProcedureTrigger},
 			property::ColumnPropertyKind,
-			series::TimestampPrecision,
+			series::SeriesKey,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
@@ -159,8 +159,7 @@ pub enum CompiledViewStorageKind {
 		partition_by: Vec<String>,
 	},
 	Series {
-		timestamp_column: Option<String>,
-		precision: TimestampPrecision,
+		key: SeriesKey,
 	},
 }
 
@@ -310,7 +309,7 @@ pub struct CreateSeriesNode {
 	pub series: Fragment,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 }
 
 /// Physical node for CREATE EVENT
@@ -656,8 +655,8 @@ pub struct DictionaryScanNode {
 #[derive(Debug, Clone)]
 pub struct SeriesScanNode {
 	pub source: ResolvedSeries,
-	pub time_range_start: Option<i64>,
-	pub time_range_end: Option<i64>,
+	pub key_range_start: Option<i64>,
+	pub key_range_end: Option<i64>,
 	pub variant_tag: Option<u8>,
 }
 

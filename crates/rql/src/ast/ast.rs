@@ -609,13 +609,14 @@ pub enum AstViewStorageKind {
 		partition_by: Vec<String>,
 	},
 	Series {
-		timestamp_column: Option<String>,
+		key_column: String,
 		precision: Option<AstTimestampPrecision>,
 	},
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum AstTimestampPrecision {
+	Second,
 	Millisecond,
 	Microsecond,
 	Nanosecond,
@@ -667,6 +668,7 @@ pub struct AstCreateSeries<'bump> {
 	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
+	pub key: Option<BumpFragment<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
 }
 

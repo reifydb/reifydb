@@ -7,10 +7,9 @@ use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::{error::FFIError, marshal::wasm::unmarshal_columns_from_bytes};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
 use reifydb_wasm::{Engine, SpawnBinary, module::value::Value, source};
 
-use super::{Procedure, context::ProcedureContext};
+use super::{Procedure, context::ProcedureContext, error::ProcedureError};
 
 /// WASM procedure that loads and executes a `.wasm` module.
 ///
@@ -43,7 +42,7 @@ unsafe impl Send for WasmProcedure {}
 unsafe impl Sync for WasmProcedure {}
 
 impl Procedure for WasmProcedure {
-	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
 			FFIError::Other(format!("WASM procedure '{}' failed to serialize params: {}", self.name, e))
 		})?;

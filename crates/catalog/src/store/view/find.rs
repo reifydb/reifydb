@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-		series::TimestampPrecision,
+		series::SeriesKey,
 		view::{RingBufferViewDef, SeriesViewDef, TableViewDef, ViewDef, ViewKind, ViewStorageKind},
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
@@ -26,7 +26,7 @@ impl CatalogStore {
 		let row = multi.values;
 		let columns = Self::list_columns(rx, id)?;
 		let primary_key = Self::find_view_primary_key(rx, id)?;
-		let view_def = decode_view_def(&row, columns, primary_key);
+		let view_def = decode_view_def(&row, columns, primary_key)?;
 
 		Ok(Some(view_def))
 	}
@@ -64,26 +64,44 @@ use reifydb_core::{
 	encoded::encoded::EncodedValues,
 	interface::catalog::{column::ColumnDef, key::PrimaryKeyDef},
 };
+use reifydb_type::{
+	error::{Diagnostic, Error},
+	fragment::Fragment,
+};
 
 pub(crate) fn decode_view_def(
 	row: &EncodedValues,
 	columns: Vec<ColumnDef>,
 	primary_key: Option<PrimaryKeyDef>,
-) -> ViewDef {
+) -> Result<ViewDef> {
 	let id = ViewId(view::SCHEMA.get_u64(row, view::ID));
 	let namespace = NamespaceId(view::SCHEMA.get_u64(row, view::NAMESPACE));
 	let name = view::SCHEMA.get_utf8(row, view::NAME).to_string();
 
-	let kind = match view::SCHEMA.get_u8(row, view::KIND) {
+	let kind_raw = view::SCHEMA.get_u8(row, view::KIND);
+	let kind = match kind_raw {
 		0 => ViewKind::Deferred,
 		1 => ViewKind::Transactional,
-		_ => unimplemented!(),
+		_ => {
+			return Err(Error(Diagnostic {
+				code: "CA_026".to_string(),
+				statement: None,
+				message: format!("unknown view kind: {}", kind_raw),
+				fragment: Fragment::None,
+				label: Some("invalid view kind value".to_string()),
+				help: Some("expected 0 (deferred) or 1 (transactional)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			}));
+		}
 	};
 
 	let storage_kind = view::SCHEMA.get_u8(row, view::STORAGE_KIND);
 	let underlying_primitive_id = view::SCHEMA.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
 
-	match storage_kind {
+	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => ViewDef::Table(TableViewDef {
 			id,
 			name,
@@ -109,18 +127,10 @@ pub(crate) fn decode_view_def(
 			})
 		}
 		x if x == ViewStorageKind::Series as u8 => {
-			let ts_col = view::SCHEMA.get_utf8(row, view::TIMESTAMP_COLUMN).to_string();
-			let timestamp_column = if ts_col.is_empty() {
-				None
-			} else {
-				Some(ts_col)
-			};
-			let precision = match view::SCHEMA.get_u8(row, view::PRECISION) {
-				0 => TimestampPrecision::Millisecond,
-				1 => TimestampPrecision::Microsecond,
-				2 => TimestampPrecision::Nanosecond,
-				_ => TimestampPrecision::Millisecond,
-			};
+			let key_column = view::SCHEMA.get_utf8(row, view::KEY_COLUMN).to_string();
+			let key_kind_raw = view::SCHEMA.get_u8(row, view::KEY_KIND);
+			let precision_raw = view::SCHEMA.get_u8(row, view::PRECISION);
+			let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
 			let tag_raw = view::SCHEMA.get_u64(row, view::TAG_ID);
 			let tag = if tag_raw == 0 {
 				None
@@ -135,8 +145,7 @@ pub(crate) fn decode_view_def(
 				columns,
 				primary_key,
 				underlying: SeriesId(underlying_primitive_id),
-				timestamp_column,
-				precision,
+				key,
 				tag,
 			})
 		}
@@ -150,7 +159,7 @@ pub(crate) fn decode_view_def(
 			primary_key,
 			underlying: TableId(underlying_primitive_id),
 		}),
-	}
+	})
 }
 
 #[cfg(test)]

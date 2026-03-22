@@ -236,17 +236,16 @@ fn test_ringbuffer_update_take_with_returning() {
 fn test_series_update_take() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
 	command(
 		&engine,
-		"INSERT test::s [{ timestamp: 1000, val: 10 }, { timestamp: 2000, val: 10 }, { timestamp: 3000, val: 10 }, { timestamp: 4000, val: 10 }, { timestamp: 5000, val: 10 }]",
+		"INSERT test::s [{ ts: 1000, val: 10 }, { ts: 2000, val: 10 }, { ts: 3000, val: 10 }, { ts: 4000, val: 10 }, { ts: 5000, val: 10 }]",
 	);
 
-	let frames =
-		command(&engine, "UPDATE test::s { val: 99 } FILTER { timestamp > 0 } TAKE 2 RETURNING { timestamp }");
+	let frames = command(&engine, "UPDATE test::s { val: 99 } FILTER { ts > 0 } TAKE 2 RETURNING { ts }");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 2);
-	let mut returned_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("timestamp").unwrap().unwrap()).collect();
+	let mut returned_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("ts").unwrap().unwrap()).collect();
 	returned_ts.sort();
 	assert_eq!(returned_ts, vec![4000, 5000]);
 
@@ -254,12 +253,12 @@ fn test_series_update_take() {
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 5);
 	for row in &rows {
-		let ts = row.get::<i64>("timestamp").unwrap().unwrap();
+		let ts = row.get::<i64>("ts").unwrap().unwrap();
 		let val = row.get::<i64>("val").unwrap().unwrap();
 		if returned_ts.contains(&ts) {
-			assert_eq!(val, 99, "row timestamp={ts} should be updated");
+			assert_eq!(val, 99, "row ts={ts} should be updated");
 		} else {
-			assert_eq!(val, 10, "row timestamp={ts} should not be updated");
+			assert_eq!(val, 10, "row ts={ts} should not be updated");
 		}
 	}
 }
@@ -268,23 +267,23 @@ fn test_series_update_take() {
 fn test_series_delete_take() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
 	command(
 		&engine,
-		"INSERT test::s [{ timestamp: 1000, val: 10 }, { timestamp: 2000, val: 10 }, { timestamp: 3000, val: 10 }, { timestamp: 4000, val: 10 }, { timestamp: 5000, val: 10 }]",
+		"INSERT test::s [{ ts: 1000, val: 10 }, { ts: 2000, val: 10 }, { ts: 3000, val: 10 }, { ts: 4000, val: 10 }, { ts: 5000, val: 10 }]",
 	);
 
-	let frames = command(&engine, "DELETE test::s FILTER { timestamp > 0 } TAKE 2 RETURNING { timestamp }");
+	let frames = command(&engine, "DELETE test::s FILTER { ts > 0 } TAKE 2 RETURNING { ts }");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 2);
-	let mut deleted_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("timestamp").unwrap().unwrap()).collect();
+	let mut deleted_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("ts").unwrap().unwrap()).collect();
 	deleted_ts.sort();
 	assert_eq!(deleted_ts, vec![4000, 5000]);
 
 	let frames = query(&engine, "FROM test::s");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 3);
-	let mut remaining_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("timestamp").unwrap().unwrap()).collect();
+	let mut remaining_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("ts").unwrap().unwrap()).collect();
 	remaining_ts.sort();
 	assert_eq!(remaining_ts, vec![1000, 2000, 3000]);
 }
@@ -293,20 +292,17 @@ fn test_series_delete_take() {
 fn test_series_delete_take_zero() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
-	command(
-		&engine,
-		"INSERT test::s [{ timestamp: 1000, val: 10 }, { timestamp: 2000, val: 10 }, { timestamp: 3000, val: 10 }]",
-	);
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
+	command(&engine, "INSERT test::s [{ ts: 1000, val: 10 }, { ts: 2000, val: 10 }, { ts: 3000, val: 10 }]");
 
-	let frames = command(&engine, "DELETE test::s FILTER { timestamp > 0 } TAKE 0 RETURNING { timestamp }");
+	let frames = command(&engine, "DELETE test::s FILTER { ts > 0 } TAKE 0 RETURNING { ts }");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 0);
 
 	let frames = query(&engine, "FROM test::s");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 3);
-	let mut remaining_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("timestamp").unwrap().unwrap()).collect();
+	let mut remaining_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("ts").unwrap().unwrap()).collect();
 	remaining_ts.sort();
 	assert_eq!(remaining_ts, vec![1000, 2000, 3000]);
 }
@@ -315,17 +311,16 @@ fn test_series_delete_take_zero() {
 fn test_series_update_take_with_returning() {
 	let engine = create_test_engine();
 	admin(&engine, "CREATE NAMESPACE test");
-	admin(&engine, "CREATE SERIES test::s { val: int8 } WITH { precision: millisecond }");
+	admin(&engine, "CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }");
 	command(
 		&engine,
-		"INSERT test::s [{ timestamp: 1000, val: 10 }, { timestamp: 2000, val: 10 }, { timestamp: 3000, val: 10 }, { timestamp: 4000, val: 10 }, { timestamp: 5000, val: 10 }]",
+		"INSERT test::s [{ ts: 1000, val: 10 }, { ts: 2000, val: 10 }, { ts: 3000, val: 10 }, { ts: 4000, val: 10 }, { ts: 5000, val: 10 }]",
 	);
 
-	let frames =
-		command(&engine, "UPDATE test::s { val: 99 } FILTER { timestamp > 0 } TAKE 2 RETURNING { timestamp }");
+	let frames = command(&engine, "UPDATE test::s { val: 99 } FILTER { ts > 0 } TAKE 2 RETURNING { ts }");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 2);
-	let mut returned_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("timestamp").unwrap().unwrap()).collect();
+	let mut returned_ts: Vec<i64> = rows.iter().map(|r| r.get::<i64>("ts").unwrap().unwrap()).collect();
 	returned_ts.sort();
 	assert_eq!(returned_ts, vec![4000, 5000]);
 
@@ -333,12 +328,12 @@ fn test_series_update_take_with_returning() {
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 5);
 	for row in &rows {
-		let ts = row.get::<i64>("timestamp").unwrap().unwrap();
+		let ts = row.get::<i64>("ts").unwrap().unwrap();
 		let val = row.get::<i64>("val").unwrap().unwrap();
 		if returned_ts.contains(&ts) {
-			assert_eq!(val, 99, "row timestamp={ts} should be updated");
+			assert_eq!(val, 99, "row ts={ts} should be updated");
 		} else {
-			assert_eq!(val, 10, "row timestamp={ts} should not be updated");
+			assert_eq!(val, 10, "row ts={ts} should not be updated");
 		}
 	}
 }

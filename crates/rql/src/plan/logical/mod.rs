@@ -27,7 +27,7 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::{property::ColumnPropertyKind, series::TimestampPrecision},
+		catalog::{property::ColumnPropertyKind, series::SeriesKey},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedPrimitive},
 	},
 	sort::{SortDirection, SortKey},
@@ -1088,7 +1088,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 }
 
 #[derive(Debug)]

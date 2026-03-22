@@ -9,7 +9,7 @@ use crate::interface::catalog::{
 	id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 	key::PrimaryKeyDef,
 	primitive::PrimitiveId,
-	series::TimestampPrecision,
+	series::SeriesKey,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -59,8 +59,7 @@ pub struct SeriesViewDef {
 	pub columns: Vec<ColumnDef>,
 	pub primary_key: Option<PrimaryKeyDef>,
 	pub underlying: SeriesId,
-	pub timestamp_column: Option<String>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 	pub tag: Option<SumTypeId>,
 }
 

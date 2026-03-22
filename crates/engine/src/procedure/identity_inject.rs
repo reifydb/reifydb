@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData},
-};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
-use super::{Procedure, context::ProcedureContext};
+use super::{Procedure, context::ProcedureContext, error::ProcedureError};
 
 /// Procedure that injects a new identity into the current session.
 ///
@@ -24,21 +25,32 @@ impl IdentityInject {
 }
 
 impl Procedure for IdentityInject {
-	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let identity_id = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::IdentityId(id) => *id,
 				other => {
-					return Err(internal_error!(
-						"identity::inject expects an IdentityId argument, got {:?}",
-						other
-					));
+					return Err(ProcedureError::InvalidArgumentType {
+						procedure: Fragment::internal("identity::inject"),
+						argument_index: 0,
+						expected: vec![Type::IdentityId],
+						actual: other.get_type(),
+					});
 				}
 			},
+			Params::Positional(args) => {
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("identity::inject"),
+					expected: 1,
+					actual: args.len(),
+				});
+			}
 			_ => {
-				return Err(internal_error!(
-					"identity::inject requires exactly 1 positional IdentityId argument"
-				));
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("identity::inject"),
+					expected: 1,
+					actual: 0,
+				});
 			}
 		};
 

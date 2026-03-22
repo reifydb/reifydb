@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Series predicate extraction for timestamp/tag pushdown.
+//! Series predicate extraction for key/tag pushdown.
 //!
 //! This module detects patterns in filter expressions that can be pushed down
 //! into the series key range scan instead of post-filtering:
-//! - `timestamp >= X` / `timestamp > X` → time_start bound
-//! - `timestamp <= X` / `timestamp < X` → time_end bound
-//! - `timestamp BETWEEN A AND B` → both bounds
+//! - `<key_column> >= X` / `<key_column> > X` → key_start bound
+//! - `<key_column> <= X` / `<key_column> < X` → key_end bound
+//! - `<key_column> BETWEEN A AND B` → both bounds
 //! - `tag == X` → variant_tag filter
 
 use crate::expression::{ColumnExpression, ConstantExpression, Expression};
@@ -15,8 +15,8 @@ use crate::expression::{ColumnExpression, ConstantExpression, Expression};
 /// Extracted series predicates that can be pushed into the scan.
 #[derive(Debug, Clone, Default)]
 pub struct SeriesPredicate {
-	pub time_start: Option<i64>,
-	pub time_end: Option<i64>,
+	pub key_start: Option<i64>,
+	pub key_end: Option<i64>,
 	pub variant_tag: Option<u8>,
 	/// Predicates that couldn't be pushed down and must remain as post-filters.
 	pub remaining: Vec<Expression>,
@@ -24,22 +24,23 @@ pub struct SeriesPredicate {
 
 impl SeriesPredicate {
 	pub fn has_pushdown(&self) -> bool {
-		self.time_start.is_some() || self.time_end.is_some() || self.variant_tag.is_some()
+		self.key_start.is_some() || self.key_end.is_some() || self.variant_tag.is_some()
 	}
 }
 
 /// Attempts to extract pushable series predicates from a filter condition.
 ///
+/// `key_column_name` is the name of the series key column to match against.
 /// Returns `Some(SeriesPredicate)` if at least one predicate can be pushed down.
 /// Returns `None` if nothing can be pushed.
-pub fn extract_series_predicate(condition: &Expression) -> Option<SeriesPredicate> {
+pub fn extract_series_predicate(condition: &Expression, key_column_name: &str) -> Option<SeriesPredicate> {
 	let mut conjuncts = Vec::new();
 	flatten_and(condition, &mut conjuncts);
 
 	let mut result = SeriesPredicate::default();
 
 	for expr in conjuncts {
-		if !try_extract_one(expr, &mut result) {
+		if !try_extract_one(expr, &mut result, key_column_name) {
 			result.remaining.push(expr.clone());
 		}
 	}
@@ -64,68 +65,68 @@ fn flatten_and<'a>(expr: &'a Expression, out: &mut Vec<&'a Expression>) {
 
 /// Try to extract a single series predicate from an expression.
 /// Returns true if the expression was consumed (pushed down).
-fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate) -> bool {
+fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_name: &str) -> bool {
 	match expr {
-		// timestamp >= CONST
+		// key_column >= CONST
 		Expression::GreaterThanEqual(gte) => {
-			if let Some(val) = try_timestamp_const(&gte.left, &gte.right) {
-				result.time_start = Some(merge_max(result.time_start, val));
+			if let Some(val) = try_key_const(&gte.left, &gte.right, key_column_name) {
+				result.key_start = Some(merge_max(result.key_start, val));
 				return true;
 			}
-			// CONST <= timestamp  →  timestamp >= CONST
-			if let Some(val) = try_timestamp_const(&gte.right, &gte.left) {
-				result.time_end = Some(merge_min(result.time_end, val));
+			// CONST <= key_column  →  key_column >= CONST
+			if let Some(val) = try_key_const(&gte.right, &gte.left, key_column_name) {
+				result.key_end = Some(merge_min(result.key_end, val));
 				return true;
 			}
 			false
 		}
-		// timestamp > CONST → time_start = CONST + 1
+		// key_column > CONST → key_start = CONST + 1
 		Expression::GreaterThan(gt) => {
-			if let Some(val) = try_timestamp_const(&gt.left, &gt.right) {
-				result.time_start = Some(merge_max(result.time_start, val.saturating_add(1)));
+			if let Some(val) = try_key_const(&gt.left, &gt.right, key_column_name) {
+				result.key_start = Some(merge_max(result.key_start, val.saturating_add(1)));
 				return true;
 			}
-			// CONST < timestamp  →  timestamp > CONST
-			if let Some(val) = try_timestamp_const(&gt.right, &gt.left) {
-				result.time_end = Some(merge_min(result.time_end, val.saturating_sub(1)));
+			// CONST < key_column  →  key_column > CONST
+			if let Some(val) = try_key_const(&gt.right, &gt.left, key_column_name) {
+				result.key_end = Some(merge_min(result.key_end, val.saturating_sub(1)));
 				return true;
 			}
 			false
 		}
-		// timestamp <= CONST
+		// key_column <= CONST
 		Expression::LessThanEqual(lte) => {
-			if let Some(val) = try_timestamp_const(&lte.left, &lte.right) {
-				result.time_end = Some(merge_min(result.time_end, val));
+			if let Some(val) = try_key_const(&lte.left, &lte.right, key_column_name) {
+				result.key_end = Some(merge_min(result.key_end, val));
 				return true;
 			}
-			// CONST >= timestamp  →  timestamp <= CONST
-			if let Some(val) = try_timestamp_const(&lte.right, &lte.left) {
-				result.time_start = Some(merge_max(result.time_start, val));
+			// CONST >= key_column  →  key_column <= CONST
+			if let Some(val) = try_key_const(&lte.right, &lte.left, key_column_name) {
+				result.key_start = Some(merge_max(result.key_start, val));
 				return true;
 			}
 			false
 		}
-		// timestamp < CONST → time_end = CONST - 1
+		// key_column < CONST → key_end = CONST - 1
 		Expression::LessThan(lt) => {
-			if let Some(val) = try_timestamp_const(&lt.left, &lt.right) {
-				result.time_end = Some(merge_min(result.time_end, val.saturating_sub(1)));
+			if let Some(val) = try_key_const(&lt.left, &lt.right, key_column_name) {
+				result.key_end = Some(merge_min(result.key_end, val.saturating_sub(1)));
 				return true;
 			}
-			// CONST > timestamp  →  timestamp < CONST
-			if let Some(val) = try_timestamp_const(&lt.right, &lt.left) {
-				result.time_start = Some(merge_max(result.time_start, val.saturating_add(1)));
+			// CONST > key_column  →  key_column < CONST
+			if let Some(val) = try_key_const(&lt.right, &lt.left, key_column_name) {
+				result.key_start = Some(merge_max(result.key_start, val.saturating_add(1)));
 				return true;
 			}
 			false
 		}
-		// timestamp BETWEEN A AND B
+		// key_column BETWEEN A AND B
 		Expression::Between(between) => {
-			if is_timestamp_column(&between.value) {
+			if is_key_column(&between.value, key_column_name) {
 				if let (Some(lower), Some(upper)) =
 					(extract_constant_i64(&between.lower), extract_constant_i64(&between.upper))
 				{
-					result.time_start = Some(merge_max(result.time_start, lower));
-					result.time_end = Some(merge_min(result.time_end, upper));
+					result.key_start = Some(merge_max(result.key_start, lower));
+					result.key_end = Some(merge_min(result.key_end, upper));
 					return true;
 				}
 			}
@@ -147,9 +148,9 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate) -> bool {
 	}
 }
 
-/// Check if `maybe_col` is the "timestamp" column and `maybe_val` is a constant i64.
-fn try_timestamp_const(maybe_col: &Expression, maybe_val: &Expression) -> Option<i64> {
-	if !is_timestamp_column(maybe_col) {
+/// Check if `maybe_col` is the key column and `maybe_val` is a constant i64.
+fn try_key_const(maybe_col: &Expression, maybe_val: &Expression, key_column_name: &str) -> Option<i64> {
+	if !is_key_column(maybe_col, key_column_name) {
 		return None;
 	}
 	extract_constant_i64(maybe_val)
@@ -163,10 +164,10 @@ fn try_tag_eq(maybe_col: &Expression, maybe_val: &Expression) -> Option<u8> {
 	extract_constant_u8(maybe_val)
 }
 
-fn is_timestamp_column(expr: &Expression) -> bool {
+fn is_key_column(expr: &Expression, key_column_name: &str) -> bool {
 	match expr {
-		Expression::Column(ColumnExpression(col_id)) => col_id.name.text() == "timestamp",
-		Expression::AccessSource(access) => access.column.name.text() == "timestamp",
+		Expression::Column(ColumnExpression(col_id)) => col_id.name.text() == key_column_name,
+		Expression::AccessSource(access) => access.column.name.text() == key_column_name,
 		_ => false,
 	}
 }

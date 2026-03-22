@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_engine::procedure::{Procedure, context::ProcedureContext};
+use reifydb_core::value::column::columns::Columns;
+use reifydb_engine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, params::Params, value::Value};
+use reifydb_type::{
+	Result as TypeResult,
+	fragment::Fragment,
+	params::Params,
+	value::{Value, r#type::Type},
+};
 
 /// Completes a job_run and handles cascading effects:
 /// - On success: unblocks dependent jobs whose deps are all satisfied
@@ -15,40 +20,55 @@ use reifydb_type::{Result, params::Params, value::Value};
 pub struct CompleteJobRunProcedure;
 
 impl Procedure for CompleteJobRunProcedure {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns> {
+	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let (job_run_id_str, status_str) = match ctx.params {
 			Params::Positional(args) if args.len() >= 2 => {
 				let id = match &args[0] {
 					Value::Uuid4(u) => u.to_string(),
 					Value::Utf8(s) => s.clone(),
 					_ => {
-						return Err(internal_error!(
-							"forge::complete_job_run: job_run_id must be Uuid4 or Utf8"
-						));
+						return Err(ProcedureError::InvalidArgumentType {
+							procedure: Fragment::internal("forge::complete_job_run"),
+							argument_index: 0,
+							expected: vec![Type::Uuid4, Type::Utf8],
+							actual: args[0].get_type(),
+						});
 					}
 				};
 				let status = match &args[1] {
 					Value::Utf8(s) => s.clone(),
 					_ => {
-						return Err(internal_error!(
-							"forge::complete_job_run: status must be Utf8"
-						));
+						return Err(ProcedureError::InvalidArgumentType {
+							procedure: Fragment::internal("forge::complete_job_run"),
+							argument_index: 1,
+							expected: vec![Type::Utf8],
+							actual: args[1].get_type(),
+						});
 					}
 				};
 				(id, status)
 			}
+			Params::Positional(args) => {
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("forge::complete_job_run"),
+					expected: 2,
+					actual: args.len(),
+				});
+			}
 			_ => {
-				return Err(internal_error!(
-					"forge::complete_job_run requires 2 positional arguments: job_run_id, status"
-				));
+				return Err(ProcedureError::ArityMismatch {
+					procedure: Fragment::internal("forge::complete_job_run"),
+					expected: 2,
+					actual: 0,
+				});
 			}
 		};
 
 		if status_str != "succeeded" && status_str != "failed" {
-			return Err(internal_error!(
-				"forge::complete_job_run: status must be \"succeeded\" or \"failed\", got \"{}\"",
-				status_str
-			));
+			return Err(ProcedureError::ExecutionFailed {
+				procedure: Fragment::internal("forge::complete_job_run"),
+				reason: format!("status must be \"succeeded\" or \"failed\", got \"{}\"", status_str),
+			});
 		}
 
 		// Get the job_run to find run_id and job_id
@@ -57,13 +77,25 @@ impl Procedure for CompleteJobRunProcedure {
 			Params::None,
 		)?;
 
-		let job_run_row = job_run_result
-			.first()
-			.and_then(|f| f.rows().next())
-			.ok_or_else(|| internal_error!("Job run not found: {}", job_run_id_str))?;
+		let job_run_row = job_run_result.first().and_then(|f| f.rows().next()).ok_or_else(|| {
+			ProcedureError::ExecutionFailed {
+				procedure: Fragment::internal("forge::complete_job_run"),
+				reason: format!("Job run not found: {}", job_run_id_str),
+			}
+		})?;
 
-		let run_id = job_run_row.get_value("run_id").map(|v| v.to_string()).unwrap_or_default();
-		let job_id = job_run_row.get_value("job_id").map(|v| v.to_string()).unwrap_or_default();
+		let run_id = job_run_row.get_value("run_id").map(|v| v.to_string()).ok_or_else(|| {
+			ProcedureError::ExecutionFailed {
+				procedure: Fragment::internal("forge::complete_job_run"),
+				reason: format!("job run {} is missing required field 'run_id'", job_run_id_str),
+			}
+		})?;
+		let job_id = job_run_row.get_value("job_id").map(|v| v.to_string()).ok_or_else(|| {
+			ProcedureError::ExecutionFailed {
+				procedure: Fragment::internal("forge::complete_job_run"),
+				reason: format!("job run {} is missing required field 'job_id'", job_run_id_str),
+			}
+		})?;
 
 		// Update the job_run status
 		tx.rql(
@@ -130,9 +162,17 @@ impl Procedure for CompleteJobRunProcedure {
 	}
 }
 
+fn missing_field(table: &str, field: &str) -> reifydb_type::error::Error {
+	ProcedureError::ExecutionFailed {
+		procedure: Fragment::internal("forge::complete_job_run"),
+		reason: format!("{} row is missing required field '{}'", table, field),
+	}
+	.into()
+}
+
 /// For each blocked job_run in this run, check if all its dependencies have succeeded.
 /// If so, transition it to "pending".
-fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> Result<()> {
+fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> TypeResult<()> {
 	let blocked = tx.rql(
 		&format!("FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status == \"blocked\""),
 		Params::None,
@@ -140,8 +180,14 @@ fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> Result<()> {
 
 	if let Some(frame) = blocked.first() {
 		for row in frame.rows() {
-			let blocked_job_run_id = row.get_value("id").map(|v| v.to_string()).unwrap_or_default();
-			let blocked_job_id = row.get_value("job_id").map(|v| v.to_string()).unwrap_or_default();
+			let blocked_job_run_id = row
+				.get_value("id")
+				.map(|v| v.to_string())
+				.ok_or_else(|| missing_field("job_runs", "id"))?;
+			let blocked_job_id = row
+				.get_value("job_id")
+				.map(|v| v.to_string())
+				.ok_or_else(|| missing_field("job_runs", "job_id"))?;
 
 			// Get all dependencies for this job
 			let deps = tx.rql(
@@ -158,7 +204,9 @@ fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> Result<()> {
 					let dep_job_id = dep_row
 						.get_value("depends_on_job_id")
 						.map(|v| v.to_string())
-						.unwrap_or_default();
+						.ok_or_else(|| {
+							missing_field("job_dependencies", "depends_on_job_id")
+						})?;
 
 					// Check if there's a succeeded job_run for this dependency in this run
 					let dep_job_run = tx.rql(
@@ -189,7 +237,7 @@ fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> Result<()> {
 }
 
 /// Transitively skip all job_runs that depend on the failed job.
-fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) -> Result<()> {
+fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) -> TypeResult<()> {
 	let mut jobs_to_skip = vec![failed_job_id.to_string()];
 	let mut i = 0;
 
@@ -207,8 +255,10 @@ fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) 
 
 		if let Some(frame) = dependents.first() {
 			for row in frame.rows() {
-				let dependent_job_id =
-					row.get_value("job_id").map(|v| v.to_string()).unwrap_or_default();
+				let dependent_job_id = row
+					.get_value("job_id")
+					.map(|v| v.to_string())
+					.ok_or_else(|| missing_field("job_dependencies", "job_id"))?;
 
 				if !jobs_to_skip.contains(&dependent_job_id) {
 					jobs_to_skip.push(dependent_job_id.clone());
@@ -236,7 +286,7 @@ fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) 
 						let jr_id = jr_row
 							.get_value("id")
 							.map(|v| v.to_string())
-							.unwrap_or_default();
+							.ok_or_else(|| missing_field("job_runs", "id"))?;
 						tx.rql(
 							&format!("UPDATE forge::step_runs {{ status: \"skipped\" }} \
 								 FILTER job_run_id == uuid::v4(\"{jr_id}\") AND status == \"pending\""),

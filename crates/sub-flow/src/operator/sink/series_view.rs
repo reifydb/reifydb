@@ -6,16 +6,15 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
-		catalog::{flow::FlowNodeId, id::SeriesId, primitive::PrimitiveId, series::TimestampPrecision},
+		catalog::{flow::FlowNodeId, id::SeriesId, primitive::PrimitiveId, series::SeriesKey},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
-	internal,
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
 use reifydb_transaction::interceptor::view::ViewInterceptor;
-use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
+use reifydb_type::{Result, value::row_number::RowNumber};
 
 use super::{coerce_columns, encode_row_at_index};
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
@@ -27,9 +26,7 @@ pub struct SinkSeriesViewOperator {
 	view: ResolvedView,
 	series_id: SeriesId,
 	#[allow(dead_code)]
-	timestamp_column: Option<String>,
-	#[allow(dead_code)]
-	precision: TimestampPrecision,
+	key: SeriesKey,
 }
 
 impl SinkSeriesViewOperator {
@@ -38,16 +35,14 @@ impl SinkSeriesViewOperator {
 		node: FlowNodeId,
 		view: ResolvedView,
 		series_id: SeriesId,
-		timestamp_column: Option<String>,
-		precision: TimestampPrecision,
+		key: SeriesKey,
 	) -> Self {
 		Self {
 			parent,
 			node,
 			view,
 			series_id,
-			timestamp_column,
-			precision,
+			key,
 		}
 	}
 }
@@ -103,18 +98,106 @@ impl Operator for SinkSeriesViewOperator {
 					});
 				}
 				Diff::Update {
-					..
+					pre,
+					post,
 				} => {
-					return Err(Error(internal!(
-						"Update diffs are not supported for series-backed views"
-					)));
+					let coerced_pre = coerce_columns(pre, view_def.columns())?;
+					let coerced_post = coerce_columns(post, view_def.columns())?;
+					let row_count = coerced_post.row_count();
+					for row_idx in 0..row_count {
+						let pre_row_number = coerced_pre.row_numbers[row_idx];
+						let post_row_number = coerced_post.row_numbers[row_idx];
+						let (_, pre_encoded) = encode_row_at_index(
+							&coerced_pre,
+							row_idx,
+							&schema,
+							pre_row_number,
+						);
+						let (_, post_encoded) = encode_row_at_index(
+							&coerced_post,
+							row_idx,
+							&schema,
+							post_row_number,
+						);
+
+						let post_encoded = ViewInterceptor::pre_update(
+							txn,
+							&view_def,
+							post_row_number,
+							post_encoded,
+						)?;
+						let old_key = RowKey::encoded(primitive_id, pre_row_number);
+						let new_key = RowKey::encoded(primitive_id, post_row_number);
+						txn.remove(&old_key)?;
+						txn.set(&new_key, post_encoded.clone())?;
+						ViewInterceptor::post_update(
+							txn,
+							&view_def,
+							post_row_number,
+							&post_encoded,
+							&pre_encoded,
+						)?;
+
+						if let Some(log) = txn.testing_mut() {
+							let old = Columns::single_row(coerced_pre.iter().map(|col| {
+								(col.name().text(), col.data().get_value(row_idx))
+							}));
+							let new = Columns::single_row(coerced_post.iter().map(|col| {
+								(col.name().text(), col.data().get_value(row_idx))
+							}));
+							let mutation_key = format!(
+								"views::{}::{}",
+								self.view.namespace().name(),
+								self.view.name()
+							);
+							log.record_update(mutation_key, old, new);
+						}
+					}
+					let version = txn.version();
+					txn.push_view_change(Change {
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						version,
+						diffs: vec![Diff::Update {
+							pre: coerced_pre,
+							post: coerced_post,
+						}],
+					});
 				}
 				Diff::Remove {
-					..
+					pre,
 				} => {
-					return Err(Error(internal!(
-						"Remove diffs are not supported for series-backed views"
-					)));
+					let coerced = coerce_columns(pre, view_def.columns())?;
+					let row_count = coerced.row_count();
+					for row_idx in 0..row_count {
+						let row_number = coerced.row_numbers[row_idx];
+						let (_, encoded) =
+							encode_row_at_index(&coerced, row_idx, &schema, row_number);
+
+						ViewInterceptor::pre_delete(txn, &view_def, row_number)?;
+						let key = RowKey::encoded(primitive_id, row_number);
+						txn.remove(&key)?;
+						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
+
+						if let Some(log) = txn.testing_mut() {
+							let old = Columns::single_row(coerced.iter().map(|col| {
+								(col.name().text(), col.data().get_value(row_idx))
+							}));
+							let mutation_key = format!(
+								"views::{}::{}",
+								self.view.namespace().name(),
+								self.view.name()
+							);
+							log.record_delete(mutation_key, old);
+						}
+					}
+					let version = txn.version();
+					txn.push_view_change(Change {
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						version,
+						diffs: vec![Diff::Remove {
+							pre: coerced,
+						}],
+					});
 				}
 			}
 		}

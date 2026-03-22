@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
-		series::TimestampPrecision,
+		series::SeriesKey,
 		view::{
 			ViewDef, ViewKind,
 			ViewKind::{Deferred, Transactional},
@@ -49,8 +49,7 @@ pub enum ViewStorageConfig {
 	},
 	Series {
 		underlying: SeriesId,
-		timestamp_column: Option<String>,
-		precision: TimestampPrecision,
+		key: SeriesKey,
 		tag: Option<SumTypeId>,
 	},
 }
@@ -140,7 +139,8 @@ impl CatalogStore {
 				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
 				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
-				view::SCHEMA.set_utf8(&mut row, view::TIMESTAMP_COLUMN, "");
+				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, "");
+				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, 0u8);
 				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
 				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
 			}
@@ -161,26 +161,32 @@ impl CatalogStore {
 						0
 					},
 				);
-				view::SCHEMA.set_utf8(&mut row, view::TIMESTAMP_COLUMN, "");
+				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, "");
+				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, 0u8);
 				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
 				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
 			}
 			ViewStorageConfig::Series {
 				underlying,
-				timestamp_column,
-				precision,
+				key,
 				tag,
 			} => {
 				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
 				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
 				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
-				view::SCHEMA.set_utf8(
-					&mut row,
-					view::TIMESTAMP_COLUMN,
-					timestamp_column.as_deref().unwrap_or(""),
-				);
-				view::SCHEMA.set_u8(&mut row, view::PRECISION, *precision as u8);
+				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, key.column());
+				let (key_kind_u8, precision_u8) = match key {
+					SeriesKey::DateTime {
+						precision,
+						..
+					} => (0u8, *precision as u8),
+					SeriesKey::Integer {
+						..
+					} => (1u8, 0u8),
+				};
+				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, key_kind_u8);
+				view::SCHEMA.set_u8(&mut row, view::PRECISION, precision_u8);
 				view::SCHEMA.set_u64(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
 			}
 		}

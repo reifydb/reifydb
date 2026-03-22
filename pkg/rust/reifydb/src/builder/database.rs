@@ -35,7 +35,10 @@ use reifydb_engine::{
 	engine::StandardEngine,
 	procedure::{
 		registry::{Procedures, ProceduresBuilder},
-		system::set_config::SetConfigProcedure,
+		system::{
+			clock_advance::ClockAdvanceProcedure, clock_set::ClockSetProcedure,
+			set_config::SetConfigProcedure,
+		},
 	},
 	remote::RemoteRegistry,
 	transform::registry::Transforms,
@@ -306,7 +309,9 @@ impl DatabaseBuilder {
 					"identity::inject",
 					reifydb_engine::procedure::identity_inject::IdentityInject::new,
 				)
-				.with_procedure("system::config::set", SetConfigProcedure::new);
+				.with_procedure("system::config::set", SetConfigProcedure::new)
+				.with_procedure("clock::set", ClockSetProcedure::new)
+				.with_procedure("clock::advance", ClockAdvanceProcedure::new);
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {

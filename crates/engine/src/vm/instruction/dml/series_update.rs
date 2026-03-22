@@ -27,7 +27,10 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::returning::evaluate_returning;
+use super::{
+	returning::evaluate_returning,
+	series_key::{column_data_from_i64_keys, value_from_i64, value_to_i64},
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -63,6 +66,8 @@ pub(crate) fn update_series<'a>(
 	};
 
 	let has_tag = series_def.tag.is_some();
+	let key_type =
+		series_def.columns.iter().find(|c| c.name == series_def.key.column()).map(|c| c.constraint.get_type());
 
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
@@ -109,13 +114,10 @@ pub(crate) fn update_series<'a>(
 		for row_idx in 0..row_count {
 			let sequence = u64::from(row_numbers[row_idx]);
 
-			let timestamp = columns
+			let key_value = columns
 				.iter()
-				.find(|c| c.name().text() == "timestamp")
-				.map(|c| match c.data().get_value(row_idx) {
-					Value::Int8(v) => v,
-					_ => 0,
-				})
+				.find(|c| c.name().text() == series_def.key.column())
+				.and_then(|c| value_to_i64(c.data().get_value(row_idx), &series_def.key))
 				.unwrap_or(0);
 
 			let variant_tag = if has_tag {
@@ -133,7 +135,7 @@ pub(crate) fn update_series<'a>(
 			let key = SeriesRowKey {
 				series: series_def.id,
 				variant_tag,
-				timestamp,
+				key: key_value,
 				sequence,
 			};
 			let encoded_key = key.encode();
@@ -141,14 +143,14 @@ pub(crate) fn update_series<'a>(
 			let schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 			let mut row = schema.allocate();
 
-			let ts_value = columns
+			let key_col_value = columns
 				.iter()
-				.find(|c| c.name().text() == "timestamp")
+				.find(|c| c.name().text() == series_def.key.column())
 				.map(|c| c.data().get_value(row_idx))
 				.unwrap_or(Value::Int8(0));
-			schema.set_value(&mut row, 0, &ts_value);
+			schema.set_value(&mut row, 0, &key_col_value);
 
-			for (i, col_def) in series_def.columns.iter().enumerate() {
+			for (i, col_def) in series_def.data_columns().enumerate() {
 				let value = columns
 					.iter()
 					.find(|c| c.name().text() == col_def.name)
@@ -164,24 +166,22 @@ pub(crate) fn update_series<'a>(
 			let old_data = txn.get(encoded_key)?;
 			let old_values = old_data.map(|v| v.values);
 
-			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
-			let timestamp = columns
+			let key_value = columns
 				.iter()
-				.find(|c| c.name().text() == "timestamp")
-				.map(|c| match c.data().get_value(*row_idx) {
-					Value::Int8(v) => v,
-					_ => 0,
-				})
+				.find(|c| c.name().text() == series_def.key.column())
+				.and_then(|c| value_to_i64(c.data().get_value(*row_idx), &series_def.key))
 				.unwrap_or(0);
+
+			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
 
 			if let Some(ref old_vals) = old_values {
 				let read_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				pre_col_vec.push(Column {
-					name: Fragment::internal("timestamp"),
-					data: ColumnData::int8(vec![timestamp]),
+					name: Fragment::internal(series_def.key.column()),
+					data: column_data_from_i64_keys(vec![key_value], &series_def, &series_def.key),
 				});
-				for (i, col_def) in series_def.columns.iter().enumerate() {
+				for (i, col_def) in series_def.data_columns().enumerate() {
 					let val = read_schema.get_value(old_vals, i + 1);
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(val);
@@ -193,11 +193,11 @@ pub(crate) fn update_series<'a>(
 
 				let mut post_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				post_col_vec.push(Column {
-					name: Fragment::internal("timestamp"),
-					data: ColumnData::int8(vec![timestamp]),
+					name: Fragment::internal(series_def.key.column()),
+					data: column_data_from_i64_keys(vec![key_value], &series_def, &series_def.key),
 				});
 				for col in columns.iter() {
-					if col.name().text() != "timestamp" && col.name().text() != "tag" {
+					if col.name().text() != series_def.key.column() && col.name().text() != "tag" {
 						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
 						data.push_value(col.data().get_value(*row_idx));
 						post_col_vec.push(Column {
@@ -226,22 +226,23 @@ pub(crate) fn update_series<'a>(
 
 				if let Some(log) = testing.as_mut() {
 					let old = Columns::single_row(
-						iter::once(("timestamp", Value::Int8(timestamp))).chain(series_def
-							.columns
-							.iter()
-							.enumerate()
-							.map(|(i, col)| {
-								(
-									col.name.as_str(),
-									read_schema.get_value(old_vals, i + 1),
-								)
-							})),
+						iter::once((
+							series_def.key.column(),
+							value_from_i64(key_value, key_type.as_ref(), &series_def.key),
+						))
+						.chain(series_def.data_columns().enumerate().map(|(i, col)| {
+							(col.name.as_str(), read_schema.get_value(old_vals, i + 1))
+						})),
 					);
 					let new = Columns::single_row(
-						iter::once(("timestamp", Value::Int8(timestamp))).chain(columns
+						iter::once((
+							series_def.key.column(),
+							value_from_i64(key_value, key_type.as_ref(), &series_def.key),
+						))
+						.chain(columns
 							.iter()
 							.filter(|c| {
-								c.name().text() != "timestamp"
+								c.name().text() != series_def.key.column()
 									&& c.name().text() != "tag"
 							})
 							.map(|c| (c.name().text(), c.data().get_value(*row_idx)))),
