@@ -9,7 +9,7 @@ pub mod name;
 use crate::{
 	ast,
 	ast::{
-		ast::{Ast, AstInfix, AstLiteral, InfixOperator},
+		ast::{Ast, AstFrom, AstInfix, AstLiteral, InfixOperator},
 		parse_str,
 	},
 	bump::{Bump, BumpBox},
@@ -1176,6 +1176,9 @@ impl ExpressionCompiler {
 			Ast::Match(match_ast) => Self::compile_match(match_ast),
 			Ast::Identity(ident) => Ok(Expression::Variable(VariableExpression {
 				fragment: ident.token.fragment.to_owned(),
+			})),
+			Ast::From(AstFrom::Variable { variable, .. }) => Ok(Expression::Variable(VariableExpression {
+				fragment: variable.token.fragment.to_owned(),
 			})),
 			ast => unimplemented!("{:?}", ast),
 		}
