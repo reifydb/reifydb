@@ -36,10 +36,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{
-	EngineVersion,
-	engine::StandardEngine,
-	procedure::{registry::Procedures, system::set_config::SetConfigProcedure},
-	transform::registry::Transforms,
+	EngineVersion, engine::StandardEngine, procedure::registry::Procedures, transform::registry::Transforms,
 };
 use reifydb_function::registry::Functions;
 use reifydb_rql::RqlVersion;
@@ -121,8 +118,7 @@ impl Bridge {
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &schema_registry, &eventbus)?;
 		load_schema_registry(&multi, &single, &schema_registry)?;
 
-		let procedures =
-			Procedures::builder().with_procedure("system::config::set", SetConfigProcedure::new).build();
+		let procedures = Procedures::defaults().build();
 
 		let eventbus_clone = eventbus.clone();
 		let engine = StandardEngine::new(

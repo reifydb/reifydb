@@ -11,7 +11,7 @@ use std::{
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_type::value::sumtype::SumTypeId;
 
-use super::Procedure;
+use super::{Procedure, identity_inject, system};
 
 type ProcedureFactory = Arc<dyn Fn() -> Box<dyn Procedure> + Send + Sync>;
 
@@ -28,6 +28,14 @@ impl Procedures {
 			procedures: HashMap::new(),
 			deferred_handlers: Vec::new(),
 		}
+	}
+
+	pub fn defaults() -> ProceduresBuilder {
+		Procedures::builder()
+			.with_procedure("identity::inject", identity_inject::IdentityInject::new)
+			.with_procedure("system::config::set", system::set_config::SetConfigProcedure::new)
+			.with_procedure("clock::set", system::clock_set::ClockSetProcedure::new)
+			.with_procedure("clock::advance", system::clock_advance::ClockAdvanceProcedure::new)
 	}
 }
 
