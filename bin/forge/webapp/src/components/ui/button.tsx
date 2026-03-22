@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import type { ReactNode, ButtonHTMLAttributes } from 'react'
 import { Link } from 'react-router-dom'
 import { cn } from '@/lib'

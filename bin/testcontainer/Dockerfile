@@ -24,6 +24,10 @@ RUN cargo build --release --offline --package testcontainer
 
 FROM debian:bookworm-slim
 
+LABEL org.opencontainers.image.title="ReifyDB Test Container"
+LABEL org.opencontainers.image.source="https://github.com/reifydb/reifydb"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
 ENV PATH="/usr/local/bin:$PATH"
 ENV RUST_BACKTRACE=1
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 use reifydb_sub_task::task::ScheduledTask;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { Outlet } from '@tanstack/react-router'
 import { Sidebar } from './sidebar.tsx'
 import { Search, Bell, Sun, Moon, Command } from 'lucide-react'

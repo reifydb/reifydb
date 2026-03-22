@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { useConnection } from '@reifydb/react'
 import { FORGE_CONFIG } from '@/config'
 import { cn } from '@/lib'

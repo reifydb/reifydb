@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import React, { createContext, useEffect, useRef, ReactNode } from 'react';
 import { Connection, ConnectionConfig } from './connection';
 import { getConnection } from './connection-pool';

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
 # Release Management Makefile
 # This makefile handles versioning and release orchestration for the ReifyDB monorepo
 

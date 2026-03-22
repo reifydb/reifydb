@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 export const FORGE_CONFIG = {
   DEFAULT_WS_URL: 'ws://127.0.0.1:8091',
 

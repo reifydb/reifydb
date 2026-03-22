@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { Routes, Route } from 'react-router-dom'
 import { Navbar } from './components/layout/navbar'
 import { DashboardPage } from './pages/dashboard'

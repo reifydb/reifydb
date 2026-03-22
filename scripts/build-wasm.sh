@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
 # Build WebAssembly packages for ReifyDB
 #
 # Builds WASM bindings for web, Node.js, and bundler targets.

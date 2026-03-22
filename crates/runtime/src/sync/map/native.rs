@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 use std::{borrow::Borrow, hash::Hash};
 
 use dashmap::DashMap;

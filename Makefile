@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
 # =============================================================================
 # ReifyDB Main Makefile
 # =============================================================================
@@ -116,6 +119,7 @@ check-code-quality:
 	@./scripts/check-internal-reexports.sh
 	@./scripts/check-toplevel-imports.sh
 	@./scripts/check-inline-qualifications.sh
+	@./scripts/check-license-headers.sh
 
 .PHONY: check
 check:

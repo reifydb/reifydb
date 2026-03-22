@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import * as React from "react"
 
 import { cn } from "@/lib/utils"

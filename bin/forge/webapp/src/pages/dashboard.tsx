@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { Link } from 'react-router-dom'
 import { useQueryExecutor } from '@reifydb/react'
 import { StatusBadge, EmptyState, Button } from '@/components/ui'
