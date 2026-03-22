@@ -90,7 +90,7 @@ pub(crate) fn call_eval_with_args(
 	}
 
 	// Try user-defined function from symbol table first
-	if let Some(func_def) = ctx.symbol_table.get_function(function_name) {
+	if let Some(func_def) = ctx.symbols.get_function(function_name) {
 		return call_user_defined_function(ctx, call, func_def.clone(), &arguments, functions);
 	}
 
@@ -133,32 +133,32 @@ fn call_user_defined_function(
 	// Function body is already pre-compiled
 	let body_instructions = &func_def.body;
 
-	let mut func_symbol_table = ctx.symbol_table.clone();
+	let mut func_symbols = ctx.symbols.clone();
 
 	// For each row, execute the function
 	for row_idx in 0..row_count {
-		let base_depth = func_symbol_table.scope_depth();
-		func_symbol_table.enter_scope(ScopeType::Function);
+		let base_depth = func_symbols.scope_depth();
+		func_symbols.enter_scope(ScopeType::Function);
 
 		// Bind arguments to parameters
 		for (param, arg_col) in func_def.parameters.iter().zip(arguments.iter()) {
 			let param_name = strip_dollar_prefix(param.name.text());
 			let value = arg_col.data().get_value(row_idx);
-			func_symbol_table.set(param_name, Variable::scalar(value), true)?;
+			func_symbols.set(param_name, Variable::scalar(value), true)?;
 		}
 
 		// Execute function body instructions and get result
 		let result = execute_function_body_for_scalar(
 			&body_instructions,
-			&mut func_symbol_table,
+			&mut func_symbols,
 			ctx.params,
 			functions,
 			ctx.runtime_context,
 			ctx.identity,
 		)?;
 
-		while func_symbol_table.scope_depth() > base_depth {
-			let _ = func_symbol_table.exit_scope();
+		while func_symbols.scope_depth() > base_depth {
+			let _ = func_symbols.exit_scope();
 		}
 
 		results.push(result);
@@ -176,7 +176,7 @@ fn call_user_defined_function(
 /// Uses a simple stack-based interpreter matching the new bytecode ISA.
 fn execute_function_body_for_scalar(
 	instructions: &[Instruction],
-	symbol_table: &mut SymbolTable,
+	symbols: &mut SymbolTable,
 	params: &Params,
 	functions: &Functions,
 	runtime_context: &RuntimeContext,
@@ -205,7 +205,7 @@ fn execute_function_body_for_scalar(
 			// === Variables ===
 			Instruction::LoadVar(name) => {
 				let var_name = strip_dollar_prefix(name.text());
-				let val = symbol_table
+				let val = symbols
 					.get(&var_name)
 					.map(|v| match v {
 						Variable::Scalar(c) => c.scalar_value(),
@@ -217,12 +217,12 @@ fn execute_function_body_for_scalar(
 			Instruction::StoreVar(name) => {
 				let val = stack.pop().unwrap_or(Value::none());
 				let var_name = strip_dollar_prefix(name.text());
-				symbol_table.set(var_name, Variable::scalar(val), true)?;
+				symbols.set(var_name, Variable::scalar(val), true)?;
 			}
 			Instruction::DeclareVar(name) => {
 				let val = stack.pop().unwrap_or(Value::none());
 				let var_name = strip_dollar_prefix(name.text());
-				symbol_table.set(var_name, Variable::scalar(val), true)?;
+				symbols.set(var_name, Variable::scalar(val), true)?;
 			}
 
 			// === Arithmetic ===
@@ -377,10 +377,10 @@ fn execute_function_body_for_scalar(
 			}
 
 			Instruction::EnterScope(scope_type) => {
-				symbol_table.enter_scope(scope_type.clone());
+				symbols.enter_scope(scope_type.clone());
 			}
 			Instruction::ExitScope => {
-				let _ = symbol_table.exit_scope();
+				let _ = symbols.exit_scope();
 			}
 
 			// === Return ===
@@ -398,7 +398,7 @@ fn execute_function_body_for_scalar(
 					if map_node.input.is_none() && !map_node.map.is_empty() {
 						let call_session = EvalSession {
 							params,
-							symbol_table,
+							symbols,
 							functions,
 							runtime_context,
 							arena: None,
@@ -435,28 +435,24 @@ fn execute_function_body_for_scalar(
 				args.reverse();
 
 				// Try user-defined function
-				if let Some(func_def) = symbol_table.get_function(name.text()) {
+				if let Some(func_def) = symbols.get_function(name.text()) {
 					let func_def = func_def.clone();
-					let base_depth = symbol_table.scope_depth();
-					symbol_table.enter_scope(ScopeType::Function);
+					let base_depth = symbols.scope_depth();
+					symbols.enter_scope(ScopeType::Function);
 					for (param, arg_val) in func_def.parameters.iter().zip(args.iter()) {
 						let param_name = strip_dollar_prefix(param.name.text());
-						symbol_table.set(
-							param_name,
-							Variable::scalar(arg_val.clone()),
-							true,
-						)?;
+						symbols.set(param_name, Variable::scalar(arg_val.clone()), true)?;
 					}
 					let result = execute_function_body_for_scalar(
 						&func_def.body,
-						symbol_table,
+						symbols,
 						params,
 						functions,
 						runtime_context,
 						identity,
 					)?;
-					while symbol_table.scope_depth() > base_depth {
-						let _ = symbol_table.exit_scope();
+					while symbols.scope_depth() > base_depth {
+						let _ = symbols.exit_scope();
 					}
 					stack.push(result);
 				} else if let Some(functor) = functions.get_scalar(name.text()) {
@@ -483,7 +479,7 @@ fn execute_function_body_for_scalar(
 			}
 
 			Instruction::DefineFunction(func_def) => {
-				symbol_table.define_function(func_def.name.text().to_string(), func_def.clone());
+				symbols.define_function(func_def.name.text().to_string(), func_def.clone());
 			}
 
 			_ => {

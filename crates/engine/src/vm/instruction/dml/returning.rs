@@ -74,7 +74,7 @@ fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Colum
 /// Evaluate RETURNING expressions against the given columns.
 pub(crate) fn evaluate_returning(
 	services: &Arc<Services>,
-	stack: &SymbolTable,
+	symbols: &SymbolTable,
 	returning_exprs: &[Expression],
 	input: Columns,
 ) -> Result<Columns> {
@@ -84,7 +84,7 @@ pub(crate) fn evaluate_returning(
 
 	let compile_ctx = CompileContext {
 		functions: &services.functions,
-		symbol_table: stack,
+		symbols,
 	};
 
 	let compiled: Vec<CompiledExpr> = returning_exprs
@@ -95,7 +95,7 @@ pub(crate) fn evaluate_returning(
 	let row_count = input.row_count();
 	let session = EvalSession {
 		params: &Params::None,
-		symbol_table: stack,
+		symbols,
 		functions: &services.functions,
 		runtime_context: &services.runtime_context,
 		arena: None,

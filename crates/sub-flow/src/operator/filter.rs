@@ -53,7 +53,7 @@ impl FilterOperator {
 	) -> Self {
 		let compile_ctx = CompileContext {
 			functions: &functions,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 		let compiled_conditions: Vec<CompiledExpr> = conditions
 			.iter()
@@ -79,7 +79,7 @@ impl FilterOperator {
 
 		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
 			runtime_context: &self.runtime_context,
 			arena: None,

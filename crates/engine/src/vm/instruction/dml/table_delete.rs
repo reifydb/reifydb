@@ -52,7 +52,7 @@ pub(crate) fn delete<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteTableNode,
 	params: Params,
-	symbol_table_ref: &SymbolTable,
+	symbols: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
@@ -112,7 +112,7 @@ pub(crate) fn delete<'a>(
 				source: resolved_source.clone(),
 				batch_size: 1024,
 				params: params.clone(),
-				stack: symbol_table_ref.clone(),
+				symbols: symbols.clone(),
 				identity: IdentityId::root(),
 				testing: None,
 			}),
@@ -123,7 +123,7 @@ pub(crate) fn delete<'a>(
 			source: resolved_source.clone(),
 			batch_size: 1024,
 			params: params.clone(),
-			stack: symbol_table_ref.clone(),
+			symbols: symbols.clone(),
 			identity: IdentityId::root(),
 			testing: None,
 		};
@@ -134,7 +134,7 @@ pub(crate) fn delete<'a>(
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			// Enforce write policies before processing rows
-			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
+			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
 				&namespace.name(),
 				&table.name,
@@ -256,7 +256,7 @@ pub(crate) fn delete<'a>(
 	if let Some(returning_exprs) = &plan.returning {
 		let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
 		let columns = decode_rows_to_columns(&schema, &returned_rows);
-		return evaluate_returning(services, symbol_table_ref, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return summary columns

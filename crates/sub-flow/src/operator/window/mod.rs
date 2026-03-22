@@ -176,10 +176,10 @@ impl WindowOperator {
 		runtime_context: RuntimeContext,
 		functions: Functions,
 	) -> Self {
-		let symbol_table = SymbolTable::new();
+		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
 			functions: &functions,
-			symbol_table: &symbol_table,
+			symbols: &symbols,
 		};
 
 		// Compile group_by expressions
@@ -232,7 +232,7 @@ impl WindowOperator {
 
 		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
 			runtime_context: &self.runtime_context,
 			arena: None,
@@ -412,7 +412,7 @@ impl WindowOperator {
 
 		let agg_session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
 			runtime_context: &self.runtime_context,
 			arena: None,

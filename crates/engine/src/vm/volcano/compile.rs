@@ -326,7 +326,7 @@ pub(crate) fn compile<'a>(
 			let limit = match take {
 				TakeLimit::Literal(n) => n,
 				TakeLimit::Variable(ref name) => context
-					.stack
+					.symbols
 					.get(name)
 					.and_then(|var| match var {
 						Variable::Scalar(cols) | Variable::Columns(cols) => {

@@ -48,7 +48,7 @@ impl QueryNode for RemoteFetchNode {
 				// Resolve local variables for remote execution
 				let mut named_params: HashMap<String, Value> = HashMap::new();
 				for var_name in &self.variable_names {
-					if let Some(Variable::Scalar(columns)) = _ctx.stack.get(var_name) {
+					if let Some(Variable::Scalar(columns)) = _ctx.symbols.get(var_name) {
 						named_params.insert(var_name.clone(), columns.scalar_value().clone());
 					}
 				}

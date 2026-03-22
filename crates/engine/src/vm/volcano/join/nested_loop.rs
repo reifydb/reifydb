@@ -77,7 +77,7 @@ impl QueryNode for NestedLoopJoinNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 		};
 		self.context.compiled =
 			self.on.iter().map(|e| compile_expression(&compile_ctx, e).expect("compile")).collect();

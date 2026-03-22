@@ -53,7 +53,7 @@ pub(crate) fn insert_table<'a>(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,
-	stack: &mut SymbolTable,
+	symbols: &mut SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
@@ -84,7 +84,7 @@ pub(crate) fn insert_table<'a>(
 		source: resolved_source,
 		batch_size: 1024,
 		params: Params::None,
-		stack: stack.clone(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
 		testing: None,
 	});
@@ -101,7 +101,7 @@ pub(crate) fn insert_table<'a>(
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		PolicyEvaluator::new(services, stack).enforce_write_policies(
+		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
 			namespace_name,
 			table_name,
@@ -257,7 +257,7 @@ pub(crate) fn insert_table<'a>(
 	// If RETURNING clause is present, evaluate expressions against inserted rows
 	if let Some(returning_exprs) = &plan.returning {
 		let columns = decode_rows_to_columns(&schema, &returned_rows);
-		return evaluate_returning(services, stack, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return summary columns

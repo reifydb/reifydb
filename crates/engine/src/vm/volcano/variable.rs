@@ -50,7 +50,7 @@ impl QueryNode for VariableNode {
 		let variable_name = self.variable_expr.name();
 
 		// Look up the variable in the stack
-		match ctx.stack.get(variable_name) {
+		match ctx.symbols.get(variable_name) {
 			Some(Variable::Scalar(columns)) => {
 				let mut columns = columns.clone();
 				columns[0].name = Fragment::internal(variable_name);

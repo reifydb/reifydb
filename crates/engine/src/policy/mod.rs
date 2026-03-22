@@ -29,14 +29,14 @@ use crate::{
 /// (for variable resolution), and compiles+evaluates RQL expressions.
 pub struct PolicyEvaluator<'a> {
 	services: &'a Arc<Services>,
-	symbol_table: &'a SymbolTable,
+	symbols: &'a SymbolTable,
 }
 
 impl<'a> PolicyEvaluator<'a> {
-	pub fn new(services: &'a Arc<Services>, symbol_table: &'a SymbolTable) -> Self {
+	pub fn new(services: &'a Arc<Services>, symbols: &'a SymbolTable) -> Self {
 		Self {
 			services,
-			symbol_table,
+			symbols,
 		}
 	}
 
@@ -100,13 +100,13 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 	) -> Result<bool> {
 		let compile_ctx = CompileContext {
 			functions: &self.services.functions,
-			symbol_table: self.symbol_table,
+			symbols: self.symbols,
 		};
 		let compiled = compile_expression(&compile_ctx, expr)?;
 
 		let session = EvalSession {
 			params: &Params::None,
-			symbol_table: self.symbol_table,
+			symbols: self.symbols,
 			functions: &self.services.functions,
 			runtime_context: &self.services.runtime_context,
 			arena: None,

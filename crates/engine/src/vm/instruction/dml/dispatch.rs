@@ -63,7 +63,7 @@ pub(crate) fn dispatch(
 	// Evaluate dispatch fields into a Columns payload
 	let session = EvalSession {
 		params,
-		symbol_table: &vm.symbol_table,
+		symbols: &vm.symbols,
 		functions: &services.functions,
 		runtime_context: &services.runtime_context,
 		arena: None,
@@ -98,11 +98,11 @@ pub(crate) fn dispatch(
 				let saved_ip = vm.ip;
 
 				// Enter handler scope
-				vm.symbol_table.enter_scope(ScopeType::Function);
+				vm.symbols.enter_scope(ScopeType::Function);
 				for col in event_payload.columns.iter() {
 					let var_name = format!("event_{}", col.name.text());
 					let scalar = Columns::new(vec![col.clone()]);
-					vm.symbol_table.set(var_name, Variable::Scalar(scalar), true)?;
+					vm.symbols.set(var_name, Variable::Scalar(scalar), true)?;
 				}
 
 				let mut handler_result = Vec::new();
@@ -131,7 +131,7 @@ pub(crate) fn dispatch(
 				}
 
 				vm.ip = saved_ip;
-				let _ = vm.symbol_table.exit_scope();
+				let _ = vm.symbols.exit_scope();
 
 				if let Some(log) = &mut vm.testing {
 					log.record_handler_invocation(

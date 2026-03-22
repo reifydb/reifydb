@@ -103,7 +103,7 @@ pub struct Vm {
 	pub(crate) ip: usize,
 	iteration_count: usize,
 	stack: Stack,
-	pub symbol_table: SymbolTable,
+	pub symbols: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
 	pub(crate) in_test_context: bool,
@@ -112,12 +112,12 @@ pub struct Vm {
 }
 
 impl Vm {
-	pub fn new(symbol_table: SymbolTable) -> Self {
+	pub fn new(symbols: SymbolTable) -> Self {
 		Self {
 			ip: 0,
 			iteration_count: 0,
 			stack: Stack::new(),
-			symbol_table,
+			symbols,
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
 			in_test_context: false,
@@ -179,7 +179,7 @@ impl Vm {
 
 				Instruction::LoadVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
-					match self.symbol_table.get(&name) {
+					match self.symbols.get(&name) {
 						Some(Variable::Scalar(c)) => {
 							self.stack.push(Variable::Scalar(c.clone()));
 						}
@@ -219,7 +219,7 @@ impl Vm {
 				Instruction::StoreVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
 					let value = self.pop_value()?;
-					self.symbol_table.reassign(name, Variable::scalar(value))?;
+					self.symbols.reassign(name, Variable::scalar(value))?;
 				}
 				Instruction::DeclareVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
@@ -239,7 +239,7 @@ impl Vm {
 							}
 						}
 					};
-					self.symbol_table.set(name, variable, true)?;
+					self.symbols.set(name, variable, true)?;
 				}
 				Instruction::FieldAccess {
 					object,
@@ -247,7 +247,7 @@ impl Vm {
 				} => {
 					let var_name = strip_dollar_prefix(object.text());
 					let field_name = field.text();
-					match self.symbol_table.get(&var_name) {
+					match self.symbols.get(&var_name) {
 						Some(Variable::Columns(columns)) => {
 							let col = columns
 								.columns
@@ -503,17 +503,17 @@ impl Vm {
 					}
 				}
 				Instruction::EnterScope(scope_type) => {
-					self.symbol_table.enter_scope(scope_type.clone());
+					self.symbols.enter_scope(scope_type.clone());
 				}
 				Instruction::ExitScope => {
-					self.symbol_table.exit_scope()?;
+					self.symbols.exit_scope()?;
 				}
 				Instruction::Break {
 					exit_scopes,
 					addr,
 				} => {
 					for _ in 0..*exit_scopes {
-						self.symbol_table.exit_scope()?;
+						self.symbols.exit_scope()?;
 					}
 					self.ip = *addr;
 					continue;
@@ -523,7 +523,7 @@ impl Vm {
 					addr,
 				} => {
 					for _ in 0..*exit_scopes {
-						self.symbol_table.exit_scope()?;
+						self.symbols.exit_scope()?;
 					}
 					self.ip = *addr;
 					continue;
@@ -546,7 +546,7 @@ impl Vm {
 					};
 					let var_name = variable_name.text();
 					let iter_key = format!("__for_{}", var_name);
-					self.symbol_table.set(
+					self.symbols.set(
 						iter_key,
 						Variable::ForIterator {
 							columns,
@@ -567,7 +567,7 @@ impl Vm {
 					};
 					let iter_key = format!("__for_{}", var_name);
 
-					let (columns, index) = match self.symbol_table.get(&iter_key) {
+					let (columns, index) = match self.symbols.get(&iter_key) {
 						Some(Variable::ForIterator {
 							columns,
 							index,
@@ -585,7 +585,7 @@ impl Vm {
 
 					if columns.len() == 1 {
 						let value = columns.columns[0].data.get_value(index);
-						self.symbol_table.set(
+						self.symbols.set(
 							clean_name.to_string(),
 							Variable::scalar(value),
 							true,
@@ -599,14 +599,14 @@ impl Vm {
 							row_columns.push(Column::new(col.name.clone(), data));
 						}
 						let row_frame = Columns::new(row_columns);
-						self.symbol_table.set(
+						self.symbols.set(
 							clean_name.to_string(),
 							Variable::Columns(row_frame),
 							true,
 						)?;
 					}
 
-					self.symbol_table.reassign(
+					self.symbols.reassign(
 						iter_key,
 						Variable::ForIterator {
 							columns,
@@ -617,7 +617,7 @@ impl Vm {
 
 				Instruction::DefineFunction(node) => {
 					let func_name = node.name.text().to_string();
-					self.symbol_table.define_function(func_name, node.clone());
+					self.symbols.define_function(func_name, node.clone());
 				}
 
 				Instruction::Call {
@@ -654,20 +654,16 @@ impl Vm {
 						continue;
 					}
 
-					if let Some(func_def) = self.symbol_table.get_function(func_name) {
+					if let Some(func_def) = self.symbols.get_function(func_name) {
 						let func_def = func_def.clone();
 
 						let saved_ip = self.ip;
 
-						self.symbol_table.enter_scope(ScopeType::Function);
+						self.symbols.enter_scope(ScopeType::Function);
 
 						for (param, arg) in func_def.parameters.iter().zip(args.into_iter()) {
 							let param_name = strip_dollar_prefix(param.name.text());
-							self.symbol_table.set(
-								param_name,
-								Variable::scalar(arg),
-								true,
-							)?;
+							self.symbols.set(param_name, Variable::scalar(arg), true)?;
 						}
 
 						self.ip = 0;
@@ -699,29 +695,25 @@ impl Vm {
 							};
 
 						self.ip = saved_ip;
-						let _ = self.symbol_table.exit_scope();
+						let _ = self.symbols.exit_scope();
 
 						self.stack.push(stack_value);
 					} else if let Some(Variable::Closure(closure_val)) =
-						self.symbol_table.get(&strip_dollar_prefix(func_name)).cloned()
+						self.symbols.get(&strip_dollar_prefix(func_name)).cloned()
 					{
 						let saved_ip = self.ip;
 
-						self.symbol_table.enter_scope(ScopeType::Function);
+						self.symbols.enter_scope(ScopeType::Function);
 
 						for (name, var) in &closure_val.captured {
-							self.symbol_table.set(name.clone(), var.clone(), true)?;
+							self.symbols.set(name.clone(), var.clone(), true)?;
 						}
 
 						for (param, arg) in
 							closure_val.def.parameters.iter().zip(args.into_iter())
 						{
 							let param_name = strip_dollar_prefix(param.name.text());
-							self.symbol_table.set(
-								param_name,
-								Variable::scalar(arg),
-								true,
-							)?;
+							self.symbols.set(param_name, Variable::scalar(arg), true)?;
 						}
 
 						self.ip = 0;
@@ -759,7 +751,7 @@ impl Vm {
 							};
 
 						self.ip = saved_ip;
-						let _ = self.symbol_table.exit_scope();
+						let _ = self.symbols.exit_scope();
 
 						self.stack.push(stack_value);
 					} else {
@@ -783,7 +775,7 @@ impl Vm {
 								} else {
 									("default".to_string(), func_name.to_string())
 								};
-								PolicyEvaluator::new(services, &self.symbol_table)
+								PolicyEvaluator::new(services, &self.symbols)
 									.enforce_identity_policy(
 										tx,
 										&pol_ns,
@@ -843,7 +835,7 @@ impl Vm {
 											let saved_ip = self.ip;
 
 											// Enter function scope
-											self.symbol_table.enter_scope(
+											self.symbols.enter_scope(
 												ScopeType::Function,
 											);
 
@@ -854,7 +846,7 @@ impl Vm {
 												.iter()
 												.zip(args.into_iter())
 											{
-												self.symbol_table.set(
+												self.symbols.set(
 													param_def.name.clone(),
 													Variable::scalar(arg),
 													true,
@@ -922,7 +914,7 @@ impl Vm {
 											// Restore IP and exit scope
 											self.ip = saved_ip;
 											let _ = self
-												.symbol_table
+												.symbols
 												.exit_scope();
 
 											self.stack.push(stack_value);
@@ -960,7 +952,7 @@ impl Vm {
 									CompilationResult::Ready(compiled_list) => {
 										let saved_ip = self.ip;
 
-										self.symbol_table.enter_scope(
+										self.symbols.enter_scope(
 											ScopeType::Function,
 										);
 
@@ -969,7 +961,7 @@ impl Vm {
 											.iter()
 											.zip(args.into_iter())
 										{
-											self.symbol_table.set(
+											self.symbols.set(
 												param_def.name.clone(),
 												Variable::scalar(arg),
 												true,
@@ -1020,7 +1012,7 @@ impl Vm {
 										};
 
 										self.ip = saved_ip;
-										let _ = self.symbol_table.exit_scope();
+										let _ = self.symbols.exit_scope();
 
 										self.stack.push(stack_value);
 									}
@@ -1128,7 +1120,7 @@ impl Vm {
 									// evaluator
 									let vm_session = EvalSession {
 										params,
-										symbol_table: &self.symbol_table,
+										symbols: &self.symbols,
 										functions: &services.functions,
 										runtime_context: &services
 											.runtime_context,
@@ -1184,7 +1176,7 @@ impl Vm {
 					let mut captured = HashMap::new();
 					for cap_name in &closure_def.captures {
 						let stripped = strip_dollar_prefix(cap_name.text());
-						if let Some(var) = self.symbol_table.get(&stripped) {
+						if let Some(var) = self.symbols.get(&stripped) {
 							captured.insert(stripped, var.clone());
 						}
 					}
@@ -1615,7 +1607,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1635,7 +1627,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1654,7 +1646,7 @@ impl Vm {
 						services,
 						&mut std_txn,
 						node.clone(),
-						&mut self.symbol_table,
+						&mut self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1674,7 +1666,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1693,7 +1685,7 @@ impl Vm {
 						services,
 						&mut std_txn,
 						node.clone(),
-						&mut self.symbol_table,
+						&mut self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1713,7 +1705,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1733,7 +1725,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1753,7 +1745,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1773,7 +1765,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1793,7 +1785,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						&self.symbol_table,
+						&self.symbols,
 						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
@@ -1806,7 +1798,7 @@ impl Vm {
 						&mut std_txn,
 						plan.clone(),
 						params.clone(),
-						&mut self.symbol_table,
+						&mut self.symbols,
 						&self.testing,
 					)? {
 						self.stack.push(Variable::Columns(columns));
@@ -1826,19 +1818,19 @@ impl Vm {
 						}
 					};
 
-					match self.symbol_table.get(&clean_name) {
+					match self.symbols.get(&clean_name) {
 						Some(Variable::Columns(_)) => {
-							let mut existing =
-								match self.symbol_table.get(&clean_name).unwrap() {
-									Variable::Columns(f) => f.clone(),
-									_ => unreachable!(),
-								};
+							let mut existing = match self.symbols.get(&clean_name).unwrap()
+							{
+								Variable::Columns(f) => f.clone(),
+								_ => unreachable!(),
+							};
 							existing.append_columns(columns)?;
-							self.symbol_table
+							self.symbols
 								.reassign(clean_name, Variable::Columns(existing))?;
 						}
 						None => {
-							self.symbol_table.set(
+							self.symbols.set(
 								clean_name,
 								Variable::Columns(columns),
 								true,
@@ -2133,7 +2125,7 @@ fn run_query_plan(
 	txn: &mut Transaction<'_>,
 	plan: QueryPlan,
 	params: Params,
-	symbol_table: &mut SymbolTable,
+	symbols: &mut SymbolTable,
 	testing: &Option<TestingContext>,
 ) -> Result<Option<Columns>> {
 	let identity = txn.identity();
@@ -2142,7 +2134,7 @@ fn run_query_plan(
 		source: None,
 		batch_size: 1024,
 		params,
-		stack: symbol_table.clone(),
+		symbols: symbols.clone(),
 		identity,
 		testing: testing.clone(),
 	});

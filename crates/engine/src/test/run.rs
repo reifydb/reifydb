@@ -42,7 +42,7 @@ fn run_single(
 				// Inject named variables into the symbol table
 				if let Some(vars) = named_vars {
 					for (name, value) in vars {
-						if let Err(e) = vm.symbol_table.set(
+						if let Err(e) = vm.symbols.set(
 							name.clone(),
 							Variable::scalar(value.clone()),
 							false,

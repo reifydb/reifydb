@@ -37,7 +37,7 @@ pub(crate) fn insert_dictionary<'a>(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,
-	stack: &mut SymbolTable,
+	symbols: &mut SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
@@ -58,7 +58,7 @@ pub(crate) fn insert_dictionary<'a>(
 		source: None,
 		batch_size: 1024,
 		params: Params::None,
-		stack: stack.clone(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
 		testing: None,
 	});
@@ -75,7 +75,7 @@ pub(crate) fn insert_dictionary<'a>(
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		PolicyEvaluator::new(services, stack).enforce_write_policies(
+		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
 			namespace_name,
 			dictionary_name,
@@ -131,12 +131,12 @@ pub(crate) fn insert_dictionary<'a>(
 	// If RETURNING clause is present, evaluate expressions against inserted rows
 	if let Some(returning_exprs) = &plan.returning {
 		if ids.is_empty() {
-			return evaluate_returning(services, stack, returning_exprs, Columns::empty());
+			return evaluate_returning(services, symbols, returning_exprs, Columns::empty());
 		}
 		let id_column = build_id_column(&ids, dictionary.id_type)?;
 		let value_column = build_value_column(&values, dictionary.value_type)?;
 		let columns = Columns::new(vec![id_column, value_column]);
-		return evaluate_returning(services, stack, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return result with inserted entries

@@ -60,7 +60,7 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		return extract_column_data(col, ctx);
 	}
 
-	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbol_table.get(name) {
+	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbols.get(name) {
 		if let Some(col) = scalar_cols.columns.first() {
 			return extract_column_data(col, ctx);
 		}
@@ -167,7 +167,7 @@ pub mod tests {
 
 		let session = EvalSession {
 			params: &Params::None,
-			symbol_table: &SymbolTable::new(),
+			symbols: &SymbolTable::new(),
 			functions: &Functions::empty(),
 			runtime_context: &RuntimeContext::default(),
 			arena: None,

@@ -46,7 +46,7 @@ impl QueryNode for MapNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions
@@ -156,7 +156,7 @@ impl QueryNode for MapWithoutInputNode {
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions

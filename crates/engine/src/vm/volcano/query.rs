@@ -46,7 +46,7 @@ pub struct QueryContext {
 	pub source: Option<ResolvedPrimitive>,
 	pub batch_size: u64,
 	pub params: Params,
-	pub stack: SymbolTable,
+	pub symbols: SymbolTable,
 	pub identity: IdentityId,
 	pub testing: Option<TestingContext>,
 }

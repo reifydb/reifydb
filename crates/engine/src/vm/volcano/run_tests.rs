@@ -25,7 +25,7 @@ use crate::{
 pub(crate) struct RunTestsQueryNode {
 	node: RunTestsNode,
 	services: Arc<Services>,
-	stack: SymbolTable,
+	symbols: SymbolTable,
 	executed: bool,
 }
 
@@ -34,7 +34,7 @@ impl RunTestsQueryNode {
 		Self {
 			node,
 			services: context.services.clone(),
-			stack: context.stack.clone(),
+			symbols: context.symbols.clone(),
 			executed: false,
 		}
 	}
@@ -51,7 +51,7 @@ impl QueryNode for RunTestsQueryNode {
 		}
 		self.executed = true;
 
-		let mut vm = Vm::new(self.stack.clone());
+		let mut vm = Vm::new(self.symbols.clone());
 		vm.in_test_context = true;
 		vm.testing = Some(TestingContext::new());
 		let columns = run_tests(&mut vm, &self.services, rx, self.node.clone(), &Params::None)?;

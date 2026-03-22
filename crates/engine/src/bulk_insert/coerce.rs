@@ -25,7 +25,7 @@ pub(super) fn coerce_columns(
 ) -> Result<Vec<ColumnData>> {
 	let session = EvalSession {
 		params: &Params::None,
-		symbol_table: &SymbolTable::new(),
+		symbols: &SymbolTable::new(),
 		functions: &Functions::empty(),
 		runtime_context: &RuntimeContext::default(),
 		arena: None,

@@ -48,7 +48,7 @@ impl QueryNode for FilterNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions

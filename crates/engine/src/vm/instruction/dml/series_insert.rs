@@ -54,7 +54,7 @@ pub(crate) fn insert_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertSeriesNode,
 	params: Params,
-	symbol_table: &SymbolTable,
+	symbols: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
@@ -90,7 +90,7 @@ pub(crate) fn insert_series<'a>(
 		source: resolved_source,
 		batch_size: 1024,
 		params: params.clone(),
-		stack: symbol_table.clone(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
 		testing: None,
 	});
@@ -114,7 +114,7 @@ pub(crate) fn insert_series<'a>(
 	let mut mutable_context = (*execution_context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
+		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
 			namespace_name,
 			series_name,
@@ -275,7 +275,7 @@ pub(crate) fn insert_series<'a>(
 	// If RETURNING clause is present, evaluate expressions against inserted rows
 	if let Some(returning_exprs) = &plan.returning {
 		let columns = decode_rows_to_columns(&schema, &returned_rows);
-		return evaluate_returning(services, symbol_table, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return summary

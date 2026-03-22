@@ -68,7 +68,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 		// FIXME how to handle failing views ?!
 		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
@@ -133,7 +133,7 @@ pub(crate) fn coerce_subscription_columns(
 		// Create context with Undefined saturation policy for this column
 		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,

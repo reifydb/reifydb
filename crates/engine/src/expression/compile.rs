@@ -163,7 +163,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					.into());
 				}
 
-				match ctx.symbol_table.get(variable_name) {
+				match ctx.symbols.get(variable_name) {
 					Some(Variable::Scalar(columns)) => {
 						let value = columns.scalar_value();
 						let mut data =
@@ -708,7 +708,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let object = compile_expression(_ctx, &e.object)?;
 			CompiledExpr::new(move |ctx| {
 				if let Some(ref variable_name) = var_name {
-					match ctx.symbol_table.get(variable_name) {
+					match ctx.symbols.get(variable_name) {
 						Some(Variable::Columns(columns)) => {
 							let col = columns
 								.columns

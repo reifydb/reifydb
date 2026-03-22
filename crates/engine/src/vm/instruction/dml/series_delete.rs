@@ -51,7 +51,7 @@ pub(crate) fn delete_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteSeriesNode,
 	params: Params,
-	symbol_table: &SymbolTable,
+	symbols: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
@@ -86,7 +86,7 @@ pub(crate) fn delete_series<'a>(
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),
-			stack: symbol_table.clone(),
+			symbols: symbols.clone(),
 			identity: IdentityId::root(),
 			testing: None,
 		};
@@ -101,7 +101,7 @@ pub(crate) fn delete_series<'a>(
 				continue;
 			}
 
-			PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
+			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
 				namespace_name,
 				series_name,
@@ -330,7 +330,7 @@ pub(crate) fn delete_series<'a>(
 
 	if let Some(returning_exprs) = &plan.returning {
 		let cols = returning_columns.unwrap_or_else(Columns::empty);
-		return evaluate_returning(services, symbol_table, returning_exprs, cols);
+		return evaluate_returning(services, symbols, returning_exprs, cols);
 	}
 
 	Ok(Columns::single_row([

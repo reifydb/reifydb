@@ -56,7 +56,7 @@ pub(crate) fn alter_table_sequence<'a>(
 
 	let session = EvalSession {
 		params: &EMPTY_PARAMS,
-		symbol_table: &EMPTY_SYMBOL_TABLE,
+		symbols: &EMPTY_SYMBOL_TABLE,
 		functions: &services.functions,
 		runtime_context: &services.runtime_context,
 		arena: None,

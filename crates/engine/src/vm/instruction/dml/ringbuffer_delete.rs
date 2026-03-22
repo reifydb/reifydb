@@ -49,7 +49,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteRingBufferNode,
 	params: Params,
-	symbol_table: &SymbolTable,
+	symbols: &SymbolTable,
 	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
@@ -99,7 +99,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					source: resolved_source.clone(),
 					batch_size: 1024,
 					params: params.clone(),
-					stack: symbol_table.clone(),
+					symbols: symbols.clone(),
 					identity: IdentityId::root(),
 					testing: None,
 				}),
@@ -110,7 +110,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 				source: None,
 				batch_size: 1024,
 				params: params.clone(),
-				stack: symbol_table.clone(),
+				symbols: symbols.clone(),
 				identity: IdentityId::root(),
 				testing: None,
 			};
@@ -119,7 +119,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 			let mut mutable_context = context.clone();
 			while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
+				PolicyEvaluator::new(services, symbols).enforce_write_policies(
 					txn,
 					&namespace.name(),
 					&ringbuffer.name,
@@ -264,7 +264,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 	// If RETURNING clause is present, evaluate expressions against deleted rows
 	if let Some(returning_exprs) = &plan.returning {
 		let columns = decode_rows_to_columns(&schema, &returned_rows);
-		return evaluate_returning(services, symbol_table, returning_exprs, columns);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return summary

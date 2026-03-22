@@ -49,14 +49,14 @@ pub fn evaluate_operator_config(
 
 	let compile_ctx = CompileContext {
 		functions,
-		symbol_table: &EMPTY_SYMBOL_TABLE,
+		symbols: &EMPTY_SYMBOL_TABLE,
 	};
 
 	let empty_columns = Columns::empty();
 
 	let session = EvalSession {
 		params: &EMPTY_PARAMS,
-		symbol_table: &EMPTY_SYMBOL_TABLE,
+		symbols: &EMPTY_SYMBOL_TABLE,
 		functions,
 		runtime_context,
 		arena: None,

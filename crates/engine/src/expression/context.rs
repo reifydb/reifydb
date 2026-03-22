@@ -26,7 +26,7 @@ use crate::{
 #[derive(Clone, Copy)]
 pub struct EvalSession<'a> {
 	pub params: &'a Params,
-	pub symbol_table: &'a SymbolTable,
+	pub symbols: &'a SymbolTable,
 	pub functions: &'a Functions,
 	pub runtime_context: &'a RuntimeContext,
 	pub arena: Option<&'a QueryArena>,
@@ -43,7 +43,7 @@ impl<'a> EvalSession<'a> {
 			row_count,
 			take: None,
 			params: self.params,
-			symbol_table: self.symbol_table,
+			symbols: self.symbols,
 			is_aggregate_context: self.is_aggregate_context,
 			functions: self.functions,
 			runtime_context: self.runtime_context,
@@ -68,7 +68,7 @@ impl<'a> EvalSession<'a> {
 	pub fn from_transform(ctx: &'a TransformContext, stored: &'a QueryContext) -> Self {
 		Self {
 			params: ctx.params,
-			symbol_table: &stored.stack,
+			symbols: &stored.symbols,
 			functions: ctx.functions,
 			runtime_context: ctx.runtime_context,
 			arena: None,
@@ -81,7 +81,7 @@ impl<'a> EvalSession<'a> {
 	pub fn from_query(ctx: &'a QueryContext) -> Self {
 		Self {
 			params: &ctx.params,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 			functions: &ctx.services.functions,
 			runtime_context: &ctx.services.runtime_context,
 			arena: None,
@@ -98,7 +98,7 @@ impl<'a> EvalSession<'a> {
 		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::default());
 		EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
@@ -114,7 +114,7 @@ pub struct EvalContext<'a> {
 	pub row_count: usize,
 	pub take: Option<usize>,
 	pub params: &'a Params,
-	pub symbol_table: &'a SymbolTable,
+	pub symbols: &'a SymbolTable,
 	// TODO: This is a temporary hack to support aggregate functions in StandardColumnEvaluator
 	// Should be replaced with proper function detection or separate aggregation methods
 	pub is_aggregate_context: bool,
@@ -144,5 +144,5 @@ impl<'a> EvalContext<'a> {
 /// Compile-time context for resolving functions and UDFs.
 pub struct CompileContext<'a> {
 	pub functions: &'a Functions,
-	pub symbol_table: &'a SymbolTable,
+	pub symbols: &'a SymbolTable,
 }

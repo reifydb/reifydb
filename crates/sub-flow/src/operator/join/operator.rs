@@ -93,7 +93,7 @@ impl JoinOperator {
 		// Create compile context with empty symbol table
 		let compile_ctx = CompileContext {
 			functions: &executor.functions,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 
 		// Compile expressions at construction time
@@ -151,7 +151,7 @@ impl JoinOperator {
 
 		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
 			runtime_context: &self.runtime_context,
 			arena: None,
