@@ -37,7 +37,7 @@ use crate::{
 	vm::{
 		instruction::dml::{
 			schema::get_or_create_series_schema,
-			series_key::{column_data_from_i64_keys, value_from_i64, value_to_i64},
+			series_key::{column_data_from_u64_keys, value_from_u64, value_to_u64},
 		},
 		services::Services,
 		stack::SymbolTable,
@@ -123,7 +123,7 @@ pub(crate) fn delete_series<'a>(
 				let key_value = columns
 					.iter()
 					.find(|c| c.name().text() == series_def.key.column())
-					.and_then(|c| value_to_i64(c.data().get_value(row_idx), &series_def.key))
+					.and_then(|c| value_to_u64(c.data().get_value(row_idx), &series_def.key))
 					.unwrap_or(0);
 
 				let variant_tag = if has_tag {
@@ -155,7 +155,7 @@ pub(crate) fn delete_series<'a>(
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				pre_col_vec.push(Column {
 					name: Fragment::internal(series_def.key.column()),
-					data: column_data_from_i64_keys(vec![key_value], &series_def, &series_def.key),
+					data: column_data_from_u64_keys(vec![key_value], &series_def, &series_def.key),
 				});
 				for col in columns.iter() {
 					if col.name().text() != series_def.key.column() && col.name().text() != "tag" {
@@ -183,7 +183,7 @@ pub(crate) fn delete_series<'a>(
 					let old = Columns::single_row(
 						iter::once((
 							series_def.key.column(),
-							value_from_i64(key_value, key_type.as_ref(), &series_def.key),
+							value_from_u64(key_value, key_type.as_ref(), &series_def.key),
 						))
 						.chain(columns
 							.iter()
@@ -262,7 +262,7 @@ pub(crate) fn delete_series<'a>(
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				pre_col_vec.push(Column {
 					name: Fragment::internal(series_def.key.column()),
-					data: column_data_from_i64_keys(
+					data: column_data_from_u64_keys(
 						vec![decoded_key.key],
 						&series_def,
 						&series_def.key,
@@ -299,7 +299,7 @@ pub(crate) fn delete_series<'a>(
 					let old = Columns::single_row(
 						iter::once((
 							series_def.key.column(),
-							value_from_i64(
+							value_from_u64(
 								decoded_key.key,
 								key_type.as_ref(),
 								&series_def.key,

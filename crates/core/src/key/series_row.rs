@@ -14,14 +14,14 @@ const VERSION: u8 = 1;
 
 /// Key for series data rows.
 ///
-/// Layout without tag: `[Version | Row(0x03) | PrimitiveId::Series(id) | ordering_value(i64) | sequence(u64)]`
-/// Layout with tag:    `[Version | Row(0x03) | PrimitiveId::Series(id) | variant_tag(u8) | ordering_value(i64) |
+/// Layout without tag: `[Version | Row(0x03) | PrimitiveId::Series(id) | ordering_value(u64) | sequence(u64)]`
+/// Layout with tag:    `[Version | Row(0x03) | PrimitiveId::Series(id) | variant_tag(u8) | ordering_value(u64) |
 /// sequence(u64)]`
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesRowKey {
 	pub series: SeriesId,
 	pub variant_tag: Option<u8>,
-	pub key: i64,
+	pub key: u64,
 	pub sequence: u64,
 }
 
@@ -40,7 +40,7 @@ impl EncodableKey for SeriesRowKey {
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
-		serializer.extend_i64(self.key).extend_u64(self.sequence);
+		serializer.extend_u64(self.key).extend_u64(self.sequence);
 		serializer.to_encoded_key()
 	}
 
@@ -64,8 +64,8 @@ impl EncodableKey for SeriesRowKey {
 		};
 
 		// We need to know if there's a variant tag. We can tell by the remaining bytes:
-		// Without tag: i64(8) + u64(8) = 16 bytes remain
-		// With tag: u8(1) + i64(8) + u64(8) = 17 bytes remain
+		// Without tag: u64(8) + u64(8) = 16 bytes remain
+		// With tag: u8(1) + u64(8) + u64(8) = 17 bytes remain
 		let remaining = de.remaining();
 		let variant_tag = if remaining > 16 {
 			Some(de.read_u8().ok()?)
@@ -73,7 +73,7 @@ impl EncodableKey for SeriesRowKey {
 			None
 		};
 
-		let key = de.read_i64().ok()?;
+		let key = de.read_u64().ok()?;
 		let sequence = de.read_u64().ok()?;
 
 		Some(Self {
@@ -90,8 +90,8 @@ impl EncodableKey for SeriesRowKey {
 pub struct SeriesRowKeyRange {
 	pub series: SeriesId,
 	pub variant_tag: Option<u8>,
-	pub key_start: Option<i64>,
-	pub key_end: Option<i64>,
+	pub key_start: Option<u64>,
+	pub key_end: Option<u64>,
 }
 
 impl SeriesRowKeyRange {
@@ -110,8 +110,8 @@ impl SeriesRowKeyRange {
 	pub fn scan_range(
 		series: SeriesId,
 		variant_tag: Option<u8>,
-		key_start: Option<i64>,
-		key_end: Option<i64>,
+		key_start: Option<u64>,
+		key_end: Option<u64>,
 		last_key: Option<&EncodedKey>,
 	) -> EncodedKeyRange {
 		let range = SeriesRowKeyRange {
@@ -141,7 +141,7 @@ impl SeriesRowKeyRange {
 		// The start key (lower bound) uses key_end (the highest key value in
 		// the desired range) to begin scanning from the newest matching row.
 		if let Some(key_val) = self.key_end {
-			serializer.extend_i64(key_val);
+			serializer.extend_u64(key_val);
 		}
 		serializer.to_encoded_key()
 	}
@@ -159,7 +159,7 @@ impl SeriesRowKeyRange {
 			}
 			// Use sequence 0 which encodes to max bytes in descending encoding,
 			// ensuring all rows at this key value are included.
-			serializer.extend_i64(key_val).extend_u64(0u64);
+			serializer.extend_u64(key_val).extend_u64(0u64);
 			serializer.to_encoded_key()
 		} else {
 			// Use PrimitiveId ordering trick to get end of range

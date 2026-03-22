@@ -34,7 +34,7 @@ use tracing::instrument;
 use super::{
 	returning::{decode_rows_to_columns, evaluate_returning},
 	schema::get_or_create_series_schema,
-	series_key::{column_data_from_i64_keys, value_from_i64, value_to_i64},
+	series_key::{column_data_from_u64_keys, value_from_u64, value_to_u64},
 };
 use crate::{
 	Result,
@@ -128,10 +128,10 @@ pub(crate) fn insert_series<'a>(
 
 		for row_idx in 0..row_count {
 			// Extract or generate key value
-			let key_value: i64 = if let Some(key_col) =
+			let key_value: u64 = if let Some(key_col) =
 				columns.iter().find(|col| col.name().text() == key_column_name)
 			{
-				match value_to_i64(key_col.data().get_value(row_idx), key) {
+				match value_to_u64(key_col.data().get_value(row_idx), key) {
 					Some(v) => v,
 					None => match key {
 						SeriesKey::DateTime {
@@ -200,7 +200,7 @@ pub(crate) fn insert_series<'a>(
 			// Encode using schema (key at index 0, data columns at index 1+)
 			let key_col_def = series_def.columns.iter().find(|c| c.name == key_column_name);
 			let key_type = key_col_def.map(|c| c.constraint.get_type());
-			let key_value_encoded = value_from_i64(key_value, key_type.as_ref(), key);
+			let key_value_encoded = value_from_u64(key_value, key_type.as_ref(), key);
 			let mut row = schema.allocate();
 			schema.set_value(&mut row, 0, &key_value_encoded);
 			for (i, value) in data_values.iter().enumerate() {
@@ -232,7 +232,7 @@ pub(crate) fn insert_series<'a>(
 				let mut cols = Vec::with_capacity(1 + data_columns.len());
 				cols.push(Column {
 					name: Fragment::internal(key_column_name),
-					data: column_data_from_i64_keys(vec![key_value], &series_def, key),
+					data: column_data_from_u64_keys(vec![key_value], &series_def, key),
 				});
 				for (i, col_def) in data_columns.iter().enumerate() {
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
@@ -289,11 +289,11 @@ pub(crate) fn insert_series<'a>(
 	]))
 }
 
-fn generate_timestamp(services: &Services, precision: &TimestampPrecision) -> i64 {
+fn generate_timestamp(services: &Services, precision: &TimestampPrecision) -> u64 {
 	match precision {
-		TimestampPrecision::Second => services.runtime_context.clock.now_secs() as i64,
-		TimestampPrecision::Millisecond => services.runtime_context.clock.now_millis() as i64,
-		TimestampPrecision::Microsecond => services.runtime_context.clock.now_micros() as i64,
-		TimestampPrecision::Nanosecond => services.runtime_context.clock.now_nanos() as i64,
+		TimestampPrecision::Second => services.runtime_context.clock.now_secs(),
+		TimestampPrecision::Millisecond => services.runtime_context.clock.now_millis(),
+		TimestampPrecision::Microsecond => services.runtime_context.clock.now_micros(),
+		TimestampPrecision::Nanosecond => services.runtime_context.clock.now_nanos() as u64,
 	}
 }

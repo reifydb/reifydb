@@ -62,8 +62,8 @@ impl CatalogStore {
 		let row = multi.values;
 		let id = SeriesId(series_metadata::SCHEMA.get_u64(&row, series_metadata::ID));
 		let row_count = series_metadata::SCHEMA.get_u64(&row, series_metadata::ROW_COUNT);
-		let oldest_key = series_metadata::SCHEMA.get_i64(&row, series_metadata::OLDEST_KEY);
-		let newest_key = series_metadata::SCHEMA.get_i64(&row, series_metadata::NEWEST_KEY);
+		let oldest_key = series_metadata::SCHEMA.get_u64(&row, series_metadata::OLDEST_KEY);
+		let newest_key = series_metadata::SCHEMA.get_u64(&row, series_metadata::NEWEST_KEY);
 		let sequence_counter = series_metadata::SCHEMA.get_u64(&row, series_metadata::SEQUENCE_COUNTER);
 
 		Ok(Some(SeriesMetadata {

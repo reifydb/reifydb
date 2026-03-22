@@ -22,15 +22,15 @@ use tracing::instrument;
 use crate::{
 	Result,
 	vm::{
-		instruction::dml::{schema::get_or_create_series_schema, series_key::column_data_from_i64_keys},
+		instruction::dml::{schema::get_or_create_series_schema, series_key::column_data_from_u64_keys},
 		volcano::query::{QueryContext, QueryNode},
 	},
 };
 
 pub struct SeriesScanNode {
 	series: ResolvedSeries,
-	key_range_start: Option<i64>,
-	key_range_end: Option<i64>,
+	key_range_start: Option<u64>,
+	key_range_end: Option<u64>,
 	variant_tag: Option<u8>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
@@ -41,8 +41,8 @@ pub struct SeriesScanNode {
 impl SeriesScanNode {
 	pub fn new(
 		series: ResolvedSeries,
-		key_range_start: Option<i64>,
-		key_range_end: Option<i64>,
+		key_range_start: Option<u64>,
+		key_range_end: Option<u64>,
 		variant_tag: Option<u8>,
 		context: Arc<QueryContext>,
 	) -> Result<Self> {
@@ -99,7 +99,7 @@ impl QueryNode for SeriesScanNode {
 			self.last_key.as_ref(),
 		);
 
-		let mut key_values: Vec<i64> = Vec::new();
+		let mut key_values: Vec<u64> = Vec::new();
 		let mut tags: Vec<u8> = Vec::new();
 		let mut sequences: Vec<u64> = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
@@ -179,7 +179,7 @@ impl QueryNode for SeriesScanNode {
 		// Key column
 		result_columns.push(Column {
 			name: Fragment::internal(series_def.key.column()),
-			data: column_data_from_i64_keys(key_values, series_def, &series_def.key),
+			data: column_data_from_u64_keys(key_values, series_def, &series_def.key),
 		});
 
 		// Tag column (Uint1) if present

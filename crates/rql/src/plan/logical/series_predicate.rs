@@ -15,8 +15,8 @@ use crate::expression::{ColumnExpression, ConstantExpression, Expression};
 /// Extracted series predicates that can be pushed into the scan.
 #[derive(Debug, Clone, Default)]
 pub struct SeriesPredicate {
-	pub key_start: Option<i64>,
-	pub key_end: Option<i64>,
+	pub key_start: Option<u64>,
+	pub key_end: Option<u64>,
 	pub variant_tag: Option<u8>,
 	/// Predicates that couldn't be pushed down and must remain as post-filters.
 	pub remaining: Vec<Expression>,
@@ -123,7 +123,7 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 		Expression::Between(between) => {
 			if is_key_column(&between.value, key_column_name) {
 				if let (Some(lower), Some(upper)) =
-					(extract_constant_i64(&between.lower), extract_constant_i64(&between.upper))
+					(extract_constant_u64(&between.lower), extract_constant_u64(&between.upper))
 				{
 					result.key_start = Some(merge_max(result.key_start, lower));
 					result.key_end = Some(merge_min(result.key_end, upper));
@@ -148,12 +148,12 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 	}
 }
 
-/// Check if `maybe_col` is the key column and `maybe_val` is a constant i64.
-fn try_key_const(maybe_col: &Expression, maybe_val: &Expression, key_column_name: &str) -> Option<i64> {
+/// Check if `maybe_col` is the key column and `maybe_val` is a constant u64.
+fn try_key_const(maybe_col: &Expression, maybe_val: &Expression, key_column_name: &str) -> Option<u64> {
 	if !is_key_column(maybe_col, key_column_name) {
 		return None;
 	}
-	extract_constant_i64(maybe_val)
+	extract_constant_u64(maybe_val)
 }
 
 /// Check if `maybe_col` is the "tag" column and `maybe_val` is a constant u8.
@@ -180,11 +180,11 @@ fn is_tag_column(expr: &Expression) -> bool {
 	}
 }
 
-fn extract_constant_i64(expr: &Expression) -> Option<i64> {
+fn extract_constant_u64(expr: &Expression) -> Option<u64> {
 	match expr {
 		Expression::Constant(ConstantExpression::Number {
 			fragment,
-		}) => fragment.text().parse::<i64>().ok(),
+		}) => fragment.text().parse::<u64>().ok(),
 		_ => None,
 	}
 }
@@ -198,14 +198,14 @@ fn extract_constant_u8(expr: &Expression) -> Option<u8> {
 	}
 }
 
-fn merge_max(current: Option<i64>, new: i64) -> i64 {
+fn merge_max(current: Option<u64>, new: u64) -> u64 {
 	match current {
 		Some(existing) => existing.max(new),
 		None => new,
 	}
 }
 
-fn merge_min(current: Option<i64>, new: i64) -> i64 {
+fn merge_min(current: Option<u64>, new: u64) -> u64 {
 	match current {
 		Some(existing) => existing.min(new),
 		None => new,

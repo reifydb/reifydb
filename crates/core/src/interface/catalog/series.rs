@@ -101,8 +101,8 @@ impl SeriesDef {
 pub struct SeriesMetadata {
 	pub id: SeriesId,
 	pub row_count: u64,
-	pub oldest_key: i64,
-	pub newest_key: i64,
+	pub oldest_key: u64,
+	pub newest_key: u64,
 	pub sequence_counter: u64,
 }
 

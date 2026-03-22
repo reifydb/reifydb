@@ -153,8 +153,8 @@ impl CatalogStore {
 		let mut row = series_metadata::SCHEMA.allocate();
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ID, series_id);
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ROW_COUNT, 0u64);
-		series_metadata::SCHEMA.set_i64(&mut row, series_metadata::OLDEST_KEY, 0i64);
-		series_metadata::SCHEMA.set_i64(&mut row, series_metadata::NEWEST_KEY, 0i64);
+		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::OLDEST_KEY, 0u64);
+		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::NEWEST_KEY, 0u64);
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
 
 		txn.set(&SeriesMetadataKey::encoded(series_id), row)?;

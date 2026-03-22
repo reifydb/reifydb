@@ -655,8 +655,8 @@ pub struct DictionaryScanNode {
 #[derive(Debug, Clone)]
 pub struct SeriesScanNode {
 	pub source: ResolvedSeries,
-	pub key_range_start: Option<i64>,
-	pub key_range_end: Option<i64>,
+	pub key_range_start: Option<u64>,
+	pub key_range_end: Option<u64>,
 	pub variant_tag: Option<u8>,
 }
 

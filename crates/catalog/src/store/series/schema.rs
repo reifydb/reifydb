@@ -58,8 +58,8 @@ pub(crate) mod series_metadata {
 		Schema::new(vec![
 			SchemaField::unconstrained("id", Type::Uint8),
 			SchemaField::unconstrained("row_count", Type::Uint8),
-			SchemaField::unconstrained("oldest_key", Type::Int8),
-			SchemaField::unconstrained("newest_key", Type::Int8),
+			SchemaField::unconstrained("oldest_key", Type::Uint8),
+			SchemaField::unconstrained("newest_key", Type::Uint8),
 			SchemaField::unconstrained("sequence_counter", Type::Uint8),
 		])
 	});
