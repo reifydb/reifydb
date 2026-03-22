@@ -89,7 +89,7 @@ pub(crate) fn update_table<'a>(
 		source: resolved_source,
 		batch_size: 1024,
 		params: params.clone(),
-		stack: SymbolTable::new(),
+		stack: symbol_table_ref.clone(),
 		identity: IdentityId::root(),
 		testing: None,
 	};

@@ -99,7 +99,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					source: resolved_source.clone(),
 					batch_size: 1024,
 					params: params.clone(),
-					stack: SymbolTable::new(),
+					stack: symbol_table.clone(),
 					identity: IdentityId::root(),
 					testing: None,
 				}),
@@ -110,7 +110,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 				source: None,
 				batch_size: 1024,
 				params: params.clone(),
-				stack: SymbolTable::new(),
+				stack: symbol_table.clone(),
 				identity: IdentityId::root(),
 				testing: None,
 			};

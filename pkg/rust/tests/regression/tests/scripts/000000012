@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+(admin 'CREATE NAMESPACE test')
+(admin 'CREATE TABLE test::t { id: int4, name: utf8 }')
+(command 'INSERT test::t [{ id: 1, name: "a" }, { id: 2, name: "b" }]')
+command 'LET $x = 2; DELETE test::t FILTER id == $x RETURNING { id, name }'
+---
+> +----------+------+--------+
+> |  rownum  |  id  |  name  |
+> +----------+------+--------+
+> |    2     |  2   |   b    |
+> +----------+------+--------+
+>

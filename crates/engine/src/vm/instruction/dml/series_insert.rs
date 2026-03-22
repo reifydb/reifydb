@@ -90,7 +90,7 @@ pub(crate) fn insert_series<'a>(
 		source: resolved_source,
 		batch_size: 1024,
 		params: params.clone(),
-		stack: SymbolTable::new(),
+		stack: symbol_table.clone(),
 		identity: IdentityId::root(),
 		testing: None,
 	});

@@ -1177,7 +1177,10 @@ impl ExpressionCompiler {
 			Ast::Identity(ident) => Ok(Expression::Variable(VariableExpression {
 				fragment: ident.token.fragment.to_owned(),
 			})),
-			Ast::From(AstFrom::Variable { variable, .. }) => Ok(Expression::Variable(VariableExpression {
+			Ast::From(AstFrom::Variable {
+				variable,
+				..
+			}) => Ok(Expression::Variable(VariableExpression {
 				fragment: variable.token.fragment.to_owned(),
 			})),
 			ast => unimplemented!("{:?}", ast),
