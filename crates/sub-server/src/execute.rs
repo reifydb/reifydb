@@ -7,14 +7,10 @@
 //! hooks around the actual engine dispatch. When no interceptors are
 //! registered the overhead is a single `is_empty()` check.
 
-use std::{
-	error, fmt,
-	sync::Arc,
-	time::{Duration, Instant},
-};
+use std::{error, fmt, sync::Arc, time::Duration};
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
@@ -112,11 +108,16 @@ async fn raw_query(
 	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	let task = system.execute(move || engine.query_as(identity, &query, params));
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = engine.query_as(identity, &query, params);
+		(r, t.elapsed())
+	});
 	match time::timeout(timeout, task).await {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
@@ -128,12 +129,16 @@ async fn raw_command(
 	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	let task =
-		system.execute(move || retry_on_conflict(|| engine.command_as(identity, &statements, params.clone())));
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = retry_on_conflict(|| engine.command_as(identity, &statements, params.clone()));
+		(r, t.elapsed())
+	});
 	match time::timeout(timeout, task).await {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
@@ -145,11 +150,16 @@ async fn raw_admin(
 	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	let task = system.execute(move || retry_on_conflict(|| engine.admin_as(identity, &statements, params.clone())));
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = retry_on_conflict(|| engine.admin_as(identity, &statements, params.clone()));
+		(r, t.elapsed())
+	});
 	match time::timeout(timeout, task).await {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
@@ -161,12 +171,16 @@ async fn raw_subscription(
 	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	let task = system
-		.execute(move || retry_on_conflict(|| engine.subscription_as(identity, &statement, params.clone())));
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = retry_on_conflict(|| engine.subscription_as(identity, &statement, params.clone()));
+		(r, t.elapsed())
+	});
 	match time::timeout(timeout, task).await {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
@@ -191,13 +205,14 @@ pub async fn execute(
 	engine: StandardEngine,
 	mut ctx: RequestContext,
 	timeout: Duration,
+	clock: &Clock,
 ) -> ExecuteResult<(Vec<Frame>, Duration)> {
 	// Pre-execute interceptors (may reject, may mutate identity)
 	if !chain.is_empty() {
 		chain.pre_execute(&mut ctx).await?;
 	}
 
-	let start = Instant::now();
+	let start = clock.instant();
 
 	let operation = ctx.operation;
 	let combined = ctx.statements.join("; ");
@@ -210,15 +225,28 @@ pub async fn execute(
 	};
 
 	let result = match operation {
-		Operation::Query => raw_query(system, engine, combined, ctx.identity, ctx.params, timeout).await,
-		Operation::Command => raw_command(system, engine, combined, ctx.identity, ctx.params, timeout).await,
-		Operation::Admin => raw_admin(system, engine, combined, ctx.identity, ctx.params, timeout).await,
+		Operation::Query => {
+			raw_query(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
+		}
+		Operation::Command => {
+			raw_command(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
+		}
+		Operation::Admin => {
+			raw_admin(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
+		}
 		Operation::Subscribe => {
-			raw_subscription(system, engine, combined, ctx.identity, ctx.params, timeout).await
+			raw_subscription(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone())
+				.await
 		}
 	};
 
 	let duration = start.elapsed();
+
+	// Separate frames from compute_duration
+	let (result, compute_duration) = match result {
+		Ok((frames, cd)) => (Ok(frames), cd),
+		Err(e) => (Err(e), duration),
+	};
 
 	// Post-execute interceptors
 	if let Some((identity, statements, params, metadata)) = response_parts {
@@ -233,6 +261,7 @@ pub async fn execute(
 				Err(e) => Err(e.to_string()),
 			},
 			duration,
+			compute_duration,
 		};
 		chain.post_execute(&response_ctx).await;
 	}

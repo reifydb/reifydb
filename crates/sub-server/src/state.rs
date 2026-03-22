@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 use crate::interceptor::RequestInterceptorChain;
 
@@ -94,6 +94,7 @@ pub struct AppState {
 	engine: StandardEngine,
 	config: StateConfig,
 	request_interceptors: RequestInterceptorChain,
+	clock: Clock,
 }
 
 impl AppState {
@@ -104,12 +105,14 @@ impl AppState {
 		engine: StandardEngine,
 		config: StateConfig,
 		request_interceptors: RequestInterceptorChain,
+		clock: Clock,
 	) -> Self {
 		Self {
 			actor_system,
 			engine,
 			config,
 			request_interceptors,
+			clock,
 		}
 	}
 
@@ -121,6 +124,7 @@ impl AppState {
 			engine: self.engine.clone(),
 			config,
 			request_interceptors: self.request_interceptors.clone(),
+			clock: self.clock.clone(),
 		}
 	}
 
@@ -180,6 +184,12 @@ impl AppState {
 	#[inline]
 	pub fn request_interceptors(&self) -> &RequestInterceptorChain {
 		&self.request_interceptors
+	}
+
+	/// Get a reference to the clock.
+	#[inline]
+	pub fn clock(&self) -> &Clock {
+		&self.clock
 	}
 }
 

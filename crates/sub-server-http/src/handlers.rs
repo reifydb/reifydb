@@ -190,6 +190,7 @@ async fn execute_and_respond(
 		state.engine_clone(),
 		ctx,
 		state.query_timeout(),
+		state.clock(),
 	)
 	.await?;
 

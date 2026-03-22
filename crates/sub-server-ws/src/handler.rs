@@ -279,6 +279,7 @@ async fn process_message(
 				state.engine_clone(),
 				ctx,
 				timeout,
+				state.clock(),
 			)
 			.await
 			{
@@ -330,6 +331,7 @@ async fn process_message(
 				state.engine_clone(),
 				ctx,
 				timeout,
+				state.clock(),
 			)
 			.await
 			{
@@ -381,6 +383,7 @@ async fn process_message(
 				state.engine_clone(),
 				ctx,
 				timeout,
+				state.clock(),
 			)
 			.await
 			{

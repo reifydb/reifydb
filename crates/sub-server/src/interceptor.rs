@@ -148,6 +148,8 @@ pub struct ResponseContext {
 	pub result: Result<usize, String>,
 	/// Wall-clock execution duration.
 	pub duration: Duration,
+	/// Compute-only duration (excludes queue wait and scheduling overhead).
+	pub compute_duration: Duration,
 }
 
 /// Async trait for request-level interceptors.

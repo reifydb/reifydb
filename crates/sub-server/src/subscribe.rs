@@ -89,6 +89,7 @@ pub async fn create_subscription(
 		state.engine_clone(),
 		ctx,
 		state.query_timeout(),
+		state.clock(),
 	)
 	.await?;
 

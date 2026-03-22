@@ -218,6 +218,7 @@ impl ReifyDb for ReifyDbService {
 			self.state.engine_clone(),
 			ctx,
 			self.state.query_timeout(),
+			self.state.clock(),
 		)
 		.await
 		.map_err(GrpcError::from)?;
@@ -247,6 +248,7 @@ impl ReifyDb for ReifyDbService {
 			self.state.engine_clone(),
 			ctx,
 			self.state.query_timeout(),
+			self.state.clock(),
 		)
 		.await
 		.map_err(GrpcError::from)?;
@@ -276,6 +278,7 @@ impl ReifyDb for ReifyDbService {
 			self.state.engine_clone(),
 			ctx,
 			self.state.query_timeout(),
+			self.state.clock(),
 		)
 		.await
 		.map_err(GrpcError::from)?;

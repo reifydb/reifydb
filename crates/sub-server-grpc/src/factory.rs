@@ -118,7 +118,13 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
 
-		let state = AppState::new(runtime.actor_system(), engine, query_config, interceptors);
+		let state = AppState::new(
+			runtime.actor_system(),
+			engine,
+			query_config,
+			interceptors,
+			runtime.clock().clone(),
+		);
 		let subsystem = GrpcSubsystem::new(
 			self.config.bind_addr.clone(),
 			self.config.admin_bind_addr.clone(),

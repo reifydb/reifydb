@@ -120,7 +120,13 @@ impl SubsystemFactory for HttpSubsystemFactory {
 
 		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
 
-		let state = AppState::new(runtime.actor_system(), engine, query_config, interceptors);
+		let state = AppState::new(
+			runtime.actor_system(),
+			engine,
+			query_config,
+			interceptors,
+			runtime.clock().clone(),
+		);
 		let subsystem = HttpSubsystem::new(
 			self.config.bind_addr.clone(),
 			self.config.admin_bind_addr.clone(),
