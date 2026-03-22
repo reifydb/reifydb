@@ -50,7 +50,7 @@
 //! let runtime = SharedRuntime::new(4);
 //!
 //! // Create application state
-//! let state = AppState::new(pool, engine, QueryConfig::default());
+//! let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
 //!
 //! // Create and start WebSocket subsystem
 //! let mut ws = WsSubsystem::new(

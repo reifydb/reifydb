@@ -130,6 +130,13 @@ impl IntoResponse for AppError {
 				error!("Query stream disconnected unexpectedly");
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
+			AppError::Execute(ExecuteError::Rejected {
+				code,
+				message,
+			}) => {
+				let body = Json(ErrorResponse::new(code, message));
+				return (StatusCode::FORBIDDEN, body).into_response();
+			}
 			AppError::Execute(ExecuteError::Engine {
 				..
 			}) => {

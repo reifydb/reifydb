@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::frame::response::convert_frames};
 use reifydb_sub_server::{
+	interceptor::{Protocol, RequestMetadata},
 	remote::{connect_remote, proxy_remote},
 	state::AppState,
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
@@ -65,8 +66,10 @@ pub(crate) async fn handle_subscribe(
 ) -> Option<String> {
 	let id: IdentityId = identity.unwrap_or_else(IdentityId::root);
 	let user_query = sub.query.clone();
+	// TODO: capture upgrade request headers via accept_hdr_async
+	let metadata = RequestMetadata::new(Protocol::WebSocket);
 
-	match create_subscription(state, id, &user_query).await {
+	match create_subscription(state, id, &user_query, metadata).await {
 		Ok(Local(subscription_id)) => {
 			registry.subscribe(subscription_id, connection_id, user_query, push_tx);
 			poller.register(subscription_id);

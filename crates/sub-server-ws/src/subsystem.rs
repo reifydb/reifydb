@@ -46,7 +46,7 @@ use crate::{handler::handle_connection, subscription::registry::SubscriptionRegi
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(pool, engine, QueryConfig::default());
+/// let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
 ///
 /// let mut ws = WsSubsystem::new(
 ///     "0.0.0.0:8091".to_string(),
@@ -336,10 +336,9 @@ impl Subsystem for WsSubsystem {
 
 			let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
 
-			// Create admin state with admin_enabled = true
+			// Create admin state with admin_enabled = true, preserving interceptors
 			let admin_config = self.state.config().clone().admin_enabled(true);
-			let admin_state =
-				AppState::new(self.state.actor_system(), self.state.engine_clone(), admin_config);
+			let admin_state = self.state.clone_with_config(admin_config);
 
 			// Share the same registry and poller
 			let admin_registry = self.registry.clone();

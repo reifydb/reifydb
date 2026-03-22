@@ -162,6 +162,11 @@ impl Response {
 		}
 	}
 
+	/// Create an error response for a rejected request (auth failure, rate limit, etc.).
+	pub fn rejected(id: impl Into<String>, code: impl Into<String>, message: impl Into<String>) -> Self {
+		Self::internal_error(id, code, message)
+	}
+
 	pub fn error(id: impl Into<String>, diagnostic: Diagnostic) -> Self {
 		Self {
 			id: id.into(),

@@ -17,7 +17,8 @@ use axum::{
 use reifydb_core::value::frame::response::{ResponseFrame, convert_frames};
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
-	execute::{execute_admin, execute_command, execute_query},
+	execute::execute,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	state::AppState,
 	wire::WireParams,
@@ -76,6 +77,17 @@ pub async fn health() -> impl IntoResponse {
 	)
 }
 
+/// Build `RequestMetadata` from HTTP headers.
+fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
+	let mut metadata = RequestMetadata::new(Protocol::Http);
+	for (name, value) in headers.iter() {
+		if let Ok(v) = value.to_str() {
+			metadata.insert(name.as_str(), v);
+		}
+	}
+	metadata
+}
+
 /// Execute a read-only query.
 ///
 /// # Authentication
@@ -106,39 +118,7 @@ pub async fn handle_query(
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
 ) -> Result<Response, AppError> {
-	// Extract identity from headers
-	let identity = extract_identity(&headers)?;
-
-	// Combine statements
-	let query = request.statements.join("; ");
-
-	// Get params or default
-	let params = match request.params {
-		None => Params::None,
-		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
-	};
-
-	// Execute with timeout
-	let frames = execute_query(
-		state.actor_system(),
-		state.engine_clone(),
-		query,
-		identity,
-		params,
-		state.query_timeout(),
-	)
-	.await?;
-
-	if format_params.format.as_deref() == Some("json") {
-		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-			.map_err(|e| AppError::BadRequest(e))?;
-		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
-	} else {
-		Ok(Json(QueryResponse {
-			frames: convert_frames(&frames),
-		})
-		.into_response())
-	}
+	execute_and_respond(&state, Operation::Query, &headers, request, &format_params).await
 }
 
 /// Execute an admin operation.
@@ -157,36 +137,7 @@ pub async fn handle_admin(
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
 ) -> Result<Response, AppError> {
-	// Extract identity from headers
-	let identity = extract_identity(&headers)?;
-
-	// Get params or default
-	let params = match request.params {
-		None => Params::None,
-		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
-	};
-
-	// Execute with timeout
-	let frames = execute_admin(
-		state.actor_system(),
-		state.engine_clone(),
-		request.statements,
-		identity,
-		params,
-		state.query_timeout(),
-	)
-	.await?;
-
-	if format_params.format.as_deref() == Some("json") {
-		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-			.map_err(|e| AppError::BadRequest(e))?;
-		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
-	} else {
-		Ok(Json(QueryResponse {
-			frames: convert_frames(&frames),
-		})
-		.into_response())
-	}
+	execute_and_respond(&state, Operation::Admin, &headers, request, &format_params).await
 }
 
 /// Execute a write command.
@@ -198,59 +149,59 @@ pub async fn handle_admin(
 /// Requires one of:
 /// - `Authorization: Bearer <token>` header
 /// - `X-Api-Key: <key>` header
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///   "statements": ["INSERT INTO users (name) VALUES ($1)"],
-///   "params": {"$1": "Alice"}
-/// }
-/// ```
-///
-/// # Response
-///
-/// ```json
-/// {
-///   "frames": [...]
-/// }
-/// ```
 pub async fn handle_command(
 	State(state): State<AppState>,
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
 ) -> Result<Response, AppError> {
-	// Extract identity from headers
-	let identity = extract_identity(&headers)?;
+	execute_and_respond(&state, Operation::Command, &headers, request, &format_params).await
+}
 
-	// Get params or default
+/// Shared implementation for query, admin, and command handlers.
+async fn execute_and_respond(
+	state: &AppState,
+	operation: Operation,
+	headers: &HeaderMap,
+	request: StatementRequest,
+	format_params: &FormatParams,
+) -> Result<Response, AppError> {
+	let identity = extract_identity(headers)?;
+	let metadata = build_metadata(headers);
 	let params = match request.params {
 		None => Params::None,
 		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
 	};
 
-	// Execute with timeout
-	let frames = execute_command(
+	let ctx = RequestContext {
+		identity,
+		operation,
+		statements: request.statements,
+		params,
+		metadata,
+	};
+
+	let (frames, duration) = execute(
+		state.request_interceptors(),
 		state.actor_system(),
 		state.engine_clone(),
-		request.statements,
-		identity,
-		params,
+		ctx,
 		state.query_timeout(),
 	)
 	.await?;
 
-	if format_params.format.as_deref() == Some("json") {
+	let mut response = if format_params.format.as_deref() == Some("json") {
 		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
 			.map_err(|e| AppError::BadRequest(e))?;
-		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
+		(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response()
 	} else {
-		Ok(Json(QueryResponse {
+		Json(QueryResponse {
 			frames: convert_frames(&frames),
 		})
-		.into_response())
-	}
+		.into_response()
+	};
+	response.headers_mut().insert("x-duration-ms", duration.as_millis().to_string().parse().unwrap());
+	Ok(response)
 }
 
 /// Extract identity from request headers.

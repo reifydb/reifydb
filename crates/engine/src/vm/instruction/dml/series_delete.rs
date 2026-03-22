@@ -78,11 +78,7 @@ pub(crate) fn delete_series<'a>(
 		let namespace_ident = Fragment::internal(namespace.name());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let series_ident = Fragment::internal(series_def.name.clone());
-		let resolved_series = ResolvedSeries::new(
-			series_ident,
-			resolved_namespace,
-			series_def.clone(),
-		);
+		let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
 		let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
 
 		let context = QueryContext {

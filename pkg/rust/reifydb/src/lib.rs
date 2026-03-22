@@ -54,6 +54,11 @@ pub use reifydb_sub_flow::{
 };
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
+#[cfg(feature = "sub_server")]
+pub use reifydb_sub_server::interceptor::{
+	Operation, Protocol, RequestContext, RequestInterceptor, RequestInterceptorChain, RequestMetadata,
+	ResponseContext,
+};
 #[cfg(feature = "sub_server_admin")]
 pub use reifydb_sub_server_admin as sub_server_admin;
 #[cfg(feature = "sub_server_grpc")]

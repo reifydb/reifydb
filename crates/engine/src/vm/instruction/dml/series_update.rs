@@ -5,9 +5,8 @@ use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::encoded::EncodedValues,
+	encoded::{encoded::EncodedValues, key::EncodedKey},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
-	encoded::key::EncodedKey,
 	interface::{
 		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
 		change::{Change, ChangeOrigin, Diff},
@@ -68,11 +67,7 @@ pub(crate) fn update_series<'a>(
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 	let series_ident = Fragment::internal(series_def.name.clone());
-	let resolved_series = ResolvedSeries::new(
-		series_ident,
-		resolved_namespace,
-		series_def.clone(),
-	);
+	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
 	let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
 
 	let context = QueryContext {

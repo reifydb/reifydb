@@ -181,9 +181,7 @@ impl WasmDB {
 			eventbus,
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, schema_registry),
-			RuntimeContext::with_clock(
-				runtime.clock().clone()
-			),
+			RuntimeContext::with_clock(runtime.clock().clone()),
 			Functions::defaults().build(),
 			procedures,
 			Transforms::empty(),

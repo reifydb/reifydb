@@ -6,7 +6,8 @@ use std::sync::Arc;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
-	execute::{execute_admin, execute_command, execute_query},
+	execute::execute,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	remote::{connect_remote, proxy_remote},
 	state::AppState,
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
@@ -18,7 +19,7 @@ use tokio::{
 	sync::{mpsc, watch},
 };
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status, metadata::KeyAndValueRef};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -71,6 +72,18 @@ impl ReifyDbService {
 		}
 
 		Err(GrpcError::Unauthenticated(AuthError::MissingCredentials))
+	}
+
+	fn build_metadata<T>(request: &Request<T>) -> RequestMetadata {
+		let mut meta = RequestMetadata::new(Protocol::Grpc);
+		for key_and_value in request.metadata().iter() {
+			if let KeyAndValueRef::Ascii(key, value) = key_and_value {
+				if let Ok(v) = value.to_str() {
+					meta.insert(key.as_str(), v);
+				}
+			}
+		}
+		meta
 	}
 
 	fn extract_params(params: Option<ProtoParams>) -> Result<Params, GrpcError> {
@@ -184,15 +197,23 @@ impl ReifyDb for ReifyDbService {
 			return Err(Status::not_found("not found"));
 		}
 		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
 
-		let frames = execute_admin(
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Admin,
+			statements: inner.statements,
+			params,
+			metadata,
+		};
+
+		let (frames, _duration) = execute(
+			self.state.request_interceptors(),
 			self.state.actor_system(),
 			self.state.engine_clone(),
-			inner.statements,
-			identity,
-			params,
+			ctx,
 			self.state.query_timeout(),
 		)
 		.await
@@ -205,15 +226,23 @@ impl ReifyDb for ReifyDbService {
 
 	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
 		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
 
-		let frames = execute_command(
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Command,
+			statements: inner.statements,
+			params,
+			metadata,
+		};
+
+		let (frames, _duration) = execute(
+			self.state.request_interceptors(),
 			self.state.actor_system(),
 			self.state.engine_clone(),
-			inner.statements,
-			identity,
-			params,
+			ctx,
 			self.state.query_timeout(),
 		)
 		.await
@@ -226,16 +255,23 @@ impl ReifyDb for ReifyDbService {
 
 	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
 		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
 
-		let statements = inner.statements.join("; ");
-		let frames = execute_query(
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Query,
+			statements: inner.statements,
+			params,
+			metadata,
+		};
+
+		let (frames, _duration) = execute(
+			self.state.request_interceptors(),
 			self.state.actor_system(),
 			self.state.engine_clone(),
-			statements,
-			identity,
-			params,
+			ctx,
 			self.state.query_timeout(),
 		)
 		.await
@@ -253,9 +289,13 @@ impl ReifyDb for ReifyDbService {
 		request: Request<SubscribeRequest>,
 	) -> Result<Response<Self::SubscribeStream>, Status> {
 		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 
-		match create_subscription(&self.state, identity, &inner.query).await.map_err(GrpcError::from)? {
+		match create_subscription(&self.state, identity, &inner.query, metadata)
+			.await
+			.map_err(GrpcError::from)?
+		{
 			CreateSubscriptionResult::Local(subscription_id) => self.subscribe_local(subscription_id).await,
 			CreateSubscriptionResult::Remote {
 				address,

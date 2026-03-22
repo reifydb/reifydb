@@ -7,6 +7,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use getrandom::fill;
 use rand::{Rng as RandRng, SeedableRng, rngs::StdRng};
 
 /// A random number generator that can be either OS-backed or seeded/deterministic.
@@ -35,7 +36,7 @@ impl Rng {
 		match self {
 			Rng::Os => {
 				let mut buf = [0u8; 16];
-				getrandom::fill(&mut buf).expect("getrandom failed");
+				fill(&mut buf).expect("getrandom failed");
 				buf
 			}
 			Rng::Seeded(seeded) => {
@@ -52,7 +53,7 @@ impl Rng {
 		match self {
 			Rng::Os => {
 				let mut buf = [0u8; 10];
-				getrandom::fill(&mut buf).expect("getrandom failed");
+				fill(&mut buf).expect("getrandom failed");
 				buf
 			}
 			Rng::Seeded(seeded) => {

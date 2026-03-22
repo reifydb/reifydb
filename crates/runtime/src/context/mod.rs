@@ -6,7 +6,7 @@
 pub mod clock;
 pub mod rng;
 
-use clock::Clock;
+use clock::{Clock, MockClock};
 use rng::Rng;
 
 /// A container for runtime services (clock, RNG) threaded through the execution engine.
@@ -36,7 +36,6 @@ impl RuntimeContext {
 
 	/// Create a runtime context with a mock clock and seeded RNG (for testing).
 	pub fn testing(initial_millis: u64, seed: u64) -> Self {
-		use clock::MockClock;
 		Self {
 			clock: Clock::Mock(MockClock::from_millis(initial_millis)),
 			rng: Rng::seeded(seed),

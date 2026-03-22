@@ -9,7 +9,8 @@ use reifydb_core::{
 };
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
-	execute::{ExecuteError, execute_admin, execute_command, execute_query},
+	execute::{ExecuteError, execute},
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	state::AppState,
 	subscribe::cleanup_subscription,
@@ -261,18 +262,27 @@ async fn process_message(
 				},
 			};
 			let timeout = state.query_timeout();
+			// TODO: capture upgrade request headers via accept_hdr_async
+			let metadata = RequestMetadata::new(Protocol::WebSocket);
 
-			match execute_admin(
+			let ctx = RequestContext {
+				identity: id,
+				operation: Operation::Admin,
+				statements: a.statements,
+				params,
+				metadata,
+			};
+
+			match execute(
+				state.request_interceptors(),
 				state.actor_system(),
 				state.engine_clone(),
-				a.statements,
-				id,
-				params,
+				ctx,
 				timeout,
 			)
 			.await
 			{
-				Ok(frames) => {
+				Ok((frames, _duration)) => {
 					let (content_type, body) =
 						build_response_body(frames, format.as_deref(), unwrap);
 					Some(Response::admin(&request.id, content_type, body).to_json())
@@ -302,13 +312,28 @@ async fn process_message(
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let query = q.statements.join("; ");
 			let timeout = state.query_timeout();
+			// TODO: capture upgrade request headers via accept_hdr_async
+			let metadata = RequestMetadata::new(Protocol::WebSocket);
 
-			match execute_query(state.actor_system(), state.engine_clone(), query, id, params, timeout)
-				.await
+			let ctx = RequestContext {
+				identity: id,
+				operation: Operation::Query,
+				statements: q.statements,
+				params,
+				metadata,
+			};
+
+			match execute(
+				state.request_interceptors(),
+				state.actor_system(),
+				state.engine_clone(),
+				ctx,
+				timeout,
+			)
+			.await
 			{
-				Ok(frames) => {
+				Ok((frames, _duration)) => {
 					let (content_type, body) =
 						build_response_body(frames, format.as_deref(), unwrap);
 					Some(Response::query(&request.id, content_type, body).to_json())
@@ -339,18 +364,27 @@ async fn process_message(
 				},
 			};
 			let timeout = state.query_timeout();
+			// TODO: capture upgrade request headers via accept_hdr_async
+			let metadata = RequestMetadata::new(Protocol::WebSocket);
 
-			match execute_command(
+			let ctx = RequestContext {
+				identity: id,
+				operation: Operation::Command,
+				statements: c.statements,
+				params,
+				metadata,
+			};
+
+			match execute(
+				state.request_interceptors(),
 				state.actor_system(),
 				state.engine_clone(),
-				c.statements,
-				id,
-				params,
+				ctx,
 				timeout,
 			)
 			.await
 			{
-				Ok(frames) => {
+				Ok((frames, _duration)) => {
 					let (content_type, body) =
 						build_response_body(frames, format.as_deref(), unwrap);
 					Some(Response::command(&request.id, content_type, body).to_json())
@@ -439,6 +473,10 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 			error!("Query stream disconnected unexpectedly");
 			Response::internal_error(id, "INTERNAL_ERROR", "Internal server error").to_json()
 		}
+		ExecuteError::Rejected {
+			code,
+			message,
+		} => Response::rejected(id, &code, &message).to_json(),
 		ExecuteError::Engine {
 			diagnostic,
 			statement,

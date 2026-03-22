@@ -51,6 +51,8 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowBuilder, subsystem::factory::FlowSubsystemFactory};
+#[cfg(feature = "sub_server")]
+use reifydb_sub_server::interceptor::RequestInterceptorChain;
 use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingBuilder;
@@ -158,6 +160,12 @@ impl DatabaseBuilder {
 
 	pub fn with_interceptor_builder(mut self, builder: InterceptorBuilder) -> Self {
 		self.interceptors = builder;
+		self
+	}
+
+	#[cfg(feature = "sub_server")]
+	pub fn with_request_interceptor_chain(self, chain: RequestInterceptorChain) -> Self {
+		self.ioc.register_service(chain);
 		self
 	}
 

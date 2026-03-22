@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use reifydb_core::config::SystemConfig;
 use reifydb_engine::procedure::registry::ProceduresBuilder;
@@ -10,6 +10,8 @@ use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowBuilder;
+#[cfg(feature = "sub_server")]
+use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
 #[cfg(feature = "sub_server_admin")]
 use reifydb_sub_server_admin::{config::AdminConfig, factory::AdminSubsystemFactory};
 #[cfg(feature = "sub_server_grpc")]
@@ -35,6 +37,8 @@ pub struct ServerBuilder {
 	runtime_config: Option<SharedRuntimeConfig>,
 	migrations: Vec<Migration>,
 	interceptors: InterceptorBuilder,
+	#[cfg(feature = "sub_server")]
+	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
@@ -56,6 +60,8 @@ impl ServerBuilder {
 			runtime_config: None,
 			migrations: Vec::new(),
 			interceptors: InterceptorBuilder::new(),
+			#[cfg(feature = "sub_server")]
+			request_interceptors: Vec::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
 			procedures_configurator: None,
@@ -179,6 +185,16 @@ impl ServerBuilder {
 		self
 	}
 
+	/// Register a request-level interceptor.
+	///
+	/// Interceptors are called in registration order for `pre_execute`,
+	/// and in reverse order for `post_execute`.
+	#[cfg(feature = "sub_server")]
+	pub fn with_request_interceptor<I: RequestInterceptor>(mut self, interceptor: I) -> Self {
+		self.request_interceptors.push(Arc::new(interceptor));
+		self
+	}
+
 	#[cfg(feature = "sub_server_admin")]
 	pub fn with_admin(mut self, config: AdminConfig) -> Self {
 		let factory = AdminSubsystemFactory::new(config);
@@ -207,6 +223,12 @@ impl ServerBuilder {
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)
 			.with_stores(multi_store, single_store);
+
+		#[cfg(feature = "sub_server")]
+		{
+			let chain = RequestInterceptorChain::new(self.request_interceptors);
+			database_builder = database_builder.with_request_interceptor_chain(chain);
+		}
 
 		if !self.migrations.is_empty() {
 			database_builder = database_builder.with_migrations(self.migrations);

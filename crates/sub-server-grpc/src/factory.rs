@@ -7,7 +7,10 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::state::{AppState, StateConfig};
+use reifydb_sub_server::{
+	interceptor::RequestInterceptorChain,
+	state::{AppState, StateConfig},
+};
 use reifydb_type::Result;
 
 use crate::subsystem::GrpcSubsystem;
@@ -112,9 +115,10 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			.request_timeout(self.config.request_timeout)
 			.max_connections(self.config.max_connections);
 
+		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
 
-		let state = AppState::new(runtime.actor_system(), engine, query_config);
+		let state = AppState::new(runtime.actor_system(), engine, query_config, interceptors);
 		let subsystem = GrpcSubsystem::new(
 			self.config.bind_addr.clone(),
 			self.config.admin_bind_addr.clone(),

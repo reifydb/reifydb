@@ -38,7 +38,7 @@ use crate::routes::router;
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(pool, engine, QueryConfig::default());
+/// let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
 ///
 /// let mut http = HttpSubsystem::new(
 ///     "0.0.0.0:8090".to_string(),
@@ -241,10 +241,9 @@ impl Subsystem for HttpSubsystem {
 			let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();
 			let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
 
-			// Create admin state with admin_enabled = true
+			// Create admin state with admin_enabled = true, preserving interceptors
 			let admin_config = self.state.config().clone().admin_enabled(true);
-			let admin_state =
-				AppState::new(self.state.actor_system(), self.state.engine_clone(), admin_config);
+			let admin_state = self.state.clone_with_config(admin_config);
 
 			runtime.spawn(async move {
 				let app = router(admin_state);

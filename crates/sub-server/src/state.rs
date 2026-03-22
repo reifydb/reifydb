@@ -11,6 +11,8 @@ use std::time::Duration;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSystem;
 
+use crate::interceptor::RequestInterceptorChain;
+
 /// Configuration for query execution.
 #[derive(Debug, Clone)]
 pub struct StateConfig {
@@ -77,7 +79,7 @@ impl StateConfig {
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(actor_system, engine, QueryConfig::default());
+/// let state = AppState::new(actor_system, engine, QueryConfig::default(), interceptors);
 ///
 /// // In an axum handler:
 /// async fn handle_query(State(state): State<AppState>, ...) {
@@ -91,15 +93,34 @@ pub struct AppState {
 	actor_system: ActorSystem,
 	engine: StandardEngine,
 	config: StateConfig,
+	request_interceptors: RequestInterceptorChain,
 }
 
 impl AppState {
-	/// Create a new AppState with the given actor system, engine, and configuration.
-	pub fn new(actor_system: ActorSystem, engine: StandardEngine, config: StateConfig) -> Self {
+	/// Create a new AppState with the given actor system, engine, configuration,
+	/// and request interceptor chain.
+	pub fn new(
+		actor_system: ActorSystem,
+		engine: StandardEngine,
+		config: StateConfig,
+		request_interceptors: RequestInterceptorChain,
+	) -> Self {
 		Self {
 			actor_system,
 			engine,
 			config,
+			request_interceptors,
+		}
+	}
+
+	/// Clone this state with a different configuration, preserving the
+	/// interceptor chain and other shared resources.
+	pub fn clone_with_config(&self, config: StateConfig) -> Self {
+		Self {
+			actor_system: self.actor_system.clone(),
+			engine: self.engine.clone(),
+			config,
+			request_interceptors: self.request_interceptors.clone(),
 		}
 	}
 
@@ -153,6 +174,12 @@ impl AppState {
 	#[inline]
 	pub fn admin_enabled(&self) -> bool {
 		self.config.admin_enabled
+	}
+
+	/// Get a reference to the request interceptor chain.
+	#[inline]
+	pub fn request_interceptors(&self) -> &RequestInterceptorChain {
+		&self.request_interceptors
 	}
 }
 
