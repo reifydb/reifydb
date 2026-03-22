@@ -34,7 +34,6 @@ use tracing::instrument;
 use super::{
 	returning::{decode_rows_to_columns, evaluate_returning},
 	schema::get_or_create_series_schema,
-	series_key::{column_data_from_u64_keys, value_from_u64, value_to_u64},
 };
 use crate::{
 	Result,
@@ -131,7 +130,7 @@ pub(crate) fn insert_series<'a>(
 			let key_value: u64 = if let Some(key_col) =
 				columns.iter().find(|col| col.name().text() == key_column_name)
 			{
-				match value_to_u64(key_col.data().get_value(row_idx), key) {
+				match series_def.key_to_u64(key_col.data().get_value(row_idx)) {
 					Some(v) => v,
 					None => match key {
 						SeriesKey::DateTime {
@@ -198,9 +197,7 @@ pub(crate) fn insert_series<'a>(
 			}
 
 			// Encode using schema (key at index 0, data columns at index 1+)
-			let key_col_def = series_def.columns.iter().find(|c| c.name == key_column_name);
-			let key_type = key_col_def.map(|c| c.constraint.get_type());
-			let key_value_encoded = value_from_u64(key_value, key_type.as_ref(), key);
+			let key_value_encoded = series_def.key_from_u64(key_value);
 			let mut row = schema.allocate();
 			schema.set_value(&mut row, 0, &key_value_encoded);
 			for (i, value) in data_values.iter().enumerate() {
@@ -232,7 +229,7 @@ pub(crate) fn insert_series<'a>(
 				let mut cols = Vec::with_capacity(1 + data_columns.len());
 				cols.push(Column {
 					name: Fragment::internal(key_column_name),
-					data: column_data_from_u64_keys(vec![key_value], &series_def, key),
+					data: series_def.key_column_data(vec![key_value]),
 				});
 				for (i, col_def) in data_columns.iter().enumerate() {
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);

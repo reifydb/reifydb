@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_type::value::{Value, datetime::DateTime, sumtype::SumTypeId, r#type::Type};
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{
-	column::ColumnDef,
-	id::{NamespaceId, SeriesId},
-	key::PrimaryKeyDef,
+use crate::{
+	interface::catalog::{
+		column::ColumnDef,
+		id::{NamespaceId, SeriesId},
+		key::PrimaryKeyDef,
+	},
+	value::column::data::ColumnData,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -88,6 +91,100 @@ pub struct SeriesDef {
 impl SeriesDef {
 	pub fn name(&self) -> &str {
 		&self.name
+	}
+
+	/// Returns the Type of the key column, if the key column is found in columns.
+	pub fn key_column_type(&self) -> Option<Type> {
+		let key_col_name = self.key.column();
+		self.columns.iter().find(|c| c.name == key_col_name).map(|c| c.constraint.get_type())
+	}
+
+	/// Convert a Value to u64 for series key encoding.
+	///
+	/// Handles both integer and datetime key types. For datetime keys, the nanos-since-epoch
+	/// value is divided by the precision factor to recover the original u64 key.
+	/// Negative values (pre-1970 dates, negative integers) are rejected.
+	pub fn key_to_u64(&self, value: Value) -> Option<u64> {
+		match value {
+			Value::Int1(v) => u64::try_from(v).ok(),
+			Value::Int2(v) => u64::try_from(v).ok(),
+			Value::Int4(v) => u64::try_from(v).ok(),
+			Value::Int8(v) => u64::try_from(v).ok(),
+			Value::Int16(v) => u64::try_from(v).ok(),
+			Value::Uint1(v) => Some(v as u64),
+			Value::Uint2(v) => Some(v as u64),
+			Value::Uint4(v) => Some(v as u64),
+			Value::Uint8(v) => Some(v),
+			Value::Uint16(v) => u64::try_from(v).ok(),
+			Value::DateTime(dt) => {
+				let nanos = dt.to_nanos_since_epoch();
+				if nanos < 0 {
+					return None;
+				}
+				let nanos = nanos as u64;
+				match &self.key {
+					SeriesKey::DateTime {
+						precision,
+						..
+					} => Some(match precision {
+						TimestampPrecision::Second => nanos / 1_000_000_000,
+						TimestampPrecision::Millisecond => nanos / 1_000_000,
+						TimestampPrecision::Microsecond => nanos / 1_000,
+						TimestampPrecision::Nanosecond => nanos,
+					}),
+					_ => Some(nanos),
+				}
+			}
+			_ => None,
+		}
+	}
+
+	/// Convert a u64 key value back to the appropriate Value type for encoding.
+	pub fn key_from_u64(&self, v: u64) -> Value {
+		let ty = self.key_column_type();
+		match ty.as_ref() {
+			Some(Type::Int1) => Value::Int1(v as i8),
+			Some(Type::Int2) => Value::Int2(v as i16),
+			Some(Type::Int4) => Value::Int4(v as i32),
+			Some(Type::Int8) => Value::Int8(v as i64),
+			Some(Type::Uint1) => Value::Uint1(v as u8),
+			Some(Type::Uint2) => Value::Uint2(v as u16),
+			Some(Type::Uint4) => Value::Uint4(v as u32),
+			Some(Type::Uint8) => Value::Uint8(v),
+			Some(Type::Uint16) => Value::Uint16(v as u128),
+			Some(Type::Int16) => Value::Int16(v as i128),
+			Some(Type::DateTime) => {
+				let nanos = match &self.key {
+					SeriesKey::DateTime {
+						precision,
+						..
+					} => match precision {
+						TimestampPrecision::Second => (v as i64) * 1_000_000_000,
+						TimestampPrecision::Millisecond => (v as i64) * 1_000_000,
+						TimestampPrecision::Microsecond => (v as i64) * 1_000,
+						TimestampPrecision::Nanosecond => v as i64,
+					},
+					_ => v as i64,
+				};
+				Value::DateTime(DateTime::from_nanos_since_epoch(nanos))
+			}
+			_ => Value::Uint8(v),
+		}
+	}
+
+	/// Build a ColumnData from u64 key values using the proper key column type.
+	pub fn key_column_data(&self, keys: Vec<u64>) -> ColumnData {
+		let key_type = self.key_column_type();
+		match &key_type {
+			Some(ty) => {
+				let mut data = ColumnData::with_capacity(ty.clone(), keys.len());
+				for k in keys {
+					data.push_value(self.key_from_u64(k));
+				}
+				data
+			}
+			None => ColumnData::uint8(keys),
+		}
 	}
 
 	/// Returns columns excluding the key column (data columns only).

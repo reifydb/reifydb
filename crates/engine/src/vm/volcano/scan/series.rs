@@ -22,7 +22,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	vm::{
-		instruction::dml::{schema::get_or_create_series_schema, series_key::column_data_from_u64_keys},
+		instruction::dml::schema::get_or_create_series_schema,
 		volcano::query::{QueryContext, QueryNode},
 	},
 };
@@ -179,7 +179,7 @@ impl QueryNode for SeriesScanNode {
 		// Key column
 		result_columns.push(Column {
 			name: Fragment::internal(series_def.key.column()),
-			data: column_data_from_u64_keys(key_values, series_def, &series_def.key),
+			data: series_def.key_column_data(key_values),
 		});
 
 		// Tag column (Uint1) if present

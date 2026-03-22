@@ -27,10 +27,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::{
-	returning::evaluate_returning,
-	series_key::{column_data_from_u64_keys, value_from_u64, value_to_u64},
-};
+use super::returning::evaluate_returning;
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -66,8 +63,6 @@ pub(crate) fn update_series<'a>(
 	};
 
 	let has_tag = series_def.tag.is_some();
-	let key_type =
-		series_def.columns.iter().find(|c| c.name == series_def.key.column()).map(|c| c.constraint.get_type());
 
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
@@ -117,7 +112,7 @@ pub(crate) fn update_series<'a>(
 			let key_value = columns
 				.iter()
 				.find(|c| c.name().text() == series_def.key.column())
-				.and_then(|c| value_to_u64(c.data().get_value(row_idx), &series_def.key))
+				.and_then(|c| series_def.key_to_u64(c.data().get_value(row_idx)))
 				.unwrap_or(0);
 
 			let variant_tag = if has_tag {
@@ -169,7 +164,7 @@ pub(crate) fn update_series<'a>(
 			let key_value = columns
 				.iter()
 				.find(|c| c.name().text() == series_def.key.column())
-				.and_then(|c| value_to_u64(c.data().get_value(*row_idx), &series_def.key))
+				.and_then(|c| series_def.key_to_u64(c.data().get_value(*row_idx)))
 				.unwrap_or(0);
 
 			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
@@ -179,7 +174,7 @@ pub(crate) fn update_series<'a>(
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				pre_col_vec.push(Column {
 					name: Fragment::internal(series_def.key.column()),
-					data: column_data_from_u64_keys(vec![key_value], &series_def, &series_def.key),
+					data: series_def.key_column_data(vec![key_value]),
 				});
 				for (i, col_def) in series_def.data_columns().enumerate() {
 					let val = read_schema.get_value(old_vals, i + 1);
@@ -194,7 +189,7 @@ pub(crate) fn update_series<'a>(
 				let mut post_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				post_col_vec.push(Column {
 					name: Fragment::internal(series_def.key.column()),
-					data: column_data_from_u64_keys(vec![key_value], &series_def, &series_def.key),
+					data: series_def.key_column_data(vec![key_value]),
 				});
 				for col in columns.iter() {
 					if col.name().text() != series_def.key.column() && col.name().text() != "tag" {
@@ -228,7 +223,7 @@ pub(crate) fn update_series<'a>(
 					let old = Columns::single_row(
 						iter::once((
 							series_def.key.column(),
-							value_from_u64(key_value, key_type.as_ref(), &series_def.key),
+							series_def.key_from_u64(key_value),
 						))
 						.chain(series_def.data_columns().enumerate().map(|(i, col)| {
 							(col.name.as_str(), read_schema.get_value(old_vals, i + 1))
@@ -237,7 +232,7 @@ pub(crate) fn update_series<'a>(
 					let new = Columns::single_row(
 						iter::once((
 							series_def.key.column(),
-							value_from_u64(key_value, key_type.as_ref(), &series_def.key),
+							series_def.key_from_u64(key_value),
 						))
 						.chain(columns
 							.iter()
