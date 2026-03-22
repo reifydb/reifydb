@@ -2412,6 +2412,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-wasi-bridge"
+version = "0.4.2"
+dependencies = [
+ "reifydb-auth",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-cdc",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-function",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-store-multi",
+ "reifydb-store-single",
+ "reifydb-sub-api",
+ "reifydb-sub-flow",
+ "reifydb-transaction",
+ "reifydb-type",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "reifydb-wasm"
 version = "0.4.2"
 dependencies = [

@@ -347,7 +347,7 @@ impl fmt::Debug for SharedRuntime {
 }
 
 // Keep existing tests but gate them by target
-#[cfg(all(test, reifydb_target = "native"))]
+#[cfg(all(test, not(reifydb_single_threaded)))]
 mod tests {
 	use super::*;
 
@@ -393,7 +393,7 @@ mod tests {
 	}
 }
 
-#[cfg(all(test, reifydb_target = "wasm"))]
+#[cfg(all(test, reifydb_single_threaded))]
 mod wasm_tests {
 	use super::*;
 

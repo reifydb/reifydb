@@ -1,0 +1,34 @@
+[package]
+name = "reifydb-wasi-bridge"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WASI bridge for ReifyDB test suite"
+
+[[bin]]
+name = "bridge"
+path = "src/main.rs"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-engine = { workspace = true }
+reifydb-function = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-auth = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sub-flow = { workspace = true }
+reifydb-cdc = { workspace = true }
+reifydb-rql = { workspace = true }
+reifydb-sub-api = { workspace = true }
+
+serde = { workspace = true }
+serde_json = { workspace = true }

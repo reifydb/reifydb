@@ -9,13 +9,13 @@ use std::{
 
 use cfg_if::cfg_if;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub(crate) mod native;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(reifydb_target = "native")] {
+	if #[cfg(not(reifydb_single_threaded))] {
 		type MutexInnerImpl<T> = native::MutexInner<T>;
 		type MutexGuardInnerImpl<'a, T> = native::MutexGuardInner<'a, T>;
 	} else {
@@ -36,8 +36,8 @@ impl<T: Debug> Debug for Mutex<T> {
 	}
 }
 
-// SAFETY: WASM is single-threaded, so Sync is safe
-#[cfg(reifydb_target = "wasm")]
+// SAFETY: Single-threaded targets (WASM/WASI) don't have real concurrency
+#[cfg(reifydb_single_threaded)]
 unsafe impl<T> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {

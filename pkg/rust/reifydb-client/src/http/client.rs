@@ -9,15 +9,15 @@ use reifydb_type::{
 use reqwest::Client as ReqwestClient;
 
 use crate::{
-	AdminRequest, AdminResponse, AdminResult, CommandRequest, CommandResponse, CommandResult, ErrResponse,
-	QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, WebsocketFrame, params_to_wire,
+	AdminRequest, AdminResponse, AdminResult, ClientFrame, CommandRequest, CommandResponse, CommandResult,
+	ErrResponse, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
 /// HTTP-specific response format (server returns `{ "frames": [...] }`)
 #[derive(Debug, serde::Deserialize)]
 struct HttpFrameResponse {
-	frames: Vec<WebsocketFrame>,
+	frames: Vec<ClientFrame>,
 }
 
 impl HttpFrameResponse {

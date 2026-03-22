@@ -267,14 +267,14 @@ pub struct UnsubscribedResponse {
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebsocketFrame {
+pub struct ClientFrame {
 	pub row_numbers: Vec<u64>,
-	pub columns: Vec<WebsocketColumn>,
+	pub columns: Vec<ClientColumn>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WebsocketColumn {
+pub struct ClientColumn {
 	pub name: String,
 	pub r#type: Type,
 	pub data: Vec<String>,

@@ -7,14 +7,14 @@ use std::{borrow::Borrow, hash::Hash};
 
 use cfg_if::cfg_if;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub(crate) mod native;
 
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
-    if #[cfg(reifydb_target = "native")] {
+    if #[cfg(not(reifydb_single_threaded))] {
 	type MapInnerImpl<K, V> = native::MapInner<K, V>;
     } else {
 	type MapInnerImpl<K, V> = wasm::MapInner<K, V>;

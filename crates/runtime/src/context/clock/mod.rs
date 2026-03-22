@@ -11,11 +11,15 @@
 
 #[cfg(reifydb_target = "native")]
 mod native;
+#[cfg(reifydb_target = "wasi")]
+mod wasi;
 #[cfg(reifydb_target = "wasm")]
 mod wasm;
 
 #[cfg(reifydb_target = "native")]
 pub use native::{Clock, Instant, MockClock};
+#[cfg(reifydb_target = "wasi")]
+pub use wasi::{Clock, Instant, MockClock};
 #[cfg(reifydb_target = "wasm")]
 pub use wasm::{Clock, Instant, MockClock};
 

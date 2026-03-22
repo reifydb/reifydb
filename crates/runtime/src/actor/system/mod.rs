@@ -12,15 +12,15 @@
 //! - **Native**: Rayon thread pool for all actors
 //! - **WASM**: All operations execute inline (synchronously)
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub mod native;
 
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub mod wasm;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub use native::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub use wasm::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
 
 #[derive(Debug, Clone)]

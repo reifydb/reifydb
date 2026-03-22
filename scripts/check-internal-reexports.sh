@@ -14,6 +14,7 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 ALLOWED=(
     "native::"
     "wasm::"
+    "wasi::"
 )
 
 echo "Checking for internal pub use re-exports in /crates/..."

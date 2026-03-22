@@ -8,7 +8,8 @@
 //!
 //! # Supported Targets
 //! - `native` - Default for non-WASM targets
-//! - `wasm` - For wasm32 targets
+//! - `wasm` - For wasm32-unknown-unknown (JS-WASM) targets
+//! - `wasi` - For wasm32-wasip1 (WASI) targets
 //! - `dst` - (Future) Deterministic software testing
 
 use std::env;
@@ -29,21 +30,30 @@ use std::env;
 ///
 /// #[cfg(reifydb_target = "wasm")]
 /// fn wasm_only() { }
+///
+/// #[cfg(reifydb_target = "wasi")]
+/// fn wasi_only() { }
 /// ```
 pub fn emit_target_cfg() {
 	let target = env::var("TARGET").unwrap_or_default();
 
-	let reifydb_target = if target.contains("wasm32") {
-		"wasm"
+	let (reifydb_target, single_threaded) = if target.contains("wasm32") && target.contains("wasi") {
+		("wasi", true)
+	} else if target.contains("wasm32") {
+		("wasm", true)
 	} else {
 		// Default to native for all non-wasm targets
 		// Future: could check for DST-specific target/env var here
-		"native"
+		("native", false)
 	};
 
-	// Emit the check-cfg directive to tell the compiler about our custom cfg
-	println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"native\", \"wasm\", \"dst\"))");
+	// Emit the check-cfg directive to tell the compiler about our custom cfgs
+	println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"native\", \"wasm\", \"wasi\", \"dst\"))");
+	println!("cargo::rustc-check-cfg=cfg(reifydb_single_threaded)");
 	println!("cargo:rustc-cfg=reifydb_target=\"{}\"", reifydb_target);
+	if single_threaded {
+		println!("cargo:rustc-cfg=reifydb_single_threaded");
+	}
 	println!("cargo:rerun-if-changed=build.rs");
 	println!("cargo:rerun-if-env-changed=TARGET");
 }
