@@ -148,6 +148,10 @@ impl Duration {
 		self.nanos
 	}
 
+	pub fn as_nanos(&self) -> i64 {
+		self.nanos
+	}
+
 	pub fn is_positive(&self) -> bool {
 		self.months > 0 || self.days > 0 || self.nanos > 0
 	}

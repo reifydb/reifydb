@@ -37,10 +37,7 @@ fn test_datetime_precision_limits() {
 	assert_eq!(retrieved, dt);
 
 	// Verify nanosecond precision
-	let (sec1, nano1) = dt.to_parts();
-	let (sec2, nano2) = retrieved.to_parts();
-	assert_eq!(sec1, sec2);
-	assert_eq!(nano1, nano2);
+	assert_eq!(dt.to_nanos(), retrieved.to_nanos());
 }
 
 #[test]

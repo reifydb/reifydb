@@ -136,12 +136,9 @@ fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
 			Ok(Value::Date(d))
 		}
 		Type::DateTime => {
-			expect_bytes(ty, 12, data.len())?;
-			let secs = i64::from_le_bytes(data[..8].try_into().unwrap());
-			let nanos = u32::from_le_bytes(data[8..12].try_into().unwrap());
-			let dt = DateTime::from_parts(secs, nanos)
-				.map_err(|e| GrpcError::InvalidDateTime(e.to_string()))?;
-			Ok(Value::DateTime(dt))
+			expect_bytes(ty, 8, data.len())?;
+			let nanos = u64::from_le_bytes(data[..8].try_into().unwrap());
+			Ok(Value::DateTime(DateTime::from_nanos(nanos)))
 		}
 		Type::Time => {
 			expect_bytes(ty, 8, data.len())?;
@@ -339,10 +336,9 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 		}
 		FrameColumnData::DateTime(c) => {
 			let slice: &[DateTime] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 12);
+			let mut buf = Vec::with_capacity(slice.len() * 8);
 			for v in slice {
-				buf.extend_from_slice(&v.timestamp().to_le_bytes());
-				buf.extend_from_slice(&v.nanosecond().to_le_bytes());
+				buf.extend_from_slice(&v.to_nanos().to_le_bytes());
 			}
 			(Type::DateTime.to_u8(), buf, vec![])
 		}
@@ -537,8 +533,7 @@ fn encode_any_value(val: &Value, buf: &mut Vec<u8>) {
 		}
 		Value::Date(d) => buf.extend_from_slice(&d.to_days_since_epoch().to_le_bytes()),
 		Value::DateTime(dt) => {
-			buf.extend_from_slice(&dt.timestamp().to_le_bytes());
-			buf.extend_from_slice(&dt.nanosecond().to_le_bytes());
+			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
 		}
 		Value::Time(t) => buf.extend_from_slice(&t.to_nanos_since_midnight().to_le_bytes()),
 		Value::Duration(d) => {

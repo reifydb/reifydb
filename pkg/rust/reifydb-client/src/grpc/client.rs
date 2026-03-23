@@ -298,12 +298,7 @@ fn value_to_typed_value(value: Value) -> TypedValue {
 		Value::Uuid4(u) => (Type::Uuid4.to_u8() as u32, u.0.as_bytes().to_vec()),
 		Value::Uuid7(u) => (Type::Uuid7.to_u8() as u32, u.0.as_bytes().to_vec()),
 		Value::Date(d) => (Type::Date.to_u8() as u32, d.to_days_since_epoch().to_le_bytes().to_vec()),
-		Value::DateTime(dt) => {
-			let mut buf = Vec::with_capacity(12);
-			buf.extend_from_slice(&dt.timestamp().to_le_bytes());
-			buf.extend_from_slice(&dt.nanosecond().to_le_bytes());
-			(Type::DateTime.to_u8() as u32, buf)
-		}
+		Value::DateTime(dt) => (Type::DateTime.to_u8() as u32, dt.to_nanos().to_le_bytes().to_vec()),
 		Value::Time(t) => (Type::Time.to_u8() as u32, t.to_nanos_since_midnight().to_le_bytes().to_vec()),
 		Value::Duration(d) => {
 			let mut buf = Vec::with_capacity(16);
@@ -483,12 +478,10 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 		}
 		Type::DateTime => {
 			let values: Vec<DateTime> = data
-				.chunks_exact(12)
+				.chunks_exact(8)
 				.map(|chunk| {
-					let secs = i64::from_le_bytes(chunk[..8].try_into().unwrap());
-					let nanos = u32::from_le_bytes(chunk[8..12].try_into().unwrap());
-					DateTime::from_parts(secs, nanos)
-						.unwrap_or_else(|_| DateTime::from_timestamp(0).unwrap())
+					let nanos = u64::from_le_bytes(chunk.try_into().unwrap());
+					DateTime::from_nanos(nanos)
 				})
 				.collect();
 			FrameColumnData::DateTime(TemporalContainer::new(values))
@@ -711,11 +704,9 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			(Value::Date(d), pos + 4)
 		}
 		Type::DateTime => {
-			let secs = i64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
-			let nanos = u32::from_le_bytes(data[pos + 8..pos + 12].try_into().unwrap());
-			let dt = DateTime::from_parts(secs, nanos)
-				.unwrap_or_else(|_| DateTime::from_timestamp(0).unwrap());
-			(Value::DateTime(dt), pos + 12)
+			let nanos = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+			let dt = DateTime::from_nanos(nanos);
+			(Value::DateTime(dt), pos + 8)
 		}
 		Type::Time => {
 			let nanos = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());

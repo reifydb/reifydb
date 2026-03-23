@@ -90,6 +90,15 @@ impl ScalarFunction for DateTimeFromEpochMillis {
 
 		for i in 0..row_count {
 			if let Some(millis) = extract_i64(col.data(), i) {
+				if millis < 0 {
+					return Err(ScalarFunctionError::ExecutionFailed {
+						function: ctx.fragment.clone(),
+						reason: format!(
+							"datetime::from_epoch_millis does not support negative timestamps: {}",
+							millis
+						),
+					});
+				}
 				container.push(DateTime::from_timestamp_millis(millis as u64));
 			} else {
 				container.push_default();

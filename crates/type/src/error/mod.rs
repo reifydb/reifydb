@@ -279,6 +279,7 @@ pub enum TemporalKind {
 	OutOfOrderDurationComponent {
 		component: char,
 	},
+	DateTimeOutOfRange,
 }
 
 #[derive(Debug, Clone, PartialEq)]

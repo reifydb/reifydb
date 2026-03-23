@@ -117,11 +117,7 @@ impl SeriesDef {
 			Value::Uint8(v) => Some(v),
 			Value::Uint16(v) => u64::try_from(v).ok(),
 			Value::DateTime(dt) => {
-				let nanos = dt.to_nanos_since_epoch();
-				if nanos < 0 {
-					return None;
-				}
-				let nanos = nanos as u64;
+				let nanos = dt.to_nanos();
 				match &self.key {
 					SeriesKey::DateTime {
 						precision,
@@ -154,19 +150,19 @@ impl SeriesDef {
 			Some(Type::Uint16) => Value::Uint16(v as u128),
 			Some(Type::Int16) => Value::Int16(v as i128),
 			Some(Type::DateTime) => {
-				let nanos = match &self.key {
+				let nanos: u64 = match &self.key {
 					SeriesKey::DateTime {
 						precision,
 						..
 					} => match precision {
-						TimestampPrecision::Second => (v as i64) * 1_000_000_000,
-						TimestampPrecision::Millisecond => (v as i64) * 1_000_000,
-						TimestampPrecision::Microsecond => (v as i64) * 1_000,
-						TimestampPrecision::Nanosecond => v as i64,
+						TimestampPrecision::Second => v * 1_000_000_000,
+						TimestampPrecision::Millisecond => v * 1_000_000,
+						TimestampPrecision::Microsecond => v * 1_000,
+						TimestampPrecision::Nanosecond => v,
 					},
-					_ => v as i64,
+					_ => v,
 				};
-				Value::DateTime(DateTime::from_nanos_since_epoch(nanos))
+				Value::DateTime(DateTime::from_nanos(nanos))
 			}
 			_ => Value::Uint8(v),
 		}

@@ -339,32 +339,14 @@ impl EncodedIndexLayout {
 		debug_assert_eq!(field.value, Type::DateTime);
 		key.set_valid(index, true);
 
-		let (seconds, nanos) = value.to_parts();
-		let mut sec_bytes = seconds.to_be_bytes();
-		let mut nano_bytes = nanos.to_be_bytes();
-
-		match field.direction {
-			SortDirection::Asc => {
-				sec_bytes[0] ^= 0x80;
-			}
-			SortDirection::Desc => {
-				sec_bytes[0] ^= 0x80;
-				for b in sec_bytes.iter_mut() {
-					*b = !*b;
-				}
-				for b in nano_bytes.iter_mut() {
-					*b = !*b;
-				}
-			}
-		}
+		let nanos = value.to_nanos();
+		let bytes = match field.direction {
+			SortDirection::Asc => nanos.to_be_bytes(),
+			SortDirection::Desc => (!nanos).to_be_bytes(),
+		};
 
 		unsafe {
-			ptr::copy_nonoverlapping(sec_bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
-			ptr::copy_nonoverlapping(
-				nano_bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset + 8),
-				4,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
 	}
 

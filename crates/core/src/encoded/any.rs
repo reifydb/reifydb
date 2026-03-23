@@ -89,9 +89,7 @@ pub fn encode_value(value: &Value) -> Vec<u8> {
 		}
 		Value::DateTime(v) => {
 			let mut b = vec![Type::DateTime.to_u8()];
-			let (seconds, nanos) = v.to_parts();
-			b.extend_from_slice(&seconds.to_le_bytes());
-			b.extend_from_slice(&nanos.to_le_bytes());
+			b.extend_from_slice(&v.to_nanos().to_le_bytes());
 			b
 		}
 		Value::Time(v) => {
@@ -188,9 +186,8 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 			Value::Date(Date::from_days_since_epoch(days).unwrap())
 		}
 		Type::DateTime => {
-			let seconds = i64::from_le_bytes(p[..8].try_into().unwrap());
-			let nanos = u32::from_le_bytes([p[8], p[9], p[10], p[11]]);
-			Value::DateTime(DateTime::from_parts(seconds, nanos).unwrap())
+			let nanos = u64::from_le_bytes(p[..8].try_into().unwrap());
+			Value::DateTime(DateTime::from_nanos(nanos))
 		}
 		Type::Time => {
 			let nanos = u64::from_le_bytes(p[..8].try_into().unwrap());

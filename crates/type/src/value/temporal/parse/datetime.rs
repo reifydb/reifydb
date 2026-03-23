@@ -29,7 +29,7 @@ pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
 	let date = parse_date(date_fragment)?;
 	let time = parse_time(time_fragment)?;
 
-	Ok(DateTime::new(
+	DateTime::new(
 		date.year(),
 		date.month(),
 		date.day(),
@@ -38,7 +38,15 @@ pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
 		time.second(),
 		time.nanosecond(),
 	)
-	.unwrap()) // safe because date and time already checked
+	.ok_or_else(|| {
+		let err: Error = TypeError::Temporal {
+			kind: TemporalKind::DateTimeOutOfRange,
+			message: "datetime out of representable range".into(),
+			fragment,
+		}
+		.into();
+		err
+	})
 }
 
 #[cfg(test)]

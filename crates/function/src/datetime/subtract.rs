@@ -69,24 +69,26 @@ impl ScalarFunction for DateTimeSubtract {
 								let time_nanos = time.to_nanos_since_midnight() as i64
 									- dur.get_nanos();
 
-								let total_seconds =
-									base_days * 86400 + time_nanos / 1_000_000_000;
-								let nano_rem = time_nanos % 1_000_000_000;
-								let (total_seconds, nano_part) = if nano_rem < 0 {
-									(
-										total_seconds - 1,
-										(1_000_000_000 + nano_rem) as u32,
-									)
-								} else {
-									(total_seconds, nano_rem as u32)
-								};
+								let total_nanos = base_days as i128
+									* 86_400_000_000_000i128 + time_nanos
+									as i128;
 
-								match DateTime::from_parts(total_seconds, nano_part) {
-									Ok(result) => container.push(result),
-									Err(_) => container.push_default(),
+								if total_nanos >= 0 && total_nanos <= u64::MAX as i128 {
+									container.push(DateTime::from_nanos(
+										total_nanos as u64,
+									));
+								} else {
+									return Err(ScalarFunctionError::ExecutionFailed {
+										function: ctx.fragment.clone(),
+										reason: "datetime cannot be before Unix epoch".to_string(),
+									});
 								}
 							} else {
-								container.push_default();
+								return Err(ScalarFunctionError::ExecutionFailed {
+									function: ctx.fragment.clone(),
+									reason: "datetime cannot be before Unix epoch"
+										.to_string(),
+								});
 							}
 						}
 						_ => container.push_default(),

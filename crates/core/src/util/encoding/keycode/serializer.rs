@@ -191,7 +191,7 @@ impl KeySerializer {
 
 	/// Extend with DateTime value
 	pub fn extend_datetime(&mut self, datetime: &DateTime) -> &mut Self {
-		self.extend_i64(datetime.to_nanos_since_epoch())
+		self.extend_u64(datetime.to_nanos())
 	}
 
 	/// Extend with Time value

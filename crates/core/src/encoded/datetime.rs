@@ -14,18 +14,9 @@ impl Schema {
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
 		row.set_valid(index, true);
 
-		let (seconds, nanos) = value.to_parts();
+		let nanos = value.to_nanos();
 		unsafe {
-			// Write seconds at offset
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut i64,
-				seconds,
-			);
-			// Write nanos at offset + 8
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize + 8) as *mut u32,
-				nanos,
-			);
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u64, nanos);
 		}
 	}
 
@@ -34,11 +25,8 @@ impl Schema {
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
 		unsafe {
-			// Read i64 seconds at offset
-			let seconds = (row.as_ptr().add(field.offset as usize) as *const i64).read_unaligned();
-			// Read u32 nanos at offset + 8
-			let nanos = (row.as_ptr().add(field.offset as usize + 8) as *const u32).read_unaligned();
-			DateTime::from_parts(seconds, nanos).unwrap()
+			let nanos = (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned();
+			DateTime::from_nanos(nanos)
 		}
 	}
 
@@ -119,23 +107,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_negative_timestamps() {
-		let schema = Schema::testing(&[Type::DateTime]);
-
-		// Test dates before Unix epoch
-		let pre_epoch_datetimes = [
-			DateTime::from_timestamp(-86400).unwrap(),    // 1969-12-31
-			DateTime::from_timestamp(-31536000).unwrap(), // 1969-01-01
-		];
-
-		for datetime in pre_epoch_datetimes {
-			let mut row = schema.allocate();
-			schema.set_datetime(&mut row, 0, datetime.clone());
-			assert_eq!(schema.get_datetime(&row, 0), datetime);
-		}
-	}
-
-	#[test]
 	fn test_mixed_with_other_types() {
 		let schema = Schema::testing(&[Type::DateTime, Type::Boolean, Type::DateTime, Type::Int8]);
 		let mut row = schema.allocate();
@@ -181,9 +152,8 @@ pub mod tests {
 		let retrieved = schema.get_datetime(&row, 0);
 		assert_eq!(retrieved, high_precision);
 
-		let (orig_sec, orig_nanos) = high_precision.to_parts();
-		let (ret_sec, ret_nanos) = retrieved.to_parts();
-		assert_eq!(orig_sec, ret_sec);
+		let orig_nanos = high_precision.to_nanos();
+		let ret_nanos = retrieved.to_nanos();
 		assert_eq!(orig_nanos, ret_nanos);
 	}
 

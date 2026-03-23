@@ -10,47 +10,43 @@ use serde::{
 
 use crate::value::{date::Date, duration::Duration, time::Time};
 
+const NANOS_PER_SECOND: u64 = 1_000_000_000;
+const NANOS_PER_MILLI: u64 = 1_000_000;
+const NANOS_PER_DAY: u64 = 86_400 * NANOS_PER_SECOND;
+
 /// A date and time value with nanosecond precision.
 /// Always in SVTC timezone.
 ///
-/// Internally stored as seconds and nanoseconds since Unix epoch.
+/// Internally stored as nanoseconds since Unix epoch (1970-01-01T00:00:00Z).
+/// Only supports dates from 1970-01-01 onward.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DateTime {
-	// Seconds since Unix epoch (can be negative for dates before 1970)
-	seconds: i64,
-	// Nanosecond part (0 to 999_999_999)
-	nanos: u32,
+	nanos: u64,
 }
 
 impl Default for DateTime {
 	fn default() -> Self {
 		Self {
-			seconds: 0,
 			nanos: 0,
 		} // 1970-01-01T00:00:00.000000000Z
 	}
 }
 
 impl DateTime {
+	/// Create from year, month, day, hour, minute, second, nanosecond.
+	/// Returns None if the date is invalid or before Unix epoch.
 	pub fn new(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
-		// Validate date
 		let date = Date::new(year, month, day)?;
-
-		// Validate time
 		let time = Time::new(hour, min, sec, nano)?;
 
-		// Convert date to seconds since epoch
-		let days = date.to_days_since_epoch() as i64;
-		let date_seconds = days * 86400;
+		let days = date.to_days_since_epoch();
+		if days < 0 {
+			return None; // Before Unix epoch
+		}
 
-		// Convert time to seconds and nanos
-		let time_nanos = time.to_nanos_since_midnight();
-		let time_seconds = (time_nanos / 1_000_000_000) as i64;
-		let time_nano_part = (time_nanos % 1_000_000_000) as u32;
-
+		let nanos = (days as u64).checked_mul(NANOS_PER_DAY)?.checked_add(time.to_nanos_since_midnight())?;
 		Some(Self {
-			seconds: date_seconds + time_seconds,
-			nanos: time_nano_part,
+			nanos,
 		})
 	}
 
@@ -60,146 +56,93 @@ impl DateTime {
 		})
 	}
 
+	/// Create from a primary u64 nanoseconds value.
+	pub fn from_nanos(nanos: u64) -> Self {
+		Self {
+			nanos,
+		}
+	}
+
+	/// Get the raw nanoseconds since epoch.
+	pub fn to_nanos(&self) -> u64 {
+		self.nanos
+	}
+
 	pub fn from_timestamp(timestamp: i64) -> Result<Self, String> {
+		if timestamp < 0 {
+			return Err(format!("DateTime does not support timestamps before Unix epoch: {}", timestamp));
+		}
 		Ok(Self {
-			seconds: timestamp,
-			nanos: 0,
+			nanos: timestamp as u64 * NANOS_PER_SECOND,
 		})
 	}
 
 	pub fn from_timestamp_millis(millis: u64) -> Self {
-		let seconds = (millis / 1000) as i64;
-		let nanos = ((millis % 1000) * 1_000_000) as u32;
 		Self {
-			seconds,
-			nanos,
+			nanos: millis * NANOS_PER_MILLI,
 		}
 	}
 
 	pub fn from_timestamp_nanos(nanos: u128) -> Self {
-		let seconds = (nanos / 1_000_000_000) as i64;
-		let nanos = (nanos % 1_000_000_000) as u32;
-
 		Self {
-			seconds,
-			nanos,
+			nanos: nanos as u64,
 		}
 	}
 
 	pub fn timestamp(&self) -> i64 {
-		self.seconds
+		(self.nanos / NANOS_PER_SECOND) as i64
 	}
 
 	pub fn timestamp_millis(&self) -> i64 {
-		self.seconds * 1000 + (self.nanos / 1_000_000) as i64
+		(self.nanos / NANOS_PER_MILLI) as i64
 	}
 
 	pub fn timestamp_nanos(&self) -> i64 {
-		self.seconds.saturating_mul(1_000_000_000).saturating_add(self.nanos as i64)
+		self.nanos as i64
 	}
 
 	pub fn date(&self) -> Date {
-		// Convert seconds to days
-		let days = (self.seconds / 86400) as i32;
+		let days = (self.nanos / NANOS_PER_DAY) as i32;
 		Date::from_days_since_epoch(days).unwrap()
 	}
 
 	pub fn time(&self) -> Time {
-		// Get the time portion of the day
-		let seconds_in_day = self.seconds % 86400;
-		let seconds_in_day = if seconds_in_day < 0 {
-			seconds_in_day + 86400
-		} else {
-			seconds_in_day
-		} as u64;
-
-		let nanos_in_day = seconds_in_day * 1_000_000_000 + self.nanos as u64;
+		let nanos_in_day = self.nanos % NANOS_PER_DAY;
 		Time::from_nanos_since_midnight(nanos_in_day).unwrap()
 	}
 
-	/// Convert to nanoseconds since Unix epoch for storage
-	pub fn to_nanos_since_epoch(&self) -> i64 {
-		self.timestamp_nanos()
+	/// Convert to nanoseconds since Unix epoch as u128.
+	/// Always succeeds since internal representation is u64.
+	pub fn to_nanos_since_epoch_u128(&self) -> Result<u128, String> {
+		Ok(self.nanos as u128)
 	}
 
-	/// Create from nanoseconds since Unix epoch for storage
-	pub fn from_nanos_since_epoch(nanos: i64) -> Self {
-		let seconds = nanos / 1_000_000_000;
-		let nano_part = nanos % 1_000_000_000;
-
-		// Handle negative nanoseconds
-		let (seconds, nanos) = if nanos < 0 && nano_part != 0 {
-			(seconds - 1, (1_000_000_000 - nano_part.abs()) as u32)
-		} else {
-			(seconds, nano_part.abs() as u32)
-		};
-
-		Self {
-			seconds,
-			nanos,
-		}
-	}
-
-	/// Create from separate seconds and nanoseconds
-	pub fn from_parts(seconds: i64, nanos: u32) -> Result<Self, String> {
-		if nanos >= 1_000_000_000 {
-			return Err(format!("Invalid nanoseconds: {} (must be < 1_000_000_000)", nanos));
-		}
-		Ok(Self {
-			seconds,
-			nanos,
-		})
-	}
-
-	/// Get separate seconds and nanoseconds for storage
-	pub fn to_parts(&self) -> (i64, u32) {
-		(self.seconds, self.nanos)
-	}
-
-	/// Get year component
 	pub fn year(&self) -> i32 {
 		self.date().year()
 	}
 
-	/// Get month component (1-12)
 	pub fn month(&self) -> u32 {
 		self.date().month()
 	}
 
-	/// Get day component (1-31)
 	pub fn day(&self) -> u32 {
 		self.date().day()
 	}
 
-	/// Get hour component (0-23)
 	pub fn hour(&self) -> u32 {
 		self.time().hour()
 	}
 
-	/// Get minute component (0-59)
 	pub fn minute(&self) -> u32 {
 		self.time().minute()
 	}
 
-	/// Get second component (0-59)
 	pub fn second(&self) -> u32 {
 		self.time().second()
 	}
 
-	/// Get nanosecond component (0-999_999_999)
 	pub fn nanosecond(&self) -> u32 {
 		self.time().nanosecond()
-	}
-
-	/// Convert to nanoseconds since Unix epoch as u128.
-	///
-	/// Suitable for passing to `MockClock::set_nanos`.
-	/// Returns an error if the DateTime is before Unix epoch.
-	pub fn to_nanos_since_epoch_u128(&self) -> Result<u128, String> {
-		if self.seconds < 0 {
-			return Err("clock cannot be set before Unix epoch".to_string());
-		}
-		Ok((self.seconds as u128) * 1_000_000_000 + self.nanos as u128)
 	}
 
 	/// Add a Duration to this DateTime, handling calendar arithmetic for months/days.
@@ -221,17 +164,22 @@ impl DateTime {
 			day = max_day;
 		}
 
-		// Convert to seconds since epoch and add day/nanos components
+		// Convert to nanos since epoch and add day/nanos components
 		let base_date = Date::new(year, month as u32, day).ok_or_else(|| {
 			format!("Invalid date after adding duration: {}-{:02}-{:02}", year, month, day)
 		})?;
 		let base_days = base_date.to_days_since_epoch() as i64 + dur.get_days() as i64;
 		let time_nanos = time.to_nanos_since_midnight() as i64 + dur.get_nanos();
 
-		let total_seconds = base_days * 86400 + time_nanos / 1_000_000_000;
-		let nano_part = (time_nanos % 1_000_000_000) as u32;
+		let total_nanos = base_days as i128 * 86_400_000_000_000i128 + time_nanos as i128;
 
-		DateTime::from_parts(total_seconds, nano_part)
+		if total_nanos < 0 {
+			return Err("clock cannot be set before Unix epoch".to_string());
+		}
+
+		Ok(Self {
+			nanos: total_nanos as u64,
+		})
 	}
 }
 
@@ -285,15 +233,12 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 			return Err(E::custom(format!("invalid date format: {}", parts[0])));
 		}
 
-		// Handle negative years
-		let (year_str, month_str, day_str) = if date_parts[0].is_empty() && date_parts.len() == 4 {
-			// Negative year case
-			(format!("-{}", date_parts[1]), date_parts[2], date_parts[3])
-		} else {
-			(date_parts[0].to_string(), date_parts[1], date_parts[2])
-		};
+		let (year_str, month_str, day_str) = (date_parts[0], date_parts[1], date_parts[2]);
 
 		let year = year_str.parse::<i32>().map_err(|_| E::custom(format!("invalid year: {}", year_str)))?;
+		if year < 1970 {
+			return Err(E::custom(format!("DateTime does not support pre-epoch years: {}", year)));
+		}
 		let month = month_str.parse::<u32>().map_err(|_| E::custom(format!("invalid month: {}", month_str)))?;
 		let day = day_str.parse::<u32>().map_err(|_| E::custom(format!("invalid day: {}", day_str)))?;
 
@@ -369,7 +314,6 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_display_millisecond_precision() {
-		// Test various millisecond values
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123000000).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123000000Z");
 
@@ -382,7 +326,6 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_display_microsecond_precision() {
-		// Test various microsecond values
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456000).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123456000Z");
 
@@ -395,7 +338,6 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_display_nanosecond_precision() {
-		// Test various nanosecond values
 		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
 		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123456789Z");
 
@@ -450,23 +392,34 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime_display_boundary_dates() {
-		// Very early date
-		let datetime = DateTime::new(1, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(format!("{}", datetime), "0001-01-01T00:00:00.000000000Z");
-
-		// Far future date
-		let datetime = DateTime::new(9999, 12, 31, 23, 59, 59, 999999999).unwrap();
-		assert_eq!(format!("{}", datetime), "9999-12-31T23:59:59.999999999Z");
-
 		// Century boundaries
-		let datetime = DateTime::new(1900, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(format!("{}", datetime), "1900-01-01T00:00:00.000000000Z");
-
 		let datetime = DateTime::new(2000, 1, 1, 0, 0, 0, 0).unwrap();
 		assert_eq!(format!("{}", datetime), "2000-01-01T00:00:00.000000000Z");
 
 		let datetime = DateTime::new(2100, 1, 1, 0, 0, 0, 0).unwrap();
 		assert_eq!(format!("{}", datetime), "2100-01-01T00:00:00.000000000Z");
+
+		// Max representable date (~year 2554 with u64 nanos)
+		let datetime = DateTime::new(2554, 1, 1, 0, 0, 0, 0).unwrap();
+		assert_eq!(format!("{}", datetime), "2554-01-01T00:00:00.000000000Z");
+
+		// Year 9999 exceeds u64 nanos range
+		assert!(DateTime::new(9999, 12, 31, 23, 59, 59, 999999999).is_none());
+	}
+
+	#[test]
+	fn test_datetime_rejects_pre_epoch() {
+		// Year 1 is before epoch
+		assert!(DateTime::new(1, 1, 1, 0, 0, 0, 0).is_none());
+
+		// 1900 is before epoch
+		assert!(DateTime::new(1900, 1, 1, 0, 0, 0, 0).is_none());
+
+		// 1969 is before epoch
+		assert!(DateTime::new(1969, 12, 31, 23, 59, 59, 999999999).is_none());
+
+		// Negative timestamp
+		assert!(DateTime::from_timestamp(-1).is_err());
 	}
 
 	#[test]
@@ -521,26 +474,25 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_datetime_display_from_parts() {
-		let datetime = DateTime::from_parts(1234567890, 123456789).unwrap();
-		assert_eq!(format!("{}", datetime), "2009-02-13T23:31:30.123456789Z");
-
-		let datetime = DateTime::from_parts(0, 0).unwrap();
-		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
+	fn test_datetime_from_nanos_roundtrip() {
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
+		let nanos = datetime.to_nanos();
+		let recovered = DateTime::from_nanos(nanos);
+		assert_eq!(datetime, recovered);
 	}
 
 	#[test]
 	fn test_datetime_roundtrip() {
 		let test_cases = [
-			(1970, 1, 1, 0, 0, 0, 0),
+			(1970, 1, 1, 0, 0, 0, 0u32),
 			(2024, 3, 15, 14, 30, 45, 123456789),
 			(2000, 2, 29, 23, 59, 59, 999999999),
 		];
 
 		for (y, m, d, h, min, s, n) in test_cases {
 			let datetime = DateTime::new(y, m, d, h, min, s, n).unwrap();
-			let nanos = datetime.to_nanos_since_epoch();
-			let recovered = DateTime::from_nanos_since_epoch(nanos);
+			let nanos = datetime.to_nanos();
+			let recovered = DateTime::from_nanos(nanos);
 
 			assert_eq!(datetime.year(), recovered.year());
 			assert_eq!(datetime.month(), recovered.month());

@@ -45,7 +45,12 @@ impl ScalarFunction for DateTimeAdd {
 					match (dt_container.get(i), dur_container.get(i)) {
 						(Some(dt), Some(dur)) => match dt.add_duration(&dur) {
 							Ok(result) => container.push(result),
-							Err(_) => container.push_default(),
+							Err(reason) => {
+								return Err(ScalarFunctionError::ExecutionFailed {
+									function: ctx.fragment.clone(),
+									reason,
+								});
+							}
 						},
 						_ => container.push_default(),
 					}

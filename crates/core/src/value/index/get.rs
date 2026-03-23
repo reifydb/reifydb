@@ -319,32 +319,18 @@ impl EncodedIndexLayout {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::DateTime);
 
-		let mut sec_bytes = [0u8; 8];
-		let mut nano_bytes = [0u8; 4];
+		let mut bytes = [0u8; 8];
 
 		unsafe {
-			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), sec_bytes.as_mut_ptr(), 8);
-			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 8), nano_bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
-		match field.direction {
-			SortDirection::Asc => {
-				sec_bytes[0] ^= 0x80;
-			}
-			SortDirection::Desc => {
-				for b in sec_bytes.iter_mut() {
-					*b = !*b;
-				}
-				sec_bytes[0] ^= 0x80;
-				for b in nano_bytes.iter_mut() {
-					*b = !*b;
-				}
-			}
-		}
+		let nanos = match field.direction {
+			SortDirection::Asc => u64::from_be_bytes(bytes),
+			SortDirection::Desc => !u64::from_be_bytes(bytes),
+		};
 
-		let seconds = i64::from_be_bytes(sec_bytes);
-		let nanos = u32::from_be_bytes(nano_bytes);
-		DateTime::from_parts(seconds, nanos).unwrap()
+		DateTime::from_nanos(nanos)
 	}
 
 	pub fn get_time(&self, key: &EncodedIndexKey, index: usize) -> Time {

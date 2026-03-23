@@ -90,6 +90,15 @@ impl ScalarFunction for DateTimeFromEpoch {
 
 		for i in 0..row_count {
 			if let Some(ts) = extract_i64(col.data(), i) {
+				if ts < 0 {
+					return Err(ScalarFunctionError::ExecutionFailed {
+						function: ctx.fragment.clone(),
+						reason: format!(
+							"datetime::from_epoch does not support negative timestamps: {}",
+							ts
+						),
+					});
+				}
 				match DateTime::from_timestamp(ts) {
 					Ok(dt) => container.push(dt),
 					Err(_) => container.push_default(),

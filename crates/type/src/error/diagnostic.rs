@@ -854,6 +854,12 @@ impl IntoDiagnostic for TypeError {
 							"invalid: P1D1Y (D before Y), PT1S1H (S before H)".to_string(),
 						],
 					),
+					TemporalKind::DateTimeOutOfRange => (
+						"TEMPORAL_023",
+						Some("datetime value is outside the representable range".to_string()),
+						Some("use a datetime between 1970-01-01T00:00:00Z and 2554-07-21T23:34:33Z".to_string()),
+						vec!["DateTime is stored as nanoseconds since Unix epoch (u64)".to_string()],
+					),
 				};
 
 				Diagnostic {
