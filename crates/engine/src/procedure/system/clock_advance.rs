@@ -4,16 +4,20 @@
 use reifydb_core::value::column::columns::Columns;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, datetime::DateTime, r#type::Type},
+};
 
 use super::{
 	super::{Procedure, context::ProcedureContext, error::ProcedureError},
 	clock_set::extract_millis,
 };
 
-/// Native procedure that advances the mock clock by a number of milliseconds.
+/// Native procedure that advances the mock clock by a duration or number of milliseconds.
 ///
-/// Accepts 1 positional argument: millis (any integer type).
+/// Accepts 1 positional argument: a Duration or integer milliseconds.
 pub struct ClockAdvanceProcedure;
 
 impl ClockAdvanceProcedure {
@@ -24,8 +28,8 @@ impl ClockAdvanceProcedure {
 
 impl Procedure for ClockAdvanceProcedure {
 	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
-		let millis = match ctx.params {
-			Params::Positional(args) if args.len() == 1 => extract_millis("clock::advance", &args[0])?,
+		let arg = match ctx.params {
+			Params::Positional(args) if args.len() == 1 => &args[0],
 			Params::Positional(args) => {
 				return Err(ProcedureError::ArityMismatch {
 					procedure: Fragment::internal("clock::advance"),
@@ -44,9 +48,61 @@ impl Procedure for ClockAdvanceProcedure {
 
 		match &ctx.runtime_context.clock {
 			Clock::Mock(mock) => {
-				mock.advance_millis(millis);
-				let current = mock.now_millis() as i64;
-				Ok(Columns::single_row([("clock_millis", Value::Int8(current))]))
+				match arg {
+					Value::Duration(dur) => {
+						if dur.get_months() == 0 && dur.get_days() == 0 {
+							// Pure nanos-only duration: advance directly
+							let nanos = dur.get_nanos();
+							if nanos >= 0 {
+								mock.advance_nanos(nanos as u128);
+							} else {
+								let current = mock.now_nanos();
+								let abs_nanos = nanos.unsigned_abs() as u128;
+								if abs_nanos > current {
+									return Err(ProcedureError::ExecutionFailed {
+										procedure: Fragment::internal("clock::advance"),
+										reason: "clock cannot be set before Unix epoch".to_string(),
+									});
+								}
+								mock.set_nanos(current - abs_nanos);
+							}
+						} else {
+							// Calendar-aware: go through DateTime arithmetic
+							let current_nanos = mock.now_nanos();
+							let current_dt = DateTime::from_timestamp_nanos(current_nanos);
+							let new_dt =
+								current_dt.add_duration(dur).map_err(|reason| {
+									ProcedureError::ExecutionFailed {
+										procedure: Fragment::internal(
+											"clock::advance",
+										),
+										reason,
+									}
+								})?;
+							let new_nanos = new_dt.to_nanos_since_epoch_u128().map_err(
+								|reason| ProcedureError::ExecutionFailed {
+									procedure: Fragment::internal("clock::advance"),
+									reason,
+								},
+							)?;
+							mock.set_nanos(new_nanos);
+						}
+					}
+					other => {
+						let millis = extract_millis(other).ok_or_else(|| {
+							ProcedureError::InvalidArgumentType {
+								procedure: Fragment::internal("clock::advance"),
+								argument_index: 0,
+								expected: EXPECTED_ADVANCE_TYPES.to_vec(),
+								actual: other.get_type(),
+							}
+						})?;
+						mock.advance_millis(millis);
+					}
+				}
+				let current_nanos = mock.now_nanos();
+				let dt = DateTime::from_timestamp_nanos(current_nanos);
+				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
 			Clock::Real => Err(ProcedureError::ExecutionFailed {
 				procedure: Fragment::internal("clock::advance"),
@@ -55,3 +111,17 @@ impl Procedure for ClockAdvanceProcedure {
 		}
 	}
 }
+
+const EXPECTED_ADVANCE_TYPES: &[Type] = &[
+	Type::Duration,
+	Type::Int1,
+	Type::Int2,
+	Type::Int4,
+	Type::Int8,
+	Type::Int16,
+	Type::Uint1,
+	Type::Uint2,
+	Type::Uint4,
+	Type::Uint8,
+	Type::Uint16,
+];

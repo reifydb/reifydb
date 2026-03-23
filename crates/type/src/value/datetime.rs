@@ -8,7 +8,7 @@ use serde::{
 	de::{self, Visitor},
 };
 
-use crate::value::{date::Date, time::Time};
+use crate::value::{date::Date, duration::Duration, time::Time};
 
 /// A date and time value with nanosecond precision.
 /// Always in SVTC timezone.
@@ -189,6 +189,49 @@ impl DateTime {
 	/// Get nanosecond component (0-999_999_999)
 	pub fn nanosecond(&self) -> u32 {
 		self.time().nanosecond()
+	}
+
+	/// Convert to nanoseconds since Unix epoch as u128.
+	///
+	/// Suitable for passing to `MockClock::set_nanos`.
+	/// Returns an error if the DateTime is before Unix epoch.
+	pub fn to_nanos_since_epoch_u128(&self) -> Result<u128, String> {
+		if self.seconds < 0 {
+			return Err("clock cannot be set before Unix epoch".to_string());
+		}
+		Ok((self.seconds as u128) * 1_000_000_000 + self.nanos as u128)
+	}
+
+	/// Add a Duration to this DateTime, handling calendar arithmetic for months/days.
+	pub fn add_duration(&self, dur: &Duration) -> Result<Self, String> {
+		let date = self.date();
+		let time = self.time();
+		let mut year = date.year();
+		let mut month = date.month() as i32;
+		let mut day = date.day();
+
+		// Add months component
+		let total_months = month + dur.get_months();
+		year += (total_months - 1).div_euclid(12);
+		month = (total_months - 1).rem_euclid(12) + 1;
+
+		// Clamp day to valid range for the new month
+		let max_day = Date::days_in_month(year, month as u32);
+		if day > max_day {
+			day = max_day;
+		}
+
+		// Convert to seconds since epoch and add day/nanos components
+		let base_date = Date::new(year, month as u32, day).ok_or_else(|| {
+			format!("Invalid date after adding duration: {}-{:02}-{:02}", year, month, day)
+		})?;
+		let base_days = base_date.to_days_since_epoch() as i64 + dur.get_days() as i64;
+		let time_nanos = time.to_nanos_since_midnight() as i64 + dur.get_nanos();
+
+		let total_seconds = base_days * 86400 + time_nanos / 1_000_000_000;
+		let nano_part = (time_nanos % 1_000_000_000) as u32;
+
+		DateTime::from_parts(total_seconds, nano_part)
 	}
 }
 

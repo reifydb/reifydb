@@ -7,14 +7,14 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, r#type::Type},
+	value::{Value, datetime::DateTime, r#type::Type},
 };
 
 use super::super::{Procedure, context::ProcedureContext, error::ProcedureError};
 
-/// Native procedure that sets the mock clock to a specific millisecond value.
+/// Native procedure that sets the mock clock to a specific time.
 ///
-/// Accepts 1 positional argument: millis (any integer type).
+/// Accepts 1 positional argument: a DateTime, Duration (since epoch), or integer milliseconds.
 pub struct ClockSetProcedure;
 
 impl ClockSetProcedure {
@@ -25,8 +25,8 @@ impl ClockSetProcedure {
 
 impl Procedure for ClockSetProcedure {
 	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
-		let millis = match ctx.params {
-			Params::Positional(args) if args.len() == 1 => extract_millis("clock::set", &args[0])?,
+		let arg = match ctx.params {
+			Params::Positional(args) if args.len() == 1 => &args[0],
 			Params::Positional(args) => {
 				return Err(ProcedureError::ArityMismatch {
 					procedure: Fragment::internal("clock::set"),
@@ -45,9 +45,47 @@ impl Procedure for ClockSetProcedure {
 
 		match &ctx.runtime_context.clock {
 			Clock::Mock(mock) => {
-				mock.set_millis(millis);
-				let current = mock.now_millis() as i64;
-				Ok(Columns::single_row([("clock_millis", Value::Int8(current))]))
+				match arg {
+					Value::DateTime(dt) => {
+						let nanos = dt.to_nanos_since_epoch_u128().map_err(|reason| {
+							ProcedureError::ExecutionFailed {
+								procedure: Fragment::internal("clock::set"),
+								reason,
+							}
+						})?;
+						mock.set_nanos(nanos);
+					}
+					Value::Duration(dur) => {
+						let epoch = DateTime::default(); // 1970-01-01T00:00:00Z
+						let target = epoch.add_duration(dur).map_err(|reason| {
+							ProcedureError::ExecutionFailed {
+								procedure: Fragment::internal("clock::set"),
+								reason,
+							}
+						})?;
+						let nanos = target.to_nanos_since_epoch_u128().map_err(|reason| {
+							ProcedureError::ExecutionFailed {
+								procedure: Fragment::internal("clock::set"),
+								reason,
+							}
+						})?;
+						mock.set_nanos(nanos);
+					}
+					other => {
+						let millis = extract_millis(other).ok_or_else(|| {
+							ProcedureError::InvalidArgumentType {
+								procedure: Fragment::internal("clock::set"),
+								argument_index: 0,
+								expected: EXPECTED_SET_TYPES.to_vec(),
+								actual: other.get_type(),
+							}
+						})?;
+						mock.set_millis(millis);
+					}
+				}
+				let current_nanos = mock.now_nanos();
+				let dt = DateTime::from_timestamp_nanos(current_nanos);
+				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
 			Clock::Real => Err(ProcedureError::ExecutionFailed {
 				procedure: Fragment::internal("clock::set"),
@@ -57,7 +95,9 @@ impl Procedure for ClockSetProcedure {
 	}
 }
 
-const EXPECTED_TYPES: &[Type] = &[
+const EXPECTED_SET_TYPES: &[Type] = &[
+	Type::DateTime,
+	Type::Duration,
 	Type::Int1,
 	Type::Int2,
 	Type::Int4,
@@ -70,23 +110,18 @@ const EXPECTED_TYPES: &[Type] = &[
 	Type::Uint16,
 ];
 
-pub(crate) fn extract_millis(name: &str, value: &Value) -> Result<u64, ProcedureError> {
+pub(crate) fn extract_millis(value: &Value) -> Option<u64> {
 	match value {
-		Value::Int1(v) => Ok(*v as u64),
-		Value::Int2(v) => Ok(*v as u64),
-		Value::Int4(v) => Ok(*v as u64),
-		Value::Int8(v) => Ok(*v as u64),
-		Value::Int16(v) => Ok(*v as u64),
-		Value::Uint1(v) => Ok(*v as u64),
-		Value::Uint2(v) => Ok(*v as u64),
-		Value::Uint4(v) => Ok(*v as u64),
-		Value::Uint8(v) => Ok(*v),
-		Value::Uint16(v) => Ok(*v as u64),
-		_ => Err(ProcedureError::InvalidArgumentType {
-			procedure: Fragment::internal(name),
-			argument_index: 0,
-			expected: EXPECTED_TYPES.to_vec(),
-			actual: value.get_type(),
-		}),
+		Value::Int1(v) => Some(*v as u64),
+		Value::Int2(v) => Some(*v as u64),
+		Value::Int4(v) => Some(*v as u64),
+		Value::Int8(v) => Some(*v as u64),
+		Value::Int16(v) => Some(*v as u64),
+		Value::Uint1(v) => Some(*v as u64),
+		Value::Uint2(v) => Some(*v as u64),
+		Value::Uint4(v) => Some(*v as u64),
+		Value::Uint8(v) => Some(*v),
+		Value::Uint16(v) => Some(*v as u64),
+		_ => None,
 	}
 }
