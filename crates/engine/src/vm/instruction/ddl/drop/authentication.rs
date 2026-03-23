@@ -33,7 +33,7 @@ pub(crate) fn drop_authentication(
 	};
 
 	// Drop the authentication
-	services.catalog.drop_user_authentication(txn, user.id, method)?;
+	services.catalog.drop_authentication(txn, user.id, method)?;
 
 	Ok(Columns::single_row([
 		("user", Value::Utf8(user_name.to_string())),

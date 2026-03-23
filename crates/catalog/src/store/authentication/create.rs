@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use reifydb_auth::error::AuthError;
 use reifydb_core::{
-	interface::catalog::{user::UserId, user_authentication::UserAuthenticationDef},
-	key::user_authentication::UserAuthenticationKey,
+	interface::catalog::{authentication::AuthenticationDef, user::UserId},
+	key::authentication::AuthenticationKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use serde_json::to_string;
@@ -14,19 +14,19 @@ use serde_json::to_string;
 use crate::{
 	CatalogStore, Result,
 	store::{
+		authentication::schema::authentication::{ID, METHOD, PROPERTIES, SCHEMA, USER_ID},
 		sequence::system::SystemSequence,
-		user_authentication::schema::user_authentication::{ID, METHOD, PROPERTIES, SCHEMA, USER_ID},
 	},
 };
 
 impl CatalogStore {
-	pub(crate) fn create_user_authentication(
+	pub(crate) fn create_authentication(
 		txn: &mut AdminTransaction,
 		user_id: UserId,
 		method: &str,
 		properties: HashMap<String, String>,
-	) -> Result<UserAuthenticationDef> {
-		let id = SystemSequence::next_user_authentication_id(txn)?;
+	) -> Result<AuthenticationDef> {
+		let id = SystemSequence::next_authentication_id(txn)?;
 
 		// Serialize properties as JSON
 		let properties_json = to_string(&properties).map_err(|e| AuthError::SerializeProperties {
@@ -39,9 +39,9 @@ impl CatalogStore {
 		SCHEMA.set_utf8(&mut row, METHOD, method);
 		SCHEMA.set_utf8(&mut row, PROPERTIES, &properties_json);
 
-		txn.set(&UserAuthenticationKey::encoded(id), row)?;
+		txn.set(&AuthenticationKey::encoded(id), row)?;
 
-		Ok(UserAuthenticationDef {
+		Ok(AuthenticationDef {
 			id,
 			user_id,
 			method: method.to_string(),

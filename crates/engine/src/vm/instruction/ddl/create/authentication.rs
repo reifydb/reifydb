@@ -34,7 +34,7 @@ pub(crate) fn create_authentication(
 	let token_value = properties.get("token").cloned();
 
 	// Store in catalog
-	services.catalog.create_user_authentication(txn, user.id, method, properties)?;
+	services.catalog.create_authentication(txn, user.id, method, properties)?;
 
 	let mut row: Vec<(&str, Value)> = vec![
 		("user", Value::Utf8(user_name.to_string())),

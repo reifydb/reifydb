@@ -122,7 +122,7 @@ impl VTableRegistry {
 				Some(SystemCatalog::get_system_dictionary_storage_stats_table_def())
 			}
 			MIGRATIONS => Some(SystemCatalog::get_system_migrations_table_def()),
-			USER_AUTHENTICATIONS => Some(SystemCatalog::get_system_user_authentications_table_def()),
+			AUTHENTICATIONS => Some(SystemCatalog::get_system_authentications_table_def()),
 			CONFIGS => Some(SystemCatalog::get_system_configs_table_def()),
 			_ => None,
 		})
@@ -179,7 +179,7 @@ impl VTableRegistry {
 			SystemCatalog::get_system_ringbuffer_storage_stats_table_def(),
 			SystemCatalog::get_system_dictionary_storage_stats_table_def(),
 			SystemCatalog::get_system_migrations_table_def(),
-			SystemCatalog::get_system_user_authentications_table_def(),
+			SystemCatalog::get_system_authentications_table_def(),
 			SystemCatalog::get_system_configs_table_def(),
 		])
 	}

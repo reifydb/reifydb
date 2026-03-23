@@ -124,7 +124,7 @@ pub mod tests {
 			KeyKind::Policy => {}
 			KeyKind::PolicyOp => {}
 			KeyKind::Migration => {}
-			KeyKind::UserAuthentication => {}
+			KeyKind::Authentication => {}
 			KeyKind::MigrationEvent => {}
 			KeyKind::Config => {}
 			KeyKind::Token => {} /* When adding a new variant, add it here.
@@ -411,8 +411,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_user_authentication() {
-		assert!(!should_exclude_from_cdc(KeyKind::UserAuthentication));
+	fn test_include_authentication() {
+		assert!(!should_exclude_from_cdc(KeyKind::Authentication));
 	}
 
 	#[test]

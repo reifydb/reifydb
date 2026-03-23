@@ -8,6 +8,7 @@ use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::{
 		catalog::{
+			authentication::{AuthenticationDef, AuthenticationId},
 			dictionary::DictionaryDef,
 			flow::{FlowDef, FlowId},
 			handler::HandlerDef,
@@ -26,7 +27,6 @@ use reifydb_core::{
 			table::TableDef,
 			test::TestDef,
 			user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
-			user_authentication::{UserAuthenticationDef, UserAuthenticationId},
 			view::ViewDef,
 		},
 		store::{MultiVersionBatch, MultiVersionValues},
@@ -42,12 +42,12 @@ use tracing::instrument;
 use crate::{
 	TransactionId,
 	change::{
-		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalHandlerChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
-		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalUserAuthenticationChanges, TransactionalUserChanges, TransactionalUserRoleChanges,
+		TransactionalAuthenticationChanges, TransactionalChanges, TransactionalDictionaryChanges,
+		TransactionalFlowChanges, TransactionalHandlerChanges, TransactionalMigrationChanges,
+		TransactionalNamespaceChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
+		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalSeriesChanges,
+		TransactionalSubscriptionChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalTestChanges, TransactionalUserChanges, TransactionalUserRoleChanges,
 		TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
@@ -476,20 +476,20 @@ impl TransactionalMigrationChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalUserAuthenticationChanges for QueryTransaction {
-	fn find_user_authentication(&self, _id: UserAuthenticationId) -> Option<&UserAuthenticationDef> {
+impl TransactionalAuthenticationChanges for QueryTransaction {
+	fn find_authentication(&self, _id: AuthenticationId) -> Option<&AuthenticationDef> {
 		None
 	}
 
-	fn find_user_authentication_by_user_and_method(
+	fn find_authentication_by_user_and_method(
 		&self,
 		_user_id: UserId,
 		_method: &str,
-	) -> Option<&UserAuthenticationDef> {
+	) -> Option<&AuthenticationDef> {
 		None
 	}
 
-	fn is_user_authentication_deleted(&self, _id: UserAuthenticationId) -> bool {
+	fn is_authentication_deleted(&self, _id: AuthenticationId) -> bool {
 		false
 	}
 }

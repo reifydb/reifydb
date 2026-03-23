@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod authentications;
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
@@ -46,7 +47,6 @@ pub mod tables_virtual;
 pub mod tag_variants;
 pub mod tags;
 pub mod types;
-pub mod user_authentications;
 pub mod user_roles;
 pub mod users;
 pub mod versions;

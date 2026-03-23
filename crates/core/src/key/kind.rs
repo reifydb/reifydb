@@ -66,7 +66,7 @@ pub enum KeyKind {
 	PolicyOp = 0x38,
 	Migration = 0x39,
 	MigrationEvent = 0x3A,
-	UserAuthentication = 0x3B,
+	Authentication = 0x3B,
 	Config = 0x3C,
 	Token = 0x3D,
 }
@@ -139,7 +139,7 @@ impl TryFrom<u8> for KeyKind {
 			0x38 => Ok(Self::PolicyOp),
 			0x39 => Ok(Self::Migration),
 			0x3A => Ok(Self::MigrationEvent),
-			0x3B => Ok(Self::UserAuthentication),
+			0x3B => Ok(Self::Authentication),
 			0x3C => Ok(Self::Config),
 			0x3D => Ok(Self::Token),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),

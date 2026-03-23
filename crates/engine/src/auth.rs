@@ -175,7 +175,7 @@ impl AuthService {
 		}
 
 		// Look up stored auth credentials for this method
-		let stored_auth = match self.catalog.find_user_authentication_by_user_and_method(
+		let stored_auth = match self.catalog.find_authentication_by_user_and_method(
 			&mut Transaction::Query(&mut txn),
 			user.id,
 			method,
@@ -258,7 +258,7 @@ impl AuthService {
 				}
 			};
 
-		let stored_auth = match self.catalog.find_user_authentication_by_user_and_method(
+		let stored_auth = match self.catalog.find_authentication_by_user_and_method(
 			&mut Transaction::Query(&mut txn),
 			user.id,
 			&challenge.method,
@@ -334,10 +334,8 @@ impl AuthService {
 			IdentityId::system(),
 		);
 
-		let auths = self
-			.catalog
-			.list_user_authentications_by_method(&mut Transaction::Query(&mut txn), "token")
-			.ok()?;
+		let auths =
+			self.catalog.list_authentications_by_method(&mut Transaction::Query(&mut txn), "token").ok()?;
 
 		let creds = HashMap::from([("token".to_string(), token.to_string())]);
 

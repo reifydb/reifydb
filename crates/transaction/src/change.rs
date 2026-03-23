@@ -5,6 +5,7 @@ use OperationType::Delete;
 use reifydb_core::{
 	encoded::encoded::EncodedValues,
 	interface::catalog::{
+		authentication::{AuthenticationDef, AuthenticationId},
 		dictionary::DictionaryDef,
 		flow::{FlowDef, FlowId},
 		handler::HandlerDef,
@@ -23,7 +24,6 @@ use reifydb_core::{
 		table::TableDef,
 		test::TestDef,
 		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
-		user_authentication::{UserAuthenticationDef, UserAuthenticationId},
 		view::ViewDef,
 	},
 };
@@ -46,7 +46,7 @@ pub trait TransactionalChanges:
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
 	+ TransactionalTestChanges
-	+ TransactionalUserAuthenticationChanges
+	+ TransactionalAuthenticationChanges
 	+ TransactionalUserChanges
 	+ TransactionalUserRoleChanges
 	+ TransactionalViewChanges
@@ -189,16 +189,12 @@ pub trait TransactionalRoleChanges {
 	fn is_role_deleted_by_name(&self, name: &str) -> bool;
 }
 
-pub trait TransactionalUserAuthenticationChanges {
-	fn find_user_authentication(&self, id: UserAuthenticationId) -> Option<&UserAuthenticationDef>;
+pub trait TransactionalAuthenticationChanges {
+	fn find_authentication(&self, id: AuthenticationId) -> Option<&AuthenticationDef>;
 
-	fn find_user_authentication_by_user_and_method(
-		&self,
-		user_id: UserId,
-		method: &str,
-	) -> Option<&UserAuthenticationDef>;
+	fn find_authentication_by_user_and_method(&self, user_id: UserId, method: &str) -> Option<&AuthenticationDef>;
 
-	fn is_user_authentication_deleted(&self, id: UserAuthenticationId) -> bool;
+	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool;
 }
 
 pub trait TransactionalUserRoleChanges {
@@ -260,8 +256,8 @@ pub struct TransactionalDefChanges {
 	pub table_def: Vec<Change<TableDef>>,
 	/// All user definition changes in order (no coalescing)
 	pub user_def: Vec<Change<UserDef>>,
-	/// All user authentication definition changes in order (no coalescing)
-	pub user_authentication_def: Vec<Change<UserAuthenticationDef>>,
+	/// All authentication definition changes in order (no coalescing)
+	pub authentication_def: Vec<Change<AuthenticationDef>>,
 	/// All role definition changes in order (no coalescing)
 	pub role_def: Vec<Change<RoleDef>>,
 	/// All user-role definition changes in order (no coalescing)
@@ -541,7 +537,7 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_user_authentication_def_change(&mut self, change: Change<UserAuthenticationDef>) {
+	pub fn add_authentication_def_change(&mut self, change: Change<AuthenticationDef>) {
 		let id = change
 			.post
 			.as_ref()
@@ -549,8 +545,8 @@ impl TransactionalDefChanges {
 			.map(|a| a.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.user_authentication_def.push(change);
-		self.log.push(Operation::UserAuthentication {
+		self.authentication_def.push(change);
+		self.log.push(Operation::Authentication {
 			id,
 			op,
 		});
@@ -651,8 +647,8 @@ pub enum Operation {
 		id: UserId,
 		op: OperationType,
 	},
-	UserAuthentication {
-		id: UserAuthenticationId,
+	Authentication {
+		id: AuthenticationId,
 		op: OperationType,
 	},
 	Role {
@@ -693,7 +689,7 @@ impl TransactionalDefChanges {
 			test_def: Vec::new(),
 			table_def: Vec::new(),
 			user_def: Vec::new(),
-			user_authentication_def: Vec::new(),
+			authentication_def: Vec::new(),
 			role_def: Vec::new(),
 			user_role_def: Vec::new(),
 			policy_def: Vec::new(),
@@ -790,7 +786,7 @@ impl TransactionalDefChanges {
 		self.test_def.clear();
 		self.table_def.clear();
 		self.user_def.clear();
-		self.user_authentication_def.clear();
+		self.authentication_def.clear();
 		self.role_def.clear();
 		self.user_role_def.clear();
 		self.policy_def.clear();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub(crate) mod authentication;
 pub mod column;
 pub(crate) mod column_property;
 pub(crate) mod config;
@@ -27,6 +28,5 @@ pub(crate) mod sumtype;
 pub(crate) mod table;
 pub(crate) mod token;
 pub(crate) mod user;
-pub(crate) mod user_authentication;
 pub(crate) mod user_role;
 pub mod view;

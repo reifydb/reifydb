@@ -16,22 +16,22 @@ use crate::{
 	vtable::{Batch, VTable, VTableContext},
 };
 
-/// Virtual table that exposes system user authentication information
-pub struct UserAuthentications {
+/// Virtual table that exposes system authentication information
+pub struct Authentications {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
 }
 
-impl UserAuthentications {
+impl Authentications {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_user_authentications_table_def().clone(),
+			definition: SystemCatalog::get_system_authentications_table_def().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for UserAuthentications {
+impl VTable for Authentications {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -42,7 +42,7 @@ impl VTable for UserAuthentications {
 			return Ok(None);
 		}
 
-		let auths = CatalogStore::list_all_user_authentications(txn)?;
+		let auths = CatalogStore::list_all_authentications(txn)?;
 
 		let mut ids = ColumnData::uint8_with_capacity(auths.len());
 		let mut user_ids = ColumnData::uint8_with_capacity(auths.len());

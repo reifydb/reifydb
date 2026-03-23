@@ -7,11 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::user::UserId;
 
-pub type UserAuthenticationId = u64;
+pub type AuthenticationId = u64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct UserAuthenticationDef {
-	pub id: UserAuthenticationId,
+pub struct AuthenticationDef {
+	pub id: AuthenticationId,
 	pub user_id: UserId,
 	pub method: String,
 	pub properties: HashMap<String, String>,

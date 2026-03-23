@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::{catalog::vtable::VTableDef, version::SystemVersion};
 
+pub mod authentications;
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
@@ -50,13 +51,13 @@ pub mod tables_virtual;
 pub mod tag_variants;
 pub mod tags;
 pub mod types;
-pub mod user_authentications;
 pub mod user_roles;
 pub mod users;
 pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
 
+use authentications::authentications;
 use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
 use columns::columns;
@@ -101,7 +102,6 @@ use tables_virtual::virtual_tables;
 use tag_variants::tag_variants;
 use tags::tags;
 use types::types;
-use user_authentications::user_authentications;
 use user_roles::user_roles;
 use users::users;
 use versions::versions;
@@ -588,7 +588,7 @@ pub mod ids {
 				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
 		}
 
-		pub mod user_authentications {
+		pub mod authentications {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -639,7 +639,7 @@ pub mod ids {
 		pub const POLICY: SequenceId = SequenceId(13);
 		pub const MIGRATION: SequenceId = SequenceId(14);
 		pub const MIGRATION_EVENT: SequenceId = SequenceId(15);
-		pub const USER_AUTHENTICATION: SequenceId = SequenceId(16);
+		pub const AUTHENTICATION: SequenceId = SequenceId(16);
 		pub const TEST: SequenceId = SequenceId(17);
 		pub const TOKEN: SequenceId = SequenceId(18);
 
@@ -659,7 +659,7 @@ pub mod ids {
 			POLICY,
 			MIGRATION,
 			MIGRATION_EVENT,
-			USER_AUTHENTICATION,
+			AUTHENTICATION,
 			TEST,
 			TOKEN,
 		];
@@ -713,7 +713,7 @@ pub mod ids {
 		pub const POLICIES: VTableId = VTableId(43);
 		pub const POLICY_OPERATIONS: VTableId = VTableId(44);
 		pub const MIGRATIONS: VTableId = VTableId(45);
-		pub const USER_AUTHENTICATIONS: VTableId = VTableId(46);
+		pub const AUTHENTICATIONS: VTableId = VTableId(46);
 		pub const CONFIGS: VTableId = VTableId(47);
 		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(48);
 		pub const ENUM_VARIANTS: VTableId = VTableId(49);
@@ -766,7 +766,7 @@ pub mod ids {
 			POLICIES,
 			POLICY_OPERATIONS,
 			MIGRATIONS,
-			USER_AUTHENTICATIONS,
+			AUTHENTICATIONS,
 			CONFIGS,
 			VIRTUAL_TABLE_COLUMNS,
 			ENUM_VARIANTS,
@@ -1038,9 +1038,9 @@ impl SystemCatalog {
 		migrations()
 	}
 
-	/// Get the user_authentications virtual table definition
-	pub fn get_system_user_authentications_table_def() -> Arc<VTableDef> {
-		user_authentications()
+	/// Get the authentications virtual table definition
+	pub fn get_system_authentications_table_def() -> Arc<VTableDef> {
+		authentications()
 	}
 
 	/// Get the configs virtual table definition

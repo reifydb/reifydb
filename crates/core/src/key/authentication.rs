@@ -4,26 +4,26 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::user_authentication::UserAuthenticationId,
+	interface::catalog::authentication::AuthenticationId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UserAuthenticationKey {
-	pub user_authentication: UserAuthenticationId,
+pub struct AuthenticationKey {
+	pub authentication: AuthenticationId,
 }
 
-impl UserAuthenticationKey {
-	pub fn new(user_authentication: UserAuthenticationId) -> Self {
+impl AuthenticationKey {
+	pub fn new(authentication: AuthenticationId) -> Self {
 		Self {
-			user_authentication,
+			authentication,
 		}
 	}
 
-	pub fn encoded(user_authentication: UserAuthenticationId) -> EncodedKey {
-		Self::new(user_authentication).encode()
+	pub fn encoded(authentication: AuthenticationId) -> EncodedKey {
+		Self::new(authentication).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -35,12 +35,12 @@ impl UserAuthenticationKey {
 	}
 }
 
-impl EncodableKey for UserAuthenticationKey {
-	const KIND: KeyKind = KeyKind::UserAuthentication;
+impl EncodableKey for AuthenticationKey {
+	const KIND: KeyKind = KeyKind::Authentication;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.user_authentication);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.authentication);
 		serializer.to_encoded_key()
 	}
 
@@ -54,9 +54,9 @@ impl EncodableKey for UserAuthenticationKey {
 		if kind != Self::KIND {
 			return None;
 		}
-		let user_authentication = de.read_u64().ok()?;
+		let authentication = de.read_u64().ok()?;
 		Some(Self {
-			user_authentication,
+			authentication,
 		})
 	}
 }

@@ -5,6 +5,7 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::catalog::{
+		authentication::AuthenticationId,
 		id::{
 			ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
 			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId,
@@ -12,7 +13,6 @@ use reifydb_core::{
 		policy::PolicyId,
 		token::TokenId,
 		user::{RoleId, UserId},
-		user_authentication::UserAuthenticationId,
 	},
 	key::system_sequence::SystemSequenceKey,
 };
@@ -23,8 +23,8 @@ use crate::{
 	Result,
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION, MIGRATION_EVENT, NAMESPACE,
-		POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN, USER, USER_AUTHENTICATION,
+		AUTHENTICATION, COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION,
+		MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN, USER,
 	},
 };
 
@@ -58,7 +58,7 @@ static MIGRATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded
 
 static MIGRATION_EVENT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION_EVENT));
 
-static USER_AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(USER_AUTHENTICATION));
+static AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(AUTHENTICATION));
 
 static TEST_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TEST));
 
@@ -135,8 +135,8 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &MIGRATION_EVENT_KEY, None).map(MigrationEventId)
 	}
 
-	pub(crate) fn next_user_authentication_id(txn: &mut AdminTransaction) -> Result<UserAuthenticationId> {
-		GeneratorU64::next(txn, &USER_AUTHENTICATION_KEY, None).map(|v| v)
+	pub(crate) fn next_authentication_id(txn: &mut AdminTransaction) -> Result<AuthenticationId> {
+		GeneratorU64::next(txn, &AUTHENTICATION_KEY, None).map(|v| v)
 	}
 
 	pub(crate) fn next_test_id(txn: &mut AdminTransaction) -> Result<TestId> {
