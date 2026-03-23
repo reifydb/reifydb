@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	common::{WindowKind, WindowMeasure},
+	common::{WindowKind, WindowSize},
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
@@ -17,8 +17,8 @@ impl WindowOperator {
 	pub fn get_sliding_window_ids(&self, timestamp_or_row_index: u64) -> Vec<u64> {
 		match &self.kind {
 			WindowKind::Sliding {
-				size: WindowMeasure::Duration(duration),
-				slide: WindowMeasure::Duration(slide_duration),
+				size: WindowSize::Duration(duration),
+				slide: WindowSize::Duration(slide_duration),
 			} => {
 				let window_size_ms = duration.as_millis() as u64;
 				let slide_ms = slide_duration.as_millis() as u64;
@@ -42,8 +42,8 @@ impl WindowOperator {
 				}
 			}
 			WindowKind::Sliding {
-				size: WindowMeasure::Count(count),
-				slide: WindowMeasure::Count(slide_count),
+				size: WindowSize::Count(count),
+				slide: WindowSize::Count(slide_count),
 			} => {
 				let row_number = timestamp_or_row_index + 1; // 1-based
 				let min_window = if row_number > *count {
@@ -68,7 +68,7 @@ impl WindowOperator {
 	pub fn set_sliding_window_start(&self, timestamp: u64, window_id: u64) -> u64 {
 		match &self.kind {
 			WindowKind::Sliding {
-				slide: WindowMeasure::Duration(slide_duration),
+				slide: WindowSize::Duration(slide_duration),
 				..
 			} => {
 				let slide_ms = slide_duration.as_millis() as u64;

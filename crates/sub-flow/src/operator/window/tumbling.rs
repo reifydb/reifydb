@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 use reifydb_core::{
-	common::{WindowKind, WindowMeasure},
+	common::{WindowKind, WindowSize},
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
@@ -16,13 +16,13 @@ impl WindowOperator {
 	pub fn get_tumbling_window_id(&self, timestamp: u64) -> u64 {
 		match &self.kind {
 			WindowKind::Tumbling {
-				size: WindowMeasure::Duration(duration),
+				size: WindowSize::Duration(duration),
 			} => {
 				let window_size_ms = duration.as_millis() as u64;
-				(timestamp / window_size_ms) * window_size_ms / window_size_ms
+				timestamp / window_size_ms
 			}
 			WindowKind::Tumbling {
-				size: WindowMeasure::Count(count),
+				size: WindowSize::Count(count),
 			} => timestamp / *count,
 			_ => 0,
 		}

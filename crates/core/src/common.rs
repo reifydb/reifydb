@@ -124,9 +124,29 @@ impl Default for IndexType {
 
 /// How a window is measured — either by time duration or by event count.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum WindowMeasure {
+pub enum WindowSize {
 	Duration(Duration),
 	Count(u64),
+}
+
+impl WindowSize {
+	pub fn is_count(&self) -> bool {
+		matches!(self, WindowSize::Count(_))
+	}
+
+	pub fn as_duration(&self) -> Option<Duration> {
+		match self {
+			WindowSize::Duration(d) => Some(*d),
+			_ => None,
+		}
+	}
+
+	pub fn as_count(&self) -> Option<u64> {
+		match self {
+			WindowSize::Count(c) => Some(*c),
+			_ => None,
+		}
+	}
 }
 
 /// A fully specified window kind. Each variant carries only the parameters
@@ -136,23 +156,45 @@ pub enum WindowKind {
 	/// Fixed-size, non-overlapping windows.
 	/// Each event belongs to exactly one window.
 	Tumbling {
-		size: WindowMeasure,
+		size: WindowSize,
 	},
 	/// Fixed-size, overlapping windows.
 	/// Each event can belong to multiple windows.
 	/// Invariant: slide < size, and both must be the same measure type.
 	Sliding {
-		size: WindowMeasure,
-		slide: WindowMeasure,
+		size: WindowSize,
+		slide: WindowSize,
 	},
 	/// Continuously maintained window of the most recent N events
 	/// or most recent T duration. One window per group. Triggers every event.
 	Rolling {
-		size: WindowMeasure,
+		size: WindowSize,
 	},
 	/// Gap-based window. Stays open while events arrive within `gap`.
 	/// Closes after `gap` duration of inactivity per group key.
 	Session {
 		gap: Duration,
 	},
+}
+
+impl WindowKind {
+	/// Returns the primary size measure for Tumbling, Sliding, and Rolling.
+	/// Returns None for Session (which uses gap instead).
+	pub fn size(&self) -> Option<&WindowSize> {
+		match self {
+			WindowKind::Tumbling {
+				size,
+			} => Some(size),
+			WindowKind::Sliding {
+				size,
+				..
+			} => Some(size),
+			WindowKind::Rolling {
+				size,
+			} => Some(size),
+			WindowKind::Session {
+				..
+			} => None,
+		}
+	}
 }

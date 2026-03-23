@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::{WindowKind, WindowMeasure},
+	common::WindowKind,
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::catalog::flow::FlowNodeId,
 	internal,
@@ -136,8 +136,6 @@ pub struct WindowState {
 	pub event_count: u64,
 	/// Timestamp of last event (for session windows)
 	pub last_event_time: u64,
-	/// Whether this window has been triggered/computed
-	pub is_triggered: bool,
 }
 
 impl WindowState {
@@ -155,7 +153,6 @@ impl Default for WindowState {
 			window_start: 0,
 			event_count: 0,
 			last_event_time: 0,
-			is_triggered: false,
 		}
 	}
 }
@@ -228,52 +225,28 @@ impl WindowOperator {
 
 	/// Whether this is a count-based window
 	pub fn is_count_based(&self) -> bool {
-		match &self.kind {
-			WindowKind::Tumbling {
-				size: WindowMeasure::Count(_),
-			} => true,
-			WindowKind::Sliding {
-				size: WindowMeasure::Count(_),
-				..
-			} => true,
-			WindowKind::Rolling {
-				size: WindowMeasure::Count(_),
-			} => true,
-			_ => false,
-		}
+		self.kind.size().map_or(false, |m| m.is_count())
 	}
 
 	/// Get the window size as duration (if time-based)
 	pub fn size_duration(&self) -> Option<Duration> {
-		match &self.kind {
-			WindowKind::Tumbling {
-				size: WindowMeasure::Duration(d),
-			} => Some(*d),
-			WindowKind::Sliding {
-				size: WindowMeasure::Duration(d),
-				..
-			} => Some(*d),
-			WindowKind::Rolling {
-				size: WindowMeasure::Duration(d),
-			} => Some(*d),
-			_ => None,
-		}
+		self.kind.size().and_then(|m| m.as_duration())
 	}
 
 	/// Get the window size as count (if count-based)
 	pub fn size_count(&self) -> Option<u64> {
-		match &self.kind {
-			WindowKind::Tumbling {
-				size: WindowMeasure::Count(c),
-			} => Some(*c),
-			WindowKind::Sliding {
-				size: WindowMeasure::Count(c),
-				..
-			} => Some(*c),
-			WindowKind::Rolling {
-				size: WindowMeasure::Count(c),
-			} => Some(*c),
-			_ => None,
+		self.kind.size().and_then(|m| m.as_count())
+	}
+
+	fn eval_session(&self, is_aggregate: bool) -> EvalSession<'_> {
+		EvalSession {
+			params: &EMPTY_PARAMS,
+			symbols: &EMPTY_SYMBOL_TABLE,
+			functions: &self.functions,
+			runtime_context: &self.runtime_context,
+			arena: None,
+			identity: IdentityId::root(),
+			is_aggregate_context: is_aggregate,
 		}
 	}
 
@@ -288,15 +261,7 @@ impl WindowOperator {
 			return Ok(vec![Hash128::from(0u128); row_count]);
 		}
 
-		let session = EvalSession {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &self.functions,
-			runtime_context: &self.runtime_context,
-			arena: None,
-			identity: IdentityId::root(),
-			is_aggregate_context: false,
-		};
+		let session = self.eval_session(false);
 		let exec_ctx = session.eval(columns.clone(), row_count);
 
 		let mut group_columns: Vec<Column> = Vec::new();
@@ -595,15 +560,7 @@ impl WindowOperator {
 			return Ok((Vec::new(), Vec::new()));
 		}
 
-		let session = EvalSession {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &self.functions,
-			runtime_context: &self.runtime_context,
-			arena: None,
-			identity: IdentityId::root(),
-			is_aggregate_context: false,
-		};
+		let session = self.eval_session(false);
 		let exec_ctx = session.eval(columns, row_count);
 
 		let mut values = Vec::new();
@@ -623,24 +580,29 @@ impl WindowOperator {
 			return Ok(Columns::new(Vec::new()));
 		}
 
-		let mut columns = Vec::new();
+		let mut builders: Vec<ColumnData> = window_layout
+			.types
+			.iter()
+			.map(|ty| ColumnData::with_capacity(ty.clone(), events.len()))
+			.collect();
 
-		for (field_idx, (field_name, field_type)) in
-			window_layout.names.iter().zip(window_layout.types.iter()).enumerate()
-		{
-			let mut column_data = ColumnData::with_capacity(field_type.clone(), events.len());
-
-			for event in events.iter() {
-				let row = event.to_row(window_layout);
-				let value = row.schema.get_value(&row.encoded, field_idx);
-				column_data.push_value(value);
+		for event in events.iter() {
+			let row = event.to_row(window_layout);
+			for (idx, builder) in builders.iter_mut().enumerate() {
+				let value = row.schema.get_value(&row.encoded, idx);
+				builder.push_value(value);
 			}
-
-			columns.push(Column {
-				name: Fragment::internal(field_name.clone()),
-				data: column_data,
-			});
 		}
+
+		let columns = window_layout
+			.names
+			.iter()
+			.zip(builders.into_iter())
+			.map(|(name, data)| Column {
+				name: Fragment::internal(name.clone()),
+				data,
+			})
+			.collect();
 
 		Ok(Columns::new(columns))
 	}
@@ -668,15 +630,7 @@ impl WindowOperator {
 
 		let columns = self.events_to_columns(window_layout, events)?;
 
-		let agg_session = EvalSession {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &self.functions,
-			runtime_context: &self.runtime_context,
-			arena: None,
-			identity: IdentityId::root(),
-			is_aggregate_context: true,
-		};
+		let agg_session = self.eval_session(true);
 		let exec_ctx = agg_session.eval(columns, events.len());
 
 		let (group_values, group_names) = self.extract_group_values(window_layout, events)?;
@@ -946,33 +900,5 @@ impl Operator for WindowOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		self.parent.pull(txn, rows)
-	}
-}
-
-/// Additional helper methods for window triggering
-impl WindowOperator {
-	/// Check if a window should be triggered (emitted)
-	pub fn should_trigger_window(&self, state: &WindowState, _current_timestamp: u64) -> bool {
-		match &self.kind {
-			// Tumbling: emit on every event (streaming running aggregate)
-			WindowKind::Tumbling {
-				size: WindowMeasure::Duration(_),
-			} => state.event_count > 0,
-			WindowKind::Tumbling {
-				size: WindowMeasure::Count(count),
-			} => state.event_count >= *count,
-			// Sliding: emit on every event
-			WindowKind::Sliding {
-				..
-			} => state.event_count > 0,
-			// Rolling: always trigger on every event
-			WindowKind::Rolling {
-				..
-			} => state.event_count > 0,
-			// Session: emit on every event
-			WindowKind::Session {
-				..
-			} => state.event_count > 0,
-		}
 	}
 }

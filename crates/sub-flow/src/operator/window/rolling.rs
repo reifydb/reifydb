@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	common::{WindowKind, WindowMeasure},
+	common::{WindowKind, WindowSize},
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
@@ -17,7 +17,7 @@ impl WindowOperator {
 	pub fn evict_old_events(&self, state: &mut WindowState, current_timestamp: u64) {
 		match &self.kind {
 			WindowKind::Rolling {
-				size: WindowMeasure::Duration(duration),
+				size: WindowSize::Duration(duration),
 			} => {
 				let window_size_ms = duration.as_millis() as u64;
 				let cutoff_time = current_timestamp.saturating_sub(window_size_ms);
@@ -27,7 +27,7 @@ impl WindowOperator {
 				state.event_count = state.event_count.saturating_sub(evicted_count as u64);
 			}
 			WindowKind::Rolling {
-				size: WindowMeasure::Count(count),
+				size: WindowSize::Count(count),
 			} => {
 				if state.events.len() > *count as usize {
 					let excess = state.events.len() - *count as usize;

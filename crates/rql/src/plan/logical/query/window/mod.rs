@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::{
-	common::{WindowKind, WindowMeasure},
+	common::{WindowKind, WindowSize},
 	internal_error,
 };
 use reifydb_type::fragment::Fragment;
@@ -77,9 +77,9 @@ impl<'bump> Compiler<'bump> {
 			AstWindowKind::Sliding => {
 				let size = Self::build_measure(&parsed)?;
 				let slide = if let Some(d) = parsed.slide_duration {
-					WindowMeasure::Duration(d)
+					WindowSize::Duration(d)
 				} else if let Some(c) = parsed.slide_count {
-					WindowMeasure::Count(c)
+					WindowSize::Count(c)
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "slide parameter is required for sliding windows".to_string(),
@@ -120,12 +120,12 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::Window(window_node))
 	}
 
-	/// Build a WindowMeasure from parsed config (interval or count)
-	fn build_measure(parsed: &ParsedConfig) -> Result<WindowMeasure> {
+	/// Build a WindowSize from parsed config (interval or count)
+	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
 		if let Some(d) = parsed.interval {
-			Ok(WindowMeasure::Duration(d))
+			Ok(WindowSize::Duration(d))
 		} else if let Some(c) = parsed.count {
-			Ok(WindowMeasure::Count(c))
+			Ok(WindowSize::Count(c))
 		} else {
 			Err(AstError::UnexpectedToken {
 				expected: "interval or count must be specified".to_string(),
