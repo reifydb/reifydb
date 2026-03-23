@@ -99,4 +99,4 @@ pub use reifydb_type::{
 	},
 };
 pub mod test;
-pub use session::{Backoff, CommandSession, IntoCommandSession, QuerySession, RetryPolicy, Session};
+pub use session::{Backoff, RetryPolicy, Session};

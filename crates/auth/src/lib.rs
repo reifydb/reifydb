@@ -11,8 +11,8 @@ pub(crate) mod crypto;
 pub mod error;
 pub mod password;
 pub mod registry;
-pub mod session;
 pub mod token;
+pub mod token_store;
 
 pub struct AuthVersion;
 

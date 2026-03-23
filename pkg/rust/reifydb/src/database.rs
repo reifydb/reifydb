@@ -37,10 +37,7 @@ use crate::{
 	Migration,
 	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
-	session::{
-		AdminSession, CommandSession, IntoAdminSession, IntoCommandSession, IntoQuerySession, QuerySession,
-		RetryPolicy, Session,
-	},
+	session::{RetryPolicy, Session},
 	subsystem::Subsystems,
 };
 
@@ -442,16 +439,14 @@ impl Drop for Database {
 	}
 }
 
-impl Session for Database {
-	fn admin_session(&self, session: impl IntoAdminSession) -> Result<AdminSession> {
-		session.into_admin_session(self.engine.clone())
+impl Database {
+	/// Create a session for the given identity.
+	pub fn session(&self, identity: IdentityId) -> Session {
+		Session::trusted(self.engine.clone(), identity)
 	}
 
-	fn command_session(&self, session: impl IntoCommandSession) -> Result<CommandSession> {
-		session.into_command_session(self.engine.clone())
-	}
-
-	fn query_session(&self, session: impl IntoQuerySession) -> Result<QuerySession> {
-		session.into_query_session(self.engine.clone())
+	/// Create a session as the root user.
+	pub fn root_session(&self) -> Session {
+		Session::trusted(self.engine.clone(), IdentityId::root())
 	}
 }

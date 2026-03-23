@@ -13,7 +13,7 @@ use reifydb_auth::{
 	challenge::ChallengeStore,
 	error::AuthError,
 	registry::AuthenticationRegistry,
-	session::{SessionInfo, SessionStore},
+	token_store::{TokenInfo, TokenStore},
 };
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::auth::AuthStep;
@@ -71,7 +71,7 @@ impl Default for AuthServiceConfig {
 pub struct AuthService {
 	catalog: Catalog,
 	auth_registry: Arc<AuthenticationRegistry>,
-	sessions: SessionStore,
+	tokens: TokenStore,
 	challenges: ChallengeStore,
 	multi: MultiTransaction,
 	single: SingleTransaction,
@@ -90,7 +90,7 @@ impl AuthService {
 		Self {
 			catalog,
 			auth_registry,
-			sessions: SessionStore::new(config.session_ttl),
+			tokens: TokenStore::new(config.session_ttl),
 			challenges: ChallengeStore::new(config.challenge_ttl),
 			multi,
 			single,
@@ -160,7 +160,7 @@ impl AuthService {
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
-				self.sessions.insert(token.clone(), user.identity, user.id);
+				self.tokens.insert(token.clone(), user.identity, user.id);
 				Ok(AuthResponse::Authenticated {
 					identity: user.identity,
 					token,
@@ -241,7 +241,7 @@ impl AuthService {
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
-				self.sessions.insert(token.clone(), user.identity, user.id);
+				self.tokens.insert(token.clone(), user.identity, user.id);
 				Ok(AuthResponse::Authenticated {
 					identity: user.identity,
 					token,
@@ -263,9 +263,9 @@ impl AuthService {
 	/// Checks in order:
 	/// 1. Session tokens (in-memory, from login)
 	/// 2. Catalog tokens (persistent, from `CREATE AUTHENTICATION ... { method: token }`)
-	pub fn validate_token(&self, token: &str) -> Option<SessionInfo> {
+	pub fn validate_token(&self, token: &str) -> Option<TokenInfo> {
 		// 1. Check session store (fast, in-memory)
-		if let Some(info) = self.sessions.validate(token) {
+		if let Some(info) = self.tokens.validate(token) {
 			return Some(info);
 		}
 
@@ -274,7 +274,7 @@ impl AuthService {
 	}
 
 	/// Check if a token matches any catalog-stored token authentication.
-	fn validate_catalog_token(&self, token: &str) -> Option<SessionInfo> {
+	fn validate_catalog_token(&self, token: &str) -> Option<TokenInfo> {
 		let provider = self.auth_registry.get("token")?;
 
 		let mut txn = QueryTransaction::new(
@@ -295,9 +295,9 @@ impl AuthService {
 				// Look up the user via materialized catalog (no transaction needed)
 				if let Some(user) = self.catalog.materialized.find_user(auth.user_id) {
 					if user.enabled {
-						return Some(SessionInfo {
+						return Some(TokenInfo {
 							identity: user.identity,
-							user_id: user.id,
+							user: user.id,
 						});
 					}
 				}
@@ -309,17 +309,17 @@ impl AuthService {
 
 	/// Revoke a specific session token.
 	pub fn revoke_token(&self, token: &str) -> bool {
-		self.sessions.revoke(token)
+		self.tokens.revoke(token)
 	}
 
 	/// Revoke all session tokens for a given identity.
 	pub fn revoke_all(&self, identity: IdentityId) {
-		self.sessions.revoke_all(identity);
+		self.tokens.revoke_all(identity);
 	}
 
 	/// Clean up expired sessions and challenges.
 	pub fn cleanup_expired(&self) {
-		self.sessions.cleanup_expired();
+		self.tokens.cleanup_expired();
 		self.challenges.cleanup_expired();
 	}
 }
