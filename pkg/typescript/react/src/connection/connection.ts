@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-import {Client, WsClient, HttpClient, type WsClientOptions} from '@reifydb/client';
+import {Client, WsClient, HttpClient, JsonHttpClient, JsonWebsocketClient, type WsClientOptions} from '@reifydb/client';
 
 interface ConnectionState {
-    client: WsClient | HttpClient | null;
+    client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient | null;
     isConnected: boolean;
     isConnecting: boolean;
     connectionError: string | null;
@@ -14,6 +14,7 @@ interface ConnectionState {
 export interface ConnectionConfig {
     url?: string;
     token?: string;
+    format?: 'json';
     options?: Omit<WsClientOptions, 'url' | 'token'>;
 }
 
@@ -62,23 +63,23 @@ export class Connection {
 
         try {
             const isHttp = connectUrl.startsWith('http://') || connectUrl.startsWith('https://');
+            const isJson = this.config.format === 'json';
+            let client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient;
             if (isHttp) {
-                const client = Client.connect_http(connectUrl, connectOptions);
-                this.updateState({
-                    client,
-                    isConnected: true,
-                    isConnecting: false,
-                    connectionError: null,
-                });
+                client = isJson
+                    ? Client.connect_json_http(connectUrl, connectOptions)
+                    : Client.connect_http(connectUrl, connectOptions);
             } else {
-                const client = await Client.connect_ws(connectUrl, connectOptions);
-                this.updateState({
-                    client,
-                    isConnected: true,
-                    isConnecting: false,
-                    connectionError: null,
-                });
+                client = isJson
+                    ? await Client.connect_json_ws(connectUrl, connectOptions)
+                    : await Client.connect_ws(connectUrl, connectOptions);
             }
+            this.updateState({
+                client,
+                isConnected: true,
+                isConnecting: false,
+                connectionError: null,
+            });
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Failed to connect to ReifyDB';
             console.error('[Connection] Connection failed:', errorMessage, err);
@@ -118,7 +119,7 @@ export class Connection {
         await this.connect(url, options);
     }
 
-    getClient(): WsClient | HttpClient | null {
+    getClient(): WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient | null {
         return this.state.client;
     }
 

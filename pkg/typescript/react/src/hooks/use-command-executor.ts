@@ -47,6 +47,7 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                 abortControllerRef.current.abort();
             }
             abortControllerRef.current = new AbortController();
+            const currentController = abortControllerRef.current;
 
             setState({
                 isExecuting: true,
@@ -62,6 +63,9 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                     // Call client.command which returns FrameResults (array of frames)
                     // Commands and queries both use the same command method
                     const frameResults = await client?.command(statements, params || null, schemas || []) || [];
+
+                    // If this execution was superseded by a newer one, discard results
+                    if (currentController.signal.aborted) return;
 
                     const executionTime = Date.now() - startTime;
                     
@@ -119,6 +123,9 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                         executionTime,
                     });
                 } catch (err) {
+                    // If this execution was superseded by a newer one, discard error
+                    if (currentController.signal.aborted) return;
+
                     const executionTime = Date.now() - startTime;
                     let errorMessage = 'Command execution failed';
 

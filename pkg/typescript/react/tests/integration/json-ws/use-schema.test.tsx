@@ -4,25 +4,25 @@
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
 import {useSchema, getConnection, clearConnection, Client, ConnectionProvider} from '../../../src';
-import {waitForDatabaseHttp} from '../setup';
+import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from 'react';
 
-const TEST_NAMESPACE = `test_schema_http_${crypto.randomUUID().replace(/-/g, '')}`;
+const TEST_NAMESPACE = `test_schema_${crypto.randomUUID().replace(/-/g, '')}`;
 
-describe('useSchema Hook (HTTP)', () => {
-    let setupClient: ReturnType<typeof Client.connect_http> | null = null;
+describe('useSchema Hook (JSON WS)', () => {
+    let setupClient: Awaited<ReturnType<typeof Client.connect_ws>> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
-        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN}} children={children} />
+        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children} />
     );
 
     beforeAll(async () => {
-        await waitForDatabaseHttp();
+        await waitForDatabase();
 
         // Create test namespace and tables
-        const url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
-        setupClient = Client.connect_http(url, {timeoutMs: 10000, token: process.env.REIFYDB_TOKEN});
+        const url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+        setupClient = await Client.connect_ws(url, {timeoutMs: 10000, token: process.env.REIFYDB_TOKEN});
 
         // Create namespace
         await setupClient.admin(`CREATE NAMESPACE ${TEST_NAMESPACE}`, {}, []);
@@ -109,6 +109,7 @@ describe('useSchema Hook (HTTP)', () => {
             } catch (e) {
                 // Ignore cleanup errors
             }
+            setupClient.disconnect();
         }
         await clearConnection();
     });
@@ -271,6 +272,7 @@ describe('useSchema Hook (HTTP)', () => {
 
         expect(columnTypeMap.get('col_uuid4')).toBe('Uuid4');
         expect(columnTypeMap.get('col_uuid7')).toBe('Uuid7');
+        // col_identity_id: IDENTITY_ID - not yet supported
     });
 
     it('should correctly map boolean column type', async () => {

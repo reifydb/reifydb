@@ -3,7 +3,9 @@
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
-use std::{collections::VecDeque, sync::Arc};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Arc;
+use std::collections::VecDeque;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;

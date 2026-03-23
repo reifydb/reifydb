@@ -10,11 +10,11 @@ import React from 'react';
 
 const TEST_NAMESPACE = `test_schema_http_${crypto.randomUUID().replace(/-/g, '')}`;
 
-describe('useSchema Hook (HTTP)', () => {
+describe('useSchema Hook (JSON HTTP)', () => {
     let setupClient: ReturnType<typeof Client.connect_http> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
-        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN}} children={children} />
+        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children} />
     );
 
     beforeAll(async () => {

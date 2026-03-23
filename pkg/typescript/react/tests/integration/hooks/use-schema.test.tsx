@@ -8,7 +8,7 @@ import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from 'react';
 
-const TEST_NAMESPACE = `test_schema_${Date.now()}`;
+const TEST_NAMESPACE = `test_schema_${crypto.randomUUID().replace(/-/g, '')}`;
 
 describe('useSchema Hook', () => {
     let setupClient: Awaited<ReturnType<typeof Client.connect_ws>> | null = null;
