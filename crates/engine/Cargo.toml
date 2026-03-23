@@ -32,6 +32,7 @@ reifydb-transaction = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-wasm = { workspace = true }
+rand = { workspace = true }
 thiserror = { workspace = true }
 bumpalo = { workspace = true }
 libloading = { workspace = true }

@@ -12,8 +12,8 @@ default = []
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
-rand = { workspace = true }
 argon2 = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }

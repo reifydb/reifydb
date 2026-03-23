@@ -1837,8 +1837,8 @@ name = "reifydb-auth"
 version = "0.4.2"
 dependencies = [
  "argon2",
- "rand 0.10.0",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-type",
  "subtle",
  "thiserror",
@@ -1961,6 +1961,7 @@ dependencies = [
  "libloading",
  "once_cell",
  "postcard",
+ "rand 0.10.0",
  "reifydb-abi",
  "reifydb-auth",
  "reifydb-build",
@@ -2884,6 +2885,7 @@ dependencies = [
  "reifydb",
  "reifydb-client",
  "reifydb-testing",
+ "reifydb-type",
  "test_each_file",
  "tokio",
 ]

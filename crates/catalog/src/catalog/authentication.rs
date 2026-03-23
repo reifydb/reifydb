@@ -26,6 +26,25 @@ impl Catalog {
 		Ok(auth)
 	}
 
+	#[instrument(name = "catalog::user_authentication::find_by_user_and_method", level = "trace", skip(self, txn))]
+	pub fn find_user_authentication_by_user_and_method(
+		&self,
+		txn: &mut Transaction<'_>,
+		user_id: UserId,
+		method: &str,
+	) -> Result<Option<UserAuthenticationDef>> {
+		CatalogStore::find_user_authentication_by_user_and_method(txn, user_id, method)
+	}
+
+	#[instrument(name = "catalog::user_authentication::list_by_method", level = "trace", skip(self, txn))]
+	pub fn list_user_authentications_by_method(
+		&self,
+		txn: &mut Transaction<'_>,
+		method: &str,
+	) -> Result<Vec<UserAuthenticationDef>> {
+		CatalogStore::list_user_authentications_by_method(txn, method)
+	}
+
 	#[instrument(name = "catalog::user_authentication::drop", level = "debug", skip(self, txn))]
 	pub fn drop_user_authentication(
 		&self,

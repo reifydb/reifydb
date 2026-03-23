@@ -16,7 +16,8 @@ use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
-		bootstrap_config_defaults, bootstrap_system_procedures, load_materialized_catalog, load_schema_registry,
+		bootstrap_config_defaults, bootstrap_root_user, bootstrap_system_procedures, load_materialized_catalog,
+		load_schema_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
@@ -69,7 +70,7 @@ impl Bridge {
 				.async_threads(1)
 				.compute_threads(1)
 				.compute_max_in_flight(8)
-				.mock_clock(0),
+				.deterministic_testing(0),
 		);
 
 		let actor_system = runtime.actor_system();
@@ -114,6 +115,7 @@ impl Bridge {
 		let schema_registry = SchemaRegistry::new(single.clone());
 
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
+		bootstrap_root_user(&multi, &single, &materialized_catalog, &eventbus)?;
 		bootstrap_config_defaults(&multi, &single, &materialized_catalog, &eventbus)?;
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &schema_registry, &eventbus)?;
 		load_schema_registry(&multi, &single, &schema_registry)?;
@@ -127,7 +129,7 @@ impl Bridge {
 			eventbus,
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, schema_registry),
-			RuntimeContext::with_clock(runtime.clock().clone()),
+			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 			Functions::defaults().build(),
 			procedures,
 			Transforms::empty(),

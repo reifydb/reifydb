@@ -20,9 +20,12 @@ use reifydb_type::{
 };
 
 use crate::{
-	Result,
+	CatalogStore, Result,
 	catalog::{Catalog, namespace::NamespaceToCreate, procedure::ProcedureToCreate},
-	materialized::{MaterializedCatalog, load::MaterializedCatalogLoader},
+	materialized::{
+		MaterializedCatalog,
+		load::{MaterializedCatalogLoader, user::load_users},
+	},
 	schema::{SchemaRegistry, load::SchemaRegistryLoader},
 };
 
@@ -127,6 +130,44 @@ pub fn bootstrap_system_procedures(
 	// Procedures are not loaded from storage at startup, so update MaterializedCatalog
 	// directly so this procedure is visible to CALL statements in the current session.
 	catalog.set_procedure(proc_def.id, commit_version, Some(proc_def));
+
+	Ok(())
+}
+
+/// Bootstrap the root user in the catalog.
+///
+/// Creates a user named "root" with `IdentityId::root()` as its identity.
+/// This makes root a real catalog user that can have authentication attached
+/// (e.g., `CREATE AUTHENTICATION FOR root { method: token; token: '...' }`).
+///
+/// Skips creation if the root user already exists.
+pub fn bootstrap_root_user(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &MaterializedCatalog,
+	eventbus: &EventBus,
+) -> Result<()> {
+	// Check if root user already exists via storage scan
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	if CatalogStore::find_user_by_name(&mut Transaction::Query(&mut qt), "root")?.is_some() {
+		return Ok(());
+	}
+	drop(qt);
+
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+	)?;
+
+	CatalogStore::create_user_with_identity(&mut admin, "root", IdentityId::root())?;
+	admin.commit()?;
+
+	// Reload materialized catalog to pick up the new user
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	load_users(&mut Transaction::Query(&mut qt), catalog)?;
 
 	Ok(())
 }

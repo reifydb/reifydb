@@ -91,6 +91,7 @@ pub async fn handle_connection(
 
 	// Connection starts with anonymous identity; Auth message upgrades it
 	let mut identity: Option<IdentityId> = Some(IdentityId::anonymous());
+	let mut auth_token: Option<String> = None;
 
 	// Track remote subscription proxy tasks (not registered in registry/poller)
 	let mut remote_tasks: HashMap<String, JoinHandle<()>> = HashMap::new();
@@ -134,6 +135,7 @@ pub async fn handle_connection(
 							&text,
 							&state,
 							&mut identity,
+							&mut auth_token,
 							connection_id,
 							&registry,
 							&poller,
@@ -213,6 +215,7 @@ async fn process_message(
 	text: &str,
 	state: &AppState,
 	identity: &mut Option<IdentityId>,
+	auth_token: &mut Option<String>,
 	connection_id: ConnectionId,
 	registry: &SubscriptionRegistry,
 	poller: &SubscriptionPoller,
@@ -228,13 +231,16 @@ async fn process_message(
 	};
 
 	match request.payload {
-		RequestPayload::Auth(auth) => match extract_identity_from_ws_auth(auth.token.as_deref()) {
-			Ok(id) => {
-				*identity = Some(id);
-				Some(Response::auth(&request.id).to_json())
+		RequestPayload::Auth(auth) => {
+			match extract_identity_from_ws_auth(state.auth_service(), auth.token.as_deref()) {
+				Ok(id) => {
+					*identity = Some(id);
+					*auth_token = auth.token;
+					Some(Response::auth(&request.id).to_json())
+				}
+				Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
 			}
-			Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
-		},
+		}
 
 		RequestPayload::Admin(_) if !state.admin_enabled() => {
 			return Some(build_error(&request.id, "NOT_FOUND", "Unknown request type"));
@@ -262,8 +268,7 @@ async fn process_message(
 				},
 			};
 			let timeout = state.query_timeout();
-			// TODO: capture upgrade request headers via accept_hdr_async
-			let metadata = RequestMetadata::new(Protocol::WebSocket);
+			let metadata = build_ws_metadata(auth_token);
 
 			let ctx = RequestContext {
 				identity: id,
@@ -314,8 +319,7 @@ async fn process_message(
 				},
 			};
 			let timeout = state.query_timeout();
-			// TODO: capture upgrade request headers via accept_hdr_async
-			let metadata = RequestMetadata::new(Protocol::WebSocket);
+			let metadata = build_ws_metadata(auth_token);
 
 			let ctx = RequestContext {
 				identity: id,
@@ -366,8 +370,7 @@ async fn process_message(
 				},
 			};
 			let timeout = state.query_timeout();
-			// TODO: capture upgrade request headers via accept_hdr_async
-			let metadata = RequestMetadata::new(Protocol::WebSocket);
+			let metadata = build_ws_metadata(auth_token);
 
 			let ctx = RequestContext {
 				identity: id,
@@ -401,6 +404,7 @@ async fn process_message(
 				&request.id,
 				sub,
 				*identity,
+				auth_token,
 				connection_id,
 				state,
 				registry,
@@ -461,6 +465,15 @@ async fn process_message(
 			}
 		}
 	}
+}
+
+/// Build `RequestMetadata` for a WebSocket request, injecting the stored auth token if present.
+fn build_ws_metadata(auth_token: &Option<String>) -> RequestMetadata {
+	let mut metadata = RequestMetadata::new(Protocol::WebSocket);
+	if let Some(token) = auth_token {
+		metadata.insert("authorization", format!("Bearer {}", token));
+	}
+	metadata
 }
 
 /// Convert an ExecuteError to a JSON response string.

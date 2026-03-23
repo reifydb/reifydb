@@ -56,6 +56,7 @@ pub(crate) async fn handle_subscribe(
 	request_id: &str,
 	sub: SubscribeRequest,
 	identity: Option<IdentityId>,
+	auth_token: &Option<String>,
 	connection_id: ConnectionId,
 	state: &AppState,
 	registry: &SubscriptionRegistry,
@@ -82,7 +83,7 @@ pub(crate) async fn handle_subscribe(
 			address,
 			query,
 		}) => {
-			let remote_sub = match connect_remote(&address, &query).await {
+			let remote_sub = match connect_remote(&address, &query, auth_token.as_deref()).await {
 				Ok(s) => s,
 				Err(e) => {
 					return Some(Response::internal_error(

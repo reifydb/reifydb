@@ -71,14 +71,13 @@ impl RemoteRegistry {
 			let _ = tx.send(result);
 		});
 
-		let mut client = rx.recv().map_err(|_| {
+		let client = rx.recv().map_err(|_| {
 			Error(Diagnostic {
 				code: "REMOTE_002".to_string(),
 				message: "remote connect channel closed".to_string(),
 				..Default::default()
 			})
 		})??;
-		client.authenticate("service-token");
 		{
 			let mut cache = self.connections.write().unwrap();
 			cache.entry(address.to_string()).or_insert(client.clone());

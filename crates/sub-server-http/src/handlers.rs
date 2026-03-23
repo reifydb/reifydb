@@ -166,7 +166,7 @@ async fn execute_and_respond(
 	request: StatementRequest,
 	format_params: &FormatParams,
 ) -> Result<Response, AppError> {
-	let identity = extract_identity(headers)?;
+	let identity = extract_identity(state, headers)?;
 	let metadata = build_metadata(headers);
 	let params = match request.params {
 		None => Params::None,
@@ -210,12 +210,12 @@ async fn execute_and_respond(
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
 /// 2. Falls back to anonymous identity
-fn extract_identity(headers: &HeaderMap) -> Result<IdentityId, AppError> {
+fn extract_identity(state: &AppState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
 	// Try Authorization header
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 
-		return extract_identity_from_auth_header(auth_str).map_err(AppError::Auth);
+		return extract_identity_from_auth_header(state.auth_service(), auth_str).map_err(AppError::Auth);
 	}
 
 	// No credentials provided — anonymous access

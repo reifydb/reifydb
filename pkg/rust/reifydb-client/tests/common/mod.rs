@@ -29,6 +29,11 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 #[allow(dead_code)]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
+	server.admin_as_root(
+		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+		reifydb_type::params::Params::None,
+	)
+	.unwrap();
 	Ok(server.sub_server_ws().unwrap().admin_port().unwrap())
 }
 
@@ -36,6 +41,11 @@ pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Databa
 #[allow(dead_code)]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
+	server.admin_as_root(
+		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+		reifydb_type::params::Params::None,
+	)
+	.unwrap();
 	Ok(server.sub_server_grpc().unwrap().admin_port().unwrap())
 }
 
@@ -43,6 +53,11 @@ pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Data
 #[allow(dead_code)]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
+	server.admin_as_root(
+		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+		reifydb_type::params::Params::None,
+	)
+	.unwrap();
 	Ok(server.sub_server_http().unwrap().admin_port().unwrap())
 }
 

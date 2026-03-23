@@ -83,6 +83,11 @@ impl testscript::runner::Runner for GrpcRunner {
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
+		server.admin_as_root(
+			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+			reifydb_type::params::Params::None,
+		)
+		.unwrap();
 
 		let grpc = server.sub_server_grpc().unwrap();
 		let port = grpc.port().unwrap();

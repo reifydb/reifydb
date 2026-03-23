@@ -44,4 +44,24 @@ impl CatalogStore {
 
 		Ok(None)
 	}
+
+	/// List all user authentications for a given method (e.g., "token").
+	pub(crate) fn list_user_authentications_by_method(
+		rx: &mut Transaction<'_>,
+		method: &str,
+	) -> Result<Vec<UserAuthenticationDef>> {
+		let mut stream = rx.range(UserAuthenticationKey::full_scan(), 1024)?;
+		let mut results = Vec::new();
+
+		while let Some(entry) = stream.next() {
+			let multi = entry?;
+			let auth_method =
+				user_authentication::SCHEMA.get_utf8(&multi.values, user_authentication::METHOD);
+			if auth_method == method {
+				results.push(convert_user_authentication(multi));
+			}
+		}
+
+		Ok(results)
+	}
 }

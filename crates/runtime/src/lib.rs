@@ -68,6 +68,8 @@ pub struct SharedRuntimeConfig {
 	pub compute_max_in_flight: usize,
 	/// Clock for time operations (defaults to real system clock)
 	pub clock: Clock,
+	/// Random number generator (defaults to OS entropy)
+	pub rng: context::rng::Rng,
 }
 
 impl Default for SharedRuntimeConfig {
@@ -77,6 +79,7 @@ impl Default for SharedRuntimeConfig {
 			compute_threads: 1,
 			compute_max_in_flight: 32,
 			clock: Clock::Real,
+			rng: context::rng::Rng::default(),
 		}
 	}
 }
@@ -100,15 +103,11 @@ impl SharedRuntimeConfig {
 		self
 	}
 
-	/// Use a mock clock starting at the given milliseconds.
-	pub fn mock_clock(mut self, initial_millis: u64) -> Self {
-		self.clock = Clock::Mock(MockClock::from_millis(initial_millis));
-		self
-	}
-
-	/// Use a custom clock.
-	pub fn clock(mut self, clock: Clock) -> Self {
-		self.clock = clock;
+	/// Configure for deterministic testing with the given seed.
+	/// Sets a mock clock starting at `seed` milliseconds and a seeded RNG.
+	pub fn deterministic_testing(mut self, seed: u64) -> Self {
+		self.clock = Clock::Mock(MockClock::from_millis(seed));
+		self.rng = context::rng::Rng::seeded(seed);
 		self
 	}
 
@@ -185,6 +184,7 @@ struct SharedRuntimeInner {
 	tokio: ManuallyDrop<Runtime>,
 	system: ActorSystem,
 	clock: Clock,
+	rng: context::rng::Rng,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -205,6 +205,7 @@ impl Drop for SharedRuntimeInner {
 struct SharedRuntimeInner {
 	system: ActorSystem,
 	clock: Clock,
+	rng: context::rng::Rng,
 }
 
 /// Shared runtime that can be cloned and passed across subsystems.
@@ -239,6 +240,7 @@ impl SharedRuntime {
 			tokio: ManuallyDrop::new(tokio),
 			system,
 			clock: config.clock,
+			rng: config.rng,
 		}))
 	}
 
@@ -250,6 +252,7 @@ impl SharedRuntime {
 		Self(Arc::new(SharedRuntimeInner {
 			system,
 			clock: config.clock,
+			rng: config.rng,
 		}))
 	}
 
@@ -261,6 +264,11 @@ impl SharedRuntime {
 	/// Get the clock for this runtime (shared across all threads).
 	pub fn clock(&self) -> &Clock {
 		&self.0.clock
+	}
+
+	/// Get the RNG for this runtime (shared across all threads).
+	pub fn rng(&self) -> &context::rng::Rng {
+		&self.0.rng
 	}
 
 	/// Get a handle to the async runtime.

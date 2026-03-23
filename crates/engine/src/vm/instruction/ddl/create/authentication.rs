@@ -28,14 +28,22 @@ pub(crate) fn create_authentication(
 	})?;
 
 	// Create the authentication properties
-	let properties = provider.create(&plan.config)?;
+	let properties = provider.create(&services.runtime_context.rng, &plan.config)?;
+
+	// Extract token for response (if token method)
+	let token_value = properties.get("token").cloned();
 
 	// Store in catalog
 	services.catalog.create_user_authentication(txn, user.id, method, properties)?;
 
-	Ok(Columns::single_row([
+	let mut row: Vec<(&str, Value)> = vec![
 		("user", Value::Utf8(user_name.to_string())),
 		("method", Value::Utf8(method.to_string())),
 		("created", Value::Boolean(true)),
-	]))
+	];
+	if let Some(token) = token_value {
+		row.push(("token", Value::Utf8(token)));
+	}
+
+	Ok(Columns::single_row(row))
 }

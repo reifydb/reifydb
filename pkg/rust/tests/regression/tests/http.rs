@@ -83,6 +83,11 @@ impl testscript::runner::Runner for HttpRunner {
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
+		server.admin_as_root(
+			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+			reifydb_type::params::Params::None,
+		)
+		.unwrap();
 
 		let http = server.sub_server_http().unwrap();
 		let port = http.port().unwrap();

@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{auth::AuthService, engine::StandardEngine};
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 use crate::interceptor::RequestInterceptorChain;
@@ -190,6 +190,12 @@ impl AppState {
 	#[inline]
 	pub fn clock(&self) -> &Clock {
 		&self.clock
+	}
+
+	/// Get a reference to the authentication service.
+	#[inline]
+	pub fn auth_service(&self) -> &AuthService {
+		self.engine.auth_service()
 	}
 }
 

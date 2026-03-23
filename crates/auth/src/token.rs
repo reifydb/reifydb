@@ -3,8 +3,8 @@
 
 use std::collections::HashMap;
 
-use rand::{Rng, rng};
-use reifydb_core::interface::auth::AuthenticationProvider;
+use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
+use reifydb_runtime::context::rng::Rng;
 use reifydb_type::{Result, error::Error};
 
 use crate::{crypto::constant_time_eq, error::AuthError};
@@ -16,20 +16,30 @@ impl AuthenticationProvider for TokenProvider {
 		"token"
 	}
 
-	fn create(&self, _config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
-		let mut bytes = [0u8; 32];
-		rng().fill_bytes(&mut bytes);
-
-		// Encode as hex for readability
-		let token: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+	fn create(&self, rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+		let token = if let Some(explicit) = config.get("token") {
+			explicit.clone()
+		} else {
+			let bytes = rng.bytes_32();
+			bytes.iter().map(|b| format!("{:02x}", b)).collect()
+		};
 
 		Ok(HashMap::from([("token".into(), token)]))
 	}
 
-	fn validate(&self, stored: &HashMap<String, String>, credential: &str) -> Result<bool> {
+	fn authenticate(
+		&self,
+		stored: &HashMap<String, String>,
+		credentials: &HashMap<String, String>,
+	) -> Result<AuthStep> {
+		let credential = credentials.get("token").ok_or_else(|| Error::from(AuthError::MissingToken))?;
 		let token = stored.get("token").ok_or_else(|| Error::from(AuthError::MissingToken))?;
 
 		// Constant-time comparison
-		Ok(constant_time_eq(token.as_bytes(), credential.as_bytes()))
+		if constant_time_eq(token.as_bytes(), credential.as_bytes()) {
+			Ok(AuthStep::Authenticated)
+		} else {
+			Ok(AuthStep::Failed)
+		}
 	}
 }

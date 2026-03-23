@@ -26,6 +26,14 @@ impl Default for RuntimeContext {
 }
 
 impl RuntimeContext {
+	/// Create a runtime context with the given clock and RNG.
+	pub fn new(clock: Clock, rng: Rng) -> Self {
+		Self {
+			clock,
+			rng,
+		}
+	}
+
 	/// Create a runtime context with the given clock and OS RNG.
 	pub fn with_clock(clock: Clock) -> Self {
 		Self {

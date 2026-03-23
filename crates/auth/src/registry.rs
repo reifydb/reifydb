@@ -21,6 +21,10 @@ impl AuthenticationRegistry {
 		}
 	}
 
+	pub fn register(&mut self, provider: Box<dyn AuthenticationProvider>) {
+		self.providers.insert(provider.method().to_string(), provider);
+	}
+
 	pub fn get(&self, method: &str) -> Option<&dyn AuthenticationProvider> {
 		self.providers.get(method).map(|p| p.as_ref())
 	}

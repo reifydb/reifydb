@@ -48,6 +48,23 @@ impl Rng {
 		}
 	}
 
+	/// Generate 32 random bytes (suitable for token generation).
+	pub fn bytes_32(&self) -> [u8; 32] {
+		match self {
+			Rng::Os => {
+				let mut buf = [0u8; 32];
+				getrandom_fill(&mut buf).expect("getrandom failed");
+				buf
+			}
+			Rng::Seeded(seeded) => {
+				let mut buf = [0u8; 32];
+				let mut rng = seeded.inner.lock().unwrap();
+				rng.fill_bytes(&mut buf);
+				buf
+			}
+		}
+	}
+
 	/// Generate 10 random bytes (suitable for UUID v7 random portion).
 	pub fn bytes_10(&self) -> [u8; 10] {
 		match self {

@@ -7,7 +7,8 @@ use argon2::{
 	Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
 	password_hash::Error as PasswordHashError,
 };
-use reifydb_core::interface::auth::AuthenticationProvider;
+use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
+use reifydb_runtime::context::rng::Rng;
 use reifydb_type::{Result, error::Error};
 
 use crate::error::AuthError;
@@ -26,7 +27,7 @@ impl AuthenticationProvider for PasswordProvider {
 		"password"
 	}
 
-	fn create(&self, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
 		let password = config.get("password").ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
 
 		let argon2 = argon2_instance();
@@ -43,7 +44,13 @@ impl AuthenticationProvider for PasswordProvider {
 		Ok(HashMap::from([("phc".into(), phc), ("algorithm_version".into(), "1".into())]))
 	}
 
-	fn validate(&self, stored: &HashMap<String, String>, credential: &str) -> Result<bool> {
+	fn authenticate(
+		&self,
+		stored: &HashMap<String, String>,
+		credentials: &HashMap<String, String>,
+	) -> Result<AuthStep> {
+		let credential = credentials.get("password").ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
+
 		let phc_str = stored.get("phc").ok_or_else(|| {
 			Error::from(AuthError::InvalidHash {
 				reason: "missing 'phc' field".to_string(),
@@ -59,8 +66,8 @@ impl AuthenticationProvider for PasswordProvider {
 		let argon2 = argon2_instance();
 
 		match argon2.verify_password(credential.as_bytes(), &parsed_hash) {
-			Ok(()) => Ok(true),
-			Err(PasswordHashError::PasswordInvalid) => Ok(false),
+			Ok(()) => Ok(AuthStep::Authenticated),
+			Err(PasswordHashError::PasswordInvalid) => Ok(AuthStep::Failed),
 			Err(e) => Err(Error::from(AuthError::VerificationFailed {
 				reason: e.to_string(),
 			})),
@@ -73,40 +80,54 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_password_create_and_validate() {
+	fn test_password_create_and_authenticate() {
 		let provider = PasswordProvider;
 		let config = HashMap::from([("password".to_string(), "secret123".to_string())]);
 
-		let stored = provider.create(&config).unwrap();
+		let stored = provider.create(&Rng::default(), &config).unwrap();
 		assert!(stored.contains_key("phc"));
 		assert!(stored.get("phc").unwrap().starts_with("$argon2id$"));
 		assert_eq!(stored.get("algorithm_version").unwrap(), "1");
 
-		assert!(provider.validate(&stored, "secret123").unwrap());
-		assert!(!provider.validate(&stored, "wrong_password").unwrap());
+		let correct = HashMap::from([("password".to_string(), "secret123".to_string())]);
+		assert_eq!(provider.authenticate(&stored, &correct).unwrap(), AuthStep::Authenticated);
+
+		let wrong = HashMap::from([("password".to_string(), "wrong_password".to_string())]);
+		assert_eq!(provider.authenticate(&stored, &wrong).unwrap(), AuthStep::Failed);
 	}
 
 	#[test]
 	fn test_password_requires_password_field() {
 		let provider = PasswordProvider;
 		let config = HashMap::new();
-		assert!(provider.create(&config).is_err());
+		assert!(provider.create(&Rng::default(), &config).is_err());
 	}
 
 	#[test]
-	fn test_validate_corrupted_hash() {
+	fn test_authenticate_corrupted_hash() {
 		let provider = PasswordProvider;
 		let stored = HashMap::from([
 			("phc".into(), "not-a-valid-phc-string".to_string()),
 			("algorithm_version".into(), "1".into()),
 		]);
-		assert!(provider.validate(&stored, "anything").is_err());
+		let creds = HashMap::from([("password".to_string(), "anything".to_string())]);
+		assert!(provider.authenticate(&stored, &creds).is_err());
 	}
 
 	#[test]
-	fn test_validate_missing_phc() {
+	fn test_authenticate_missing_phc() {
 		let provider = PasswordProvider;
 		let stored = HashMap::new();
-		assert!(provider.validate(&stored, "anything").is_err());
+		let creds = HashMap::from([("password".to_string(), "anything".to_string())]);
+		assert!(provider.authenticate(&stored, &creds).is_err());
+	}
+
+	#[test]
+	fn test_authenticate_missing_password_credential() {
+		let provider = PasswordProvider;
+		let config = HashMap::from([("password".to_string(), "secret123".to_string())]);
+		let stored = provider.create(&Rng::default(), &config).unwrap();
+		let empty_creds = HashMap::new();
+		assert!(provider.authenticate(&stored, &empty_creds).is_err());
 	}
 }

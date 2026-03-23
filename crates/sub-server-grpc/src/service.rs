@@ -63,7 +63,7 @@ impl ReifyDbService {
 
 		if let Some(auth) = metadata.get("authorization") {
 			let header = auth.to_str().map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
-			return Ok(extract_identity_from_auth_header(header)?);
+			return Ok(extract_identity_from_auth_header(self.state.auth_service(), header)?);
 		}
 
 		// No credentials provided — anonymous access
@@ -158,9 +158,11 @@ impl ReifyDbService {
 		&self,
 		address: String,
 		query: &str,
+		token: Option<String>,
 	) -> Result<Response<ReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
-		let remote_sub =
-			connect_remote(&address, query).await.map_err(|e| Status::unavailable(e.to_string()))?;
+		let remote_sub = connect_remote(&address, query, token.as_deref())
+			.await
+			.map_err(|e| Status::unavailable(e.to_string()))?;
 
 		let (tx, rx) = mpsc::channel(256);
 
@@ -288,6 +290,12 @@ impl ReifyDb for ReifyDbService {
 		request: Request<SubscribeRequest>,
 	) -> Result<Response<Self::SubscribeStream>, Status> {
 		let identity = self.extract_identity(&request)?;
+		let token = request
+			.metadata()
+			.get("authorization")
+			.and_then(|v| v.to_str().ok())
+			.and_then(|h| h.strip_prefix("Bearer "))
+			.map(|t| t.to_string());
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 
@@ -299,7 +307,7 @@ impl ReifyDb for ReifyDbService {
 			CreateSubscriptionResult::Remote {
 				address,
 				query,
-			} => self.subscribe_remote(address, &query).await,
+			} => self.subscribe_remote(address, &query, token).await,
 		}
 	}
 

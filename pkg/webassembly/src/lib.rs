@@ -99,7 +99,7 @@ impl WasmDB {
 				.async_threads(1)
 				.compute_threads(1)
 				.compute_max_in_flight(8)
-				.mock_clock(0),
+				.deterministic_testing(0),
 		);
 
 		// Create actor system at the top level - this will be shared by
@@ -175,7 +175,7 @@ impl WasmDB {
 			eventbus,
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, schema_registry),
-			RuntimeContext::with_clock(runtime.clock().clone()),
+			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 			Functions::defaults().build(),
 			procedures,
 			Transforms::empty(),

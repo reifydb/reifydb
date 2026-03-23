@@ -3,6 +3,7 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
@@ -53,6 +54,7 @@ use tracing::instrument;
 use crate::remote::RemoteRegistry;
 use crate::{
 	Result,
+	auth::{AuthService, AuthServiceConfig},
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 	procedure::registry::Procedures,
@@ -326,6 +328,7 @@ pub struct Inner {
 	interceptors: InterceptorFactory,
 	catalog: Catalog,
 	flow_operator_store: FlowOperatorStore,
+	auth_service: AuthService,
 }
 
 impl StandardEngine {
@@ -360,6 +363,15 @@ impl StandardEngine {
 				.add(Arc::new(MaterializedCatalogInterceptor::new(materialized.clone())));
 		}));
 
+		let auth_service = AuthService::new(
+			catalog.clone(),
+			Arc::new(AuthenticationRegistry::default()),
+			multi.clone(),
+			single.clone(),
+			runtime_context.rng.clone(),
+			AuthServiceConfig::default(),
+		);
+
 		Self(Arc::new(Inner {
 			multi,
 			single,
@@ -379,6 +391,7 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
+			auth_service,
 		}))
 	}
 
@@ -484,6 +497,12 @@ impl StandardEngine {
 	#[inline]
 	pub fn executor(&self) -> Executor {
 		self.executor.clone()
+	}
+
+	/// Get the authentication service.
+	#[inline]
+	pub fn auth_service(&self) -> &AuthService {
+		&self.auth_service
 	}
 
 	/// Get the CDC store from the IoC container.

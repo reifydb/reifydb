@@ -163,7 +163,7 @@ pub fn create_test_engine() -> StandardEngine {
 			.async_threads(2)
 			.compute_threads(2)
 			.compute_max_in_flight(32)
-			.mock_clock(1000),
+			.deterministic_testing(1000),
 	);
 	let system_config = SystemConfig::new();
 	register_oracle_defaults(&system_config);
