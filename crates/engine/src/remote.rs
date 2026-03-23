@@ -17,13 +17,15 @@ use reifydb_type::{
 pub struct RemoteRegistry {
 	connections: RwLock<HashMap<String, GrpcClient>>,
 	runtime: SharedRuntime,
+	service_token: Option<String>,
 }
 
 impl RemoteRegistry {
-	pub fn new(runtime: SharedRuntime) -> Self {
+	pub fn new(runtime: SharedRuntime, service_token: Option<String>) -> Self {
 		Self {
 			connections: RwLock::new(HashMap::new()),
 			runtime,
+			service_token,
 		}
 	}
 
@@ -71,13 +73,16 @@ impl RemoteRegistry {
 			let _ = tx.send(result);
 		});
 
-		let client = rx.recv().map_err(|_| {
+		let mut client = rx.recv().map_err(|_| {
 			Error(Diagnostic {
 				code: "REMOTE_002".to_string(),
 				message: "remote connect channel closed".to_string(),
 				..Default::default()
 			})
 		})??;
+		if let Some(ref token) = self.service_token {
+			client.authenticate(token);
+		}
 		{
 			let mut cache = self.connections.write().unwrap();
 			cache.entry(address.to_string()).or_insert(client.clone());

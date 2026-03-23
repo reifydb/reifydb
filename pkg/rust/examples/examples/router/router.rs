@@ -15,6 +15,7 @@ use tracing::info;
 fn main() {
 	let mut db = server::memory()
 		.with_tracing(|c| c.with_console(|f| f.color(true)))
+		.with_remote_service_token("service-token")
 		.with_grpc(GrpcConfig::default().bind_addr("[::1]:50051"))
 		.build()
 		.unwrap();
