@@ -641,8 +641,9 @@ pub mod ids {
 		pub const MIGRATION_EVENT: SequenceId = SequenceId(15);
 		pub const USER_AUTHENTICATION: SequenceId = SequenceId(16);
 		pub const TEST: SequenceId = SequenceId(17);
+		pub const TOKEN: SequenceId = SequenceId(18);
 
-		pub const ALL: [SequenceId; 17] = [
+		pub const ALL: [SequenceId; 18] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -660,6 +661,7 @@ pub mod ids {
 			MIGRATION_EVENT,
 			USER_AUTHENTICATION,
 			TEST,
+			TOKEN,
 		];
 	}
 

@@ -10,6 +10,7 @@ use reifydb_core::{
 			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId,
 		},
 		policy::PolicyId,
+		token::TokenId,
 		user::{RoleId, UserId},
 		user_authentication::UserAuthenticationId,
 	},
@@ -23,7 +24,7 @@ use crate::{
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
 		COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION, MIGRATION_EVENT, NAMESPACE,
-		POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, USER, USER_AUTHENTICATION,
+		POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN, USER, USER_AUTHENTICATION,
 	},
 };
 
@@ -60,6 +61,8 @@ static MIGRATION_EVENT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::e
 static USER_AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(USER_AUTHENTICATION));
 
 static TEST_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TEST));
+
+static TOKEN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TOKEN));
 
 pub(crate) struct SystemSequence {}
 
@@ -138,5 +141,9 @@ impl SystemSequence {
 
 	pub(crate) fn next_test_id(txn: &mut AdminTransaction) -> Result<TestId> {
 		GeneratorU64::next(txn, &TEST_KEY, None).map(TestId)
+	}
+
+	pub(crate) fn next_token_id(txn: &mut AdminTransaction) -> Result<TokenId> {
+		GeneratorU64::next(txn, &TOKEN_KEY, None).map(|v| v)
 	}
 }

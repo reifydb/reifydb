@@ -25,6 +25,7 @@ pub(crate) mod series;
 pub(crate) mod subscription;
 pub(crate) mod sumtype;
 pub(crate) mod table;
+pub(crate) mod token;
 pub(crate) mod user;
 pub(crate) mod user_authentication;
 pub(crate) mod user_role;

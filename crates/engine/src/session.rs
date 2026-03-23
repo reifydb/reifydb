@@ -9,8 +9,7 @@
 
 use std::{thread, time::Duration};
 
-use reifydb_auth::token_store::TokenInfo;
-use reifydb_core::interface::catalog::user::UserId;
+use reifydb_core::interface::catalog::{token::TokenDef, user::UserId};
 use reifydb_type::{
 	error::Error,
 	params::Params,
@@ -129,7 +128,7 @@ pub struct Session {
 
 impl Session {
 	/// Create a session from a validated auth token (server path).
-	pub fn from_token(engine: StandardEngine, info: TokenInfo) -> Self {
+	pub fn from_token(engine: StandardEngine, info: &TokenDef) -> Self {
 		Self {
 			engine,
 			identity: info.identity,
@@ -140,12 +139,12 @@ impl Session {
 	}
 
 	/// Create a session from a validated auth token, preserving the token string.
-	pub fn from_token_with_value(engine: StandardEngine, info: TokenInfo, token: String) -> Self {
+	pub fn from_token_with_value(engine: StandardEngine, info: &TokenDef) -> Self {
 		Self {
 			engine,
 			identity: info.identity,
 			user: Some(info.user),
-			token: Some(token),
+			token: Some(info.token.clone()),
 			retry: RetryPolicy::default(),
 		}
 	}

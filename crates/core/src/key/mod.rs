@@ -39,6 +39,7 @@ use sumtype::SumTypeKey;
 use system_sequence::SystemSequenceKey;
 use system_version::SystemVersionKey;
 use table::TableKey;
+use token::TokenKey;
 use transaction_version::TransactionVersionKey;
 use user::UserKey;
 use user_authentication::UserAuthenticationKey;
@@ -97,6 +98,7 @@ pub mod sumtype;
 pub mod system_sequence;
 pub mod system_version;
 pub mod table;
+pub mod token;
 pub mod transaction_version;
 pub mod user;
 pub mod user_authentication;
@@ -153,6 +155,7 @@ pub enum Key {
 	UserRole(UserRoleKey),
 	Policy(PolicyKey),
 	PolicyOp(PolicyOpKey),
+	Token(TokenKey),
 }
 
 impl Key {
@@ -206,6 +209,7 @@ impl Key {
 			Key::UserRole(key) => key.encode(),
 			Key::Policy(key) => key.encode(),
 			Key::PolicyOp(key) => key.encode(),
+			Key::Token(key) => key.encode(),
 		}
 	}
 }
@@ -343,6 +347,7 @@ impl Key {
 				// Migration keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
+			KeyKind::Token => TokenKey::decode(&key).map(Self::Token),
 			KeyKind::Config => {
 				// Config keys are used directly via EncodableKey trait, not through Key enum
 				None

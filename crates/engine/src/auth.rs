@@ -9,21 +9,25 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use reifydb_auth::{
-	challenge::ChallengeStore,
-	error::AuthError,
-	registry::AuthenticationRegistry,
-	token_store::{TokenInfo, TokenStore},
+use reifydb_auth::{challenge::ChallengeStore, error::AuthError, registry::AuthenticationRegistry};
+use reifydb_catalog::{
+	catalog::Catalog, create_token, drop_expired_tokens, drop_token, drop_tokens_by_identity, find_token_by_value,
 };
-use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::auth::AuthStep;
-use reifydb_runtime::context::rng::Rng as SystemRng;
+use reifydb_core::{
+	event::EventBus,
+	interface::{auth::AuthStep, catalog::token::TokenDef},
+};
+use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
 use reifydb_transaction::{
+	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	transaction::{Transaction, query::QueryTransaction},
+	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
 };
-use reifydb_type::{error::Error, value::identity::IdentityId};
+use reifydb_type::{
+	error::Error,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 use tracing::instrument;
 
 /// Response from an authentication attempt.
@@ -66,16 +70,18 @@ impl Default for AuthServiceConfig {
 /// Shared authentication service.
 ///
 /// Coordinates between the user catalog, authentication providers, and
-/// session/challenge stores. All transports and embedded mode call through
+/// token/challenge stores. All transports and embedded mode call through
 /// this single service.
 pub struct AuthService {
 	catalog: Catalog,
 	auth_registry: Arc<AuthenticationRegistry>,
-	tokens: TokenStore,
 	challenges: ChallengeStore,
 	multi: MultiTransaction,
 	single: SingleTransaction,
+	event_bus: EventBus,
 	rng: SystemRng,
+	clock: Clock,
+	session_ttl: Option<Duration>,
 }
 
 impl AuthService {
@@ -84,18 +90,51 @@ impl AuthService {
 		auth_registry: Arc<AuthenticationRegistry>,
 		multi: MultiTransaction,
 		single: SingleTransaction,
+		event_bus: EventBus,
 		rng: SystemRng,
+		clock: Clock,
 		config: AuthServiceConfig,
 	) -> Self {
 		Self {
 			catalog,
 			auth_registry,
-			tokens: TokenStore::new(config.session_ttl),
 			challenges: ChallengeStore::new(config.challenge_ttl),
 			multi,
 			single,
+			event_bus,
 			rng,
+			clock,
+			session_ttl: config.session_ttl,
 		}
+	}
+
+	/// Get the current time as a DateTime.
+	fn now(&self) -> DateTime {
+		DateTime::from_timestamp_nanos(self.clock.now_nanos())
+	}
+
+	/// Compute the expiration DateTime from the configured session TTL.
+	fn expires_at(&self) -> Option<DateTime> {
+		self.session_ttl.map(|ttl| {
+			let nanos = self.clock.now_nanos() + ttl.as_nanos();
+			DateTime::from_timestamp_nanos(nanos)
+		})
+	}
+
+	/// Persist a token to the database.
+	fn persist_token(&self, token: &str, identity: IdentityId, user: u64) -> Result<TokenDef, Error> {
+		let mut admin = AdminTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			Interceptors::default(),
+			IdentityId::system(),
+		)?;
+
+		let def = create_token(&mut admin, token, identity, user, self.expires_at(), self.now())?;
+
+		admin.commit()?;
+		Ok(def)
 	}
 
 	/// Authenticate a user with the given method and credentials.
@@ -160,7 +199,7 @@ impl AuthService {
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
-				self.tokens.insert(token.clone(), user.identity, user.id);
+				self.persist_token(&token, user.identity, user.id)?;
 				Ok(AuthResponse::Authenticated {
 					identity: user.identity,
 					token,
@@ -241,7 +280,7 @@ impl AuthService {
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
-				self.tokens.insert(token.clone(), user.identity, user.id);
+				self.persist_token(&token, user.identity, user.id)?;
 				Ok(AuthResponse::Authenticated {
 					identity: user.identity,
 					token,
@@ -258,15 +297,27 @@ impl AuthService {
 		}
 	}
 
-	/// Validate a bearer token and return the associated identity.
+	/// Validate a bearer token and return the associated token definition.
 	///
 	/// Checks in order:
-	/// 1. Session tokens (in-memory, from login)
-	/// 2. Catalog tokens (persistent, from `CREATE AUTHENTICATION ... { method: token }`)
-	pub fn validate_token(&self, token: &str) -> Option<TokenInfo> {
-		// 1. Check session store (fast, in-memory)
-		if let Some(info) = self.tokens.validate(token) {
-			return Some(info);
+	/// 1. Persisted session tokens (from login)
+	/// 2. Catalog tokens (from `CREATE AUTHENTICATION ... { method: token }`)
+	pub fn validate_token(&self, token: &str) -> Option<TokenDef> {
+		// 1. Check persisted session tokens
+		let mut txn = QueryTransaction::new(
+			self.multi.begin_query().ok()?,
+			self.single.clone(),
+			IdentityId::system(),
+		);
+
+		if let Ok(Some(def)) = find_token_by_value(&mut Transaction::Query(&mut txn), token) {
+			// Check expiry
+			if let Some(expires_at) = def.expires_at {
+				if expires_at < self.now() {
+					return None;
+				}
+			}
+			return Some(def);
 		}
 
 		// 2. Fall back to catalog-stored tokens
@@ -274,7 +325,7 @@ impl AuthService {
 	}
 
 	/// Check if a token matches any catalog-stored token authentication.
-	fn validate_catalog_token(&self, token: &str) -> Option<TokenInfo> {
+	fn validate_catalog_token(&self, token: &str) -> Option<TokenDef> {
 		let provider = self.auth_registry.get("token")?;
 
 		let mut txn = QueryTransaction::new(
@@ -295,9 +346,13 @@ impl AuthService {
 				// Look up the user via materialized catalog (no transaction needed)
 				if let Some(user) = self.catalog.materialized.find_user(auth.user_id) {
 					if user.enabled {
-						return Some(TokenInfo {
+						return Some(TokenDef {
+							id: 0,
+							token: token.to_string(),
 							identity: user.identity,
 							user: user.id,
+							expires_at: None,
+							created_at: DateTime::default(),
 						});
 					}
 				}
@@ -309,17 +364,69 @@ impl AuthService {
 
 	/// Revoke a specific session token.
 	pub fn revoke_token(&self, token: &str) -> bool {
-		self.tokens.revoke(token)
+		let mut txn = match QueryTransaction::new(
+			match self.multi.begin_query() {
+				Ok(q) => q,
+				Err(_) => return false,
+			},
+			self.single.clone(),
+			IdentityId::system(),
+		) {
+			txn => txn,
+		};
+
+		let def = match find_token_by_value(&mut Transaction::Query(&mut txn), token) {
+			Ok(Some(def)) => def,
+			_ => return false,
+		};
+		drop(txn);
+
+		let mut admin = match AdminTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			Interceptors::default(),
+			IdentityId::system(),
+		) {
+			Ok(a) => a,
+			Err(_) => return false,
+		};
+
+		if drop_token(&mut admin, def.id).is_err() {
+			return false;
+		}
+
+		admin.commit().is_ok()
 	}
 
 	/// Revoke all session tokens for a given identity.
 	pub fn revoke_all(&self, identity: IdentityId) {
-		self.tokens.revoke_all(identity);
+		if let Ok(mut admin) = AdminTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			Interceptors::default(),
+			IdentityId::system(),
+		) {
+			if drop_tokens_by_identity(&mut admin, identity).is_ok() {
+				let _ = admin.commit();
+			}
+		}
 	}
 
 	/// Clean up expired sessions and challenges.
 	pub fn cleanup_expired(&self) {
-		self.tokens.cleanup_expired();
+		if let Ok(mut admin) = AdminTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			Interceptors::default(),
+			IdentityId::system(),
+		) {
+			if drop_expired_tokens(&mut admin, self.now()).is_ok() {
+				let _ = admin.commit();
+			}
+		}
 		self.challenges.cleanup_expired();
 	}
 }

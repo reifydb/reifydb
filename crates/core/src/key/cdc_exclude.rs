@@ -48,6 +48,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::SubscriptionColumn
 			| KeyKind::SubscriptionRow
 			| KeyKind::Config
+			| KeyKind::Token
 	)
 }
 
@@ -125,10 +126,11 @@ pub mod tests {
 			KeyKind::Migration => {}
 			KeyKind::UserAuthentication => {}
 			KeyKind::MigrationEvent => {}
-			KeyKind::Config => {} /* When adding a new variant, add it here.
-			                       * The compiler will error if you forget.
-			                       * Then add a test and update should_exclude_from_cdc() if
-			                       * needed. */
+			KeyKind::Config => {}
+			KeyKind::Token => {} /* When adding a new variant, add it here.
+			                      * The compiler will error if you forget.
+			                      * Then add a test and update should_exclude_from_cdc() if
+			                      * needed. */
 		}
 	}
 

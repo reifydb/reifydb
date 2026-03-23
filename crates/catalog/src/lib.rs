@@ -7,10 +7,13 @@ use reifydb_core::interface::{
 	catalog::{
 		id::{NamespaceId, SubscriptionId},
 		subscription::SubscriptionDef,
+		token::{TokenDef, TokenId},
+		user::UserId,
 	},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 pub mod bootstrap;
 pub mod catalog;
 pub mod error;
@@ -47,6 +50,38 @@ pub fn drop_subscription(txn: &mut AdminTransaction, id: SubscriptionId) -> Resu
 /// where the flow name is derived from the subscription ID.
 pub fn drop_flow_by_name(txn: &mut AdminTransaction, namespace: NamespaceId, name: &str) -> Result<()> {
 	CatalogStore::drop_flow_by_name(txn, namespace, name)
+}
+
+/// Create a new token in storage.
+pub fn create_token(
+	txn: &mut AdminTransaction,
+	token: &str,
+	identity: IdentityId,
+	user: UserId,
+	expires_at: Option<DateTime>,
+	created_at: DateTime,
+) -> Result<TokenDef> {
+	CatalogStore::create_token(txn, token, identity, user, expires_at, created_at)
+}
+
+/// Find a token by its value (constant-time comparison).
+pub fn find_token_by_value(txn: &mut Transaction<'_>, value: &str) -> Result<Option<TokenDef>> {
+	CatalogStore::find_token_by_value(txn, value)
+}
+
+/// Drop a single token by ID.
+pub fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<()> {
+	CatalogStore::drop_token(txn, id)
+}
+
+/// Drop all tokens for a given identity.
+pub fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
+	CatalogStore::drop_tokens_by_identity(txn, identity)
+}
+
+/// Drop all expired tokens.
+pub fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
+	CatalogStore::drop_expired_tokens(txn, now)
 }
 
 pub struct CatalogVersion;

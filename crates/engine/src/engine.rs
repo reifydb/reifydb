@@ -368,7 +368,9 @@ impl StandardEngine {
 			Arc::new(AuthenticationRegistry::default()),
 			multi.clone(),
 			single.clone(),
+			event_bus.clone(),
 			runtime_context.rng.clone(),
+			runtime_context.clock.clone(),
 			AuthServiceConfig::default(),
 		);
 
