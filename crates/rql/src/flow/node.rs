@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time;
-
 use reifydb_core::{
-	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	common::{JoinType, WindowKind},
 	interface::catalog::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
@@ -89,14 +87,10 @@ pub enum FlowNodeType {
 		subscription: SubscriptionId,
 	},
 	Window {
-		window_type: WindowType,
-		size: WindowSize,
-		slide: Option<WindowSlide>,
+		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		min_events: usize,
-		max_window_count: Option<usize>,
-		max_window_age: Option<time::Duration>,
+		ts: Option<String>,
 	},
 }
 

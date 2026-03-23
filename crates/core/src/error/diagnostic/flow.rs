@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::{error::Diagnostic, fragment::Fragment};
+use reifydb_type::{error::Diagnostic, fragment::Fragment, value::r#type::Type};
 
 /// View flow processing error
 pub fn flow_error(message: String) -> Diagnostic {
@@ -129,6 +129,44 @@ pub fn flow_remote_source_unsupported() -> Diagnostic {
 		fragment: Fragment::None,
 		label: None,
 		help: Some("Remote tables do not support local flow graphs. Use remote subscription proxying instead."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// Window timestamp column not found in input data
+pub fn flow_window_timestamp_column_not_found(column: &str) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_009".to_string(),
+		statement: None,
+		message: format!("Window timestamp column '{}' not found in input data", column),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some(format!(
+			"The window operator is configured with ts: \"{}\" but no column with that name exists in the source table. \
+			Check the column name in the window WITH clause.",
+			column
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
+/// Window timestamp column has wrong type
+pub fn flow_window_timestamp_column_type_mismatch(column: &str, found: Type) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_010".to_string(),
+		statement: None,
+		message: format!("Window timestamp column '{}' has type {:?}, expected DateTime", column, found),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("The timestamp column must be of type DateTime. \
+			If you have epoch milliseconds, convert with datetime::from_epoch_millis(column)."
 			.to_string()),
 		notes: vec![],
 		cause: None,

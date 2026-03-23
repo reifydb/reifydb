@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::{WindowSize, WindowSlide, WindowTimeMode, WindowType},
+	common::{WindowKind, WindowMeasure},
+	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::catalog::flow::FlowNodeId,
 	internal,
 };
@@ -16,16 +17,18 @@ use crate::{
 };
 
 pub mod rolling;
+pub mod session;
 pub mod sliding;
 pub mod tumbling;
 
 use rolling::apply_rolling_window;
+use session::apply_session_window;
 use sliding::apply_sliding_window;
 use tumbling::apply_tumbling_window;
 
 static EMPTY_PARAMS: Params = Params::None;
 
-use std::{ops, sync::LazyLock, time};
+use std::{ops, sync::LazyLock, time::Duration};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
@@ -65,55 +68,58 @@ use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider
 
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
+/// Schema layout shared across all events in a window (stored once, not per event)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowLayout {
+	pub names: Vec<String>,
+	pub types: Vec<Type>,
+}
+
+impl WindowLayout {
+	pub fn from_row(row: &Row) -> Self {
+		Self {
+			names: row.schema.field_names().map(|s| s.to_string()).collect(),
+			types: row.schema.fields().iter().map(|f| f.constraint.get_type()).collect(),
+		}
+	}
+
+	pub fn to_schema(&self) -> Schema {
+		let fields: Vec<SchemaField> = self
+			.names
+			.iter()
+			.zip(self.types.iter())
+			.map(|(name, ty)| SchemaField::unconstrained(name.clone(), ty.clone()))
+			.collect();
+		Schema::new(fields)
+	}
+}
+
 /// A single event stored within a window
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowEvent {
 	pub row_number: RowNumber,
-	pub timestamp: u64, // System timestamp in milliseconds
+	pub timestamp: u64,
 	#[serde(with = "serde_bytes")]
 	pub encoded_bytes: Vec<u8>,
-	pub layout_names: Vec<String>,
-	pub layout_types: Vec<Type>,
 }
 
 impl WindowEvent {
 	pub fn from_row(row: &Row, timestamp: u64) -> Self {
-		let names: Vec<String> = row.schema.field_names().map(|s| s.to_string()).collect();
-		let types: Vec<Type> = row.schema.fields().iter().map(|f| f.constraint.get_type()).collect();
-
-		let mut stored_values = Vec::new();
-		for (i, _field) in row.schema.fields().iter().enumerate() {
-			let value = row.schema.get_value(&row.encoded, i);
-			stored_values.push(format!("{:?}", value));
-		}
-
 		Self {
 			row_number: row.number,
 			timestamp,
 			encoded_bytes: row.encoded.as_slice().to_vec(),
-			layout_names: names,
-			layout_types: types,
 		}
 	}
 
-	pub fn to_row(&self) -> Row {
-		let fields: Vec<SchemaField> = self
-			.layout_names
-			.iter()
-			.zip(self.layout_types.iter())
-			.map(|(name, ty)| SchemaField::unconstrained(name.clone(), ty.clone()))
-			.collect();
-
-		let layout = Schema::new(fields);
+	pub fn to_row(&self, layout: &WindowLayout) -> Row {
+		let schema = layout.to_schema();
 		let encoded = EncodedValues(CowVec::new(self.encoded_bytes.clone()));
-
-		let row = Row {
+		Row {
 			number: self.row_number,
 			encoded,
-			schema: layout,
-		};
-
-		row
+			schema,
+		}
 	}
 }
 
@@ -122,20 +128,33 @@ impl WindowEvent {
 pub struct WindowState {
 	/// All events in this window (stored in insertion order)
 	pub events: Vec<WindowEvent>,
+	/// Schema layout shared by all events (set on first event)
+	pub window_layout: Option<WindowLayout>,
 	/// Window creation timestamp
 	pub window_start: u64,
 	/// Count of events in window (for count-based windows)
 	pub event_count: u64,
+	/// Timestamp of last event (for session windows)
+	pub last_event_time: u64,
 	/// Whether this window has been triggered/computed
 	pub is_triggered: bool,
+}
+
+impl WindowState {
+	/// Get the layout, panics if not set (should always be set after first event)
+	pub fn layout(&self) -> &WindowLayout {
+		self.window_layout.as_ref().expect("WindowState layout must be set before accessing")
+	}
 }
 
 impl Default for WindowState {
 	fn default() -> Self {
 		Self {
 			events: Vec::new(),
+			window_layout: None,
 			window_start: 0,
 			event_count: 0,
+			last_event_time: 0,
 			is_triggered: false,
 		}
 	}
@@ -145,19 +164,15 @@ impl Default for WindowState {
 pub struct WindowOperator {
 	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
-	pub window_type: WindowType,
-	pub size: WindowSize,
-	pub slide: Option<WindowSlide>,
+	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
+	pub ts: Option<String>,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub compiled_aggregations: Vec<CompiledExpr>,
 	pub layout: Schema,
 	pub functions: Functions,
 	pub row_number_provider: RowNumberProvider,
-	pub min_events: usize,               // Minimum events required before window becomes visible
-	pub max_window_count: Option<usize>, // Maximum number of windows to keep per group
-	pub max_window_age: Option<time::Duration>, // Maximum age of windows before expiration
 	pub runtime_context: RuntimeContext,
 }
 
@@ -165,14 +180,10 @@ impl WindowOperator {
 	pub fn new(
 		parent: Arc<Operators>,
 		node: FlowNodeId,
-		window_type: WindowType,
-		size: WindowSize,
-		slide: Option<WindowSlide>,
+		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		min_events: usize,
-		max_window_count: Option<usize>,
-		max_window_age: Option<time::Duration>,
+		ts: Option<String>,
 		runtime_context: RuntimeContext,
 		functions: Functions,
 	) -> Self {
@@ -197,19 +208,15 @@ impl WindowOperator {
 		Self {
 			parent,
 			node,
-			window_type,
-			size,
-			slide,
+			kind,
 			group_by,
 			aggregations,
+			ts,
 			compiled_group_by,
 			compiled_aggregations,
 			layout: Schema::testing(&[Type::Blob]),
 			functions,
 			row_number_provider: RowNumberProvider::new(node),
-			min_events: min_events.max(1), // Ensure at least 1 event is required
-			max_window_count,
-			max_window_age,
 			runtime_context,
 		}
 	}
@@ -217,6 +224,57 @@ impl WindowOperator {
 	/// Get the current timestamp in milliseconds
 	pub fn current_timestamp(&self) -> u64 {
 		self.runtime_context.clock.now_millis()
+	}
+
+	/// Whether this is a count-based window
+	pub fn is_count_based(&self) -> bool {
+		match &self.kind {
+			WindowKind::Tumbling {
+				size: WindowMeasure::Count(_),
+			} => true,
+			WindowKind::Sliding {
+				size: WindowMeasure::Count(_),
+				..
+			} => true,
+			WindowKind::Rolling {
+				size: WindowMeasure::Count(_),
+			} => true,
+			_ => false,
+		}
+	}
+
+	/// Get the window size as duration (if time-based)
+	pub fn size_duration(&self) -> Option<Duration> {
+		match &self.kind {
+			WindowKind::Tumbling {
+				size: WindowMeasure::Duration(d),
+			} => Some(*d),
+			WindowKind::Sliding {
+				size: WindowMeasure::Duration(d),
+				..
+			} => Some(*d),
+			WindowKind::Rolling {
+				size: WindowMeasure::Duration(d),
+			} => Some(*d),
+			_ => None,
+		}
+	}
+
+	/// Get the window size as count (if count-based)
+	pub fn size_count(&self) -> Option<u64> {
+		match &self.kind {
+			WindowKind::Tumbling {
+				size: WindowMeasure::Count(c),
+			} => Some(*c),
+			WindowKind::Sliding {
+				size: WindowMeasure::Count(c),
+				..
+			} => Some(*c),
+			WindowKind::Rolling {
+				size: WindowMeasure::Count(c),
+			} => Some(*c),
+			_ => None,
+		}
 	}
 
 	/// Compute group keys for all rows in Columns
@@ -261,50 +319,33 @@ impl WindowOperator {
 		Ok(hashes)
 	}
 
-	/// Extract timestamps for all rows in Columns
-	pub fn extract_timestamps(&self, columns: &Columns) -> Result<Vec<u64>> {
-		let row_count = columns.row_count();
+	/// Resolve event timestamps for all rows.
+	/// When `ts` is configured, reads from the named DateTime column.
+	/// Otherwise falls back to processing time (current clock).
+	pub fn resolve_event_timestamps(&self, columns: &Columns, row_count: usize) -> Result<Vec<u64>> {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
-
-		match &self.window_type {
-			WindowType::Time(time_mode) => match time_mode {
-				WindowTimeMode::Processing => {
-					let now = self.current_timestamp();
-					Ok(vec![now; row_count])
-				}
-				WindowTimeMode::EventTime(column_name) => {
-					if let Some(col) = columns.column(column_name) {
-						let mut timestamps = Vec::with_capacity(row_count);
-						for row_idx in 0..row_count {
-							let value = col.data().get_value(row_idx);
-
-							let ts = match value {
-								Value::Int8(v) => v as u64,
-								Value::Uint8(v) => v,
-								Value::Int4(v) => v as u64,
-								Value::Uint4(v) => v as u64,
-								Value::DateTime(dt) => dt.timestamp_millis() as u64,
-								_ => {
-									return Err(Error(internal!(
-										"Cannot convert {:?} to timestamp",
-										value.get_type()
-									)));
-								}
-							};
-							timestamps.push(ts);
+		match &self.ts {
+			Some(ts_col) => {
+				let col = columns
+					.column(ts_col)
+					.ok_or_else(|| Error(flow_window_timestamp_column_not_found(ts_col)))?;
+				let mut timestamps = Vec::with_capacity(row_count);
+				for i in 0..row_count {
+					match col.data().get_value(i) {
+						Value::DateTime(dt) => timestamps.push(dt.timestamp_millis() as u64),
+						other => {
+							return Err(Error(flow_window_timestamp_column_type_mismatch(
+								ts_col,
+								other.get_type(),
+							)));
 						}
-						Ok(timestamps)
-					} else {
-						Err(Error(internal!(
-							"Event time column '{}' not found in columns",
-							column_name
-						)))
 					}
 				}
-			},
-			WindowType::Count => {
+				Ok(timestamps)
+			}
+			None => {
 				let now = self.current_timestamp();
 				Ok(vec![now; row_count])
 			}
@@ -320,61 +361,277 @@ impl WindowOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Extract timestamp from row data
-	pub fn extract_timestamp_from_row(&self, row: &Row) -> Result<u64> {
-		match &self.window_type {
-			WindowType::Time(time_mode) => match time_mode {
-				WindowTimeMode::Processing => Ok(self.current_timestamp()),
-				WindowTimeMode::EventTime(column_name) => {
-					if let Some(timestamp_index) = row.schema.find_field_index(column_name) {
-						let timestamp_value = row.schema.get_i64(&row.encoded, timestamp_index);
-						Ok(timestamp_value as u64)
-					} else {
-						let column_names: Vec<&str> = row.schema.field_names().collect();
-						Err(Error(internal!(
-							"Event time column '{}' not found in row with columns: {:?}",
-							column_name,
-							column_names
-						)))
-					}
-				}
-			},
-			WindowType::Count => {
-				unreachable!(
-					"extract_timestamp_from_row should never be called for count-based windows"
-				)
-			}
-		}
+	/// Create a row index key for mapping row_number → window_id
+	fn create_row_index_key(&self, group_hash: Hash128, row_number: RowNumber) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(32);
+		serializer.extend_bytes(b"idx:");
+		serializer.extend_u128(group_hash);
+		serializer.extend_u64(row_number.0);
+		EncodedKey::new(serializer.finish())
 	}
 
-	/// Extract group values from window events (all events in a group have the same group values)
-	/// TODO: Refactor to use column-based evaluation when window operator is needed
-	pub fn extract_group_values(&self, events: &[WindowEvent]) -> Result<(Vec<Value>, Vec<String>)> {
+	/// Store a row_number → window_ids mapping.
+	/// Appends window_id to the existing list (supports sliding windows with multiple windows per event).
+	pub fn store_row_index(
+		&self,
+		txn: &mut FlowTransaction,
+		group_hash: Hash128,
+		row_number: RowNumber,
+		window_id: u64,
+	) -> Result<()> {
+		let index_key = self.create_row_index_key(group_hash, row_number);
+		let mut window_ids = self.lookup_row_index(txn, group_hash, row_number)?;
+		if !window_ids.contains(&window_id) {
+			window_ids.push(window_id);
+		}
+		let serialized =
+			to_stdvec(&window_ids).map_err(|e| Error(internal!("Failed to serialize row index: {}", e)))?;
+		let mut state_row = self.layout.allocate();
+		let blob = Blob::from(serialized);
+		self.layout.set_blob(&mut state_row, 0, &blob);
+		self.save_state(txn, &index_key, state_row)
+	}
+
+	/// Look up all window_ids for a given row_number
+	fn lookup_row_index(
+		&self,
+		txn: &mut FlowTransaction,
+		group_hash: Hash128,
+		row_number: RowNumber,
+	) -> Result<Vec<u64>> {
+		let index_key = self.create_row_index_key(group_hash, row_number);
+		let state_row = self.load_state(txn, &index_key)?;
+		if state_row.is_empty() || !state_row.is_defined(0) {
+			return Ok(Vec::new());
+		}
+		let blob = self.layout.get_blob(&state_row, 0);
+		if blob.is_empty() {
+			return Ok(Vec::new());
+		}
+		let window_ids: Vec<u64> = from_bytes(blob.as_ref())
+			.map_err(|e| Error(internal!("Failed to deserialize row index: {}", e)))?;
+		Ok(window_ids)
+	}
+
+	/// Replace an event across all its windows in-place (for UPDATE handling).
+	/// For sliding windows, an event may exist in multiple windows — all are updated.
+	fn replace_event_in_windows(
+		&self,
+		txn: &mut FlowTransaction,
+		group_hash: Hash128,
+		row_number: RowNumber,
+		new_row: &Row,
+		new_timestamp: u64,
+	) -> Result<Vec<Diff>> {
+		let window_ids = self.lookup_row_index(txn, group_hash, row_number)?;
+		if window_ids.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		let mut result = Vec::new();
+
+		for window_id in &window_ids {
+			let window_key = self.create_window_key(group_hash, *window_id);
+			let mut window_state = self.load_window_state(txn, &window_key)?;
+
+			let event_idx = window_state.events.iter().position(|e| e.row_number == row_number);
+			if let Some(idx) = event_idx {
+				let layout = match &window_state.window_layout {
+					Some(l) => l.clone(),
+					None => continue,
+				};
+
+				let old_aggregation =
+					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
+
+				window_state.events[idx] = WindowEvent::from_row(new_row, new_timestamp);
+
+				let new_aggregation =
+					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
+
+				self.save_window_state(txn, &window_key, &window_state)?;
+
+				if let (Some((old_row, _)), Some((new_row, _))) = (old_aggregation, new_aggregation) {
+					result.push(Diff::Update {
+						pre: Columns::from_row(&old_row),
+						post: Columns::from_row(&new_row),
+					});
+				}
+			}
+		}
+
+		Ok(result)
+	}
+
+	/// Process Update diffs by replacing events in-place within their windows.
+	fn process_event_updates(&self, txn: &mut FlowTransaction, pre: &Columns, post: &Columns) -> Result<Vec<Diff>> {
+		let row_count = pre.row_count();
+		if row_count == 0 {
+			return Ok(Vec::new());
+		}
+
+		let group_hashes = self.compute_group_keys(pre)?;
+		let post_timestamps = self.resolve_event_timestamps(post, row_count)?;
+		let mut result = Vec::new();
+
+		for row_idx in 0..row_count {
+			let row_number = pre.row_numbers[row_idx];
+			let group_hash = group_hashes[row_idx];
+			let new_timestamp = post_timestamps[row_idx];
+
+			let single_row = post.extract_row(row_idx);
+			let new_row = single_row.to_single_row();
+
+			let diffs =
+				self.replace_event_in_windows(txn, group_hash, row_number, &new_row, new_timestamp)?;
+			result.extend(diffs);
+		}
+
+		Ok(result)
+	}
+
+	/// Remove an event from all its windows (for DELETE handling).
+	fn remove_event_from_windows(
+		&self,
+		txn: &mut FlowTransaction,
+		group_hash: Hash128,
+		row_number: RowNumber,
+	) -> Result<Vec<Diff>> {
+		let window_ids = self.lookup_row_index(txn, group_hash, row_number)?;
+		if window_ids.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		let mut result = Vec::new();
+
+		for window_id in &window_ids {
+			let window_key = self.create_window_key(group_hash, *window_id);
+			let mut window_state = self.load_window_state(txn, &window_key)?;
+
+			let event_idx = window_state.events.iter().position(|e| e.row_number == row_number);
+			if let Some(idx) = event_idx {
+				let layout = match &window_state.window_layout {
+					Some(l) => l.clone(),
+					None => continue,
+				};
+
+				let old_aggregation =
+					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
+
+				window_state.events.remove(idx);
+				window_state.event_count = window_state.event_count.saturating_sub(1);
+
+				if window_state.events.is_empty() {
+					self.save_window_state(txn, &window_key, &window_state)?;
+					if let Some((old_row, _)) = old_aggregation {
+						result.push(Diff::Remove {
+							pre: Columns::from_row(&old_row),
+						});
+					}
+				} else {
+					let new_aggregation = self.apply_aggregations(
+						txn,
+						&window_key,
+						&layout,
+						&window_state.events,
+					)?;
+					self.save_window_state(txn, &window_key, &window_state)?;
+
+					if let (Some((old_row, _)), Some((new_row, _))) =
+						(old_aggregation, new_aggregation)
+					{
+						result.push(Diff::Update {
+							pre: Columns::from_row(&old_row),
+							post: Columns::from_row(&new_row),
+						});
+					}
+				}
+			}
+		}
+
+		// Clean up the index entry
+		let index_key = self.create_row_index_key(group_hash, row_number);
+		let empty = self.layout.allocate();
+		self.save_state(txn, &index_key, empty)?;
+
+		Ok(result)
+	}
+
+	/// Process Remove diffs by removing events from their windows.
+	fn process_event_removals(&self, txn: &mut FlowTransaction, pre: &Columns) -> Result<Vec<Diff>> {
+		let row_count = pre.row_count();
+		if row_count == 0 {
+			return Ok(Vec::new());
+		}
+
+		let group_hashes = self.compute_group_keys(pre)?;
+		let mut result = Vec::new();
+
+		for row_idx in 0..row_count {
+			let row_number = pre.row_numbers[row_idx];
+			let group_hash = group_hashes[row_idx];
+
+			let diffs = self.remove_event_from_windows(txn, group_hash, row_number)?;
+			result.extend(diffs);
+		}
+
+		Ok(result)
+	}
+
+	/// Extract group values from window events (all events in a group have the same group values).
+	/// Evaluates compiled_group_by expressions on the first row of the events.
+	pub fn extract_group_values(
+		&self,
+		window_layout: &WindowLayout,
+		events: &[WindowEvent],
+	) -> Result<(Vec<Value>, Vec<String>)> {
 		if events.is_empty() || self.group_by.is_empty() {
 			return Ok((Vec::new(), Vec::new()));
 		}
 
-		// DISABLED: Window operator needs refactoring to use column-based evaluation
+		let columns = self.events_to_columns(window_layout, events)?;
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok((Vec::new(), Vec::new()));
+		}
 
-		unimplemented!("Window operator extract_group_values needs refactoring to use column-based evaluation")
+		let session = EvalSession {
+			params: &EMPTY_PARAMS,
+			symbols: &EMPTY_SYMBOL_TABLE,
+			functions: &self.functions,
+			runtime_context: &self.runtime_context,
+			arena: None,
+			identity: IdentityId::root(),
+			is_aggregate_context: false,
+		};
+		let exec_ctx = session.eval(columns, row_count);
+
+		let mut values = Vec::new();
+		let mut names = Vec::new();
+		for (i, compiled_expr) in self.compiled_group_by.iter().enumerate() {
+			let col = compiled_expr.execute(&exec_ctx)?;
+			values.push(col.data().get_value(0).clone());
+			names.push(column_name_from_expression(&self.group_by[i]).text().to_string());
+		}
+
+		Ok((values, names))
 	}
 
 	/// Convert window events to columnar format for aggregation
-	pub fn events_to_columns(&self, events: &[WindowEvent]) -> Result<Columns> {
+	pub fn events_to_columns(&self, window_layout: &WindowLayout, events: &[WindowEvent]) -> Result<Columns> {
 		if events.is_empty() {
 			return Ok(Columns::new(Vec::new()));
 		}
 
-		let first_event = &events[0];
 		let mut columns = Vec::new();
 
 		for (field_idx, (field_name, field_type)) in
-			first_event.layout_names.iter().zip(first_event.layout_types.iter()).enumerate()
+			window_layout.names.iter().zip(window_layout.types.iter()).enumerate()
 		{
 			let mut column_data = ColumnData::with_capacity(field_type.clone(), events.len());
 
-			for (_event_idx, event) in events.iter().enumerate() {
-				let row = event.to_row();
+			for event in events.iter() {
+				let row = event.to_row(window_layout);
 				let value = row.schema.get_value(&row.encoded, field_idx);
 				column_data.push_value(value);
 			}
@@ -393,6 +650,7 @@ impl WindowOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
+		window_layout: &WindowLayout,
 		events: &[WindowEvent],
 	) -> Result<Option<(Row, bool)>> {
 		if events.is_empty() {
@@ -403,12 +661,12 @@ impl WindowOperator {
 			// No aggregations configured, return first event as result
 			let (result_row_number, is_new) =
 				self.row_number_provider.get_or_create_row_number(txn, window_key)?;
-			let mut result_row = events[0].to_row();
+			let mut result_row = events[0].to_row(window_layout);
 			result_row.number = result_row_number;
 			return Ok(Some((result_row, is_new)));
 		}
 
-		let columns = self.events_to_columns(events)?;
+		let columns = self.events_to_columns(window_layout, events)?;
 
 		let agg_session = EvalSession {
 			params: &EMPTY_PARAMS,
@@ -417,11 +675,11 @@ impl WindowOperator {
 			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
-			is_aggregate_context: true, // Use aggregate functions for window aggregations
+			is_aggregate_context: true,
 		};
 		let exec_ctx = agg_session.eval(columns, events.len());
 
-		let (group_values, group_names) = self.extract_group_values(events)?;
+		let (group_values, group_names) = self.extract_group_values(window_layout, events)?;
 
 		let mut result_values = Vec::new();
 		let mut result_names = Vec::new();
@@ -462,19 +720,41 @@ impl WindowOperator {
 		Ok(Some((result_row, is_new)))
 	}
 
-	/// Process expired windows and clean up state
+	/// Process expired windows: emit Remove diffs for each, then delete state
 	pub fn process_expired_windows(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
-		let result = Vec::new();
+		let mut result = Vec::new();
 
-		if let (WindowType::Time(_), WindowSize::Duration(duration)) = (&self.window_type, &self.size) {
+		if let Some(duration) = self.size_duration() {
 			let window_size_ms = duration.as_millis() as u64;
-			let expire_before = current_timestamp.saturating_sub(window_size_ms * 2); // Keep 2 window sizes
+			if window_size_ms > 0 {
+				let expire_before = current_timestamp.saturating_sub(window_size_ms * 2);
+				let before_key =
+					self.create_window_key(Hash128::from(0u128), expire_before / window_size_ms);
+				let range =
+					EncodedKeyRange::new(ops::Bound::Excluded(before_key), ops::Bound::Unbounded);
 
-			// all group keys and clean up expired windows for each group
-			let before_key = self.create_window_key(Hash128::from(0u128), expire_before / window_size_ms);
-			let range = EncodedKeyRange::new(ops::Bound::Excluded(before_key), ops::Bound::Unbounded);
+				// Load expired windows and emit Remove for each before deleting
+				let expired_keys = self.scan_keys_in_range(txn, &range)?;
+				for key in &expired_keys {
+					let window_state = self.load_window_state(txn, key)?;
+					if !window_state.events.is_empty() {
+						if let Some(layout) = &window_state.window_layout {
+							if let Some((row, _)) = self.apply_aggregations(
+								txn,
+								key,
+								layout,
+								&window_state.events,
+							)? {
+								result.push(Diff::Remove {
+									pre: Columns::from_row(&row),
+								});
+							}
+						}
+					}
+				}
 
-			let _expired_count = self.expire_range(txn, range)?;
+				let _expired_count = self.expire_range(txn, range)?;
+			}
 		}
 
 		Ok(result)
@@ -550,6 +830,88 @@ impl WindowOperator {
 		serializer.extend_u128(group_hash);
 		EncodedKey::new(serializer.finish())
 	}
+
+	/// Shared: partition columns by group keys and call `group_fn` for each group.
+	pub fn process_insert(
+		&self,
+		txn: &mut FlowTransaction,
+		columns: &Columns,
+		group_fn: impl Fn(&WindowOperator, &mut FlowTransaction, &Columns, Hash128) -> Result<Vec<Diff>>,
+	) -> Result<Vec<Diff>> {
+		let row_count = columns.row_count();
+		if row_count == 0 {
+			return Ok(Vec::new());
+		}
+		let group_hashes = self.compute_group_keys(columns)?;
+		let groups = columns.partition_by_keys(&group_hashes);
+		let mut result = Vec::new();
+		for (group_hash, group_columns) in groups {
+			let group_result = group_fn(self, txn, &group_columns, group_hash)?;
+			result.extend(group_result);
+		}
+		Ok(result)
+	}
+
+	/// Shared: iterate change diffs and process inserts/updates via `process_fn`.
+	/// Optionally runs expiration first (all kinds except rolling).
+	pub fn apply_window_change(
+		&self,
+		txn: &mut FlowTransaction,
+		change: &Change,
+		expire: bool,
+		process_fn: impl Fn(&WindowOperator, &mut FlowTransaction, &Columns) -> Result<Vec<Diff>>,
+	) -> Result<Vec<Diff>> {
+		let mut result = Vec::new();
+		if expire {
+			let current_timestamp = self.current_timestamp();
+			let expired_diffs = self.process_expired_windows(txn, current_timestamp)?;
+			result.extend(expired_diffs);
+		}
+		for diff in change.diffs.iter() {
+			match diff {
+				Diff::Insert {
+					post,
+				} => {
+					result.extend(process_fn(self, txn, post)?);
+				}
+				Diff::Update {
+					pre,
+					post,
+				} => {
+					result.extend(self.process_event_updates(txn, pre, post)?);
+				}
+				Diff::Remove {
+					pre,
+				} => {
+					result.extend(self.process_event_removals(txn, pre)?);
+				}
+			}
+		}
+		Ok(result)
+	}
+
+	/// Shared: emit an Insert or Update diff for an aggregation result.
+	/// `previous_aggregation` is the pre-update state (if the window already existed).
+	pub fn emit_aggregation_diff(
+		aggregated_row: &Row,
+		is_new: bool,
+		previous_aggregation: Option<(Row, bool)>,
+	) -> Diff {
+		if is_new {
+			Diff::Insert {
+				post: Columns::from_row(aggregated_row),
+			}
+		} else if let Some((previous_row, _)) = previous_aggregation {
+			Diff::Update {
+				pre: Columns::from_row(&previous_row),
+				post: Columns::from_row(aggregated_row),
+			}
+		} else {
+			Diff::Insert {
+				post: Columns::from_row(aggregated_row),
+			}
+		}
+	}
 }
 
 impl RawStatefulOperator for WindowOperator {}
@@ -566,52 +928,51 @@ impl Operator for WindowOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		// We'll need to refactor the architecture to support this properly.
-
-		match &self.slide {
-			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change),
-			Some(_) => apply_sliding_window(self, txn, change),
-			None => apply_tumbling_window(self, txn, change),
+		match &self.kind {
+			WindowKind::Tumbling {
+				..
+			} => apply_tumbling_window(self, txn, change),
+			WindowKind::Sliding {
+				..
+			} => apply_sliding_window(self, txn, change),
+			WindowKind::Rolling {
+				..
+			} => apply_rolling_window(self, txn, change),
+			WindowKind::Session {
+				..
+			} => apply_session_window(self, txn, change),
 		}
 	}
 
-	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {
-		todo!()
+	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
+		self.parent.pull(txn, rows)
 	}
 }
 
 /// Additional helper methods for window triggering
 impl WindowOperator {
 	/// Check if a window should be triggered (emitted)
-	pub fn should_trigger_window(&self, state: &WindowState, current_timestamp: u64) -> bool {
-		match (&self.window_type, &self.size, &self.slide) {
-			// Tumbling windows (no slide): emit immediately when events arrive (streaming behavior)
-			(WindowType::Time(_), WindowSize::Duration(_), None) => {
-				if state.event_count > 0 {
-					return true;
-				}
-				false
-			}
-			// Sliding windows: use time-based triggering
-
-			// but allow multiple triggers as the window slides
-			(WindowType::Time(_), WindowSize::Duration(duration), Some(_)) => {
-				// This allows overlapping windows to emit results independently
-				if state.event_count > 0 {
-					let window_size_ms = duration.as_millis() as u64;
-					let trigger_time = state.window_start + window_size_ms;
-					current_timestamp >= trigger_time
-				} else {
-					false
-				}
-			}
-			// Count-based tumbling windows: trigger when count threshold is reached
-			(WindowType::Count, WindowSize::Count(count), None) => state.event_count >= *count,
-			// Count-based sliding windows: trigger when min_events threshold is met
-			(WindowType::Count, WindowSize::Count(_count), Some(_)) => {
-				state.event_count >= self.min_events as u64
-			}
-			_ => false,
+	pub fn should_trigger_window(&self, state: &WindowState, _current_timestamp: u64) -> bool {
+		match &self.kind {
+			// Tumbling: emit on every event (streaming running aggregate)
+			WindowKind::Tumbling {
+				size: WindowMeasure::Duration(_),
+			} => state.event_count > 0,
+			WindowKind::Tumbling {
+				size: WindowMeasure::Count(count),
+			} => state.event_count >= *count,
+			// Sliding: emit on every event
+			WindowKind::Sliding {
+				..
+			} => state.event_count > 0,
+			// Rolling: always trigger on every event
+			WindowKind::Rolling {
+				..
+			} => state.event_count > 0,
+			// Session: emit on every event
+			WindowKind::Session {
+				..
+			} => state.event_count > 0,
 		}
 	}
 }

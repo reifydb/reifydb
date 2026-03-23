@@ -6,13 +6,13 @@ pub mod create;
 pub mod drop;
 pub mod mutate;
 
-use std::{collections, fmt, iter::once, marker, time};
+use std::{collections, fmt, iter::once, marker};
 
 use reifydb_catalog::catalog::{
 	Catalog, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	common::{JoinType, WindowKind},
 	error::diagnostic::catalog::{
 		dictionary_not_found, namespace_not_found, ringbuffer_not_found, series_not_found, table_not_found,
 	},
@@ -523,14 +523,10 @@ pub struct ApplyNode<'bump> {
 #[derive(Debug)]
 pub struct WindowNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
-	pub window_type: WindowType,
-	pub size: WindowSize,
-	pub slide: Option<WindowSlide>,
+	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub min_events: usize,
-	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<time::Duration>,
+	pub ts: Option<String>,
 }
 
 #[derive(Debug)]
@@ -2047,14 +2043,10 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Window(window) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Window(WindowNode {
-						window_type: window.window_type,
-						size: window.size,
-						slide: window.slide,
+						kind: window.kind,
 						group_by: window.group_by,
 						aggregations: window.aggregations,
-						min_events: window.min_events,
-						max_window_count: window.max_window_count,
-						max_window_age: window.max_window_age,
+						ts: window.ts,
 						input,
 					}));
 				}

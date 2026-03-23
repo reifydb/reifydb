@@ -1644,9 +1644,19 @@ pub struct AstElseIf<'bump> {
 	pub then_block: AstBlock<'bump>,
 }
 
+/// Window kind, parsed from the mandatory keyword after `window`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AstWindowKind {
+	Tumbling,
+	Sliding,
+	Rolling,
+	Session,
+}
+
 #[derive(Debug)]
 pub struct AstWindow<'bump> {
 	pub token: Token<'bump>,
+	pub kind: AstWindowKind,
 	pub config: Vec<AstWindowConfig<'bump>>,
 	pub aggregations: Vec<Ast<'bump>>,
 	pub group_by: Vec<Ast<'bump>>,

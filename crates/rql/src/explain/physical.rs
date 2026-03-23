@@ -585,7 +585,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::Window(node) => {
-			let label = format!("Window: {:?}, Size: {:?}", node.window_type, node.size);
+			let label = format!("Window: {:?}", node.kind);
 			write_node_header(output, prefix, is_last, &label);
 
 			if let Some(ref input) = node.input {

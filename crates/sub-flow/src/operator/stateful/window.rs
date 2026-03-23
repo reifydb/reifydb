@@ -35,13 +35,23 @@ pub trait WindowStateful: RawStatefulOperator {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
 
+	/// Scan keys within a range without removing them (read-only)
+	fn scan_keys_in_range(&self, txn: &mut FlowTransaction, range: &EncodedKeyRange) -> Result<Vec<EncodedKey>> {
+		let prefixed_range = range.clone().with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
+		let mut stream = txn.range(prefixed_range, 1024);
+		let mut keys = Vec::new();
+		while let Some(result) = stream.next() {
+			let multi = result?;
+			keys.push(EncodedKey::new(multi.key.to_vec()));
+		}
+		Ok(keys)
+	}
+
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
 	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<u32> {
-		// Add the operator state prefix to the range
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
-		// Collect keys to remove (similar pattern to state_clear in utils.rs)
 		let keys_to_remove = {
 			let mut stream = txn.range(prefixed_range, 1024);
 			let mut keys = Vec::new();

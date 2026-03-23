@@ -9,6 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 pub mod get;
+pub mod input_types;
 pub mod promote;
 
 use std::fmt;

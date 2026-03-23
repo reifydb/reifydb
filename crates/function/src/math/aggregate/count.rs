@@ -5,7 +5,10 @@ use std::mem;
 
 use indexmap::IndexMap;
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::Value;
+use reifydb_type::value::{
+	Value,
+	r#type::{Type, input_types::InputTypes},
+};
 
 use crate::{AggregateFunction, AggregateFunctionContext, error::AggregateFunctionResult};
 
@@ -37,97 +40,10 @@ impl AggregateFunction for Count {
 			}
 		} else {
 			// For count(column), only count defined (non-null) values
-			match &column.data() {
-				ColumnData::Bool(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Float8(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Float4(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Int4(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Int8(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Int2(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Int1(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Int16(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Utf8 {
-					container,
-					..
-				} => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::Date(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				ColumnData::DateTime(container) => {
-					for (group, indices) in groups.iter() {
-						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
-							as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
-				_ => {
-					// For other column types, use generic is_defined check
-					for (group, indices) in groups.iter() {
-						let count = indices
-							.iter()
-							.filter(|&i| column.data().is_defined(*i))
-							.count() as i64;
-						self.counts.insert(group.clone(), count);
-					}
-				}
+			// is_defined handles both plain and Option-wrapped columns
+			for (group, indices) in groups.iter() {
+				let count = indices.iter().filter(|&i| column.data().is_defined(*i)).count() as i64;
+				self.counts.insert(group.clone(), count);
 			}
 		}
 		Ok(())
@@ -143,5 +59,13 @@ impl AggregateFunction for Count {
 		}
 
 		Ok((keys, data))
+	}
+
+	fn return_type(&self, _input_type: &Type) -> Type {
+		Type::Int8
+	}
+
+	fn accepted_types(&self) -> InputTypes {
+		InputTypes::any()
 	}
 }

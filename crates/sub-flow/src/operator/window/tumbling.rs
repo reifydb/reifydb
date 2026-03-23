@@ -1,95 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 use reifydb_core::{
-	common::{WindowSize, WindowType},
+	common::{WindowKind, WindowMeasure},
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
 use reifydb_type::Result;
 
-use super::{WindowEvent, WindowOperator, WindowState};
+use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
 	/// Determine which window an event belongs to for tumbling windows
 	pub fn get_tumbling_window_id(&self, timestamp: u64) -> u64 {
-		match (&self.window_type, &self.size) {
-			(WindowType::Time(_), WindowSize::Duration(duration)) => {
+		match &self.kind {
+			WindowKind::Tumbling {
+				size: WindowMeasure::Duration(duration),
+			} => {
 				let window_size_ms = duration.as_millis() as u64;
-				// Tumbling window - align to window boundaries from epoch
-				let window_start = (timestamp / window_size_ms) * window_size_ms;
-				window_start / window_size_ms
+				(timestamp / window_size_ms) * window_size_ms / window_size_ms
 			}
-			(WindowType::Count, WindowSize::Count(count)) => {
-				// to track event counts per group
-				timestamp / *count
-			}
-			_ => {
-				// Mismatched window type and size
-				0
-			}
+			WindowKind::Tumbling {
+				size: WindowMeasure::Count(count),
+			} => timestamp / *count,
+			_ => 0,
 		}
 	}
 
 	/// Set window start time for tumbling windows (aligned to window boundaries)
 	pub fn set_tumbling_window_start(&self, timestamp: u64) -> u64 {
-		match &self.size {
-			WindowSize::Duration(duration) => {
-				let window_size_ms = duration.as_millis() as u64;
-				(timestamp / window_size_ms) * window_size_ms
-			}
-			_ => timestamp,
+		if let Some(duration) = self.size_duration() {
+			let window_size_ms = duration.as_millis() as u64;
+			(timestamp / window_size_ms) * window_size_ms
+		} else {
+			timestamp
 		}
 	}
-
-	/// Check if tumbling window should be moved to a new window due to time boundaries
-	pub fn should_start_new_tumbling_window(&self, current_window_start: u64, event_timestamp: u64) -> bool {
-		match &self.size {
-			WindowSize::Duration(duration) => {
-				let window_size_ms = duration.as_millis() as u64;
-				let event_window_start = (event_timestamp / window_size_ms) * window_size_ms;
-				event_window_start != current_window_start
-			}
-			_ => false,
-		}
-	}
-
-	/// Check if a tumbling window should be expired (closed)
-	pub fn should_expire_tumbling_window(&self, state: &WindowState, current_timestamp: u64) -> bool {
-		match (&self.window_type, &self.size, &self.slide) {
-			(WindowType::Time(_), WindowSize::Duration(duration), None) => {
-				let window_size_ms = duration.as_millis() as u64;
-				let expire_time = state.window_start + window_size_ms;
-				current_timestamp >= expire_time
-			}
-			_ => false,
-		}
-	}
-}
-
-/// Process inserts for tumbling windows
-fn process_tumbling_insert(
-	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
-	columns: &Columns,
-) -> Result<Vec<Diff>> {
-	let mut result = Vec::new();
-	let row_count = columns.row_count();
-	if row_count == 0 {
-		return Ok(result);
-	}
-
-	let group_hashes = operator.compute_group_keys(columns)?;
-
-	let groups = columns.partition_by_keys(&group_hashes);
-
-	for (group_hash, group_columns) in groups {
-		let group_result = process_tumbling_group_insert(operator, txn, &group_columns, group_hash)?;
-		result.extend(group_result);
-	}
-
-	Ok(result)
 }
 
 /// Process inserts for a single group in tumbling windows
@@ -105,27 +52,17 @@ fn process_tumbling_group_insert(
 		return Ok(result);
 	}
 
-	let timestamps = operator.extract_timestamps(columns)?;
+	let timestamps = operator.resolve_event_timestamps(columns, row_count)?;
 
 	for row_idx in 0..row_count {
 		let timestamp = timestamps[row_idx];
-		let (event_timestamp, window_id) = match &operator.window_type {
-			WindowType::Time(_) => {
-				let window_id = operator.get_tumbling_window_id(timestamp);
-				(timestamp, window_id)
-			}
-			WindowType::Count => {
-				// window ID based on global event count
-				let event_timestamp = operator.current_timestamp();
-				let global_count = operator.get_and_increment_global_count(txn, group_hash)?;
-				let window_size = if let WindowSize::Count(count) = &operator.size {
-					*count
-				} else {
-					3 // fallback
-				};
-				let window_id = global_count / window_size;
-				(event_timestamp, window_id)
-			}
+		let (event_timestamp, window_id) = if operator.is_count_based() {
+			let event_timestamp = operator.current_timestamp();
+			let global_count = operator.get_and_increment_global_count(txn, group_hash)?;
+			let window_size = operator.size_count().unwrap_or(3);
+			(event_timestamp, global_count / window_size)
+		} else {
+			(timestamp, operator.get_tumbling_window_id(timestamp))
 		};
 
 		let window_key = operator.create_window_key(group_hash, window_id);
@@ -134,38 +71,39 @@ fn process_tumbling_group_insert(
 		let single_row_columns = columns.extract_row(row_idx);
 		let row = single_row_columns.to_single_row();
 
+		if window_state.window_layout.is_none() {
+			window_state.window_layout = Some(WindowLayout::from_row(&row));
+		}
+		let layout = window_state.layout().clone();
+
+		let previous_aggregation = if !window_state.events.is_empty() {
+			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
+		} else {
+			None
+		};
+
 		let event = WindowEvent::from_row(&row, event_timestamp);
+		let event_row_number = event.row_number;
 		window_state.events.push(event);
 		window_state.event_count += 1;
+		window_state.last_event_time = event_timestamp;
 
 		if window_state.window_start == 0 {
 			window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
 		}
 
-		// Always emit result for count-based windows - Insert for first, Update for subsequent
 		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, &window_key, &window_state.events)?
+			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
 		{
-			if is_new {
-				result.push(Diff::Insert {
-					post: Columns::from_row(&aggregated_row),
-				});
-			} else {
-				// Window already exists - emit Update
-
-				let previous_events = &window_state.events[..window_state.events.len() - 1];
-				if let Some((previous_aggregated, _)) =
-					operator.apply_aggregations(txn, &window_key, previous_events)?
-				{
-					result.push(Diff::Update {
-						pre: Columns::from_row(&previous_aggregated),
-						post: Columns::from_row(&aggregated_row),
-					});
-				}
-			}
+			result.push(WindowOperator::emit_aggregation_diff(
+				&aggregated_row,
+				is_new,
+				previous_aggregation,
+			));
 		}
 
 		operator.save_window_state(txn, &window_key, &window_state)?;
+		operator.store_row_index(txn, group_hash, event_row_number, window_id)?;
 	}
 
 	Ok(result)
@@ -173,36 +111,8 @@ fn process_tumbling_group_insert(
 
 /// Apply changes for tumbling windows
 pub fn apply_tumbling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-	let mut result = Vec::new();
-	let current_timestamp = operator.current_timestamp();
-
-	// First, process any expired windows
-	let expired_diffs = operator.process_expired_windows(txn, current_timestamp)?;
-	result.extend(expired_diffs);
-
-	for diff in change.diffs.iter() {
-		match diff {
-			Diff::Insert {
-				post,
-			} => {
-				let insert_result = process_tumbling_insert(operator, txn, post)?;
-				result.extend(insert_result);
-			}
-			Diff::Update {
-				pre: _,
-				post,
-			} => {
-				let update_result = process_tumbling_insert(operator, txn, post)?;
-				result.extend(update_result);
-			}
-			Diff::Remove {
-				pre: _,
-			} => {
-				// Window operators typically don't handle removes in streaming scenarios
-				// This would require complex retraction logic
-			}
-		}
-	}
-
-	Ok(Change::from_flow(operator.node, change.version, result))
+	let diffs = operator.apply_window_change(txn, &change, true, |op, txn, columns| {
+		op.process_insert(txn, columns, process_tumbling_group_insert)
+	})?;
+	Ok(Change::from_flow(operator.node, change.version, diffs))
 }

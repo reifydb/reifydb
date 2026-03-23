@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections, fmt, time};
+use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
 	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, subscription::SubscriptionColumnToCreate,
 	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	common::{JoinType, WindowKind},
 	interface::{
 		catalog::{
 			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
@@ -718,14 +718,10 @@ pub struct TakeNode {
 #[derive(Debug, Clone)]
 pub struct WindowNode {
 	pub input: Option<Box<QueryPlan>>,
-	pub window_type: WindowType,
-	pub size: WindowSize,
-	pub slide: Option<WindowSlide>,
+	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub min_events: usize,
-	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<time::Duration>,
+	pub ts: Option<String>,
 }
 
 /// O(1) point lookup by row number: `filter rownum == N`

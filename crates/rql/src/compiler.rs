@@ -387,14 +387,10 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		}),
 		PhysicalPlan::Window(node) => QueryPlan::Window(nodes::WindowNode {
 			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
-			window_type: node.window_type,
-			size: node.size,
-			slide: node.slide,
+			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			min_events: node.min_events,
-			max_window_count: node.max_window_count,
-			max_window_age: node.max_window_age,
+			ts: node.ts,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),

@@ -537,14 +537,10 @@ impl FlowEngine {
 				..
 			} => unimplemented!(),
 			Window {
-				window_type,
-				size,
-				slide,
+				kind,
 				group_by,
 				aggregations,
-				min_events,
-				max_window_count,
-				max_window_age,
+				ts,
 			} => {
 				let parent = self
 					.operators
@@ -554,14 +550,10 @@ impl FlowEngine {
 				let operator = WindowOperator::new(
 					parent,
 					node.id,
-					window_type.clone(),
-					size.clone(),
-					slide.clone(),
+					kind.clone(),
 					group_by.clone(),
 					aggregations.clone(),
-					min_events.clone(),
-					max_window_count.clone(),
-					max_window_age.clone(),
+					ts.clone(),
 					self.runtime_context.clone(),
 					self.executor.functions.clone(),
 				);

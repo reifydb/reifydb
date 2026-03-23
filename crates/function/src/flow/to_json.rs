@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time::Duration;
-
 use postcard::from_bytes;
 use reifydb_core::{
-	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	common::{JoinType, WindowKind},
 	internal,
 	sort::SortKey,
 	value::column::data::ColumnData,
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
 use reifydb_type::{error::Error, value::r#type::Type};
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
 
 use crate::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionResult, propagate_options};
@@ -81,26 +79,11 @@ pub enum JsonFlowNodeType {
 		subscription: String,
 	},
 	Window {
-		window_type: WindowType,
-		size: WindowSize,
-		slide: Option<WindowSlide>,
+		kind: WindowKind,
 		group_by: Vec<JsonExpression>,
 		aggregations: Vec<JsonExpression>,
-		min_events: usize,
-		max_window_count: Option<usize>,
-		#[serde(serialize_with = "serialize_duration_opt")]
-		max_window_age: Option<Duration>,
+		ts: Option<String>,
 	},
-}
-
-fn serialize_duration_opt<S>(duration: &Option<Duration>, serializer: S) -> Result<S::Ok, S::Error>
-where
-	S: Serializer,
-{
-	match duration {
-		Some(d) => serializer.serialize_some(&d.as_secs()),
-		None => serializer.serialize_none(),
-	}
 }
 
 impl From<&FlowNodeType> for JsonFlowNodeType {
@@ -213,23 +196,15 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				subscription: subscription.0.to_string(),
 			},
 			FlowNodeType::Window {
-				window_type,
-				size,
-				slide,
+				kind,
 				group_by,
 				aggregations,
-				min_events,
-				max_window_count,
-				max_window_age,
+				ts,
 			} => JsonFlowNodeType::Window {
-				window_type: window_type.clone(),
-				size: size.clone(),
-				slide: slide.clone(),
+				kind: kind.clone(),
 				group_by: group_by.iter().map(|e| e.into()).collect(),
 				aggregations: aggregations.iter().map(|e| e.into()).collect(),
-				min_events: *min_events,
-				max_window_count: *max_window_count,
-				max_window_age: *max_window_age,
+				ts: ts.clone(),
 			},
 		}
 	}

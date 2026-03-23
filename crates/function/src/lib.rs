@@ -14,7 +14,10 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
-	value::{identity::IdentityId, r#type::Type},
+	value::{
+		identity::IdentityId,
+		r#type::{Type, input_types::InputTypes},
+	},
 };
 
 pub mod blob;
@@ -73,6 +76,8 @@ pub struct AggregateFunctionContext<'a> {
 pub trait AggregateFunction: Send + Sync {
 	fn aggregate<'a>(&'a mut self, ctx: AggregateFunctionContext<'a>) -> AggregateFunctionResult<()>;
 	fn finalize(&mut self) -> AggregateFunctionResult<(Vec<GroupKey>, ColumnData)>;
+	fn return_type(&self, input_type: &Type) -> Type;
+	fn accepted_types(&self) -> InputTypes;
 }
 
 /// Helper for scalar functions to opt into Option propagation.

@@ -122,39 +122,37 @@ impl Default for IndexType {
 	}
 }
 
+/// How a window is measured — either by time duration or by event count.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum WindowType {
-	Time(WindowTimeMode),
-	Count,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum WindowTimeMode {
-	Processing,
-	EventTime(String),
-}
-
-impl Default for WindowType {
-	fn default() -> Self {
-		WindowType::Time(WindowTimeMode::Processing)
-	}
-}
-
-impl Default for WindowTimeMode {
-	fn default() -> Self {
-		WindowTimeMode::Processing
-	}
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WindowSize {
+pub enum WindowMeasure {
 	Duration(Duration),
 	Count(u64),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WindowSlide {
-	Duration(Duration),
-	Count(u64),
-	Rolling,
+/// A fully specified window kind. Each variant carries only the parameters
+/// that make sense for that kind.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum WindowKind {
+	/// Fixed-size, non-overlapping windows.
+	/// Each event belongs to exactly one window.
+	Tumbling {
+		size: WindowMeasure,
+	},
+	/// Fixed-size, overlapping windows.
+	/// Each event can belong to multiple windows.
+	/// Invariant: slide < size, and both must be the same measure type.
+	Sliding {
+		size: WindowMeasure,
+		slide: WindowMeasure,
+	},
+	/// Continuously maintained window of the most recent N events
+	/// or most recent T duration. One window per group. Triggers every event.
+	Rolling {
+		size: WindowMeasure,
+	},
+	/// Gap-based window. Stays open while events arrive within `gap`.
+	/// Closes after `gap` duration of inactivity per group key.
+	Session {
+		gap: Duration,
+	},
 }

@@ -734,11 +734,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					"│   "
 				}
 			);
-			output.push_str(&format!("{}├── Window Type: {:?}\n", child_prefix, window.window_type));
-			output.push_str(&format!("{}├── Size: {:?}\n", child_prefix, window.size));
-			if let Some(ref slide) = window.slide {
-				output.push_str(&format!("{}├── Slide: {:?}\n", child_prefix, slide));
-			}
+			output.push_str(&format!("{}├── Kind: {:?}\n", child_prefix, window.kind));
 			if !window.group_by.is_empty() {
 				output.push_str(&format!(
 					"{}├── Group By: {} expressions\n",

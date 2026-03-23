@@ -194,6 +194,37 @@ impl Display for ConstantExpression {
 	}
 }
 
+impl ConstantExpression {
+	pub fn infer_type(&self) -> Type {
+		match self {
+			ConstantExpression::None {
+				..
+			} => Type::Any,
+			ConstantExpression::Bool {
+				..
+			} => Type::Boolean,
+			ConstantExpression::Number {
+				..
+			} => Type::Int4,
+			ConstantExpression::Text {
+				..
+			} => Type::Utf8,
+			ConstantExpression::Temporal {
+				..
+			} => Type::DateTime,
+		}
+	}
+}
+
+impl Expression {
+	pub fn infer_type(&self) -> Option<Type> {
+		match self {
+			Expression::Constant(c) => Some(c.infer_type()),
+			_ => None,
+		}
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CastExpression {
 	pub fragment: Fragment,

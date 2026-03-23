@@ -57,6 +57,7 @@ impl Operator for SinkTableViewOperator {
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						let row_number = coerced.row_numbers[row_idx];
+
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
