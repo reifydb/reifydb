@@ -9,6 +9,7 @@
 
 use std::{
 	any::Any,
+	io::Write,
 	sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -72,8 +73,11 @@ impl Subsystem for TracingSubsystem {
 
 		info!("Tracing subsystem shutting down");
 
-		// tracing_subscriber handles cleanup automatically when dropped
-		// We just need to mark ourselves as not running
+		// Flush stdout/stderr to ensure all log output is written before
+		// the process exits. The global tracing subscriber is not dropped
+		// on shutdown, so we must flush manually.
+		let _ = std::io::stdout().flush();
+		let _ = std::io::stderr().flush();
 
 		Ok(())
 	}

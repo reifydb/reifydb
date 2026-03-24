@@ -179,7 +179,8 @@ impl EmbeddedBuilder {
 		}
 
 		#[cfg(feature = "sub_tracing")]
-		if let Some(configurator) = self.tracing_configurator {
+		{
+			let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
 			builder = builder.with_tracing(configurator);
 		}
 

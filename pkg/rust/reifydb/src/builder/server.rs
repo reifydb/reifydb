@@ -273,7 +273,8 @@ impl ServerBuilder {
 			database_builder = database_builder.add_subsystem_factory(Box::new(factory));
 		} else {
 			#[cfg(feature = "sub_tracing")]
-			if let Some(configurator) = self.tracing_configurator {
+			{
+				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
 				database_builder = database_builder.with_tracing(configurator);
 			}
 		}
@@ -281,7 +282,8 @@ impl ServerBuilder {
 		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel")))]
 		{
 			#[cfg(feature = "sub_tracing")]
-			if let Some(configurator) = self.tracing_configurator {
+			{
+				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
 				database_builder = database_builder.with_tracing(configurator);
 			}
 		}
