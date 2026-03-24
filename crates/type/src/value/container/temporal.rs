@@ -2,9 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	any::TypeId,
 	fmt::{self, Debug},
-	mem::transmute_copy,
 	ops::Deref,
 	result::Result as StdResult,
 };
@@ -15,7 +13,7 @@ use crate::{
 	Result,
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::{Value, date::Date, datetime::DateTime, duration::Duration, is::IsTemporal, time::Time},
+	value::{Value, is::IsTemporal},
 };
 
 pub struct TemporalContainer<T, S: Storage = Cow>
@@ -174,28 +172,9 @@ where
 		}
 	}
 
-	pub fn get_value(&self, index: usize) -> Value
-	where
-		T: 'static,
-	{
+	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() {
-			let value = &self.data[index];
-
-			if TypeId::of::<T>() == TypeId::of::<Date>() {
-				let date_val = unsafe { transmute_copy::<T, Date>(value) };
-				Value::Date(date_val)
-			} else if TypeId::of::<T>() == TypeId::of::<DateTime>() {
-				let datetime_val = unsafe { transmute_copy::<T, DateTime>(value) };
-				Value::DateTime(datetime_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Time>() {
-				let time_val = unsafe { transmute_copy::<T, Time>(value) };
-				Value::Time(time_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Duration>() {
-				let duration_val = unsafe { transmute_copy::<T, Duration>(value) };
-				Value::Duration(duration_val)
-			} else {
-				Value::none()
-			}
+			self.data[index].to_value()
 		} else {
 			Value::none()
 		}
@@ -269,6 +248,7 @@ where
 #[cfg(test)]
 pub mod tests {
 	use super::*;
+	use crate::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 	#[test]
 	fn test_date_container() {

@@ -10,13 +10,14 @@ use crate::value::{
 	decimal::Decimal,
 	duration::Duration,
 	time::Time,
+	to_value::ToValue,
 	r#type::get::GetType,
 	uuid::{Uuid4, Uuid7},
 };
 
-pub trait IsNumber: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
-pub trait IsTemporal: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
-pub trait IsUuid: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
+pub trait IsNumber: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + ToValue + 'static {}
+pub trait IsTemporal: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + ToValue + 'static {}
+pub trait IsUuid: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + ToValue + 'static {}
 
 pub trait IsFloat: IsNumber {}
 

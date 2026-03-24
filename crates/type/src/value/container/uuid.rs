@@ -2,9 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	any::TypeId,
 	fmt::{self, Debug},
-	mem::transmute_copy,
 	ops::Deref,
 	result::Result as StdResult,
 };
@@ -15,11 +13,7 @@ use crate::{
 	Result,
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::{
-		Value,
-		is::IsUuid,
-		uuid::{Uuid4, Uuid7},
-	},
+	value::{Value, is::IsUuid},
 };
 
 pub struct UuidContainer<T, S: Storage = Cow>
@@ -174,22 +168,9 @@ where
 		}
 	}
 
-	pub fn get_value(&self, index: usize) -> Value
-	where
-		T: 'static,
-	{
+	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() {
-			let value = self.data[index].clone();
-
-			if TypeId::of::<T>() == TypeId::of::<Uuid4>() {
-				let uuid_val = unsafe { transmute_copy::<T, Uuid4>(&value) };
-				Value::Uuid4(uuid_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Uuid7>() {
-				let uuid_val = unsafe { transmute_copy::<T, Uuid7>(&value) };
-				Value::Uuid7(uuid_val)
-			} else {
-				Value::none()
-			}
+			self.data[index].to_value()
 		} else {
 			Value::none()
 		}
@@ -263,6 +244,7 @@ where
 #[cfg(test)]
 pub mod tests {
 	use super::*;
+	use crate::value::uuid::{Uuid4, Uuid7};
 
 	#[test]
 	fn test_uuid4_container() {
