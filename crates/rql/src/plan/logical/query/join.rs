@@ -271,10 +271,12 @@ fn resolve_join_plan<'bump>(
 		})),
 		ResolvedSource::Remote {
 			address,
+			token,
 			local_namespace,
 			remote_name,
 		} => Ok(LogicalPlan::RemoteScan(RemoteScanNode {
 			address,
+			token,
 			local_namespace,
 			remote_name,
 		})),

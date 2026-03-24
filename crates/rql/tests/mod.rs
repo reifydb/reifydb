@@ -96,6 +96,7 @@ impl Runner for TestRunner {
 								local_name: "test".to_string(),
 								parent_id: NamespaceId::ROOT,
 								grpc: None,
+								token: None,
 							},
 						)
 						.unwrap();

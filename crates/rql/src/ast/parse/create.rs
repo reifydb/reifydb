@@ -548,6 +548,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut grpc = None;
+		let mut remote_token = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -564,15 +565,19 @@ impl<'bump> Parser<'bump> {
 					let value = self.consume_literal(Literal::Text)?;
 					grpc = Some(value.fragment);
 				}
+				"token" => {
+					let value = self.consume_literal(Literal::Text)?;
+					remote_token = Some(value.fragment);
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'grpc'".to_string(),
+							expected: "'grpc' or 'token'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'grpc'",
+							"'grpc' or 'token'",
 							fragment.text()
 						),
 						fragment,
@@ -608,6 +613,7 @@ impl<'bump> Parser<'bump> {
 			namespace,
 			if_not_exists,
 			grpc,
+			token_value: remote_token,
 		}))
 	}
 

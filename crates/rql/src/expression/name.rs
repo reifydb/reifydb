@@ -352,10 +352,10 @@ mod tests {
 	use super::{collect_all_column_names, collect_column_names};
 	use crate::expression::{
 		AccessPrimitiveExpression, AddExpression, AliasExpression, BetweenExpression, CallExpression,
-		CastExpression, ColumnExpression, ConstantExpression, ContainsExpression, ElseIfExpression, Expression,
-		ExtendExpression, FieldAccessExpression, IdentExpression, IfExpression, InExpression,
-		IsVariantExpression, ListExpression, MapExpression, ParameterExpression, PrefixExpression,
-		PrefixOperator, SumTypeConstructorExpression, TupleExpression, TypeExpression, VariableExpression,
+		CastExpression, ColumnExpression, ConstantExpression, ElseIfExpression, Expression,
+		FieldAccessExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
+		ListExpression, ParameterExpression, PrefixExpression, PrefixOperator, SumTypeConstructorExpression,
+		TupleExpression, TypeExpression, VariableExpression,
 	};
 
 	fn frag(text: &str) -> Fragment {

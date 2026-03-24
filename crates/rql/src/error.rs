@@ -901,6 +901,7 @@ pub enum IdentifierError {
 		namespace: String,
 		name: String,
 		address: String,
+		token: Option<String>,
 		fragment: Fragment,
 	},
 }
@@ -968,28 +969,35 @@ impl From<IdentifierError> for Error {
 				namespace,
 				name,
 				address,
+				token,
 				fragment,
-			} => Error(Diagnostic {
-				code: "REMOTE_001".to_string(),
-				statement: None,
-				message: format!(
-					"Remote namespace '{}': source '{}' is on remote instance at {}",
-					namespace, name, address
-				),
-				column: None,
-				fragment,
-				label: Some("source is on a remote instance".to_string()),
-				help: Some(
-					"Remote namespaces cannot be queried directly. Use the remote instance's endpoint instead."
-						.to_string(),
-				),
-				notes: vec![
+			} => {
+				let mut notes = vec![
 					format!("Namespace '{}' is configured as a remote namespace", namespace),
 					format!("Remote gRPC address: {}", address),
-				],
-				cause: None,
-				operator_chain: None,
-			}),
+				];
+				if let Some(ref t) = token {
+					notes.push(format!("Remote token: {}", t));
+				}
+				Error(Diagnostic {
+					code: "REMOTE_001".to_string(),
+					statement: None,
+					message: format!(
+						"Remote namespace '{}': source '{}' is on remote instance at {}",
+						namespace, name, address
+					),
+					column: None,
+					fragment,
+					label: Some("source is on a remote instance".to_string()),
+					help: Some(
+						"Remote namespaces cannot be queried directly. Use the remote instance's endpoint instead."
+							.to_string(),
+					),
+					notes,
+					cause: None,
+					operator_chain: None,
+				})
+			}
 			_ => {
 				internal_error!("{}", err)
 			}

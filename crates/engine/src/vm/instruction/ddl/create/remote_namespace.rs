@@ -36,6 +36,7 @@ pub(crate) fn create_remote_namespace(
 					local_name: plan.segments[i].text().to_string(),
 					parent_id,
 					grpc: None,
+					token: None,
 				},
 			)?;
 			txn.track_namespace_created(result.clone())?;
@@ -54,6 +55,7 @@ pub(crate) fn create_remote_namespace(
 	}
 
 	let grpc_text = plan.grpc.text().to_string();
+	let token_text = plan.token.as_ref().map(|t| t.text().to_string());
 	let result = services.catalog.create_namespace(
 		txn,
 		NamespaceToCreate {
@@ -62,6 +64,7 @@ pub(crate) fn create_remote_namespace(
 			local_name: plan.segments.last().unwrap().text().to_string(),
 			parent_id,
 			grpc: Some(grpc_text),
+			token: token_text,
 		},
 	)?;
 	txn.track_namespace_created(result.clone())?;

@@ -36,6 +36,7 @@ pub(crate) fn create_namespace(
 					local_name: plan.segments[i].text().to_string(),
 					parent_id,
 					grpc: None,
+					token: None,
 				},
 			)?;
 			txn.track_namespace_created(result.clone())?;
@@ -61,6 +62,7 @@ pub(crate) fn create_namespace(
 			local_name: plan.segments.last().unwrap().text().to_string(),
 			parent_id,
 			grpc: None,
+			token: None,
 		},
 	)?;
 	txn.track_namespace_created(result.clone())?;

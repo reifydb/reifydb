@@ -2865,6 +2865,7 @@ name = "testcontainer"
 version = "0.4.2"
 dependencies = [
  "reifydb",
+ "reifydb-type",
  "tracing",
 ]
 

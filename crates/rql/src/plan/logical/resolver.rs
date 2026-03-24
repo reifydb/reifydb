@@ -25,6 +25,7 @@ pub enum ResolvedSource {
 	Primitive(ResolvedPrimitive),
 	Remote {
 		address: String,
+		token: Option<String>,
 		local_namespace: String,
 		remote_name: String,
 	},
@@ -59,6 +60,7 @@ pub fn resolve_unresolved_source(
 	if let Some(address) = ns_def.address() {
 		return Ok(ResolvedSource::Remote {
 			address: address.to_string(),
+			token: ns_def.token().map(|s| s.to_string()),
 			local_namespace: namespace_str.to_string(),
 			remote_name: name_str.to_string(),
 		});

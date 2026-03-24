@@ -27,6 +27,7 @@ pub struct NamespaceToCreate {
 	pub local_name: String,
 	pub parent_id: NamespaceId,
 	pub grpc: Option<String>,
+	pub token: Option<String>,
 }
 
 impl From<NamespaceToCreate> for StoreNamespaceToCreate {
@@ -37,6 +38,7 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 			local_name: to_create.local_name,
 			parent_id: to_create.parent_id,
 			grpc: to_create.grpc,
+			token: to_create.token,
 		}
 	}
 }

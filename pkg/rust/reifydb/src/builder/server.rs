@@ -53,7 +53,6 @@ pub struct ServerBuilder {
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 	otel_tracing_config: Option<(OtelConfig, Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>)>,
-	remote_service_token: Option<String>,
 }
 
 impl ServerBuilder {
@@ -77,7 +76,6 @@ impl ServerBuilder {
 			flow_configurator: None,
 			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 			otel_tracing_config: None,
-			remote_service_token: None,
 		}
 	}
 
@@ -91,11 +89,6 @@ impl ServerBuilder {
 
 	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
 		self.migrations = migrations;
-		self
-	}
-
-	pub fn with_remote_service_token(mut self, token: impl Into<String>) -> Self {
-		self.remote_service_token = Some(token.into());
 		self
 	}
 
@@ -300,10 +293,6 @@ impl ServerBuilder {
 
 		for factory in self.subsystem_factories {
 			database_builder = database_builder.add_subsystem_factory(factory);
-		}
-
-		if let Some(token) = self.remote_service_token {
-			database_builder = database_builder.with_remote_service_token(token);
 		}
 
 		database_builder.build()

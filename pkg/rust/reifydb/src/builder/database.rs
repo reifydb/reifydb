@@ -85,7 +85,6 @@ pub struct DatabaseBuilder {
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	migrations: Vec<Migration>,
-	remote_service_token: Option<String>,
 }
 
 impl DatabaseBuilder {
@@ -124,7 +123,6 @@ impl DatabaseBuilder {
 			flow_factory: None,
 			task_factory: None,
 			migrations: Vec::new(),
-			remote_service_token: None,
 		}
 	}
 
@@ -224,11 +222,6 @@ impl DatabaseBuilder {
 
 	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
 		self.migrations = migrations;
-		self
-	}
-
-	pub fn with_remote_service_token(mut self, token: impl Into<String>) -> Self {
-		self.remote_service_token = Some(token.into());
 		self
 	}
 
@@ -337,7 +330,7 @@ impl DatabaseBuilder {
 		};
 
 		// Create RemoteRegistry for forwarding queries to remote namespaces
-		let remote_registry = RemoteRegistry::new(runtime.clone(), self.remote_service_token.clone());
+		let remote_registry = RemoteRegistry::new(runtime.clone());
 
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)
 		let engine = StandardEngine::new(

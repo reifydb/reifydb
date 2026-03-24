@@ -25,6 +25,7 @@ pub enum ResolvedProcedure {
 	Local(ProcedureDef),
 	Remote {
 		address: String,
+		token: Option<String>,
 	},
 	/// Test procedure — always local, only callable from test context
 	Test(ProcedureDef),
@@ -188,6 +189,7 @@ impl Catalog {
 				if let Some(address) = ns.address() {
 					return Ok(Some(ResolvedProcedure::Remote {
 						address: address.to_string(),
+						token: ns.token().map(|t| t.to_string()),
 					}));
 				}
 				return Ok(self.find_procedure_by_name(txn, ns.id(), proc_name)?.map(|p| {

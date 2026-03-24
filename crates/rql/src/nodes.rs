@@ -194,6 +194,7 @@ pub struct CreateRemoteNamespaceNode {
 	pub segments: Vec<Fragment>,
 	pub if_not_exists: bool,
 	pub grpc: Fragment,
+	pub token: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
@@ -626,6 +627,7 @@ pub struct IndexScanNode {
 #[derive(Debug, Clone)]
 pub struct RemoteScanNode {
 	pub address: String,
+	pub token: Option<String>,
 	pub remote_rql: String,
 	pub local_namespace: String,
 	pub remote_name: String,

@@ -636,7 +636,7 @@ pub(crate) fn compile<'a>(
 		}
 
 		RqlQueryPlan::RemoteScan(node) => {
-			Box::new(RemoteFetchNode::new(node.address, node.remote_rql, node.variables))
+			Box::new(RemoteFetchNode::new(node.address, node.token, node.remote_rql, node.variables))
 		}
 
 		RqlQueryPlan::Variable(var_node) => Box::new(VariableNode::new(var_node.variable_expr)),

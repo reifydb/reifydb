@@ -325,6 +325,7 @@ pub mod tests {
 				local_name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
+				token: None,
 			},
 		)
 		.unwrap();

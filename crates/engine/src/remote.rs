@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{RwLock, mpsc},
-};
+use std::sync::mpsc;
 
 use reifydb_client::GrpcClient;
 use reifydb_runtime::SharedRuntime;
@@ -15,22 +12,24 @@ use reifydb_type::{
 };
 
 pub struct RemoteRegistry {
-	connections: RwLock<HashMap<String, GrpcClient>>,
 	runtime: SharedRuntime,
-	service_token: Option<String>,
 }
 
 impl RemoteRegistry {
-	pub fn new(runtime: SharedRuntime, service_token: Option<String>) -> Self {
+	pub fn new(runtime: SharedRuntime) -> Self {
 		Self {
-			connections: RwLock::new(HashMap::new()),
 			runtime,
-			service_token,
 		}
 	}
 
-	pub fn forward_query(&self, address: &str, rql: &str, params: Params) -> Result<Vec<Frame>, Error> {
-		let client = self.get_or_connect(address)?;
+	pub fn forward_query(
+		&self,
+		address: &str,
+		rql: &str,
+		params: Params,
+		token: Option<&str>,
+	) -> Result<Vec<Frame>, Error> {
+		let client = self.connect(address, token)?;
 		let params_opt = match &params {
 			Params::None => None,
 			_ => Some(params),
@@ -55,16 +54,7 @@ impl RemoteRegistry {
 			.map_err(Into::into)
 	}
 
-	fn get_or_connect(&self, address: &str) -> Result<GrpcClient, Error> {
-		// Fast path: check read lock
-		{
-			let cache = self.connections.read().unwrap();
-			if let Some(client) = cache.get(address) {
-				return Ok(client.clone());
-			}
-		}
-
-		// Slow path: connect via spawn + channel
+	fn connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, Error> {
 		let address_owned = address.to_string();
 		let (tx, rx) = mpsc::sync_channel(1);
 
@@ -80,12 +70,8 @@ impl RemoteRegistry {
 				..Default::default()
 			})
 		})??;
-		if let Some(ref token) = self.service_token {
+		if let Some(token) = token {
 			client.authenticate(token);
-		}
-		{
-			let mut cache = self.connections.write().unwrap();
-			cache.entry(address.to_string()).or_insert(client.clone());
 		}
 		Ok(client)
 	}
@@ -99,6 +85,11 @@ pub fn is_remote_query(err: &Error) -> bool {
 /// Extract the remote gRPC address from a REMOTE_001 error diagnostic.
 pub fn extract_remote_address(err: &Error) -> Option<String> {
 	err.0.notes.iter().find_map(|n| n.strip_prefix("Remote gRPC address: ")).map(|s| s.to_string())
+}
+
+/// Extract the remote service token from a REMOTE_001 error diagnostic.
+pub fn extract_remote_token(err: &Error) -> Option<String> {
+	err.0.notes.iter().find_map(|n| n.strip_prefix("Remote token: ")).map(|s| s.to_string())
 }
 
 #[cfg(test)]
@@ -156,5 +147,27 @@ mod tests {
 			..Default::default()
 		});
 		assert_eq!(extract_remote_address(&err), None);
+	}
+
+	#[test]
+	fn test_extract_remote_token() {
+		let err = Error(Diagnostic {
+			code: "REMOTE_001".to_string(),
+			message: "Remote namespace".to_string(),
+			notes: vec![
+				"Namespace 'test' is configured as a remote namespace".to_string(),
+				"Remote gRPC address: http://localhost:50051".to_string(),
+				"Remote token: my-secret".to_string(),
+			],
+			fragment: Fragment::None,
+			..Default::default()
+		});
+		assert_eq!(extract_remote_token(&err), Some("my-secret".to_string()));
+	}
+
+	#[test]
+	fn test_extract_remote_token_missing() {
+		let err = make_remote_error("http://localhost:50051");
+		assert_eq!(extract_remote_token(&err), None);
 	}
 }

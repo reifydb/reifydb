@@ -7,6 +7,7 @@ use reifydb::{
 	WithSubsystem, server, sub_server_http::factory::HttpConfig, sub_server_otel::config::OtelConfig,
 	sub_server_ws::factory::WsConfig,
 };
+use reifydb_type::params::Params;
 use tracing::info;
 
 fn main() {
@@ -41,5 +42,12 @@ fn main() {
 	println!();
 	println!("Press Ctrl+C to stop...");
 
-	db.start_and_await_signal().unwrap();
+	db.start().unwrap();
+
+	// Create a hardcoded auth token for root so clients can authenticate
+	db.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }", Params::None)
+		.unwrap();
+	println!("Auth token configured for root user: mysecrettoken");
+
+	db.await_signal().unwrap();
 }

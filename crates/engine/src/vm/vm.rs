@@ -1026,6 +1026,7 @@ impl Vm {
 							#[cfg(not(target_arch = "wasm32"))]
 							Some(ResolvedProcedure::Remote {
 								address,
+								token,
 							}) => {
 								if let Some(ref registry) = services.remote_registry {
 									let param_refs: Vec<String> = (1..=args.len())
@@ -1040,6 +1041,7 @@ impl Vm {
 										&address,
 										&remote_rql,
 										Params::Positional(Arc::new(args)),
+										token.as_deref(),
 									)?;
 									if let Some(frame) = frames.into_iter().next() {
 										let cols: Columns = frame.into();

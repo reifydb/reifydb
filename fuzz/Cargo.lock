@@ -777,8 +777,8 @@ name = "reifydb-auth"
 version = "0.4.2"
 dependencies = [
  "argon2",
- "rand",
  "reifydb-core",
+ "reifydb-runtime",
  "reifydb-type",
  "subtle",
  "thiserror",

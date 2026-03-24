@@ -653,6 +653,7 @@ pub struct AstCreateRemoteNamespace<'bump> {
 	pub namespace: MaybeQualifiedNamespaceIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub grpc: BumpFragment<'bump>,
+	pub token_value: Option<BumpFragment<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

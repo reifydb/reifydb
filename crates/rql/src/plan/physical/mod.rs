@@ -2013,6 +2013,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::RemoteScan(scan) => {
 					stack.push(PhysicalPlan::RemoteScan(nodes::RemoteScanNode {
 						address: scan.address,
+						token: scan.token,
 						remote_rql: format!(
 							"FROM {}::{}",
 							scan.local_namespace, scan.remote_name

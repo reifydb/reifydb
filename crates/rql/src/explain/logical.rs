@@ -592,6 +592,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			address,
 			local_namespace,
 			remote_name,
+			..
 		}) => {
 			output.push_str(&format!(
 				"{}{} RemoteScan {}::{} @ {}\n",

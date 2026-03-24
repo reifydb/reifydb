@@ -82,6 +82,7 @@ impl<'bump> Compiler<'bump> {
 					namespace: ns_segments.join("::"),
 					name: target_name.to_string(),
 					address: address.to_string(),
+					token: ns.token().map(|s| s.to_string()),
 					fragment: name.to_owned(),
 				}
 				.into());

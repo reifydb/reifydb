@@ -617,6 +617,7 @@ pub struct CreateRemoteNamespaceNode<'bump> {
 	pub segments: Vec<BumpFragment<'bump>>,
 	pub if_not_exists: bool,
 	pub grpc: BumpFragment<'bump>,
+	pub token: Option<BumpFragment<'bump>>,
 }
 
 #[derive(Debug)]
@@ -874,6 +875,7 @@ pub struct PrimitiveScanNode {
 #[derive(Debug)]
 pub struct RemoteScanNode {
 	pub address: String,
+	pub token: Option<String>,
 	pub local_namespace: String,
 	pub remote_name: String,
 }

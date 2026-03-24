@@ -23,7 +23,6 @@ pub use http::HttpClient;
 pub use reifydb_client_derive::FromFrame;
 // Re-export commonly used types from reifydb-type
 pub use reifydb_type as r#type;
-use reifydb_type::error::Diagnostic;
 pub use reifydb_type::{
 	params::Params,
 	value::{
@@ -230,6 +229,9 @@ pub struct AdminResponse {
 	pub content_type: String,
 	pub body: serde_json::Value,
 }
+
+#[cfg(any(feature = "http", feature = "ws"))]
+use reifydb_type::error::Diagnostic;
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]

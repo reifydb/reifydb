@@ -29,10 +29,12 @@ impl<'bump> Compiler<'bump> {
 				match resolved_source {
 					ResolvedSource::Remote {
 						address,
+						token,
 						local_namespace,
 						remote_name,
 					} => Ok(LogicalPlan::RemoteScan(RemoteScanNode {
 						address,
+						token,
 						local_namespace,
 						remote_name,
 					})),

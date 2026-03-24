@@ -30,12 +30,17 @@ pub(crate) fn convert_namespace(multi: MultiVersionValues) -> Namespace {
 		.to_string();
 
 	if let Some(address) = grpc {
+		let token = namespace::SCHEMA
+			.try_get_utf8(&row, namespace::TOKEN)
+			.map(|s| s.to_string())
+			.filter(|s| !s.is_empty());
 		Namespace::Remote {
 			id,
 			name,
 			local_name,
 			parent_id,
 			address,
+			token,
 		}
 	} else {
 		Namespace::Local {

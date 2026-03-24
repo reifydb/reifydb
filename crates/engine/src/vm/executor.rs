@@ -108,7 +108,10 @@ impl Executor {
 		if let Some(ref registry) = self.0.remote_registry {
 			if remote::is_remote_query(err) {
 				if let Some(address) = remote::extract_remote_address(err) {
-					return registry.forward_query(&address, rql, params).map(Some);
+					let token = remote::extract_remote_token(err);
+					return registry
+						.forward_query(&address, rql, params, token.as_deref())
+						.map(Some);
 				}
 			}
 		}

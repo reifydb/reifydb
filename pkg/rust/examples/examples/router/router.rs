@@ -15,7 +15,6 @@ use tracing::info;
 fn main() {
 	let mut db = server::memory()
 		.with_tracing(|c| c.with_console(|f| f.color(true)))
-		.with_remote_service_token("service-token")
 		.with_grpc(GrpcConfig::default().bind_addr("[::1]:50051"))
 		.build()
 		.unwrap();
@@ -27,7 +26,11 @@ fn main() {
 
 	// Create a remote namespace that points to the data server
 	info!("Creating remote namespace store -> [::1]:50052");
-	db.admin_as_root("CREATE REMOTE NAMESPACE store WITH { grpc: 'http://[::1]:50052' };", Params::None).unwrap();
+	db.admin_as_root(
+		"CREATE REMOTE NAMESPACE store WITH { grpc: 'http://[::1]:50052', token: 'service-token' };",
+		Params::None,
+	)
+	.unwrap();
 
 	// Query 1: FROM store::products — transparently forwarded to data server
 	info!("--- Query: FROM store::products ---");

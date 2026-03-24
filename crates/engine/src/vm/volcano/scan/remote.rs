@@ -24,6 +24,7 @@ use crate::{
 #[allow(dead_code)]
 pub(crate) struct RemoteFetchNode {
 	address: String,
+	token: Option<String>,
 	remote_rql: String,
 	variable_names: Vec<String>,
 	batches: VecDeque<Columns>,
@@ -31,9 +32,10 @@ pub(crate) struct RemoteFetchNode {
 }
 
 impl RemoteFetchNode {
-	pub fn new(address: String, remote_rql: String, variable_names: Vec<String>) -> Self {
+	pub fn new(address: String, token: Option<String>, remote_rql: String, variable_names: Vec<String>) -> Self {
 		Self {
 			address,
+			token,
 			remote_rql,
 			variable_names,
 			batches: VecDeque::new(),
@@ -71,7 +73,12 @@ impl QueryNode for RemoteFetchNode {
 					}
 				};
 
-				let frames = registry.forward_query(&self.address, &self.remote_rql, params)?;
+				let frames = registry.forward_query(
+					&self.address,
+					&self.remote_rql,
+					params,
+					self.token.as_deref(),
+				)?;
 
 				for frame in frames {
 					let cols: Columns = frame.into();

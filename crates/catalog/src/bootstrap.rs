@@ -91,6 +91,7 @@ pub fn bootstrap_system_procedures(
 					name: "system::config".to_string(),
 					local_name: "config".to_string(),
 					parent_id: NamespaceId(1),
+					token: None,
 					grpc: None,
 				},
 			)?;

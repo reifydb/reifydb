@@ -40,12 +40,17 @@ impl CatalogStore {
 						})
 						.to_string();
 					let namespace = if let Some(address) = grpc {
+						let token = namespace::SCHEMA
+							.try_get_utf8(&entry.values, namespace::TOKEN)
+							.map(|s| s.to_string())
+							.filter(|s| !s.is_empty());
 						Namespace::Remote {
 							id: namespace_id,
 							name,
 							local_name,
 							parent_id,
 							address,
+							token,
 						}
 					} else {
 						Namespace::Local {

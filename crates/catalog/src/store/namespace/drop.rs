@@ -152,6 +152,7 @@ pub mod tests {
 				local_name: "test_ns".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
+				token: None,
 			},
 		)
 		.unwrap();
