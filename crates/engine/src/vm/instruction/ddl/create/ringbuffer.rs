@@ -17,13 +17,14 @@ pub(crate) fn create_ringbuffer(
 	plan: CreateRingBufferNode,
 ) -> Result<Columns> {
 	// Check if ring buffer already exists using the catalog
-	if let Some(_) = services.catalog.find_ringbuffer_by_name(
+	if let Some(existing) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.ringbuffer.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(existing.id.0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -43,9 +44,11 @@ pub(crate) fn create_ringbuffer(
 			partition_by: plan.partition_by,
 		},
 	)?;
+	let id = result.id;
 	txn.track_ringbuffer_def_created(result)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
 		("created", Value::Boolean(true)),
@@ -87,9 +90,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Creating the same ring buffer again should return error
 		let err = instance
@@ -138,9 +142,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Create ringbuffer with same name in different namespace
 		let frames = instance
@@ -153,8 +158,9 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 }

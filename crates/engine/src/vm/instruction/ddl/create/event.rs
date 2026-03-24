@@ -29,7 +29,7 @@ pub(crate) fn create_event(services: &Services, txn: &mut AdminTransaction, plan
 		});
 	}
 
-	services.catalog.create_sumtype(
+	let result = services.catalog.create_sumtype(
 		txn,
 		SumTypeToCreate {
 			name: plan.name.clone(),
@@ -40,6 +40,7 @@ pub(crate) fn create_event(services: &Services, txn: &mut AdminTransaction, plan
 	)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(result.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("event", Value::Utf8(plan.name.text().to_string())),
 		("created", Value::Boolean(true)),

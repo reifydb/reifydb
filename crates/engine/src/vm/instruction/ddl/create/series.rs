@@ -14,7 +14,7 @@ pub(crate) fn create_series(
 	txn: &mut AdminTransaction,
 	plan: CreateSeriesNode,
 ) -> Result<Columns> {
-	services.catalog.create_series(
+	let result = services.catalog.create_series(
 		txn,
 		SeriesToCreate {
 			name: plan.series.clone(),
@@ -26,6 +26,7 @@ pub(crate) fn create_series(
 	)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(result.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("series", Value::Utf8(plan.series.text().to_string())),
 		("created", Value::Boolean(true)),

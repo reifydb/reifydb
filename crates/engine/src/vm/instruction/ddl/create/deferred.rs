@@ -33,6 +33,7 @@ pub(crate) fn create_deferred_view(
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(view.id().0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("view", Value::Utf8(plan.view.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -58,6 +59,7 @@ pub(crate) fn create_deferred_view(
 	create_deferred_view_flow(&services.catalog, txn, &result, *plan.as_clause)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(result.id().0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("view", Value::Utf8(plan.view.text().to_string())),
 		("created", Value::Boolean(true)),
@@ -216,9 +218,10 @@ pub mod tests {
 			.unwrap();
 		let frame = &frames[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_view".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1028));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Creating the same view again should return error
 		let err = instance
@@ -283,9 +286,10 @@ pub mod tests {
 			.unwrap();
 		let frame = &frames[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_view".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1029));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		let frames = instance
 			.admin(
@@ -297,8 +301,9 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_view".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1031));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 }

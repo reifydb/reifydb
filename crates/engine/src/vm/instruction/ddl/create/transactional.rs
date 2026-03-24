@@ -33,6 +33,7 @@ pub(crate) fn create_transactional_view(
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(view.id().0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("view", Value::Utf8(plan.view.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -58,6 +59,7 @@ pub(crate) fn create_transactional_view(
 	create_deferred_view_flow(&services.catalog, txn, &result, *plan.as_clause)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(result.id().0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("view", Value::Utf8(plan.view.text().to_string())),
 		("created", Value::Boolean(true)),

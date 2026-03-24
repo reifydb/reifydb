@@ -17,13 +17,14 @@ pub(crate) fn create_sumtype(
 	txn: &mut AdminTransaction,
 	plan: CreateSumTypeNode,
 ) -> Result<Columns> {
-	if let Some(_) = services.catalog.find_sumtype_by_name(
+	if let Some(existing) = services.catalog.find_sumtype_by_name(
 		&mut Transaction::Admin(&mut *txn),
 		plan.namespace.id(),
 		plan.name.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(existing.id.0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("sumtype", Value::Utf8(plan.name.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -47,7 +48,7 @@ pub(crate) fn create_sumtype(
 		});
 	}
 
-	services.catalog.create_sumtype(
+	let result = services.catalog.create_sumtype(
 		txn,
 		SumTypeToCreate {
 			name: plan.name.clone(),
@@ -58,6 +59,7 @@ pub(crate) fn create_sumtype(
 	)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(result.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("sumtype", Value::Utf8(plan.name.text().to_string())),
 		("created", Value::Boolean(true)),

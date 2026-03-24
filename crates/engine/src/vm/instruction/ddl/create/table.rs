@@ -18,13 +18,14 @@ use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan: CreateTableNode) -> Result<Columns> {
 	// Check if table already exists using the catalog
-	if let Some(_) = services.catalog.find_table_by_name(
+	if let Some(existing) = services.catalog.find_table_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.table.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(existing.id.0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("table", Value::Utf8(plan.table.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -49,6 +50,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 	txn.track_table_def_created(table.clone())?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(table.id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("table", Value::Utf8(plan.table.text().to_string())),
 		("created", Value::Boolean(true)),
@@ -141,9 +143,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Creating the same table again should return error
 		let err = instance
@@ -192,9 +195,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Create table with same name in different namespace
 		let frames = instance
@@ -207,9 +211,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_table".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 
 	#[test]
@@ -245,7 +250,8 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 
 	#[test]
@@ -281,7 +287,8 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 
 	#[test]

@@ -16,13 +16,14 @@ pub(crate) fn create_dictionary(
 	txn: &mut AdminTransaction,
 	plan: CreateDictionaryNode,
 ) -> Result<Columns> {
-	if let Some(_) = services.catalog.find_dictionary_by_name(
+	if let Some(existing) = services.catalog.find_dictionary_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
 		plan.dictionary.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(existing.id.0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -39,9 +40,11 @@ pub(crate) fn create_dictionary(
 			id_type: plan.id_type,
 		},
 	)?;
+	let id = result.id;
 	txn.track_dictionary_def_created(result)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 		("created", Value::Boolean(true)),
@@ -81,9 +84,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		let frames = instance
 			.admin(
@@ -95,9 +99,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(false));
 
 		let err = instance
 			.admin(
@@ -143,9 +148,10 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		let frames = instance
 			.admin(
@@ -157,8 +163,9 @@ pub mod tests {
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 }
