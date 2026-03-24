@@ -386,7 +386,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					fragment.clone(),
 					|f, l, r| {
 						TypeError::BinaryOperatorNotApplicable {
-							operator: BinaryOp::GreaterThanEqual,
+							operator: BinaryOp::Between,
 							left: l,
 							right: r,
 							fragment: f,
@@ -400,7 +400,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					fragment.clone(),
 					|f, l, r| {
 						TypeError::BinaryOperatorNotApplicable {
-							operator: BinaryOp::LessThanEqual,
+							operator: BinaryOp::Between,
 							left: l,
 							right: r,
 							fragment: f,
