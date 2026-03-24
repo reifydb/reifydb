@@ -454,6 +454,24 @@ impl Columns {
 		self.extract_by_indices(&[index])
 	}
 
+	/// Project to a subset of columns by name, preserving the order of the provided names.
+	/// Columns not found in self are silently skipped.
+	pub fn project_by_names(&self, names: &[String]) -> Columns {
+		let new_columns: Vec<Column> = names
+			.iter()
+			.filter_map(|name| self.columns.iter().find(|c| c.name().text() == name.as_str()).cloned())
+			.collect();
+
+		if new_columns.is_empty() {
+			return Columns::empty();
+		}
+
+		Columns {
+			row_numbers: self.row_numbers.clone(),
+			columns: CowVec::new(new_columns),
+		}
+	}
+
 	/// Partition Columns into groups based on keys (one key per row).
 	/// Returns an IndexMap preserving insertion order of first occurrence.
 	pub fn partition_by_keys<K: Hash + Eq + Clone>(&self, keys: &[K]) -> IndexMap<K, Columns> {

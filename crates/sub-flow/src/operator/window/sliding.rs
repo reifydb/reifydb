@@ -105,7 +105,8 @@ fn process_sliding_group_insert(
 		};
 
 		let single_row_columns = columns.extract_row(row_idx);
-		let row = single_row_columns.to_single_row();
+		let projected = operator.project_columns(&single_row_columns);
+		let row = projected.to_single_row();
 		let row_layout = WindowLayout::from_row(&row);
 
 		for window_id in window_ids {

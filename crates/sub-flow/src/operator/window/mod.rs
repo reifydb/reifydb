@@ -50,7 +50,10 @@ use reifydb_engine::{
 	vm::stack::SymbolTable,
 };
 use reifydb_function::registry::Functions;
-use reifydb_rql::expression::{Expression, name::column_name_from_expression};
+use reifydb_rql::expression::{
+	Expression,
+	name::{collect_all_column_names, column_name_from_expression},
+};
 use reifydb_runtime::{
 	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
@@ -171,6 +174,9 @@ pub struct WindowOperator {
 	pub functions: Functions,
 	pub row_number_provider: RowNumberProvider,
 	pub runtime_context: RuntimeContext,
+	/// Column names needed by group_by + aggregations expressions.
+	/// When empty, no projection is applied (all columns stored).
+	pub projected_columns: Vec<String>,
 }
 
 impl WindowOperator {
@@ -202,6 +208,11 @@ impl WindowOperator {
 			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile aggregation expression"))
 			.collect();
 
+		let mut needed = collect_all_column_names(&group_by);
+		needed.extend(collect_all_column_names(&aggregations));
+		let mut projected_columns: Vec<String> = needed.into_iter().collect();
+		projected_columns.sort();
+
 		Self {
 			parent,
 			node,
@@ -215,12 +226,21 @@ impl WindowOperator {
 			functions,
 			row_number_provider: RowNumberProvider::new(node),
 			runtime_context,
+			projected_columns,
 		}
 	}
 
 	/// Get the current timestamp in milliseconds
 	pub fn current_timestamp(&self) -> u64 {
 		self.runtime_context.clock.now_millis()
+	}
+
+	/// Project a single-row Columns down to only the columns needed by window expressions.
+	pub fn project_columns(&self, columns: &Columns) -> Columns {
+		if self.projected_columns.is_empty() {
+			return columns.clone();
+		}
+		columns.project_by_names(&self.projected_columns)
 	}
 
 	/// Whether this is a count-based window
@@ -445,7 +465,8 @@ impl WindowOperator {
 			let new_timestamp = post_timestamps[row_idx];
 
 			let single_row = post.extract_row(row_idx);
-			let new_row = single_row.to_single_row();
+			let projected = self.project_columns(&single_row);
+			let new_row = projected.to_single_row();
 
 			let diffs =
 				self.replace_event_in_windows(txn, group_hash, row_number, &new_row, new_timestamp)?;

@@ -121,7 +121,8 @@ fn process_session_group_insert(
 		let mut window_state = operator.load_window_state(txn, &window_key)?;
 
 		let single_row_columns = columns.extract_row(row_idx);
-		let row = single_row_columns.to_single_row();
+		let projected = operator.project_columns(&single_row_columns);
+		let row = projected.to_single_row();
 
 		if window_state.window_layout.is_none() {
 			window_state.window_layout = Some(WindowLayout::from_row(&row));
