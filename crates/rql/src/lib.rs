@@ -57,6 +57,7 @@ pub(crate) fn convert_data_type(ast: &BumpFragment<'_>) -> Result<Type> {
 		"duration" => Type::Duration,
 		"uuid4" => Type::Uuid4,
 		"uuid7" => Type::Uuid7,
+		"identityid" | "identity_id" => Type::IdentityId,
 		"blob" => Type::Blob,
 		"int" => Type::Int,
 		"uint" => Type::Uint,

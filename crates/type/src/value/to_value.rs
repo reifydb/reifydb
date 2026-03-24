@@ -7,6 +7,7 @@ use crate::value::{
 	datetime::DateTime,
 	decimal::Decimal,
 	duration::Duration,
+	identity::IdentityId,
 	int::Int,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
@@ -147,5 +148,11 @@ impl ToValue for Uuid4 {
 impl ToValue for Uuid7 {
 	fn to_value(&self) -> Value {
 		Value::Uuid7(*self)
+	}
+}
+
+impl ToValue for IdentityId {
+	fn to_value(&self) -> Value {
+		Value::IdentityId(*self)
 	}
 }

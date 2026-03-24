@@ -85,6 +85,7 @@ impl TextParser {
 			}
 			Type::Uuid4 => UuidParser::from_text(fragment, Type::Uuid4, row_count),
 			Type::Uuid7 => UuidParser::from_text(fragment, Type::Uuid7, row_count),
+			Type::IdentityId => UuidParser::from_text(fragment, Type::IdentityId, row_count),
 			_ => {
 				return Err(TypeError::UnsupportedCast {
 					from: Type::Utf8,

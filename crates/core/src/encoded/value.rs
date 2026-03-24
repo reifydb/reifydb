@@ -3,7 +3,6 @@
 
 use reifydb_type::value::{
 	Value,
-	identity::IdentityId,
 	ordered_f32::OrderedF32,
 	ordered_f64::OrderedF64,
 	r#type::Type,
@@ -237,6 +236,14 @@ impl Schema {
 				},
 			) => self.set_none(row, index),
 
+			(Type::IdentityId, Value::IdentityId(id)) => self.set_identity_id(row, index, *id),
+			(
+				Type::IdentityId,
+				Value::None {
+					..
+				},
+			) => self.set_none(row, index),
+
 			(
 				Type::Any,
 				Value::None {
@@ -281,9 +288,7 @@ impl Schema {
 			Type::DateTime => Value::DateTime(self.get_datetime(row, index)),
 			Type::Time => Value::Time(self.get_time(row, index)),
 			Type::Duration => Value::Duration(self.get_duration(row, index)),
-			Type::IdentityId => {
-				Value::IdentityId(IdentityId::from(Uuid7::from(self.get_uuid7(row, index))))
-			}
+			Type::IdentityId => Value::IdentityId(self.get_identity_id(row, index)),
 			Type::Uuid4 => Value::Uuid4(Uuid4::from(self.get_uuid4(row, index))),
 			Type::Uuid7 => Value::Uuid7(Uuid7::from(self.get_uuid7(row, index))),
 			Type::Blob => Value::Blob(self.get_blob(row, index)),

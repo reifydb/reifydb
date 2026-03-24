@@ -9,6 +9,7 @@ use crate::value::{
 	datetime::DateTime,
 	decimal::Decimal,
 	duration::Duration,
+	identity::IdentityId,
 	time::Time,
 	to_value::ToValue,
 	r#type::get::GetType,
@@ -87,3 +88,4 @@ impl IsTemporal for Duration {}
 
 impl IsUuid for Uuid4 {}
 impl IsUuid for Uuid7 {}
+impl IsUuid for IdentityId {}

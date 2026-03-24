@@ -116,6 +116,8 @@ pub fn cast_column_data(
 		(_, t) if t.is_bool() => boolean::to_boolean(data, lazy_fragment),
 		(_, t) if t.is_utf8() => text::to_text(data, lazy_fragment),
 		(_, t) if t.is_temporal() => temporal::to_temporal(data, target, lazy_fragment),
+		(_, Type::IdentityId) => to_uuid(data, target, lazy_fragment),
+		(Type::IdentityId, _) => to_uuid(data, target, lazy_fragment),
 		(_, t) if t.is_uuid() => to_uuid(data, target, lazy_fragment),
 		(source, t) if source.is_uuid() || t.is_uuid() => to_uuid(data, target, lazy_fragment),
 		_ => Err(TypeError::UnsupportedCast {

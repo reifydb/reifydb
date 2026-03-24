@@ -357,6 +357,9 @@ impl Columns {
 				(ColumnData::Uuid7(container), Type::Uuid7) => {
 					container.push(schema.get_uuid7(&row, index));
 				}
+				(ColumnData::IdentityId(container), Type::IdentityId) => {
+					container.push(schema.get_identity_id(&row, index));
+				}
 				(
 					ColumnData::Blob {
 						container,

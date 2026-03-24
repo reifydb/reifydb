@@ -10,8 +10,8 @@ use reifydb_type::{
 	return_error,
 	value::{
 		container::{
-			blob::BlobContainer, bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
-			utf8::Utf8Container, uuid::UuidContainer,
+			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		decimal::Decimal,
 		int::Int,
@@ -267,6 +267,19 @@ where
 }
 
 #[inline]
+fn compare_identity_id<Op: CompareOp>(l: &IdentityIdContainer, r: &IdentityIdContainer, fragment: Fragment) -> Column {
+	debug_assert_eq!(l.len(), r.len());
+
+	let data: Vec<bool> =
+		l.iter().zip(r.iter()).map(|(l_val, r_val)| Op::compare_ordering(l_val.partial_cmp(&r_val))).collect();
+
+	Column {
+		name: Fragment::internal(fragment.text()),
+		data: ColumnData::bool(data),
+	}
+}
+
+#[inline]
 fn compare_blob<Op: CompareOp>(l: &BlobContainer, r: &BlobContainer, fragment: Fragment) -> Column {
 	debug_assert_eq!(l.len(), r.len());
 
@@ -367,6 +380,9 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 			},
 			(ColumnData::Uuid7(l), ColumnData::Uuid7(r)) => {
 				return Ok(compare_uuid::<Op, _>(l, r, fragment));
+			},
+			(ColumnData::IdentityId(l), ColumnData::IdentityId(r)) => {
+				return Ok(compare_identity_id::<Op>(l, r, fragment));
 			},
 			(
 				ColumnData::Blob {

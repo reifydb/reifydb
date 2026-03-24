@@ -106,7 +106,10 @@ pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_cou
 				fragment,
 			},
 			target,
-		) if target.is_bool() || target.is_number() || target.is_temporal() || target.is_uuid() => {
+		) if target.is_bool()
+			|| target.is_number() || target.is_temporal()
+			|| target.is_uuid() || target == Type::IdentityId =>
+		{
 			TextParser::from_text(fragment.clone(), target, row_count)?
 		}
 		(

@@ -6,11 +6,12 @@ use reifydb_type::{
 	error::{Error, TypeError},
 	fragment::{Fragment, LazyFragment},
 	value::{
-		container::{utf8::Utf8Container, uuid::UuidContainer},
+		container::{identity_id::IdentityIdContainer, utf8::Utf8Container, uuid::UuidContainer},
+		identity::IdentityId,
 		r#type::Type,
 		uuid::{
 			Uuid4, Uuid7,
-			parse::{parse_uuid4, parse_uuid7},
+			parse::{parse_identity_id, parse_uuid4, parse_uuid7},
 		},
 	},
 };
@@ -25,6 +26,7 @@ pub fn to_uuid(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment
 		} => from_text(container, target, lazy_fragment),
 		ColumnData::Uuid4(container) => from_uuid4(container, target, lazy_fragment),
 		ColumnData::Uuid7(container) => from_uuid7(container, target, lazy_fragment),
+		ColumnData::IdentityId(container) => from_identity_id(container, target, lazy_fragment),
 		_ => {
 			let source_type = data.get_type();
 			Err(TypeError::UnsupportedCast {
@@ -42,6 +44,7 @@ fn from_text(container: &Utf8Container, target: Type, lazy_fragment: impl LazyFr
 	match target {
 		Type::Uuid4 => to_uuid4(container, lazy_fragment),
 		Type::Uuid7 => to_uuid7(container, lazy_fragment),
+		Type::IdentityId => to_identity_id(container, lazy_fragment),
 		_ => {
 			let source_type = Type::Utf8;
 			Err(TypeError::UnsupportedCast {
@@ -92,6 +95,7 @@ macro_rules! impl_to_uuid {
 
 impl_to_uuid!(to_uuid4, Uuid4, Type::Uuid4, parse_uuid4);
 impl_to_uuid!(to_uuid7, Uuid7, Type::Uuid7, parse_uuid7);
+impl_to_uuid!(to_identity_id, IdentityId, Type::IdentityId, parse_identity_id);
 
 #[inline]
 fn from_uuid4(container: &UuidContainer<Uuid4>, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
@@ -122,5 +126,24 @@ fn from_uuid7(container: &UuidContainer<Uuid7>, target: Type, lazy_fragment: imp
 			}
 			.into())
 		}
+	}
+}
+
+#[inline]
+fn from_identity_id(
+	container: &IdentityIdContainer,
+	target: Type,
+	lazy_fragment: impl LazyFragment,
+) -> Result<ColumnData> {
+	match target {
+		Type::IdentityId => {
+			Ok(ColumnData::IdentityId(IdentityIdContainer::from_vec(container.data().to_vec())))
+		}
+		_ => Err(TypeError::UnsupportedCast {
+			from: Type::IdentityId,
+			to: target,
+			fragment: lazy_fragment.fragment(),
+		}
+		.into()),
 	}
 }

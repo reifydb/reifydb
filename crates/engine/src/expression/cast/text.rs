@@ -9,8 +9,8 @@ use reifydb_type::{
 	fragment::LazyFragment,
 	value::{
 		container::{
-			blob::BlobContainer, bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
-			uuid::UuidContainer,
+			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			number::NumberContainer, temporal::TemporalContainer, uuid::UuidContainer,
 		},
 		is::{IsNumber, IsTemporal, IsUuid},
 		r#type::Type,
@@ -44,6 +44,7 @@ pub fn to_text(data: &ColumnData, lazy_fragment: impl LazyFragment) -> Result<Co
 		ColumnData::Duration(container) => from_temporal(container),
 		ColumnData::Uuid4(container) => from_uuid(container),
 		ColumnData::Uuid7(container) => from_uuid(container),
+		ColumnData::IdentityId(container) => from_identity_id(container),
 		_ => {
 			let from = data.get_type();
 			Err(TypeError::UnsupportedCast {
@@ -128,6 +129,19 @@ fn from_uuid<T>(container: &UuidContainer<T>) -> Result<ColumnData>
 where
 	T: Copy + Display + IsUuid + Default,
 {
+	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
+	for idx in 0..container.len() {
+		if container.is_defined(idx) {
+			out.push::<String>(container[idx].to_string());
+		} else {
+			out.push_none();
+		}
+	}
+	Ok(out)
+}
+
+#[inline]
+fn from_identity_id(container: &IdentityIdContainer) -> Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
