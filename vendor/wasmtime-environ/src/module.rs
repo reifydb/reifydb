@@ -4,7 +4,7 @@ use crate::prelude::*;
 use crate::*;
 use alloc::collections::BTreeMap;
 use core::ops::Range;
-use cranelift_entity::{packed_option::ReservedValue, EntityRef};
+use cranelift_entity::{EntityRef, packed_option::ReservedValue};
 use serde_derive::{Deserialize, Serialize};
 
 /// A WebAssembly linear memory initializer.
@@ -48,7 +48,7 @@ pub enum MemoryInitialization {
     /// data segments when the module is instantiated.
     ///
     /// This is the default memory initialization type.
-    Segmented(Vec<MemoryInitializer>),
+    Segmented(collections::Vec<MemoryInitializer>),
 
     /// Memory initialization is statically known and involves a single `memcpy`
     /// or otherwise simply making the defined data visible.
@@ -82,13 +82,13 @@ pub enum MemoryInitialization {
         ///
         /// The offset, range base, and range end are all guaranteed to be page
         /// aligned to the page size passed in to `try_static_init`.
-        map: PrimaryMap<MemoryIndex, Option<StaticMemoryInitializer>>,
+        map: collections::PrimaryMap<MemoryIndex, Option<StaticMemoryInitializer>>,
     },
 }
 
 impl Default for MemoryInitialization {
     fn default() -> Self {
-        Self::Segmented(Vec::new())
+        Self::Segmented(collections::Vec::new())
     }
 }
 
@@ -226,18 +226,18 @@ pub struct TableInitialization {
     /// initialization. For example table initializers to a table that are all
     /// in-bounds will get removed from `segment` and moved into
     /// `initial_values` here.
-    pub initial_values: PrimaryMap<DefinedTableIndex, TableInitialValue>,
+    pub initial_values: collections::PrimaryMap<DefinedTableIndex, TableInitialValue>,
 
     /// Element segments present in the initial wasm module which are executed
     /// at instantiation time.
     ///
     /// These element segments are iterated over during instantiation to apply
     /// any segments that weren't already moved into `initial_values` above.
-    pub segments: Vec<TableSegment>,
+    pub segments: collections::Vec<TableSegment>,
 }
 
 /// Initial value for all elements in a table.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum TableInitialValue {
     /// Initialize each table element to null, optionally setting some elements
     /// to non-null given the precomputed image.
@@ -249,7 +249,7 @@ pub enum TableInitialValue {
         /// `FuncIndex::reserved_value()`. Note that this image is empty by
         /// default and may not encompass the entire span of the table in which
         /// case the elements are initialized to null.
-        precomputed: Vec<FuncIndex>,
+        precomputed: collections::Vec<FuncIndex>,
     },
     /// An arbitrary const expression.
     Expr(ConstExpr),
@@ -289,16 +289,22 @@ impl TableSegmentElements {
 
 /// A translated WebAssembly module, excluding the function bodies and
 /// memory initializers.
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Module {
+    /// This module's index.
+    pub module_index: StaticModuleIndex,
+
+    /// A pool of strings used in this module.
+    pub strings: StringPool,
+
     /// The name of this wasm module, often found in the wasm file.
-    pub name: Option<String>,
+    pub name: Option<Atom>,
 
     /// All import records, in the order they are declared in the module.
-    pub initializers: Vec<Initializer>,
+    pub initializers: collections::Vec<Initializer>,
 
     /// Exported entities.
-    pub exports: IndexMap<String, EntityIndex>,
+    pub exports: collections::IndexMap<Atom, EntityIndex>,
 
     /// The module "start" function, if present.
     pub start_func: Option<FuncIndex>,
@@ -310,7 +316,7 @@ pub struct Module {
     pub memory_initialization: MemoryInitialization,
 
     /// WebAssembly passive elements.
-    pub passive_elements: Vec<TableSegmentElements>,
+    pub passive_elements: collections::Vec<TableSegmentElements>,
 
     /// The map from passive element index (element segment index space) to index in `passive_elements`.
     pub passive_elements_map: BTreeMap<ElemIndex, usize>,
@@ -319,7 +325,7 @@ pub struct Module {
     pub passive_data_map: BTreeMap<DataIndex, Range<u32>>,
 
     /// Types declared in the wasm module.
-    pub types: PrimaryMap<TypeIndex, EngineOrModuleTypeIndex>,
+    pub types: collections::PrimaryMap<TypeIndex, EngineOrModuleTypeIndex>,
 
     /// Number of imported or aliased functions in the module.
     pub num_imported_funcs: usize,
@@ -347,22 +353,22 @@ pub struct Module {
     pub num_escaped_funcs: usize,
 
     /// Types of functions, imported and local.
-    pub functions: PrimaryMap<FuncIndex, FunctionType>,
+    pub functions: collections::PrimaryMap<FuncIndex, FunctionType>,
 
     /// WebAssembly tables.
-    pub tables: PrimaryMap<TableIndex, Table>,
+    pub tables: collections::PrimaryMap<TableIndex, Table>,
 
     /// WebAssembly linear memory plans.
-    pub memories: PrimaryMap<MemoryIndex, Memory>,
+    pub memories: collections::PrimaryMap<MemoryIndex, Memory>,
 
     /// WebAssembly global variables.
-    pub globals: PrimaryMap<GlobalIndex, Global>,
+    pub globals: collections::PrimaryMap<GlobalIndex, Global>,
 
     /// WebAssembly global initializers for locally-defined globals.
-    pub global_initializers: PrimaryMap<DefinedGlobalIndex, ConstExpr>,
+    pub global_initializers: collections::PrimaryMap<DefinedGlobalIndex, ConstExpr>,
 
     /// WebAssembly exception and control tags.
-    pub tags: PrimaryMap<TagIndex, Tag>,
+    pub tags: collections::PrimaryMap<TagIndex, Tag>,
 }
 
 /// Initialization routines for creating an instance, encompassing imports,
@@ -372,9 +378,9 @@ pub enum Initializer {
     /// An imported item is required to be provided.
     Import {
         /// Name of this import
-        name: String,
+        name: Atom,
         /// The field name projection of this import
-        field: String,
+        field: Atom,
         /// Where this import will be placed, which also has type information
         /// about the import.
         index: EntityIndex,
@@ -383,8 +389,34 @@ pub enum Initializer {
 
 impl Module {
     /// Allocates the module data structures.
-    pub fn new() -> Self {
-        Module::default()
+    pub fn new(module_index: StaticModuleIndex) -> Self {
+        Self {
+            module_index,
+            strings: Default::default(),
+            name: Default::default(),
+            initializers: Default::default(),
+            exports: Default::default(),
+            start_func: Default::default(),
+            table_initialization: Default::default(),
+            memory_initialization: Default::default(),
+            passive_elements: Default::default(),
+            passive_elements_map: Default::default(),
+            passive_data_map: Default::default(),
+            types: Default::default(),
+            num_imported_funcs: Default::default(),
+            num_imported_tables: Default::default(),
+            num_imported_memories: Default::default(),
+            num_imported_globals: Default::default(),
+            num_imported_tags: Default::default(),
+            needs_gc_heap: Default::default(),
+            num_escaped_funcs: Default::default(),
+            functions: Default::default(),
+            tables: Default::default(),
+            memories: Default::default(),
+            globals: Default::default(),
+            global_initializers: Default::default(),
+            tags: Default::default(),
+        }
     }
 
     /// Convert a `DefinedFuncIndex` into a `FuncIndex`.
@@ -535,11 +567,23 @@ impl Module {
     /// Returns an iterator of all the imports in this module, along with their
     /// module name, field name, and type that's being imported.
     pub fn imports(&self) -> impl ExactSizeIterator<Item = (&str, &str, EntityType)> {
+        let pool = &self.strings;
         self.initializers.iter().map(move |i| match i {
             Initializer::Import { name, field, index } => {
-                (name.as_str(), field.as_str(), self.type_of(*index))
+                (&pool[name], &pool[field], self.type_of(*index))
             }
         })
+    }
+
+    /// Get this module's `i`th import.
+    pub fn import(&self, i: usize) -> Option<(&str, &str, EntityType)> {
+        match self.initializers.get(i)? {
+            Initializer::Import { name, field, index } => Some((
+                &self.strings[name],
+                &self.strings[field],
+                self.type_of(*index),
+            )),
+        }
     }
 
     /// Returns the type of an item based on its index
@@ -554,9 +598,19 @@ impl Module {
     }
 
     /// Appends a new tag to this module with the given type information.
-    pub fn push_tag(&mut self, signature: impl Into<EngineOrModuleTypeIndex>) -> TagIndex {
+    pub fn push_tag(
+        &mut self,
+        signature: impl Into<EngineOrModuleTypeIndex>,
+        exception: impl Into<EngineOrModuleTypeIndex>,
+    ) -> TagIndex {
         let signature = signature.into();
-        self.tags.push(Tag { signature })
+        let exception = exception.into();
+        self.tags
+            .push(Tag {
+                signature,
+                exception,
+            })
+            .panic_on_oom()
     }
 
     /// Appends a new function to this module with the given type information,
@@ -564,16 +618,24 @@ impl Module {
     /// they escape yet.
     pub fn push_function(&mut self, signature: impl Into<EngineOrModuleTypeIndex>) -> FuncIndex {
         let signature = signature.into();
-        self.functions.push(FunctionType {
-            signature,
-            func_ref: FuncRefIndex::reserved_value(),
-        })
+        self.functions
+            .push(FunctionType {
+                signature,
+                func_ref: FuncRefIndex::reserved_value(),
+            })
+            .panic_on_oom()
     }
 
     /// Returns an iterator over all of the defined function indices in this
     /// module.
-    pub fn defined_func_indices(&self) -> impl Iterator<Item = DefinedFuncIndex> + use<> {
+    pub fn defined_func_indices(&self) -> impl ExactSizeIterator<Item = DefinedFuncIndex> + use<> {
         (0..self.functions.len() - self.num_imported_funcs).map(|i| DefinedFuncIndex::new(i))
+    }
+
+    /// Returns the number of functions defined by this module itself: all
+    /// functions minus imported functions.
+    pub fn num_defined_funcs(&self) -> usize {
+        self.functions.len() - self.num_imported_funcs
     }
 
     /// Returns the number of tables defined by this module itself: all tables
@@ -588,10 +650,27 @@ impl Module {
         self.memories.len() - self.num_imported_memories
     }
 
+    /// Returns the number of globals defined by this module itself: all
+    /// globals minus imported globals.
+    pub fn num_defined_globals(&self) -> usize {
+        self.globals.len() - self.num_imported_globals
+    }
+
     /// Returns the number of tags defined by this module itself: all tags
     /// minus imported tags.
     pub fn num_defined_tags(&self) -> usize {
         self.tags.len() - self.num_imported_tags
+    }
+
+    /// Tests whether `index` is valid for this module.
+    pub fn is_valid(&self, index: EntityIndex) -> bool {
+        match index {
+            EntityIndex::Function(i) => self.functions.is_valid(i),
+            EntityIndex::Table(i) => self.tables.is_valid(i),
+            EntityIndex::Memory(i) => self.memories.is_valid(i),
+            EntityIndex::Global(i) => self.globals.is_valid(i),
+            EntityIndex::Tag(i) => self.tags.is_valid(i),
+        }
     }
 }
 
@@ -603,6 +682,8 @@ impl TypeTrace for Module {
         // NB: Do not `..` elide unmodified fields so that we get compile errors
         // when adding new fields that might need re-canonicalization.
         let Self {
+            module_index: _,
+            strings: _,
             name: _,
             initializers: _,
             exports: _,
@@ -653,6 +734,8 @@ impl TypeTrace for Module {
         // NB: Do not `..` elide unmodified fields so that we get compile errors
         // when adding new fields that might need re-canonicalization.
         let Self {
+            module_index: _,
+            strings: _,
             name: _,
             initializers: _,
             exports: _,

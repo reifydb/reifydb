@@ -2,6 +2,7 @@ use super::{Value, ValueRef};
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;
+use std::str::Utf8Error;
 
 /// Enum listing possible errors from [`FromSql`] trait.
 #[derive(Debug)]
@@ -14,6 +15,9 @@ pub enum FromSqlError {
     /// Error when the i64 value returned by SQLite cannot be stored into the
     /// requested type.
     OutOfRange(i64),
+
+    /// Error converting a string to UTF-8.
+    Utf8Error(Utf8Error),
 
     /// Error when the blob result returned by SQLite cannot be stored into the
     /// requested type due to a size mismatch.
@@ -45,6 +49,7 @@ impl PartialEq for FromSqlError {
         match (self, other) {
             (Self::InvalidType, Self::InvalidType) => true,
             (Self::OutOfRange(n1), Self::OutOfRange(n2)) => n1 == n2,
+            (Self::Utf8Error(u1), Self::Utf8Error(u2)) => u1 == u2,
             (
                 Self::InvalidBlobSize {
                     expected_size: es1,
@@ -65,6 +70,7 @@ impl fmt::Display for FromSqlError {
         match *self {
             Self::InvalidType => write!(f, "Invalid type"),
             Self::OutOfRange(i) => write!(f, "Value {i} out of range"),
+            Self::Utf8Error(ref err) => err.fmt(f),
             Self::InvalidBlobSize {
                 expected_size,
                 blob_size,
@@ -81,10 +87,10 @@ impl fmt::Display for FromSqlError {
 
 impl Error for FromSqlError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        if let Self::Other(ref err) = self {
-            Some(&**err)
-        } else {
-            None
+        match self {
+            Self::Utf8Error(ref err) => Some(err),
+            Self::Other(ref err) => Some(&**err),
+            _ => None,
         }
     }
 }
@@ -127,7 +133,9 @@ from_sql_integral!(isize);
 from_sql_integral!(u8);
 from_sql_integral!(u16);
 from_sql_integral!(u32);
+#[cfg(feature = "fallible_uint")]
 from_sql_integral!(u64);
+#[cfg(feature = "fallible_uint")]
 from_sql_integral!(usize);
 
 from_sql_integral!(non_zero std::num::NonZeroIsize, isize);
@@ -138,10 +146,12 @@ from_sql_integral!(non_zero std::num::NonZeroI64, i64);
 #[cfg(feature = "i128_blob")]
 from_sql_integral!(non_zero std::num::NonZeroI128, i128);
 
+#[cfg(feature = "fallible_uint")]
 from_sql_integral!(non_zero std::num::NonZeroUsize, usize);
 from_sql_integral!(non_zero std::num::NonZeroU8, u8);
 from_sql_integral!(non_zero std::num::NonZeroU16, u16);
 from_sql_integral!(non_zero std::num::NonZeroU32, u32);
+#[cfg(feature = "fallible_uint")]
 from_sql_integral!(non_zero std::num::NonZeroU64, u64);
 // std::num::NonZeroU128 is not supported since u128 isn't either
 
@@ -290,12 +300,15 @@ where
 impl FromSql for Value {
     #[inline]
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
-        Ok(value.into())
+        value.try_into()
     }
 }
 
 #[cfg(test)]
 mod test {
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
+
     use super::{FromSql, FromSqlError};
     use crate::{Connection, Error, Result};
     use std::borrow::Cow;
@@ -394,11 +407,13 @@ mod test {
             &[0, -2, -1, 4_294_967_296],
             &[1, 4_294_967_295]
         );
+        #[cfg(feature = "fallible_uint")]
         check_ranges!(
             std::num::NonZeroU64,
             &[0, -2, -1, -4_294_967_296],
             &[1, 4_294_967_295, i64::MAX as u64]
         );
+        #[cfg(feature = "fallible_uint")]
         check_ranges!(
             std::num::NonZeroUsize,
             &[0, -2, -1, -4_294_967_296],

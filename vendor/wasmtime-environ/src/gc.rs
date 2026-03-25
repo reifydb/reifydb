@@ -15,11 +15,11 @@ pub mod drc;
 #[cfg(feature = "gc-null")]
 pub mod null;
 
-use crate::prelude::*;
 use crate::{
-    WasmArrayType, WasmCompositeInnerType, WasmCompositeType, WasmStorageType, WasmStructType,
-    WasmValType,
+    WasmArrayType, WasmCompositeInnerType, WasmCompositeType, WasmExnType, WasmStorageType,
+    WasmStructType, WasmValType, collections, error::OutOfMemory, prelude::*,
 };
+use alloc::sync::Arc;
 use core::alloc::Layout;
 
 /// Discriminant to check whether GC reference is an `i31ref` or not.
@@ -114,6 +114,48 @@ fn common_array_layout(
     }
 }
 
+/// Shared layout code for structs and exception objects, which are
+/// identical except for the tag field (present in
+/// exceptions). Returns `(size, align, fields)`.
+#[cfg(any(feature = "gc-null", feature = "gc-drc"))]
+fn common_struct_or_exn_layout(
+    fields: &[crate::WasmFieldType],
+    header_size: u32,
+    header_align: u32,
+) -> (u32, u32, collections::Vec<GcStructLayoutField>) {
+    use crate::PanicOnOom as _;
+
+    // Process each field, aligning it to its natural alignment.
+    //
+    // We don't try and do any fancy field reordering to minimize padding (yet?)
+    // because (a) the toolchain probably already did that and (b) we're just
+    // doing the simple thing first, and (c) this is tricky in the presence of
+    // subtyping where we need a subtype's fields to be assigned the same
+    // offsets as its supertype's fields. We can come back and improve things
+    // here if we find that (a) isn't actually holding true in practice.
+
+    let mut size = header_size;
+    let mut align = header_align;
+
+    let fields = fields
+        .iter()
+        .map(|f| {
+            let field_size = byte_size_of_wasm_ty_in_gc_heap(&f.element_type);
+            let offset = field(&mut size, &mut align, field_size);
+            let is_gc_ref = f.element_type.is_vmgcref_type_and_not_i31();
+            GcStructLayoutField { offset, is_gc_ref }
+        })
+        .try_collect::<collections::Vec<_>, _>()
+        .panic_on_oom();
+
+    // Ensure that the final size is a multiple of the alignment, for
+    // simplicity.
+    let align_size_to = align;
+    align_up(&mut size, &mut align, align_size_to);
+
+    (size, align, fields)
+}
+
 /// Common code to define a GC struct's layout, given the size and alignment of
 /// the collector's GC header and its expected offset of the array length field.
 #[cfg(any(feature = "gc-null", feature = "gc-drc"))]
@@ -125,37 +167,36 @@ fn common_struct_layout(
     assert!(header_size >= crate::VM_GC_HEADER_SIZE);
     assert!(header_align >= crate::VM_GC_HEADER_ALIGN);
 
-    // Process each field, aligning it to its natural alignment.
-    //
-    // We don't try and do any fancy field reordering to minimize padding (yet?)
-    // because (a) the toolchain probably already did that and (b) we're just
-    // doing the simple thing first, and (c) this is tricky in the presence of
-    // subtyping where we need a subtype's fields to be assigned the same
-    // offsets as its supertype's fields. We can come back and improve things
-    // here if we find that (a) isn't actually holding true in practice.
-    let mut size = header_size;
-    let mut align = header_align;
-
-    let fields = ty
-        .fields
-        .iter()
-        .map(|f| {
-            let field_size = byte_size_of_wasm_ty_in_gc_heap(&f.element_type);
-            let offset = field(&mut size, &mut align, field_size);
-            let is_gc_ref = f.element_type.is_vmgcref_type_and_not_i31();
-            GcStructLayoutField { offset, is_gc_ref }
-        })
-        .collect();
-
-    // Ensure that the final size is a multiple of the alignment, for
-    // simplicity.
-    let align_size_to = align;
-    align_up(&mut size, &mut align, align_size_to);
+    let (size, align, fields) = common_struct_or_exn_layout(&ty.fields, header_size, header_align);
 
     GcStructLayout {
         size,
         align,
         fields,
+        is_exception: false,
+    }
+}
+
+/// Common code to define a GC exception object's layout, given the
+/// size and alignment of the collector's GC header and its expected
+/// offset of the array length field.
+#[cfg(any(feature = "gc-null", feature = "gc-drc"))]
+fn common_exn_layout(ty: &WasmExnType, header_size: u32, header_align: u32) -> GcStructLayout {
+    assert!(header_size >= crate::VM_GC_HEADER_SIZE);
+    assert!(header_align >= crate::VM_GC_HEADER_ALIGN);
+
+    // Compute a struct layout, with extra header size for the
+    // `(instance_idx, tag_idx)` fields.
+    assert!(header_align >= 8);
+    let header_size = header_size + 2 * u32::try_from(core::mem::size_of::<u32>()).unwrap();
+
+    let (size, align, fields) = common_struct_or_exn_layout(&ty.fields, header_size, header_align);
+
+    GcStructLayout {
+        size,
+        align,
+        fields,
+        is_exception: true,
     }
 }
 
@@ -168,6 +209,20 @@ pub trait GcTypeLayouts {
     /// element type.
     fn array_length_field_offset(&self) -> u32;
 
+    /// The offset of an exception object's tag reference: defining
+    /// instance index field.
+    ///
+    /// This must be the same for all exception objects in the heap,
+    /// regardless of their specific signature.
+    fn exception_tag_instance_offset(&self) -> u32;
+
+    /// The offset of an exception object's tag reference: defined tag
+    /// index field.
+    ///
+    /// This must be the same for all exception objects in the heap,
+    /// regardless of their specific signature.
+    fn exception_tag_defined_offset(&self) -> u32;
+
     /// Get this collector's layout for the given composite type.
     ///
     /// Returns `None` if the type is a function type, as functions are not
@@ -176,9 +231,12 @@ pub trait GcTypeLayouts {
         assert!(!ty.shared);
         match &ty.inner {
             WasmCompositeInnerType::Array(ty) => Some(self.array_layout(ty).into()),
-            WasmCompositeInnerType::Struct(ty) => Some(self.struct_layout(ty).into()),
+            WasmCompositeInnerType::Struct(ty) => Some(Arc::new(self.struct_layout(ty)).into()),
             WasmCompositeInnerType::Func(_) => None,
-            WasmCompositeInnerType::Cont(_) => None,
+            WasmCompositeInnerType::Cont(_) => {
+                unimplemented!("Stack switching feature not compatible with GC, yet")
+            }
+            WasmCompositeInnerType::Exn(ty) => Some(Arc::new(self.exn_layout(ty)).into()),
         }
     }
 
@@ -187,6 +245,9 @@ pub trait GcTypeLayouts {
 
     /// Get this collector's layout for the given struct type.
     fn struct_layout(&self, ty: &WasmStructType) -> GcStructLayout;
+
+    /// Get this collector's layout for the given exception type.
+    fn exn_layout(&self, ty: &WasmExnType) -> GcStructLayout;
 }
 
 /// The layout of a GC-managed object.
@@ -195,8 +256,8 @@ pub enum GcLayout {
     /// The layout of a GC-managed array object.
     Array(GcArrayLayout),
 
-    /// The layout of a GC-managed struct object.
-    Struct(GcStructLayout),
+    /// The layout of a GC-managed struct or exception object.
+    Struct(Arc<GcStructLayout>),
 }
 
 impl From<GcArrayLayout> for GcLayout {
@@ -205,16 +266,22 @@ impl From<GcArrayLayout> for GcLayout {
     }
 }
 
-impl From<GcStructLayout> for GcLayout {
-    fn from(layout: GcStructLayout) -> Self {
+impl From<Arc<GcStructLayout>> for GcLayout {
+    fn from(layout: Arc<GcStructLayout>) -> Self {
         Self::Struct(layout)
+    }
+}
+
+impl TryClone for GcLayout {
+    fn try_clone(&self) -> core::result::Result<Self, wasmtime_core::error::OutOfMemory> {
+        Ok(self.clone())
     }
 }
 
 impl GcLayout {
     /// Get the underlying `GcStructLayout`, or panic.
     #[track_caller]
-    pub fn unwrap_struct(&self) -> &GcStructLayout {
+    pub fn unwrap_struct(&self) -> &Arc<GcStructLayout> {
         match self {
             Self::Struct(s) => s,
             _ => panic!("GcLayout::unwrap_struct on non-struct GC layout"),
@@ -285,7 +352,7 @@ impl GcArrayLayout {
     }
 }
 
-/// The layout for a GC-managed struct type.
+/// The layout for a GC-managed struct type or exception type.
 ///
 /// This layout is only valid for use with the GC runtime that created it. It is
 /// not valid to use one GC runtime's layout with another GC runtime, doing so
@@ -294,7 +361,13 @@ impl GcArrayLayout {
 ///
 /// All offsets are from the start of the object; that is, the size of the GC
 /// header (for example) is included in the offset.
-#[derive(Clone, Debug)]
+///
+/// Note that these are reused between structs and exceptions to avoid
+/// unnecessary code duplication. In both cases, the objects are
+/// tuples of typed fields with a certain size. The only difference in
+/// practice is that an exception object also carries a tag reference
+/// (at a fixed offset as per `GcTypeLayouts::exception_tag_offset`).
+#[derive(Debug)]
 pub struct GcStructLayout {
     /// The size (in bytes) of this struct.
     pub size: u32,
@@ -304,7 +377,21 @@ pub struct GcStructLayout {
 
     /// The fields of this struct. The `i`th entry contains information about
     /// the `i`th struct field's layout.
-    pub fields: Vec<GcStructLayoutField>,
+    pub fields: collections::Vec<GcStructLayoutField>,
+
+    /// Whether this is an exception object layout.
+    pub is_exception: bool,
+}
+
+impl TryClone for GcStructLayout {
+    fn try_clone(&self) -> Result<Self, OutOfMemory> {
+        Ok(GcStructLayout {
+            size: self.size,
+            align: self.align,
+            fields: self.fields.try_clone()?,
+            is_exception: self.is_exception,
+        })
+    }
 }
 
 impl GcStructLayout {
@@ -330,6 +417,12 @@ pub struct GcStructLayoutField {
     pub is_gc_ref: bool,
 }
 
+impl TryClone for GcStructLayoutField {
+    fn try_clone(&self) -> Result<Self, OutOfMemory> {
+        Ok(*self)
+    }
+}
+
 /// The kind of an object in a GC heap.
 ///
 /// Note that this type is accessed from Wasm JIT code.
@@ -353,18 +446,19 @@ pub struct GcStructLayoutField {
 /// VMGcKind::EqRef`.
 ///
 /// Furthermore, this type only uses the highest 6 bits of its `u32`
-/// representation, allowing the lower 27 bytes to be bitpacked with other stuff
+/// representation, allowing the lower 26 bits to be bitpacked with other stuff
 /// as users see fit.
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[rustfmt::skip]
 #[expect(missing_docs, reason = "self-describing variants")]
 pub enum VMGcKind {
-    ExternRef      = 0b01000 << 27,
-    AnyRef         = 0b10000 << 27,
-    EqRef          = 0b10100 << 27,
-    ArrayRef       = 0b10101 << 27,
-    StructRef      = 0b10110 << 27,
+    ExternRef      = 0b010000 << 26,
+    AnyRef         = 0b100000 << 26,
+    EqRef          = 0b101000 << 26,
+    ArrayRef       = 0b101010 << 26,
+    StructRef      = 0b101100 << 26,
+    ExnRef         = 0b000001 << 26,
 }
 
 /// The size of the `VMGcKind` in bytes.
@@ -374,7 +468,7 @@ const _: () = assert!(VM_GC_KIND_SIZE as usize == core::mem::size_of::<VMGcKind>
 
 impl VMGcKind {
     /// Mask this value with a `u32` to get just the bits that `VMGcKind` uses.
-    pub const MASK: u32 = 0b11111 << 27;
+    pub const MASK: u32 = 0b111111 << 26;
 
     /// Mask this value with a `u32` that potentially contains a `VMGcKind` to
     /// get the bits that `VMGcKind` doesn't use.
@@ -397,6 +491,7 @@ impl VMGcKind {
             x if x == Self::EqRef.as_u32() => Self::EqRef,
             x if x == Self::ArrayRef.as_u32() => Self::ArrayRef,
             x if x == Self::StructRef.as_u32() => Self::StructRef,
+            x if x == Self::ExnRef.as_u32() => Self::ExnRef,
             _ => panic!("invalid `VMGcKind`: {masked:#032b}"),
         }
     }
@@ -423,14 +518,16 @@ mod tests {
 
     #[test]
     fn kind_matches() {
-        let all = [ExternRef, AnyRef, EqRef, ArrayRef, StructRef];
+        let all = [ExternRef, AnyRef, EqRef, ArrayRef, StructRef, ExnRef];
 
         for (sup, subs) in [
             (ExternRef, vec![]),
             (AnyRef, vec![EqRef, ArrayRef, StructRef]),
+            // N.B.: exnref is not an eqref.
             (EqRef, vec![ArrayRef, StructRef]),
             (ArrayRef, vec![]),
             (StructRef, vec![]),
+            (ExnRef, vec![]),
         ] {
             assert!(sup.matches(sup));
             for sub in &subs {

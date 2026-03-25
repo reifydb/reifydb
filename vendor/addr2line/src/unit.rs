@@ -3,9 +3,10 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cmp;
 
-use crate::lazy::LazyResult;
+use gimli::ReaderOffset;
+
 use crate::{
-    Context, DebugFile, Error, Function, Functions, LazyFunctions, LazyLines,
+    Context, DebugFile, Error, Function, Functions, LazyFunctions, LazyLines, LazyResult,
     LineLocationRangeIter, Lines, Location, LookupContinuation, LookupResult, RangeAttributes,
     SimpleLookup, SplitDwarfLoad,
 };
@@ -35,6 +36,7 @@ impl<R: gimli::Reader> ResUnit<R> {
     /// Returns the DWARF sections and the unit.
     ///
     /// Loads the DWO unit if necessary.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn dwarf_and_unit<'unit, 'ctx: 'unit>(
         &'unit self,
         ctx: &'ctx Context<R>,
@@ -52,13 +54,13 @@ impl<R: gimli::Reader> ResUnit<R> {
         };
         let complete = |dwo| SimpleLookup::new_complete(map_dwo(dwo));
 
-        if let Some(dwo) = self.dwo.borrow() {
+        if let Some(dwo) = self.dwo.get() {
             return complete(dwo);
         }
 
         let dwo_id = match self.dw_unit.dwo_id {
             None => {
-                return complete(self.dwo.borrow_with(|| Ok(None)));
+                return complete(self.dwo.get_or_init(|| Ok(None)));
             }
             Some(dwo_id) => dwo_id,
         };
@@ -76,7 +78,7 @@ impl<R: gimli::Reader> ResUnit<R> {
         let path = match dwo_name {
             Ok(v) => v,
             Err(e) => {
-                return complete(self.dwo.borrow_with(|| Err(e)));
+                return complete(self.dwo.get_or_init(|| Err(e)));
             }
         };
 
@@ -106,7 +108,7 @@ impl<R: gimli::Reader> ResUnit<R> {
                 path,
                 parent: ctx.sections.clone(),
             },
-            move |dwo_dwarf| map_dwo(self.dwo.borrow_with(|| process_dwo(dwo_dwarf))),
+            move |dwo_dwarf| map_dwo(self.dwo.get_or_init(|| process_dwo(dwo_dwarf))),
         )
     }
 
@@ -167,6 +169,7 @@ impl<R: gimli::Reader> ResUnit<R> {
         lines.find_location_range(probe_low, probe_high).map(Some)
     }
 
+    #[allow(clippy::type_complexity)]
     pub(crate) fn find_function_or_location<'unit, 'ctx: 'unit>(
         &'unit self,
         probe: u64,
@@ -188,7 +191,7 @@ impl<R: gimli::Reader> ResUnit<R> {
                 }
                 None => None,
             };
-            let location = self.find_location(probe, unit.dwarf)?;
+            let location = self.find_location(probe, &ctx.sections)?;
             Ok((function, location))
         })
     }
@@ -209,14 +212,14 @@ impl<R: gimli::Reader> ResUnits<R> {
         while let Some(header) = headers.next()? {
             aranges.push((header.debug_info_offset(), header.offset()));
         }
-        aranges.sort_by_key(|i| i.0);
+        aranges.sort_unstable_by_key(|i| i.0);
 
         let mut unit_ranges = Vec::new();
         let mut res_units = Vec::new();
         let mut units = sections.units();
         while let Some(header) = units.next()? {
             let unit_id = res_units.len();
-            let offset = match header.offset().as_debug_info_offset() {
+            let offset = match header.debug_info_offset() {
                 Some(offset) => offset,
                 None => continue,
             };
@@ -303,7 +306,16 @@ impl<R: gimli::Reader> ResUnits<R> {
                     for (_, aranges_offset) in aranges[i..].iter().take_while(|x| x.0 == offset) {
                         let aranges_header = sections.debug_aranges.header(*aranges_offset)?;
                         let mut aranges = aranges_header.entries();
-                        while let Some(arange) = aranges.next()? {
+                        while let Some(arange) = aranges.next().transpose() {
+                            let Ok(arange) = arange else {
+                                // Ignore errors. In particular, this will ignore address overflow.
+                                // This has been seen for a unit that had a single variable
+                                // with rustc 1.89.0.
+                                //
+                                // This relies on `ArangeEntryIter::next` fusing for errors that
+                                // can't be ignored.
+                                continue;
+                            };
                             if arange.length() != 0 {
                                 unit_ranges.push(UnitRange {
                                     range: arange.range(),
@@ -314,8 +326,9 @@ impl<R: gimli::Reader> ResUnits<R> {
                             }
                         }
                     }
-                } else {
-                    need_unit_range &= !ranges.for_each_range(dw_unit_ref, |range| {
+                }
+                if need_unit_range {
+                    need_unit_range = !ranges.for_each_range(dw_unit_ref, |range| {
                         unit_ranges.push(UnitRange {
                             range,
                             unit_id,
@@ -353,7 +366,7 @@ impl<R: gimli::Reader> ResUnits<R> {
         }
 
         // Sort this for faster lookup in `Self::find_range`.
-        unit_ranges.sort_by_key(|i| i.range.end);
+        unit_ranges.sort_unstable_by_key(|i| (i.range.end, i.unit_id));
 
         // Calculate the `min_begin` field now that we've determined the order of
         // CUs.
@@ -382,7 +395,7 @@ impl<R: gimli::Reader> ResUnits<R> {
             .binary_search_by_key(&offset.0, |unit| unit.offset.0)
         {
             // There is never a DIE at the unit offset or before the first unit.
-            Ok(_) | Err(0) => Err(gimli::Error::NoEntryAtGivenOffset),
+            Ok(_) | Err(0) => Err(gimli::Error::NoEntryAtGivenOffset(offset.0.into_u64())),
             Err(i) => Ok(&self.units[i - 1].dw_unit),
         }
     }
@@ -469,7 +482,7 @@ struct DwoUnit<R: gimli::Reader> {
 }
 
 impl<R: gimli::Reader> DwoUnit<R> {
-    fn unit_ref(&self) -> gimli::UnitRef<R> {
+    fn unit_ref(&self) -> gimli::UnitRef<'_, R> {
         gimli::UnitRef::new(&self.sections, &self.dw_unit)
     }
 }
@@ -496,7 +509,7 @@ impl<R: gimli::Reader> SupUnits<R> {
         let mut sup_units = Vec::new();
         let mut units = sections.units();
         while let Some(header) = units.next()? {
-            let offset = match header.offset().as_debug_info_offset() {
+            let offset = match header.debug_info_offset() {
                 Some(offset) => offset,
                 None => continue,
             };
@@ -520,7 +533,7 @@ impl<R: gimli::Reader> SupUnits<R> {
             .binary_search_by_key(&offset.0, |unit| unit.offset.0)
         {
             // There is never a DIE at the unit offset or before the first unit.
-            Ok(_) | Err(0) => Err(gimli::Error::NoEntryAtGivenOffset),
+            Ok(_) | Err(0) => Err(gimli::Error::NoEntryAtGivenOffset(offset.0.into_u64())),
             Err(i) => Ok(&self.units[i - 1].dw_unit),
         }
     }

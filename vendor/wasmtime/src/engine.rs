@@ -1,11 +1,12 @@
+use crate::Config;
+use crate::RRConfig;
 use crate::prelude::*;
 #[cfg(feature = "runtime")]
 pub use crate::runtime::code_memory::CustomCodeMemory;
 #[cfg(feature = "runtime")]
 use crate::runtime::type_registry::TypeRegistry;
 #[cfg(feature = "runtime")]
-use crate::runtime::vm::GcRuntime;
-use crate::Config;
+use crate::runtime::vm::{GcRuntime, ModuleRuntimeInfo};
 use alloc::sync::Arc;
 use core::ptr::NonNull;
 #[cfg(target_has_atomic = "64")]
@@ -51,7 +52,7 @@ struct EngineInner {
     features: WasmFeatures,
     tunables: Tunables,
     #[cfg(any(feature = "cranelift", feature = "winch"))]
-    compiler: Box<dyn wasmtime_environ::Compiler>,
+    compiler: Option<Box<dyn wasmtime_environ::Compiler>>,
     #[cfg(feature = "runtime")]
     allocator: Box<dyn crate::runtime::vm::InstanceAllocator + Send + Sync>,
     #[cfg(feature = "runtime")]
@@ -65,8 +66,13 @@ struct EngineInner {
 
     /// One-time check of whether the compiler's settings, if present, are
     /// compatible with the native host.
-    #[cfg(any(feature = "cranelift", feature = "winch"))]
     compatible_with_native_host: crate::sync::OnceLock<Result<(), String>>,
+
+    /// The canonical empty `ModuleRuntimeInfo`, so that each store doesn't need
+    /// allocate its own copy when creating its default caller instance or GC
+    /// heap.
+    #[cfg(feature = "runtime")]
+    empty_module_runtime_info: ModuleRuntimeInfo,
 }
 
 impl core::fmt::Debug for Engine {
@@ -93,12 +99,11 @@ impl Engine {
     /// configurations are incompatible.
     ///
     /// For example, feature `reference_types` will need to set
-    /// the compiler setting `enable_safepoints` and `unwind_info`
-    /// to `true`, but explicitly disable these two compiler settings
-    /// will cause errors.
+    /// the compiler setting `unwind_info` to `true`, but explicitly
+    /// disable these two compiler settings will cause errors.
     pub fn new(config: &Config) -> Result<Engine> {
         let config = config.clone();
-        let (tunables, features) = config.validate()?;
+        let (mut tunables, features) = config.validate()?;
 
         #[cfg(feature = "runtime")]
         if tunables.signals_based_traps {
@@ -115,10 +120,22 @@ impl Engine {
         }
 
         #[cfg(any(feature = "cranelift", feature = "winch"))]
-        let (config, compiler) = config.build_compiler(&tunables, features)?;
+        let (config, compiler) = if config.has_compiler() {
+            let (config, compiler) = config.build_compiler(&mut tunables, features)?;
+            (config, Some(compiler))
+        } else {
+            (config.clone(), None)
+        };
+        #[cfg(not(any(feature = "cranelift", feature = "winch")))]
+        let _ = &mut tunables;
+
+        #[cfg(feature = "runtime")]
+        let empty_module_runtime_info = ModuleRuntimeInfo::bare(try_new(
+            wasmtime_environ::Module::new(wasmtime_environ::StaticModuleIndex::from_u32(0)),
+        )?)?;
 
         Ok(Engine {
-            inner: Arc::new(EngineInner {
+            inner: try_new::<Arc<_>>(EngineInner {
                 #[cfg(any(feature = "cranelift", feature = "winch"))]
                 compiler,
                 #[cfg(feature = "runtime")]
@@ -141,12 +158,13 @@ impl Engine {
                 signatures: TypeRegistry::new(),
                 #[cfg(all(feature = "runtime", target_has_atomic = "64"))]
                 epoch: AtomicU64::new(0),
-                #[cfg(any(feature = "cranelift", feature = "winch"))]
                 compatible_with_native_host: Default::default(),
                 config,
                 tunables,
                 features,
-            }),
+                #[cfg(feature = "runtime")]
+                empty_module_runtime_info,
+            })?,
         })
     }
 
@@ -195,6 +213,40 @@ impl Engine {
             .collect::<Result<Vec<B>, E>>()
     }
 
+    #[cfg(any(feature = "cranelift", feature = "winch"))]
+    pub(crate) fn run_maybe_parallel_mut<
+        T: Send,
+        E: Send,
+        F: Fn(&mut T) -> Result<(), E> + Send + Sync,
+    >(
+        &self,
+        input: &mut [T],
+        f: F,
+    ) -> Result<(), E> {
+        if self.config().parallel_compilation {
+            #[cfg(feature = "parallel-compilation")]
+            {
+                use rayon::prelude::*;
+                // If we collect into `Result<(), E>` directly, the returned
+                // error is not deterministic, because any error could be
+                // returned early. So we first materialize all results in order
+                // and then return the first error deterministically, or
+                // `Ok(_)`.
+                return input
+                    .into_par_iter()
+                    .map(|a| f(a))
+                    .collect::<Vec<Result<(), E>>>()
+                    .into_iter()
+                    .collect::<Result<(), E>>();
+            }
+        }
+
+        // In case the parallel-compilation feature is disabled or the
+        // parallel_compilation config was turned off dynamically fallback to
+        // the non-parallel version.
+        input.into_iter().map(|a| f(a)).collect::<Result<(), E>>()
+    }
+
     /// Take a weak reference to this engine.
     pub fn weak(&self) -> EngineWeak {
         EngineWeak {
@@ -213,11 +265,28 @@ impl Engine {
         Arc::ptr_eq(&a.inner, &b.inner)
     }
 
-    /// Returns whether the engine is configured to support async functions.
-    #[cfg(feature = "async")]
+    /// Returns whether the engine is configured to support execution recording
     #[inline]
-    pub fn is_async(&self) -> bool {
-        self.config().async_support
+    pub fn is_recording(&self) -> bool {
+        match self.config().rr_config {
+            #[cfg(feature = "rr")]
+            RRConfig::Recording => true,
+            #[cfg(feature = "rr")]
+            RRConfig::Replaying => false,
+            RRConfig::None => false,
+        }
+    }
+
+    /// Returns whether the engine is configured to support execution replaying
+    #[inline]
+    pub fn is_replaying(&self) -> bool {
+        match self.config().rr_config {
+            #[cfg(feature = "rr")]
+            RRConfig::Replaying => true,
+            #[cfg(feature = "rr")]
+            RRConfig::Recording => false,
+            RRConfig::None => false,
+        }
     }
 
     /// Detects whether the bytes provided are a precompiled object produced by
@@ -259,27 +328,24 @@ impl Engine {
     /// engine can indeed load modules for the configured compiler (if any).
     /// Note that if cranelift is disabled this trivially returns `Ok` because
     /// loaded serialized modules are checked separately.
-    #[cfg(any(feature = "cranelift", feature = "winch"))]
     pub(crate) fn check_compatible_with_native_host(&self) -> Result<()> {
         self.inner
             .compatible_with_native_host
             .get_or_init(|| self._check_compatible_with_native_host())
             .clone()
-            .map_err(anyhow::Error::msg)
+            .map_err(crate::Error::msg)
     }
 
-    #[cfg(any(feature = "cranelift", feature = "winch"))]
     fn _check_compatible_with_native_host(&self) -> Result<(), String> {
         use target_lexicon::Triple;
 
-        let compiler = self.compiler();
-
-        let target = compiler.triple();
         let host = Triple::host();
+        let target = self.config().compiler_target();
+
         let target_matches_host = || {
             // If the host target and target triple match, then it's valid
             // to run results of compilation on this host.
-            if host == *target {
+            if host == target {
                 return true;
             }
 
@@ -303,12 +369,17 @@ impl Engine {
             ));
         }
 
-        // Also double-check all compiler settings
-        for (key, value) in compiler.flags().iter() {
-            self.check_compatible_with_shared_flag(key, value)?;
-        }
-        for (key, value) in compiler.isa_flags().iter() {
-            self.check_compatible_with_isa_flag(key, value)?;
+        #[cfg(any(feature = "cranelift", feature = "winch"))]
+        {
+            if let Some(compiler) = self.compiler() {
+                // Also double-check all compiler settings
+                for (key, value) in compiler.flags().iter() {
+                    self.check_compatible_with_shared_flag(key, value)?;
+                }
+                for (key, value) in compiler.isa_flags().iter() {
+                    self.check_compatible_with_isa_flag(key, value)?;
+                }
+            }
         }
 
         // Double-check that this configuration isn't requesting capabilities
@@ -322,6 +393,22 @@ impl Engine {
         if !cfg!(target_has_atomic = "64") && self.tunables().epoch_interruption {
             return Err("epochs currently require 64-bit atomics".into());
         }
+
+        // Double-check that the host's float ABI matches Cranelift's float ABI.
+        // See `Config::x86_float_abi_ok` for some more
+        // information.
+        if target == target_lexicon::triple!("x86_64-unknown-none")
+            && self.config().x86_float_abi_ok != Some(true)
+        {
+            return Err("\
+the x86_64-unknown-none target by default uses a soft-float ABI that is \
+incompatible with Cranelift and Wasmtime -- use \
+`Config::x86_float_abi_ok` to disable this check and see more \
+information about this check\
+"
+            .into());
+        }
+
         Ok(())
     }
 
@@ -353,10 +440,10 @@ impl Engine {
             // These settings must all have be enabled, since their value
             // can affect the way the generated code performs or behaves at
             // runtime.
-            "libcall_call_conv" => *value == FlagValue::Enum("isa_default".into()),
+            "libcall_call_conv" => *value == FlagValue::Enum("isa_default"),
             "preserve_frame_pointers" => *value == FlagValue::Bool(true),
             "enable_probestack" => *value == FlagValue::Bool(true),
-            "probestack_strategy" => *value == FlagValue::Enum("inline".into()),
+            "probestack_strategy" => *value == FlagValue::Enum("inline"),
             "enable_multi_ret_implicit_sret" => *value == FlagValue::Bool(true),
 
             // Features wasmtime doesn't use should all be disabled, since
@@ -367,21 +454,28 @@ impl Engine {
             "use_colocated_libcalls" => *value == FlagValue::Bool(false),
             "use_pinned_reg_as_heap_base" => *value == FlagValue::Bool(false),
 
-            // If reference types (or anything that depends on reference types,
-            // like typed function references and GC) are enabled this must be
-            // enabled, otherwise this setting can have any value.
-            "enable_safepoints" => {
-                if self.features().contains(WasmFeatures::REFERENCE_TYPES) {
+            // Windows requires unwind info as part of its ABI.
+            "unwind_info" => {
+                if target.operating_system == target_lexicon::OperatingSystem::Windows {
                     *value == FlagValue::Bool(true)
                 } else {
                     return Ok(())
                 }
             }
 
-            // Windows requires unwind info as part of its ABI.
-            "unwind_info" => {
-                if target.operating_system == target_lexicon::OperatingSystem::Windows {
-                    *value == FlagValue::Bool(true)
+            // stack switch model must match the current OS
+            "stack_switch_model" => {
+                if self.features().contains(WasmFeatures::STACK_SWITCHING) {
+                    use target_lexicon::OperatingSystem;
+                    let expected =
+                    match target.operating_system  {
+                        OperatingSystem::Windows => "update_windows_tib",
+                        OperatingSystem::Linux
+                        | OperatingSystem::MacOSX(_)
+                        | OperatingSystem::Darwin(_)  => "basic",
+                        _ => { return Err(String::from("stack-switching feature not supported on this platform")); }
+                    };
+                    *value == FlagValue::Enum(expected)
                 } else {
                     return Ok(())
                 }
@@ -393,7 +487,6 @@ impl Engine {
             "enable_heap_access_spectre_mitigation"
             | "enable_table_access_spectre_mitigation"
             | "enable_nan_canonicalization"
-            | "enable_jump_tables"
             | "enable_float"
             | "enable_verifier"
             | "enable_pcc"
@@ -405,7 +498,6 @@ impl Engine {
             | "log2_min_function_alignment"
             | "machine_code_cfg_info"
             | "tls_model" // wasmtime doesn't use tls right now
-            | "stack_switch_model" // wasmtime doesn't use stack switching right now
             | "opt_level" // opt level doesn't change semantics
             | "enable_alias_analysis" // alias analysis-based opts don't change semantics
             | "probestack_size_log2" // probestack above asserted disabled
@@ -451,14 +543,14 @@ impl Engine {
                     Ok(())
                 } else {
                     Err("wrong host pointer width".to_string())
-                }
+                };
             }
             FlagValue::Enum("pointer64") => {
                 return if cfg!(target_pointer_width = "64") {
                     Ok(())
                 } else {
                     Err("wrong host pointer width".to_string())
-                }
+                };
             }
 
             // Only `bool` values are supported right now, other settings would
@@ -466,7 +558,7 @@ impl Engine {
             _ => {
                 return Err(format!(
                     "isa-specific feature {flag:?} configured to unknown value {value:?}"
-                ))
+                ));
             }
         }
 
@@ -491,7 +583,9 @@ impl Engine {
 
             // s390x features to detect
             "has_vxrs_ext2" => "vxrs_ext2",
-            "has_mie2" => "mie2",
+            "has_vxrs_ext3" => "vxrs_ext3",
+            "has_mie3" => "mie3",
+            "has_mie4" => "mie4",
 
             // x64 features to detect
             "has_cmpxchg16b" => "cmpxchg16b",
@@ -515,7 +609,7 @@ impl Engine {
             // pulley features
             "big_endian" if cfg!(target_endian = "big") => return Ok(()),
             "big_endian" if cfg!(target_endian = "little") => {
-                return Err("wrong host endianness".to_string())
+                return Err("wrong host endianness".to_string());
             }
 
             _ => {
@@ -537,7 +631,7 @@ impl Engine {
                     "cannot determine if host feature {host_feature:?} is \
                      available at runtime, configure a probing function with \
                      `Config::detect_host_feature`"
-                ))
+                ));
             }
         };
 
@@ -548,8 +642,8 @@ impl Engine {
                  available on the host",
             )),
             None => Err(format!(
-                "failed to detect if target-specific flag {flag:?} is \
-                 available at runtime"
+                "failed to detect if target-specific flag {host_feature:?} is \
+                 available at runtime (compile setting {flag:?})"
             )),
         }
     }
@@ -564,12 +658,22 @@ impl Engine {
     pub fn is_pulley(&self) -> bool {
         self.target().is_pulley()
     }
+
+    #[cfg(feature = "runtime")]
+    pub(crate) fn empty_module_runtime_info(&self) -> &ModuleRuntimeInfo {
+        &self.inner.empty_module_runtime_info
+    }
 }
 
 #[cfg(any(feature = "cranelift", feature = "winch"))]
 impl Engine {
-    pub(crate) fn compiler(&self) -> &dyn wasmtime_environ::Compiler {
-        &*self.inner.compiler
+    pub(crate) fn compiler(&self) -> Option<&dyn wasmtime_environ::Compiler> {
+        self.inner.compiler.as_deref()
+    }
+
+    pub(crate) fn try_compiler(&self) -> Result<&dyn wasmtime_environ::Compiler> {
+        self.compiler()
+            .ok_or_else(|| format_err!("Engine was not configured with a compiler"))
     }
 
     /// Ahead-of-time (AOT) compiles a WebAssembly module.
@@ -615,8 +719,9 @@ impl Engine {
     ///
     /// The blob of bytes is inserted into the object file specified to become part
     /// of the final compiled artifact.
-    pub(crate) fn append_compiler_info(&self, obj: &mut Object<'_>) {
-        serialization::append_compiler_info(self, obj, &serialization::Metadata::new(&self))
+    pub(crate) fn append_compiler_info(&self, obj: &mut Object<'_>) -> Result<()> {
+        serialization::append_compiler_info(self, obj, &serialization::Metadata::new(&self)?);
+        Ok(())
     }
 
     #[cfg(any(feature = "cranelift", feature = "winch"))]
@@ -626,7 +731,10 @@ impl Engine {
             wasmtime_environ::obj::ELF_WASM_BTI.as_bytes().to_vec(),
             object::SectionKind::ReadOnlyData,
         );
-        let contents = if self.compiler().is_branch_protection_enabled() {
+        let contents = if self
+            .compiler()
+            .is_some_and(|c| c.is_branch_protection_enabled())
+        {
             1
         } else {
             0
@@ -667,16 +775,22 @@ impl Engine {
         crate::runtime::vm::tls_eager_initialize();
     }
 
-    pub(crate) fn allocator(&self) -> &dyn crate::runtime::vm::InstanceAllocator {
-        self.inner.allocator.as_ref()
+    /// Returns a [`PoolingAllocatorMetrics`](crate::PoolingAllocatorMetrics) if
+    /// this engine was configured with
+    /// [`InstanceAllocationStrategy::Pooling`](crate::InstanceAllocationStrategy::Pooling).
+    #[cfg(feature = "pooling-allocator")]
+    pub fn pooling_allocator_metrics(&self) -> Option<crate::vm::PoolingAllocatorMetrics> {
+        crate::runtime::vm::PoolingAllocatorMetrics::new(self)
     }
 
-    pub(crate) fn gc_runtime(&self) -> Result<&Arc<dyn GcRuntime>> {
-        if let Some(rt) = &self.inner.gc_runtime {
-            Ok(rt)
-        } else {
-            bail!("no GC runtime: GC disabled at compile time or configuration time")
-        }
+    pub(crate) fn allocator(&self) -> &dyn crate::runtime::vm::InstanceAllocator {
+        let r: &(dyn crate::runtime::vm::InstanceAllocator + Send + Sync) =
+            self.inner.allocator.as_ref();
+        &*r
+    }
+
+    pub(crate) fn gc_runtime(&self) -> Option<&Arc<dyn GcRuntime>> {
+        self.inner.gc_runtime.as_ref()
     }
 
     pub(crate) fn profiler(&self) -> &dyn crate::profiling_agent::ProfilingAgent {
@@ -748,25 +862,6 @@ impl Engine {
         crate::compile::HashedEngineCompileEnv(self)
     }
 
-    /// Executes `f1` and `f2` in parallel if parallel compilation is enabled at
-    /// both runtime and compile time, otherwise runs them synchronously.
-    #[allow(dead_code)] // only used for the component-model feature right now
-    pub(crate) fn join_maybe_parallel<T, U>(
-        &self,
-        f1: impl FnOnce() -> T + Send,
-        f2: impl FnOnce() -> U + Send,
-    ) -> (T, U)
-    where
-        T: Send,
-        U: Send,
-    {
-        if self.config().parallel_compilation {
-            #[cfg(feature = "parallel-compilation")]
-            return rayon::join(f1, f2);
-        }
-        (f1(), f2())
-    }
-
     /// Returns the required alignment for a code image, if we
     /// allocate in a way that is not a system `mmap()` that naturally
     /// aligns it.
@@ -815,7 +910,9 @@ impl Engine {
         memory: NonNull<[u8]>,
         expected: ObjectKind,
     ) -> Result<Arc<crate::CodeMemory>> {
-        self.load_code(crate::runtime::vm::MmapVec::from_raw(memory)?, expected)
+        // SAFETY: the contract of this function is the same as that of
+        // `from_raw`.
+        unsafe { self.load_code(crate::runtime::vm::MmapVec::from_raw(memory)?, expected) }
     }
 
     /// Like `load_code_bytes`, but creates a mmap from a file on disk.
@@ -837,10 +934,13 @@ impl Engine {
         mmap: crate::runtime::vm::MmapVec,
         expected: ObjectKind,
     ) -> Result<Arc<crate::CodeMemory>> {
+        self.check_compatible_with_native_host()
+            .context("compilation settings are not compatible with the native host")?;
+
         serialization::check_compatible(self, &mmap, expected)?;
         let mut code = crate::CodeMemory::new(self, mmap)?;
         code.publish()?;
-        Ok(Arc::new(code))
+        Ok(try_new(code)?)
     }
 
     /// Unload process-related trap/signal handlers and destroy this engine.
@@ -895,8 +995,11 @@ impl Engine {
         assert_eq!(Arc::weak_count(&self.inner), 0);
         assert_eq!(Arc::strong_count(&self.inner), 1);
 
+        // SAFETY: the contract of this function is the same as `deinit_traps`.
         #[cfg(not(miri))]
-        crate::runtime::vm::deinit_traps();
+        unsafe {
+            crate::runtime::vm::deinit_traps();
+        }
     }
 }
 

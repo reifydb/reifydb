@@ -1,14 +1,14 @@
 //! Compilation backend pipeline: optimized IR to VCode / binemit.
 
+use crate::CodegenError;
 use crate::dominator_tree::DominatorTree;
-use crate::ir::pcc;
 use crate::ir::Function;
+use crate::ir::pcc;
 use crate::isa::TargetIsa;
 use crate::machinst::*;
 use crate::settings::RegallocAlgorithm;
 use crate::timing;
 use crate::trace;
-use crate::CodegenError;
 
 use regalloc2::{Algorithm, RegallocOptions};
 
@@ -66,17 +66,13 @@ pub fn compile<B: LowerBackend + TargetIsa>(
 
         options.algorithm = match b.flags().regalloc_algorithm() {
             RegallocAlgorithm::Backtracking => Algorithm::Ion,
-            // Note: single-pass is currently disabled
-            // (https://github.com/bytecodealliance/regalloc2/issues/217).
+            RegallocAlgorithm::SinglePass => Algorithm::Fastalloc,
         };
 
-        regalloc2::run(&vcode, vcode.machine_env(), &options)
+        regalloc2::run(&vcode, vcode.abi.machine_env(), &options)
             .map_err(|err| {
                 log::error!(
-                    "Register allocation error for vcode\n{:?}\nError: {:?}\nCLIF for error:\n{:?}",
-                    vcode,
-                    err,
-                    f,
+                    "Register allocation error for vcode\n{vcode:?}\nError: {err:?}\nCLIF for error:\n{f:?}",
                 );
                 err
             })
@@ -86,16 +82,12 @@ pub fn compile<B: LowerBackend + TargetIsa>(
     // Run the regalloc checker, if requested.
     if b.flags().regalloc_checker() {
         let _tt = timing::regalloc_checker();
-        let mut checker = regalloc2::checker::Checker::new(&vcode, vcode.machine_env());
+        let mut checker = regalloc2::checker::Checker::new(&vcode, &vcode.abi.machine_env());
         checker.prepare(&regalloc_result);
         checker
             .run()
             .map_err(|err| {
-                log::error!(
-                    "Register allocation checker errors:\n{:?}\nfor vcode:\n{:?}",
-                    err,
-                    vcode
-                );
+                log::error!("Register allocation checker errors:\n{err:?}\nfor vcode:\n{vcode:?}");
                 err
             })
             .expect("register allocation checker");

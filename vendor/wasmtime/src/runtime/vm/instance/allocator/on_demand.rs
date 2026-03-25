@@ -1,16 +1,14 @@
 use super::{
-    InstanceAllocationRequest, InstanceAllocatorImpl, MemoryAllocationIndex, TableAllocationIndex,
+    InstanceAllocationRequest, InstanceAllocator, MemoryAllocationIndex, TableAllocationIndex,
 };
 use crate::prelude::*;
+use crate::runtime::vm::CompiledModuleId;
 use crate::runtime::vm::instance::RuntimeMemoryCreator;
 use crate::runtime::vm::memory::{DefaultMemoryCreator, Memory};
 use crate::runtime::vm::mpk::ProtectionKey;
 use crate::runtime::vm::table::Table;
-use crate::runtime::vm::CompiledModuleId;
 use alloc::sync::Arc;
-use wasmtime_environ::{
-    DefinedMemoryIndex, DefinedTableIndex, HostPtr, Module, Tunables, VMOffsets,
-};
+use wasmtime_environ::{DefinedMemoryIndex, DefinedTableIndex, HostPtr, Module, VMOffsets};
 
 #[cfg(feature = "gc")]
 use crate::runtime::vm::{GcHeap, GcHeapAllocationIndex, GcRuntime};
@@ -20,8 +18,8 @@ use wasmtime_fiber::RuntimeFiberStackCreator;
 
 #[cfg(feature = "component-model")]
 use wasmtime_environ::{
-    component::{Component, VMComponentOffsets},
     StaticModuleIndex,
+    component::{Component, VMComponentOffsets},
 };
 
 /// Represents the on-demand instance allocator.
@@ -76,9 +74,10 @@ impl Default for OnDemandInstanceAllocator {
     }
 }
 
-unsafe impl InstanceAllocatorImpl for OnDemandInstanceAllocator {
+#[async_trait::async_trait]
+unsafe impl InstanceAllocator for OnDemandInstanceAllocator {
     #[cfg(feature = "component-model")]
-    fn validate_component_impl<'a>(
+    fn validate_component<'a>(
         &self,
         _component: &Component,
         _offsets: &VMComponentOffsets<HostPtr>,
@@ -87,19 +86,21 @@ unsafe impl InstanceAllocatorImpl for OnDemandInstanceAllocator {
         Ok(())
     }
 
-    fn validate_module_impl(&self, _module: &Module, _offsets: &VMOffsets<HostPtr>) -> Result<()> {
+    fn validate_module(&self, _module: &Module, _offsets: &VMOffsets<HostPtr>) -> Result<()> {
         Ok(())
     }
 
     #[cfg(feature = "gc")]
-    fn validate_memory_impl(&self, _memory: &wasmtime_environ::Memory) -> Result<()> {
+    fn validate_memory(&self, _memory: &wasmtime_environ::Memory) -> Result<()> {
         Ok(())
     }
 
+    #[cfg(feature = "component-model")]
     fn increment_component_instance_count(&self) -> Result<()> {
         Ok(())
     }
 
+    #[cfg(feature = "component-model")]
     fn decrement_component_instance_count(&self) {}
 
     fn increment_core_instance_count(&self) -> Result<()> {
@@ -108,11 +109,10 @@ unsafe impl InstanceAllocatorImpl for OnDemandInstanceAllocator {
 
     fn decrement_core_instance_count(&self) {}
 
-    unsafe fn allocate_memory(
+    async fn allocate_memory(
         &self,
-        request: &mut InstanceAllocationRequest,
+        request: &mut InstanceAllocationRequest<'_, '_>,
         ty: &wasmtime_environ::Memory,
-        tunables: &Tunables,
         memory_index: Option<DefinedMemoryIndex>,
     ) -> Result<(MemoryAllocationIndex, Memory)> {
         let creator = self
@@ -129,14 +129,12 @@ unsafe impl InstanceAllocatorImpl for OnDemandInstanceAllocator {
         let allocation_index = MemoryAllocationIndex::default();
         let memory = Memory::new_dynamic(
             ty,
-            tunables,
+            request.store.engine(),
             creator,
-            request
-                .store
-                .get()
-                .expect("if module has memory plans, store is not empty"),
             image,
-        )?;
+            request.limiter.as_deref_mut(),
+        )
+        .await?;
         Ok((allocation_index, memory))
     }
 
@@ -150,22 +148,19 @@ unsafe impl InstanceAllocatorImpl for OnDemandInstanceAllocator {
         // Normal destructors do all the necessary clean up.
     }
 
-    unsafe fn allocate_table(
+    async fn allocate_table(
         &self,
-        request: &mut InstanceAllocationRequest,
+        request: &mut InstanceAllocationRequest<'_, '_>,
         ty: &wasmtime_environ::Table,
-        tunables: &Tunables,
         _table_index: DefinedTableIndex,
     ) -> Result<(TableAllocationIndex, Table)> {
         let allocation_index = TableAllocationIndex::default();
         let table = Table::new_dynamic(
             ty,
-            tunables,
-            request
-                .store
-                .get()
-                .expect("if module has table plans, store is not empty"),
-        )?;
+            request.store.engine().tunables(),
+            request.limiter.as_deref_mut(),
+        )
+        .await?;
         Ok((allocation_index, table))
     }
 
@@ -182,7 +177,7 @@ unsafe impl InstanceAllocatorImpl for OnDemandInstanceAllocator {
     #[cfg(feature = "async")]
     fn allocate_fiber_stack(&self) -> Result<wasmtime_fiber::FiberStack> {
         if self.stack_size == 0 {
-            anyhow::bail!("fiber stacks are not supported by the allocator")
+            crate::bail!("fiber stacks are not supported by the allocator")
         }
         let stack = match &self.stack_creator {
             Some(stack_creator) => {

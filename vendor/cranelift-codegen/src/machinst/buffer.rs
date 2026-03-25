@@ -172,24 +172,23 @@
 
 use crate::binemit::{Addend, CodeOffset, Reloc};
 use crate::ir::function::FunctionParameters;
-use crate::ir::{ExceptionTag, ExternalName, RelSourceLoc, SourceLoc, TrapCode};
+use crate::ir::{DebugTag, ExceptionTag, ExternalName, RelSourceLoc, SourceLoc, TrapCode};
 use crate::isa::unwind::UnwindInst;
 use crate::machinst::{
     BlockIndex, MachInstLabelUse, TextSectionBuilder, VCodeConstant, VCodeConstants, VCodeInst,
 };
 use crate::trace;
-use crate::{ir, MachInstEmitState};
-use crate::{timing, VCodeConstantData};
+use crate::{MachInstEmitState, ir};
+use crate::{VCodeConstantData, timing};
+use alloc::collections::BinaryHeap;
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::cmp::Ordering;
+use core::mem;
 use core::ops::Range;
 use cranelift_control::ControlPlane;
-use cranelift_entity::packed_option::PackedOption;
-use cranelift_entity::{entity_impl, PrimaryMap};
+use cranelift_entity::{PrimaryMap, SecondaryMap, entity_impl};
 use smallvec::SmallVec;
-use std::cmp::Ordering;
-use std::collections::BinaryHeap;
-use std::mem;
-use std::string::String;
-use std::vec::Vec;
 
 #[cfg(feature = "enable-serde")]
 use serde::{Deserialize, Serialize};
@@ -251,10 +250,16 @@ pub struct MachBuffer<I: VCodeInst> {
     traps: SmallVec<[MachTrap; 16]>,
     /// Any call site records referring to this code.
     call_sites: SmallVec<[MachCallSite; 16]>,
+    /// Any patchable call site locations.
+    patchable_call_sites: SmallVec<[MachPatchableCallSite; 16]>,
     /// Any exception-handler records referred to at call sites.
-    exception_handlers: SmallVec<[(PackedOption<ir::ExceptionTag>, MachLabel); 16]>,
+    exception_handlers: SmallVec<[MachExceptionHandler; 16]>,
     /// Any source location mappings referring to this code.
     srclocs: SmallVec<[MachSrcLoc<Stencil>; 64]>,
+    /// Any debug tags referring to this code.
+    debug_tags: Vec<MachDebugTags>,
+    /// Pool of debug tags referenced by `MachDebugTags` entries.
+    debug_tag_pool: Vec<DebugTag>,
     /// Any user stack maps for this code.
     ///
     /// Each entry is an `(offset, span, stack_map)` triple. Entries are sorted
@@ -323,6 +328,10 @@ pub struct MachBuffer<I: VCodeInst> {
     /// Indicates when a patchable region is currently open, to guard that it's
     /// not possible to nest patchable regions.
     open_patchable: bool,
+    /// Stack frame layout metadata. If provided for a MachBuffer
+    /// containing a function body, this allows interpretation of
+    /// runtime state given a view of an active stack frame.
+    frame_layout: Option<MachBufferFrameLayout>,
 }
 
 impl MachBufferFinalized<Stencil> {
@@ -333,15 +342,20 @@ impl MachBufferFinalized<Stencil> {
             relocs: self.relocs,
             traps: self.traps,
             call_sites: self.call_sites,
+            patchable_call_sites: self.patchable_call_sites,
             exception_handlers: self.exception_handlers,
             srclocs: self
                 .srclocs
                 .into_iter()
                 .map(|srcloc| srcloc.apply_base_srcloc(base_srcloc))
                 .collect(),
+            debug_tags: self.debug_tags,
+            debug_tag_pool: self.debug_tag_pool,
             user_stack_maps: self.user_stack_maps,
             unwind_info: self.unwind_info,
             alignment: self.alignment,
+            frame_layout: self.frame_layout,
+            nop_units: self.nop_units,
         }
     }
 }
@@ -364,19 +378,38 @@ pub struct MachBufferFinalized<T: CompilePhase> {
     pub(crate) traps: SmallVec<[MachTrap; 16]>,
     /// Any call site records referring to this code.
     pub(crate) call_sites: SmallVec<[MachCallSite; 16]>,
+    /// Any patchable call site locations refering to this code.
+    pub(crate) patchable_call_sites: SmallVec<[MachPatchableCallSite; 16]>,
     /// Any exception-handler records referred to at call sites.
-    pub(crate) exception_handlers: SmallVec<[(PackedOption<ir::ExceptionTag>, CodeOffset); 16]>,
+    pub(crate) exception_handlers: SmallVec<[FinalizedMachExceptionHandler; 16]>,
     /// Any source location mappings referring to this code.
     pub(crate) srclocs: SmallVec<[T::MachSrcLocType; 64]>,
+    /// Any debug tags referring to this code.
+    pub(crate) debug_tags: Vec<MachDebugTags>,
+    /// Pool of debug tags referenced by `MachDebugTags` entries.
+    pub(crate) debug_tag_pool: Vec<DebugTag>,
     /// Any user stack maps for this code.
     ///
     /// Each entry is an `(offset, span, stack_map)` triple. Entries are sorted
     /// by code offset, and each stack map covers `span` bytes on the stack.
     pub(crate) user_stack_maps: SmallVec<[(CodeOffset, u32, ir::UserStackMap); 8]>,
+    /// Stack frame layout metadata. If provided for a MachBuffer
+    /// containing a function body, this allows interpretation of
+    /// runtime state given a view of an active stack frame.
+    pub(crate) frame_layout: Option<MachBufferFrameLayout>,
     /// Any unwind info at a given location.
     pub unwind_info: SmallVec<[(CodeOffset, UnwindInst); 8]>,
     /// The required alignment of this buffer.
     pub alignment: u32,
+    /// The means by which to NOP out patchable call sites.
+    ///
+    /// This allows a consumer of a `MachBufferFinalized` to disable
+    /// patchable call sites (which are enabled by default) without
+    /// specific knowledge of the target ISA.
+    ///
+    /// Each entry is one form of nop, and these are required to be
+    /// sorted in ascending-size order.
+    pub nop_units: Vec<Vec<u8>>,
 }
 
 const UNKNOWN_LABEL_OFFSET: CodeOffset = 0xffff_ffff;
@@ -446,8 +479,11 @@ impl<I: VCodeInst> MachBuffer<I> {
             relocs: SmallVec::new(),
             traps: SmallVec::new(),
             call_sites: SmallVec::new(),
+            patchable_call_sites: SmallVec::new(),
             exception_handlers: SmallVec::new(),
             srclocs: SmallVec::new(),
+            debug_tags: vec![],
+            debug_tag_pool: vec![],
             user_stack_maps: SmallVec::new(),
             unwind_info: SmallVec::new(),
             cur_srcloc: None,
@@ -465,6 +501,7 @@ impl<I: VCodeInst> MachBuffer<I> {
             constants: Default::default(),
             used_constants: Default::default(),
             open_patchable: false,
+            frame_layout: None,
         }
     }
 
@@ -724,9 +761,7 @@ impl<I: VCodeInst> MachBuffer<I> {
     pub fn use_label_at_offset(&mut self, offset: CodeOffset, label: MachLabel, kind: I::LabelUse) {
         trace!(
             "MachBuffer: use_label_at_offset: offset {} label {:?} kind {:?}",
-            offset,
-            label,
-            kind
+            offset, label, kind
         );
 
         // Add the fixup, and update the worst-case island size based on a
@@ -841,6 +876,8 @@ impl<I: VCodeInst> MachBuffer<I> {
         //    (end of buffer)
         self.data.truncate(b.start as usize);
         self.pending_fixup_records.truncate(b.fixup);
+
+        // Trim srclocs and debug tags now past the end of the buffer.
         while let Some(last_srcloc) = self.srclocs.last_mut() {
             if last_srcloc.end <= b.start {
                 break;
@@ -851,6 +888,13 @@ impl<I: VCodeInst> MachBuffer<I> {
             }
             self.srclocs.pop();
         }
+        while let Some(last_debug_tag) = self.debug_tags.last() {
+            if last_debug_tag.offset <= b.start {
+                break;
+            }
+            self.debug_tags.pop();
+        }
+
         // State:
         //    [PRE CODE]
         //  cur_off, Offset b.start, b.labels_at_this_branch:
@@ -870,8 +914,7 @@ impl<I: VCodeInst> MachBuffer<I> {
 
         trace!(
             "truncate_last_branch: truncated {:?}; off now {}",
-            b,
-            cur_off
+            b, cur_off
         );
 
         // Fix up resolved label offsets for labels at tail.
@@ -879,8 +922,7 @@ impl<I: VCodeInst> MachBuffer<I> {
             self.label_offsets[l.0 as usize] = cur_off;
         }
         // Old labels_at_this_branch are now at cur_off.
-        self.labels_at_tail
-            .extend(b.labels_at_this_branch.into_iter());
+        self.labels_at_tail.extend(b.labels_at_this_branch);
 
         // Post-invariant: this operation is defined to truncate the buffer,
         // which moves cur_off backward, and to move labels at the end of the
@@ -931,9 +973,7 @@ impl<I: VCodeInst> MachBuffer<I> {
 
         trace!(
             "enter optimize_branches:\n b = {:?}\n l = {:?}\n f = {:?}",
-            self.latest_branches,
-            self.labels_at_tail,
-            self.pending_fixup_records
+            self.latest_branches, self.labels_at_tail, self.pending_fixup_records
         );
 
         // We continue to munch on branches at the tail of the buffer until no
@@ -1099,8 +1139,7 @@ impl<I: VCodeInst> MachBuffer<I> {
                     for &l in &b.labels_at_this_branch {
                         trace!(
                             " -> label at start of branch {:?} redirected to target {:?}",
-                            l,
-                            b.target
+                            l, b.target
                         );
                         self.label_aliases[l.0 as usize] = b.target;
                         // NOTE: we continue to ensure the invariant that labels
@@ -1151,7 +1190,9 @@ impl<I: VCodeInst> MachBuffer<I> {
                         && prev_b.end == b.start
                         && self.resolve_label_offset(prev_b.target) == cur_off
                     {
-                        trace!(" -> uncond follows a conditional, and conditional's target resolves to current offset");
+                        trace!(
+                            " -> uncond follows a conditional, and conditional's target resolves to current offset"
+                        );
                         // Save the target of the uncond (this becomes the
                         // target of the cond), and truncate the uncond.
                         let target = b.target;
@@ -1192,9 +1233,7 @@ impl<I: VCodeInst> MachBuffer<I> {
 
         trace!(
             "leave optimize_branches:\n b = {:?}\n l = {:?}\n f = {:?}",
-            self.latest_branches,
-            self.labels_at_tail,
-            self.pending_fixup_records
+            self.latest_branches, self.labels_at_tail, self.pending_fixup_records
         );
     }
 
@@ -1417,7 +1456,9 @@ impl<I: VCodeInst> MachBuffer<I> {
                 self.emit_veneer(label, offset, kind);
             } else {
                 let slice = &mut self.data[start..end];
-                trace!("patching in-range! slice = {slice:?}; offset = {offset:#x}; label_offset = {label_offset:#x}");
+                trace!(
+                    "patching in-range! slice = {slice:?}; offset = {offset:#x}; label_offset = {label_offset:#x}"
+                );
                 kind.patch(slice, offset, label_offset);
             }
         } else {
@@ -1453,8 +1494,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         // Patch the original label use to refer to the veneer.
         trace!(
             "patching original at offset {} to veneer offset {}",
-            offset,
-            veneer_offset
+            offset, veneer_offset
         );
         kind.patch(slice, offset, veneer_offset);
         // Generate the veneer.
@@ -1463,8 +1503,7 @@ impl<I: VCodeInst> MachBuffer<I> {
             kind.generate_veneer(veneer_slice, veneer_offset);
         trace!(
             "generated veneer; fixup offset {}, label_use {:?}",
-            veneer_fixup_off,
-            veneer_label_use
+            veneer_fixup_off, veneer_label_use
         );
         // Register a new use of `label` with our new veneer fixup and
         // offset. This'll recalculate deadlines accordingly and
@@ -1530,7 +1569,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         let finalized_exception_handlers = self
             .exception_handlers
             .iter()
-            .map(|(tag, label)| (*tag, self.resolve_label_offset(*label)))
+            .map(|handler| handler.finalize(|label| self.resolve_label_offset(label)))
             .collect();
 
         let mut srclocs = self.srclocs;
@@ -1541,11 +1580,16 @@ impl<I: VCodeInst> MachBuffer<I> {
             relocs: finalized_relocs,
             traps: self.traps,
             call_sites: self.call_sites,
+            patchable_call_sites: self.patchable_call_sites,
             exception_handlers: finalized_exception_handlers,
             srclocs,
+            debug_tags: self.debug_tags,
+            debug_tag_pool: self.debug_tag_pool,
             user_stack_maps: self.user_stack_maps,
             unwind_info: self.unwind_info,
             alignment,
+            frame_layout: self.frame_layout,
+            nop_units: I::gen_nop_units(),
         }
     }
 
@@ -1582,7 +1626,7 @@ impl<I: VCodeInst> MachBuffer<I> {
         // relocation or to the veneer inserted. Additionally
         // `MachBuffer` needs the concept of a label which will never be
         // resolved, so `emit_island` doesn't trip over not actually ever
-        // knowning what some labels are. Currently the loop in
+        // knowing what some labels are. Currently the loop in
         // `finish_emission_maybe_forcing_veneers` would otherwise infinitely
         // loop.
         //
@@ -1617,18 +1661,38 @@ impl<I: VCodeInst> MachBuffer<I> {
         });
     }
 
-    /// Add a call-site record at the current offset, optionally with exception handlers.
-    pub fn add_call_site(
+    /// Add a call-site record at the current offset.
+    pub fn add_call_site(&mut self) {
+        self.add_try_call_site(None, core::iter::empty());
+    }
+
+    /// Add a call-site record at the current offset with exception
+    /// handlers.
+    pub fn add_try_call_site(
         &mut self,
-        exception_handlers: &[(PackedOption<ExceptionTag>, MachLabel)],
+        frame_offset: Option<u32>,
+        exception_handlers: impl Iterator<Item = MachExceptionHandler>,
     ) {
         let start = u32::try_from(self.exception_handlers.len()).unwrap();
-        self.exception_handlers
-            .extend(exception_handlers.into_iter().copied());
+        self.exception_handlers.extend(exception_handlers);
         let end = u32::try_from(self.exception_handlers.len()).unwrap();
+        let exception_handler_range = start..end;
+
         self.call_sites.push(MachCallSite {
             ret_addr: self.data.len() as CodeOffset,
-            exception_handler_range: start..end,
+            frame_offset,
+            exception_handler_range,
+        });
+    }
+
+    /// Add a patchable call record at the current offset The actual
+    /// call is expected to have been emitted; the VCodeInst trait
+    /// specifies how to NOP it out, and we carry that information to
+    /// the finalized Machbuffer.
+    pub fn add_patchable_call_site(&mut self, len: u32) {
+        self.patchable_call_sites.push(MachPatchableCallSite {
+            ret_addr: self.cur_offset(),
+            len,
         });
     }
 
@@ -1692,6 +1756,19 @@ impl<I: VCodeInst> MachBuffer<I> {
         self.user_stack_maps.push((return_addr, span, stack_map));
     }
 
+    /// Push a debug tag associated with the current buffer offset.
+    pub fn push_debug_tags(&mut self, pos: MachDebugTagPos, tags: &[DebugTag]) {
+        trace!("debug tags at offset {}: {tags:?}", self.cur_offset());
+        let start = u32::try_from(self.debug_tag_pool.len()).unwrap();
+        self.debug_tag_pool.extend(tags.iter().cloned());
+        let end = u32::try_from(self.debug_tag_pool.len()).unwrap();
+        self.debug_tags.push(MachDebugTags {
+            offset: self.cur_offset(),
+            pos,
+            range: start..end,
+        });
+    }
+
     /// Increase the alignment of the buffer to the given alignment if bigger
     /// than the current alignment.
     pub fn set_log2_min_function_alignment(&mut self, align_to: u8) {
@@ -1699,6 +1776,12 @@ impl<I: VCodeInst> MachBuffer<I> {
             1u32.checked_shl(u32::from(align_to))
                 .expect("log2_min_function_alignment too large"),
         );
+    }
+
+    /// Set the frame layout metadata.
+    pub fn set_frame_layout(&mut self, frame_layout: MachBufferFrameLayout) {
+        debug_assert!(self.frame_layout.is_none());
+        self.frame_layout = Some(frame_layout);
     }
 }
 
@@ -1716,6 +1799,19 @@ impl<T: CompilePhase> MachBufferFinalized<T> {
         &self.srclocs[..]
     }
 
+    /// Get all debug tags, sorted by associated offset.
+    pub fn debug_tags(&self) -> impl Iterator<Item = MachBufferDebugTagList<'_>> {
+        self.debug_tags.iter().map(|tags| {
+            let start = usize::try_from(tags.range.start).unwrap();
+            let end = usize::try_from(tags.range.end).unwrap();
+            MachBufferDebugTagList {
+                offset: tags.offset,
+                pos: tags.pos,
+                tags: &self.debug_tag_pool[start..end],
+            }
+        })
+    }
+
     /// Get the total required size for the code.
     pub fn total_size(&self) -> CodeOffset {
         self.data.len() as CodeOffset
@@ -1724,7 +1820,7 @@ impl<T: CompilePhase> MachBufferFinalized<T> {
     /// Return the code in this mach buffer as a hex string for testing purposes.
     pub fn stringify_code_bytes(&self) -> String {
         // This is pretty lame, but whatever ..
-        use std::fmt::Write;
+        use core::fmt::Write;
         let mut s = String::with_capacity(self.data.len() * 2);
         for b in &self.data {
             write!(&mut s, "{b:02X}").unwrap();
@@ -1746,6 +1842,12 @@ impl<T: CompilePhase> MachBufferFinalized<T> {
         // to add the appropriate relocations in this case.
 
         &self.data[..]
+    }
+
+    /// Get a mutable slice of the code bytes, allowing patching
+    /// post-passes.
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        &mut self.data[..]
     }
 
     /// Get the list of external relocations for this code.
@@ -1781,14 +1883,96 @@ impl<T: CompilePhase> MachBufferFinalized<T> {
     ///   call site.
     pub fn call_sites(&self) -> impl Iterator<Item = FinalizedMachCallSite<'_>> + '_ {
         self.call_sites.iter().map(|call_site| {
-            let range = call_site.exception_handler_range.clone();
-            let range = usize::try_from(range.start).unwrap()..usize::try_from(range.end).unwrap();
+            let handler_range = call_site.exception_handler_range.clone();
+            let handler_range = usize::try_from(handler_range.start).unwrap()
+                ..usize::try_from(handler_range.end).unwrap();
             FinalizedMachCallSite {
                 ret_addr: call_site.ret_addr,
-                exception_handlers: &self.exception_handlers[range],
+                frame_offset: call_site.frame_offset,
+                exception_handlers: &self.exception_handlers[handler_range],
             }
         })
     }
+
+    /// Get the frame layout, if known.
+    pub fn frame_layout(&self) -> Option<&MachBufferFrameLayout> {
+        self.frame_layout.as_ref()
+    }
+
+    /// Get the list of patchable call sites for this code.
+    ///
+    /// Each location in the buffer contains the bytes for a call
+    /// instruction to the specified target. If the call is to be
+    /// patched out, the bytes in the region should be replaced with
+    /// those given in the `MachBufferFinalized::nop` array, repeated
+    /// as many times as necessary. (The length of the patchable
+    /// region is guaranteed to be an integer multiple of that NOP
+    /// unit size.)
+    pub fn patchable_call_sites(&self) -> impl Iterator<Item = &MachPatchableCallSite> + '_ {
+        self.patchable_call_sites.iter()
+    }
+}
+
+/// An item in the exception-handler list for a callsite, with label
+/// references.  Items are interpreted in left-to-right order and the
+/// first match wins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MachExceptionHandler {
+    /// A specific tag (in the current dynamic context) should be
+    /// handled by the code at the given offset.
+    Tag(ExceptionTag, MachLabel),
+    /// All exceptions should be handled by the code at the given
+    /// offset.
+    Default(MachLabel),
+    /// The dynamic context for interpreting tags is updated to the
+    /// value stored in the given machine location (in this frame's
+    /// context).
+    Context(ExceptionContextLoc),
+}
+
+impl MachExceptionHandler {
+    fn finalize<F: Fn(MachLabel) -> CodeOffset>(self, f: F) -> FinalizedMachExceptionHandler {
+        match self {
+            Self::Tag(tag, label) => FinalizedMachExceptionHandler::Tag(tag, f(label)),
+            Self::Default(label) => FinalizedMachExceptionHandler::Default(f(label)),
+            Self::Context(loc) => FinalizedMachExceptionHandler::Context(loc),
+        }
+    }
+}
+
+/// An item in the exception-handler list for a callsite, with final
+/// (lowered) code offsets. Items are interpreted in left-to-right
+/// order and the first match wins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+pub enum FinalizedMachExceptionHandler {
+    /// A specific tag (in the current dynamic context) should be
+    /// handled by the code at the given offset.
+    Tag(ExceptionTag, CodeOffset),
+    /// All exceptions should be handled by the code at the given
+    /// offset.
+    Default(CodeOffset),
+    /// The dynamic context for interpreting tags is updated to the
+    /// value stored in the given machine location (in this frame's
+    /// context).
+    Context(ExceptionContextLoc),
+}
+
+/// A location for a dynamic exception context value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+pub enum ExceptionContextLoc {
+    /// An offset from SP at the callsite.
+    SPOffset(u32),
+    /// A GPR at the callsite. The physical register number for the
+    /// GPR register file on the target architecture is used.
+    GPR(u8),
 }
 
 /// Metadata about a constant.
@@ -1955,6 +2139,19 @@ pub struct MachCallSite {
     /// start of the buffer*.
     pub ret_addr: CodeOffset,
 
+    /// The offset from the FP at this callsite down to the SP when
+    /// the call occurs, if known. In other words, the size of the
+    /// stack frame up to the saved FP slot. Useful to recover the
+    /// start of the stack frame and to look up dynamic contexts
+    /// stored in [`ExceptionContextLoc::SPOffset`].
+    ///
+    /// If `None`, the compiler backend did not specify a frame
+    /// offset. The runtime in use with the compiled code may require
+    /// the frame offset if exception handlers are present or dynamic
+    /// context is used, but that is not Cranelift's concern: the
+    /// frame offset is optional at this level.
+    pub frame_offset: Option<u32>,
+
     /// Range in `exception_handlers` corresponding to the exception
     /// handlers for this callsite.
     exception_handler_range: Range<u32>,
@@ -1967,9 +2164,38 @@ pub struct FinalizedMachCallSite<'a> {
     /// start of the buffer*.
     pub ret_addr: CodeOffset,
 
+    /// The offset from the FP at this callsite down to the SP when
+    /// the call occurs, if known. In other words, the size of the
+    /// stack frame up to the saved FP slot. Useful to recover the
+    /// start of the stack frame and to look up dynamic contexts
+    /// stored in [`ExceptionContextLoc::SPOffset`].
+    ///
+    /// If `None`, the compiler backend did not specify a frame
+    /// offset. The runtime in use with the compiled code may require
+    /// the frame offset if exception handlers are present or dynamic
+    /// context is used, but that is not Cranelift's concern: the
+    /// frame offset is optional at this level.
+    pub frame_offset: Option<u32>,
+
     /// Exception handlers at this callsite, with target offsets
     /// *relative to the start of the buffer*.
-    pub exception_handlers: &'a [(PackedOption<ir::ExceptionTag>, CodeOffset)],
+    pub exception_handlers: &'a [FinalizedMachExceptionHandler],
+}
+
+/// A patchable call site record resulting from a compilation.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+pub struct MachPatchableCallSite {
+    /// The offset of the call's return address (i.e., the address
+    /// after the end of the patchable region), *relative to the start
+    /// of the buffer*.
+    pub ret_addr: CodeOffset,
+
+    /// The length of the region to be patched by NOP bytes.
+    pub len: u32,
 }
 
 /// A source-location mapping resulting from a compilation.
@@ -1984,7 +2210,7 @@ pub struct MachSrcLoc<T: CompilePhase> {
     /// section.
     pub start: CodeOffset,
     /// The end of the region of code corresponding to a source location.
-    /// This is relative to the start of the section, not to the start of the
+    /// This is relative to the start of the function, not to the start of the
     /// section.
     pub end: CodeOffset,
     /// The source location.
@@ -2024,6 +2250,118 @@ impl MachBranch {
     fn is_uncond(&self) -> bool {
         self.inverted.is_none()
     }
+}
+
+/// Stack-frame layout information carried through to machine
+/// code. This provides sufficient information to interpret an active
+/// stack frame from a running function, if provided.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+pub struct MachBufferFrameLayout {
+    /// Offset from bottom of frame to FP (near top of frame). This
+    /// allows reading the frame given only FP.
+    pub frame_to_fp_offset: u32,
+    /// Offset from bottom of frame for each StackSlot,
+    pub stackslots: SecondaryMap<ir::StackSlot, MachBufferStackSlot>,
+}
+
+/// Descriptor for a single stack slot in the compiled function.
+#[derive(Clone, Debug, PartialEq, Default)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+pub struct MachBufferStackSlot {
+    /// Offset from the bottom of the stack frame.
+    pub offset: u32,
+
+    /// User-provided key to describe this stack slot.
+    pub key: Option<ir::StackSlotKey>,
+}
+
+/// Debug tags: a sequence of references to a stack slot, or a
+/// user-defined value, at a particular PC.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+pub(crate) struct MachDebugTags {
+    /// Offset at which this tag applies.
+    pub offset: CodeOffset,
+
+    /// Position on the attached instruction. This indicates whether
+    /// the tags attach to the prior instruction (i.e., as a return
+    /// point from a call) or the current instruction (i.e., as a PC
+    /// seen during a trap).
+    pub pos: MachDebugTagPos,
+
+    /// The range in the tag pool.
+    pub range: Range<u32>,
+}
+
+/// Debug tag position on an instruction.
+///
+/// We need to distinguish position on an instruction, and not just
+/// use offsets, because of the following case:
+///
+/// ```plain
+/// <tag1, tag2> call ...
+/// <tag3, tag4> trapping_store ...
+/// ```
+///
+/// If the stack is walked and interpreted with debug tags while
+/// within the call, the PC seen will be the return point, i.e. the
+/// address after the call. If the stack is walked and interpreted
+/// with debug tags upon a trap of the following instruction, it will
+/// be the PC of that instruction -- which is the same PC! Thus to
+/// disambiguate which tags we want, we attach a "pre/post" flag to
+/// every group of tags at an offset; and when we look up tags, we
+/// look them up for an offset and "position" at that offset.
+///
+/// Thus there are logically two positions at every offset -- so the
+/// above will be emitted as
+///
+/// ```plain
+/// 0: call ...
+///                          4, post: <tag1, tag2>
+///                          4, pre: <tag3, tag4>
+/// 4: trapping_store ...
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "enable-serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+pub enum MachDebugTagPos {
+    /// Tags attached after the instruction that ends at this offset.
+    ///
+    /// This is used to attach tags to a call, because the PC we see
+    /// when walking the stack is the *return point*.
+    Post,
+    /// Tags attached before the instruction that starts at this offset.
+    ///
+    /// This is used to attach tags to every other kind of
+    /// instruction, because the PC we see when processing a trap of
+    /// that instruction is the PC of that instruction, not the
+    /// following one.
+    Pre,
+}
+
+/// Iterator item for visiting debug tags.
+pub struct MachBufferDebugTagList<'a> {
+    /// Offset at which this tag applies.
+    pub offset: CodeOffset,
+
+    /// Position at this offset ("post", attaching to prior
+    /// instruction, or "pre", attaching to next instruction).
+    pub pos: MachDebugTagPos,
+
+    /// The underlying tags.
+    pub tags: &'a [DebugTag],
 }
 
 /// Implementation of the `TextSectionBuilder` trait backed by `MachBuffer`.
@@ -2125,8 +2463,8 @@ mod test {
 
     use super::*;
     use crate::ir::UserExternalNameRef;
-    use crate::isa::aarch64::inst::{xreg, OperandSize};
     use crate::isa::aarch64::inst::{BranchTarget, CondBrKind, EmitInfo, Inst};
+    use crate::isa::aarch64::inst::{OperandSize, xreg};
     use crate::machinst::{MachInstEmit, MachInstEmitState};
     use crate::settings;
 
@@ -2514,10 +2852,14 @@ mod test {
         buf.put1(2);
         buf.add_trap(TrapCode::INTEGER_OVERFLOW);
         buf.add_trap(TrapCode::INTEGER_DIVISION_BY_ZERO);
-        buf.add_call_site(&[
-            (None.into(), label(1)),
-            (Some(ExceptionTag::new(42)).into(), label(2)),
-        ]);
+        buf.add_try_call_site(
+            Some(0x10),
+            [
+                MachExceptionHandler::Tag(ExceptionTag::new(42), label(2)),
+                MachExceptionHandler::Default(label(1)),
+            ]
+            .into_iter(),
+        );
         buf.add_reloc(
             Reloc::Abs4,
             &ExternalName::User(UserExternalNameRef::new(0)),
@@ -2551,9 +2893,13 @@ mod test {
         );
         let call_sites: Vec<_> = buf.call_sites().collect();
         assert_eq!(call_sites[0].ret_addr, 2);
+        assert_eq!(call_sites[0].frame_offset, Some(0x10));
         assert_eq!(
             call_sites[0].exception_handlers,
-            &[(None.into(), 4), (Some(ExceptionTag::new(42)).into(), 5)]
+            &[
+                FinalizedMachExceptionHandler::Tag(ExceptionTag::new(42), 5),
+                FinalizedMachExceptionHandler::Default(4)
+            ],
         );
         assert_eq!(
             buf.relocs()

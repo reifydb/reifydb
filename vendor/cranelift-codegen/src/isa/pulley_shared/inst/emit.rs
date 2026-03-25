@@ -3,8 +3,8 @@
 use super::*;
 use crate::ir::{self, Endianness};
 use crate::isa;
-use crate::isa::pulley_shared::abi::PulleyMachineDeps;
 use crate::isa::pulley_shared::PointerWidth;
+use crate::isa::pulley_shared::abi::PulleyMachineDeps;
 use core::marker::PhantomData;
 use cranelift_control::ControlPlane;
 use pulley_interpreter::encode as enc;
@@ -145,10 +145,29 @@ fn pulley_emit<P>(
 
         Inst::GetSpecial { dst, reg } => enc::xmov(sink, dst, reg),
 
-        Inst::LoadExtName { .. } => todo!(),
+        Inst::LoadExtNameNear { dst, name, offset } => {
+            patch_pc_rel_offset(sink, |sink| enc::xpcadd(sink, dst, 0));
+            let end = sink.cur_offset();
+            sink.add_reloc_at_offset(end - 4, Reloc::PulleyPcRel, &**name, *offset);
+        }
+
+        Inst::LoadExtNameFar { dst, name, offset } => {
+            let size = match P::pointer_width() {
+                PointerWidth::PointerWidth32 => {
+                    enc::xconst32(sink, dst, 0);
+                    4
+                }
+                PointerWidth::PointerWidth64 => {
+                    enc::xconst64(sink, dst, 0);
+                    8
+                }
+            };
+            let end = sink.cur_offset();
+            sink.add_reloc_at_offset(end - size, Reloc::Abs8, &**name, *offset);
+        }
 
         Inst::Call { info } => {
-            let offset = sink.cur_offset();
+            let start = sink.cur_offset();
 
             // If arguments happen to already be in the right register for the
             // ABI then remove them from this list. Otherwise emit the
@@ -159,47 +178,45 @@ fn pulley_emit<P>(
             while !args.is_empty() && args.last().copied() == XReg::new(x_reg(args.len() - 1)) {
                 args = &args[..args.len() - 1];
             }
-            match args {
+            patch_pc_rel_offset(sink, |sink| match args {
                 [] => enc::call(sink, 0),
                 [x0] => enc::call1(sink, x0, 0),
                 [x0, x1] => enc::call2(sink, x0, x1, 0),
                 [x0, x1, x2] => enc::call3(sink, x0, x1, x2, 0),
                 [x0, x1, x2, x3] => enc::call4(sink, x0, x1, x2, x3, 0),
                 _ => unreachable!(),
-            }
+            });
             let end = sink.cur_offset();
-            sink.add_reloc_at_offset(
-                end - 4,
-                // TODO: is it actually okay to reuse this reloc here?
-                Reloc::X86CallPCRel4,
-                &info.dest.name,
-                // This addend adjusts for the difference between the start of
-                // the instruction and the beginning of the immediate offset
-                // field which is always the final 4 bytes of the instruction.
-                -i64::from(end - offset - 4),
-            );
+            sink.add_reloc_at_offset(end - 4, Reloc::PulleyPcRel, &info.dest.name, 0);
             if let Some(s) = state.take_stack_map() {
                 let offset = sink.cur_offset();
                 sink.push_user_stack_map(state, offset, s);
             }
 
             if let Some(try_call) = info.try_call_info.as_ref() {
-                sink.add_call_site(&try_call.exception_dests);
+                sink.add_try_call_site(
+                    Some(state.frame_layout.sp_to_fp()),
+                    try_call.exception_handlers(&state.frame_layout),
+                );
             } else {
-                sink.add_call_site(&[]);
+                sink.add_call_site();
             }
 
-            let adjust = -i32::try_from(info.callee_pop_size).unwrap();
-            for i in PulleyMachineDeps::<P>::gen_sp_reg_adjust(adjust) {
-                <InstAndKind<P>>::from(i).emit(sink, emit_info, state);
-            }
+            if info.patchable {
+                sink.add_patchable_call_site(sink.cur_offset() - start);
+            } else {
+                let adjust = -i32::try_from(info.callee_pop_size).unwrap();
+                for i in PulleyMachineDeps::<P>::gen_sp_reg_adjust(adjust) {
+                    i.emit(sink, emit_info, state);
+                }
 
-            // Load any stack-carried return values.
-            info.emit_retval_loads::<PulleyMachineDeps<P>, _, _>(
-                state.frame_layout().stackslots_size,
-                |inst| inst.emit(sink, emit_info, state),
-                |space_needed| Some(<InstAndKind<P>>::from(Inst::EmitIsland { space_needed })),
-            );
+                // Load any stack-carried return values.
+                info.emit_retval_loads::<PulleyMachineDeps<P>, _, _>(
+                    state.frame_layout().stackslots_size,
+                    |inst| inst.emit(sink, emit_info, state),
+                    |space_needed| Some(<InstAndKind<P>>::from(Inst::EmitIsland { space_needed })),
+                );
+            }
 
             // If this is a try-call, jump to the continuation
             // (normal-return) block.
@@ -224,14 +241,17 @@ fn pulley_emit<P>(
             }
 
             if let Some(try_call) = info.try_call_info.as_ref() {
-                sink.add_call_site(&try_call.exception_dests);
+                sink.add_try_call_site(
+                    Some(state.frame_layout.sp_to_fp()),
+                    try_call.exception_handlers(&state.frame_layout),
+                );
             } else {
-                sink.add_call_site(&[]);
+                sink.add_call_site();
             }
 
             let adjust = -i32::try_from(info.callee_pop_size).unwrap();
             for i in PulleyMachineDeps::<P>::gen_sp_reg_adjust(adjust) {
-                <InstAndKind<P>>::from(i).emit(sink, emit_info, state);
+                i.emit(sink, emit_info, state);
             }
 
             // Load any stack-carried return values.
@@ -261,8 +281,8 @@ fn pulley_emit<P>(
             // Emit an unconditional jump which is quite similar to `Inst::Call`
             // except that a `jump` opcode is used instead of a `call` opcode.
             sink.put1(pulley_interpreter::Opcode::Jump as u8);
-            sink.add_reloc(Reloc::X86CallPCRel4, &info.dest, -1);
-            sink.put4(0);
+            sink.add_reloc(Reloc::PulleyPcRel, &info.dest, 0);
+            sink.put4(1);
 
             // Islands were manually handled in
             // `emit_return_call_common_sequence`.
@@ -288,7 +308,15 @@ fn pulley_emit<P>(
                 let offset = sink.cur_offset();
                 sink.push_user_stack_map(state, offset, s);
             }
-            sink.add_call_site(&[]);
+
+            if let Some(try_call) = info.try_call_info.as_ref() {
+                sink.add_try_call_site(
+                    Some(state.frame_layout.sp_to_fp()),
+                    try_call.exception_handlers(&state.frame_layout),
+                );
+            } else {
+                sink.add_call_site();
+            }
 
             // If a callee pop is happening here that means that something has
             // messed up, these are expected to be "very simple" signatures.
@@ -296,9 +324,9 @@ fn pulley_emit<P>(
         }
 
         Inst::Jump { label } => {
-            sink.use_label_at_offset(*start_offset + 1, *label, LabelUse::Jump(1));
+            sink.use_label_at_offset(*start_offset + 1, *label, LabelUse::PcRel);
             sink.add_uncond_branch(*start_offset, *start_offset + 5, *label);
-            enc::jump(sink, 0x00000000);
+            patch_pc_rel_offset(sink, |sink| enc::jump(sink, 0));
         }
 
         Inst::BrIf {
@@ -310,9 +338,12 @@ fn pulley_emit<P>(
             // their trailing 4 bytes as the relative offset which is what we're
             // going to target here within the `MachBuffer`.
             let mut inverted = SmallVec::<[u8; 16]>::new();
-            cond.invert().encode(&mut inverted);
+            cond.invert().encode(&mut inverted, 0);
             let len = inverted.len() as u32;
-            debug_assert!(len > 4);
+            inverted.clear();
+            cond.invert()
+                .encode(&mut inverted, i32::try_from(len - 4).unwrap());
+            assert!(len > 4);
 
             // Use the `taken` label 4 bytes before the end of the instruction
             // we're about to emit as that's the base of `PcRelOffset`. Note
@@ -320,9 +351,9 @@ fn pulley_emit<P>(
             // instruction to the start of the relative offset, hence `len - 4`
             // as the factor to adjust by.
             let taken_end = *start_offset + len;
-            sink.use_label_at_offset(taken_end - 4, *taken, LabelUse::Jump(len - 4));
+            sink.use_label_at_offset(taken_end - 4, *taken, LabelUse::PcRel);
             sink.add_cond_branch(*start_offset, taken_end, *taken, &inverted);
-            cond.encode(sink);
+            patch_pc_rel_offset(sink, |sink| cond.encode(sink, 0));
             debug_assert_eq!(sink.cur_offset(), taken_end);
 
             // For the not-taken branch use an unconditional jump to the
@@ -330,9 +361,9 @@ fn pulley_emit<P>(
             // long where the final 4 bytes are the offset to jump by.
             let not_taken_start = taken_end + 1;
             let not_taken_end = not_taken_start + 4;
-            sink.use_label_at_offset(not_taken_start, *not_taken, LabelUse::Jump(1));
+            sink.use_label_at_offset(not_taken_start, *not_taken, LabelUse::PcRel);
             sink.add_uncond_branch(taken_end, not_taken_end, *not_taken);
-            enc::jump(sink, 0x00000000);
+            patch_pc_rel_offset(sink, |sink| enc::jump(sink, 0));
             assert_eq!(sink.cur_offset(), not_taken_end);
         }
 
@@ -541,11 +572,11 @@ fn pulley_emit<P>(
             enc::br_table32(sink, *idx, amt);
             for target in targets.iter() {
                 let offset = sink.cur_offset();
-                sink.use_label_at_offset(offset, *target, LabelUse::Jump(0));
+                sink.use_label_at_offset(offset, *target, LabelUse::PcRel);
                 sink.put4(0);
             }
             let offset = sink.cur_offset();
-            sink.use_label_at_offset(offset, *default, LabelUse::Jump(0));
+            sink.use_label_at_offset(offset, *default, LabelUse::PcRel);
             sink.put4(0);
 
             // We manually handled `emit_island` above when dealing with
@@ -555,17 +586,7 @@ fn pulley_emit<P>(
             *start_offset = sink.cur_offset();
         }
 
-        Inst::Raw { raw } => {
-            match raw {
-                RawInst::PushFrame
-                | RawInst::StackAlloc32 { .. }
-                | RawInst::PushFrameSave { .. } => {
-                    sink.add_trap(ir::TrapCode::STACK_OVERFLOW);
-                }
-                _ => {}
-            }
-            super::generated::emit(raw, sink)
-        }
+        Inst::Raw { raw } => super::generated::emit(raw, sink),
 
         Inst::EmitIsland { space_needed } => {
             if sink.island_needed(*space_needed) {
@@ -574,6 +595,16 @@ fn pulley_emit<P>(
                 sink.emit_island(space_needed + 8, &mut state.ctrl_plane);
                 sink.bind_label(label, &mut state.ctrl_plane);
             }
+        }
+
+        Inst::LabelAddress { dst, label } => {
+            patch_pc_rel_offset(sink, |sink| enc::xpcadd(sink, dst, 0));
+            let end = sink.cur_offset();
+            sink.use_label_at_offset(end - 4, *label, LabelUse::PcRel);
+        }
+
+        Inst::SequencePoint { .. } => {
+            // Nothing.
         }
     }
 }
@@ -648,7 +679,31 @@ fn return_call_emit_impl<T, P>(
     if incoming_args_diff != 0 {
         let amt = i32::try_from(incoming_args_diff).unwrap();
         for inst in PulleyMachineDeps::<P>::gen_sp_reg_adjust(amt) {
-            <InstAndKind<P>>::from(inst).emit(sink, emit_info, state);
+            inst.emit(sink, emit_info, state);
         }
     }
+}
+
+/// Invokes `f` with `sink` and assumes that a single instruction is emitted
+/// which ends with a Pulley `PcRelOffset`.
+///
+/// The offset at that location is patched to include the size of the
+/// instruction before the relative offset since relocations will be applied to
+/// the address of the offset and added to the contents at the offset. The
+/// Pulley interpreter, however, will calculate the offset from the start of the
+/// instruction, so this extra offset is required.
+fn patch_pc_rel_offset<P>(
+    sink: &mut MachBuffer<InstAndKind<P>>,
+    f: impl FnOnce(&mut MachBuffer<InstAndKind<P>>),
+) where
+    P: PulleyTargetKind,
+{
+    let patch = sink.start_patchable();
+    let start = sink.cur_offset();
+    f(sink);
+    let end = sink.cur_offset();
+    let region = sink.end_patchable(patch).patch(sink);
+    let chunk = region.last_chunk_mut::<4>().unwrap();
+    assert_eq!(*chunk, [0, 0, 0, 0]);
+    *chunk = (end - start - 4).to_le_bytes();
 }

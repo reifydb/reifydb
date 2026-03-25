@@ -1,16 +1,18 @@
+use crate::Module;
+use crate::component::ResourceType;
 use crate::component::func::HostFunc;
 use crate::component::linker::{Definition, Strings};
-use crate::component::ResourceType;
+use crate::component::types::{FutureType, StreamType};
 use crate::runtime::vm::component::ComponentInstance;
 use crate::types::matching;
-use crate::Module;
-use crate::{prelude::*, Engine};
+use crate::{Engine, prelude::*};
 use alloc::sync::Arc;
+use wasmtime_environ::PrimaryMap;
 use wasmtime_environ::component::{
     ComponentTypes, NameMap, ResourceIndex, TypeComponentInstance, TypeDef, TypeFuncIndex,
-    TypeModule, TypeResourceTableIndex,
+    TypeFutureTableIndex, TypeModule, TypeResourceTable, TypeResourceTableIndex,
+    TypeStreamTableIndex,
 };
-use wasmtime_environ::PrimaryMap;
 
 pub struct TypeChecker<'a> {
     pub engine: &'a Engine,
@@ -58,7 +60,7 @@ impl TypeChecker<'_> {
             },
 
             TypeDef::Resource(i) => {
-                let i = self.types[i].ty;
+                let i = self.types[i].unwrap_concrete_ty();
                 let actual = match actual {
                     Some(Definition::Resource(actual, _dtor)) => actual,
 
@@ -117,9 +119,10 @@ impl TypeChecker<'_> {
         // Every export that is expected should be in the actual module we have
         for (name, expected) in expected.exports.iter() {
             let idx = actual
-                .exports
-                .get(name)
-                .ok_or_else(|| anyhow!("module export `{name}` not defined"))?;
+                .strings
+                .get_atom(name)
+                .and_then(|atom| actual.exports.get(&atom))
+                .ok_or_else(|| format_err!("module export `{name}` not defined"))?;
             let actual = actual.type_of(*idx);
             matching::entity_ty(self.engine, expected, &actual)
                 .with_context(|| format!("module export `{name}` has the wrong type"))?;
@@ -134,7 +137,7 @@ impl TypeChecker<'_> {
             let expected = expected
                 .imports
                 .get(&(module.to_string(), name.to_string()))
-                .ok_or_else(|| anyhow!("module import `{module}::{name}` not defined"))?;
+                .ok_or_else(|| format_err!("module import `{module}::{name}` not defined"))?;
             matching::entity_ty(self.engine, &actual, expected)
                 .with_context(|| format!("module import `{module}::{name}` has the wrong type"))?;
         }
@@ -186,16 +189,27 @@ impl Definition {
 impl<'a> InstanceType<'a> {
     pub fn new(instance: &'a ComponentInstance) -> InstanceType<'a> {
         InstanceType {
-            types: instance.component_types(),
+            types: instance.component().types(),
             resources: instance.resource_types(),
         }
     }
 
     pub fn resource_type(&self, index: TypeResourceTableIndex) -> ResourceType {
-        let index = self.types[index].ty;
-        self.resources
-            .get(index)
-            .copied()
-            .unwrap_or_else(|| ResourceType::uninstantiated(&self.types, index))
+        match self.types[index] {
+            TypeResourceTable::Concrete { ty, .. } => self
+                .resources
+                .get(ty)
+                .copied()
+                .unwrap_or_else(|| ResourceType::uninstantiated(&self.types, ty)),
+            TypeResourceTable::Abstract(ty) => ResourceType::abstract_(&self.types, ty),
+        }
+    }
+
+    pub fn future_type(&self, index: TypeFutureTableIndex) -> FutureType {
+        FutureType::from(self.types[index].ty, self)
+    }
+
+    pub fn stream_type(&self, index: TypeStreamTableIndex) -> StreamType {
+        StreamType::from(self.types[index].ty, self)
     }
 }

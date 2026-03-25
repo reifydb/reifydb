@@ -1,7 +1,7 @@
 //! x64 addressing mode.
 
 use crate::reg::Reg;
-use cranelift_codegen::ir::Constant;
+use cranelift_codegen::VCodeConstant;
 
 /// Memory address representation.
 #[derive(Debug, Copy, Clone)]
@@ -9,7 +9,7 @@ pub(crate) enum Address {
     /// Base register with an immediate offset.
     Offset { base: Reg, offset: u32 },
     /// Address to identify a constant.
-    Const(Constant),
+    Const(VCodeConstant),
     /// Address at `(base + index * 2^shift) + simm32`
     ImmRegRegShift {
         simm32: i32,
@@ -26,11 +26,11 @@ impl Address {
     }
 
     /// Create an address for a constant.
-    pub fn constant(data: Constant) -> Self {
+    pub fn constant(data: VCodeConstant) -> Self {
         Self::Const(data)
     }
 
-    /// Check if the address is a made made of a base and offset.
+    /// Check if the address is a made of a base and offset.
     pub fn is_offset(&self) -> bool {
         match self {
             Self::Offset { .. } => true,

@@ -694,6 +694,42 @@ registers!(RiscV, {
     F29 = (61, "f29"),
     F30 = (62, "f30"),
     F31 = (63, "f31"),
+
+    // Alternate Frame Return Column
+    AFRC = (64, "afrc"),
+
+    V0 = (96, "v0"),
+    V1 = (97, "v1"),
+    V2 = (98, "v2"),
+    V3 = (99, "v3"),
+    V4 = (100, "v4"),
+    V5 = (101, "v5"),
+    V6 = (102, "v6"),
+    V7 = (103, "v7"),
+    V8 = (104, "v8"),
+    V9 = (105, "v9"),
+    V10 = (106, "v10"),
+    V11 = (107, "v11"),
+    V12 = (108, "v12"),
+    V13 = (109, "v13"),
+    V14 = (110, "v14"),
+    V15 = (111, "v15"),
+    V16 = (112, "v16"),
+    V17 = (113, "v17"),
+    V18 = (114, "v18"),
+    V19 = (115, "v19"),
+    V20 = (116, "v20"),
+    V21 = (117, "v21"),
+    V22 = (118, "v22"),
+    V23 = (119, "v23"),
+    V24 = (120, "v24"),
+    V25 = (121, "v25"),
+    V26 = (122, "v26"),
+    V27 = (123, "v27"),
+    V28 = (124, "v28"),
+    V29 = (125, "v29"),
+    V30 = (126, "v30"),
+    V31 = (127, "v31"),
 },
 aliases {
     ZERO = (0, "zero"),
@@ -705,6 +741,7 @@ aliases {
     T1 = (6, "t1"),
     T2 = (7, "t2"),
     S0 = (8, "s0"),
+    FP = (8, "fp"),
     S1 = (9, "s1"),
     A0 = (10, "a0"),
     A1 = (11, "a1"),
@@ -765,7 +802,7 @@ aliases {
 
 /// Intel i386 architecture specific definitions.
 ///
-/// See Intel386 psABi version 1.1 at the [X86 psABI wiki](https://github.com/hjl-tools/x86-psABI/wiki/X86-psABI).
+/// See section 2.4.2 of the [i386 psABI](https://gitlab.com/x86-psABIs/i386-ABI).
 #[derive(Debug, Clone, Copy)]
 pub struct X86;
 
@@ -827,7 +864,7 @@ registers!(X86, {
 
 /// AMD64 architecture specific definitions.
 ///
-/// See x86-64 psABI version 1.0 at the [X86 psABI wiki](https://github.com/hjl-tools/x86-psABI/wiki/X86-psABI).
+/// See section 3.6.2 of the [x86-64 psABI](https://gitlab.com/x86-psABIs/x86-64-ABI).
 #[derive(Debug, Clone, Copy)]
 pub struct X86_64;
 
@@ -931,6 +968,33 @@ registers!(X86_64, {
     K5 = (123, "k5"),
     K6 = (124, "k6"),
     K7 = (125, "k7"),
+
+    R16 = (130, "r16"),
+    R17 = (131, "r17"),
+    R18 = (132, "r18"),
+    R19 = (133, "r19"),
+    R20 = (134, "r20"),
+    R21 = (135, "r21"),
+    R22 = (136, "r22"),
+    R23 = (137, "r23"),
+    R24 = (138, "r24"),
+    R25 = (139, "r25"),
+    R26 = (140, "r26"),
+    R27 = (141, "r27"),
+    R28 = (142, "r28"),
+    R29 = (143, "r29"),
+    R30 = (144, "r30"),
+    R31 = (145, "r31"),
+
+    TMM0 = (146, "tmm0"),
+    TMM1 = (147, "tmm1"),
+    TMM2 = (148, "tmm2"),
+    TMM3 = (149, "tmm3"),
+    TMM4 = (150, "tmm4"),
+    TMM5 = (151, "tmm5"),
+    TMM6 = (152, "tmm6"),
+    TMM7 = (153, "tmm7"),
+    TILECFG = (154, "tilecfg"),
 });
 
 /// PowerPC 64bit

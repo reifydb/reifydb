@@ -65,7 +65,7 @@ pub const ELF_WASMTIME_ADDRMAP: &str = ".wasmtime.addrmap";
 /// maps).
 ///
 /// This section has a custom binary encoding described in `stack_maps.rs` which
-/// is used to implement the single query we want to satisy of: where are the
+/// is used to implement the single query we want to satisfy of: where are the
 /// live GC references at this pc? Like the addrmap section this has an
 /// alignment of 1 with unaligned reads, and it additionally doesn't support
 /// >=4gb text sections.
@@ -97,6 +97,27 @@ pub const ELF_WASMTIME_STACK_MAP: &str = ".wasmtime.stackmap";
 /// Note that at this time this section has an alignment of 1. Additionally due
 /// to the 32-bit encodings for offsets this doesn't support images >=4gb.
 pub const ELF_WASMTIME_TRAPS: &str = ".wasmtime.traps";
+
+/// A custom binary-encoded section of the wasmtime compilation
+/// artifacts which encodes exception tables.
+///
+/// This section is used at runtime to allow the unwinder to find
+/// exception handler blocks active at particular callsites.
+///
+/// This section's format is defined by the `ExceptionTableBuilder` data
+/// structure. Its code offsets are relative to the start of the text segment.
+pub const ELF_WASMTIME_EXCEPTIONS: &str = ".wasmtime.exceptions";
+
+/// A custom binary-encoded section of the wasmtime compilation
+/// artifacts which encodes frame tables.
+///
+/// This section is used at runtime to allow debug APIs to decode Wasm
+/// VM-level state from state stack slots.
+///
+/// This section's format is defined by the
+/// [`crate::compile::FrameTableBuilder`] data structure. Its code
+/// offsets are relative to the start of the text segment.
+pub const ELF_WASMTIME_FRAMES: &str = ".wasmtime.frames";
 
 /// A custom section which consists of just 1 byte which is either 0 or 1 as to
 /// whether BTI is enabled.
@@ -155,6 +176,24 @@ pub const ELF_NAME_DATA: &'static str = ".name.wasm";
 /// and is instead indexed directly by relative indices stored in compilation
 /// metadata.
 pub const ELF_WASMTIME_DWARF: &str = ".wasmtime.dwarf";
+
+/// This is the name of the section in the final ELF image which contains the
+/// original Wasm bytecode for the module, preserved verbatim to support
+/// debugger access to the source bytecode.
+///
+/// This section is only emitted when the `guest-debug` tunable is enabled at
+/// compile time. Its contents are the concatenated raw bytes of all core
+/// module Wasm binaries in the artifact.
+pub const ELF_WASMTIME_WASM_BYTECODE: &str = ".wasmtime.wasm_bytecode";
+
+/// This is the name of the companion section to [`ELF_WASMTIME_WASM_BYTECODE`]
+/// that stores the end-offset table used to locate individual module bytecodes
+/// within the concatenated data.
+///
+/// The section contains one little-endian `u32` per core module in
+/// the artifact giving the *end* of that module's bytecode in the
+/// concatenated bytecode section above.
+pub const ELF_WASMTIME_WASM_BYTECODE_ENDS: &str = ".wasmtime.wasm_bytecode_ends";
 
 /// Workaround to implement `core::error::Error` until
 /// gimli-rs/object#747 is settled.

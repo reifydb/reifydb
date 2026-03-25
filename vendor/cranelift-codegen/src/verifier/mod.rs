@@ -71,11 +71,12 @@ use crate::ir::entities::AnyEntity;
 use crate::ir::instructions::{CallInfo, InstructionFormat, ResolvedConstraint};
 use crate::ir::{self, ArgumentExtension, BlockArg, ExceptionTable};
 use crate::ir::{
-    types, ArgumentPurpose, Block, Constant, DynamicStackSlot, FuncRef, Function, GlobalValue,
-    Inst, JumpTable, MemFlags, MemoryTypeData, Opcode, SigRef, StackSlot, Type, Value, ValueDef,
-    ValueList,
+    ArgumentPurpose, Block, Constant, DynamicStackSlot, FuncRef, Function, GlobalValue, Inst,
+    JumpTable, MemFlags, MemoryTypeData, Opcode, SigRef, StackSlot, Type, Value, ValueDef,
+    ValueList, types,
 };
-use crate::isa::TargetIsa;
+use crate::ir::{ExceptionTableItem, Signature};
+use crate::isa::{CallConv, TargetIsa};
 use crate::print_errors::pretty_verifier_error;
 use crate::settings::FlagsOrIsa;
 use crate::timing;
@@ -83,6 +84,7 @@ use alloc::collections::BTreeSet;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
+use cranelift_entity::packed_option::ReservedValue;
 
 /// A verifier error.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -98,7 +100,7 @@ pub struct VerifierError {
 
 // This is manually implementing Error and Display instead of using thiserror to reduce the amount
 // of dependencies used by Cranelift.
-impl std::error::Error for VerifierError {}
+impl core::error::Error for VerifierError {}
 
 impl Display for VerifierError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -177,7 +179,7 @@ pub struct VerifierErrors(pub Vec<VerifierError>);
 
 // This is manually implementing Error and Display instead of using thiserror to reduce the amount
 // of dependencies used by Cranelift.
-impl std::error::Error for VerifierErrors {}
+impl core::error::Error for VerifierErrors {}
 
 impl VerifierErrors {
     /// Return a new `VerifierErrors` struct.
@@ -202,11 +204,7 @@ impl VerifierErrors {
     /// and non-fatal otherwise.
     #[inline]
     pub fn as_result(&self) -> VerifierStepResult {
-        if self.is_empty() {
-            Ok(())
-        } else {
-            Err(())
-        }
+        if self.is_empty() { Ok(()) } else { Err(()) }
     }
 
     /// Report an error, adding it to the list of errors.
@@ -233,18 +231,18 @@ impl From<Vec<VerifierError>> for VerifierErrors {
     }
 }
 
-impl Into<Vec<VerifierError>> for VerifierErrors {
-    fn into(self) -> Vec<VerifierError> {
-        self.0
+impl From<VerifierErrors> for Vec<VerifierError> {
+    fn from(errors: VerifierErrors) -> Vec<VerifierError> {
+        errors.0
     }
 }
 
-impl Into<VerifierResult<()>> for VerifierErrors {
-    fn into(self) -> VerifierResult<()> {
-        if self.is_empty() {
+impl From<VerifierErrors> for VerifierResult<()> {
+    fn from(errors: VerifierErrors) -> VerifierResult<()> {
+        if errors.is_empty() {
             Ok(())
         } else {
-            Err(self)
+            Err(errors)
         }
     }
 }
@@ -590,10 +588,14 @@ impl<'a> Verifier<'a> {
                 self.verify_jump_table(inst, table, errors)?;
             }
             Call {
-                func_ref, ref args, ..
+                opcode,
+                func_ref,
+                ref args,
+                ..
             } => {
                 self.verify_func_ref(inst, func_ref, errors)?;
                 self.verify_value_list(inst, args, errors)?;
+                self.verify_callee_patchability(inst, func_ref, opcode, errors)?;
             }
             CallIndirect {
                 sig_ref, ref args, ..
@@ -730,6 +732,11 @@ impl<'a> Verifier<'a> {
                 ..
             } => {
                 self.verify_constant_size(inst, opcode, constant_handle, errors)?;
+            }
+
+            ExceptionHandlerAddress { block, imm, .. } => {
+                self.verify_block(inst, block, errors)?;
+                self.verify_try_call_handler_index(inst, block, imm.into(), errors)?;
             }
 
             // Exhaustive list so we can't forget to add new formats
@@ -949,6 +956,44 @@ impl<'a> Verifier<'a> {
         Ok(())
     }
 
+    fn verify_callee_patchability(
+        &self,
+        inst: Inst,
+        func_ref: FuncRef,
+        opcode: Opcode,
+        errors: &mut VerifierErrors,
+    ) -> VerifierStepResult {
+        let ir::ExtFuncData {
+            patchable,
+            colocated,
+            signature,
+            name: _,
+        } = self.func.dfg.ext_funcs[func_ref];
+        let signature = &self.func.dfg.signatures[signature];
+        if patchable && (opcode == Opcode::ReturnCall || opcode == Opcode::ReturnCallIndirect) {
+            errors.fatal((
+                inst,
+                self.context(inst),
+                "patchable funcref cannot be used in a return_call".to_string(),
+            ))?;
+        }
+        if patchable && !colocated {
+            errors.fatal((
+                inst,
+                self.context(inst),
+                "patchable call to non-colocated function".to_string(),
+            ))?;
+        }
+        if patchable && !signature.returns.is_empty() {
+            errors.fatal((
+                inst,
+                self.context(inst),
+                "patchable call cannot occur to a function with return values".to_string(),
+            ))?;
+        }
+        Ok(())
+    }
+
     fn verify_value(
         &self,
         loc_inst: Inst,
@@ -1040,12 +1085,9 @@ impl<'a> Verifier<'a> {
                         format!("{v} is defined by {block} which is not in the layout"),
                     ));
                 }
+                let user_block = self.func.layout.inst_block(loc_inst).expect("Expected instruction to be in a block as we're traversing code already in layout");
                 // The defining block dominates the instruction using this value.
-                if is_reachable
-                    && !self
-                        .expected_domtree
-                        .dominates(block, loc_inst, &self.func.layout)
-                {
+                if is_reachable && !self.expected_domtree.block_dominates(block, user_block) {
                     return errors.fatal((
                         loc_inst,
                         self.context(loc_inst),
@@ -1414,8 +1456,19 @@ impl<'a> Verifier<'a> {
                     BlockCallTargetType::ExNormalRet,
                     errors,
                 )?;
-                for (_tag, block) in exdata.catches() {
-                    self.typecheck_block_call(inst, block, BlockCallTargetType::Exception, errors)?;
+                for item in exdata.items() {
+                    match item {
+                        ExceptionTableItem::Tag(_, block_call)
+                        | ExceptionTableItem::Default(block_call) => {
+                            self.typecheck_block_call(
+                                inst,
+                                &block_call,
+                                BlockCallTargetType::Exception,
+                                errors,
+                            )?;
+                        }
+                        ExceptionTableItem::Context(_) => {}
+                    }
                 }
             }
             inst => debug_assert!(!inst.opcode().is_branch()),
@@ -1964,11 +2017,113 @@ impl<'a> Verifier<'a> {
             }
         }
 
-        if errors.has_error() {
-            Err(())
-        } else {
-            Ok(())
+        if errors.has_error() { Err(()) } else { Ok(()) }
+    }
+
+    fn verify_try_call_handler_index(
+        &self,
+        inst: Inst,
+        block: Block,
+        index_imm: i64,
+        errors: &mut VerifierErrors,
+    ) -> VerifierStepResult {
+        if index_imm < 0 {
+            return errors.fatal((
+                inst,
+                format!("exception handler index {index_imm} cannot be negative"),
+            ));
         }
+        let Ok(index) = usize::try_from(index_imm) else {
+            return errors.fatal((
+                inst,
+                format!("exception handler index {index_imm} is out-of-range"),
+            ));
+        };
+        let Some(terminator) = self.func.layout.last_inst(block) else {
+            return errors.fatal((
+                inst,
+                format!("referenced block {block} does not have a terminator"),
+            ));
+        };
+        let Some(et) = self.func.dfg.insts[terminator].exception_table() else {
+            return errors.fatal((
+                inst,
+                format!("referenced block {block} does not end in a try_call"),
+            ));
+        };
+
+        let etd = &self.func.dfg.exception_tables[et];
+        // The exception table's out-edges consist of all exceptional
+        // edges first, followed by the normal return last. For N
+        // out-edges, there are N-1 exception handlers that can be
+        // selected.
+        let num_exceptional_edges = etd.all_branches().len() - 1;
+        if index >= num_exceptional_edges {
+            return errors.fatal((
+                inst,
+                format!("exception handler index {index_imm} is out-of-range"),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn debug_tags(&self, inst: Inst, errors: &mut VerifierErrors) -> VerifierStepResult {
+        // Tags can only be present on calls and sequence points.
+        let op = self.func.dfg.insts[inst].opcode();
+        let tags_allowed = op.is_call() || op == Opcode::SequencePoint;
+        let has_tags = self.func.debug_tags.has(inst);
+        if has_tags && !tags_allowed {
+            return errors.fatal((
+                inst,
+                "debug tags present on non-call, non-sequence point instruction".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn verify_signature(
+        &self,
+        sig: &Signature,
+        entity: impl Into<AnyEntity>,
+        errors: &mut VerifierErrors,
+    ) -> VerifierStepResult {
+        match sig.call_conv {
+            CallConv::PreserveAll => {
+                if !sig.returns.is_empty() {
+                    errors.fatal((
+                        entity,
+                        "Signature with `preserve_all` ABI cannot have return values".to_string(),
+                    ))?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn verify_signatures(&self, errors: &mut VerifierErrors) -> VerifierStepResult {
+        // Verify this function's own signature.
+        self.verify_signature(&self.func.signature, AnyEntity::Function, errors)?;
+        // Verify signatures referenced by any extfunc, using that
+        // extfunc as the entity to which to attach the error.
+        for (func, funcdata) in &self.func.dfg.ext_funcs {
+            // Non-contiguous func entities result in placeholders
+            // with invalid signatures; skip them.
+            if !funcdata.signature.is_reserved_value() {
+                self.verify_signature(&self.func.dfg.signatures[funcdata.signature], func, errors)?;
+            }
+        }
+        // Verify all signatures, including those only used by
+        // e.g. indirect calls. Technically this re-verifies
+        // signatures verified above but we want the first pass to
+        // attach errors to funcrefs and we also need to verify all
+        // defined signatures.
+        for (sig, sigdata) in &self.func.dfg.signatures {
+            self.verify_signature(sigdata, sig, errors)?;
+        }
+        Ok(())
     }
 
     pub fn run(&self, errors: &mut VerifierErrors) -> VerifierStepResult {
@@ -1977,6 +2132,7 @@ impl<'a> Verifier<'a> {
         self.typecheck_entry_block_params(errors)?;
         self.check_entry_not_cold(errors)?;
         self.typecheck_function_signature(errors)?;
+        self.verify_signatures(errors)?;
 
         for block in self.func.layout.blocks() {
             if self.func.layout.first_inst(block).is_none() {
@@ -1989,6 +2145,7 @@ impl<'a> Verifier<'a> {
                 self.typecheck(inst, errors)?;
                 self.immediate_constraints(inst, errors)?;
                 self.iconst_bounds(inst, errors)?;
+                self.debug_tags(inst, errors)?;
             }
 
             self.encodable_as_bb(block, errors)?;
@@ -2009,7 +2166,7 @@ impl<'a> Verifier<'a> {
 mod tests {
     use super::{Verifier, VerifierError, VerifierErrors};
     use crate::ir::instructions::{InstructionData, Opcode};
-    use crate::ir::{types, AbiParam, Function, Type};
+    use crate::ir::{AbiParam, Function, Type, types};
     use crate::settings;
 
     macro_rules! assert_err_with_msg {

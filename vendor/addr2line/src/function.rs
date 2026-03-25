@@ -2,9 +2,10 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cmp::Ordering;
 
-use crate::lazy::LazyResult;
+use gimli::ReaderOffset;
+
 use crate::maybe_small;
-use crate::{Context, DebugFile, Error, RangeAttributes};
+use crate::{Context, DebugFile, Error, LazyResult, RangeAttributes};
 
 pub(crate) struct LazyFunctions<R: gimli::Reader>(LazyResult<Functions<R>>);
 
@@ -15,7 +16,7 @@ impl<R: gimli::Reader> LazyFunctions<R> {
 
     pub(crate) fn borrow(&self, unit: gimli::UnitRef<R>) -> Result<&Functions<R>, Error> {
         self.0
-            .borrow_with(|| Functions::parse(unit))
+            .get_or_init(|| Functions::parse(unit))
             .as_ref()
             .map_err(Error::clone)
     }
@@ -59,7 +60,7 @@ impl<R: gimli::Reader> LazyFunction<R> {
         ctx: &Context<R>,
     ) -> Result<&Function<R>, Error> {
         self.lazy
-            .borrow_with(|| Function::parse(self.dw_die_offset, file, unit, ctx))
+            .get_or_init(|| Function::parse(self.dw_die_offset, file, unit, ctx))
             .as_ref()
             .map_err(Error::clone)
     }
@@ -159,7 +160,7 @@ impl<R: gimli::Reader> Functions<R> {
         // It's possible for multiple functions to have the same address range if the
         // compiler can detect and remove functions with identical code.  In that case
         // we'll nondeterministically return one of them.
-        addresses.sort_by_key(|x| x.range.begin);
+        addresses.sort_unstable_by_key(|x| x.range.begin);
 
         Ok(Functions {
             functions: functions.into_boxed_slice(),
@@ -253,7 +254,7 @@ impl<R: gimli::Reader> Function<R> {
         // In this example, if you want to look up address 7 at depth 0, and you
         // encounter [0..2 at depth 1], are you before or after the target range?
         // You don't know.
-        state.addresses.sort_by(|r1, r2| {
+        state.addresses.sort_unstable_by(|r1, r2| {
             if r1.call_depth < r2.call_depth {
                 Ordering::Less
             } else if r1.call_depth > r2.call_depth {
@@ -309,7 +310,7 @@ impl<R: gimli::Reader> Function<R> {
     }
 
     fn skip(
-        entries: &mut gimli::EntriesRaw<'_, '_, R>,
+        entries: &mut gimli::EntriesRaw<'_, R>,
         abbrev: &gimli::Abbreviation,
         depth: isize,
     ) -> Result<(), Error> {
@@ -463,7 +464,7 @@ impl<R: gimli::Reader> InlinedFunction<R> {
 
 struct InlinedState<'a, R: gimli::Reader> {
     // Mutable fields.
-    entries: gimli::EntriesRaw<'a, 'a, R>,
+    entries: gimli::EntriesRaw<'a, R>,
     functions: Vec<InlinedFunction<R>>,
     addresses: Vec<InlinedFunctionAddress>,
 
@@ -525,7 +526,7 @@ where
     let abbrev = if let Some(abbrev) = entries.read_abbreviation()? {
         abbrev
     } else {
-        return Err(gimli::Error::NoEntryAtGivenOffset);
+        return Err(gimli::Error::NoEntryAtGivenOffset(offset.0.into_u64()));
     };
 
     let mut name = None;

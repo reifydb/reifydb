@@ -1,8 +1,8 @@
-use super::index_allocator::{SimpleIndexAllocator, SlotId};
 use super::GcHeapAllocationIndex;
+use super::index_allocator::{SimpleIndexAllocator, SlotId};
 use crate::runtime::vm::{GcHeap, GcRuntime, PoolingInstanceAllocatorConfig, Result};
 use crate::vm::{Memory, MemoryAllocationIndex};
-use crate::{prelude::*, Engine};
+use crate::{Engine, prelude::*};
 use std::sync::Mutex;
 
 enum HeapSlot {
@@ -73,7 +73,6 @@ impl GcHeapPool {
     }
 
     /// Are there zero slots in use right now?
-    #[allow(unused)] // some cfgs don't use this
     pub fn is_empty(&self) -> bool {
         self.index_allocator.is_empty()
     }
@@ -91,7 +90,7 @@ impl GcHeapPool {
             .alloc()
             .map(|slot| GcHeapAllocationIndex(slot.0))
             .ok_or_else(|| {
-                anyhow!(
+                format_err!(
                     "maximum concurrent GC heap limit of {} reached",
                     self.max_gc_heaps
                 )
@@ -134,7 +133,7 @@ impl GcHeapPool {
             heaps[allocation_index.index()].dealloc(heap)
         };
 
-        self.index_allocator.free(SlotId(allocation_index.0));
+        self.index_allocator.free(SlotId(allocation_index.0), 0);
 
         (memory_alloc_index, memory)
     }

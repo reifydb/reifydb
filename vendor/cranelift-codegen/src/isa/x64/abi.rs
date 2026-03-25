@@ -1,28 +1,24 @@
 //! Implementation of the standard x64 ABI.
 
-use crate::ir::{self, types, LibCall, MemFlags, Signature, TrapCode};
-use crate::ir::{types::*, ExternalName};
+use crate::CodegenResult;
+use crate::ir::{self, LibCall, MemFlags, Signature, TrapCode, types};
+use crate::ir::{ExternalName, types::*};
 use crate::isa;
 use crate::isa::winch;
-use crate::isa::x64::X64Backend;
-use crate::isa::{unwind::UnwindInst, x64::inst::*, x64::settings as x64_settings, CallConv};
+use crate::isa::{CallConv, unwind::UnwindInst, x64::inst::*, x64::settings as x64_settings};
 use crate::machinst::abi::*;
 use crate::machinst::*;
 use crate::settings;
-use crate::CodegenResult;
+use alloc::borrow::ToOwned;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use args::*;
+use cranelift_assembler_x64 as asm;
 use regalloc2::{MachineEnv, PReg, PRegSet};
-use smallvec::{smallvec, SmallVec};
-use std::borrow::ToOwned;
-use std::sync::OnceLock;
+use smallvec::{SmallVec, smallvec};
 
 /// Support for the x64 ABI from the callee side (within a function body).
 pub(crate) type X64Callee = Callee<X64ABIMachineSpec>;
-
-/// Support for the x64 ABI from the caller side (at a callsite).
-pub(crate) type X64CallSite = CallSite<X64ABIMachineSpec>;
 
 /// Implementation of ABI primitives for x64.
 pub struct X64ABIMachineSpec;
@@ -36,13 +32,12 @@ impl X64ABIMachineSpec {
             // See: https://github.com/bytecodealliance/wasmtime/issues/7454
             insts.extend(Self::gen_sp_reg_adjust(-(guard_size as i32)));
 
-            // TODO: It would be nice if we could store the imm 0, but we don't have insts for those
-            // so store the stack pointer. Any register will do, since the stack is undefined at this point
-            insts.push(Inst::store(
-                I32,
-                regs::rsp(),
-                Amode::imm_reg(0, regs::rsp()),
-            ));
+            // Touch the current page by storing an immediate zero.
+            // mov  [rsp], 0
+            insts.push(Inst::External {
+                inst: asm::inst::movl_mi::new(Amode::imm_reg(0, regs::rsp()), 0i32.cast_unsigned())
+                    .into(),
+            });
         }
 
         // Restore the stack pointer to its original value
@@ -104,6 +99,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         mut args: ArgsAccumulator,
     ) -> CodegenResult<(u32, Option<usize>)> {
         let is_fastcall = call_conv == CallConv::WindowsFastcall;
+        let is_tail = call_conv == CallConv::Tail;
 
         let mut next_gpr = 0;
         let mut next_vreg = 0;
@@ -184,6 +180,11 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             //   This is consistent with LLVM's behavior, and is needed for
             //   some uses of Cranelift (e.g., the rustc backend).
             //
+            // - Otherwise, if the calling convention is Tail, we behave as in
+            //   the previous case, even if `enable_llvm_abi_extensions` is not
+            //   set in the flags: This is a custom calling convention defined
+            //   by Cranelift, LLVM doesn't know about it.
+            //
             // - Otherwise, both SysV and Fastcall specify behavior (use of
             //   vector register, a register pair, or passing by reference
             //   depending on the case), but for simplicity, we will just panic if
@@ -197,6 +198,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             if param.value_type.bits() > 64
                 && !(param.value_type.is_vector() || param.value_type.is_float())
                 && !flags.enable_llvm_abi_extensions()
+                && !is_tail
             {
                 panic!(
                     "i128 args/return values not supported unless LLVM ABI extensions are enabled"
@@ -355,7 +357,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
                     {
                         size
                     } else {
-                        let size = std::cmp::max(size, 8);
+                        let size = core::cmp::max(size, 8);
 
                         // Align.
                         debug_assert!(size.is_power_of_two());
@@ -477,7 +479,9 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
     fn gen_stack_lower_bound_trap(limit_reg: Reg) -> SmallInstVec<Self::I> {
         smallvec![
-            Inst::cmp_rmi_r(OperandSize::Size64, limit_reg, RegMemImm::reg(regs::rsp())),
+            Inst::External {
+                inst: asm::inst::cmpq_rm::new(Gpr::unwrap_new(limit_reg), Gpr::RSP,).into(),
+            },
             Inst::TrapIf {
                 // NBE == "> unsigned"; args above are reversed; this tests limit_reg > rsp.
                 cc: CC::NBE,
@@ -488,7 +492,9 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
     fn gen_get_stack_addr(mem: StackAMode, into_reg: Writable<Reg>) -> Self::I {
         let mem: SyntheticAmode = mem.into();
-        Inst::lea(mem, into_reg)
+        Inst::External {
+            inst: asm::inst::leaq_rm::new(into_reg, mem).into(),
+        }
     }
 
     fn get_stacklimit_reg(_call_conv: isa::CallConv) -> Reg {
@@ -535,13 +541,15 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         _isa_flags: &x64_settings::Flags,
         frame_layout: &FrameLayout,
     ) -> SmallInstVec<Self::I> {
-        let r_rsp = regs::rsp();
-        let r_rbp = regs::rbp();
+        let r_rsp = Gpr::RSP;
+        let r_rbp = Gpr::RBP;
         let w_rbp = Writable::from_reg(r_rbp);
         let mut insts = SmallVec::new();
         // `push %rbp`
         // RSP before the call will be 0 % 16.  So here, it is 8 % 16.
-        insts.push(Inst::push64(RegMemImm::reg(r_rbp)));
+        insts.push(Inst::External {
+            inst: asm::inst::pushq_o::new(r_rbp).into(),
+        });
 
         if flags.unwind_info() {
             insts.push(Inst::Unwind {
@@ -553,7 +561,9 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
         // `mov %rsp, %rbp`
         // RSP is now 0 % 16
-        insts.push(Inst::mov_r_r(OperandSize::Size64, r_rsp, w_rbp));
+        insts.push(Inst::External {
+            inst: asm::inst::movq_mr::new(w_rbp, r_rsp).into(),
+        });
 
         insts
     }
@@ -564,15 +574,18 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         _isa_flags: &x64_settings::Flags,
         _frame_layout: &FrameLayout,
     ) -> SmallInstVec<Self::I> {
+        let rbp = Gpr::RBP;
+        let rsp = Gpr::RSP;
+
         let mut insts = SmallVec::new();
         // `mov %rbp, %rsp`
-        insts.push(Inst::mov_r_r(
-            OperandSize::Size64,
-            regs::rbp(),
-            Writable::from_reg(regs::rsp()),
-        ));
+        insts.push(Inst::External {
+            inst: asm::inst::movq_mr::new(Writable::from_reg(rsp), rbp).into(),
+        });
         // `pop %rbp`
-        insts.push(Inst::pop64(Writable::from_reg(regs::rbp())));
+        insts.push(Inst::External {
+            inst: asm::inst::popq_o::new(Writable::from_reg(rbp)).into(),
+        });
         insts
     }
 
@@ -587,7 +600,13 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         } else {
             0
         };
-        smallvec![Inst::ret(stack_bytes_to_pop)]
+        let inst = if stack_bytes_to_pop == 0 {
+            asm::inst::retq_zo::new().into()
+        } else {
+            let stack_bytes_to_pop = u16::try_from(stack_bytes_to_pop).unwrap();
+            asm::inst::retq_i::new(stack_bytes_to_pop).into()
+        };
+        smallvec![Inst::External { inst }]
     }
 
     fn gen_probestack(insts: &mut SmallInstVec<Self::I>, frame_size: u32) {
@@ -651,35 +670,28 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
             // Make sure to keep the frame pointer and stack pointer in sync at
             // this point.
-            insts.push(Inst::mov_r_r(
-                OperandSize::Size64,
-                regs::rsp(),
-                Writable::from_reg(regs::rbp()),
-            ));
+            let rbp = Gpr::RBP;
+            let rsp = Gpr::RSP;
+            insts.push(Inst::External {
+                inst: asm::inst::movq_mr::new(Writable::from_reg(rbp), rsp).into(),
+            });
 
             let incoming_args_diff = i32::try_from(incoming_args_diff).unwrap();
 
             // Move the saved frame pointer down by `incoming_args_diff`.
-            insts.push(Inst::mov64_m_r(
-                Amode::imm_reg(incoming_args_diff, regs::rsp()),
-                Writable::from_reg(regs::r11()),
-            ));
-            insts.push(Inst::mov_r_m(
-                OperandSize::Size64,
-                regs::r11(),
-                Amode::imm_reg(0, regs::rsp()),
-            ));
+            let addr = Amode::imm_reg(incoming_args_diff, regs::rsp());
+            let r11 = Writable::from_reg(Gpr::R11);
+            let inst = asm::inst::movq_rm::new(r11, addr).into();
+            insts.push(Inst::External { inst });
+            let inst = asm::inst::movq_mr::new(Amode::imm_reg(0, regs::rsp()), r11.to_reg()).into();
+            insts.push(Inst::External { inst });
 
             // Move the saved return address down by `incoming_args_diff`.
-            insts.push(Inst::mov64_m_r(
-                Amode::imm_reg(incoming_args_diff + 8, regs::rsp()),
-                Writable::from_reg(regs::r11()),
-            ));
-            insts.push(Inst::mov_r_m(
-                OperandSize::Size64,
-                regs::r11(),
-                Amode::imm_reg(8, regs::rsp()),
-            ));
+            let addr = Amode::imm_reg(incoming_args_diff + 8, regs::rsp());
+            let inst = asm::inst::movq_rm::new(r11, addr).into();
+            insts.push(Inst::External { inst });
+            let inst = asm::inst::movq_mr::new(Amode::imm_reg(8, regs::rsp()), r11.to_reg()).into();
+            insts.push(Inst::External { inst });
         }
 
         // We need to factor `incoming_args_diff` into the offset upward here, as we have grown
@@ -796,32 +808,6 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         insts
     }
 
-    /// Generate a call instruction/sequence.
-    fn gen_call(dest: &CallDest, tmp: Writable<Reg>, info: CallInfo<()>) -> SmallVec<[Self::I; 2]> {
-        let mut insts = SmallVec::new();
-        match dest {
-            &CallDest::ExtName(ref name, RelocDistance::Near) => {
-                let info = Box::new(info.map(|()| name.clone()));
-                insts.push(Inst::call_known(info));
-            }
-            &CallDest::ExtName(ref name, RelocDistance::Far) => {
-                insts.push(Inst::LoadExtName {
-                    dst: tmp,
-                    name: Box::new(name.clone()),
-                    offset: 0,
-                    distance: RelocDistance::Far,
-                });
-                let info = Box::new(info.map(|()| RegMem::reg(tmp.to_reg())));
-                insts.push(Inst::call_unknown(info));
-            }
-            &CallDest::Reg(reg) => {
-                let info = Box::new(info.map(|()| RegMem::reg(reg)));
-                insts.push(Inst::call_unknown(info));
-            }
-        }
-        insts
-    }
-
     fn gen_memcpy<F: FnMut(Type) -> Writable<Reg>>(
         call_conv: isa::CallConv,
         dst: Reg,
@@ -840,7 +826,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         // information about the libcall `RelocDistance` here, so we
         // conservatively use the more flexible calling sequence.
         insts.push(Inst::LoadExtName {
-            dst: temp2,
+            dst: temp2.map(Gpr::unwrap_new),
             name: Box::new(ExternalName::LibCall(LibCall::Memcpy)),
             offset: 0,
             distance: RelocDistance::Far,
@@ -868,6 +854,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             callee_conv: call_conv,
             caller_conv: call_conv,
             try_call_info: None,
+            patchable: false,
         })));
         insts
     }
@@ -887,11 +874,11 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
     fn get_machine_env(flags: &settings::Flags, _call_conv: isa::CallConv) -> &MachineEnv {
         if flags.enable_pinned_reg() {
-            static MACHINE_ENV: OnceLock<MachineEnv> = OnceLock::new();
-            MACHINE_ENV.get_or_init(|| create_reg_env_systemv(true))
+            static MACHINE_ENV: MachineEnv = create_reg_env_systemv(true);
+            &MACHINE_ENV
         } else {
-            static MACHINE_ENV: OnceLock<MachineEnv> = OnceLock::new();
-            MACHINE_ENV.get_or_init(|| create_reg_env_systemv(false))
+            static MACHINE_ENV: MachineEnv = create_reg_env_systemv(false);
+            &MACHINE_ENV
         }
     }
 
@@ -899,11 +886,20 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         call_conv_of_callee: isa::CallConv,
         is_exception: bool,
     ) -> PRegSet {
-        match call_conv_of_callee {
-            CallConv::Winch => ALL_CLOBBERS,
-            CallConv::WindowsFastcall => WINDOWS_CLOBBERS,
-            CallConv::Tail if is_exception => ALL_CLOBBERS,
-            _ => SYSV_CLOBBERS,
+        match (call_conv_of_callee, is_exception) {
+            (isa::CallConv::Tail, true) => ALL_CLOBBERS,
+            // Note that "PreserveAll" actually preserves nothing at
+            // the callsite if used for a `try_call`, because the
+            // unwinder ABI for `try_call`s is still "no clobbered
+            // register restores" for this ABI (so as to work with
+            // Wasmtime).
+            (isa::CallConv::PreserveAll, true) => ALL_CLOBBERS,
+            (isa::CallConv::Winch, _) => ALL_CLOBBERS,
+            (isa::CallConv::SystemV, _) => SYSV_CLOBBERS,
+            (isa::CallConv::WindowsFastcall, false) => WINDOWS_CLOBBERS,
+            (isa::CallConv::PreserveAll, _) => NO_CLOBBERS,
+            (_, false) => SYSV_CLOBBERS,
+            (call_conv, true) => panic!("unimplemented clobbers for exn abi of {call_conv:?}"),
         }
     }
 
@@ -919,7 +915,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
         flags: &settings::Flags,
         _sig: &Signature,
         regs: &[Writable<RealReg>],
-        _is_leaf: bool,
+        function_calls: FunctionCalls,
         incoming_args_size: u32,
         tail_args_size: u32,
         stackslots_size: u32,
@@ -932,7 +928,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             // The `winch` calling convention doesn't have any callee-save
             // registers.
             CallConv::Winch => vec![],
-            CallConv::Fast | CallConv::Cold | CallConv::SystemV | CallConv::Tail => regs
+            CallConv::Fast | CallConv::SystemV | CallConv::Tail => regs
                 .iter()
                 .cloned()
                 .filter(|r| is_callee_save_systemv(r.to_reg(), flags.enable_pinned_reg()))
@@ -942,6 +938,8 @@ impl ABIMachineSpec for X64ABIMachineSpec {
                 .cloned()
                 .filter(|r| is_callee_save_fastcall(r.to_reg(), flags.enable_pinned_reg()))
                 .collect(),
+            // The `preserve_all` calling convention makes every reg a callee-save reg.
+            CallConv::PreserveAll => regs.iter().cloned().collect(),
             CallConv::Probestack => todo!("probestack?"),
             CallConv::AppleAarch64 => unreachable!(),
         };
@@ -957,6 +955,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
 
         // Return FrameLayout structure.
         FrameLayout {
+            word_bytes: 8,
             incoming_args_size,
             tail_args_size: align_to(tail_args_size, 16),
             setup_area_size,
@@ -965,6 +964,7 @@ impl ABIMachineSpec for X64ABIMachineSpec {
             stackslots_size,
             outgoing_args_size,
             clobbered_callee_saves: regs,
+            function_calls,
         }
     }
 
@@ -978,68 +978,10 @@ impl ABIMachineSpec for X64ABIMachineSpec {
     fn exception_payload_regs(call_conv: isa::CallConv) -> &'static [Reg] {
         const PAYLOAD_REGS: &'static [Reg] = &[regs::rax(), regs::rdx()];
         match call_conv {
-            isa::CallConv::SystemV | isa::CallConv::Tail => PAYLOAD_REGS,
+            isa::CallConv::SystemV | isa::CallConv::Tail | isa::CallConv::PreserveAll => {
+                PAYLOAD_REGS
+            }
             _ => &[],
-        }
-    }
-}
-
-impl X64CallSite {
-    pub fn emit_return_call(
-        mut self,
-        ctx: &mut Lower<Inst>,
-        args: isle::ValueSlice,
-        _backend: &X64Backend,
-    ) {
-        let new_stack_arg_size =
-            u32::try_from(self.sig(ctx.sigs()).sized_stack_arg_space()).unwrap();
-
-        ctx.abi_mut().accumulate_tail_args_size(new_stack_arg_size);
-
-        // Put all arguments in registers and stack slots (within that newly
-        // allocated stack space).
-        self.emit_args(ctx, args);
-        self.emit_stack_ret_arg_for_tail_call(ctx);
-
-        // Finally, do the actual tail call!
-        let dest = self.dest().clone();
-        let uses = self.take_uses();
-        let tmp = ctx.temp_writable_gpr();
-        match dest {
-            CallDest::ExtName(callee, RelocDistance::Near) => {
-                let info = Box::new(ReturnCallInfo {
-                    dest: callee,
-                    uses,
-                    tmp,
-                    new_stack_arg_size,
-                });
-                ctx.emit(Inst::ReturnCallKnown { info });
-            }
-            CallDest::ExtName(callee, RelocDistance::Far) => {
-                let tmp2 = ctx.temp_writable_gpr();
-                ctx.emit(Inst::LoadExtName {
-                    dst: tmp2.to_writable_reg(),
-                    name: Box::new(callee),
-                    offset: 0,
-                    distance: RelocDistance::Far,
-                });
-                let info = Box::new(ReturnCallInfo {
-                    dest: tmp2.to_reg().to_reg().into(),
-                    uses,
-                    tmp,
-                    new_stack_arg_size,
-                });
-                ctx.emit(Inst::ReturnCallUnknown { info });
-            }
-            CallDest::Reg(callee) => {
-                let info = Box::new(ReturnCallInfo {
-                    dest: callee.into(),
-                    uses,
-                    tmp,
-                    new_stack_arg_size,
-                });
-                ctx.emit(Inst::ReturnCallUnknown { info });
-            }
         }
     }
 }
@@ -1141,7 +1083,7 @@ fn get_intreg_for_retval(
             // NB: `r15` is reserved as a scratch register.
             _ => None,
         },
-        CallConv::Fast | CallConv::Cold | CallConv::SystemV => match intreg_idx {
+        CallConv::Fast | CallConv::SystemV | CallConv::PreserveAll => match intreg_idx {
             0 => Some(regs::rax()),
             1 => Some(regs::rdx()),
             2 if flags.enable_llvm_abi_extensions() => Some(regs::rcx()),
@@ -1172,7 +1114,7 @@ fn get_fltreg_for_retval(call_conv: CallConv, fltreg_idx: usize, is_last: bool) 
             7 => Some(regs::xmm7()),
             _ => None,
         },
-        CallConv::Fast | CallConv::Cold | CallConv::SystemV => match fltreg_idx {
+        CallConv::Fast | CallConv::SystemV | CallConv::PreserveAll => match fltreg_idx {
             0 => Some(regs::xmm0()),
             1 => Some(regs::xmm1()),
             _ => None,
@@ -1188,14 +1130,15 @@ fn get_fltreg_for_retval(call_conv: CallConv, fltreg_idx: usize, is_last: bool) 
 }
 
 fn is_callee_save_systemv(r: RealReg, enable_pinned_reg: bool) -> bool {
-    use regs::*;
+    use asm::gpr::enc::*;
+
     match r.class() {
         RegClass::Int => match r.hw_enc() {
-            ENC_RBX | ENC_RBP | ENC_R12 | ENC_R13 | ENC_R14 => true,
+            RBX | RBP | R12 | R13 | R14 => true,
             // R15 is the pinned register; if we're using it that way,
             // it is effectively globally-allocated, and is not
             // callee-saved.
-            ENC_R15 => !enable_pinned_reg,
+            R15 => !enable_pinned_reg,
             _ => false,
         },
         RegClass::Float => false,
@@ -1204,16 +1147,18 @@ fn is_callee_save_systemv(r: RealReg, enable_pinned_reg: bool) -> bool {
 }
 
 fn is_callee_save_fastcall(r: RealReg, enable_pinned_reg: bool) -> bool {
-    use regs::*;
+    use asm::gpr::enc::*;
+    use asm::xmm::enc::*;
+
     match r.class() {
         RegClass::Int => match r.hw_enc() {
-            ENC_RBX | ENC_RBP | ENC_RSI | ENC_RDI | ENC_R12 | ENC_R13 | ENC_R14 => true,
+            RBX | RBP | RSI | RDI | R12 | R13 | R14 => true,
             // See above for SysV: we must treat the pinned reg specially.
-            ENC_R15 => !enable_pinned_reg,
+            R15 => !enable_pinned_reg,
             _ => false,
         },
         RegClass::Float => match r.hw_enc() {
-            6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 => true,
+            XMM6 | XMM7 | XMM8 | XMM9 | XMM10 | XMM11 | XMM12 | XMM13 | XMM14 | XMM15 => true,
             _ => false,
         },
         RegClass::Vector => unreachable!(),
@@ -1240,152 +1185,159 @@ fn compute_clobber_size(clobbers: &[Writable<RealReg>]) -> u32 {
 const WINDOWS_CLOBBERS: PRegSet = windows_clobbers();
 const SYSV_CLOBBERS: PRegSet = sysv_clobbers();
 pub(crate) const ALL_CLOBBERS: PRegSet = all_clobbers();
+const NO_CLOBBERS: PRegSet = PRegSet::empty();
 
 const fn windows_clobbers() -> PRegSet {
+    use asm::gpr::enc::*;
+    use asm::xmm::enc::*;
+
     PRegSet::empty()
-        .with(regs::gpr_preg(regs::ENC_RAX))
-        .with(regs::gpr_preg(regs::ENC_RCX))
-        .with(regs::gpr_preg(regs::ENC_RDX))
-        .with(regs::gpr_preg(regs::ENC_R8))
-        .with(regs::gpr_preg(regs::ENC_R9))
-        .with(regs::gpr_preg(regs::ENC_R10))
-        .with(regs::gpr_preg(regs::ENC_R11))
-        .with(regs::fpr_preg(0))
-        .with(regs::fpr_preg(1))
-        .with(regs::fpr_preg(2))
-        .with(regs::fpr_preg(3))
-        .with(regs::fpr_preg(4))
-        .with(regs::fpr_preg(5))
+        .with(regs::gpr_preg(RAX))
+        .with(regs::gpr_preg(RCX))
+        .with(regs::gpr_preg(RDX))
+        .with(regs::gpr_preg(R8))
+        .with(regs::gpr_preg(R9))
+        .with(regs::gpr_preg(R10))
+        .with(regs::gpr_preg(R11))
+        .with(regs::fpr_preg(XMM0))
+        .with(regs::fpr_preg(XMM1))
+        .with(regs::fpr_preg(XMM2))
+        .with(regs::fpr_preg(XMM3))
+        .with(regs::fpr_preg(XMM4))
+        .with(regs::fpr_preg(XMM5))
 }
 
 const fn sysv_clobbers() -> PRegSet {
+    use asm::gpr::enc::*;
+    use asm::xmm::enc::*;
+
     PRegSet::empty()
-        .with(regs::gpr_preg(regs::ENC_RAX))
-        .with(regs::gpr_preg(regs::ENC_RCX))
-        .with(regs::gpr_preg(regs::ENC_RDX))
-        .with(regs::gpr_preg(regs::ENC_RSI))
-        .with(regs::gpr_preg(regs::ENC_RDI))
-        .with(regs::gpr_preg(regs::ENC_R8))
-        .with(regs::gpr_preg(regs::ENC_R9))
-        .with(regs::gpr_preg(regs::ENC_R10))
-        .with(regs::gpr_preg(regs::ENC_R11))
-        .with(regs::fpr_preg(0))
-        .with(regs::fpr_preg(1))
-        .with(regs::fpr_preg(2))
-        .with(regs::fpr_preg(3))
-        .with(regs::fpr_preg(4))
-        .with(regs::fpr_preg(5))
-        .with(regs::fpr_preg(6))
-        .with(regs::fpr_preg(7))
-        .with(regs::fpr_preg(8))
-        .with(regs::fpr_preg(9))
-        .with(regs::fpr_preg(10))
-        .with(regs::fpr_preg(11))
-        .with(regs::fpr_preg(12))
-        .with(regs::fpr_preg(13))
-        .with(regs::fpr_preg(14))
-        .with(regs::fpr_preg(15))
+        .with(regs::gpr_preg(RAX))
+        .with(regs::gpr_preg(RCX))
+        .with(regs::gpr_preg(RDX))
+        .with(regs::gpr_preg(RSI))
+        .with(regs::gpr_preg(RDI))
+        .with(regs::gpr_preg(R8))
+        .with(regs::gpr_preg(R9))
+        .with(regs::gpr_preg(R10))
+        .with(regs::gpr_preg(R11))
+        .with(regs::fpr_preg(XMM0))
+        .with(regs::fpr_preg(XMM1))
+        .with(regs::fpr_preg(XMM2))
+        .with(regs::fpr_preg(XMM3))
+        .with(regs::fpr_preg(XMM4))
+        .with(regs::fpr_preg(XMM5))
+        .with(regs::fpr_preg(XMM6))
+        .with(regs::fpr_preg(XMM7))
+        .with(regs::fpr_preg(XMM8))
+        .with(regs::fpr_preg(XMM9))
+        .with(regs::fpr_preg(XMM10))
+        .with(regs::fpr_preg(XMM11))
+        .with(regs::fpr_preg(XMM12))
+        .with(regs::fpr_preg(XMM13))
+        .with(regs::fpr_preg(XMM14))
+        .with(regs::fpr_preg(XMM15))
 }
 
 /// For calling conventions that clobber all registers.
 const fn all_clobbers() -> PRegSet {
+    use asm::gpr::enc::*;
+    use asm::xmm::enc::*;
+
     PRegSet::empty()
-        .with(regs::gpr_preg(regs::ENC_RAX))
-        .with(regs::gpr_preg(regs::ENC_RCX))
-        .with(regs::gpr_preg(regs::ENC_RDX))
-        .with(regs::gpr_preg(regs::ENC_RBX))
-        .with(regs::gpr_preg(regs::ENC_RSI))
-        .with(regs::gpr_preg(regs::ENC_RDI))
-        .with(regs::gpr_preg(regs::ENC_R8))
-        .with(regs::gpr_preg(regs::ENC_R9))
-        .with(regs::gpr_preg(regs::ENC_R10))
-        .with(regs::gpr_preg(regs::ENC_R11))
-        .with(regs::gpr_preg(regs::ENC_R12))
-        .with(regs::gpr_preg(regs::ENC_R13))
-        .with(regs::gpr_preg(regs::ENC_R14))
-        .with(regs::gpr_preg(regs::ENC_R15))
-        .with(regs::fpr_preg(0))
-        .with(regs::fpr_preg(1))
-        .with(regs::fpr_preg(2))
-        .with(regs::fpr_preg(3))
-        .with(regs::fpr_preg(4))
-        .with(regs::fpr_preg(5))
-        .with(regs::fpr_preg(6))
-        .with(regs::fpr_preg(7))
-        .with(regs::fpr_preg(8))
-        .with(regs::fpr_preg(9))
-        .with(regs::fpr_preg(10))
-        .with(regs::fpr_preg(11))
-        .with(regs::fpr_preg(12))
-        .with(regs::fpr_preg(13))
-        .with(regs::fpr_preg(14))
-        .with(regs::fpr_preg(15))
+        .with(regs::gpr_preg(RAX))
+        .with(regs::gpr_preg(RCX))
+        .with(regs::gpr_preg(RDX))
+        .with(regs::gpr_preg(RBX))
+        .with(regs::gpr_preg(RSI))
+        .with(regs::gpr_preg(RDI))
+        .with(regs::gpr_preg(R8))
+        .with(regs::gpr_preg(R9))
+        .with(regs::gpr_preg(R10))
+        .with(regs::gpr_preg(R11))
+        .with(regs::gpr_preg(R12))
+        .with(regs::gpr_preg(R13))
+        .with(regs::gpr_preg(R14))
+        .with(regs::gpr_preg(R15))
+        .with(regs::fpr_preg(XMM0))
+        .with(regs::fpr_preg(XMM1))
+        .with(regs::fpr_preg(XMM2))
+        .with(regs::fpr_preg(XMM3))
+        .with(regs::fpr_preg(XMM4))
+        .with(regs::fpr_preg(XMM5))
+        .with(regs::fpr_preg(XMM6))
+        .with(regs::fpr_preg(XMM7))
+        .with(regs::fpr_preg(XMM8))
+        .with(regs::fpr_preg(XMM9))
+        .with(regs::fpr_preg(XMM10))
+        .with(regs::fpr_preg(XMM11))
+        .with(regs::fpr_preg(XMM12))
+        .with(regs::fpr_preg(XMM13))
+        .with(regs::fpr_preg(XMM14))
+        .with(regs::fpr_preg(XMM15))
 }
 
-fn create_reg_env_systemv(enable_pinned_reg: bool) -> MachineEnv {
-    fn preg(r: Reg) -> PReg {
-        r.to_real_reg().unwrap().into()
+const fn create_reg_env_systemv(enable_pinned_reg: bool) -> MachineEnv {
+    const fn preg(r: Reg) -> PReg {
+        r.to_real_reg().unwrap().preg()
     }
 
     let mut env = MachineEnv {
         preferred_regs_by_class: [
             // Preferred GPRs: caller-saved in the SysV ABI.
-            vec![
-                preg(regs::rsi()),
-                preg(regs::rdi()),
-                preg(regs::rax()),
-                preg(regs::rcx()),
-                preg(regs::rdx()),
-                preg(regs::r8()),
-                preg(regs::r9()),
-                preg(regs::r10()),
-                preg(regs::r11()),
-            ],
+            PRegSet::empty()
+                .with(preg(regs::rsi()))
+                .with(preg(regs::rdi()))
+                .with(preg(regs::rax()))
+                .with(preg(regs::rcx()))
+                .with(preg(regs::rdx()))
+                .with(preg(regs::r8()))
+                .with(preg(regs::r9()))
+                .with(preg(regs::r10()))
+                .with(preg(regs::r11())),
             // Preferred XMMs: the first 8, which can have smaller encodings
             // with AVX instructions.
-            vec![
-                preg(regs::xmm0()),
-                preg(regs::xmm1()),
-                preg(regs::xmm2()),
-                preg(regs::xmm3()),
-                preg(regs::xmm4()),
-                preg(regs::xmm5()),
-                preg(regs::xmm6()),
-                preg(regs::xmm7()),
-            ],
+            PRegSet::empty()
+                .with(preg(regs::xmm0()))
+                .with(preg(regs::xmm1()))
+                .with(preg(regs::xmm2()))
+                .with(preg(regs::xmm3()))
+                .with(preg(regs::xmm4()))
+                .with(preg(regs::xmm5()))
+                .with(preg(regs::xmm6()))
+                .with(preg(regs::xmm7())),
             // The Vector Regclass is unused
-            vec![],
+            PRegSet::empty(),
         ],
         non_preferred_regs_by_class: [
             // Non-preferred GPRs: callee-saved in the SysV ABI.
-            vec![
-                preg(regs::rbx()),
-                preg(regs::r12()),
-                preg(regs::r13()),
-                preg(regs::r14()),
-            ],
+            PRegSet::empty()
+                .with(preg(regs::rbx()))
+                .with(preg(regs::r12()))
+                .with(preg(regs::r13()))
+                .with(preg(regs::r14())),
             // Non-preferred XMMs: the last 8 registers, which can have larger
             // encodings with AVX instructions.
-            vec![
-                preg(regs::xmm8()),
-                preg(regs::xmm9()),
-                preg(regs::xmm10()),
-                preg(regs::xmm11()),
-                preg(regs::xmm12()),
-                preg(regs::xmm13()),
-                preg(regs::xmm14()),
-                preg(regs::xmm15()),
-            ],
+            PRegSet::empty()
+                .with(preg(regs::xmm8()))
+                .with(preg(regs::xmm9()))
+                .with(preg(regs::xmm10()))
+                .with(preg(regs::xmm11()))
+                .with(preg(regs::xmm12()))
+                .with(preg(regs::xmm13()))
+                .with(preg(regs::xmm14()))
+                .with(preg(regs::xmm15())),
             // The Vector Regclass is unused
-            vec![],
+            PRegSet::empty(),
         ],
         fixed_stack_slots: vec![],
         scratch_by_class: [None, None, None],
     };
 
-    debug_assert_eq!(regs::r15(), regs::pinned_reg());
+    debug_assert!(regs::PINNED_REG == cranelift_assembler_x64::gpr::enc::R15);
     if !enable_pinned_reg {
-        env.non_preferred_regs_by_class[0].push(preg(regs::r15()));
+        env.non_preferred_regs_by_class[0] =
+            env.non_preferred_regs_by_class[0].with(preg(regs::r15()));
     }
 
     env

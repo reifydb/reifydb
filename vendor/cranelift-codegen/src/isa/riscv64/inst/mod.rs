@@ -3,21 +3,21 @@
 use super::lower::isle::generated_code::{VecAMode, VecElementWidth, VecOpMasking};
 use crate::binemit::{Addend, CodeOffset, Reloc};
 pub use crate::ir::condcodes::IntCC;
-use crate::ir::types::{self, F128, F16, F32, F64, I128, I16, I32, I64, I8, I8X16};
+use crate::ir::types::{self, F16, F32, F64, F128, I8, I8X16, I16, I32, I64, I128};
 
 pub use crate::ir::{ExternalName, MemFlags, Type};
 use crate::isa::{CallConv, FunctionAlignment};
 use crate::machinst::*;
-use crate::{settings, CodegenError, CodegenResult};
+use crate::{CodegenError, CodegenResult, settings};
 
 pub use crate::ir::condcodes::FloatCC;
 
+use alloc::boxed::Box;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::fmt::Write;
 use regalloc2::RegClass;
-use smallvec::{smallvec, SmallVec};
-use std::boxed::Box;
-use std::fmt::Write;
-use std::string::{String, ToString};
+use smallvec::{SmallVec, smallvec};
 
 pub mod regs;
 pub use self::regs::*;
@@ -38,7 +38,7 @@ use crate::isa::riscv64::abi::Riscv64MachineDeps;
 #[cfg(test)]
 mod emit_tests;
 
-use std::fmt::{Display, Formatter};
+use core::fmt::{Display, Formatter};
 
 pub(crate) type VecU8 = Vec<u8>;
 
@@ -46,8 +46,8 @@ pub(crate) type VecU8 = Vec<u8>;
 // Instructions (top level): definition
 
 pub use crate::isa::riscv64::lower::isle::generated_code::{
-    AluOPRRI, AluOPRRR, AtomicOP, CsrImmOP, CsrRegOP, FClassResult, FFlagsException, FpuOPRR,
-    FpuOPRRR, FpuOPRRRR, LoadOP, MInst as Inst, StoreOP, CSR, FRM,
+    AluOPRRI, AluOPRRR, AtomicOP, CSR, CsrImmOP, CsrRegOP, FClassResult, FFlagsException, FRM,
+    FpuOPRR, FpuOPRRR, FpuOPRRRR, LoadOP, MInst as Inst, StoreOP,
 };
 use crate::isa::riscv64::lower::isle::generated_code::{CjOp, MInst, VecAluOpRRImm5, VecAluOpRRR};
 
@@ -85,7 +85,7 @@ impl CondBrTarget {
 }
 
 impl Display for CondBrTarget {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             CondBrTarget::Label(l) => write!(f, "{}", l.to_string()),
             CondBrTarget::Fallthrough => write!(f, "0"),
@@ -342,6 +342,9 @@ fn riscv64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                 }
             }
             collector.reg_clobbers(info.clobbers);
+            if let Some(try_call_info) = &mut info.try_call_info {
+                try_call_info.collect_operands(collector);
+            }
         }
         Inst::CallInd { info } => {
             let CallInfo {
@@ -358,6 +361,9 @@ fn riscv64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                 }
             }
             collector.reg_clobbers(info.clobbers);
+            if let Some(try_call_info) = &mut info.try_call_info {
+                try_call_info.collect_operands(collector);
+            }
         }
         Inst::ReturnCall { info } => {
             for CallArgPair { vreg, preg } in &mut info.uses {
@@ -384,7 +390,9 @@ fn riscv64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_use(rs1);
             collector.reg_use(rs2);
         }
-        Inst::LoadExtName { rd, .. } => {
+        Inst::LoadExtNameGot { rd, .. }
+        | Inst::LoadExtNameNear { rd, .. }
+        | Inst::LoadExtNameFar { rd, .. } => {
             collector.reg_def(rd);
         }
         Inst::ElfTlsGetAddr { rd, .. } => {
@@ -688,6 +696,10 @@ fn riscv64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             vec_mask_operands(mask, collector);
         }
         Inst::EmitIsland { .. } => {}
+        Inst::LabelAddress { dst, .. } => {
+            collector.reg_def(dst);
+        }
+        Inst::SequencePoint { .. } => {}
     }
 }
 
@@ -750,6 +762,18 @@ impl MachInst for Inst {
         }
     }
 
+    fn call_type(&self) -> CallType {
+        match self {
+            Inst::Call { .. } | Inst::CallInd { .. } | Inst::ElfTlsGetAddr { .. } => {
+                CallType::Regular
+            }
+
+            Inst::ReturnCall { .. } | Inst::ReturnCallInd { .. } => CallType::TailCall,
+
+            _ => CallType::None,
+        }
+    }
+
     fn is_term(&self) -> MachTerminator {
         match self {
             &Inst::Jal { .. } => MachTerminator::Branch,
@@ -784,6 +808,10 @@ impl MachInst for Inst {
         // We can't give a NOP (or any insn) < 4 bytes.
         assert!(preferred_size >= 4);
         Inst::Nop4
+    }
+
+    fn gen_nop_units() -> Vec<Vec<u8>> {
+        vec![vec![0x13, 0x00, 0x00, 0x00]]
     }
 
     fn rc_for_type(ty: Type) -> CodegenResult<(&'static [RegClass], &'static [Type])> {
@@ -879,13 +907,11 @@ pub fn reg_name(reg: Reg) -> String {
 }
 
 fn pretty_print_try_call(info: &TryCallInfo) -> String {
-    let dests = info
-        .exception_dests
-        .iter()
-        .map(|(tag, label)| format!("{tag:?}: {label:?}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("; j {:?}; catch [{dests}]", info.continuation)
+    format!(
+        "; j {:?}; catch [{}]",
+        info.continuation,
+        info.pretty_print_dests()
+    )
 }
 
 impl Inst {
@@ -1407,13 +1433,25 @@ impl Inst {
                     format!("{op_name} {rd},{src},({addr})")
                 }
             }
-            &MInst::LoadExtName {
+            &MInst::LoadExtNameGot { rd, ref name } => {
+                let rd = format_reg(rd.to_reg());
+                format!("load_ext_name_got {rd},{}", name.display(None))
+            }
+            &MInst::LoadExtNameNear {
                 rd,
                 ref name,
                 offset,
             } => {
                 let rd = format_reg(rd.to_reg());
-                format!("load_sym {},{}{:+}", rd, name.display(None), offset)
+                format!("load_ext_name_near {rd},{}{offset:+}", name.display(None))
+            }
+            &MInst::LoadExtNameFar {
+                rd,
+                ref name,
+                offset,
+            } => {
+                let rd = format_reg(rd.to_reg());
+                format!("load_ext_name_far {rd},{}{offset:+}", name.display(None))
             }
             &Inst::ElfTlsGetAddr { rd, ref name } => {
                 let rd = format_reg(rd.to_reg());
@@ -1642,6 +1680,15 @@ impl Inst {
             Inst::EmitIsland { needed_space } => {
                 format!("emit_island {needed_space}")
             }
+
+            Inst::LabelAddress { dst, label } => {
+                let dst = format_reg(dst.to_reg());
+                format!("label_address {dst}, {label:?}")
+            }
+
+            Inst::SequencePoint {} => {
+                format!("sequence_point")
+            }
         }
     }
 }
@@ -1787,7 +1834,7 @@ impl MachInstLabelUse for LabelUse {
 }
 
 impl LabelUse {
-    #[allow(dead_code)] // in case it's needed in the future
+    #[expect(dead_code, reason = "in case it's needed in the future")]
     fn offset_in_range(self, offset: i64) -> bool {
         let min = -(self.max_neg_range() as i64);
         let max = self.max_pos_range() as i64;

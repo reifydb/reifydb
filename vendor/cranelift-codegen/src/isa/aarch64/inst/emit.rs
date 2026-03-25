@@ -66,7 +66,7 @@ pub fn mem_finalize(
             } else {
                 let tmp = writable_spilltmp_reg();
                 (
-                    Inst::load_constant(tmp, off as u64, &mut |_| tmp),
+                    Inst::load_constant(tmp, off as u64),
                     AMode::RegExtended {
                         rn: basereg,
                         rm: tmp.to_reg(),
@@ -107,13 +107,8 @@ fn machreg_to_gpr_or_vec(m: Reg) -> u32 {
     u32::from(m.to_real_reg().unwrap().hw_enc() & 31)
 }
 
-pub(crate) fn enc_arith_rrr(
-    bits_31_21: u32,
-    bits_15_10: u32,
-    rd: Writable<Reg>,
-    rn: Reg,
-    rm: Reg,
-) -> u32 {
+/// Encode a 3-register aeithmeric instruction.
+pub fn enc_arith_rrr(bits_31_21: u32, bits_15_10: u32, rd: Writable<Reg>, rn: Reg, rm: Reg) -> u32 {
     (bits_31_21 << 21)
         | (bits_15_10 << 10)
         | machreg_to_gpr(rd.to_reg())
@@ -204,7 +199,13 @@ fn enc_test_bit_and_branch(
         | machreg_to_gpr(reg)
 }
 
-fn enc_move_wide(op: MoveWideOp, rd: Writable<Reg>, imm: MoveWideConst, size: OperandSize) -> u32 {
+/// Encode a move-wide instruction.
+pub fn enc_move_wide(
+    op: MoveWideOp,
+    rd: Writable<Reg>,
+    imm: MoveWideConst,
+    size: OperandSize,
+) -> u32 {
     assert!(imm.shift <= 0b11);
     let op = match op {
         MoveWideOp::MovN => 0b00,
@@ -218,7 +219,8 @@ fn enc_move_wide(op: MoveWideOp, rd: Writable<Reg>, imm: MoveWideConst, size: Op
         | machreg_to_gpr(rd.to_reg())
 }
 
-fn enc_movk(rd: Writable<Reg>, imm: MoveWideConst, size: OperandSize) -> u32 {
+/// Encode a move-keep immediate instruction.
+pub fn enc_movk(rd: Writable<Reg>, imm: MoveWideConst, size: OperandSize) -> u32 {
     assert!(imm.shift <= 0b11);
     0x72800000
         | size.sf_bit() << 31
@@ -1373,13 +1375,15 @@ impl MachInstEmit for Inst {
             }
             &Inst::MovFromPReg { rd, rm } => {
                 let rm: Reg = rm.into();
-                debug_assert!([
-                    regs::fp_reg(),
-                    regs::stack_reg(),
-                    regs::link_reg(),
-                    regs::pinned_reg()
-                ]
-                .contains(&rm));
+                debug_assert!(
+                    [
+                        regs::fp_reg(),
+                        regs::stack_reg(),
+                        regs::link_reg(),
+                        regs::pinned_reg()
+                    ]
+                    .contains(&rm)
+                );
                 assert!(rm.class() == RegClass::Int);
                 assert!(rd.to_reg().class() == rm.class());
                 let size = OperandSize::Size64;
@@ -1387,13 +1391,15 @@ impl MachInstEmit for Inst {
             }
             &Inst::MovToPReg { rd, rm } => {
                 let rd: Writable<Reg> = Writable::from_reg(rd.into());
-                debug_assert!([
-                    regs::fp_reg(),
-                    regs::stack_reg(),
-                    regs::link_reg(),
-                    regs::pinned_reg()
-                ]
-                .contains(&rd.to_reg()));
+                debug_assert!(
+                    [
+                        regs::fp_reg(),
+                        regs::stack_reg(),
+                        regs::link_reg(),
+                        regs::pinned_reg()
+                    ]
+                    .contains(&rd.to_reg())
+                );
                 assert!(rd.to_reg().class() == RegClass::Int);
                 assert!(rm.class() == rd.to_reg().class());
                 let size = OperandSize::Size64;
@@ -2666,6 +2672,7 @@ impl MachInstEmit for Inst {
                     VecALUOp::And => (0b000_01110_00_1, 0b000111),
                     VecALUOp::Bic => (0b000_01110_01_1, 0b000111),
                     VecALUOp::Orr => (0b000_01110_10_1, 0b000111),
+                    VecALUOp::Orn => (0b000_01110_11_1, 0b000111),
                     VecALUOp::Eor => (0b001_01110_00_1, 0b000111),
                     VecALUOp::Umaxp => {
                         debug_assert_ne!(size, VectorSize::Size64x2);
@@ -2935,6 +2942,7 @@ impl MachInstEmit for Inst {
                 }
             }
             &Inst::Call { ref info } => {
+                let start = sink.cur_offset();
                 let user_stack_map = state.take_stack_map();
                 sink.add_reloc(Reloc::Arm64Call, &info.dest, 0);
                 sink.put4(enc_jump26(0b100101, 0));
@@ -2944,9 +2952,12 @@ impl MachInstEmit for Inst {
                 }
 
                 if let Some(try_call) = info.try_call_info.as_ref() {
-                    sink.add_call_site(&try_call.exception_dests);
+                    sink.add_try_call_site(
+                        Some(state.frame_layout.sp_to_fp()),
+                        try_call.exception_handlers(&state.frame_layout),
+                    );
                 } else {
-                    sink.add_call_site(&[]);
+                    sink.add_call_site();
                 }
 
                 if info.callee_pop_size > 0 {
@@ -2957,12 +2968,16 @@ impl MachInstEmit for Inst {
                     }
                 }
 
-                // Load any stack-carried return values.
-                info.emit_retval_loads::<AArch64MachineDeps, _, _>(
-                    state.frame_layout().stackslots_size,
-                    |inst| inst.emit(sink, emit_info, state),
-                    |needed_space| Some(Inst::EmitIsland { needed_space }),
-                );
+                if info.patchable {
+                    sink.add_patchable_call_site(sink.cur_offset() - start);
+                } else {
+                    // Load any stack-carried return values.
+                    info.emit_retval_loads::<AArch64MachineDeps, _, _>(
+                        state.frame_layout().stackslots_size,
+                        |inst| inst.emit(sink, emit_info, state),
+                        |needed_space| Some(Inst::EmitIsland { needed_space }),
+                    );
+                }
 
                 // If this is a try-call, jump to the continuation
                 // (normal-return) block.
@@ -2988,9 +3003,12 @@ impl MachInstEmit for Inst {
                 }
 
                 if let Some(try_call) = info.try_call_info.as_ref() {
-                    sink.add_call_site(&try_call.exception_dests);
+                    sink.add_try_call_site(
+                        Some(state.frame_layout.sp_to_fp()),
+                        try_call.exception_handlers(&state.frame_layout),
+                    );
                 } else {
-                    sink.add_call_site(&[]);
+                    sink.add_call_site();
                 }
 
                 if info.callee_pop_size > 0 {
@@ -3029,7 +3047,7 @@ impl MachInstEmit for Inst {
                 // for the target, but rather a function relocation.
                 sink.add_reloc(Reloc::Arm64Call, &info.dest, 0);
                 sink.put4(enc_jump26(0b000101, 0));
-                sink.add_call_site(&[]);
+                sink.add_call_site();
 
                 // `emit_return_call_common_sequence` emits an island if
                 // necessary, so we can safely disable the worst-case-size check
@@ -3044,7 +3062,7 @@ impl MachInstEmit for Inst {
                     targets: vec![],
                 }
                 .emit(sink, emit_info, state);
-                sink.add_call_site(&[]);
+                sink.add_call_site();
 
                 // `emit_return_call_common_sequence` emits an island if
                 // necessary, so we can safely disable the worst-case-size check
@@ -3113,7 +3131,7 @@ impl MachInstEmit for Inst {
                 sink.put4(0xd503201f);
             }
             &Inst::Brk => {
-                sink.put4(0xd4200000);
+                sink.put4(0xd43e0000);
             }
             &Inst::Udf { trap_code } => {
                 sink.add_trap(trap_code);
@@ -3218,56 +3236,82 @@ impl MachInstEmit for Inst {
                 // disable the worst-case-size check in this case.
                 start_off = sink.cur_offset();
             }
-            &Inst::LoadExtName {
+            &Inst::LoadExtNameGot { rd, ref name } => {
+                // See this CE Example for the variations of this with and without BTI & PAUTH
+                // https://godbolt.org/z/ncqjbbvvn
+                //
+                // Emit the following code:
+                //   adrp    rd, :got:X
+                //   ldr     rd, [rd, :got_lo12:X]
+
+                // adrp rd, symbol
+                sink.add_reloc(Reloc::Aarch64AdrGotPage21, &**name, 0);
+                let inst = Inst::Adrp { rd, off: 0 };
+                inst.emit(sink, emit_info, state);
+
+                // ldr rd, [rd, :got_lo12:X]
+                sink.add_reloc(Reloc::Aarch64Ld64GotLo12Nc, &**name, 0);
+                let inst = Inst::ULoad64 {
+                    rd,
+                    mem: AMode::reg(rd.to_reg()),
+                    flags: MemFlags::trusted(),
+                };
+                inst.emit(sink, emit_info, state);
+            }
+            &Inst::LoadExtNameNear {
                 rd,
                 ref name,
                 offset,
             } => {
-                if emit_info.0.is_pic() {
-                    // See this CE Example for the variations of this with and without BTI & PAUTH
-                    // https://godbolt.org/z/ncqjbbvvn
-                    //
-                    // Emit the following code:
-                    //   adrp    rd, :got:X
-                    //   ldr     rd, [rd, :got_lo12:X]
+                // Emit the following code:
+                //   adrp    rd, X
+                //   add     rd, rd, :lo12:X
+                //
+                // See https://godbolt.org/z/855KEvM5r for an example.
 
-                    // adrp rd, symbol
-                    sink.add_reloc(Reloc::Aarch64AdrGotPage21, &**name, 0);
-                    let inst = Inst::Adrp { rd, off: 0 };
-                    inst.emit(sink, emit_info, state);
+                // adrp rd, symbol
+                sink.add_reloc(Reloc::Aarch64AdrPrelPgHi21, &**name, offset);
+                let inst = Inst::Adrp { rd, off: 0 };
+                inst.emit(sink, emit_info, state);
 
-                    // ldr rd, [rd, :got_lo12:X]
-                    sink.add_reloc(Reloc::Aarch64Ld64GotLo12Nc, &**name, 0);
-                    let inst = Inst::ULoad64 {
-                        rd,
-                        mem: AMode::reg(rd.to_reg()),
-                        flags: MemFlags::trusted(),
-                    };
-                    inst.emit(sink, emit_info, state);
-                } else {
-                    // With absolute offsets we set up a load from a preallocated space, and then jump
-                    // over it.
-                    //
-                    // Emit the following code:
-                    //   ldr     rd, #8
-                    //   b       #0x10
-                    //   <8 byte space>
+                // add rd, rd, :lo12:X
+                sink.add_reloc(Reloc::Aarch64AddAbsLo12Nc, &**name, offset);
+                let inst = Inst::AluRRImm12 {
+                    alu_op: ALUOp::Add,
+                    size: OperandSize::Size64,
+                    rd,
+                    rn: rd.to_reg(),
+                    imm12: Imm12::ZERO,
+                };
+                inst.emit(sink, emit_info, state);
+            }
+            &Inst::LoadExtNameFar {
+                rd,
+                ref name,
+                offset,
+            } => {
+                // With absolute offsets we set up a load from a preallocated space, and then jump
+                // over it.
+                //
+                // Emit the following code:
+                //   ldr     rd, #8
+                //   b       #0x10
+                //   <8 byte space>
 
-                    let inst = Inst::ULoad64 {
-                        rd,
-                        mem: AMode::Label {
-                            label: MemLabel::PCRel(8),
-                        },
-                        flags: MemFlags::trusted(),
-                    };
-                    inst.emit(sink, emit_info, state);
-                    let inst = Inst::Jump {
-                        dest: BranchTarget::ResolvedOffset(12),
-                    };
-                    inst.emit(sink, emit_info, state);
-                    sink.add_reloc(Reloc::Abs8, &**name, offset);
-                    sink.put8(0);
-                }
+                let inst = Inst::ULoad64 {
+                    rd,
+                    mem: AMode::Label {
+                        label: MemLabel::PCRel(8),
+                    },
+                    flags: MemFlags::trusted(),
+                };
+                inst.emit(sink, emit_info, state);
+                let inst = Inst::Jump {
+                    dest: BranchTarget::ResolvedOffset(12),
+                };
+                inst.emit(sink, emit_info, state);
+                sink.add_reloc(Reloc::Abs8, &**name, offset);
+                sink.put8(0);
             }
             &Inst::LoadAddr { rd, ref mem } => {
                 let mem = mem.clone();
@@ -3337,7 +3381,7 @@ impl MachInstEmit for Inst {
                     debug_assert!(rd.to_reg() != tmp2_reg());
                     debug_assert!(reg != tmp2_reg());
                     let tmp = writable_tmp2_reg();
-                    for insn in Inst::load_constant(tmp, abs_offset, &mut |_| tmp).into_iter() {
+                    for insn in Inst::load_constant(tmp, abs_offset).into_iter() {
                         insn.emit(sink, emit_info, state);
                     }
                     let add = Inst::AluRRR {
@@ -3496,6 +3540,21 @@ impl MachInstEmit for Inst {
             }
 
             &Inst::DummyUse { .. } => {}
+
+            &Inst::LabelAddress { dst, label } => {
+                // We emit an ADR only, which is +/- 2MiB range. This
+                // should be sufficient for the typical use-case of
+                // this instruction, which is insmall trampolines to
+                // get exception-handler addresses.
+                let inst = Inst::Adr { rd: dst, off: 0 };
+                let offset = sink.cur_offset();
+                inst.emit(sink, emit_info, state);
+                sink.use_label_at_offset(offset, label, LabelUse::Adr21);
+            }
+
+            &Inst::SequencePoint { .. } => {
+                // Nothing.
+            }
 
             &Inst::StackProbeLoop { start, end, step } => {
                 assert!(emit_info.0.enable_probestack());

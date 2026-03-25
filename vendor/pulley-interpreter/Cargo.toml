@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.84.0"
+edition = "2024"
+rust-version = "1.91.0"
 name = "pulley-interpreter"
-version = "33.0.2"
+version = "43.0.0"
 authors = ["The Pulley Project Developers"]
 build = false
 autolib = false
@@ -25,6 +25,7 @@ description = "The Pulley interpreter, its bytecode definition, encoder, decoder
 readme = "README.md"
 license = "Apache-2.0 WITH LLVM-exception"
 repository = "https://github.com/bytecodealliance/wasmtime/tree/main/pulley"
+resolver = "2"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -42,13 +43,13 @@ encode = []
 interp = [
     "decode",
     "encode",
-    "dep:wasmtime-math",
+    "dep:wasmtime-core",
 ]
 profile = [
     "std",
     "dep:anyhow",
 ]
-std = ["wasmtime-math?/std"]
+std = ["wasmtime-core?/std"]
 
 [lib]
 name = "pulley_interpreter"
@@ -64,32 +65,36 @@ name = "all"
 path = "tests/all/main.rs"
 
 [dependencies.anyhow]
-version = "1.0.93"
+version = "1.0.100"
 optional = true
 default-features = false
 
 [dependencies.arbitrary]
-version = "1.4.0"
+version = "1.4.2"
 optional = true
 
 [dependencies.cranelift-bitset]
-version = "0.120.2"
+version = "0.130.0"
 
 [dependencies.log]
-version = "0.4.8"
+version = "0.4.28"
 default-features = false
 
-[dependencies.wasmtime-math]
-version = "=33.0.2"
+[dependencies.pulley-macros]
+version = "=43.0.0"
+
+[dependencies.wasmtime-core]
+version = "=43.0.0"
 optional = true
+package = "wasmtime-internal-core"
 
 [dev-dependencies.anyhow]
-version = "1.0.93"
+version = "1.0.100"
 features = ["std"]
 default-features = false
 
 [dev-dependencies.clap]
-version = "4.5.17"
+version = "4.5.48"
 features = [
     "std",
     "derive",
@@ -105,29 +110,25 @@ version = "1.4.1"
 [lints.clippy]
 allow_attributes_without_reason = "warn"
 clone_on_copy = "warn"
+extra_unused_type_parameters = "warn"
+from_over_into = "warn"
 manual_strip = "warn"
 map_clone = "warn"
+multiple_bound_locations = "warn"
+redundant_field_names = "warn"
 uninlined_format_args = "warn"
 unnecessary_cast = "warn"
 unnecessary_fallible_conversions = "warn"
 unnecessary_mut_passed = "warn"
 unnecessary_to_owned = "warn"
+useless_conversion = "warn"
 
 [lints.clippy.all]
 level = "allow"
 priority = -1
 
 [lints.rust]
-deprecated-safe-2024 = "warn"
-impl-trait-overcaptures = "warn"
-keyword_idents_2024 = "warn"
-missing-unsafe-on-extern = "warn"
-rust-2024-guarded-string-incompatible-syntax = "warn"
-rust-2024-incompatible-pat = "warn"
-rust-2024-prelude-collisions = "warn"
 trivial_numeric_casts = "warn"
-unsafe-attr-outside-unsafe = "warn"
-unsafe-op-in-unsafe-fn = "warn"
 unstable_features = "warn"
 unused-lifetimes = "warn"
 unused-macro-rules = "warn"
@@ -140,4 +141,5 @@ priority = 0
 check-cfg = [
     "cfg(pulley_tail_calls)",
     "cfg(pulley_assume_llvm_makes_tail_calls)",
+    "cfg(pulley_disable_interp_simd)",
 ]

@@ -1,13 +1,11 @@
 //! Generate the ISA-specific settings.
 
 use crate::cdsl::camel_case;
-use crate::cdsl::settings::{
-    BoolSetting, Predicate, Preset, Setting, SettingGroup, SpecificSetting,
-};
+use crate::cdsl::settings::{BoolSetting, Preset, Setting, SettingGroup, SpecificSetting};
 use crate::constant_hash::generate_table;
 use crate::unique_table::UniqueSeqTable;
 use cranelift_codegen_shared::constant_hash::simple_hash;
-use cranelift_srcgen::{error, fmtln, Formatter, Language, Match};
+use cranelift_srcgen::{Formatter, Language, Match, error, fmtln};
 use std::collections::HashMap;
 
 pub(crate) enum ParentGroup {
@@ -23,7 +21,10 @@ fn gen_constructor(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatte
     };
     fmt.add_block("impl Flags", |fmt| {
         fmt.doc_comment(format!("Create flags {} settings group.", group.name));
-        fmtln!(fmt, "#[allow(unused_variables)]");
+        fmtln!(
+            fmt,
+            "#[allow(unused_variables, reason = \"generated code\")]"
+        );
         fmt.add_block(&format!("pub fn new({args}) -> Self"), |fmt| {
             fmtln!(fmt, "let bvec = builder.state_for(\"{}\");", group.name);
             fmtln!(
@@ -43,20 +44,6 @@ fn gen_constructor(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatte
                 group.name,
                 group.settings_size
             );
-
-            // Now compute the predicates.
-            for p in &group.predicates {
-                fmt.comment(format!("Precompute #{}.", p.number));
-                fmt.add_block(&format!("if {}", p.render(group)), |fmt| {
-                    fmtln!(
-                        fmt,
-                        "{}.bytes[{}] |= 1 << {};",
-                        group.name,
-                        group.bool_start_byte_offset + p.number / 8,
-                        p.number % 8
-                    );
-                });
-            }
 
             fmtln!(fmt, "{}", group.name);
         });
@@ -190,33 +177,11 @@ fn gen_getter(setting: &Setting, fmt: &mut Formatter) {
     }
 }
 
-fn gen_pred_getter(predicate: &Predicate, group: &SettingGroup, fmt: &mut Formatter) {
-    fmt.doc_comment(format!("Computed predicate `{}`.", predicate.render(group)));
-    fmt.add_block(
-        &format!("pub fn {}(&self) -> bool", predicate.name),
-        |fmt| {
-            fmtln!(fmt, "self.numbered_predicate({})", predicate.number);
-        },
-    );
-}
-
 /// Emits getters for each setting value.
 fn gen_getters(group: &SettingGroup, fmt: &mut Formatter) {
     fmt.doc_comment("User-defined settings.");
-    fmtln!(fmt, "#[allow(dead_code)]");
+    fmtln!(fmt, "#[allow(dead_code, reason = \"generated code\")]");
     fmt.add_block("impl Flags", |fmt| {
-        fmt.doc_comment("Get a view of the boolean predicates.");
-        fmt.add_block(
-            "pub fn predicate_view(&self) -> crate::settings::PredicateView",
-            |fmt| {
-                fmtln!(
-                    fmt,
-                    "crate::settings::PredicateView::new(&self.bytes[{}..])",
-                    group.bool_start_byte_offset
-                );
-            },
-        );
-
         if !group.settings.is_empty() {
             fmt.doc_comment("Dynamic numbered predicate getter.");
             fmt.add_block("fn numbered_predicate(&self, p: usize) -> bool", |fmt| {
@@ -230,9 +195,6 @@ fn gen_getters(group: &SettingGroup, fmt: &mut Formatter) {
 
         for setting in &group.settings {
             gen_getter(setting, fmt);
-        }
-        for predicate in &group.predicates {
-            gen_pred_getter(predicate, group, fmt);
         }
     });
 }
@@ -421,9 +383,18 @@ fn gen_display(group: &SettingGroup, fmt: &mut Formatter) {
     });
 }
 
+fn gen_hash_key(fmt: &mut Formatter) {
+    fmt.add_block("impl Flags", |fmt| {
+        fmt.doc_comment("Get the flag values as raw bytes for hashing.");
+        fmt.add_block("pub fn hash_key(&self) -> &[u8]", |fmt| {
+            fmtln!(fmt, "&self.bytes");
+        });
+    });
+}
+
 fn gen_group(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatter) {
     // Generate struct.
-    fmtln!(fmt, "#[derive(Clone, Hash)]");
+    fmtln!(fmt, "#[derive(Clone, PartialEq, Hash)]");
     fmt.doc_comment(format!("Flags group `{}`.", group.name));
     fmt.add_block("pub struct Flags", |fmt| {
         fmtln!(fmt, "bytes: [u8; {}],", group.byte_size());
@@ -436,6 +407,7 @@ fn gen_group(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatter) {
     gen_descriptors(group, fmt);
     gen_template(group, fmt);
     gen_display(group, fmt);
+    gen_hash_key(fmt);
 }
 
 pub(crate) fn generate(

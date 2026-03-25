@@ -5,8 +5,8 @@ use crate::common::{
 use crate::constants;
 use crate::endianity::Endianity;
 use crate::read::{
-    lists::ListsHeader, DebugAddr, EndianSlice, Error, Expression, Range, RawRange, Reader,
-    ReaderAddress, ReaderOffset, ReaderOffsetId, Result, Section,
+    DebugAddr, EndianSlice, Error, Expression, Range, RawRange, Reader, ReaderAddress,
+    ReaderOffset, ReaderOffsetId, Result, Section, lists::ListsHeader,
 };
 
 /// The raw contents of the `.debug_loc` section.
@@ -195,9 +195,6 @@ impl<R: Reader> LocationLists<R> {
     /// The `base_address` should be obtained from the `DW_AT_low_pc` attribute in the
     /// `DW_TAG_compile_unit` entry for the compilation unit that contains this location
     /// list.
-    ///
-    /// Can be [used with
-    /// `FallibleIterator`](./index.html#using-with-fallibleiterator).
     pub fn locations(
         &self,
         offset: LocationListsOffset<R::Offset>,
@@ -240,9 +237,6 @@ impl<R: Reader> LocationLists<R> {
     ///
     /// This iterator does not perform any processing of the location entries,
     /// such as handling base addresses.
-    ///
-    /// Can be [used with
-    /// `FallibleIterator`](./index.html#using-with-fallibleiterator).
     pub fn raw_locations(
         &self,
         offset: LocationListsOffset<R::Offset>,
@@ -527,6 +521,14 @@ impl<R: Reader> fallible_iterator::FallibleIterator for RawLocListIter<R> {
     }
 }
 
+impl<R: Reader> Iterator for RawLocListIter<R> {
+    type Item = Result<RawLocListEntry<R>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        RawLocListIter::next(self).transpose()
+    }
+}
+
 /// An iterator over a location list.
 ///
 /// This iterator internally handles processing of base address selection entries
@@ -594,12 +596,6 @@ impl<R: Reader> LocListIter<R> {
         raw_loc: RawLocListEntry<R>,
     ) -> Result<Option<LocationListEntry<R>>> {
         let address_size = self.raw.encoding.address_size;
-        let mask = u64::ones_sized(address_size);
-        let tombstone = if self.raw.encoding.version <= 4 {
-            mask - 1
-        } else {
-            mask
-        };
 
         let (range, data) = match raw_loc {
             RawLocListEntry::BaseAddress { addr } => {
@@ -634,11 +630,11 @@ impl<R: Reader> LocListIter<R> {
             RawLocListEntry::AddressOrOffsetPair { begin, end, data }
             | RawLocListEntry::OffsetPair { begin, end, data } => {
                 // Skip tombstone entries (see below).
-                if self.base_address == tombstone {
+                if self.base_address >= u64::min_tombstone(address_size) {
                     return Ok(None);
                 }
                 let mut range = Range { begin, end };
-                range.add_base_address(self.base_address, self.raw.encoding.address_size);
+                range.add_base_address(self.base_address, address_size);
                 (range, data)
             }
             RawLocListEntry::StartEnd { begin, end, data } => (Range { begin, end }, data),
@@ -662,7 +658,7 @@ impl<R: Reader> LocListIter<R> {
         //
         // In addition to skipping tombstone entries, we also skip invalid entries
         // where `begin` is greater than `end`. This can occur due to compiler bugs.
-        if range.begin == tombstone || range.begin >= range.end {
+        if range.begin >= u64::min_tombstone(address_size) || range.begin >= range.end {
             return Ok(None);
         }
 
@@ -677,6 +673,14 @@ impl<R: Reader> fallible_iterator::FallibleIterator for LocListIter<R> {
 
     fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
         LocListIter::next(self)
+    }
+}
+
+impl<R: Reader> Iterator for LocListIter<R> {
+    type Item = Result<LocationListEntry<R>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        LocListIter::next(self).transpose()
     }
 }
 

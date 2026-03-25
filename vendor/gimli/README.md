@@ -26,17 +26,12 @@
 
 ## Install
 
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-gimli = "0.31.1"
+To add a `gimli` dependency to your `Cargo.toml`, run:
+```console
+$ cargo add gimli
 ```
 
-The minimum supported Rust version is:
-
-* 1.60.0 for the `read` feature and its dependencies.
-* 1.65.0 for other features.
+The minimum supported Rust version is 1.88.
 
 ## Documentation
 
@@ -48,20 +43,17 @@ The minimum supported Rust version is:
 
   * [A simple `.debug_line` parser](./crates/examples/src/bin/simple_line.rs)
 
+  * [A simple DWARF writer](./crates/examples/src/bin/simple_write.rs)
+
+  * [A simple DWARF converter](./crates/examples/src/bin/simple_convert.rs)
+    to read DWARF sections then write them back out again.
+
+  * [A DWARF converter](./crates/examples/src/bin/convert.rs) that modifies
+    the DWARF by removing entries for dead code.
+
   * [A `dwarfdump` clone](./crates/examples/src/bin/dwarfdump.rs)
 
   * [An `addr2line` clone](https://github.com/gimli-rs/addr2line)
-
-  * [`ddbug`](https://github.com/gimli-rs/ddbug), a utility giving insight into
-    code generation by making debugging information readable.
-
-  * [`dwprod`](https://github.com/fitzgen/dwprod), a tiny utility to list the
-    compilers used to create each compilation unit within a shared library or
-    executable (via `DW_AT_producer`).
-
-  * [`dwarf-validate`](./crates/examples/src/bin/dwarf-validate.rs), a program to validate the
-    integrity of some DWARF and its references between sections and compilation
-    units.
 
 ## License
 

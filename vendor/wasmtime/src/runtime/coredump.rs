@@ -1,20 +1,20 @@
 use crate::hash_map::HashMap;
 use crate::prelude::*;
 use crate::{
-    store::StoreOpaque, AsContextMut, FrameInfo, Global, HeapType, Instance, Memory, Module,
-    StoreContextMut, Val, ValType, WasmBacktrace,
+    AsContextMut, FrameInfo, Global, HeapType, Instance, Memory, Module, StoreContextMut, Val,
+    ValType, WasmBacktrace, store::StoreOpaque,
 };
 use std::fmt;
 
 /// Representation of a core dump of a WebAssembly module
 ///
 /// When the Config::coredump_on_trap option is enabled this structure is
-/// attached to the [`anyhow::Error`] returned from many Wasmtime functions that
-/// execute WebAssembly such as [`Instance::new`] or [`Func::call`]. This can be
-/// acquired with the [`anyhow::Error::downcast`] family of methods to
-/// programmatically inspect the coredump. Otherwise since it's part of the
-/// error returned this will get printed along with the rest of the error when
-/// the error is logged.
+/// attached to the [`Error`](crate::Error) returned from many Wasmtime functions
+/// that execute WebAssembly such as [`Instance::new`] or [`Func::call`]. This
+/// can be acquired with the [`Error::downcast`](crate::Error::downcast) family
+/// of methods to programmatically inspect the coredump. Otherwise since it's
+/// part of the error returned this will get printed along with the rest of the
+/// error when the error is logged.
 ///
 /// Note that some state, such as Wasm locals or values on the operand stack,
 /// may be optimized away by the compiler or otherwise not recovered in the
@@ -41,7 +41,8 @@ impl WasmCoreDump {
     pub(crate) fn new(store: &mut StoreOpaque, backtrace: WasmBacktrace) -> WasmCoreDump {
         let modules: Vec<_> = store.modules().all_modules().cloned().collect();
         let instances: Vec<Instance> = store.all_instances().collect();
-        let store_memories: Vec<Memory> = store.all_memories().collect();
+        let store_memories: Vec<Memory> =
+            store.all_memories().filter_map(|m| m.unshared()).collect();
 
         let mut store_globals: Vec<Global> = vec![];
         store.for_each_global(|_store, global| store_globals.push(global));
@@ -103,7 +104,7 @@ impl WasmCoreDump {
         self._serialize(store, name)
     }
 
-    fn _serialize<T>(&self, mut store: StoreContextMut<'_, T>, name: &str) -> Vec<u8> {
+    fn _serialize<T: 'static>(&self, mut store: StoreContextMut<'_, T>, name: &str) -> Vec<u8> {
         let mut core_dump = wasm_encoder::Module::new();
 
         core_dump.section(&wasm_encoder::CoreDumpSection::new(name));
@@ -192,8 +193,8 @@ impl WasmCoreDump {
                 let init = match g.get(&mut store) {
                     Val::I32(x) => wasm_encoder::ConstExpr::i32_const(x),
                     Val::I64(x) => wasm_encoder::ConstExpr::i64_const(x),
-                    Val::F32(x) => wasm_encoder::ConstExpr::f32_const(f32::from_bits(x)),
-                    Val::F64(x) => wasm_encoder::ConstExpr::f64_const(f64::from_bits(x)),
+                    Val::F32(x) => wasm_encoder::ConstExpr::f32_const(f32::from_bits(x).into()),
+                    Val::F64(x) => wasm_encoder::ConstExpr::f64_const(f64::from_bits(x).into()),
                     Val::V128(x) => wasm_encoder::ConstExpr::v128_const(x.as_u128() as i128),
                     Val::FuncRef(_) => {
                         wasm_encoder::ConstExpr::ref_null(wasm_encoder::HeapType::FUNC)
@@ -203,6 +204,18 @@ impl WasmCoreDump {
                     }
                     Val::AnyRef(_) => {
                         wasm_encoder::ConstExpr::ref_null(wasm_encoder::HeapType::ANY)
+                    }
+                    Val::ExnRef(_) => {
+                        wasm_encoder::ConstExpr::ref_null(wasm_encoder::HeapType::Abstract {
+                            shared: false,
+                            ty: wasm_encoder::AbstractHeapType::Exn,
+                        })
+                    }
+                    Val::ContRef(_) => {
+                        wasm_encoder::ConstExpr::ref_null(wasm_encoder::HeapType::Abstract {
+                            shared: false,
+                            ty: wasm_encoder::AbstractHeapType::Cont,
+                        })
                     }
                 };
                 globals.global(
@@ -253,14 +266,18 @@ impl WasmCoreDump {
                 let module_index = module_to_index[&module.id()];
 
                 let memories = instance
-                    .all_memories(&mut store.0)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .map(|(_i, memory)| memory_to_idx[&memory.hash_key(&store.0)])
+                    .all_memories(store.0)
+                    .filter_map(|(_, m)| m.unshared())
+                    .map(|memory| {
+                        memory_to_idx
+                            .get(&memory.hash_key(&store.0))
+                            .copied()
+                            .unwrap_or(u32::MAX)
+                    })
                     .collect::<Vec<_>>();
 
                 let globals = instance
-                    .all_globals(&mut store.0)
+                    .all_globals(store.0)
                     .collect::<Vec<_>>()
                     .into_iter()
                     .map(|(_i, global)| global_to_idx[&global.hash_key(&store.0)])

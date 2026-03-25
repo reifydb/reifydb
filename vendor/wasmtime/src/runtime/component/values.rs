@@ -1,7 +1,8 @@
-use crate::component::func::{desc, Lift, LiftContext, Lower, LowerContext};
-use crate::component::ResourceAny;
-use crate::prelude::*;
 use crate::ValRaw;
+use crate::component::ResourceAny;
+use crate::component::concurrent::{self, ErrorContext, FutureAny, StreamAny};
+use crate::component::func::{Lift, LiftContext, Lower, LowerContext, desc};
+use crate::prelude::*;
 use core::mem::MaybeUninit;
 use core::slice::{Iter, IterMut};
 use wasmtime_component_util::{DiscriminantSize, FlagsSize};
@@ -62,7 +63,7 @@ use wasmtime_environ::component::{
 ///
 /// [`Func::call`]: crate::component::Func::call
 #[derive(Debug, Clone)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "self-describing variants")]
 pub enum Val {
     Bool(bool),
     S8(i8),
@@ -86,6 +87,9 @@ pub enum Val {
     Result(Result<Option<Box<Val>>, Option<Box<Val>>>),
     Flags(Vec<String>),
     Resource(ResourceAny),
+    Future(FutureAny),
+    Stream(StreamAny),
+    ErrorContext(ErrorContextAny),
 }
 
 impl Val {
@@ -96,26 +100,30 @@ impl Val {
         src: &mut Iter<'_, ValRaw>,
     ) -> Result<Val> {
         Ok(match ty {
-            InterfaceType::Bool => Val::Bool(bool::lift(cx, ty, next(src))?),
-            InterfaceType::S8 => Val::S8(i8::lift(cx, ty, next(src))?),
-            InterfaceType::U8 => Val::U8(u8::lift(cx, ty, next(src))?),
-            InterfaceType::S16 => Val::S16(i16::lift(cx, ty, next(src))?),
-            InterfaceType::U16 => Val::U16(u16::lift(cx, ty, next(src))?),
-            InterfaceType::S32 => Val::S32(i32::lift(cx, ty, next(src))?),
-            InterfaceType::U32 => Val::U32(u32::lift(cx, ty, next(src))?),
-            InterfaceType::S64 => Val::S64(i64::lift(cx, ty, next(src))?),
-            InterfaceType::U64 => Val::U64(u64::lift(cx, ty, next(src))?),
-            InterfaceType::Float32 => Val::Float32(f32::lift(cx, ty, next(src))?),
-            InterfaceType::Float64 => Val::Float64(f64::lift(cx, ty, next(src))?),
-            InterfaceType::Char => Val::Char(char::lift(cx, ty, next(src))?),
+            InterfaceType::Bool => Val::Bool(bool::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::S8 => Val::S8(i8::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::U8 => Val::U8(u8::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::S16 => Val::S16(i16::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::U16 => Val::U16(u16::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::S32 => Val::S32(i32::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::U32 => Val::U32(u32::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::S64 => Val::S64(i64::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::U64 => Val::U64(u64::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::Float32 => Val::Float32(f32::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::Float64 => Val::Float64(f64::linear_lift_from_flat(cx, ty, next(src))?),
+            InterfaceType::Char => Val::Char(char::linear_lift_from_flat(cx, ty, next(src))?),
             InterfaceType::Own(_) | InterfaceType::Borrow(_) => {
-                Val::Resource(ResourceAny::lift(cx, ty, next(src))?)
+                Val::Resource(ResourceAny::linear_lift_from_flat(cx, ty, next(src))?)
             }
-            InterfaceType::String => Val::String(<_>::lift(cx, ty, &[*next(src), *next(src)])?),
+            InterfaceType::String => Val::String(<_>::linear_lift_from_flat(
+                cx,
+                ty,
+                &[*next(src), *next(src)],
+            )?),
             InterfaceType::List(i) => {
                 // FIXME(#4311): needs memory64 treatment
-                let ptr = u32::lift(cx, InterfaceType::U32, next(src))? as usize;
-                let len = u32::lift(cx, InterfaceType::U32, next(src))? as usize;
+                let ptr = u32::linear_lift_from_flat(cx, InterfaceType::U32, next(src))? as usize;
+                let len = u32::linear_lift_from_flat(cx, InterfaceType::U32, next(src))? as usize;
                 load_list(cx, i, ptr, len)?
             }
             InterfaceType::Record(i) => Val::Record(
@@ -192,36 +200,43 @@ impl Val {
                         ty,
                         &mut flags,
                         i * 32,
-                        u32::lift(cx, InterfaceType::U32, next(src))?,
+                        u32::linear_lift_from_flat(cx, InterfaceType::U32, next(src))?,
                     );
                 }
 
-                Val::Flags(flags.into())
+                Val::Flags(flags)
             }
-            InterfaceType::Future(_)
-            | InterfaceType::Stream(_)
-            | InterfaceType::ErrorContext(_) => todo!(),
+            InterfaceType::Future(_) => {
+                Val::Future(FutureAny::linear_lift_from_flat(cx, ty, next(src))?)
+            }
+            InterfaceType::Stream(_) => {
+                Val::Stream(StreamAny::linear_lift_from_flat(cx, ty, next(src))?)
+            }
+            InterfaceType::ErrorContext(_) => {
+                ErrorContext::linear_lift_from_flat(cx, ty, next(src))?.into_val()
+            }
+            InterfaceType::FixedLengthList(_) => todo!(), // FIXME(#12279)
         })
     }
 
     /// Deserialize a value of this type from the heap.
     pub(crate) fn load(cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Val> {
         Ok(match ty {
-            InterfaceType::Bool => Val::Bool(bool::load(cx, ty, bytes)?),
-            InterfaceType::S8 => Val::S8(i8::load(cx, ty, bytes)?),
-            InterfaceType::U8 => Val::U8(u8::load(cx, ty, bytes)?),
-            InterfaceType::S16 => Val::S16(i16::load(cx, ty, bytes)?),
-            InterfaceType::U16 => Val::U16(u16::load(cx, ty, bytes)?),
-            InterfaceType::S32 => Val::S32(i32::load(cx, ty, bytes)?),
-            InterfaceType::U32 => Val::U32(u32::load(cx, ty, bytes)?),
-            InterfaceType::S64 => Val::S64(i64::load(cx, ty, bytes)?),
-            InterfaceType::U64 => Val::U64(u64::load(cx, ty, bytes)?),
-            InterfaceType::Float32 => Val::Float32(f32::load(cx, ty, bytes)?),
-            InterfaceType::Float64 => Val::Float64(f64::load(cx, ty, bytes)?),
-            InterfaceType::Char => Val::Char(char::load(cx, ty, bytes)?),
-            InterfaceType::String => Val::String(<_>::load(cx, ty, bytes)?),
+            InterfaceType::Bool => Val::Bool(bool::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::S8 => Val::S8(i8::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::U8 => Val::U8(u8::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::S16 => Val::S16(i16::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::U16 => Val::U16(u16::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::S32 => Val::S32(i32::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::U32 => Val::U32(u32::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::S64 => Val::S64(i64::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::U64 => Val::U64(u64::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::Float32 => Val::Float32(f32::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::Float64 => Val::Float64(f64::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::Char => Val::Char(char::linear_lift_from_memory(cx, ty, bytes)?),
+            InterfaceType::String => Val::String(<_>::linear_lift_from_memory(cx, ty, bytes)?),
             InterfaceType::Own(_) | InterfaceType::Borrow(_) => {
-                Val::Resource(ResourceAny::load(cx, ty, bytes)?)
+                Val::Resource(ResourceAny::linear_lift_from_memory(cx, ty, bytes)?)
             }
             InterfaceType::List(i) => {
                 // FIXME(#4311): needs memory64 treatment
@@ -302,16 +317,16 @@ impl Val {
                 match FlagsSize::from_count(ty.names.len()) {
                     FlagsSize::Size0 => {}
                     FlagsSize::Size1 => {
-                        let bits = u8::load(cx, InterfaceType::U8, bytes)?;
+                        let bits = u8::linear_lift_from_memory(cx, InterfaceType::U8, bytes)?;
                         push_flags(ty, &mut flags, 0, u32::from(bits));
                     }
                     FlagsSize::Size2 => {
-                        let bits = u16::load(cx, InterfaceType::U16, bytes)?;
+                        let bits = u16::linear_lift_from_memory(cx, InterfaceType::U16, bytes)?;
                         push_flags(ty, &mut flags, 0, u32::from(bits));
                     }
                     FlagsSize::Size4Plus(n) => {
                         for i in 0..n {
-                            let bits = u32::load(
+                            let bits = u32::linear_lift_from_memory(
                                 cx,
                                 InterfaceType::U32,
                                 &bytes[usize::from(i) * 4..][..4],
@@ -320,11 +335,14 @@ impl Val {
                         }
                     }
                 }
-                Val::Flags(flags.into())
+                Val::Flags(flags)
             }
-            InterfaceType::Future(_)
-            | InterfaceType::Stream(_)
-            | InterfaceType::ErrorContext(_) => todo!(),
+            InterfaceType::Future(_) => FutureAny::linear_lift_from_memory(cx, ty, bytes)?.into(),
+            InterfaceType::Stream(_) => StreamAny::linear_lift_from_memory(cx, ty, bytes)?.into(),
+            InterfaceType::ErrorContext(_) => {
+                ErrorContext::linear_lift_from_memory(cx, ty, bytes)?.into_val()
+            }
+            InterfaceType::FixedLengthList(_) => todo!(), // FIXME(#12279)
         })
     }
 
@@ -336,39 +354,63 @@ impl Val {
         dst: &mut IterMut<'_, MaybeUninit<ValRaw>>,
     ) -> Result<()> {
         match (ty, self) {
-            (InterfaceType::Bool, Val::Bool(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::Bool, Val::Bool(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::Bool, _) => unexpected(ty, self),
-            (InterfaceType::S8, Val::S8(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::S8, Val::S8(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::S8, _) => unexpected(ty, self),
-            (InterfaceType::U8, Val::U8(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::U8, Val::U8(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::U8, _) => unexpected(ty, self),
-            (InterfaceType::S16, Val::S16(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::S16, Val::S16(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::S16, _) => unexpected(ty, self),
-            (InterfaceType::U16, Val::U16(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::U16, Val::U16(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::U16, _) => unexpected(ty, self),
-            (InterfaceType::S32, Val::S32(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::S32, Val::S32(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::S32, _) => unexpected(ty, self),
-            (InterfaceType::U32, Val::U32(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::U32, Val::U32(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::U32, _) => unexpected(ty, self),
-            (InterfaceType::S64, Val::S64(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::S64, Val::S64(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::S64, _) => unexpected(ty, self),
-            (InterfaceType::U64, Val::U64(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::U64, Val::U64(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::U64, _) => unexpected(ty, self),
-            (InterfaceType::Float32, Val::Float32(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::Float32, Val::Float32(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::Float32, _) => unexpected(ty, self),
-            (InterfaceType::Float64, Val::Float64(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::Float64, Val::Float64(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::Float64, _) => unexpected(ty, self),
-            (InterfaceType::Char, Val::Char(value)) => value.lower(cx, ty, next_mut(dst)),
+            (InterfaceType::Char, Val::Char(value)) => {
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
             (InterfaceType::Char, _) => unexpected(ty, self),
             // NB: `lower` on `ResourceAny` does its own type-checking, so skip
             // looking at it here.
             (InterfaceType::Borrow(_) | InterfaceType::Own(_), Val::Resource(value)) => {
-                value.lower(cx, ty, next_mut(dst))
+                value.linear_lower_to_flat(cx, ty, next_mut(dst))
             }
             (InterfaceType::Borrow(_) | InterfaceType::Own(_), _) => unexpected(ty, self),
             (InterfaceType::String, Val::String(value)) => {
                 let my_dst = &mut MaybeUninit::<[ValRaw; 2]>::uninit();
-                value.lower(cx, ty, my_dst)?;
+                value.linear_lower_to_flat(cx, ty, my_dst)?;
                 let my_dst = unsafe { my_dst.assume_init() };
                 next_mut(dst).write(my_dst[0]);
                 next_mut(dst).write(my_dst[1]);
@@ -435,9 +477,23 @@ impl Val {
                 Ok(())
             }
             (InterfaceType::Flags(_), _) => unexpected(ty, self),
-            (InterfaceType::Future(_), _)
-            | (InterfaceType::Stream(_), _)
-            | (InterfaceType::ErrorContext(_), _) => todo!(),
+            (InterfaceType::Future(_), Val::Future(f)) => {
+                f.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
+            (InterfaceType::Future(_), _) => unexpected(ty, self),
+            (InterfaceType::Stream(_), Val::Stream(s)) => {
+                s.linear_lower_to_flat(cx, ty, next_mut(dst))
+            }
+            (InterfaceType::Stream(_), _) => unexpected(ty, self),
+            (InterfaceType::ErrorContext(_), Val::ErrorContext(ErrorContextAny(rep))) => {
+                concurrent::lower_error_context_to_index(*rep, cx, ty)?.linear_lower_to_flat(
+                    cx,
+                    InterfaceType::U32,
+                    next_mut(dst),
+                )
+            }
+            (InterfaceType::ErrorContext(_), _) => unexpected(ty, self),
+            (InterfaceType::FixedLengthList(_), _) => todo!(), // FIXME(#12279)
         }
     }
 
@@ -451,36 +507,42 @@ impl Val {
         debug_assert!(offset % usize::try_from(cx.types.canonical_abi(&ty).align32)? == 0);
 
         match (ty, self) {
-            (InterfaceType::Bool, Val::Bool(value)) => value.store(cx, ty, offset),
+            (InterfaceType::Bool, Val::Bool(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::Bool, _) => unexpected(ty, self),
-            (InterfaceType::U8, Val::U8(value)) => value.store(cx, ty, offset),
+            (InterfaceType::U8, Val::U8(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::U8, _) => unexpected(ty, self),
-            (InterfaceType::S8, Val::S8(value)) => value.store(cx, ty, offset),
+            (InterfaceType::S8, Val::S8(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::S8, _) => unexpected(ty, self),
-            (InterfaceType::U16, Val::U16(value)) => value.store(cx, ty, offset),
+            (InterfaceType::U16, Val::U16(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::U16, _) => unexpected(ty, self),
-            (InterfaceType::S16, Val::S16(value)) => value.store(cx, ty, offset),
+            (InterfaceType::S16, Val::S16(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::S16, _) => unexpected(ty, self),
-            (InterfaceType::U32, Val::U32(value)) => value.store(cx, ty, offset),
+            (InterfaceType::U32, Val::U32(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::U32, _) => unexpected(ty, self),
-            (InterfaceType::S32, Val::S32(value)) => value.store(cx, ty, offset),
+            (InterfaceType::S32, Val::S32(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::S32, _) => unexpected(ty, self),
-            (InterfaceType::U64, Val::U64(value)) => value.store(cx, ty, offset),
+            (InterfaceType::U64, Val::U64(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::U64, _) => unexpected(ty, self),
-            (InterfaceType::S64, Val::S64(value)) => value.store(cx, ty, offset),
+            (InterfaceType::S64, Val::S64(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::S64, _) => unexpected(ty, self),
-            (InterfaceType::Float32, Val::Float32(value)) => value.store(cx, ty, offset),
+            (InterfaceType::Float32, Val::Float32(value)) => {
+                value.linear_lower_to_memory(cx, ty, offset)
+            }
             (InterfaceType::Float32, _) => unexpected(ty, self),
-            (InterfaceType::Float64, Val::Float64(value)) => value.store(cx, ty, offset),
+            (InterfaceType::Float64, Val::Float64(value)) => {
+                value.linear_lower_to_memory(cx, ty, offset)
+            }
             (InterfaceType::Float64, _) => unexpected(ty, self),
-            (InterfaceType::Char, Val::Char(value)) => value.store(cx, ty, offset),
+            (InterfaceType::Char, Val::Char(value)) => value.linear_lower_to_memory(cx, ty, offset),
             (InterfaceType::Char, _) => unexpected(ty, self),
-            (InterfaceType::String, Val::String(value)) => value.store(cx, ty, offset),
+            (InterfaceType::String, Val::String(value)) => {
+                value.linear_lower_to_memory(cx, ty, offset)
+            }
             (InterfaceType::String, _) => unexpected(ty, self),
 
             // NB: resources do type-checking when they lower.
             (InterfaceType::Borrow(_) | InterfaceType::Own(_), Val::Resource(value)) => {
-                value.store(cx, ty, offset)
+                value.linear_lower_to_memory(cx, ty, offset)
             }
             (InterfaceType::Borrow(_) | InterfaceType::Own(_), _) => unexpected(ty, self),
             (InterfaceType::List(ty), Val::List(values)) => {
@@ -552,20 +614,20 @@ impl Val {
                 let storage = flags_to_storage(ty, flags)?;
                 match FlagsSize::from_count(ty.names.len()) {
                     FlagsSize::Size0 => {}
-                    FlagsSize::Size1 => {
-                        u8::try_from(storage[0])
-                            .unwrap()
-                            .store(cx, InterfaceType::U8, offset)?
-                    }
-                    FlagsSize::Size2 => {
-                        u16::try_from(storage[0])
-                            .unwrap()
-                            .store(cx, InterfaceType::U16, offset)?
-                    }
+                    FlagsSize::Size1 => u8::try_from(storage[0]).unwrap().linear_lower_to_memory(
+                        cx,
+                        InterfaceType::U8,
+                        offset,
+                    )?,
+                    FlagsSize::Size2 => u16::try_from(storage[0]).unwrap().linear_lower_to_memory(
+                        cx,
+                        InterfaceType::U16,
+                        offset,
+                    )?,
                     FlagsSize::Size4Plus(_) => {
                         let mut offset = offset;
                         for value in storage {
-                            value.store(cx, InterfaceType::U32, offset)?;
+                            value.linear_lower_to_memory(cx, InterfaceType::U32, offset)?;
                             offset += 4;
                         }
                     }
@@ -573,13 +635,23 @@ impl Val {
                 Ok(())
             }
             (InterfaceType::Flags(_), _) => unexpected(ty, self),
-            (InterfaceType::Future(_), _)
-            | (InterfaceType::Stream(_), _)
-            | (InterfaceType::ErrorContext(_), _) => todo!(),
+            (InterfaceType::Future(_), Val::Future(f)) => f.linear_lower_to_memory(cx, ty, offset),
+            (InterfaceType::Future(_), _) => unexpected(ty, self),
+            (InterfaceType::Stream(_), Val::Stream(s)) => s.linear_lower_to_memory(cx, ty, offset),
+            (InterfaceType::Stream(_), _) => unexpected(ty, self),
+            (InterfaceType::ErrorContext(_), Val::ErrorContext(ErrorContextAny(rep))) => {
+                concurrent::lower_error_context_to_index(*rep, cx, ty)?.linear_lower_to_memory(
+                    cx,
+                    InterfaceType::U32,
+                    offset,
+                )
+            }
+            (InterfaceType::ErrorContext(_), _) => unexpected(ty, self),
+            (InterfaceType::FixedLengthList(_), _) => todo!(), // FIXME(#12279)
         }
     }
 
-    fn desc(&self) -> &'static str {
+    pub(crate) fn desc(&self) -> &'static str {
         match self {
             Val::Bool(_) => "bool",
             Val::U8(_) => "u8",
@@ -603,6 +675,9 @@ impl Val {
             Val::Result(_) => "result",
             Val::Resource(_) => "resource",
             Val::Flags(_) => "flags",
+            Val::Future(_) => "future",
+            Val::Stream(_) => "stream",
+            Val::ErrorContext(_) => "error-context",
         }
     }
 
@@ -681,6 +756,12 @@ impl PartialEq for Val {
             (Self::Flags(_), _) => false,
             (Self::Resource(l), Self::Resource(r)) => l == r,
             (Self::Resource(_), _) => false,
+            (Self::Future(l), Self::Future(r)) => l == r,
+            (Self::Future(_), _) => false,
+            (Self::Stream(l), Self::Stream(r)) => l == r,
+            (Self::Stream(_), _) => false,
+            (Self::ErrorContext(l), Self::ErrorContext(r)) => l == r,
+            (Self::ErrorContext(_), _) => false,
         }
     }
 }
@@ -807,17 +888,16 @@ impl GenericVariant<'_> {
 
     fn store<T>(&self, cx: &mut LowerContext<'_, T>, offset: usize) -> Result<()> {
         match self.info.size {
-            DiscriminantSize::Size1 => {
-                u8::try_from(self.discriminant)
-                    .unwrap()
-                    .store(cx, InterfaceType::U8, offset)?
+            DiscriminantSize::Size1 => u8::try_from(self.discriminant)
+                .unwrap()
+                .linear_lower_to_memory(cx, InterfaceType::U8, offset)?,
+            DiscriminantSize::Size2 => u16::try_from(self.discriminant)
+                .unwrap()
+                .linear_lower_to_memory(cx, InterfaceType::U16, offset)?,
+            DiscriminantSize::Size4 => {
+                self.discriminant
+                    .linear_lower_to_memory(cx, InterfaceType::U32, offset)?
             }
-            DiscriminantSize::Size2 => {
-                u16::try_from(self.discriminant)
-                    .unwrap()
-                    .store(cx, InterfaceType::U16, offset)?
-            }
-            DiscriminantSize::Size4 => self.discriminant.store(cx, InterfaceType::U32, offset)?,
         }
 
         if let Some((value, ty)) = self.payload {
@@ -839,7 +919,7 @@ fn load_list(cx: &mut LiftContext<'_>, ty: TypeListIndex, ptr: usize, len: usize
         .checked_mul(element_size)
         .and_then(|len| ptr.checked_add(len))
     {
-        Some(n) if n <= cx.memory().len() => {}
+        Some(n) if n <= cx.memory().len() => cx.consume_fuel_array(len, size_of::<Val>())?,
         _ => bail!("list pointer/length out of bounds of memory"),
     }
     if ptr % usize::try_from(element_alignment)? != 0 {
@@ -866,12 +946,22 @@ fn load_variant(
     bytes: &[u8],
 ) -> Result<(u32, Option<Box<Val>>)> {
     let discriminant = match info.size {
-        DiscriminantSize::Size1 => u32::from(u8::load(cx, InterfaceType::U8, &bytes[..1])?),
-        DiscriminantSize::Size2 => u32::from(u16::load(cx, InterfaceType::U16, &bytes[..2])?),
-        DiscriminantSize::Size4 => u32::load(cx, InterfaceType::U32, &bytes[..4])?,
+        DiscriminantSize::Size1 => u32::from(u8::linear_lift_from_memory(
+            cx,
+            InterfaceType::U8,
+            &bytes[..1],
+        )?),
+        DiscriminantSize::Size2 => u32::from(u16::linear_lift_from_memory(
+            cx,
+            InterfaceType::U16,
+            &bytes[..2],
+        )?),
+        DiscriminantSize::Size4 => {
+            u32::linear_lift_from_memory(cx, InterfaceType::U32, &bytes[..4])?
+        }
     };
     let case_ty = types.nth(discriminant as usize).ok_or_else(|| {
-        anyhow!(
+        format_err!(
             "discriminant {} out of range [0..{})",
             discriminant,
             types.len()
@@ -903,7 +993,7 @@ fn lift_variant(
     let discriminant = next(src).get_u32();
     let ty = types
         .nth(discriminant as usize)
-        .ok_or_else(|| anyhow!("discriminant {} out of range [0..{})", discriminant, len))?;
+        .ok_or_else(|| format_err!("discriminant {discriminant} out of range [0..{len})"))?;
     let (value, value_flat) = match ty {
         Some(ty) => (
             Some(Box::new(Val::lift(cx, ty, src)?)),
@@ -929,7 +1019,7 @@ fn lower_list<T>(
     let size = items
         .len()
         .checked_mul(elt_size)
-        .ok_or_else(|| anyhow::anyhow!("size overflow copying a list"))?;
+        .ok_or_else(|| crate::format_err!("size overflow copying a list"))?;
     let ptr = cx.realloc(0, 0, elt_align, size)?;
     let mut element_ptr = ptr;
     for item in items {
@@ -960,7 +1050,7 @@ fn flags_to_storage(ty: &TypeFlags, flags: &[String]) -> Result<Vec<u32>> {
         let bit = ty
             .names
             .get_index_of(flag)
-            .ok_or_else(|| anyhow::anyhow!("unknown flag: `{flag}`"))?;
+            .ok_or_else(|| crate::format_err!("unknown flag: `{flag}`"))?;
         storage[bit / 32] |= 1 << (bit % 32);
     }
     Ok(storage)
@@ -969,7 +1059,7 @@ fn flags_to_storage(ty: &TypeFlags, flags: &[String]) -> Result<Vec<u32>> {
 fn get_enum_discriminant(ty: &TypeEnum, n: &str) -> Result<u32> {
     ty.names
         .get_index_of(n)
-        .ok_or_else(|| anyhow::anyhow!("enum variant name `{n}` is not valid"))
+        .ok_or_else(|| crate::format_err!("enum variant name `{n}` is not valid"))
         .map(|i| i.try_into().unwrap())
 }
 
@@ -980,7 +1070,7 @@ fn get_variant_discriminant<'a>(
     let (i, _, ty) = ty
         .cases
         .get_full(name)
-        .ok_or_else(|| anyhow::anyhow!("unknown variant case: `{name}`"))?;
+        .ok_or_else(|| crate::format_err!("unknown variant case: `{name}`"))?;
     Ok((i.try_into().unwrap(), ty))
 }
 
@@ -999,4 +1089,98 @@ fn unexpected<T>(ty: InterfaceType, val: &Val) -> Result<T> {
         desc(&ty),
         val.desc()
     )
+}
+
+/// Represents a component model `error-context`.
+///
+/// Note that this type is not usable at this time as its implementation has not
+/// been filled out. There are no operations on this and there's additionally no
+/// ability to "drop" or deallocate this index.
+//
+// FIXME(#11161) this needs to be filled out implementation-wise
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ErrorContextAny(pub(crate) u32);
+
+impl From<bool> for Val {
+    fn from(b: bool) -> Self {
+        Val::Bool(b)
+    }
+}
+
+impl From<u8> for Val {
+    fn from(u: u8) -> Self {
+        Val::U8(u)
+    }
+}
+
+impl From<i8> for Val {
+    fn from(i: i8) -> Self {
+        Val::S8(i)
+    }
+}
+
+impl From<u16> for Val {
+    fn from(u: u16) -> Self {
+        Val::U16(u)
+    }
+}
+
+impl From<i16> for Val {
+    fn from(i: i16) -> Self {
+        Val::S16(i)
+    }
+}
+
+impl From<u32> for Val {
+    fn from(u: u32) -> Self {
+        Val::U32(u)
+    }
+}
+
+impl From<i32> for Val {
+    fn from(i: i32) -> Self {
+        Val::S32(i)
+    }
+}
+
+impl From<u64> for Val {
+    fn from(u: u64) -> Self {
+        Val::U64(u)
+    }
+}
+
+impl From<i64> for Val {
+    fn from(i: i64) -> Self {
+        Val::S64(i)
+    }
+}
+
+impl From<char> for Val {
+    fn from(i: char) -> Self {
+        Val::Char(i)
+    }
+}
+
+impl From<String> for Val {
+    fn from(i: String) -> Self {
+        Val::String(i)
+    }
+}
+
+impl From<ResourceAny> for Val {
+    fn from(i: ResourceAny) -> Self {
+        Val::Resource(i)
+    }
+}
+
+impl From<FutureAny> for Val {
+    fn from(i: FutureAny) -> Self {
+        Val::Future(i)
+    }
+}
+
+impl From<StreamAny> for Val {
+    fn from(i: StreamAny) -> Self {
+        Val::Stream(i)
+    }
 }

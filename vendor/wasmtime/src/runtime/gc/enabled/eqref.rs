@@ -1,11 +1,11 @@
 //! Working with GC `eqref`s.
 
 use crate::{
+    AnyRef, ArrayRef, ArrayType, AsContext, AsContextMut, GcRefImpl, GcRootIndex, HeapType, I31,
+    OwnedRooted, RefType, Rooted, StructRef, StructType, ValRaw, ValType, WasmTy,
     prelude::*,
     runtime::vm::VMGcRef,
     store::{AutoAssertNoGc, StoreOpaque},
-    AnyRef, ArrayRef, ArrayType, AsContext, GcRefImpl, GcRootIndex, HeapType, ManuallyRooted,
-    RefType, Rooted, StructRef, StructType, ValRaw, ValType, WasmTy, I31,
 };
 use core::mem::{self, MaybeUninit};
 use wasmtime_environ::VMGcKind;
@@ -25,7 +25,7 @@ use wasmtime_environ::VMGcKind;
 /// `0x12345678` into a reference, pretend it is a valid `eqref`, and trick the
 /// host into dereferencing it and segfaulting or worse.
 ///
-/// Note that you can also use `Rooted<EqRef>` and `ManuallyRooted<EqRef>` as a
+/// Note that you can also use `Rooted<EqRef>` and `OwnedRooted<EqRef>` as a
 /// type parameter with [`Func::typed`][crate::Func::typed]- and
 /// [`Func::wrap`][crate::Func::wrap]-style APIs.
 ///
@@ -99,9 +99,9 @@ impl From<Rooted<StructRef>> for Rooted<EqRef> {
     }
 }
 
-impl From<ManuallyRooted<StructRef>> for ManuallyRooted<EqRef> {
+impl From<OwnedRooted<StructRef>> for OwnedRooted<EqRef> {
     #[inline]
-    fn from(s: ManuallyRooted<StructRef>) -> Self {
+    fn from(s: OwnedRooted<StructRef>) -> Self {
         s.to_eqref()
     }
 }
@@ -113,15 +113,14 @@ impl From<Rooted<ArrayRef>> for Rooted<EqRef> {
     }
 }
 
-impl From<ManuallyRooted<ArrayRef>> for ManuallyRooted<EqRef> {
+impl From<OwnedRooted<ArrayRef>> for OwnedRooted<EqRef> {
     #[inline]
-    fn from(s: ManuallyRooted<ArrayRef>) -> Self {
+    fn from(s: OwnedRooted<ArrayRef>) -> Self {
         s.to_eqref()
     }
 }
 
 unsafe impl GcRefImpl for EqRef {
-    #[allow(private_interfaces)]
     fn transmute_ref(index: &GcRootIndex) -> &Self {
         // Safety: `EqRef` is a newtype of a `GcRootIndex`.
         let me: &Self = unsafe { mem::transmute(index) };
@@ -146,10 +145,10 @@ impl Rooted<EqRef> {
     }
 }
 
-impl ManuallyRooted<EqRef> {
+impl OwnedRooted<EqRef> {
     /// Upcast this `eqref` into an `anyref`.
     #[inline]
-    pub fn to_anyref(self) -> ManuallyRooted<AnyRef> {
+    pub fn to_anyref(self) -> OwnedRooted<AnyRef> {
         self.unchecked_cast()
     }
 }
@@ -199,7 +198,7 @@ impl EqRef {
             return Ok(HeapType::I31);
         }
 
-        let header = store.gc_store()?.header(gc_ref);
+        let header = store.require_gc_store()?.header(gc_ref);
 
         if header.kind().matches(VMGcKind::StructRef) {
             return Ok(HeapType::ConcreteStruct(
@@ -247,6 +246,33 @@ impl EqRef {
             let actual_ty = self._ty(store)?;
             bail!("type mismatch: expected `(ref {ty})`, found `(ref {actual_ty})`")
         }
+    }
+
+    /// Construct an `eqref` from an `i31`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use wasmtime::*;
+    /// # fn _foo() -> Result<()> {
+    /// let mut store = Store::<()>::default();
+    ///
+    /// // Create an `i31`.
+    /// let i31 = I31::wrapping_u32(999);
+    ///
+    /// // Convert it into an `eqref`.
+    /// let eqref = EqRef::from_i31(&mut store, i31);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn from_i31(mut store: impl AsContextMut, value: I31) -> Rooted<Self> {
+        let mut store = AutoAssertNoGc::new(store.as_context_mut().0);
+        Self::_from_i31(&mut store, value)
+    }
+
+    pub(crate) fn _from_i31(store: &mut AutoAssertNoGc<'_>, value: I31) -> Rooted<Self> {
+        let gc_ref = VMGcRef::from_i31(value.runtime_i31());
+        Rooted::new(store, gc_ref)
     }
 
     /// Is this `eqref` an `i31`?
@@ -321,7 +347,11 @@ impl EqRef {
 
     pub(crate) fn _is_struct(&self, store: &StoreOpaque) -> Result<bool> {
         let gc_ref = self.inner.try_gc_ref(store)?;
-        Ok(!gc_ref.is_i31() && store.gc_store()?.kind(gc_ref).matches(VMGcKind::StructRef))
+        Ok(!gc_ref.is_i31()
+            && store
+                .require_gc_store()?
+                .kind(gc_ref)
+                .matches(VMGcKind::StructRef))
     }
 
     /// Downcast this `eqref` to a `structref`.
@@ -385,7 +415,11 @@ impl EqRef {
 
     pub(crate) fn _is_array(&self, store: &StoreOpaque) -> Result<bool> {
         let gc_ref = self.inner.try_gc_ref(store)?;
-        Ok(!gc_ref.is_i31() && store.gc_store()?.kind(gc_ref).matches(VMGcKind::ArrayRef))
+        Ok(!gc_ref.is_i31()
+            && store
+                .require_gc_store()?
+                .kind(gc_ref)
+                .matches(VMGcKind::ArrayRef))
     }
 
     /// Downcast this `eqref` to an `arrayref`.
@@ -509,7 +543,7 @@ unsafe impl WasmTy for Option<Rooted<EqRef>> {
     }
 }
 
-unsafe impl WasmTy for ManuallyRooted<EqRef> {
+unsafe impl WasmTy for OwnedRooted<EqRef> {
     #[inline]
     fn valtype() -> ValType {
         ValType::Ref(RefType::new(false, HeapType::Eq))
@@ -539,7 +573,7 @@ unsafe impl WasmTy for ManuallyRooted<EqRef> {
     }
 }
 
-unsafe impl WasmTy for Option<ManuallyRooted<EqRef>> {
+unsafe impl WasmTy for Option<OwnedRooted<EqRef>> {
     #[inline]
     fn valtype() -> ValType {
         ValType::EQREF
@@ -559,7 +593,7 @@ unsafe impl WasmTy for Option<ManuallyRooted<EqRef>> {
         ty: &HeapType,
     ) -> Result<()> {
         match self {
-            Some(s) => ManuallyRooted::<EqRef>::dynamic_concrete_type_check(s, store, nullable, ty),
+            Some(s) => OwnedRooted::<EqRef>::dynamic_concrete_type_check(s, store, nullable, ty),
             None => {
                 ensure!(
                     nullable,
@@ -576,11 +610,11 @@ unsafe impl WasmTy for Option<ManuallyRooted<EqRef>> {
     }
 
     fn store(self, store: &mut AutoAssertNoGc<'_>, ptr: &mut MaybeUninit<ValRaw>) -> Result<()> {
-        <ManuallyRooted<EqRef>>::wasm_ty_option_store(self, store, ptr, ValRaw::anyref)
+        <OwnedRooted<EqRef>>::wasm_ty_option_store(self, store, ptr, ValRaw::anyref)
     }
 
     unsafe fn load(store: &mut AutoAssertNoGc<'_>, ptr: &ValRaw) -> Self {
-        <ManuallyRooted<EqRef>>::wasm_ty_option_load(
+        <OwnedRooted<EqRef>>::wasm_ty_option_load(
             store,
             ptr.get_anyref(),
             EqRef::from_cloned_gc_ref,

@@ -1,10 +1,11 @@
 //! Densely numbered entity references as set keys.
 
-use crate::keys::Keys;
 use crate::EntityRef;
+use crate::keys::Keys;
 use core::fmt;
 use core::marker::PhantomData;
 use cranelift_bitset::CompoundBitSet;
+use wasmtime_core::error::OutOfMemory;
 
 /// A set of `K` for densely indexed entity references.
 ///
@@ -23,9 +24,9 @@ where
     unused: PhantomData<K>,
 }
 
-impl<K: fmt::Debug> fmt::Debug for EntitySet<K>
+impl<K> fmt::Debug for EntitySet<K>
 where
-    K: EntityRef,
+    K: fmt::Debug + EntityRef,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_set().entries(self.keys()).finish()
@@ -67,10 +68,23 @@ where
         }
     }
 
+    /// Like `with_capacity` but returns an error on allocation failure.
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, OutOfMemory> {
+        Ok(Self {
+            bitset: CompoundBitSet::try_with_capacity(capacity)?,
+            unused: PhantomData,
+        })
+    }
+
     /// Ensure that the set has enough capacity to hold `capacity` total
     /// elements.
     pub fn ensure_capacity(&mut self, capacity: usize) {
         self.bitset.ensure_capacity(capacity);
+    }
+
+    /// Like `ensure_capacity` but returns an error on allocation failure.
+    pub fn try_ensure_capacity(&mut self, capacity: usize) -> Result<(), OutOfMemory> {
+        self.bitset.try_ensure_capacity(capacity)
     }
 
     /// Get the element at `k` if it exists.
@@ -132,7 +146,7 @@ where
     /// assert_eq!(iter.next(), Some(Entity::new(3)));
     /// assert!(iter.next().is_none());
     /// ```
-    pub fn iter(&self) -> SetIter<K> {
+    pub fn iter(&self) -> SetIter<'_, K> {
         SetIter {
             inner: self.bitset.iter(),
             _phantom: PhantomData,
@@ -148,7 +162,15 @@ where
         self.bitset.insert(index)
     }
 
-    /// Removes and returns the entity from the set if it exists.
+    /// Remove `k` from this bitset.
+    ///
+    /// Returns whether `k` was previously in this set or not.
+    pub fn remove(&mut self, k: K) -> bool {
+        let index = k.index();
+        self.bitset.remove(index)
+    }
+
+    /// Removes and returns the highest-index entity from the set if it exists.
     pub fn pop(&mut self) -> Option<K> {
         let index = self.bitset.pop()?;
         Some(K::new(index))

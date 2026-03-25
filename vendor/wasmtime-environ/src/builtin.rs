@@ -4,14 +4,14 @@ macro_rules! foreach_builtin_function {
     ($mac:ident) => {
         $mac! {
             // Returns an index for wasm's `memory.grow` builtin function.
-            memory32_grow(vmctx: vmctx, delta: u64, index: u32) -> pointer;
+            memory_grow(vmctx: vmctx, delta: u64, index: u32) -> pointer;
             // Returns an index for wasm's `table.copy` when both tables are locally
             // defined.
             table_copy(vmctx: vmctx, dst_index: u32, src_index: u32, dst: u64, src: u64, len: u64) -> bool;
             // Returns an index for wasm's `table.init`.
             table_init(vmctx: vmctx, table: u32, elem: u32, dst: u64, src: u64, len: u64) -> bool;
             // Returns an index for wasm's `elem.drop`.
-            elem_drop(vmctx: vmctx, elem: u32);
+            elem_drop(vmctx: vmctx, elem: u32) -> bool;
             // Returns an index for wasm's `memory.copy`
             memory_copy(vmctx: vmctx, dst_index: u32, dst: u64, src_index: u32, src: u64, len: u64) -> bool;
             // Returns an index for wasm's `memory.fill` instruction.
@@ -21,7 +21,7 @@ macro_rules! foreach_builtin_function {
             // Returns a value for wasm's `ref.func` instruction.
             ref_func(vmctx: vmctx, func: u32) -> pointer;
             // Returns an index for wasm's `data.drop` instruction.
-            data_drop(vmctx: vmctx, data: u32);
+            data_drop(vmctx: vmctx, data: u32) -> bool;
             // Returns a table entry after lazily initializing it.
             table_get_lazy_init_func_ref(vmctx: vmctx, table: u32, index: u64) -> pointer;
             // Returns an index for Wasm's `table.grow` instruction for `funcref`s.
@@ -79,12 +79,6 @@ macro_rules! foreach_builtin_function {
             // Traps if growing the GC heap fails.
             #[cfg(feature = "gc-null")]
             grow_gc_heap(vmctx: vmctx, bytes_needed: u64) -> bool;
-
-            // Do a GC, treating the optional `root` as a GC root and returning
-            // the updated `root` (so that, in the case of moving collectors,
-            // callers have a valid version of `root` again).
-            #[cfg(feature = "gc-drc")]
-            gc(vmctx: vmctx, root: u32) -> u64;
 
             // Allocate a new, uninitialized GC object and return a reference to
             // it.
@@ -226,6 +220,36 @@ macro_rules! foreach_builtin_function {
             // Raises an unconditional trap where the trap information must have
             // been previously filled in.
             raise(vmctx: vmctx);
+
+            // Creates a new continuation from a funcref.
+            #[cfg(feature = "stack-switching")]
+            cont_new(vmctx: vmctx, r: pointer, param_count: u32, result_count: u32) -> pointer;
+
+            // Returns an index for Wasm's `table.grow` instruction
+            // for `contobj`s.  Note that the initial
+            // Option<VMContObj> (i.e., the value to fill the new
+            // slots with) is split into two arguments: The underlying
+            // continuation reference and the revision count.  To
+            // denote the continuation being `None`, `init_contref`
+            // may be 0.
+            #[cfg(feature = "stack-switching")]
+            table_grow_cont_obj(vmctx: vmctx, table: u32, delta: u64, init_contref: pointer, init_revision: size) -> pointer;
+
+            // `value_contref` and `value_revision` together encode
+            // the Option<VMContObj>, as in previous libcall.
+            #[cfg(feature = "stack-switching")]
+            table_fill_cont_obj(vmctx: vmctx, table: u32, dst: u64, value_contref: pointer, value_revision: size, len: u64) -> bool;
+
+            // Return the instance ID for a given vmctx.
+            #[cfg(feature = "gc")]
+            get_instance_id(vmctx: vmctx) -> u32;
+
+            // Throw an exception.
+            #[cfg(feature = "gc")]
+            throw_ref(vmctx: vmctx, exnref: u32) -> bool;
+
+            // Process a debug breakpoint.
+            breakpoint(vmctx: vmctx) -> bool;
         }
     };
 }
@@ -234,10 +258,22 @@ macro_rules! foreach_builtin_function {
 /// `ComponentBuiltinFunctionIndex` using the iterator macro, e.g.
 /// `foreach_builtin_function`, as the way to generate accessor methods.
 macro_rules! declare_builtin_index {
-    ($index_name:ident, $iter:ident) => {
-        /// An index type for builtin functions.
-        #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    (
+        $(#[$attr:meta])*
+        pub struct $index_name:ident : $for_each_builtin:ident ;
+    ) => {
+        $(#[$attr])*
+        #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $index_name(u32);
+
+        impl core::fmt::Debug for $index_name {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.debug_struct(stringify!($index_name))
+                    .field("index", &self.0)
+                    .field("ctor", &self.ctor_name())
+                    .finish()
+            }
+        }
 
         impl $index_name {
             /// Create a new builtin from its raw index
@@ -251,9 +287,40 @@ macro_rules! declare_builtin_index {
                 self.0
             }
 
-            $iter!(declare_builtin_index_constructors);
+            $for_each_builtin!(define_ctor_name);
+
+            $for_each_builtin!(declare_builtin_index_constructors);
+        }
+
+        #[cfg(test)]
+        impl arbitrary::Arbitrary<'_> for $index_name {
+            fn arbitrary(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<Self> {
+                Ok(Self(u.int_in_range(0..=Self::len() - 1)?))
+            }
         }
     };
+}
+
+/// Helper macro used by the above macro.
+macro_rules! define_ctor_name {
+    (
+        $(
+            $( #[$attr:meta] )*
+                $name:ident( $( $pname:ident: $param:ident ),* ) $( -> $result:ident )?;
+        )*
+    ) => {
+        /// Returns the name of the constructor that creates this index.
+        pub fn ctor_name(&self) -> &'static str {
+            let mut _i = self.0;
+            $(
+                if _i == 0 {
+                    return stringify!($name);
+                }
+                _i -= 1;
+            )*
+            unreachable!()
+        }
+    }
 }
 
 /// Helper macro used by the above macro.
@@ -319,7 +386,10 @@ macro_rules! declare_builtin_index_constructors {
 }
 
 // Define `struct BuiltinFunctionIndex`
-declare_builtin_index!(BuiltinFunctionIndex, foreach_builtin_function);
+declare_builtin_index! {
+    /// An index type for builtin functions.
+    pub struct BuiltinFunctionIndex : foreach_builtin_function;
+}
 
 /// Return value of [`BuiltinFunctionIndex::trap_sentinel`].
 pub enum TrapSentinel {
@@ -364,19 +434,15 @@ impl BuiltinFunctionIndex {
             }};
 
             // Growth-related functions return -2 as a sentinel.
-            (@get memory32_grow pointer) => (TrapSentinel::NegativeTwo);
+            (@get memory_grow pointer) => (TrapSentinel::NegativeTwo);
             (@get table_grow_func_ref pointer) => (TrapSentinel::NegativeTwo);
             (@get table_grow_gc_ref pointer) => (TrapSentinel::NegativeTwo);
+            (@get table_grow_cont_obj pointer) => (TrapSentinel::NegativeTwo);
 
-            // Atomics-related functions return a negative value indicating trap
-            // indicate a trap.
+            // Atomics-related functions return a negative value to indicate a trap.
             (@get memory_atomic_notify u64) => (TrapSentinel::Negative);
             (@get memory_atomic_wait32 u64) => (TrapSentinel::Negative);
             (@get memory_atomic_wait64 u64) => (TrapSentinel::Negative);
-
-            // GC returns an optional GC ref, encoded as a `u64` with a negative
-            // value indicating a trap.
-            (@get gc u64) => (TrapSentinel::Negative);
 
             // GC allocation functions return a u32 which is zero to indicate a
             // trap.
@@ -405,6 +471,10 @@ impl BuiltinFunctionIndex {
             (@get i8x16_shuffle i8x16) => (return None);
             (@get fma_f32x4 f32x4) => (return None);
             (@get fma_f64x2 f64x2) => (return None);
+
+            (@get cont_new pointer) => (TrapSentinel::Negative);
+
+            (@get get_instance_id u32) => (return None);
 
             // Bool-returning functions use `false` as an indicator of a trap.
             (@get $name:ident bool) => (TrapSentinel::Falsy);

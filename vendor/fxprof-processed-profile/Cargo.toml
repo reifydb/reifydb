@@ -11,28 +11,43 @@
 
 [package]
 edition = "2021"
-rust-version = "1.58"
+rust-version = "1.60"
 name = "fxprof-processed-profile"
-version = "0.6.0"
+version = "0.8.1"
 authors = ["Markus Stange <mstange.moz@gmail.com>"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "Create profiles in the Firefox Profiler's processed profile JSON format."
 readme = "README.md"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/mstange/samply/"
-resolver = "1"
+
+[lib]
+name = "fxprof_processed_profile"
+path = "src/lib.rs"
+
+[[test]]
+name = "integration_tests"
+path = "tests/integration_tests/main.rs"
 
 [dependencies.bitflags]
-version = "2.0"
+version = "2.5"
 
 [dependencies.debugid]
 version = "0.8.0"
 
-[dependencies.fxhash]
-version = "0.2.1"
+[dependencies.rustc-hash]
+version = "2"
 
 [dependencies.serde]
-version = "1.0"
-features = ["derive"]
+version = "1.0.204"
+
+[dependencies.serde_derive]
+version = "1.0.188"
 
 [dependencies.serde_json]
 version = "1.0"

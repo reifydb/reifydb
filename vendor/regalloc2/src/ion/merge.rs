@@ -12,17 +12,33 @@
 
 //! Bundle merging.
 
-use super::{Env, LiveBundleIndex, SpillSet, SpillSlotIndex, VRegIndex};
-use crate::{
-    ion::{
-        data_structures::{BlockparamOut, CodeRange},
-        LiveRangeList,
-    },
-    Function, Inst, OperandConstraint, OperandKind, PReg, ProgPoint,
+use crate::ion::data_structures::{
+    BlockparamOut, CodeRange, Env, LiveBundleIndex, LiveRangeList, SpillSet, SpillSlotIndex,
+    VRegIndex,
 };
+use crate::{Function, Inst, OperandConstraint, OperandKind, PReg, ProgPoint};
 use alloc::format;
+use core::convert::TryFrom;
 
 impl<'a, F: Function> Env<'a, F> {
+    fn merge_bundle_properties(&mut self, from: LiveBundleIndex, to: LiveBundleIndex) {
+        if self.bundles[from].cached_fixed() {
+            self.bundles[to].set_cached_fixed();
+        }
+        if self.bundles[from].cached_fixed_def() {
+            self.bundles[to].set_cached_fixed_def();
+        }
+        if self.bundles[from].cached_stack() {
+            self.bundles[to].set_cached_stack();
+        }
+        if let Some(theirs) = self.bundles[from].limit {
+            match self.bundles[to].limit {
+                Some(ours) => self.bundles[to].limit = Some(ours.min(theirs)),
+                None => self.bundles[to].limit = Some(theirs),
+            }
+        }
+    }
+
     pub fn merge_bundles(&mut self, from: LiveBundleIndex, to: LiveBundleIndex) -> bool {
         if from == to {
             // Merge bundle into self -- trivial merge.
@@ -112,7 +128,13 @@ impl<'a, F: Function> Env<'a, F> {
         }
 
         // Check for a requirements conflict.
-        if self.bundles[from].cached_fixed() || self.bundles[to].cached_fixed() {
+        if self.bundles[from].cached_stack()
+            || self.bundles[from].cached_fixed()
+            || self.bundles[from].limit.is_some()
+            || self.bundles[to].cached_stack()
+            || self.bundles[to].cached_fixed()
+            || self.bundles[to].limit.is_some()
+        {
             if self.merge_bundle_requirements(from, to).is_err() {
                 trace!(" -> conflicting requirements; aborting merge");
                 return false;
@@ -153,14 +175,7 @@ impl<'a, F: Function> Env<'a, F> {
                 }
             }
             self.bundles[to].ranges = list;
-
-            if self.bundles[from].cached_fixed() {
-                self.bundles[to].set_cached_fixed();
-            }
-            if self.bundles[from].cached_fixed_def() {
-                self.bundles[to].set_cached_fixed_def();
-            }
-
+            self.merge_bundle_properties(from, to);
             return true;
         }
 
@@ -236,12 +251,7 @@ impl<'a, F: Function> Env<'a, F> {
             *to_range = to_range.join(from_range);
         }
 
-        if self.bundles[from].cached_fixed() {
-            self.bundles[to].set_cached_fixed();
-        }
-        if self.bundles[from].cached_fixed_def() {
-            self.bundles[to].set_cached_fixed_def();
-        }
+        self.merge_bundle_properties(from, to);
 
         true
     }
@@ -272,15 +282,32 @@ impl<'a, F: Function> Env<'a, F> {
 
             let mut fixed = false;
             let mut fixed_def = false;
+            let mut stack = false;
+            let mut limit: Option<u8> = None;
             for entry in &self.bundles[bundle].ranges {
                 for u in &self.ranges[entry.index].uses {
-                    if let OperandConstraint::FixedReg(_) = u.operand.constraint() {
-                        fixed = true;
-                        if u.operand.kind() == OperandKind::Def {
-                            fixed_def = true;
+                    use OperandConstraint::*;
+                    match u.operand.constraint() {
+                        FixedReg(_) => {
+                            fixed = true;
+                            if u.operand.kind() == OperandKind::Def {
+                                fixed_def = true;
+                            }
+                        }
+                        Stack => stack = true,
+                        Limit(current) => {
+                            let current = u8::try_from(current)
+                                .expect("the current limit is too large to fit in a u8");
+                            match limit {
+                                Some(prev) => limit = Some(prev.min(current)),
+                                None => limit = Some(current),
+                            }
+                        }
+                        Any | Reg | Reuse(_) => {
+                            continue;
                         }
                     }
-                    if fixed && fixed_def {
+                    if fixed && stack && fixed_def {
                         break;
                     }
                 }
@@ -291,6 +318,10 @@ impl<'a, F: Function> Env<'a, F> {
             if fixed_def {
                 self.bundles[bundle].set_cached_fixed_def();
             }
+            if stack {
+                self.bundles[bundle].set_cached_stack();
+            }
+            self.bundles[bundle].limit = limit;
 
             // Create a spillslot for this bundle.
             let reg = self.vreg(vreg);
@@ -298,7 +329,7 @@ impl<'a, F: Function> Env<'a, F> {
                 slot: SpillSlotIndex::invalid(),
                 required: false,
                 class: reg.class(),
-                reg_hint: PReg::invalid(),
+                hint: PReg::invalid(),
                 spill_bundle: LiveBundleIndex::invalid(),
                 splits: 0,
                 range,
@@ -362,7 +393,34 @@ impl<'a, F: Function> Env<'a, F> {
         for entry in &self.bundles[bundle].ranges {
             total += entry.range.len() as u32;
         }
+        trace!(" -> prio {total}");
         total
+    }
+
+    pub fn compute_bundle_limit(&self, bundle: LiveBundleIndex) -> Option<u8> {
+        let mut limit: Option<u8> = None;
+        for entry in &self.bundles[bundle].ranges {
+            for u in &self.ranges[entry.index].uses {
+                use OperandConstraint::*;
+                match u.operand.constraint() {
+                    Limit(current) => {
+                        let current = u8::try_from(current)
+                            .expect("the current limit is too large to fit in a u8");
+                        match limit {
+                            Some(prev) => limit = Some(prev.min(current)),
+                            None => limit = Some(current),
+                        }
+                    }
+                    FixedReg(_) | Stack => {
+                        break;
+                    }
+                    Any | Reg | Reuse(_) => {
+                        continue;
+                    }
+                }
+            }
+        }
+        limit
     }
 
     pub fn queue_bundles(&mut self) {
@@ -373,12 +431,9 @@ impl<'a, F: Function> Env<'a, F> {
                 trace!(" -> no ranges; skipping");
                 continue;
             }
-            let prio = self.compute_bundle_prio(bundle);
-            trace!(" -> prio {}", prio);
-            self.bundles[bundle].prio = prio;
             self.recompute_bundle_properties(bundle);
-            self.allocation_queue
-                .insert(bundle, prio as usize, PReg::invalid());
+            let prio = self.bundles[bundle].prio as usize;
+            self.allocation_queue.insert(bundle, prio, PReg::invalid());
         }
         self.output.stats.merged_bundle_count = self.allocation_queue.heap.len();
     }

@@ -1,6 +1,6 @@
 use crate::{
-    store::StoreOpaque, ArrayRef, AsContext, GcRefImpl, HeapType, ManuallyRooted, Result, Rooted,
-    StructRef, I31,
+    ArrayRef, AsContext, GcRefImpl, HeapType, I31, OwnedRooted, Result, Rooted, StructRef,
+    store::StoreOpaque,
 };
 
 /// Support for `eqref` disabled at compile time because the `gc` cargo feature
@@ -14,9 +14,9 @@ impl From<Rooted<StructRef>> for Rooted<EqRef> {
     }
 }
 
-impl From<ManuallyRooted<StructRef>> for ManuallyRooted<EqRef> {
+impl From<OwnedRooted<StructRef>> for OwnedRooted<EqRef> {
     #[inline]
-    fn from(s: ManuallyRooted<StructRef>) -> Self {
+    fn from(s: OwnedRooted<StructRef>) -> Self {
         match s.inner {}
     }
 }
@@ -28,9 +28,9 @@ impl From<Rooted<ArrayRef>> for Rooted<EqRef> {
     }
 }
 
-impl From<ManuallyRooted<ArrayRef>> for ManuallyRooted<EqRef> {
+impl From<OwnedRooted<ArrayRef>> for OwnedRooted<EqRef> {
     #[inline]
-    fn from(s: ManuallyRooted<ArrayRef>) -> Self {
+    fn from(s: OwnedRooted<ArrayRef>) -> Self {
         match s.inner {}
     }
 }

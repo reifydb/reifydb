@@ -13,8 +13,8 @@
 //! Spillslot allocation.
 
 use super::{
-    AllocRegResult, Env, LiveRangeKey, PReg, PRegIndex, RegTraversalIter, SpillSetIndex,
-    SpillSlotData, SpillSlotIndex,
+    AllocRegResult, Env, LiveRangeKey, PRegIndex, RegTraversalIter, SpillSetIndex, SpillSlotData,
+    SpillSlotIndex,
 };
 use crate::{Allocation, Function, SpillSlot};
 
@@ -30,7 +30,9 @@ impl<'a, F: Function> Env<'a, F> {
             }
 
             let class = self.ctx.spillsets[self.ctx.bundles[bundle].spillset].class;
-            let hint = self.ctx.spillsets[self.ctx.bundles[bundle].spillset].reg_hint;
+            let hint = self.ctx.spillsets[self.ctx.bundles[bundle].spillset]
+                .hint
+                .as_valid();
 
             // This may be an empty-range bundle whose ranges are not
             // sorted; sort all range-lists again here.
@@ -40,9 +42,8 @@ impl<'a, F: Function> Env<'a, F> {
 
             let mut success = false;
             self.ctx.output.stats.spill_bundle_reg_probes += 1;
-            for preg in
-                RegTraversalIter::new(self.env, class, hint, PReg::invalid(), bundle.index(), None)
-            {
+            let limit = self.bundles[bundle].limit.map(|l| l as usize);
+            for preg in RegTraversalIter::new(self.env, class, None, hint, bundle.index(), limit) {
                 trace!("trying bundle {:?} to preg {:?}", bundle, preg);
                 let preg_idx = PRegIndex::new(preg.index());
                 if let AllocRegResult::Allocated(_) =
@@ -53,6 +54,7 @@ impl<'a, F: Function> Env<'a, F> {
                     break;
                 }
             }
+
             if !success {
                 trace!(
                     "spilling bundle {:?}: marking spillset {:?} as required",

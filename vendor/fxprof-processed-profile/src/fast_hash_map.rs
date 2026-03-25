@@ -1,5 +1,3 @@
-use fxhash::FxHasher;
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
+use rustc_hash::FxHashMap;
 
-pub type FastHashMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
+pub type FastHashMap<K, V> = FxHashMap<K, V>;

@@ -1,15 +1,17 @@
-use crate::prelude::*;
-use crate::runtime::vm::{
-    Imports, InstanceAllocationRequest, InstanceAllocator, ModuleRuntimeInfo,
-    OnDemandInstanceAllocator, StorePtr,
-};
-use crate::store::{InstanceId, StoreOpaque};
 use crate::TableType;
+use crate::prelude::*;
+use crate::runtime::vm::{Imports, ModuleRuntimeInfo, OnDemandInstanceAllocator};
+use crate::store::{AllocateInstanceKind, InstanceId, StoreOpaque, StoreResourceLimiter};
 use alloc::sync::Arc;
+use wasmtime_environ::StaticModuleIndex;
 use wasmtime_environ::{EntityIndex, Module, TypeTrace};
 
-pub fn create_table(store: &mut StoreOpaque, table: &TableType) -> Result<InstanceId> {
-    let mut module = Module::new();
+pub async fn create_table(
+    store: &mut StoreOpaque,
+    limiter: Option<&mut StoreResourceLimiter<'_>>,
+    table: &TableType,
+) -> Result<InstanceId> {
+    let mut module = Module::new(StaticModuleIndex::from_u32(0));
 
     let wasmtime_table = *table.wasmtime_table();
 
@@ -19,36 +21,30 @@ pub fn create_table(store: &mut StoreOpaque, table: &TableType) -> Result<Instan
         wasmtime_table.ref_type
     );
 
-    let table_id = module.tables.push(wasmtime_table);
+    let table_id = module.tables.push(wasmtime_table)?;
 
     // TODO: can this `exports.insert` get removed?
-    module
-        .exports
-        .insert(String::new(), EntityIndex::Table(table_id));
+    let name = module.strings.insert("")?;
+    module.exports.insert(name, EntityIndex::Table(table_id))?;
 
     let imports = Imports::default();
 
     unsafe {
-        let config = store.engine().config();
-        // Use the on-demand allocator when creating handles associated with host objects
-        // The configured instance allocator should only be used when creating module instances
-        // as we don't want host objects to count towards instance limits.
+        let allocator =
+            OnDemandInstanceAllocator::new(store.engine().config().mem_creator.clone(), 0, false);
         let module = Arc::new(module);
-        let runtime_info = &ModuleRuntimeInfo::bare_with_registered_type(
-            module,
-            table.element().clone().into_registered_type(),
-        );
-        let allocator = OnDemandInstanceAllocator::new(config.mem_creator.clone(), 0, false);
-        let handle = allocator.allocate_module(InstanceAllocationRequest {
-            imports,
-            host_state: Box::new(()),
-            store: StorePtr::new(store.traitobj()),
-            runtime_info,
-            wmemcheck: false,
-            pkey: None,
-            tunables: store.engine().tunables(),
-        })?;
-
-        Ok(store.add_dummy_instance(handle))
+        store
+            .allocate_instance(
+                limiter,
+                AllocateInstanceKind::Dummy {
+                    allocator: &allocator,
+                },
+                &ModuleRuntimeInfo::bare_with_registered_type(
+                    module,
+                    table.element().clone().into_registered_type(),
+                )?,
+                imports,
+            )
+            .await
     }
 }

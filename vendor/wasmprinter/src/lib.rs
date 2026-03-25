@@ -7,8 +7,9 @@
 //! and debugging and such.
 
 #![deny(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use operator::{OpPrinter, OperatorSeparator, OperatorState, PrintOperator, PrintOperatorFolded};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -25,6 +26,12 @@ const MAX_WASM_FUNCTION_SIZE: u32 = 128 * 1024;
 
 #[cfg(feature = "component-model")]
 mod component;
+#[cfg(feature = "validate")]
+mod operand_stack;
+#[cfg(not(feature = "validate"))]
+mod operand_stack_disabled;
+#[cfg(not(feature = "validate"))]
+use operand_stack_disabled as operand_stack;
 mod operator;
 mod print;
 
@@ -57,6 +64,7 @@ pub struct Config {
     name_unnamed: bool,
     fold_instructions: bool,
     indent_text: String,
+    print_operand_stack: bool,
 }
 
 impl Default for Config {
@@ -67,6 +75,7 @@ impl Default for Config {
             name_unnamed: false,
             fold_instructions: false,
             indent_text: "  ".to_string(),
+            print_operand_stack: false,
         }
     }
 }
@@ -156,7 +165,14 @@ struct State {
     core: CoreState,
     #[cfg(feature = "component-model")]
     component: ComponentState,
-    custom_section_place: Option<&'static str>,
+    custom_section_place: Option<(&'static str, usize)>,
+    // `custom_section_place` stores the text representation of the location where
+    // a custom section should be serialized in the binary format.
+    // The tuple elements are a str (e.g. "after elem") and the line number
+    // where the custom section place was set. `update_custom_section_place` won't
+    // update the custom section place unless the line number changes; this prevents
+    // printing a place "after xxx" where the xxx section doesn't appear in the text format
+    // (e.g. because it was present but empty in the binary format).
 }
 
 impl State {
@@ -236,6 +252,30 @@ impl Config {
     /// ```
     pub fn fold_instructions(&mut self, enable: bool) -> &mut Self {
         self.fold_instructions = enable;
+        self
+    }
+
+    /// Print the operand stack types within function bodies,
+    /// flagging newly pushed operands when color output is enabled. E.g.:
+    ///
+    /// ```wasm
+    /// (module
+    ///   (type (;0;) (func))
+    ///   (func (;0;) (type 0)
+    ///     i32.const 4
+    ///     ;; [i32]
+    ///     i32.const 5
+    ///     ;; [i32 i32]
+    ///     i32.add
+    ///     ;; [i32]
+    ///     drop
+    ///     ;; []
+    ///   )
+    /// )
+    /// ```
+    #[cfg(feature = "validate")]
+    pub fn print_operand_stack(&mut self, enable: bool) -> &mut Self {
+        self.print_operand_stack = enable;
         self
     }
 
@@ -408,6 +448,12 @@ impl Printer<'_, '_> {
         #[cfg(feature = "component-model")]
         let mut parsers = Vec::new();
 
+        let mut validator = if self.config.print_operand_stack {
+            operand_stack::Validator::new()
+        } else {
+            None
+        };
+
         loop {
             let payload = match parser.parse(bytes, true)? {
                 Chunk::NeedMoreData(_) => unreachable!(),
@@ -416,6 +462,15 @@ impl Printer<'_, '_> {
                     payload
                 }
             };
+            if let Some(validator) = &mut validator {
+                match validator.payload(&payload) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        self.newline_unknown_pos()?;
+                        write!(self.result, ";; module or component is invalid: {e}")?;
+                    }
+                }
+            }
             match payload {
                 Payload::Version { encoding, .. } => {
                     if let Some(e) = expected {
@@ -430,7 +485,8 @@ impl Printer<'_, '_> {
                     match encoding {
                         Encoding::Module => {
                             states.push(State::new(Encoding::Module));
-                            states.last_mut().unwrap().custom_section_place = Some("before first");
+                            states.last_mut().unwrap().custom_section_place =
+                                Some(("before first", self.line));
                             if states.len() > 1 {
                                 self.start_group("core module")?;
                             } else {
@@ -490,48 +546,61 @@ impl Printer<'_, '_> {
                         self.result
                             .print_custom_section(c.name(), c.data_offset(), c.data())?;
                     if printed {
+                        self.update_custom_section_line(&mut states);
                         continue;
                     }
 
                     // If this wasn't handled specifically above then try to
                     // print the known custom builtin sections. If this fails
-                    // because the custom section is malformed then don't fail
-                    // the whole print.
+                    // because the custom section is malformed then print the
+                    // raw contents instead.
                     let state = states.last().unwrap();
                     let start = self.nesting;
-                    let err = match self.print_custom_section(state, c.clone()) {
-                        Ok(()) => continue,
-                        Err(e) if !e.is::<BinaryReaderError>() => return Err(e),
-                        Err(e) => e,
-                    };
-
-                    // Restore the nesting level to what it was prior to
-                    // starting to print the custom section. Then emit a comment
-                    // indicating why the custom section failed to parse.
-                    //
-                    // This may leave broken syntax in the output module but
-                    // it's probably better than swallowing the error.
-                    while self.nesting > start {
-                        self.end_group()?;
+                    match c.as_known() {
+                        KnownCustom::Unknown => self.print_raw_custom_section(state, c.clone())?,
+                        _ => {
+                            match (Printer {
+                                config: self.config,
+                                result: &mut PrintFmtWrite(String::new()),
+                                nesting: 0,
+                                line: 0,
+                                group_lines: Vec::new(),
+                                code_section_hints: Vec::new(),
+                            })
+                            .print_known_custom_section(c.clone())
+                            {
+                                Ok(true) => {
+                                    self.print_known_custom_section(c.clone())?;
+                                }
+                                Ok(false) => self.print_raw_custom_section(state, c.clone())?,
+                                Err(e) if !e.is::<BinaryReaderError>() => return Err(e),
+                                Err(e) => {
+                                    let msg = format!(
+                                        "failed to parse custom section `{}`: {e}",
+                                        c.name()
+                                    );
+                                    for line in msg.lines() {
+                                        self.newline(c.data_offset())?;
+                                        write!(self.result, ";; {line}")?;
+                                    }
+                                    self.print_raw_custom_section(state, c.clone())?
+                                }
+                            }
+                        }
                     }
-                    let msg = format!("failed to parse custom section `{}`: {err}", c.name());
-                    for line in msg.lines() {
-                        self.newline(c.data_offset())?;
-                        write!(self.result, ";; {line}")?;
-                    }
-                    self.newline(c.range().end)?;
+                    assert!(self.nesting == start);
+                    self.update_custom_section_line(&mut states);
                 }
                 Payload::TypeSection(s) => {
-                    self.update_custom_section_place(&mut states, "after type");
                     self.print_types(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after type");
                 }
                 Payload::ImportSection(s) => {
-                    self.update_custom_section_place(&mut states, "after import");
                     Self::ensure_module(&states)?;
-                    self.print_imports(states.last_mut().unwrap(), s)?
+                    self.print_imports(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after import");
                 }
                 Payload::FunctionSection(reader) => {
-                    self.update_custom_section_place(&mut states, "after func");
                     Self::ensure_module(&states)?;
                     if reader.count() > MAX_WASM_FUNCTIONS {
                         bail!(
@@ -543,60 +612,65 @@ impl Printer<'_, '_> {
                     for ty in reader {
                         states.last_mut().unwrap().core.func_to_type.push(Some(ty?))
                     }
+                    self.update_custom_section_place(&mut states, "after func");
                 }
                 Payload::TableSection(s) => {
-                    self.update_custom_section_place(&mut states, "after table");
                     Self::ensure_module(&states)?;
-                    self.print_tables(states.last_mut().unwrap(), s)?
+                    self.print_tables(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after table");
                 }
                 Payload::MemorySection(s) => {
-                    self.update_custom_section_place(&mut states, "after memory");
                     Self::ensure_module(&states)?;
-                    self.print_memories(states.last_mut().unwrap(), s)?
+                    self.print_memories(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after memory");
                 }
                 Payload::TagSection(s) => {
-                    self.update_custom_section_place(&mut states, "after tag");
                     Self::ensure_module(&states)?;
-                    self.print_tags(states.last_mut().unwrap(), s)?
+                    self.print_tags(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after tag");
                 }
                 Payload::GlobalSection(s) => {
-                    self.update_custom_section_place(&mut states, "after global");
                     Self::ensure_module(&states)?;
-                    self.print_globals(states.last_mut().unwrap(), s)?
+                    self.print_globals(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after global");
                 }
                 Payload::ExportSection(s) => {
-                    self.update_custom_section_place(&mut states, "after export");
                     Self::ensure_module(&states)?;
-                    self.print_exports(states.last().unwrap(), s)?
+                    self.print_exports(states.last().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after export");
                 }
                 Payload::StartSection { func, range } => {
-                    self.update_custom_section_place(&mut states, "after start");
                     Self::ensure_module(&states)?;
                     self.newline(range.start)?;
                     self.start_group("start ")?;
                     self.print_idx(&states.last().unwrap().core.func_names, func)?;
                     self.end_group()?;
+                    self.update_custom_section_place(&mut states, "after start");
                 }
                 Payload::ElementSection(s) => {
-                    self.update_custom_section_place(&mut states, "after element");
                     Self::ensure_module(&states)?;
                     self.print_elems(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after elem");
                 }
                 Payload::CodeSectionStart { .. } => {
-                    self.update_custom_section_place(&mut states, "after code");
                     Self::ensure_module(&states)?;
                 }
                 Payload::CodeSectionEntry(body) => {
-                    self.print_code_section_entry(states.last_mut().unwrap(), &body)?
+                    self.print_code_section_entry(
+                        states.last_mut().unwrap(),
+                        &body,
+                        validator.as_mut().and_then(|v| v.next_func()),
+                    )?;
+                    self.update_custom_section_place(&mut states, "after code");
                 }
                 Payload::DataCountSection { .. } => {
                     Self::ensure_module(&states)?;
                     // not part of the text format
                 }
                 Payload::DataSection(s) => {
-                    self.update_custom_section_place(&mut states, "after data");
                     Self::ensure_module(&states)?;
                     self.print_data(states.last_mut().unwrap(), s)?;
+                    self.update_custom_section_place(&mut states, "after data");
                 }
 
                 #[cfg(feature = "component-model")]
@@ -665,7 +739,7 @@ impl Printer<'_, '_> {
                 }
 
                 Payload::End(offset) => {
-                    self.end_group()?; // close the `module` or `component` group
+                    self.end_group_at_pos(offset)?; // close the `module` or `component` group
 
                     #[cfg(feature = "component-model")]
                     {
@@ -680,13 +754,11 @@ impl Printer<'_, '_> {
                                 }
                             }
                             parser = parsers.pop().unwrap();
+
                             continue;
                         }
                     }
-                    self.newline(offset)?;
-                    if self.config.print_offsets {
-                        self.result.newline()?;
-                    }
+                    self.result.newline()?;
                     break;
                 }
 
@@ -702,8 +774,19 @@ impl Printer<'_, '_> {
 
     fn update_custom_section_place(&self, states: &mut Vec<State>, place: &'static str) {
         if let Some(last) = states.last_mut() {
-            if let Some(prev) = &mut last.custom_section_place {
-                *prev = place;
+            if let Some((prev, prev_line)) = &mut last.custom_section_place {
+                if *prev_line != self.line {
+                    *prev = place;
+                    *prev_line = self.line;
+                }
+            }
+        }
+    }
+
+    fn update_custom_section_line(&self, states: &mut Vec<State>) {
+        if let Some(last) = states.last_mut() {
+            if let Some((_, prev_line)) = &mut last.custom_section_place {
+                *prev_line = self.line;
             }
         }
     }
@@ -723,6 +806,20 @@ impl Printer<'_, '_> {
         if let Some(line) = self.group_lines.pop() {
             if line != self.line {
                 self.newline_unknown_pos()?;
+            }
+        }
+        self.result.write_str(")")?;
+        Ok(())
+    }
+
+    fn end_group_at_pos(&mut self, offset: usize) -> Result<()> {
+        self.nesting -= 1;
+        let start_group_line = self.group_lines.pop();
+        if self.config.print_offsets {
+            self.newline(offset)?;
+        } else if let Some(line) = start_group_line {
+            if line != self.line {
+                self.newline(offset)?;
             }
         }
         self.result.write_str(")")?;
@@ -839,6 +936,20 @@ impl Printer<'_, '_> {
             self.start_group("shared")?;
             self.result.write_str(" ")?;
         }
+        if let Some(idx) = ty.describes_idx {
+            self.start_group("describes")?;
+            self.result.write_str(" ")?;
+            self.print_idx(&state.core.type_names, idx.as_module_index().unwrap())?;
+            self.end_group()?;
+            self.result.write_str(" ")?;
+        }
+        if let Some(idx) = ty.descriptor_idx {
+            self.start_group("descriptor")?;
+            self.result.write_str(" ")?;
+            self.print_idx(&state.core.type_names, idx.as_module_index().unwrap())?;
+            self.end_group()?;
+            self.result.write_str(" ")?;
+        }
         let r = match &ty.inner {
             CompositeInnerType::Func(ty) => {
                 self.start_group("func")?;
@@ -894,6 +1005,8 @@ impl Printer<'_, '_> {
                     CompositeType {
                         inner: CompositeInnerType::Func(ty),
                         shared: false,
+                        descriptor_idx: None,
+                        describes_idx: None,
                     },
                 ..
             })) => self.print_func_type(state, ty, names_for).map(Some),
@@ -1014,6 +1127,14 @@ impl Printer<'_, '_> {
         Ok(())
     }
 
+    fn print_valtypes(&mut self, state: &State, tys: Vec<ValType>) -> Result<()> {
+        for ty in tys {
+            self.result.write_str(" ")?;
+            self.print_valtype(state, ty)?;
+        }
+        Ok(())
+    }
+
     fn print_reftype(&mut self, state: &State, ty: RefType) -> Result<()> {
         if ty.is_nullable() {
             match ty.as_non_null() {
@@ -1048,6 +1169,11 @@ impl Printer<'_, '_> {
         match ty {
             HeapType::Concrete(i) => {
                 self.print_idx(&state.core.type_names, i.as_module_index().unwrap())?;
+            }
+            HeapType::Exact(i) => {
+                self.start_group("exact ")?;
+                self.print_idx(&state.core.type_names, i.as_module_index().unwrap())?;
+                self.end_group()?;
             }
             HeapType::Abstract { shared, ty } => {
                 use AbstractHeapType::*;
@@ -1086,27 +1212,63 @@ impl Printer<'_, '_> {
     }
 
     fn print_imports(&mut self, state: &mut State, parser: ImportSectionReader<'_>) -> Result<()> {
-        for import in parser.into_iter_with_offsets() {
-            let (offset, import) = import?;
+        let update_state = |state: &mut State, ty: TypeRef| match ty {
+            TypeRef::Func(idx) | TypeRef::FuncExact(idx) => {
+                debug_assert!(state.core.func_to_type.len() == state.core.funcs as usize);
+                state.core.funcs += 1;
+                state.core.func_to_type.push(Some(idx))
+            }
+            TypeRef::Table(_) => state.core.tables += 1,
+            TypeRef::Memory(_) => state.core.memories += 1,
+            TypeRef::Tag(TagType {
+                kind: _,
+                func_type_idx: idx,
+            }) => {
+                debug_assert!(state.core.tag_to_type.len() == state.core.tags as usize);
+                state.core.tags += 1;
+                state.core.tag_to_type.push(Some(idx))
+            }
+            TypeRef::Global(_) => state.core.globals += 1,
+        };
+
+        for imports in parser.into_iter_with_offsets() {
+            let (offset, imports) = imports?;
             self.newline(offset)?;
-            self.print_import(state, &import, true)?;
-            match import.ty {
-                TypeRef::Func(idx) => {
-                    debug_assert!(state.core.func_to_type.len() == state.core.funcs as usize);
-                    state.core.funcs += 1;
-                    state.core.func_to_type.push(Some(idx))
+            match imports {
+                Imports::Single(_, import) => {
+                    self.print_import(state, &import, true)?;
+                    update_state(state, import.ty);
                 }
-                TypeRef::Table(_) => state.core.tables += 1,
-                TypeRef::Memory(_) => state.core.memories += 1,
-                TypeRef::Tag(TagType {
-                    kind: _,
-                    func_type_idx: idx,
-                }) => {
-                    debug_assert!(state.core.tag_to_type.len() == state.core.tags as usize);
-                    state.core.tags += 1;
-                    state.core.tag_to_type.push(Some(idx))
+                Imports::Compact1 { module, items } => {
+                    self.start_group("import ")?;
+                    self.print_str(module)?;
+                    for res in items.into_iter_with_offsets() {
+                        let (offset, item) = res?;
+                        self.newline(offset)?;
+                        self.start_group("item ")?;
+                        self.print_str(item.name)?;
+                        self.result.write_str(" ")?;
+                        self.print_import_ty(state, &item.ty, true)?;
+                        self.end_group()?;
+                        update_state(state, item.ty);
+                    }
+                    self.end_group()?;
                 }
-                TypeRef::Global(_) => state.core.globals += 1,
+                Imports::Compact2 { module, ty, names } => {
+                    self.start_group("import ")?;
+                    self.print_str(module)?;
+                    for res in names.into_iter_with_offsets() {
+                        let (offset, item) = res?;
+                        self.newline(offset)?;
+                        self.start_group("item ")?;
+                        self.print_str(item)?;
+                        self.end_group()?;
+                        update_state(state, ty);
+                    }
+                    self.newline(offset)?;
+                    self.print_import_ty(state, &ty, false)?;
+                    self.end_group()?;
+                }
             }
         }
         Ok(())
@@ -1132,6 +1294,16 @@ impl Printer<'_, '_> {
                     self.result.write_str(" ")?;
                 }
                 self.print_core_type_ref(state, *f)?;
+            }
+            TypeRef::FuncExact(f) => {
+                self.start_group("func ")?;
+                if index {
+                    self.print_name(&state.core.func_names, state.core.funcs)?;
+                    self.result.write_str(" ")?;
+                }
+                self.start_group("exact ")?;
+                self.print_core_type_ref(state, *f)?;
+                self.end_group()?;
             }
             TypeRef::Table(f) => self.print_table_type(state, f, index)?,
             TypeRef::Memory(f) => self.print_memory_type(state, f, index)?,
@@ -1201,9 +1373,9 @@ impl Printer<'_, '_> {
         T: fmt::Display,
     {
         self.result.start_literal()?;
-        write!(self.result, "{}", initial)?;
+        write!(self.result, "{initial}")?;
         if let Some(max) = maximum {
-            write!(self.result, " {}", max)?;
+            write!(self.result, " {max}")?;
         }
         self.result.reset_color()?;
         Ok(())
@@ -1290,6 +1462,7 @@ impl Printer<'_, '_> {
         &mut self,
         state: &mut State,
         body: &FunctionBody<'_>,
+        validator: Option<operand_stack::FuncValidator>,
     ) -> Result<()> {
         self.newline(body.get_binary_reader().original_position())?;
         self.start_group("func ")?;
@@ -1316,11 +1489,13 @@ impl Printer<'_, '_> {
 
         if self.config.print_skeleton {
             self.result.write_str(" ...")?;
+            self.end_group()?;
         } else {
-            self.print_func_body(state, func_idx, params, &body, &hints)?;
+            let end_pos =
+                self.print_func_body(state, func_idx, params, &body, &hints, validator)?;
+            self.end_group_at_pos(end_pos)?;
         }
 
-        self.end_group()?;
         state.core.funcs += 1;
         Ok(())
     }
@@ -1332,7 +1507,8 @@ impl Printer<'_, '_> {
         params: u32,
         body: &FunctionBody<'_>,
         branch_hints: &[(usize, BranchHint)],
-    ) -> Result<()> {
+        mut validator: Option<operand_stack::FuncValidator>,
+    ) -> Result<usize> {
         let mut first = true;
         let mut local_idx = 0;
         let mut locals = NamedLocalPrinter::new("local");
@@ -1362,20 +1538,39 @@ impl Printer<'_, '_> {
         }
         locals.finish(self)?;
 
+        if let Some(f) = &mut validator {
+            if let Err(e) = f.read_locals(body.get_binary_reader()) {
+                validator = None;
+                self.newline_unknown_pos()?;
+                write!(self.result, ";; locals are invalid: {e}")?;
+            }
+        }
+
         let nesting_start = self.nesting;
         let fold_instructions = self.config.fold_instructions;
         let mut operator_state = OperatorState::new(self, OperatorSeparator::Newline);
 
-        if fold_instructions {
+        let end_pos = if fold_instructions {
             let mut folded_printer = PrintOperatorFolded::new(self, state, &mut operator_state);
             folded_printer.set_offset(func_start);
             folded_printer.begin_function(func_idx)?;
-            Self::print_operators(&mut reader, branch_hints, func_start, &mut folded_printer)?;
-            folded_printer.finalize()?;
+            Self::print_operators(
+                &mut reader,
+                branch_hints,
+                func_start,
+                &mut folded_printer,
+                validator,
+            )?
         } else {
             let mut flat_printer = PrintOperator::new(self, state, &mut operator_state);
-            Self::print_operators(&mut reader, branch_hints, func_start, &mut flat_printer)?;
-        }
+            Self::print_operators(
+                &mut reader,
+                branch_hints,
+                func_start,
+                &mut flat_printer,
+                validator,
+            )?
+        };
 
         // If this was an invalid function body then the nesting may not
         // have reset back to normal. Fix that up here and forcibly insert
@@ -1387,7 +1582,7 @@ impl Printer<'_, '_> {
             self.newline(reader.original_position())?;
         }
 
-        Ok(())
+        Ok(end_pos)
     }
 
     fn print_operators<'a, O: OpPrinter>(
@@ -1395,13 +1590,26 @@ impl Printer<'_, '_> {
         mut branch_hints: &[(usize, BranchHint)],
         func_start: usize,
         op_printer: &mut O,
-    ) -> Result<()> {
+        mut validator: Option<operand_stack::FuncValidator>,
+    ) -> Result<usize> {
         let mut ops = OperatorsReader::new(body.clone());
         while !ops.eof() {
             if ops.is_end_then_eof() {
+                let mut annotation = None;
+                if let Some(f) = &mut validator {
+                    match f.visit_operator(&ops, true) {
+                        Ok(()) => {}
+                        Err(_) => {
+                            annotation = Some(String::from("type mismatch at end of expression"))
+                        }
+                    }
+                }
+
+                let end_pos = ops.original_position();
                 ops.read()?; // final "end" opcode terminates instruction sequence
                 ops.finish()?;
-                return Ok(());
+                op_printer.finalize(annotation.as_deref())?;
+                return Ok(end_pos);
             }
 
             // Branch hints are stored in increasing order of their body offset
@@ -1412,9 +1620,22 @@ impl Printer<'_, '_> {
                     op_printer.branch_hint(*hint_offset, hint.taken)?;
                 }
             }
-
+            let mut annotation = None;
+            if let Some(f) = &mut validator {
+                let result = f
+                    .visit_operator(&ops, false)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|()| f.visualize_operand_stack(op_printer.use_color()));
+                match result {
+                    Ok(s) => annotation = Some(s),
+                    Err(_) => {
+                        validator = None;
+                        annotation = Some(String::from("(invalid)"));
+                    }
+                }
+            }
             op_printer.set_offset(ops.original_position());
-            op_printer.visit_operator(&mut ops)?;
+            op_printer.visit_operator(&mut ops, annotation.as_deref())?;
         }
         ops.finish()?; // for the error message
         bail!("unexpected end of operators");
@@ -1434,7 +1655,11 @@ impl Printer<'_, '_> {
 
         if self.config.print_offsets {
             match offset {
-                Some(offset) => write!(self.result, "(;@{offset:<6x};)")?,
+                Some(offset) => {
+                    self.result.start_comment()?;
+                    write!(self.result, "(;@{offset:<6x};)")?;
+                    self.result.reset_color()?;
+                }
                 None => self.result.write_str("           ")?,
             }
         }
@@ -1469,7 +1694,7 @@ impl Printer<'_, '_> {
 
     fn print_external_kind(&mut self, state: &State, kind: ExternalKind, index: u32) -> Result<()> {
         match kind {
-            ExternalKind::Func => {
+            ExternalKind::Func | ExternalKind::FuncExact => {
                 self.start_group("func ")?;
                 self.print_idx(&state.core.func_names, index)?;
             }
@@ -1501,6 +1726,10 @@ impl Printer<'_, '_> {
         Ok(())
     }
 
+    // Note: in the text format, modules can use identifiers that are defined anywhere, but
+    // components can only use previously-defined identifiers. In the binary format,
+    // invalid components can make forward references to an index that appears in the name section;
+    // these can be printed but the output won't parse.
     fn print_idx<K>(&mut self, names: &NamingMap<u32, K>, idx: u32) -> Result<()>
     where
         K: NamingNamespace,
@@ -1524,7 +1753,7 @@ impl Printer<'_, '_> {
         match state.core.local_names.index_to_name.get(&(func, idx)) {
             Some(name) => name.write_identifier(self)?,
             None if self.config.name_unnamed => write!(self.result, "$#local{idx}")?,
-            None => write!(self.result, "{}", idx)?,
+            None => write!(self.result, "{idx}")?,
         }
         self.result.reset_color()?;
         Ok(())
@@ -1535,7 +1764,7 @@ impl Printer<'_, '_> {
         match state.core.field_names.index_to_name.get(&(ty, idx)) {
             Some(name) => name.write_identifier(self)?,
             None if self.config.name_unnamed => write!(self.result, "$#field{idx}")?,
-            None => write!(self.result, "{}", idx)?,
+            None => write!(self.result, "{idx}")?,
         }
         self.result.reset_color()?;
         Ok(())
@@ -1684,11 +1913,10 @@ impl Printer<'_, '_> {
         if fold {
             let mut folded_printer = PrintOperatorFolded::new(self, state, &mut operator_state);
             folded_printer.begin_const_expr();
-            Self::print_operators(&mut reader, &[], 0, &mut folded_printer)?;
-            folded_printer.finalize()?;
+            Self::print_operators(&mut reader, &[], 0, &mut folded_printer, None)?;
         } else {
             let mut op_printer = PrintOperator::new(self, state, &mut operator_state);
-            Self::print_operators(&mut reader, &[], 0, &mut op_printer)?;
+            Self::print_operators(&mut reader, &[], 0, &mut op_printer, None)?;
         }
 
         Ok(())
@@ -1735,33 +1963,29 @@ impl Printer<'_, '_> {
         Ok(())
     }
 
-    fn print_custom_section(
-        &mut self,
-        state: &State,
-        section: CustomSectionReader<'_>,
-    ) -> Result<()> {
+    fn print_known_custom_section(&mut self, section: CustomSectionReader<'_>) -> Result<bool> {
         match section.as_known() {
             // For now `wasmprinter` has invented syntax for `producers` and
             // `dylink.0` below to use in tests. Note that this syntax is not
             // official at this time.
             KnownCustom::Producers(s) => {
                 self.newline(section.range().start)?;
-                self.print_producers_section(s)
+                self.print_producers_section(s)?;
+                Ok(true)
             }
             KnownCustom::Dylink0(s) => {
                 self.newline(section.range().start)?;
-                self.print_dylink0_section(s)
+                self.print_dylink0_section(s)?;
+                Ok(true)
             }
 
             // These are parsed during `read_names` and are part of
             // printing elsewhere, so don't print them.
-            KnownCustom::Name(_) | KnownCustom::BranchHints(_) => Ok(()),
+            KnownCustom::Name(_) | KnownCustom::BranchHints(_) => Ok(true),
             #[cfg(feature = "component-model")]
-            KnownCustom::ComponentName(_) => Ok(()),
+            KnownCustom::ComponentName(_) => Ok(true),
 
-            // Custom sections without a text format at this time and unknown
-            // custom sections get a `@custom` annotation printed.
-            _ => self.print_raw_custom_section(state, section),
+            _ => Ok(false),
         }
     }
 
@@ -1773,7 +1997,7 @@ impl Printer<'_, '_> {
         self.newline(section.range().start)?;
         self.start_group("@custom ")?;
         self.print_str(section.name())?;
-        if let Some(place) = state.custom_section_place {
+        if let Some((place, _)) = state.custom_section_place {
             write!(self.result, " ({place})")?;
         }
         self.result.write_str(" ")?;
@@ -1863,6 +2087,15 @@ impl Printer<'_, '_> {
                         self.end_group()?;
                     }
                 }
+                Dylink0Subsection::RuntimePath(runtime_path) => {
+                    self.newline(start)?;
+                    self.start_group("runtime-path")?;
+                    for s in runtime_path {
+                        self.result.write_str(" ")?;
+                        self.print_str(s)?;
+                    }
+                    self.end_group()?;
+                }
                 Dylink0Subsection::Unknown { ty, .. } => {
                     bail!("don't know how to print dylink.0 subsection id {ty}");
                 }
@@ -1894,7 +2127,7 @@ impl Printer<'_, '_> {
             ABSOLUTE = "absolute"
         }
         if !flags.is_empty() {
-            write!(self.result, " {:#x}", flags)?;
+            write!(self.result, " {flags:#x}")?;
         }
         Ok(())
     }

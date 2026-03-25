@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use crate::runtime::vm::sys::vm::MemoryImageSource;
 use crate::runtime::vm::{HostAlignedByteCount, SendSyncPtr};
-use rustix::mm::{mprotect, MprotectFlags};
+use rustix::mm::{MprotectFlags, mprotect};
 use std::ops::Range;
 use std::ptr::{self, NonNull};
 #[cfg(feature = "std")]
@@ -88,7 +88,7 @@ impl Mmap {
             .metadata()
             .context("failed to get file metadata")?
             .len();
-        let len = usize::try_from(len).map_err(|_| anyhow::anyhow!("file too large to map"))?;
+        let len = usize::try_from(len).map_err(|_| crate::format_err!("file too large to map"))?;
         let ptr = unsafe {
             rustix::mm::mmap(
                 ptr::null_mut(),
@@ -98,7 +98,7 @@ impl Mmap {
                 &file,
                 0,
             )
-            .context(format!("mmap failed to allocate {len:#x} bytes"))?
+            .with_context(|| format!("mmap failed to allocate {len:#x} bytes"))?
         };
         let memory = std::ptr::slice_from_raw_parts_mut(ptr.cast(), len);
         let memory = SendSyncPtr::new(NonNull::new(memory).unwrap());
@@ -141,8 +141,28 @@ impl Mmap {
         range: Range<usize>,
         enable_branch_protection: bool,
     ) -> Result<()> {
-        let base = self.memory.as_ptr().byte_add(range.start).cast();
+        let base = unsafe { self.memory.as_ptr().byte_add(range.start).cast() };
         let len = range.end - range.start;
+
+        if !cfg!(feature = "std") {
+            bail!(
+                "with the `std` feature disabled at compile time \
+                 there must be a custom implementation of publishing \
+                 code memory, otherwise it's unknown how to do icache \
+                 management"
+            );
+        }
+
+        // Clear the newly allocated code from cache if the processor requires
+        // it
+        //
+        // Do this before marking the memory as R+X, technically we should be
+        // able to do it after but there are some CPU's that have had errata
+        // about doing this with read only memory.
+        #[cfg(feature = "std")]
+        unsafe {
+            wasmtime_jit_icache_coherence::clear_cache(base, len).context("failed cache clear")?;
+        }
 
         let flags = MprotectFlags::READ | MprotectFlags::EXEC;
         let flags = if enable_branch_protection {
@@ -159,16 +179,35 @@ impl Mmap {
             flags
         };
 
-        mprotect(base, len, flags)?;
+        unsafe {
+            mprotect(base, len, flags)?;
+        }
+
+        // Flush any in-flight instructions from the pipeline
+        #[cfg(feature = "std")]
+        wasmtime_jit_icache_coherence::pipeline_flush_mt().context("Failed pipeline flush")?;
 
         Ok(())
     }
 
     pub unsafe fn make_readonly(&self, range: Range<usize>) -> Result<()> {
-        let base = self.memory.as_ptr().byte_add(range.start).cast();
+        let base = unsafe { self.memory.as_ptr().byte_add(range.start).cast() };
         let len = range.end - range.start;
 
-        mprotect(base, len, MprotectFlags::READ)?;
+        unsafe {
+            mprotect(base, len, MprotectFlags::READ)?;
+        }
+
+        Ok(())
+    }
+
+    pub unsafe fn make_readwrite(&self, range: Range<usize>) -> Result<()> {
+        let base = unsafe { self.memory.as_ptr().byte_add(range.start).cast() };
+        let len = range.end - range.start;
+
+        unsafe {
+            mprotect(base, len, MprotectFlags::READ | MprotectFlags::WRITE)?;
+        }
 
         Ok(())
     }

@@ -15,18 +15,27 @@ mod signals;
 #[cfg(all(has_native_signals))]
 pub use self::signals::*;
 
+#[cfg(feature = "gc")]
+use crate::ThrownException;
 use crate::runtime::module::lookup_code;
 use crate::runtime::store::{ExecutorRef, StoreOpaque};
 use crate::runtime::vm::sys::traphandlers;
-use crate::runtime::vm::{f32x4, f64x2, i8x16, InterpreterRef, VMContext, VMStoreContext};
-use crate::{prelude::*, EntryStoreContext};
+use crate::runtime::vm::{InterpreterRef, VMContext, VMStore, VMStoreContext, f32x4, f64x2, i8x16};
+#[cfg(all(feature = "debug", feature = "gc"))]
+use crate::store::AsStoreOpaque;
+use crate::{EntryStoreContext, prelude::*};
 use crate::{StoreContextMut, WasmBacktrace};
 use core::cell::Cell;
 use core::num::NonZeroU32;
-use core::ops::Range;
 use core::ptr::{self, NonNull};
+use wasmtime_unwinder::Handler;
 
+#[cfg(feature = "debug")]
+pub(crate) use self::backtrace::Activation;
 pub use self::backtrace::Backtrace;
+#[cfg(feature = "gc")]
+pub use wasmtime_unwinder::Frame;
+
 pub use self::coredump::CoreDumpStack;
 pub use self::tls::tls_eager_initialize;
 #[cfg(feature = "async")]
@@ -48,48 +57,52 @@ pub(crate) enum TrapTest {
     #[cfg_attr(miri, expect(dead_code, reason = "using #[cfg] too unergonomic"))]
     HandledByEmbedder,
     /// This is a wasm trap, it needs to be handled.
-    #[cfg_attr(miri, expect(dead_code, reason = "using #[cfg] too unergonomic"))]
-    Trap {
-        /// How to longjmp back to the original wasm frame.
-        #[cfg(has_host_compiler_backend)]
-        jmp_buf: *const u8,
-    },
+    Trap(Handler),
 }
 
 fn lazy_per_thread_init() {
     traphandlers::lazy_per_thread_init();
 }
 
-/// Raises a preexisting trap and unwinds.
+/// Raises a preexisting trap or exception and unwinds.
 ///
-/// This function will execute the `longjmp` to make its way back to the
-/// original `setjmp` performed when wasm was entered. This is currently
-/// only called from the `raise` builtin of Wasmtime. This builtin is only used
-/// when the host returns back to wasm and indicates that a trap should be
-/// raised. In this situation the host has already stored trap information
-/// within the `CallThreadState` and this is the low-level operation to actually
-/// perform an unwind.
+/// If the preexisting state has registered a trap, this function will execute
+/// the `Handler::resume` to make its way back to the original exception
+/// handler created when Wasm was entered. If the state has registered an
+/// exception, this function will perform the unwind action registered: either
+/// resetting PC, FP, and SP to the handler in the middle of the Wasm
+/// activation on the stack, or the entry trampoline back to the the host, if
+/// the exception is uncaught.
 ///
-/// This function won't be use with Pulley, for example, as the interpreter
-/// halts differently than native code. Additionally one day this will ideally
-/// be implemented by Cranelift itself without need of a libcall when Cranelift
-/// implements the exception handling proposal for example.
+/// This is currently only called from the `raise` builtin of
+/// Wasmtime. This builtin is only used when the host returns back to
+/// wasm and indicates that a trap or exception should be raised. In
+/// this situation the host has already stored trap or exception
+/// information within the `CallThreadState` and this is the low-level
+/// operation to actually perform an unwind.
+///
+/// Note that this function is used both for Pulley and for native execution.
+/// For Pulley this function will return and the interpreter will be
+/// responsible for handling the control-flow transfer. For native this
+/// function will not return as the control flow transfer will be handled
+/// internally.
 ///
 /// # Safety
 ///
 /// Only safe to call when wasm code is on the stack, aka `catch_traps` must
 /// have been previously called. Additionally no Rust destructors can be on the
 /// stack. They will be skipped and not executed.
-#[cfg(has_host_compiler_backend)]
-pub(super) unsafe fn raise_preexisting_trap() -> ! {
-    tls::with(|info| info.unwrap().unwind())
+pub(super) unsafe fn raise_preexisting_trap(store: &mut dyn VMStore) {
+    tls::with(|info| unsafe { info.unwrap().unwind(store) })
 }
 
-/// Invokes the closure `f` and returns a `bool` if it succeeded.
+/// Invokes the closure `f` and handles any error/panic/trap that happens
+/// within.
 ///
-/// This will invoke the closure `f` which returns a value that implements
-/// `HostResult`. This trait abstracts over how host values are translated to
-/// ABI values when going back into wasm. Some examples are:
+/// This will invoke the closure `f` with the provided `store` and the closure
+/// will return a value that implements `HostResult`. This trait abstracts over
+/// how host values are translated to ABI values when going back into wasm.
+/// Some examples are:
 ///
 /// * `T` - bare return types (not results) are simply returned as-is. No
 ///   `catch_unwind` happens as if a trap can't happen then the host shouldn't
@@ -107,7 +120,10 @@ pub(super) unsafe fn raise_preexisting_trap() -> ! {
 /// This function acts as a bridge between the two to appropriately handle
 /// encoding host values to Cranelift-understood ABIs via the `HostResult`
 /// trait.
-pub fn catch_unwind_and_record_trap<R>(f: impl FnOnce() -> R) -> R::Abi
+pub fn catch_unwind_and_record_trap<R>(
+    store: &mut dyn VMStore,
+    f: impl FnOnce(&mut dyn VMStore) -> R,
+) -> R::Abi
 where
     R: HostResult,
 {
@@ -115,9 +131,9 @@ where
     // return value is always provided and if unwind information is provided
     // (e.g. `ret` is a "false"-y value) then it's recorded in TLS for the
     // unwind operation that's about to happen from Cranelift-generated code.
-    let (ret, unwind) = R::maybe_catch_unwind(f);
+    let (ret, unwind) = R::maybe_catch_unwind(store, |store| f(store));
     if let Some(unwind) = unwind {
-        tls::with(|info| info.unwrap().record_unwind(unwind));
+        tls::with(|info| info.unwrap().record_unwind(store, unwind));
     }
     ret
 }
@@ -149,7 +165,10 @@ pub trait HostResult {
     /// back to wasm (which should be soon after calling this through
     /// `catch_unwind_and_record_trap`) then wasm will very quickly turn around
     /// and initiate an unwind (currently through `raise_preexisting_trap`).
-    fn maybe_catch_unwind(f: impl FnOnce() -> Self) -> (Self::Abi, Option<UnwindReason>);
+    fn maybe_catch_unwind(
+        store: &mut dyn VMStore,
+        f: impl FnOnce(&mut dyn VMStore) -> Self,
+    ) -> (Self::Abi, Option<UnwindReason>);
 }
 
 // Base case implementations that do not catch unwinds. These are for libcalls
@@ -162,8 +181,12 @@ macro_rules! host_result_no_catch {
         $(
             impl HostResult for $t {
                 type Abi = $t;
-                fn maybe_catch_unwind(f: impl FnOnce() -> $t) -> ($t, Option<UnwindReason>) {
-                    (f(), None)
+                #[allow(unreachable_code, reason = "some types uninhabited on some platforms")]
+                fn maybe_catch_unwind(
+                    store: &mut dyn VMStore,
+                    f: impl FnOnce(&mut dyn VMStore) -> $t,
+                ) -> ($t, Option<UnwindReason>) {
+                    (f(store), None)
                 }
             }
         )*
@@ -185,8 +208,11 @@ host_result_no_catch! {
 
 impl HostResult for NonNull<u8> {
     type Abi = *mut u8;
-    fn maybe_catch_unwind(f: impl FnOnce() -> Self) -> (*mut u8, Option<UnwindReason>) {
-        (f().as_ptr(), None)
+    fn maybe_catch_unwind(
+        store: &mut dyn VMStore,
+        f: impl FnOnce(&mut dyn VMStore) -> Self,
+    ) -> (*mut u8, Option<UnwindReason>) {
+        (f(store).as_ptr(), None)
     }
 }
 
@@ -212,11 +238,14 @@ where
 {
     type Abi = T::Abi;
 
-    fn maybe_catch_unwind(f: impl FnOnce() -> Result<T, E>) -> (T::Abi, Option<UnwindReason>) {
+    fn maybe_catch_unwind(
+        store: &mut dyn VMStore,
+        f: impl FnOnce(&mut dyn VMStore) -> Result<T, E>,
+    ) -> (T::Abi, Option<UnwindReason>) {
         // First prepare the closure `f` as something that'll be invoked to
         // generate the return value of this function. This is the
         // conditionally, below, passed to `catch_unwind`.
-        let f = move || match f() {
+        let f = move || match f(store) {
             Ok(ret) => (ret.into_abi(), None),
             Err(reason) => (T::SENTINEL, Some(UnwindReason::Trap(reason.into()))),
         };
@@ -305,6 +334,14 @@ unsafe impl HostResultHasUnwindSentinel for core::convert::Infallible {
     }
 }
 
+unsafe impl HostResultHasUnwindSentinel for bool {
+    type Abi = u32;
+    const SENTINEL: Self::Abi = u32::MAX;
+    fn into_abi(self) -> Self::Abi {
+        u32::from(self)
+    }
+}
+
 /// Stores trace message with backtrace.
 #[derive(Debug)]
 pub struct Trap {
@@ -316,7 +353,8 @@ pub struct Trap {
     pub coredumpstack: Option<CoreDumpStack>,
 }
 
-/// Enumeration of different methods of raising a trap.
+/// Enumeration of different methods of raising a trap (or a sentinel
+/// for an exception).
 #[derive(Debug)]
 pub enum TrapReason {
     /// A user-raised trap through `raise_user_trap`.
@@ -347,11 +385,27 @@ pub enum TrapReason {
 
     /// A trap raised from a wasm libcall
     Wasm(wasmtime_environ::Trap),
+
+    /// An exception.
+    ///
+    /// Note that internally, exceptions are rooted on the Store, while
+    /// when crossing the public API, exceptions are held in a
+    /// `wasmtime::Exception` which contains a boxed root and implements
+    /// `Error`. This choice is intentional, to keep the internal
+    /// implementation lightweight and ensure the types represent only
+    /// allowable states.
+    #[cfg(feature = "gc")]
+    Exception,
 }
 
 impl From<Error> for TrapReason {
-    fn from(err: Error) -> Self {
-        TrapReason::User(err)
+    fn from(error: Error) -> Self {
+        #[cfg(feature = "gc")]
+        if error.is::<ThrownException>() {
+            return TrapReason::Exception;
+        }
+
+        TrapReason::User(error)
     }
 }
 
@@ -363,74 +417,99 @@ impl From<wasmtime_environ::Trap> for TrapReason {
 
 /// Catches any wasm traps that happen within the execution of `closure`,
 /// returning them as a `Result`.
-///
-/// # Unsafety
-///
-/// This function is unsafe because during the execution of `closure` it may be
-/// longjmp'd over and none of its destructors on the stack may be run.
-pub unsafe fn catch_traps<T, F>(
+pub fn catch_traps<T, F>(
     store: &mut StoreContextMut<'_, T>,
-    old_state: &EntryStoreContext,
+    old_state: &mut EntryStoreContext,
     mut closure: F,
-) -> Result<(), Box<Trap>>
+) -> Result<()>
 where
     F: FnMut(NonNull<VMContext>, Option<InterpreterRef<'_>>) -> bool,
 {
     let caller = store.0.default_caller();
 
-    let result = CallThreadState::new(store.0, old_state).with(|cx| match store.0.executor() {
-        // In interpreted mode directly invoke the host closure since we won't
-        // be using host-based `setjmp`/`longjmp` as that's not going to save
-        // the context we want.
-        ExecutorRef::Interpreter(r) => {
-            cx.jmp_buf
-                .set(CallThreadState::JMP_BUF_INTERPRETER_SENTINEL);
-            closure(caller, Some(r))
-        }
-
-        // In native mode, however, defer to C to do the `setjmp` since Rust
-        // doesn't understand `setjmp`.
-        //
-        // Note that here we pass a function pointer to C to catch longjmp
-        // within, here it's `call_closure`, and that passes `None` for the
-        // interpreter since this branch is only ever taken if the interpreter
-        // isn't present.
+    let result = CallThreadState::new(store.0, old_state).with(|_cx| match store.0.executor() {
+        ExecutorRef::Interpreter(r) => closure(caller, Some(r)),
         #[cfg(has_host_compiler_backend)]
-        ExecutorRef::Native => traphandlers::wasmtime_setjmp(
-            cx.jmp_buf.as_ptr(),
-            {
-                extern "C" fn call_closure<F>(payload: *mut u8, caller: NonNull<VMContext>) -> bool
-                where
-                    F: FnMut(NonNull<VMContext>, Option<InterpreterRef<'_>>) -> bool,
-                {
-                    unsafe { (*(payload as *mut F))(caller, None) }
-                }
-
-                call_closure::<F>
-            },
-            &mut closure as *mut F as *mut u8,
-            caller,
-        ),
+        ExecutorRef::Native => closure(caller, None),
     });
 
-    return match result {
+    match result {
         Ok(x) => Ok(x),
-        Err((UnwindReason::Trap(reason), backtrace, coredumpstack)) => Err(Box::new(Trap {
-            reason,
+        #[cfg(feature = "gc")]
+        Err(UnwindState::UnwindToHost {
+            reason: UnwindReason::Trap(TrapReason::Exception),
+            backtrace: _,
+            coredump_stack: _,
+        }) => Err(ThrownException.into()),
+        Err(UnwindState::UnwindToHost {
+            reason: UnwindReason::Trap(reason),
             backtrace,
-            coredumpstack,
-        })),
+            coredump_stack,
+        }) => Err(crate::trap::from_runtime_box(
+            store.0,
+            Box::new(Trap {
+                reason,
+                backtrace,
+                coredumpstack: coredump_stack,
+            }),
+        )),
         #[cfg(all(feature = "std", panic = "unwind"))]
-        Err((UnwindReason::Panic(panic), _, _)) => std::panic::resume_unwind(panic),
-    };
+        Err(UnwindState::UnwindToHost {
+            reason: UnwindReason::Panic(panic),
+            ..
+        }) => std::panic::resume_unwind(panic),
+        #[cfg(feature = "gc")]
+        Err(UnwindState::UnwindToWasm { .. }) => {
+            unreachable!("We should not have returned to the host with an UnwindToWasm state");
+        }
+        Err(UnwindState::None) => {
+            unreachable!("We should not have gotten an error with no unwind state");
+        }
+    }
 }
 
 // Module to hide visibility of the `CallThreadState::prev` field and force
 // usage of its accessor methods.
 mod call_thread_state {
     use super::*;
-    use crate::runtime::vm::Unwind;
     use crate::EntryStoreContext;
+    use crate::runtime::vm::{Unwind, VMStackChain};
+
+    /// Queued-up unwinding on the CallThreadState, ready to be
+    /// enacted by `unwind()`.
+    ///
+    /// This represents either a request to unwind to the entry point
+    /// from host, with associated data; or a request to
+    /// unwind into the middle of the Wasm action, e.g. when an
+    /// exception is caught.
+    pub enum UnwindState {
+        /// Unwind all the way to the entry from host to Wasm, using
+        /// the handler configured in the entry trampoline.
+        UnwindToHost {
+            reason: UnwindReason,
+            backtrace: Option<Backtrace>,
+            coredump_stack: Option<CoreDumpStack>,
+        },
+        /// Unwind into Wasm. The exception destination has been
+        /// resolved. Note that the payload value is still not
+        /// specified, because it must remain rooted on the Store
+        /// until `unwind()` actually takes the value. The first
+        /// payload word in the underlying exception ABI is used to
+        /// send the raw `VMExnRef`.
+        #[cfg(feature = "gc")]
+        UnwindToWasm(Handler),
+        /// Do not unwind.
+        None,
+    }
+
+    impl UnwindState {
+        pub(super) fn is_none(&self) -> bool {
+            match self {
+                Self::None => true,
+                _ => false,
+            }
+        }
+    }
 
     /// Temporary state stored on the stack which is registered in the `tls`
     /// module below for calls into wasm.
@@ -454,20 +533,21 @@ mod call_thread_state {
     /// interior mutability here since that only gives access to
     /// `&CallThreadState`.
     pub struct CallThreadState {
-        pub(super) unwind: Cell<Option<(UnwindReason, Option<Backtrace>, Option<CoreDumpStack>)>>,
-        pub(super) jmp_buf: Cell<*const u8>,
+        /// Unwind state set when initiating an unwind and read when
+        /// the control transfer occurs (after the `raise` point is
+        /// reached for host-code destinations and right when
+        /// performing the jump for Wasm-code destinations).
+        pub(super) unwind: Cell<UnwindState>,
         #[cfg(all(has_native_signals))]
         pub(super) signal_handler: Option<*const SignalHandler>,
         pub(super) capture_backtrace: bool,
         #[cfg(feature = "coredump")]
         pub(super) capture_coredump: bool,
 
-        pub(crate) vm_store_context: NonNull<VMStoreContext>,
+        pub(crate) vm_store_context: Cell<NonNull<VMStoreContext>>,
         pub(crate) unwinder: &'static dyn Unwind,
 
         pub(super) prev: Cell<tls::Ptr>,
-        #[cfg(all(has_native_signals, unix))]
-        pub(crate) async_guard_range: Range<*mut u8>,
 
         // The state of the runtime for the *previous* `CallThreadState` for
         // this same store. Our *current* state is saved in `self.vm_store_context`,
@@ -477,59 +557,63 @@ mod call_thread_state {
         // same store and `self.vm_store_context == self.prev.vm_store_context`) and we must to
         // maintain the list of contiguous-Wasm-frames stack regions for
         // backtracing purposes.
-        old_state: *const EntryStoreContext,
+        old_state: *mut EntryStoreContext,
     }
 
     impl Drop for CallThreadState {
         fn drop(&mut self) {
             // Unwind information should not be present as it should have
             // already been processed.
-            debug_assert!(self.unwind.replace(None).is_none());
+            debug_assert!(self.unwind.replace(UnwindState::None).is_none());
         }
     }
 
     impl CallThreadState {
-        pub const JMP_BUF_INTERPRETER_SENTINEL: *mut u8 = 1 as *mut u8;
-
         #[inline]
         pub(super) fn new(
             store: &mut StoreOpaque,
-            old_state: *const EntryStoreContext,
+            old_state: *mut EntryStoreContext,
         ) -> CallThreadState {
-            // Don't try to plumb #[cfg] everywhere for this field, just pretend
-            // we're using it on miri/windows to silence compiler warnings.
-            let _: Range<_> = store.async_guard_range();
-
             CallThreadState {
-                unwind: Cell::new(None),
+                unwind: Cell::new(UnwindState::None),
                 unwinder: store.unwinder(),
-                jmp_buf: Cell::new(ptr::null()),
                 #[cfg(all(has_native_signals))]
                 signal_handler: store.signal_handler(),
-                capture_backtrace: store.engine().config().wasm_backtrace,
+                capture_backtrace: store.engine().config().wasm_backtrace_max_frames.is_some(),
                 #[cfg(feature = "coredump")]
                 capture_coredump: store.engine().config().coredump_on_trap,
-                vm_store_context: store.vm_store_context_ptr(),
-                #[cfg(all(has_native_signals, unix))]
-                async_guard_range: store.async_guard_range(),
+                vm_store_context: Cell::new(store.vm_store_context_ptr()),
                 prev: Cell::new(ptr::null()),
                 old_state,
             }
         }
 
         /// Get the saved FP upon exit from Wasm for the previous `CallThreadState`.
+        ///
+        /// # Safety
+        ///
+        /// Requires that the saved last Wasm trampoline FP points to
+        /// a valid trampoline frame, or is null.
         pub unsafe fn old_last_wasm_exit_fp(&self) -> usize {
-            (&*self.old_state).last_wasm_exit_fp
+            let trampoline_fp = unsafe { (&*self.old_state).last_wasm_exit_trampoline_fp };
+            // SAFETY: `trampoline_fp` is either a valid FP from an
+            // active trampoline frame or is null.
+            unsafe { VMStoreContext::wasm_exit_fp_from_trampoline_fp(trampoline_fp) }
         }
 
         /// Get the saved PC upon exit from Wasm for the previous `CallThreadState`.
         pub unsafe fn old_last_wasm_exit_pc(&self) -> usize {
-            (&*self.old_state).last_wasm_exit_pc
+            unsafe { (&*self.old_state).last_wasm_exit_pc }
         }
 
         /// Get the saved FP upon entry into Wasm for the previous `CallThreadState`.
         pub unsafe fn old_last_wasm_entry_fp(&self) -> usize {
-            (&*self.old_state).last_wasm_entry_fp
+            unsafe { (&*self.old_state).last_wasm_entry_fp }
+        }
+
+        /// Get the saved `VMStackChain` for the previous `CallThreadState`.
+        pub unsafe fn old_stack_chain(&self) -> VMStackChain {
+            unsafe { (&*self.old_state).stack_chain.clone() }
         }
 
         /// Get the previous `CallThreadState`.
@@ -568,9 +652,54 @@ mod call_thread_state {
             let head = tls::raw::replace(prev);
             assert!(core::ptr::eq(head, self));
         }
+
+        /// Swaps the state in this `CallThreadState`'s `VMStoreContext` with
+        /// the state in `EntryStoreContext` that was saved when this
+        /// activation was created.
+        ///
+        /// This method is using during suspension of a fiber to restore the
+        /// store back to what it originally was and prepare it to be resumed
+        /// later on. This takes various fields of `VMStoreContext` and swaps
+        /// them with what was saved in `EntryStoreContext`. That restores
+        /// a store to just before this activation was called but saves off the
+        /// fields of this activation to get restored/resumed at a later time.
+        #[cfg(feature = "async")]
+        pub(super) unsafe fn swap(&self) {
+            unsafe fn swap<T>(a: &core::cell::UnsafeCell<T>, b: &mut T) {
+                unsafe { core::mem::swap(&mut *a.get(), b) }
+            }
+
+            unsafe {
+                let cx = self.vm_store_context.get().as_ref();
+                swap(
+                    &cx.last_wasm_exit_trampoline_fp,
+                    &mut (*self.old_state).last_wasm_exit_trampoline_fp,
+                );
+                swap(
+                    &cx.last_wasm_exit_pc,
+                    &mut (*self.old_state).last_wasm_exit_pc,
+                );
+                swap(
+                    &cx.last_wasm_entry_fp,
+                    &mut (*self.old_state).last_wasm_entry_fp,
+                );
+                swap(
+                    &cx.last_wasm_entry_sp,
+                    &mut (*self.old_state).last_wasm_entry_sp,
+                );
+                swap(
+                    &cx.last_wasm_entry_trap_handler,
+                    &mut (*self.old_state).last_wasm_entry_trap_handler,
+                );
+                swap(&cx.stack_chain, &mut (*self.old_state).stack_chain);
+            }
+        }
     }
 }
 pub use call_thread_state::*;
+
+#[cfg(feature = "gc")]
+use super::compute_handler;
 
 pub enum UnwindReason {
     #[cfg(all(feature = "std", panic = "unwind"))]
@@ -578,12 +707,18 @@ pub enum UnwindReason {
     Trap(TrapReason),
 }
 
+impl<E> From<E> for UnwindReason
+where
+    E: Into<TrapReason>,
+{
+    fn from(value: E) -> UnwindReason {
+        UnwindReason::Trap(value.into())
+    }
+}
+
 impl CallThreadState {
     #[inline]
-    fn with(
-        mut self,
-        closure: impl FnOnce(&CallThreadState) -> bool,
-    ) -> Result<(), (UnwindReason, Option<Backtrace>, Option<CoreDumpStack>)> {
+    fn with(mut self, closure: impl FnOnce(&CallThreadState) -> bool) -> Result<(), UnwindState> {
         let succeeded = tls::set(&mut self, |me| closure(me));
         if succeeded {
             Ok(())
@@ -593,8 +728,8 @@ impl CallThreadState {
     }
 
     #[cold]
-    fn read_unwind(&self) -> (UnwindReason, Option<Backtrace>, Option<CoreDumpStack>) {
-        self.unwind.replace(None).unwrap()
+    fn read_unwind(&self) -> UnwindState {
+        self.unwind.replace(UnwindState::None)
     }
 
     /// Records the unwind information provided within this `CallThreadState`,
@@ -611,35 +746,75 @@ impl CallThreadState {
     ///
     /// Panics if unwind information has already been recorded as that should
     /// have been processed first.
-    fn record_unwind(&self, reason: UnwindReason) {
+    fn record_unwind(&self, store: &mut dyn VMStore, reason: UnwindReason) {
         if cfg!(debug_assertions) {
-            let prev = self.unwind.replace(None);
+            let prev = self.unwind.replace(UnwindState::None);
             assert!(prev.is_none());
         }
-        let (backtrace, coredump) = match &reason {
-            // Panics don't need backtraces. There is nowhere to attach the
-            // hypothetical backtrace to and it doesn't really make sense to try
-            // in the first place since this is a Rust problem rather than a
-            // Wasm problem.
+
+        // Avoid unused-variable warning in non-exceptions/GC build.
+        let _ = store;
+
+        let state = match reason {
             #[cfg(all(feature = "std", panic = "unwind"))]
-            UnwindReason::Panic(_) => (None, None),
+            UnwindReason::Panic(err) => {
+                // Panics don't need backtraces. There is nowhere to attach the
+                // hypothetical backtrace to and it doesn't really make sense to try
+                // in the first place since this is a Rust problem rather than a
+                // Wasm problem.
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Panic(err),
+                    backtrace: None,
+                    coredump_stack: None,
+                }
+            }
+            // An unwind due to an already-set pending exception
+            // triggers the handler-search stack-walk. We store the
+            // resolved handler if one exists. In either case, the
+            // exception remains rooted in the Store until we actually
+            // perform the unwind, and then gets taken and becomes the
+            // payload at that point.
+            #[cfg(feature = "gc")]
+            UnwindReason::Trap(TrapReason::Exception) => {
+                // SAFETY: we are invoking `compute_handler()` while
+                // Wasm is on the stack and we have re-entered via a
+                // trampoline, as required by its stack-walking logic.
+                let handler = unsafe { compute_handler(store) };
+                match handler {
+                    Some(handler) => UnwindState::UnwindToWasm(handler),
+                    None => UnwindState::UnwindToHost {
+                        reason: UnwindReason::Trap(TrapReason::Exception),
+                        backtrace: None,
+                        coredump_stack: None,
+                    },
+                }
+            }
             // And if we are just propagating an existing trap that already has
             // a backtrace attached to it, then there is no need to capture a
             // new backtrace either.
             UnwindReason::Trap(TrapReason::User(err))
                 if err.downcast_ref::<WasmBacktrace>().is_some() =>
             {
-                (None, None)
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Trap(TrapReason::User(err)),
+                    backtrace: None,
+                    coredump_stack: None,
+                }
             }
             UnwindReason::Trap(trap) => {
                 log::trace!("Capturing backtrace and coredump for {trap:?}");
-                (
-                    self.capture_backtrace(self.vm_store_context.as_ptr(), None),
-                    self.capture_coredump(self.vm_store_context.as_ptr(), None),
-                )
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Trap(trap),
+                    backtrace: self.capture_backtrace(store.vm_store_context_mut(), None),
+                    coredump_stack: self.capture_coredump(store.vm_store_context_mut(), None),
+                }
             }
         };
-        self.unwind.set(Some((reason, backtrace, coredump)));
+
+        self.unwind.set(state);
+
+        // Re-derive our VMStoreContext pointer for provenance.
+        self.vm_store_context.set(store.vm_store_context_ptr());
     }
 
     /// Helper function to perform an actual unwinding operation.
@@ -649,14 +824,158 @@ impl CallThreadState {
     ///
     /// # Unsafety
     ///
-    /// This function is not safe if the corresponding setjmp wasn't already
-    /// called. Additionally this isn't safe as it will skip all Rust
-    /// destructors on the stack, if there are any.
-    #[cfg(has_host_compiler_backend)]
-    unsafe fn unwind(&self) -> ! {
-        debug_assert!(!self.jmp_buf.get().is_null());
-        debug_assert!(self.jmp_buf.get() != CallThreadState::JMP_BUF_INTERPRETER_SENTINEL);
-        traphandlers::wasmtime_longjmp(self.jmp_buf.get());
+    /// This function is not safe if a corresponding handler wasn't already
+    /// setup in the entry trampoline. Additionally this isn't safe as it may
+    /// skip all Rust destructors on the stack, if there are any, for native
+    /// executors as `Handler::resume` will be used.
+    unsafe fn unwind(&self, store: &mut dyn VMStore) {
+        #[allow(unused_mut, reason = "only  mutated in `debug` configuration")]
+        let mut unwind = self.unwind.replace(UnwindState::None);
+
+        #[cfg(feature = "debug")]
+        {
+            let result = match &unwind {
+                #[cfg(feature = "gc")]
+                UnwindState::UnwindToWasm(_) => {
+                    use wasmtime_core::alloc::PanicOnOom;
+
+                    assert!(store.as_store_opaque().has_pending_exception());
+                    let exn = store
+                        .as_store_opaque()
+                        .pending_exception_owned_rooted()
+                        // TODO(#12069): handle allocation failure here
+                        .panic_on_oom()
+                        .expect("exception should be set when we are throwing");
+                    store.block_on_debug_handler(crate::DebugEvent::CaughtExceptionThrown(exn))
+                }
+                #[cfg(feature = "gc")]
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Trap(TrapReason::Exception),
+                    ..
+                } => {
+                    use wasmtime_core::alloc::PanicOnOom;
+
+                    let exn = store
+                        .as_store_opaque()
+                        .pending_exception_owned_rooted()
+                        // TODO(#12069): handle allocation failure here
+                        .panic_on_oom()
+                        .expect("exception should be set when we are throwing");
+                    store.block_on_debug_handler(crate::DebugEvent::UncaughtExceptionThrown(
+                        exn.clone(),
+                    ))
+                }
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Trap(TrapReason::Wasm(trap)),
+                    ..
+                } => store.block_on_debug_handler(crate::DebugEvent::Trap(*trap)),
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Trap(TrapReason::User(err)),
+                    ..
+                } => store.block_on_debug_handler(crate::DebugEvent::HostcallError(err)),
+
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Trap(TrapReason::Jit { .. }),
+                    ..
+                } => {
+                    // JIT traps not handled yet.
+                    Ok(())
+                }
+                #[cfg(all(feature = "std", panic = "unwind"))]
+                UnwindState::UnwindToHost {
+                    reason: UnwindReason::Panic(_),
+                    ..
+                } => {
+                    // We don't invoke any debugger hook when we're
+                    // unwinding due to a Rust (host-side) panic.
+                    Ok(())
+                }
+
+                UnwindState::None => unreachable!(),
+            };
+
+            // If the debugger invocation itself resulted in an `Err`
+            // (which can only come from the `block_on` hitting a
+            // failure mode), we need to override our unwind as-if
+            // were handling a host error.
+            if let Err(err) = result {
+                unwind = UnwindState::UnwindToHost {
+                    reason: UnwindReason::Trap(TrapReason::User(err)),
+                    backtrace: None,
+                    coredump_stack: None,
+                };
+            }
+        }
+
+        match unwind {
+            UnwindState::UnwindToHost { .. } => {
+                self.unwind.set(unwind);
+                let handler = self.entry_trap_handler();
+                let payload1 = 0;
+                let payload2 = 0;
+                unsafe {
+                    self.resume_to_exception_handler(
+                        store.executor(),
+                        &handler,
+                        payload1,
+                        payload2,
+                    );
+                }
+            }
+            #[cfg(feature = "gc")]
+            UnwindState::UnwindToWasm(handler) => {
+                // Take the pending exception at this time and use it as payload.
+                let payload1 = usize::try_from(
+                    store
+                        .take_pending_exception()
+                        .unwrap()
+                        .as_gc_ref()
+                        .as_raw_u32(),
+                )
+                .expect("GC ref does not fit in usize");
+                // We only use one of the payload words.
+                let payload2 = 0;
+                unsafe {
+                    self.resume_to_exception_handler(
+                        store.executor(),
+                        &handler,
+                        payload1,
+                        payload2,
+                    );
+                }
+            }
+            UnwindState::None => {
+                panic!("Attempting to unwind with no unwind state set.");
+            }
+        }
+    }
+
+    pub(crate) fn entry_trap_handler(&self) -> Handler {
+        unsafe {
+            let vm_store_context = self.vm_store_context.get().as_ref();
+            let fp = *vm_store_context.last_wasm_entry_fp.get();
+            let sp = *vm_store_context.last_wasm_entry_sp.get();
+            let pc = *vm_store_context.last_wasm_entry_trap_handler.get();
+            Handler { pc, sp, fp }
+        }
+    }
+
+    unsafe fn resume_to_exception_handler(
+        &self,
+        executor: ExecutorRef<'_>,
+        handler: &Handler,
+        payload1: usize,
+        payload2: usize,
+    ) {
+        unsafe {
+            match executor {
+                ExecutorRef::Interpreter(mut r) => {
+                    r.resume_to_exception_handler(handler, payload1, payload2)
+                }
+                #[cfg(has_host_compiler_backend)]
+                ExecutorRef::Native => handler.resume_tailcc(payload1, payload2),
+            }
+        }
     }
 
     fn capture_backtrace(
@@ -703,13 +1022,8 @@ impl CallThreadState {
         &self,
         regs: TrapRegisters,
         faulting_addr: Option<usize>,
-        call_handler: impl Fn(&SignalHandler) -> bool,
+        call_handler: impl FnOnce(&SignalHandler) -> bool,
     ) -> TrapTest {
-        // If we haven't even started to handle traps yet, bail out.
-        if self.jmp_buf.get().is_null() {
-            return TrapTest::NotWasm;
-        }
-
         // First up see if any instance registered has a custom trap handler,
         // in which case run them all. If anything handles the trap then we
         // return that the trap was handled.
@@ -735,17 +1049,10 @@ impl CallThreadState {
         };
 
         // If all that passed then this is indeed a wasm trap, so return the
-        // `jmp_buf` passed to `wasmtime_longjmp` to resume.
+        // `Handler` setup in the original wasm frame.
         self.set_jit_trap(regs, faulting_addr, trap);
-        TrapTest::Trap {
-            #[cfg(has_host_compiler_backend)]
-            jmp_buf: self.take_jmp_buf(),
-        }
-    }
-
-    #[cfg(has_host_compiler_backend)]
-    pub(crate) fn take_jmp_buf(&self) -> *const u8 {
-        self.jmp_buf.replace(ptr::null())
+        let entry_handler = self.entry_trap_handler();
+        TrapTest::Trap(entry_handler)
     }
 
     pub(crate) fn set_jit_trap(
@@ -754,17 +1061,19 @@ impl CallThreadState {
         faulting_addr: Option<usize>,
         trap: wasmtime_environ::Trap,
     ) {
-        let backtrace = self.capture_backtrace(self.vm_store_context.as_ptr(), Some((pc, fp)));
-        let coredump = self.capture_coredump(self.vm_store_context.as_ptr(), Some((pc, fp)));
-        self.unwind.set(Some((
-            UnwindReason::Trap(TrapReason::Jit {
+        let backtrace =
+            self.capture_backtrace(self.vm_store_context.get().as_ptr(), Some((pc, fp)));
+        let coredump_stack =
+            self.capture_coredump(self.vm_store_context.get().as_ptr(), Some((pc, fp)));
+        self.unwind.set(UnwindState::UnwindToHost {
+            reason: UnwindReason::Trap(TrapReason::Jit {
                 pc,
                 faulting_addr,
                 trap,
             }),
             backtrace,
-            coredump,
-        )))
+            coredump_stack,
+        });
     }
 }
 
@@ -867,7 +1176,6 @@ pub(crate) mod tls {
     // these functions are free to be inlined.
     pub(super) mod raw {
         use super::CallThreadState;
-        use sptr::Strict;
 
         pub type Ptr = *const CallThreadState;
 
@@ -877,7 +1185,7 @@ pub(crate) mod tls {
 
         fn tls_get() -> (Ptr, bool) {
             let mut initialized = false;
-            let p = Strict::map_addr(crate::runtime::vm::sys::tls_get(), |a| {
+            let p = crate::runtime::vm::sys::tls_get().map_addr(|a| {
                 initialized = (a & 1) != 0;
                 a & !1
             });
@@ -885,7 +1193,7 @@ pub(crate) mod tls {
         }
 
         fn tls_set(ptr: Ptr, initialized: bool) {
-            let encoded = Strict::map_addr(ptr, |a| a | usize::from(initialized));
+            let encoded = ptr.map_addr(|a| a | usize::from(initialized));
             crate::runtime::vm::sys::tls_set(encoded.cast_mut().cast::<u8>());
         }
 
@@ -943,6 +1251,15 @@ pub(crate) mod tls {
         state: raw::Ptr,
     }
 
+    // SAFETY: This is a relatively unsafe unsafe block and not really all that
+    // well audited. The general idea is that the linked list of activations
+    // owned by `self.state` are safe to send to other threads, but that relies
+    // on everything internally being safe as well as stack variables and such.
+    // This is more-or-less tied to the very large comment in `fiber.rs` about
+    // `unsafe impl Send` there.
+    #[cfg(feature = "async")]
+    unsafe impl Send for AsyncWasmCallState {}
+
     #[cfg(feature = "async")]
     impl AsyncWasmCallState {
         /// Creates new state that initially starts as null.
@@ -971,14 +1288,36 @@ pub(crate) mod tls {
         /// that this doesn't push stale data and the data is popped
         /// appropriately.
         pub unsafe fn push(self) -> PreviousAsyncWasmCallState {
+            // First save the state of TLS as-is so when this state is popped
+            // off later on we know where to stop.
+            let ret = PreviousAsyncWasmCallState { state: raw::get() };
+
+            // The oldest activation, if present, has various `VMStoreContext`
+            // fields saved within it. These fields were the state for the
+            // *youngest* activation when a suspension previously happened. By
+            // swapping them back into the store this is an O(1) way of
+            // restoring the state of a store's metadata fields at the time of
+            // the suspension.
+            //
+            // The store's previous values before this function will all get
+            // saved in the oldest activation's state on the stack. The store's
+            // current state then describes the youngest activation which is
+            // restored via the loop below.
+            unsafe {
+                if let Some(state) = self.state.as_ref() {
+                    state.swap();
+                }
+            }
+
             // Our `state` pointer is a linked list of oldest-to-youngest so by
             // pushing in order of the list we restore the youngest-to-oldest
             // list as stored in the state of this current thread.
-            let ret = PreviousAsyncWasmCallState { state: raw::get() };
             let mut ptr = self.state;
-            while let Some(state) = ptr.as_ref() {
-                ptr = state.prev.replace(core::ptr::null_mut());
-                state.push();
+            unsafe {
+                while let Some(state) = ptr.as_ref() {
+                    ptr = state.prev.replace(core::ptr::null_mut());
+                    state.push();
+                }
             }
             ret
         }
@@ -1034,19 +1373,44 @@ pub(crate) mod tls {
             loop {
                 // If the current TLS state is as we originally found it, then
                 // this loop is finished.
+                //
+                // Note, though, that before exiting, if the oldest
+                // `CallThreadState` is present, the current state of
+                // `VMStoreContext` is saved off within it. This will save the
+                // current state, before this function, of `VMStoreContext`
+                // into the `EntryStoreContext` stored with the oldest
+                // activation. This is a bit counter-intuitive where the state
+                // for the youngest activation is stored in the "old" state
+                // of the oldest activation.
+                //
+                // What this does is restores the state of the store to just
+                // before this async fiber was started. The fiber's state will
+                // be entirely self-contained in the fiber itself and the
+                // returned `AsyncWasmCallState`. Resumption above in
+                // `AsyncWasmCallState::push` will perform the swap back into
+                // the store to hook things up again.
                 let ptr = raw::get();
                 if ptr == thread_head {
+                    unsafe {
+                        if let Some(state) = ret.state.as_ref() {
+                            state.swap();
+                        }
+                    }
+
                     break ret;
                 }
 
                 // Pop this activation from the current thread's TLS state, and
                 // then afterwards push it onto our own linked list within this
-                // `AsyncWasmCallState`. Note that the linked list in `AsyncWasmCallState` is stored
-                // in reverse order so a subsequent `push` later on pushes
-                // everything in the right order.
-                (*ptr).pop();
-                if let Some(state) = ret.state.as_ref() {
-                    (*ptr).prev.set(state);
+                // `AsyncWasmCallState`. Note that the linked list in
+                // `AsyncWasmCallState` is stored in reverse order so a
+                // subsequent `push` later on pushes everything in the right
+                // order.
+                unsafe {
+                    (*ptr).pop();
+                    if let Some(state) = ret.state.as_ref() {
+                        (*ptr).prev.set(state);
+                    }
                 }
                 ret.state = ptr;
             }

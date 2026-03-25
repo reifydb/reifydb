@@ -18,7 +18,7 @@ use core::fmt;
 macro_rules! define_passes {
     ($($pass:ident: $desc:expr,)+) => {
         /// A single profiled pass.
-        #[allow(non_camel_case_types)]
+        #[expect(non_camel_case_types, reason = "macro-generated code")]
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub enum Pass {
             $(#[doc=$desc] $pass,)+
@@ -117,13 +117,13 @@ pub use enabled::*;
 
 #[cfg(feature = "timing")]
 mod enabled {
-    use super::{DefaultProfiler, Pass, Profiler, DESCRIPTIONS, NUM_PASSES};
-    use std::any::Any;
-    use std::boxed::Box;
-    use std::cell::{Cell, RefCell};
-    use std::fmt;
-    use std::mem;
-    use std::time::Duration;
+    use super::{DESCRIPTIONS, DefaultProfiler, NUM_PASSES, Pass, Profiler};
+    use alloc::boxed::Box;
+    use core::any::Any;
+    use core::cell::{Cell, RefCell};
+    use core::fmt;
+    use core::mem;
+    use core::time::Duration;
     use std::time::Instant;
 
     // Information about passes in a single thread.
@@ -135,7 +135,7 @@ mod enabled {
     ///
     /// Returns the old profiler.
     pub fn set_thread_profiler(new_profiler: Box<dyn Profiler>) -> Box<dyn Profiler> {
-        PROFILER.with(|profiler| std::mem::replace(&mut *profiler.borrow_mut(), new_profiler))
+        PROFILER.with(|profiler| core::mem::replace(&mut *profiler.borrow_mut(), new_profiler))
     }
 
     /// Start timing `pass` as a child of the currently running pass, if any.
@@ -220,21 +220,51 @@ mod enabled {
     /// Take the current accumulated pass timings and reset the timings for the current thread.
     ///
     /// Only applies when [`DefaultProfiler`] is used.
+    ///
+    /// # Panics
+    ///
+    /// Panics when any pass timing token is currently active.
     pub fn take_current() -> PassTimes {
+        assert_eq!(
+            CURRENT_PASS.with(|p| p.get()),
+            Pass::None,
+            "Cannot take_current() on profiler while a pass is active"
+        );
         PASS_TIME.with(|rc| mem::take(&mut *rc.borrow_mut()))
     }
 
     // Information about passes in a single thread.
     thread_local! {
         static CURRENT_PASS: Cell<Pass> = const { Cell::new(Pass::None) };
+        static LAST_INSTANT: Cell<Option<Instant>> = Cell::new(None);
+    }
+
+    /// Provides a guaranteed-never-decreasing `Instant`. This is
+    /// supposed to be guaranteed by the operating system APIs that
+    /// are used to implement `Instant::now()`, but apparently
+    /// sometimes kernel bugs may result in this moving backward, and
+    /// if it does, our invariants here are violated, possibly
+    /// resulting in panics when we process nested time spans. So we
+    /// backstop against any bugs by tracking the last-returned
+    /// `Instant` and never regressing before it.
+    fn monotonic_instant() -> Instant {
+        let now = match LAST_INSTANT.get() {
+            None => Instant::now(),
+            Some(prev) => {
+                let system_now = Instant::now();
+                core::cmp::max(prev, system_now)
+            }
+        };
+        LAST_INSTANT.set(Some(now));
+        now
     }
 
     impl Profiler for DefaultProfiler {
         fn start_pass(&self, pass: Pass) -> Box<dyn Any> {
             let prev = CURRENT_PASS.with(|p| p.replace(pass));
-            log::debug!("timing: Starting {}, (during {})", pass, prev);
+            log::debug!("timing: Starting {pass}, (during {prev})");
             Box::new(DefaultTimingToken {
-                start: Instant::now(),
+                start: monotonic_instant(),
                 pass,
                 prev,
             })
@@ -260,10 +290,11 @@ mod enabled {
     /// Dropping a timing token indicated the end of the pass.
     impl Drop for DefaultTimingToken {
         fn drop(&mut self) {
-            let duration = self.start.elapsed();
+            let now = monotonic_instant();
+            let duration = self.start.duration_since(now);
             log::debug!("timing: Ending {}: {}ms", self.pass, duration.as_millis());
             let old_cur = CURRENT_PASS.with(|p| p.replace(self.prev));
-            debug_assert_eq!(self.pass, old_cur, "Timing tokens dropped out of order");
+            assert_eq!(self.pass, old_cur, "Timing tokens dropped out of order");
             PASS_TIME.with(|rc| {
                 let mut table = rc.borrow_mut();
                 table.pass[self.pass.idx()].total += duration;

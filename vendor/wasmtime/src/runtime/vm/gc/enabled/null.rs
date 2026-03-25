@@ -6,23 +6,19 @@
 
 use super::*;
 use crate::{
+    Engine,
     prelude::*,
     vm::{
         ExternRefHostDataId, ExternRefHostDataTable, GarbageCollection, GcHeap, GcHeapObject,
         GcProgress, GcRootsIter, GcRuntime, SendSyncUnsafeCell, TypedGcRef, VMGcHeader, VMGcRef,
         VMMemoryDefinition,
     },
-    Engine,
 };
 use core::ptr::NonNull;
-use core::{
-    alloc::Layout,
-    any::Any,
-    num::{NonZeroU32, NonZeroUsize},
-};
+use core::{alloc::Layout, any::Any, num::NonZeroU32};
 use wasmtime_environ::{
-    null::NullTypeLayouts, GcArrayLayout, GcStructLayout, GcTypeLayouts, VMGcKind,
-    VMSharedTypeIndex,
+    GcArrayLayout, GcStructLayout, GcTypeLayouts, VMGcKind, VMSharedTypeIndex,
+    null::NullTypeLayouts,
 };
 
 /// The null collector.
@@ -172,8 +168,8 @@ impl NullHeap {
         let aligned = NonZeroU32::new(aligned).unwrap();
         let gc_ref = VMGcRef::from_heap_index(aligned).unwrap();
 
-        debug_assert_eq!(header.reserved_u27(), 0);
-        header.set_reserved_u27(size);
+        debug_assert_eq!(header.reserved_u26(), 0);
+        header.set_reserved_u26(size);
         *self.header_mut(&gc_ref) = header;
 
         Ok(Ok(gc_ref))
@@ -223,7 +219,7 @@ unsafe impl GcHeap for NullHeap {
         self.no_gc_count -= 1;
     }
 
-    unsafe fn take_memory(&mut self) -> crate::vm::Memory {
+    fn take_memory(&mut self) -> crate::vm::Memory {
         debug_assert!(self.is_attached());
         self.memory.take().unwrap()
     }
@@ -255,11 +251,6 @@ unsafe impl GcHeap for NullHeap {
         // Don't need to do anything special here.
     }
 
-    fn need_gc_before_entering_wasm(&self, _num_gc_refs: NonZeroUsize) -> bool {
-        // Never need to GC before entering Wasm.
-        false
-    }
-
     fn alloc_externref(
         &mut self,
         host_data: ExternRefHostDataId,
@@ -279,7 +270,7 @@ unsafe impl GcHeap for NullHeap {
     }
 
     fn object_size(&self, gc_ref: &VMGcRef) -> usize {
-        let size = self.header(gc_ref).reserved_u27();
+        let size = self.header(gc_ref).reserved_u26();
         usize::try_from(size).unwrap()
     }
 
@@ -295,19 +286,20 @@ unsafe impl GcHeap for NullHeap {
         self.alloc(header, layout)
     }
 
-    fn alloc_uninit_struct(
+    fn alloc_uninit_struct_or_exn(
         &mut self,
         ty: VMSharedTypeIndex,
         layout: &GcStructLayout,
-    ) -> Result<Result<VMStructRef, u64>> {
-        self.alloc(
-            VMGcHeader::from_kind_and_index(VMGcKind::StructRef, ty),
-            layout.layout(),
-        )
-        .map(|r| r.map(|r| r.into_structref_unchecked()))
+    ) -> Result<Result<VMGcRef, u64>> {
+        let kind = if layout.is_exception {
+            VMGcKind::ExnRef
+        } else {
+            VMGcKind::StructRef
+        };
+        self.alloc(VMGcHeader::from_kind_and_index(kind, ty), layout.layout())
     }
 
-    fn dealloc_uninit_struct(&mut self, _struct_ref: VMStructRef) {}
+    fn dealloc_uninit_struct_or_exn(&mut self, _struct_ref: VMGcRef) {}
 
     fn alloc_uninit_array(
         &mut self,
@@ -345,7 +337,7 @@ unsafe impl GcHeap for NullHeap {
     }
 
     unsafe fn vmctx_gc_heap_data(&self) -> NonNull<u8> {
-        let ptr_to_next: *mut NonZeroU32 = self.next.get();
+        let ptr_to_next: *mut NonZeroU32 = unsafe { self.next.get() };
         NonNull::new(ptr_to_next).unwrap().cast()
     }
 }

@@ -5,7 +5,7 @@ use crate::error::{Error, Span};
 use crate::lexer::Pos;
 use crate::sema;
 use crate::stablemapset::StableSet;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 
 /// A field index in a tuple or an enum variant.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -649,6 +649,7 @@ impl sema::ExprVisitor for RuleSetBuilder {
         pure: bool,
         infallible: bool,
         multi: bool,
+        _rec: bool,
     ) -> BindingId {
         let instance = if pure {
             0

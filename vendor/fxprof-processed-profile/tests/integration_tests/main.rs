@@ -1,109 +1,123 @@
-use assert_json_diff::assert_json_eq;
-use debugid::DebugId;
-use serde_json::json;
-
-use fxprof_processed_profile::{
-    CategoryColor, CpuDelta, Frame, FrameFlags, FrameInfo, LibraryInfo, MarkerDynamicField,
-    MarkerFieldFormat, MarkerLocation, MarkerSchema, MarkerSchemaField, MarkerStaticField,
-    MarkerTiming, Profile, ProfilerMarker, ReferenceTimestamp, SamplingInterval, Symbol,
-    SymbolTable, Timestamp,
-};
-
 use std::sync::Arc;
 use std::time::Duration;
+
+use assert_json_diff::assert_json_eq;
+use debugid::DebugId;
+use fxprof_processed_profile::{
+    CategoryColor, CategoryHandle, CpuDelta, Frame, FrameFlags, FrameInfo, GraphColor, LibraryInfo,
+    MarkerFieldFlags, MarkerFieldFormat, MarkerGraphType, MarkerTiming, Profile,
+    ReferenceTimestamp, SamplingInterval, StaticSchemaMarker, StaticSchemaMarkerField,
+    StaticSchemaMarkerGraph, StringHandle, Symbol, SymbolTable, Timestamp, WeightType,
+};
+use serde_json::json;
 
 // TODO: Add tests for CategoryPairHandle, ProcessHandle, ThreadHandle
 
 /// An example marker type with some text content.
 #[derive(Debug, Clone)]
-pub struct TextMarker(pub String);
+pub struct TextMarker {
+    pub name: StringHandle,
+    pub text: StringHandle,
+}
 
-impl ProfilerMarker for TextMarker {
-    const MARKER_TYPE_NAME: &'static str = "Text";
+impl StaticSchemaMarker for TextMarker {
+    const UNIQUE_MARKER_TYPE_NAME: &'static str = "Text";
+    const CHART_LABEL: Option<&'static str> = Some("{marker.data.name}");
+    const TABLE_LABEL: Option<&'static str> = Some("{marker.name} - {marker.data.name}");
+    const FIELDS: &'static [StaticSchemaMarkerField] = &[StaticSchemaMarkerField {
+        key: "name",
+        label: "Details",
+        format: MarkerFieldFormat::String,
+        flags: MarkerFieldFlags::SEARCHABLE,
+    }];
 
-    fn json_marker_data(&self) -> serde_json::Value {
-        json!({
-            "type": Self::MARKER_TYPE_NAME,
-            "name": self.0
-        })
+    fn name(&self, _profile: &mut Profile) -> StringHandle {
+        self.name
     }
 
-    fn schema() -> MarkerSchema {
-        MarkerSchema {
-            type_name: Self::MARKER_TYPE_NAME,
-            locations: vec![MarkerLocation::MarkerChart, MarkerLocation::MarkerTable],
-            chart_label: Some("{marker.data.name}"),
-            tooltip_label: None,
-            table_label: Some("{marker.name} - {marker.data.name}"),
-            fields: vec![MarkerSchemaField::Dynamic(MarkerDynamicField {
-                key: "name",
-                label: "Details",
-                format: MarkerFieldFormat::String,
-                searchable: true,
-            })],
-        }
+    fn category(&self, _profile: &mut Profile) -> CategoryHandle {
+        CategoryHandle::OTHER
+    }
+
+    fn string_field_value(&self, _field_index: u32) -> StringHandle {
+        self.text
+    }
+
+    fn number_field_value(&self, _field_index: u32) -> f64 {
+        unreachable!()
     }
 }
 
 #[test]
 fn profile_without_js() {
     struct CustomMarker {
-        event_name: String,
+        event_name: StringHandle,
         allocation_size: u32,
-        url: String,
+        url: StringHandle,
         latency: Duration,
     }
-    impl ProfilerMarker for CustomMarker {
-        const MARKER_TYPE_NAME: &'static str = "custom";
+    impl StaticSchemaMarker for CustomMarker {
+        const UNIQUE_MARKER_TYPE_NAME: &'static str = "custom";
+        const TOOLTIP_LABEL: Option<&'static str> = Some("Custom tooltip label");
 
-        fn schema() -> MarkerSchema {
-            MarkerSchema {
-                type_name: Self::MARKER_TYPE_NAME,
-                locations: vec![MarkerLocation::MarkerChart, MarkerLocation::MarkerTable],
-                chart_label: None,
-                tooltip_label: Some("Custom tooltip label"),
-                table_label: None,
-                fields: vec![
-                    MarkerSchemaField::Dynamic(MarkerDynamicField {
-                        key: "eventName",
-                        label: "Event name",
-                        format: MarkerFieldFormat::String,
-                        searchable: true,
-                    }),
-                    MarkerSchemaField::Dynamic(MarkerDynamicField {
-                        key: "allocationSize",
-                        label: "Allocation size",
-                        format: MarkerFieldFormat::Bytes,
-                        searchable: true,
-                    }),
-                    MarkerSchemaField::Dynamic(MarkerDynamicField {
-                        key: "url",
-                        label: "URL",
-                        format: MarkerFieldFormat::Url,
-                        searchable: true,
-                    }),
-                    MarkerSchemaField::Dynamic(MarkerDynamicField {
-                        key: "latency",
-                        label: "Latency",
-                        format: MarkerFieldFormat::Duration,
-                        searchable: true,
-                    }),
-                    MarkerSchemaField::Static(MarkerStaticField {
-                        label: "Description",
-                        value: "This is a test marker with a custom schema.",
-                    }),
-                ],
+        const FIELDS: &'static [StaticSchemaMarkerField] = &[
+            StaticSchemaMarkerField {
+                key: "eventName",
+                label: "Event name",
+                format: MarkerFieldFormat::String,
+                flags: MarkerFieldFlags::SEARCHABLE,
+            },
+            StaticSchemaMarkerField {
+                key: "allocationSize",
+                label: "Allocation size",
+                format: MarkerFieldFormat::Bytes,
+                flags: MarkerFieldFlags::SEARCHABLE,
+            },
+            StaticSchemaMarkerField {
+                key: "url",
+                label: "URL",
+                format: MarkerFieldFormat::Url,
+                flags: MarkerFieldFlags::SEARCHABLE,
+            },
+            StaticSchemaMarkerField {
+                key: "latency",
+                label: "Latency",
+                format: MarkerFieldFormat::Duration,
+                flags: MarkerFieldFlags::SEARCHABLE,
+            },
+        ];
+
+        const DESCRIPTION: Option<&'static str> =
+            Some("This is a test marker with a custom schema.");
+
+        const GRAPHS: &'static [StaticSchemaMarkerGraph] = &[StaticSchemaMarkerGraph {
+            key: "latency",
+            graph_type: MarkerGraphType::Line,
+            color: Some(GraphColor::Green),
+        }];
+
+        fn name(&self, profile: &mut Profile) -> StringHandle {
+            profile.intern_string("CustomName")
+        }
+
+        fn category(&self, _profile: &mut Profile) -> CategoryHandle {
+            CategoryHandle::OTHER
+        }
+
+        fn string_field_value(&self, field_index: u32) -> StringHandle {
+            match field_index {
+                0 => self.event_name,
+                2 => self.url,
+                _ => unreachable!(),
             }
         }
 
-        fn json_marker_data(&self) -> serde_json::Value {
-            json!({
-                "type": Self::MARKER_TYPE_NAME,
-                "eventName": self.event_name,
-                "allocationSize": self.allocation_size,
-                "url": self.url,
-                "latency": self.latency.as_secs_f64() * 1000.0,
-            })
+        fn number_field_value(&self, field_index: u32) -> f64 {
+            match field_index {
+                1 => self.allocation_size.into(),
+                3 => self.latency.as_secs_f64() * 1000.0,
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -112,6 +126,7 @@ fn profile_without_js() {
         ReferenceTimestamp::from_millis_since_unix_epoch(1636162232627.0),
         SamplingInterval::from_millis(1),
     );
+    profile.set_os_name("macOS 14.4");
     let process = profile.add_process("test", 123, Timestamp::from_millis_since_reference(0.0));
     let thread = profile.add_thread(
         process,
@@ -123,7 +138,7 @@ fn profile_without_js() {
     profile.add_sample(
         thread,
         Timestamp::from_millis_since_reference(0.0),
-        vec![].into_iter(),
+        None,
         CpuDelta::ZERO,
         1,
     );
@@ -178,9 +193,8 @@ fn profile_without_js() {
         (0x000055ba9ebf6000u64 - 0x000055ba9eb4d000u64) as u32,
     );
     let category = profile.add_category("Regular", CategoryColor::Blue);
-    profile.add_sample(
+    let s1 = profile.intern_stack_frames(
         thread,
-        Timestamp::from_millis_since_reference(1.0),
         vec![
             0x7f76b7ffc0e7,
             0x55ba9eda3d7f,
@@ -205,12 +219,16 @@ fn profile_without_js() {
             category_pair: category.into(),
             flags: FrameFlags::empty(),
         }),
-        CpuDelta::ZERO,
-        1,
     );
     profile.add_sample(
         thread,
-        Timestamp::from_millis_since_reference(2.0),
+        Timestamp::from_millis_since_reference(1.0),
+        s1,
+        CpuDelta::ZERO,
+        1,
+    );
+    let s2 = profile.intern_stack_frames(
+        thread,
         vec![
             0x55ba9eda018e,
             0x55ba9ec3c3cf,
@@ -235,12 +253,16 @@ fn profile_without_js() {
             category_pair: category.into(),
             flags: FrameFlags::empty(),
         }),
-        CpuDelta::ZERO,
-        1,
     );
     profile.add_sample(
         thread,
-        Timestamp::from_millis_since_reference(3.0),
+        Timestamp::from_millis_since_reference(2.0),
+        s2,
+        CpuDelta::ZERO,
+        1,
+    );
+    let s3 = profile.intern_stack_frames(
+        thread,
         vec![
             0x7f76b7f019c6,
             0x55ba9edc48f5,
@@ -265,33 +287,42 @@ fn profile_without_js() {
             category_pair: category.into(),
             flags: FrameFlags::empty(),
         }),
+    );
+    profile.add_sample(
+        thread,
+        Timestamp::from_millis_since_reference(3.0),
+        s3,
         CpuDelta::ZERO,
         1,
     );
 
+    let text_marker = TextMarker {
+        name: profile.intern_string("Experimental"),
+        text: profile.intern_string("Hello world!"),
+    };
     profile.add_marker(
         thread,
-        "Experimental",
-        TextMarker("Hello world!".to_string()),
         MarkerTiming::Instant(Timestamp::from_millis_since_reference(0.0)),
+        text_marker,
     );
+    let custom_marker = CustomMarker {
+        event_name: profile.intern_string("My event"),
+        allocation_size: 512000,
+        url: profile.intern_string("https://mozilla.org/"),
+        latency: Duration::from_millis(123),
+    };
     profile.add_marker(
         thread,
-        "CustomName",
-        CustomMarker {
-            event_name: "My event".to_string(),
-            allocation_size: 512000,
-            url: "https://mozilla.org/".to_string(),
-            latency: Duration::from_millis(123),
-        },
         MarkerTiming::Interval(
             Timestamp::from_millis_since_reference(0.0),
             Timestamp::from_millis_since_reference(2.0),
         ),
+        custom_marker,
     );
 
     let memory_counter =
         profile.add_counter(process, "malloc", "Memory", "Amount of allocated memory");
+    profile.set_counter_color(memory_counter, GraphColor::Red);
     profile.add_counter_sample(
         memory_counter,
         Timestamp::from_millis_since_reference(0.0),
@@ -341,9 +372,10 @@ fn profile_without_js() {
                 "name": []
               },
               "interval": 1.0,
-              "preprocessedProfileVersion": 46,
+              "preprocessedProfileVersion": 55,
               "processType": 0,
               "product": "test",
+              "oscpu": "macOS 14.4",
               "sampleUnits": {
                 "eventDelay": "ms",
                 "threadCPUDelta": "µs",
@@ -354,7 +386,6 @@ fn profile_without_js() {
               "pausedRanges": [],
               "version": 24,
               "usesOnlyOneStackType": true,
-              "doesNotUseFrameImplementation": true,
               "sourceCodeIsNotOnSearchfox": true,
               "markerSchema": [
                 {
@@ -365,11 +396,11 @@ fn profile_without_js() {
                   ],
                   "chartLabel": "{marker.data.name}",
                   "tableLabel": "{marker.name} - {marker.data.name}",
-                  "data": [
+                  "fields": [
                     {
                       "key": "name",
                       "label": "Details",
-                      "format": "string",
+                      "format": "unique-string",
                       "searchable": true
                     }
                   ]
@@ -380,12 +411,20 @@ fn profile_without_js() {
                     "marker-chart",
                     "marker-table"
                   ],
+                  "graphs": [
+                    {
+                      "key": "latency",
+                      "type": "line",
+                      "color": "green"
+                    }
+                  ],
                   "tooltipLabel": "Custom tooltip label",
-                  "data": [
+                  "description": "This is a test marker with a custom schema.",
+                  "fields": [
                     {
                       "key": "eventName",
                       "label": "Event name",
-                      "format": "string",
+                      "format": "unique-string",
                       "searchable": true
                     },
                     {
@@ -406,10 +445,6 @@ fn profile_without_js() {
                       "format": "duration",
                       "searchable": true
                     },
-                    {
-                      "label": "Description",
-                      "value": "This is a test marker with a custom schema."
-                    }
                   ]
                 }
               ]
@@ -547,40 +582,22 @@ fn profile_without_js() {
                     2
                   ],
                   "innerWindowID": [
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-                  ],
-                  "implementation": [
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
                   ],
                   "line": [
                     null,
@@ -601,24 +618,6 @@ fn profile_without_js() {
                     null
                   ],
                   "column": [
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-                  ],
-                  "optimizations": [
                     null,
                     null,
                     null,
@@ -774,15 +773,15 @@ fn profile_without_js() {
                   ],
                   "data": [
                     {
-                      "name": "Hello world!",
-                      "type": "Text"
+                      "type": "Text",
+                      "name": 19
                     },
                     {
-                      "allocationSize": 512000,
-                      "eventName": "My event",
-                      "latency": 123.0,
                       "type": "custom",
-                      "url": "https://mozilla.org/"
+                      "eventName": 21,
+                      "allocationSize": 512000.0,
+                      "url": "https://mozilla.org/",
+                      "latency": 123.0
                     }
                   ],
                   "endTime": [
@@ -791,7 +790,7 @@ fn profile_without_js() {
                   ],
                   "name": [
                     18,
-                    19
+                    20
                   ],
                   "phase": [
                     0,
@@ -855,17 +854,18 @@ fn profile_without_js() {
                 },
                 "samples": {
                   "length": 4,
+                  "weightType": "samples",
                   "stack": [
                     null,
                     6,
                     11,
                     15
                   ],
-                  "time": [
+                  "timeDeltas": [
                     0.0,
                     1.0,
-                    2.0,
-                    3.0
+                    1.0,
+                    1.0
                   ],
                   "weight": [
                     1,
@@ -873,7 +873,6 @@ fn profile_without_js() {
                     1,
                     1
                   ],
-                  "weightType": "samples",
                   "threadCPUDelta": [
                     0,
                     0,
@@ -918,44 +917,9 @@ fn profile_without_js() {
                     13,
                     14,
                     15
-                  ],
-                  "category": [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  "subcategory": [
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
-                    0
                   ]
                 },
+                "showMarkersInTimeline": false,
                 "stringArray": [
                   "0x7ffdb4824837",
                   "dump_syms",
@@ -976,10 +940,12 @@ fn profile_without_js() {
                   "0x2778f4",
                   "libc_symbol_3",
                   "Experimental",
-                  "CustomName"
+                  "Hello world!",
+                  "CustomName",
+                  "My event"
                 ],
                 "tid": "12345",
-                "unregisterTime": null
+                "unregisterTime": null,
               }
             ],
             "pages": [],
@@ -987,33 +953,29 @@ fn profile_without_js() {
             "counters": [
               {
                 "category": "Memory",
+                "color": "red",
                 "name": "malloc",
                 "description": "Amount of allocated memory",
                 "mainThreadIndex": 0,
                 "pid": "123",
-                "sampleGroups": [
-                  {
-                    "id": 0,
-                    "samples": {
-                      "length": 3,
-                      "count": [
-                        0.0,
-                        1000.0,
-                        800.0
-                      ],
-                      "number": [
-                        0,
-                        2,
-                        1
-                      ],
-                      "time": [
-                        0.0,
-                        1.0,
-                        2.0
-                      ]
-                    }
-                  }
-                ]
+                "samples": {
+                  "length": 3,
+                  "count": [
+                    0.0,
+                    1000.0,
+                    800.0
+                  ],
+                  "number": [
+                    0,
+                    2,
+                    1
+                  ],
+                  "timeDeltas": [
+                    0.0,
+                    1.0,
+                    1.0
+                  ]
+                }
               }
             ]
           }
@@ -1037,10 +999,10 @@ fn profile_with_js() {
     );
 
     let some_label_string = profile.intern_string("Some label string");
-    let category = profile.add_category("Regular", CategoryColor::Green);
-    profile.add_sample(
+    let category = profile.add_category("Cycle Collection", CategoryColor::Orange);
+    let category_pair = profile.add_subcategory(category, "Graph Reduction");
+    let s1 = profile.intern_stack_frames(
         thread,
-        Timestamp::from_millis_since_reference(1.0),
         vec![
             FrameInfo {
                 frame: Frame::Label(some_label_string),
@@ -1049,11 +1011,16 @@ fn profile_with_js() {
             },
             FrameInfo {
                 frame: Frame::ReturnAddress(0x7f76b7ffc0e7),
-                category_pair: category.into(),
+                category_pair,
                 flags: FrameFlags::empty(),
             },
         ]
         .into_iter(),
+    );
+    profile.add_sample(
+        thread,
+        Timestamp::from_millis_since_reference(1.0),
+        s1,
         CpuDelta::ZERO,
         1,
     );
@@ -1073,10 +1040,11 @@ fn profile_with_js() {
                   ]
                 },
                 {
-                  "name": "Regular",
-                  "color": "green",
+                  "name": "Cycle Collection",
+                  "color": "orange",
                   "subcategories": [
-                    "Other"
+                    "Other",
+                    "Graph Reduction"
                   ]
                 }
               ],
@@ -1088,7 +1056,7 @@ fn profile_with_js() {
                 "name": []
               },
               "interval": 1.0,
-              "preprocessedProfileVersion": 46,
+              "preprocessedProfileVersion": 55,
               "processType": 0,
               "product": "test with js",
               "sampleUnits": {
@@ -1101,7 +1069,6 @@ fn profile_with_js() {
               "pausedRanges": [],
               "version": 24,
               "usesOnlyOneStackType": false,
-              "doesNotUseFrameImplementation": true,
               "sourceCodeIsNotOnSearchfox": true,
               "markerSchema": []
             },
@@ -1124,7 +1091,7 @@ fn profile_with_js() {
                   ],
                   "subcategory": [
                     0,
-                    0
+                    1
                   ],
                   "func": [
                     0,
@@ -1135,22 +1102,14 @@ fn profile_with_js() {
                     null
                   ],
                   "innerWindowID": [
-                    null,
-                    null
-                  ],
-                  "implementation": [
-                    null,
-                    null
+                    0,
+                    0
                   ],
                   "line": [
                     null,
                     null
                   ],
                   "column": [
-                    null,
-                    null
-                  ],
-                  "optimizations": [
                     null,
                     null
                   ]
@@ -1223,7 +1182,7 @@ fn profile_with_js() {
                   "stack": [
                     1
                   ],
-                  "time": [
+                  "timeDeltas": [
                     1.0
                   ],
                   "weight": [
@@ -1234,6 +1193,7 @@ fn profile_with_js() {
                     0
                   ]
                 },
+                "showMarkersInTimeline": false,
                 "stackTable": {
                   "length": 2,
                   "prefix": [
@@ -1243,14 +1203,6 @@ fn profile_with_js() {
                   "frame": [
                     0,
                     1
-                  ],
-                  "category": [
-                    1,
-                    1
-                  ],
-                  "subcategory": [
-                    0,
-                    0
                   ]
                 },
                 "stringArray": [
@@ -1264,6 +1216,324 @@ fn profile_with_js() {
             "pages": [],
             "profilerOverhead": [],
             "counters": []
+          }
+        )
+    )
+}
+
+#[test]
+fn profile_counters_with_sorted_processes() {
+    let mut profile = Profile::new(
+        "test",
+        ReferenceTimestamp::from_millis_since_unix_epoch(1636162232627.0),
+        SamplingInterval::from_millis(1),
+    );
+    // Setting the timestamps first `1` and then `0` intentionally to make sure that the processes
+    // are sorted and order has been reversed.
+    let process0 = profile.add_process("test 1", 123, Timestamp::from_millis_since_reference(1.0));
+    let process1 = profile.add_process("test 2", 123, Timestamp::from_millis_since_reference(0.0));
+    let thread0 = profile.add_thread(
+        process0,
+        12345,
+        Timestamp::from_millis_since_reference(0.0),
+        true,
+    );
+    let thread1 = profile.add_thread(
+        process1,
+        54321,
+        Timestamp::from_millis_since_reference(1.0),
+        true,
+    );
+
+    profile.set_thread_show_markers_in_timeline(thread0, true);
+
+    profile.add_sample(
+        thread0,
+        Timestamp::from_millis_since_reference(1.0),
+        None,
+        CpuDelta::ZERO,
+        1,
+    );
+    profile.add_sample(
+        thread1,
+        Timestamp::from_millis_since_reference(0.0),
+        None,
+        CpuDelta::ZERO,
+        1,
+    );
+
+    let memory_counter0 =
+        profile.add_counter(process0, "malloc", "Memory 1", "Amount of allocated memory");
+    profile.add_counter_sample(
+        memory_counter0,
+        Timestamp::from_millis_since_reference(1.0),
+        0.0,
+        0,
+    );
+    let memory_counter1 =
+        profile.add_counter(process0, "malloc", "Memory 2", "Amount of allocated memory");
+    profile.add_counter_sample(
+        memory_counter1,
+        Timestamp::from_millis_since_reference(0.0),
+        0.0,
+        0,
+    );
+
+    profile.set_symbolicated(true);
+
+    profile.add_initial_visible_thread(thread1);
+    profile.add_initial_selected_thread(thread1);
+
+    profile.set_thread_samples_weight_type(thread0, WeightType::Bytes);
+
+    // eprintln!("{}", serde_json::to_string_pretty(&profile).unwrap());
+    assert_json_eq!(
+        profile,
+        json!(
+          {
+            "meta": {
+              "categories": [
+                {
+                  "name": "Other",
+                  "color": "grey",
+                  "subcategories": [
+                    "Other"
+                  ]
+                }
+              ],
+              "debug": false,
+              "extensions": {
+                "baseURL": [],
+                "id": [],
+                "length": 0,
+                "name": []
+              },
+              "initialSelectedThreads": [0],
+              "initialVisibleThreads": [0],
+              "interval": 1.0,
+              "preprocessedProfileVersion": 55,
+              "processType": 0,
+              "product": "test",
+              "sampleUnits": {
+                "eventDelay": "ms",
+                "threadCPUDelta": "µs",
+                "time": "ms"
+              },
+              "startTime": 1636162232627.0,
+              "symbolicated": true,
+              "pausedRanges": [],
+              "version": 24,
+              "usesOnlyOneStackType": true,
+              "sourceCodeIsNotOnSearchfox": true,
+              "markerSchema": []
+            },
+            "libs": [],
+            "threads": [
+              {
+                "frameTable": {
+                  "length": 0,
+                  "address": [],
+                  "inlineDepth": [],
+                  "category": [],
+                  "subcategory": [],
+                  "func": [],
+                  "nativeSymbol": [],
+                  "innerWindowID": [],
+                  "line": [],
+                  "column": []
+                },
+                "funcTable": {
+                  "length": 0,
+                  "name": [],
+                  "isJS": [],
+                  "relevantForJS": [],
+                  "resource": [],
+                  "fileName": [],
+                  "lineNumber": [],
+                  "columnNumber": []
+                },
+                "markers": {
+                  "length": 0,
+                  "category": [],
+                  "data": [],
+                  "endTime": [],
+                  "name": [],
+                  "phase": [],
+                  "startTime": []
+                },
+                "name": "test 2",
+                "isMainThread": true,
+                "nativeSymbols": {
+                  "length": 0,
+                  "address": [],
+                  "functionSize": [],
+                  "libIndex": [],
+                  "name": []
+                },
+                "pausedRanges": [],
+                "pid": "123.1",
+                "processName": "test 2",
+                "processShutdownTime": null,
+                "processStartupTime": 0.0,
+                "processType": "default",
+                "registerTime": 1.0,
+                "resourceTable": {
+                  "length": 0,
+                  "lib": [],
+                  "name": [],
+                  "host": [],
+                  "type": []
+                },
+                "samples": {
+                  "length": 1,
+                  "stack": [
+                    null
+                  ],
+                  "timeDeltas": [
+                    0.0
+                  ],
+                  "weight": [
+                    1
+                  ],
+                  "weightType": "samples",
+                  "threadCPUDelta": [
+                    0
+                  ]
+                },
+                "showMarkersInTimeline": false,
+                "stackTable": {
+                  "length": 0,
+                  "prefix": [],
+                  "frame": []
+                },
+                "stringArray": [],
+                "tid": "54321",
+                "unregisterTime": null
+              },
+              {
+                "frameTable": {
+                  "length": 0,
+                  "address": [],
+                  "inlineDepth": [],
+                  "category": [],
+                  "subcategory": [],
+                  "func": [],
+                  "nativeSymbol": [],
+                  "innerWindowID": [],
+                  "line": [],
+                  "column": []
+                },
+                "funcTable": {
+                  "length": 0,
+                  "name": [],
+                  "isJS": [],
+                  "relevantForJS": [],
+                  "resource": [],
+                  "fileName": [],
+                  "lineNumber": [],
+                  "columnNumber": []
+                },
+                "markers": {
+                  "length": 0,
+                  "category": [],
+                  "data": [],
+                  "endTime": [],
+                  "name": [],
+                  "phase": [],
+                  "startTime": []
+                },
+                "name": "test 1",
+                "isMainThread": true,
+                "nativeSymbols": {
+                  "length": 0,
+                  "address": [],
+                  "functionSize": [],
+                  "libIndex": [],
+                  "name": []
+                },
+                "pausedRanges": [],
+                "pid": "123",
+                "processName": "test 1",
+                "processShutdownTime": null,
+                "processStartupTime": 1.0,
+                "processType": "default",
+                "registerTime": 0.0,
+                "resourceTable": {
+                  "length": 0,
+                  "lib": [],
+                  "name": [],
+                  "host": [],
+                  "type": []
+                },
+                "samples": {
+                  "length": 1,
+                  "stack": [
+                    null
+                  ],
+                  "timeDeltas": [
+                    1.0
+                  ],
+                  "weight": [
+                    1
+                  ],
+                  "weightType": "bytes",
+                  "threadCPUDelta": [
+                    0
+                  ]
+                },
+                "showMarkersInTimeline": true,
+                "stackTable": {
+                  "length": 0,
+                  "prefix": [],
+                  "frame": []
+                },
+                "stringArray": [],
+                "tid": "12345",
+                "unregisterTime": null
+              }
+            ],
+            "pages": [],
+            "profilerOverhead": [],
+            "counters": [
+              {
+                "category": "Memory 1",
+                "name": "malloc",
+                "description": "Amount of allocated memory",
+                "mainThreadIndex": 1,
+                "pid": "123",
+                "samples": {
+                  "length": 1,
+                  "count": [
+                    0.0
+                  ],
+                  "number": [
+                    0
+                  ],
+                  "timeDeltas": [
+                    1.0
+                  ]
+                }
+              },
+              {
+                "category": "Memory 2",
+                "name": "malloc",
+                "description": "Amount of allocated memory",
+                "mainThreadIndex": 1,
+                "pid": "123",
+                "samples": {
+                  "length": 1,
+                  "count": [
+                    0.0
+                  ],
+                  "number": [
+                    0
+                  ],
+                  "timeDeltas": [
+                    0.0
+                  ]
+                }
+              }
+            ]
           }
         )
     )

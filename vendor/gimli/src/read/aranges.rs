@@ -124,6 +124,14 @@ impl<R: Reader> fallible_iterator::FallibleIterator for ArangeHeaderIter<R> {
     }
 }
 
+impl<R: Reader> Iterator for ArangeHeaderIter<R> {
+    type Item = Result<ArangeHeader<R>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        ArangeHeaderIter::next(self).transpose()
+    }
+}
+
 /// A header for a set of entries in the `.debug_arange` section.
 ///
 /// These entries all belong to a single unit.
@@ -162,7 +170,7 @@ where
         let address_size = rest.read_address_size()?;
         let segment_size = rest.read_u8()?;
         if segment_size != 0 {
-            return Err(Error::UnsupportedSegmentSize);
+            return Err(Error::UnsupportedSegmentSize(segment_size));
         }
 
         // unit_length + version + offset + address_size + segment_size
@@ -232,9 +240,6 @@ where
 }
 
 /// An iterator over the aranges from a `.debug_aranges` section.
-///
-/// Can be [used with
-/// `FallibleIterator`](./index.html#using-with-fallibleiterator).
 #[derive(Debug, Clone)]
 pub struct ArangeEntryIter<R: Reader> {
     input: R,
@@ -289,12 +294,11 @@ impl<R: Reader> ArangeEntryIter<R> {
     /// The raw range should have been obtained from `next_raw`.
     #[doc(hidden)]
     pub fn convert_raw(&self, mut entry: ArangeEntry) -> Result<Option<ArangeEntry>> {
-        // Skip tombstone entries.
-        // DWARF specifies a tombstone value of -1, but many linkers use 0.
-        // However, 0 may be a valid address, so the caller must handle that case.
+        // Skip negative tombstone entries.
+        // Callers must handle tombstones of 0 or greater themselves
+        // because we have no way of knowing if they are valid or not.
         let address_size = self.encoding.address_size;
-        let tombstone_address = !0 >> (64 - self.encoding.address_size * 8);
-        if entry.range.begin == tombstone_address {
+        if entry.range.begin >= u64::min_tombstone(address_size) {
             return Ok(None);
         }
 
@@ -311,6 +315,14 @@ impl<R: Reader> fallible_iterator::FallibleIterator for ArangeEntryIter<R> {
 
     fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
         ArangeEntryIter::next(self)
+    }
+}
+
+impl<R: Reader> Iterator for ArangeEntryIter<R> {
+    type Item = Result<ArangeEntry>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        ArangeEntryIter::next(self).transpose()
     }
 }
 

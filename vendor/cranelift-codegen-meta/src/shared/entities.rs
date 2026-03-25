@@ -23,6 +23,11 @@ pub(crate) struct EntityRefs {
     /// This is primarily used in control flow instructions.
     pub(crate) block_else: OperandKind,
 
+    /// A reference to a basic block in the same function, without any arguments.
+    /// This is primarily used to refer to block `try_call` terminators to get
+    /// exception metadata (e.g., resume PCs) as first-class values.
+    pub(crate) raw_block: OperandKind,
+
     /// A reference to a stack slot declared in the function preamble.
     pub(crate) stack_slot: OperandKind,
 
@@ -48,6 +53,19 @@ pub(crate) struct EntityRefs {
 
     /// A variable-sized list of value operands. Use for Block and function call arguments.
     pub(crate) varargs: OperandKind,
+
+    /// A constant stored in the constant pool.
+    ///
+    /// This operand is used to pass constants to instructions like `vconst`
+    /// while storing the actual bytes in the constant pool.
+    pub(crate) pool_constant: OperandKind,
+
+    /// An unsigned 128-bit immediate integer operand, stored out-of-line in the
+    /// `DataFlowGraph::immediates` pool.
+    ///
+    /// This operand is used to pass entire 128-bit vectors as immediates to instructions like
+    /// `shuffle` and `mask`.
+    pub(crate) uimm128: OperandKind,
 }
 
 impl EntityRefs {
@@ -69,6 +87,12 @@ impl EntityRefs {
                 "block_else",
                 "ir::BlockCall",
                 "a basic block in the same function, with its arguments provided.",
+            ),
+
+            raw_block: new(
+                "raw_block",
+                "ir::Block",
+                "a basic block in the same function, with no arguments provided.",
             ),
 
             stack_slot: new("stack_slot", "ir::StackSlot", "A stack slot"),
@@ -100,6 +124,18 @@ impl EntityRefs {
                         passed to a basic block, or a variable number of results
                         returned from an instruction.
                     "#,
+            ),
+
+            pool_constant: new(
+                "constant_handle",
+                "ir::Constant",
+                "A constant stored in the constant pool.",
+            ),
+
+            uimm128: new(
+                "imm",
+                "ir::Immediate",
+                "A 128-bit immediate unsigned integer.",
             ),
         }
     }

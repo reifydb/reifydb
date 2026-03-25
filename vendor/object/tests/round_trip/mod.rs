@@ -333,6 +333,21 @@ fn elf_any() {
                 )
                 .unwrap();
         }
+        object
+            .add_relocation(
+                section,
+                write::Relocation {
+                    offset: 24,
+                    symbol,
+                    addend: 0,
+                    flags: RelocationFlags::Generic {
+                        kind: RelocationKind::None,
+                        encoding: RelocationEncoding::Generic,
+                        size: 0,
+                    },
+                },
+            )
+            .unwrap();
 
         let bytes = object.write().unwrap();
         let object = read::File::parse(&*bytes).unwrap();
@@ -367,6 +382,14 @@ fn elf_any() {
             assert_eq!(relocation.size(), 64);
             assert_eq!(relocation.addend(), 0);
         }
+
+        let (offset, relocation) = relocations.next().unwrap();
+        println!("{:?}", relocation);
+        assert_eq!(offset, 24);
+        assert_eq!(relocation.kind(), RelocationKind::None);
+        assert_eq!(relocation.encoding(), RelocationEncoding::Generic);
+        assert_eq!(relocation.size(), 0);
+        assert_eq!(relocation.addend(), 0);
     }
 }
 
@@ -501,15 +524,11 @@ fn macho_any() {
             Endianness::Little,
         ),
         (Architecture::Aarch64_Ilp32, None, Endianness::Little),
-        /* TODO:
         (Architecture::Arm, None, Endianness::Little),
-        */
         (Architecture::I386, None, Endianness::Little),
         (Architecture::X86_64, None, Endianness::Little),
-        /* TODO:
         (Architecture::PowerPc, None, Endianness::Big),
         (Architecture::PowerPc64, None, Endianness::Big),
-        */
     ]
     .iter()
     .copied()

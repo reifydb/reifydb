@@ -3,11 +3,12 @@
 //! Keep in sync with `wasmtime_environ::VMHostFuncOffsets`.
 
 use super::{VMArrayCallNative, VMOpaqueContext};
+use crate::error::OutOfMemory;
 use crate::prelude::*;
 use crate::runtime::vm::{StoreBox, VMFuncRef};
 use core::any::Any;
 use core::ptr::NonNull;
-use wasmtime_environ::{VMSharedTypeIndex, VM_ARRAY_CALL_HOST_FUNC_MAGIC};
+use wasmtime_environ::{VM_ARRAY_CALL_HOST_FUNC_MAGIC, VMSharedTypeIndex};
 
 /// The `VM*Context` for array-call host functions.
 ///
@@ -34,7 +35,7 @@ impl VMArrayCallHostFuncContext {
         host_func: VMArrayCallNative,
         type_index: VMSharedTypeIndex,
         host_state: Box<dyn Any + Send + Sync>,
-    ) -> StoreBox<VMArrayCallHostFuncContext> {
+    ) -> Result<StoreBox<VMArrayCallHostFuncContext>, OutOfMemory> {
         let ctx = StoreBox::new(VMArrayCallHostFuncContext {
             magic: wasmtime_environ::VM_ARRAY_CALL_HOST_FUNC_MAGIC,
             func_ref: VMFuncRef {
@@ -44,12 +45,12 @@ impl VMArrayCallHostFuncContext {
                 vmctx: NonNull::dangling().into(),
             },
             host_state,
-        });
+        })?;
         let vmctx = VMOpaqueContext::from_vm_array_call_host_func_context(ctx.get());
         unsafe {
             ctx.get().as_mut().func_ref.vmctx = vmctx.into();
         }
-        ctx
+        Ok(ctx)
     }
 
     /// Get the host state for this host function context.
@@ -71,7 +72,9 @@ impl VMArrayCallHostFuncContext {
         opaque: NonNull<VMOpaqueContext>,
     ) -> NonNull<VMArrayCallHostFuncContext> {
         // See comments in `VMContext::from_opaque` for this debug assert
-        debug_assert_eq!(opaque.as_ref().magic, VM_ARRAY_CALL_HOST_FUNC_MAGIC);
+        unsafe {
+            debug_assert_eq!(opaque.as_ref().magic, VM_ARRAY_CALL_HOST_FUNC_MAGIC);
+        }
         opaque.cast()
     }
 }

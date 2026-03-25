@@ -1,7 +1,7 @@
 //! This module gives users to instantiate values that Cranelift understands. These values are used,
 //! for example, during interpretation and for wrapping immediates.
-use crate::ir::immediates::{Ieee128, Ieee16, Ieee32, Ieee64, Offset32};
-use crate::ir::{types, ConstantData, Type};
+use crate::ir::immediates::{Ieee16, Ieee32, Ieee64, Ieee128, Offset32};
+use crate::ir::{ConstantData, Type, types};
 use core::cmp::Ordering;
 use core::fmt::{self, Display, Formatter};
 
@@ -9,7 +9,7 @@ use core::fmt::{self, Display, Formatter};
 /// that would be referred to by a [Value].
 ///
 /// [Value]: crate::ir::Value
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "self-describing variants")]
 #[derive(Clone, Debug, PartialOrd)]
 pub enum DataValue {
     I8(i8),
@@ -247,13 +247,13 @@ impl DataValue {
     /// Write a [DataValue] to a memory location in native-endian byte order.
     pub unsafe fn write_value_to(&self, p: *mut u128) {
         let size = self.ty().bytes() as usize;
-        self.write_to_slice_ne(unsafe { std::slice::from_raw_parts_mut(p as *mut u8, size) });
+        self.write_to_slice_ne(unsafe { core::slice::from_raw_parts_mut(p as *mut u8, size) });
     }
 
     /// Read a [DataValue] from a memory location using a given [Type] in native-endian byte order.
     pub unsafe fn read_value_from(p: *const u128, ty: Type) -> Self {
         DataValue::read_from_slice_ne(
-            unsafe { std::slice::from_raw_parts(p as *const u8, ty.bytes() as usize) },
+            unsafe { core::slice::from_raw_parts(p as *const u8, ty.bytes() as usize) },
             ty,
         )
     }
@@ -282,7 +282,7 @@ impl DataValue {
 
 /// Record failures to cast [DataValue].
 #[derive(Debug, PartialEq)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "self-describing variants")]
 pub enum DataValueCastFailure {
     TryInto(Type, Type),
     FromInteger(i128, Type),
@@ -290,7 +290,7 @@ pub enum DataValueCastFailure {
 
 // This is manually implementing Error and Display instead of using thiserror to reduce the amount
 // of dependencies used by Cranelift.
-impl std::error::Error for DataValueCastFailure {}
+impl core::error::Error for DataValueCastFailure {}
 
 impl Display for DataValueCastFailure {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {

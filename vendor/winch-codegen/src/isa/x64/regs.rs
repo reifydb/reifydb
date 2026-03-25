@@ -1,6 +1,7 @@
 //! X64 register definition.
 
 use crate::isa::reg::Reg;
+use crate::regset::RegBitSet;
 use regalloc2::{PReg, RegClass};
 
 const ENC_RAX: u8 = 0;
@@ -58,9 +59,7 @@ pub(crate) fn r13() -> Reg {
 }
 /// Used as a pinned register to hold
 /// the `VMContext`.
-/// Non-allocatable in Winch's default
-/// ABI, and callee-saved in SystemV and
-/// Fastcall.
+/// Non-allocatable in Winch's default ABI.
 pub(crate) fn r14() -> Reg {
     gpr(ENC_R14)
 }
@@ -89,10 +88,6 @@ pub(crate) fn rbp() -> Reg {
 /// ABI.
 pub(crate) fn r11() -> Reg {
     gpr(ENC_R11)
-}
-
-pub(crate) fn scratch() -> Reg {
-    r11()
 }
 
 fn fpr(enc: u8) -> Reg {
@@ -150,31 +145,75 @@ pub(crate) fn xmm15() -> Reg {
     fpr(15)
 }
 
-pub(crate) fn scratch_xmm() -> Reg {
-    xmm15()
-}
-
 /// GPR count.
 const GPR: u32 = 16;
 /// FPR count.
 const FPR: u32 = 16;
 /// GPR index bound.
-pub(crate) const MAX_GPR: u32 = GPR;
+const MAX_GPR: u32 = GPR;
 /// GPR index bound.
-pub(crate) const MAX_FPR: u32 = FPR;
-const ALLOCATABLE_GPR: u32 = (1 << GPR) - 1;
-const ALLOCATABLE_FPR: u32 = (1 << FPR) - 1;
+const MAX_FPR: u32 = FPR;
+const ALL_GPR: u32 = (1 << GPR) - 1;
+const ALL_FPR: u32 = (1 << FPR) - 1;
 /// Bitmask of non-alloctable GPRs.
 // R11: Is used as the scratch register.
 // R14: Is a pinned register, used as the instance register.
-pub(crate) const NON_ALLOCATABLE_GPR: u32 =
-    (1 << ENC_RBP) | (1 << ENC_RSP) | (1 << ENC_R11) | (1 << ENC_R14);
+const SCRATCH: u32 = 1 << ENC_R11;
+const INSTANCE: u32 = 1 << ENC_R14;
+pub(crate) const NON_ALLOCATABLE_GPR: u32 = (1 << ENC_RBP) | (1 << ENC_RSP) | SCRATCH | INSTANCE;
 
 /// Bitmask of non-alloctable FPRs.
 // xmm15: Is used as the scratch register.
-pub(crate) const NON_ALLOCATABLE_FPR: u32 = 1 << 15;
+const SCRATCH_FPR: u32 = 1 << 15;
+const NON_ALLOCATABLE_FPR: u32 = SCRATCH_FPR;
 
 /// Bitmask to represent the available general purpose registers.
-pub(crate) const ALL_GPR: u32 = ALLOCATABLE_GPR & !NON_ALLOCATABLE_GPR;
+const ALLOCATABLE_GPR: u32 = ALL_GPR & !NON_ALLOCATABLE_GPR;
 /// Bitmask to represent the available floating point registers.
-pub(crate) const ALL_FPR: u32 = ALLOCATABLE_FPR & !NON_ALLOCATABLE_FPR;
+const ALLOCATABLE_FPR: u32 = ALL_FPR & !NON_ALLOCATABLE_FPR;
+
+/// Allocatable scratch general purpose registers.
+const ALLOCATABLE_SCRATCH_GPR: u32 = SCRATCH;
+/// Non-allocatable scratch general purpose registers.
+const NON_ALLOCATABLE_SCRATCH_GPR: u32 = ALL_GPR & !SCRATCH;
+
+/// Allocatable scratch floating-point registers.
+const ALLOCATABLE_SCRATCH_FPR: u32 = SCRATCH_FPR;
+/// Non-allocatable scratch floating-point registers.
+const NON_ALLOCATABLE_SCRATCH_FPR: u32 = ALL_FPR & !SCRATCH_FPR;
+
+/// Bitset for allocatable general purpose registers.
+pub fn gpr_bit_set() -> RegBitSet {
+    RegBitSet::int(
+        ALLOCATABLE_GPR.into(),
+        NON_ALLOCATABLE_GPR.into(),
+        usize::try_from(MAX_GPR).unwrap(),
+    )
+}
+
+/// Bitset for allocatable floating point registers.
+pub fn fpr_bit_set() -> RegBitSet {
+    RegBitSet::float(
+        ALLOCATABLE_FPR.into(),
+        NON_ALLOCATABLE_FPR.into(),
+        usize::try_from(MAX_FPR).unwrap(),
+    )
+}
+
+/// Bitset for allocatable scratch general purpose registers.
+pub fn scratch_gpr_bitset() -> RegBitSet {
+    RegBitSet::int(
+        ALLOCATABLE_SCRATCH_GPR.into(),
+        NON_ALLOCATABLE_SCRATCH_GPR.into(),
+        usize::try_from(MAX_GPR).unwrap(),
+    )
+}
+
+/// Bitset for allocatable scratch floating point registers.
+pub fn scratch_fpr_bitset() -> RegBitSet {
+    RegBitSet::float(
+        ALLOCATABLE_SCRATCH_FPR.into(),
+        NON_ALLOCATABLE_SCRATCH_FPR.into(),
+        usize::try_from(MAX_FPR).unwrap(),
+    )
+}

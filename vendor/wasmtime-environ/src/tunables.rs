@@ -1,8 +1,9 @@
+use crate::prelude::*;
 use crate::{IndexType, Limits, Memory, TripleExt};
-use anyhow::{anyhow, bail, Result};
-use core::fmt;
+use core::{fmt, str::FromStr};
 use serde_derive::{Deserialize, Serialize};
 use target_lexicon::{PointerWidth, Triple};
+use wasmparser::Operator;
 
 macro_rules! define_tunables {
     (
@@ -46,8 +47,8 @@ macro_rules! define_tunables {
             /// Configure the `Tunables` provided.
             pub fn configure(&self, tunables: &mut Tunables) {
                 $(
-                    if let Some(val) = self.$field {
-                        tunables.$field = val;
+                    if let Some(val) = &self.$field {
+                        tunables.$field = val.clone();
                     }
                 )*
             }
@@ -74,7 +75,11 @@ define_tunables! {
         pub memory_reservation_for_growth: u64,
 
         /// Whether or not to generate native DWARF debug information.
-        pub generate_native_debuginfo: bool,
+        pub debug_native: bool,
+
+        /// Whether we are enabling precise Wasm-level debugging in
+        /// the guest.
+        pub debug_guest: bool,
 
         /// Whether or not to retain DWARF sections in compiled modules.
         pub parse_wasm_debuginfo: bool,
@@ -82,6 +87,9 @@ define_tunables! {
         /// Whether or not fuel is enabled for generated code, meaning that fuel
         /// will be consumed every time a wasm instruction is executed.
         pub consume_fuel: bool,
+
+        /// The cost of each operator. If fuel is not enabled, this is ignored.
+        pub operator_cost: OperatorCostStrategy,
 
         /// Whether or not we use epoch-based interruption.
         pub epoch_interruption: bool,
@@ -121,6 +129,29 @@ define_tunables! {
 
         /// Whether CoW images might be used to initialize linear memories.
         pub memory_init_cow: bool,
+
+        /// Whether to enable inlining in Wasmtime's compilation orchestration
+        /// or not.
+        pub inlining: bool,
+
+        /// Whether to inline calls within the same core Wasm module or not.
+        pub inlining_intra_module: IntraModuleInlining,
+
+        /// The size of "small callees" that can be inlined regardless of the
+        /// caller's size.
+        pub inlining_small_callee_size: u32,
+
+        /// The general size threshold for the sum of the caller's and callee's
+        /// sizes, past which we will generally not inline calls anymore.
+        pub inlining_sum_size_threshold: u32,
+
+        /// Whether any component model feature related to concurrency is
+        /// enabled.
+        pub concurrency_support: bool,
+
+        /// Whether recording in RR is enabled or not. This is used primarily
+        /// to signal checksum computation for compiled artifacts.
+        pub recording: bool,
     }
 
     pub struct ConfigTunables {
@@ -149,7 +180,7 @@ impl Tunables {
         }
         let mut ret = match target
             .pointer_width()
-            .map_err(|_| anyhow!("failed to retrieve target pointer width"))?
+            .map_err(|_| format_err!("failed to retrieve target pointer width"))?
         {
             PointerWidth::U32 => Tunables::default_u32(),
             PointerWidth::U64 => Tunables::default_u64(),
@@ -166,7 +197,7 @@ impl Tunables {
     }
 
     /// Returns the default set of tunables for running under MIRI.
-    pub const fn default_miri() -> Tunables {
+    pub fn default_miri() -> Tunables {
         Tunables {
             collector: None,
 
@@ -178,9 +209,10 @@ impl Tunables {
 
             // General options which have the same defaults regardless of
             // architecture.
-            generate_native_debuginfo: false,
+            debug_native: false,
             parse_wasm_debuginfo: true,
             consume_fuel: false,
+            operator_cost: OperatorCostStrategy::Default,
             epoch_interruption: false,
             memory_may_move: true,
             guard_before_linear_memory: true,
@@ -191,11 +223,18 @@ impl Tunables {
             winch_callable: false,
             signals_based_traps: false,
             memory_init_cow: true,
+            inlining: false,
+            inlining_intra_module: IntraModuleInlining::WhenUsingGc,
+            inlining_small_callee_size: 50,
+            inlining_sum_size_threshold: 2000,
+            debug_guest: false,
+            concurrency_support: true,
+            recording: false,
         }
     }
 
     /// Returns the default set of tunables for running under a 32-bit host.
-    pub const fn default_u32() -> Tunables {
+    pub fn default_u32() -> Tunables {
         Tunables {
             // For 32-bit we scale way down to 10MB of reserved memory. This
             // impacts performance severely but allows us to have more than a
@@ -210,7 +249,7 @@ impl Tunables {
     }
 
     /// Returns the default set of tunables for running under a 64-bit host.
-    pub const fn default_u64() -> Tunables {
+    pub fn default_u64() -> Tunables {
         Tunables {
             // 64-bit has tons of address space to static memories can have 4gb
             // address space reservations liberally by default, allowing us to
@@ -267,3 +306,159 @@ impl fmt::Display for Collector {
         }
     }
 }
+
+/// Whether to inline function calls within the same module.
+#[derive(Clone, Copy, Hash, Serialize, Deserialize, Debug, PartialEq, Eq)]
+#[expect(missing_docs, reason = "self-describing variants")]
+pub enum IntraModuleInlining {
+    Yes,
+    No,
+    WhenUsingGc,
+}
+
+impl FromStr for IntraModuleInlining {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "y" | "yes" | "true" => Ok(Self::Yes),
+            "n" | "no" | "false" => Ok(Self::No),
+            "gc" => Ok(Self::WhenUsingGc),
+            _ => bail!(
+                "invalid intra-module inlining option string: `{s}`, \
+                 only yes,no,gc accepted"
+            ),
+        }
+    }
+}
+
+/// The cost of each operator.
+///
+/// Note: a more dynamic approach (e.g. a user-supplied callback) can be
+/// added as a variant in the future if needed.
+#[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+pub enum OperatorCostStrategy {
+    /// A table of operator costs.
+    Table(Box<OperatorCost>),
+
+    /// Each cost defaults to 1 fuel unit, except `Nop`, `Drop` and
+    /// a few control flow operators.
+    #[default]
+    Default,
+}
+
+impl OperatorCostStrategy {
+    /// Create a new operator cost strategy with a table of costs.
+    pub fn table(cost: OperatorCost) -> Self {
+        OperatorCostStrategy::Table(Box::new(cost))
+    }
+
+    /// Get the cost of an operator.
+    pub fn cost(&self, op: &Operator) -> i64 {
+        match self {
+            OperatorCostStrategy::Table(cost) => cost.cost(op),
+            OperatorCostStrategy::Default => default_operator_cost(op),
+        }
+    }
+}
+
+const fn default_operator_cost(op: &Operator) -> i64 {
+    match op {
+        // Nop and drop generate no code, so don't consume fuel for them.
+        Operator::Nop | Operator::Drop => 0,
+
+        // Control flow may create branches, but is generally cheap and
+        // free, so don't consume fuel. Note the lack of `if` since some
+        // cost is incurred with the conditional check.
+        Operator::Block { .. }
+        | Operator::Loop { .. }
+        | Operator::Unreachable
+        | Operator::Return
+        | Operator::Else
+        | Operator::End => 0,
+
+        // Everything else, just call it one operation.
+        _ => 1,
+    }
+}
+
+macro_rules! default_cost {
+    // Nop and drop generate no code, so don't consume fuel for them.
+    (Nop) => {
+        0
+    };
+    (Drop) => {
+        0
+    };
+
+    // Control flow may create branches, but is generally cheap and
+    // free, so don't consume fuel. Note the lack of `if` since some
+    // cost is incurred with the conditional check.
+    (Block) => {
+        0
+    };
+    (Loop) => {
+        0
+    };
+    (Unreachable) => {
+        0
+    };
+    (Return) => {
+        0
+    };
+    (Else) => {
+        0
+    };
+    (End) => {
+        0
+    };
+
+    // Everything else, just call it one operation.
+    ($op:ident) => {
+        1
+    };
+}
+
+macro_rules! define_operator_cost {
+    ($(@$proposal:ident $op:ident $({ $($arg:ident: $argty:ty),* })? => $visit:ident ($($ann:tt)*) )*) => {
+        /// The fuel cost of each operator in a table.
+        #[derive(Clone, Hash, Serialize, Deserialize, Debug, PartialEq, Eq)]
+        #[allow(missing_docs, non_snake_case, reason = "to avoid triggering clippy lints")]
+        pub struct OperatorCost {
+            $(
+                pub $op: u8,
+            )*
+        }
+
+        impl OperatorCost {
+            /// Returns the cost of the given operator.
+            pub fn cost(&self, op: &Operator) -> i64 {
+                match op {
+                    $(
+                        Operator::$op $({ $($arg: _),* })? => self.$op as i64,
+                    )*
+                    unknown => panic!("unknown op: {unknown:?}"),
+                }
+            }
+        }
+
+        impl OperatorCost {
+            /// Creates a new `OperatorCost` table with default costs for each operator.
+            pub const fn new() -> Self {
+                Self {
+                    $(
+                        $op: default_cost!($op),
+                    )*
+                }
+            }
+        }
+
+        impl Default for OperatorCost {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+    }
+}
+
+wasmparser::for_each_operator!(define_operator_cost);

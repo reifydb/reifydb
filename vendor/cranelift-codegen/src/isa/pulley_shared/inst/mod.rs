@@ -3,13 +3,14 @@
 use core::marker::PhantomData;
 
 use crate::binemit::{Addend, CodeOffset, Reloc};
-use crate::ir::types::{self, F32, F64, I128, I16, I32, I64, I8, I8X16};
+use crate::ir::types::{self, F32, F64, I8, I8X16, I16, I32, I64, I128};
 use crate::ir::{self, MemFlags, Type};
-use crate::isa::pulley_shared::abi::PulleyMachineDeps;
 use crate::isa::FunctionAlignment;
+use crate::isa::pulley_shared::abi::PulleyMachineDeps;
+use crate::{CodegenError, CodegenResult, settings};
 use crate::{machinst::*, trace};
-use crate::{settings, CodegenError, CodegenResult};
 use alloc::string::{String, ToString};
+use alloc::vec;
 use alloc::vec::Vec;
 use regalloc2::RegClass;
 use smallvec::SmallVec;
@@ -145,17 +146,18 @@ fn pulley_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             assert!(reg.is_special());
         }
 
-        Inst::LoadExtName {
-            dst,
-            name: _,
-            offset: _,
-        } => {
+        Inst::LoadExtNameNear { dst, .. } | Inst::LoadExtNameFar { dst, .. } => {
             collector.reg_def(dst);
         }
 
         Inst::Call { info } => {
             let CallInfo {
-                uses, defs, dest, ..
+                uses,
+                defs,
+                dest,
+                try_call_info,
+                clobbers,
+                ..
             } = &mut **info;
 
             // Pulley supports having the first few integer arguments in any
@@ -176,10 +178,19 @@ fn pulley_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                     RetLocation::Stack(..) => collector.any_def(vreg),
                 }
             }
-            collector.reg_clobbers(info.clobbers);
+            collector.reg_clobbers(*clobbers);
+            if let Some(try_call_info) = try_call_info {
+                try_call_info.collect_operands(collector);
+            }
         }
         Inst::IndirectCallHost { info } => {
-            let CallInfo { uses, defs, .. } = &mut **info;
+            let CallInfo {
+                uses,
+                defs,
+                try_call_info,
+                clobbers,
+                ..
+            } = &mut **info;
             for CallArgPair { vreg, preg } in uses {
                 collector.reg_fixed_use(vreg, *preg);
             }
@@ -189,11 +200,20 @@ fn pulley_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                     RetLocation::Stack(..) => collector.any_def(vreg),
                 }
             }
-            collector.reg_clobbers(info.clobbers);
+            collector.reg_clobbers(*clobbers);
+            if let Some(try_call_info) = try_call_info {
+                try_call_info.collect_operands(collector);
+            }
         }
         Inst::IndirectCall { info } => {
             collector.reg_use(&mut info.dest);
-            let CallInfo { uses, defs, .. } = &mut **info;
+            let CallInfo {
+                uses,
+                defs,
+                try_call_info,
+                clobbers,
+                ..
+            } = &mut **info;
             for CallArgPair { vreg, preg } in uses {
                 collector.reg_fixed_use(vreg, *preg);
             }
@@ -203,7 +223,10 @@ fn pulley_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                     RetLocation::Stack(..) => collector.any_def(vreg),
                 }
             }
-            collector.reg_clobbers(info.clobbers);
+            collector.reg_clobbers(*clobbers);
+            if let Some(try_call_info) = try_call_info {
+                try_call_info.collect_operands(collector);
+            }
         }
         Inst::ReturnCall { info } => {
             for CallArgPair { vreg, preg } in &mut info.uses {
@@ -310,6 +333,12 @@ fn pulley_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
         Inst::Raw { raw } => generated::get_operands(raw, collector),
 
         Inst::EmitIsland { .. } => {}
+
+        Inst::LabelAddress { dst, label: _ } => {
+            collector.reg_def(dst);
+        }
+
+        Inst::SequencePoint { .. } => {}
     }
 }
 
@@ -458,12 +487,27 @@ where
             Inst::ReturnCall { .. } | Inst::ReturnIndirectCall { .. } => MachTerminator::RetCall,
             Inst::Call { info } if info.try_call_info.is_some() => MachTerminator::Branch,
             Inst::IndirectCall { info } if info.try_call_info.is_some() => MachTerminator::Branch,
+            Inst::IndirectCallHost { info } if info.try_call_info.is_some() => {
+                MachTerminator::Branch
+            }
             _ => MachTerminator::None,
         }
     }
 
     fn is_mem_access(&self) -> bool {
         todo!()
+    }
+
+    fn call_type(&self) -> CallType {
+        match &self.inst {
+            Inst::Call { .. } | Inst::IndirectCall { .. } | Inst::IndirectCallHost { .. } => {
+                CallType::Regular
+            }
+
+            Inst::ReturnCall { .. } | Inst::ReturnIndirectCall { .. } => CallType::TailCall,
+
+            _ => CallType::None,
+        }
     }
 
     fn gen_move(to_reg: Writable<Reg>, from_reg: Reg, ty: Type) -> Self {
@@ -489,6 +533,16 @@ where
 
     fn gen_nop(_preferred_size: usize) -> Self {
         todo!()
+    }
+
+    fn gen_nop_units() -> Vec<Vec<u8>> {
+        let mut bytes = vec![];
+        let nop = pulley_interpreter::op::Nop {};
+        nop.encode(&mut bytes);
+        // NOP needs to be a 1-byte opcode so it can be used to
+        // overwrite a callsite of any length.
+        assert_eq!(bytes.len(), 1);
+        vec![bytes]
     }
 
     fn rc_for_type(ty: Type) -> CodegenResult<(&'static [RegClass], &'static [Type])> {
@@ -557,7 +611,7 @@ const TRAP_OPCODE: &'static [u8] = &[
 
 #[test]
 fn test_trap_encoding() {
-    let mut dst = std::vec::Vec::new();
+    let mut dst = alloc::vec::Vec::new();
     pulley_interpreter::encode::trap(&mut dst);
     assert_eq!(dst, TRAP_OPCODE);
 }
@@ -588,13 +642,11 @@ pub fn reg_name(reg: Reg) -> String {
 }
 
 fn pretty_print_try_call(info: &TryCallInfo) -> String {
-    let dests = info
-        .exception_dests
-        .iter()
-        .map(|(tag, label)| format!("{tag:?}: {label:?}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("; jump {:?}; catch [{dests}]", info.continuation)
+    format!(
+        "; jump {:?}; catch [{}]",
+        info.continuation,
+        info.pretty_print_dests()
+    )
 }
 
 impl Inst {
@@ -643,9 +695,14 @@ impl Inst {
                 format!("xmov {dst}, {reg}")
             }
 
-            Inst::LoadExtName { dst, name, offset } => {
+            Inst::LoadExtNameNear { dst, name, offset } => {
                 let dst = format_reg(*dst.to_reg());
-                format!("{dst} = load_ext_name {name:?}, {offset}")
+                format!("{dst} = load_ext_name_near {name:?}, {offset}")
+            }
+
+            Inst::LoadExtNameFar { dst, name, offset } => {
+                let dst = format_reg(*dst.to_reg());
+                format!("{dst} = load_ext_name_far {name:?}, {offset}")
             }
 
             Inst::Call { info } => {
@@ -677,7 +734,12 @@ impl Inst {
             }
 
             Inst::IndirectCallHost { info } => {
-                format!("indirect_call_host {info:?}")
+                let try_call = info
+                    .try_call_info
+                    .as_ref()
+                    .map(|tci| pretty_print_try_call(tci))
+                    .unwrap_or_default();
+                format!("indirect_call_host {info:?}{try_call}")
             }
 
             Inst::Jump { label } => format!("jump {}", label.to_string()),
@@ -781,6 +843,15 @@ impl Inst {
             Inst::Raw { raw } => generated::print(raw),
 
             Inst::EmitIsland { space_needed } => format!("emit_island {space_needed}"),
+
+            Inst::LabelAddress { dst, label } => {
+                let dst = format_reg(dst.to_reg().to_reg());
+                format!("label_address {dst}, {label:?}")
+            }
+
+            Inst::SequencePoint {} => {
+                format!("sequence_point")
+            }
         }
     }
 }
@@ -789,9 +860,11 @@ impl Inst {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LabelUse {
     /// A PC-relative `jump`/`call`/etc... instruction with an `i32` relative
-    /// target. The payload value is an addend that describes the positive
-    /// offset from the start of the instruction to the offset being relocated.
-    Jump(u32),
+    /// target.
+    ///
+    /// The relative distance to the destination is added to the 4 bytes at the
+    /// label site.
+    PcRel,
 }
 
 impl MachInstLabelUse for LabelUse {
@@ -802,21 +875,21 @@ impl MachInstLabelUse for LabelUse {
     /// Maximum PC-relative range (positive), inclusive.
     fn max_pos_range(self) -> CodeOffset {
         match self {
-            Self::Jump(_) => 0x7fff_ffff,
+            Self::PcRel => 0x7fff_ffff,
         }
     }
 
     /// Maximum PC-relative range (negative).
     fn max_neg_range(self) -> CodeOffset {
         match self {
-            Self::Jump(_) => 0x8000_0000,
+            Self::PcRel => 0x8000_0000,
         }
     }
 
     /// Size of window into code needed to do the patch.
     fn patch_size(self) -> CodeOffset {
         match self {
-            Self::Jump(_) => 4,
+            Self::PcRel => 4,
         }
     }
 
@@ -827,13 +900,17 @@ impl MachInstLabelUse for LabelUse {
         debug_assert!(use_relative >= -(self.max_neg_range() as i64));
         let pc_rel = i32::try_from(use_relative).unwrap() as u32;
         match self {
-            Self::Jump(addend) => {
-                let value = pc_rel.wrapping_add(addend);
+            Self::PcRel => {
+                let buf: &mut [u8; 4] = buffer.try_into().unwrap();
+                let addend = u32::from_le_bytes(*buf);
                 trace!(
-                    "patching label use @ {use_offset:#x} to label {label_offset:#x} via \
-                     PC-relative offset {pc_rel:#x}"
+                    "patching label use @ {use_offset:#x} \
+                     to label {label_offset:#x} via \
+                     PC-relative offset {pc_rel:#x} \
+                     adding in {addend:#x}"
                 );
-                buffer.copy_from_slice(&value.to_le_bytes()[..]);
+                let value = pc_rel.wrapping_add(addend);
+                *buf = value.to_le_bytes();
             }
         }
     }
@@ -841,14 +918,14 @@ impl MachInstLabelUse for LabelUse {
     /// Is a veneer supported for this label reference type?
     fn supports_veneer(self) -> bool {
         match self {
-            Self::Jump(_) => false,
+            Self::PcRel => false,
         }
     }
 
     /// How large is the veneer, if supported?
     fn veneer_size(self) -> CodeOffset {
         match self {
-            Self::Jump(_) => 0,
+            Self::PcRel => 0,
         }
     }
 
@@ -864,19 +941,13 @@ impl MachInstLabelUse for LabelUse {
         _veneer_offset: CodeOffset,
     ) -> (CodeOffset, LabelUse) {
         match self {
-            Self::Jump(_) => panic!("veneer not supported for {self:?}"),
+            Self::PcRel => panic!("veneer not supported for {self:?}"),
         }
     }
 
     fn from_reloc(reloc: Reloc, addend: Addend) -> Option<LabelUse> {
-        match reloc {
-            Reloc::X86CallPCRel4 if addend < 0 => {
-                // We are always relocating some offset that is within an
-                // instruction, but pulley adds the offset relative to the PC
-                // pointing to the *start* of the instruction. Therefore, adjust
-                // back to the beginning of the instruction.
-                Some(LabelUse::Jump(i32::try_from(-addend).unwrap() as u32))
-            }
+        match (reloc, addend) {
+            (Reloc::PulleyPcRel, 0) => Some(LabelUse::PcRel),
             _ => None,
         }
     }

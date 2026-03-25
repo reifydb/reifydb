@@ -1,28 +1,36 @@
 use crate::runtime::vm::sys::DecommitBehavior;
 use rustix::fd::AsRawFd;
-use rustix::mm::{mmap_anonymous, mprotect, MapFlags, MprotectFlags, ProtFlags};
+use rustix::mm::{MapFlags, MprotectFlags, ProtFlags, mmap_anonymous, mprotect};
 use std::fs::File;
 use std::io;
 #[cfg(feature = "std")]
 use std::sync::Arc;
 
+pub use super::pagemap::{PageMap, reset_with_pagemap};
+
 pub unsafe fn expose_existing_mapping(ptr: *mut u8, len: usize) -> io::Result<()> {
-    mprotect(ptr.cast(), len, MprotectFlags::READ | MprotectFlags::WRITE)?;
+    unsafe {
+        mprotect(ptr.cast(), len, MprotectFlags::READ | MprotectFlags::WRITE)?;
+    }
     Ok(())
 }
 
 pub unsafe fn hide_existing_mapping(ptr: *mut u8, len: usize) -> io::Result<()> {
-    mprotect(ptr.cast(), len, MprotectFlags::empty())?;
+    unsafe {
+        mprotect(ptr.cast(), len, MprotectFlags::empty())?;
+    }
     Ok(())
 }
 
 pub unsafe fn erase_existing_mapping(ptr: *mut u8, len: usize) -> io::Result<()> {
-    let ret = mmap_anonymous(
-        ptr.cast(),
-        len,
-        ProtFlags::empty(),
-        MapFlags::PRIVATE | super::mmap::MMAP_NORESERVE_FLAG | MapFlags::FIXED,
-    )?;
+    let ret = unsafe {
+        mmap_anonymous(
+            ptr.cast(),
+            len,
+            ProtFlags::empty(),
+            MapFlags::PRIVATE | super::mmap::MMAP_NORESERVE_FLAG | MapFlags::FIXED,
+        )?
+    };
     assert_eq!(ptr, ret.cast());
     Ok(())
 }
@@ -66,6 +74,8 @@ pub unsafe fn decommit_pages(addr: *mut u8, len: usize) -> io::Result<()> {
     Ok(())
 }
 
+// NB: this function is duplicated in `crates/fiber/src/unix.rs` so if this
+// changes that should probably get updated as well.
 pub fn get_page_size() -> usize {
     unsafe { libc::sysconf(libc::_SC_PAGESIZE).try_into().unwrap() }
 }
@@ -98,7 +108,7 @@ impl MemoryImageSource {
     }
 
     #[cfg(target_os = "linux")]
-    pub fn from_data(data: &[u8]) -> anyhow::Result<Option<MemoryImageSource>> {
+    pub fn from_data(data: &[u8]) -> crate::Result<Option<MemoryImageSource>> {
         // On Linux `memfd_create` is used to create an anonymous
         // in-memory file to represent the heap image. This anonymous
         // file is then used as the basis for further mmaps.
@@ -116,7 +126,7 @@ impl MemoryImageSource {
             // gracefully handle that and fall back to skipping the memfd
             // optimization.
             Err(memfd::Error::Create(err)) if err.kind() == ErrorKind::Unsupported => {
-                return Ok(None)
+                return Ok(None);
             }
             Err(e) => return Err(e.into()),
         };
@@ -157,12 +167,14 @@ impl MemoryImageSource {
     }
 
     pub unsafe fn remap_as_zeros_at(&self, base: *mut u8, len: usize) -> io::Result<()> {
-        let ptr = mmap_anonymous(
-            base.cast(),
-            len,
-            ProtFlags::READ | ProtFlags::WRITE,
-            MapFlags::PRIVATE | super::mmap::MMAP_NORESERVE_FLAG | MapFlags::FIXED,
-        )?;
+        let ptr = unsafe {
+            mmap_anonymous(
+                base.cast(),
+                len,
+                ProtFlags::READ | ProtFlags::WRITE,
+                MapFlags::PRIVATE | super::mmap::MMAP_NORESERVE_FLAG | MapFlags::FIXED,
+            )?
+        };
         assert_eq!(base, ptr.cast());
         Ok(())
     }

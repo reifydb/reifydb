@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use super::{canonicalize_nan32, canonicalize_nan64, unwrap_2val, unwrap_val};
 use component::wasm_wave::wasm::{
-    ensure_type_kind, DisplayValue, WasmFunc, WasmType, WasmTypeKind, WasmValue, WasmValueError,
+    DisplayValue, WasmFunc, WasmType, WasmTypeKind, WasmValue, WasmValueError, ensure_type_kind,
 };
 
 macro_rules! maybe_unwrap_type {
@@ -41,7 +41,11 @@ impl WasmType for component::Type {
             Self::Result(_) => WasmTypeKind::Result,
             Self::Flags(_) => WasmTypeKind::Flags,
 
-            Self::Own(_) | Self::Borrow(_) => WasmTypeKind::Unsupported,
+            Self::Own(_)
+            | Self::Borrow(_)
+            | Self::Stream(_)
+            | Self::Future(_)
+            | Self::ErrorContext => WasmTypeKind::Unsupported,
         }
     }
 
@@ -49,7 +53,7 @@ impl WasmType for component::Type {
         Some(maybe_unwrap_type!(self, Self::List)?.ty())
     }
 
-    fn record_fields(&self) -> Box<dyn Iterator<Item = (Cow<str>, Self)> + '_> {
+    fn record_fields(&self) -> Box<dyn Iterator<Item = (Cow<'_, str>, Self)> + '_> {
         let Self::Record(record) = self else {
             return Box::new(std::iter::empty());
         };
@@ -63,14 +67,14 @@ impl WasmType for component::Type {
         Box::new(tuple.types())
     }
 
-    fn variant_cases(&self) -> Box<dyn Iterator<Item = (Cow<str>, Option<Self>)> + '_> {
+    fn variant_cases(&self) -> Box<dyn Iterator<Item = (Cow<'_, str>, Option<Self>)> + '_> {
         let Self::Variant(variant) = self else {
             return Box::new(std::iter::empty());
         };
         Box::new(variant.cases().map(|case| (case.name.into(), case.ty)))
     }
 
-    fn enum_cases(&self) -> Box<dyn Iterator<Item = Cow<str>> + '_> {
+    fn enum_cases(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         let Self::Enum(enum_) = self else {
             return Box::new(std::iter::empty());
         };
@@ -86,7 +90,7 @@ impl WasmType for component::Type {
         Some((result.ok(), result.err()))
     }
 
-    fn flags_names(&self) -> Box<dyn Iterator<Item = Cow<str>> + '_> {
+    fn flags_names(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         let Self::Flags(flags) = self else {
             return Box::new(std::iter::empty());
         };
@@ -134,7 +138,9 @@ impl WasmValue for component::Val {
             Self::Option(_) => WasmTypeKind::Option,
             Self::Result(_) => WasmTypeKind::Result,
             Self::Flags(_) => WasmTypeKind::Flags,
-            Self::Resource(_) => WasmTypeKind::Unsupported,
+            Self::Resource(_) | Self::Stream(_) | Self::Future(_) | Self::ErrorContext(_) => {
+                WasmTypeKind::Unsupported
+            }
         }
     }
 
@@ -246,40 +252,40 @@ impl WasmValue for component::Val {
         let val = *unwrap_val!(self, Self::Float64, "f64");
         canonicalize_nan64(val)
     }
-    fn unwrap_string(&self) -> Cow<str> {
+    fn unwrap_string(&self) -> Cow<'_, str> {
         unwrap_val!(self, Self::String, "string").into()
     }
-    fn unwrap_list(&self) -> Box<dyn Iterator<Item = Cow<Self>> + '_> {
+    fn unwrap_list(&self) -> Box<dyn Iterator<Item = Cow<'_, Self>> + '_> {
         let list = unwrap_val!(self, Self::List, "list");
         Box::new(list.iter().map(cow))
     }
-    fn unwrap_record(&self) -> Box<dyn Iterator<Item = (Cow<str>, Cow<Self>)> + '_> {
+    fn unwrap_record(&self) -> Box<dyn Iterator<Item = (Cow<'_, str>, Cow<'_, Self>)> + '_> {
         let record = unwrap_val!(self, Self::Record, "record");
         Box::new(record.iter().map(|(name, val)| (name.into(), cow(val))))
     }
-    fn unwrap_tuple(&self) -> Box<dyn Iterator<Item = Cow<Self>> + '_> {
+    fn unwrap_tuple(&self) -> Box<dyn Iterator<Item = Cow<'_, Self>> + '_> {
         let tuple = unwrap_val!(self, Self::Tuple, "tuple");
         Box::new(tuple.iter().map(cow))
     }
-    fn unwrap_variant(&self) -> (Cow<str>, Option<Cow<Self>>) {
+    fn unwrap_variant(&self) -> (Cow<'_, str>, Option<Cow<'_, Self>>) {
         let (discriminant, payload) = unwrap_2val!(self, Self::Variant, "variant");
         (discriminant.into(), payload.as_deref().map(cow))
     }
-    fn unwrap_enum(&self) -> Cow<str> {
+    fn unwrap_enum(&self) -> Cow<'_, str> {
         unwrap_val!(self, Self::Enum, "enum").into()
     }
-    fn unwrap_option(&self) -> Option<Cow<Self>> {
+    fn unwrap_option(&self) -> Option<Cow<'_, Self>> {
         unwrap_val!(self, Self::Option, "option")
             .as_deref()
             .map(cow)
     }
-    fn unwrap_result(&self) -> Result<Option<Cow<Self>>, Option<Cow<Self>>> {
+    fn unwrap_result(&self) -> Result<Option<Cow<'_, Self>>, Option<Cow<'_, Self>>> {
         match unwrap_val!(self, Self::Result, "result") {
             Ok(t) => Ok(t.as_deref().map(cow)),
             Err(e) => Err(e.as_deref().map(cow)),
         }
     }
-    fn unwrap_flags(&self) -> Box<dyn Iterator<Item = Cow<str>> + '_> {
+    fn unwrap_flags(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         let flags = unwrap_val!(self, Self::Flags, "flags");
         Box::new(flags.iter().map(Into::into))
     }
@@ -382,7 +388,7 @@ fn ensure_type_val(ty: &component::Type, val: &component::Val) -> Result<(), Was
         component::Val::Resource(_) => {
             return Err(WasmValueError::UnsupportedType(
                 DisplayValue(val).to_string(),
-            ))
+            ));
         }
 
         // Any leaf variant type has already had its kind compared above; nothing further to check.
@@ -404,7 +410,7 @@ impl WasmFunc for component::types::ComponentFunc {
     }
 }
 
-fn cow<T: Clone>(t: &T) -> Cow<T> {
+fn cow<T: Clone>(t: &T) -> Cow<'_, T> {
     Cow::Borrowed(t)
 }
 

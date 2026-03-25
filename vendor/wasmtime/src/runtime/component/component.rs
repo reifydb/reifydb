@@ -1,30 +1,26 @@
+use crate::component::InstanceExportLookup;
 use crate::component::matching::InstanceType;
 use crate::component::types;
-use crate::component::InstanceExportLookup;
 use crate::prelude::*;
-use crate::runtime::vm::component::ComponentRuntimeInfo;
 #[cfg(feature = "std")]
 use crate::runtime::vm::open_file_for_mmap;
-use crate::runtime::vm::{
-    CompiledModuleId, VMArrayCallFunction, VMFuncRef, VMFunctionBody, VMWasmCallFunction,
-};
+use crate::runtime::vm::{CompiledModuleId, VMArrayCallFunction, VMFuncRef, VMWasmCallFunction};
 use crate::{
-    code::CodeObject, code_memory::CodeMemory, type_registry::TypeCollection, Engine, Module,
-    ResourcesRequired,
+    Engine, Module, ResourcesRequired, code::EngineCode, code_memory::CodeMemory,
+    type_registry::TypeCollection,
 };
 use crate::{FuncType, ValType};
 use alloc::sync::Arc;
-use core::any::Any;
 use core::ops::Range;
 use core::ptr::NonNull;
 #[cfg(feature = "std")]
 use std::path::Path;
 use wasmtime_environ::component::{
-    AllCallFunc, CompiledComponentInfo, ComponentArtifacts, ComponentTypes, Export, ExportIndex,
-    GlobalInitializer, InstantiateModule, NameMapNoIntern, StaticModuleIndex, TrampolineIndex,
-    TypeComponentIndex, VMComponentOffsets,
+    CompiledComponentInfo, ComponentArtifacts, ComponentTypes, CoreDef, Export, ExportIndex,
+    GlobalInitializer, InstantiateModule, NameMapNoIntern, OptionsIndex, StaticModuleIndex,
+    TrampolineIndex, TypeComponentIndex, TypeFuncIndex, UnsafeIntrinsic, VMComponentOffsets,
 };
-use wasmtime_environ::TypeTrace;
+use wasmtime_environ::{Abi, CompiledFunctionsTable, FuncKey, TypeTrace, WasmChecksum};
 use wasmtime_environ::{FunctionLoc, HostPtr, ObjectKind, PrimaryMap};
 
 /// A compiled WebAssembly Component.
@@ -85,15 +81,22 @@ struct ComponentInner {
     ///
     /// Note that the `Arc` here is used to share this allocation with internal
     /// modules.
-    code: Arc<CodeObject>,
+    code: Arc<EngineCode>,
 
     /// Metadata produced during compilation.
     info: CompiledComponentInfo,
 
+    /// The index of compiled functions and their locations in the text section
+    /// for this component.
+    index: Arc<CompiledFunctionsTable>,
+
     /// A cached handle to the `wasmtime::FuncType` for the canonical ABI's
     /// `realloc`, to avoid the need to look up types in the registry and take
     /// locks when calling `realloc` via `TypedFunc::call_raw`.
-    realloc_func_type: Arc<dyn Any + Send + Sync>,
+    realloc_func_type: Arc<FuncType>,
+
+    /// The checksum of the source binary from which the module was compiled.
+    checksum: WasmChecksum,
 }
 
 pub(crate) struct AllCallFuncPointers {
@@ -141,7 +144,7 @@ impl Component {
     /// ```no_run
     /// # use wasmtime::*;
     /// # use wasmtime::component::Component;
-    /// # fn main() -> anyhow::Result<()> {
+    /// # fn main() -> Result<()> {
     /// # let engine = Engine::default();
     /// # let wasm_bytes: Vec<u8> = Vec::new();
     /// let component = Component::new(&engine, &wasm_bytes)?;
@@ -155,7 +158,7 @@ impl Component {
     /// ```
     /// # use wasmtime::*;
     /// # use wasmtime::component::Component;
-    /// # fn main() -> anyhow::Result<()> {
+    /// # fn main() -> Result<()> {
     /// # let engine = Engine::default();
     /// let component = Component::new(&engine, "(component (core module))")?;
     /// # Ok(())
@@ -227,7 +230,9 @@ impl Component {
     /// lives for as long as the module and is nevery externally modified for
     /// the lifetime of the deserialized module.
     pub unsafe fn deserialize_raw(engine: &Engine, memory: NonNull<[u8]>) -> Result<Component> {
-        let code = engine.load_code_raw(memory, ObjectKind::Component)?;
+        // SAFETY: the contract required by `load_code_raw` is the same as this
+        // function.
+        let code = unsafe { engine.load_code_raw(memory, ObjectKind::Component)? };
         Component::from_parts(engine, code, None)
     }
 
@@ -402,12 +407,15 @@ impl Component {
         let ComponentArtifacts {
             ty,
             info,
+            table: index,
             mut types,
             mut static_modules,
+            checksum,
         } = match artifacts {
             Some(artifacts) => artifacts,
             None => postcard::from_bytes(code_memory.wasmtime_info())?,
         };
+        let index = Arc::new(index);
 
         // Validate that the component can be used with the current instance
         // allocator.
@@ -423,27 +431,29 @@ impl Component {
         let signatures = engine.register_and_canonicalize_types(
             types.module_types_mut(),
             static_modules.iter_mut().map(|(_, m)| &mut m.module),
-        );
+        )?;
         types.canonicalize_for_runtime_usage(&mut |idx| signatures.shared_type(idx).unwrap());
 
-        // Assemble the `CodeObject` artifact which is shared by all core wasm
+        // Assemble the `EngineCode` artifact which is shared by all core wasm
         // modules as well as the final component.
         let types = Arc::new(types);
-        let code = Arc::new(CodeObject::new(code_memory, signatures, types.into()));
+        let code = Arc::new(EngineCode::new(code_memory, signatures, types.into()));
 
         // Convert all information about static core wasm modules into actual
         // `Module` instances by converting each `CompiledModuleInfo`, the
         // `types` type information, and the code memory to a runtime object.
         let static_modules = static_modules
             .into_iter()
-            .map(|(_, info)| Module::from_parts_raw(engine, code.clone(), info, false))
+            .map(|(_, info)| {
+                Module::from_parts_raw(engine, code.clone(), info, index.clone(), false)
+            })
             .collect::<Result<_>>()?;
 
         let realloc_func_type = Arc::new(FuncType::new(
             engine,
             [ValType::I32, ValType::I32, ValType::I32, ValType::I32],
             [ValType::I32],
-        )) as _;
+        ));
 
         Ok(Component {
             inner: Arc::new(ComponentInner {
@@ -453,7 +463,9 @@ impl Component {
                 static_modules,
                 code,
                 info,
+                index,
                 realloc_func_type,
+                checksum,
             }),
         })
     }
@@ -470,42 +482,79 @@ impl Component {
         &self.inner.static_modules[idx]
     }
 
-    #[cfg_attr(not(feature = "profiling"), allow(dead_code))]
+    #[cfg(feature = "profiling")]
     pub(crate) fn static_modules(&self) -> impl Iterator<Item = &Module> {
         self.inner.static_modules.values()
     }
 
     #[inline]
     pub(crate) fn types(&self) -> &Arc<ComponentTypes> {
-        self.inner.component_types()
+        match self.inner.code.types() {
+            crate::code::Types::Component(types) => types,
+            // The only creator of a `Component` is itself which uses the other
+            // variant, so this shouldn't be possible.
+            crate::code::Types::Module(_) => unreachable!(),
+        }
     }
 
     pub(crate) fn signatures(&self) -> &TypeCollection {
         self.inner.code.signatures()
     }
 
-    pub(crate) fn text(&self) -> &[u8] {
-        self.inner.code.code_memory().text()
-    }
-
     pub(crate) fn trampoline_ptrs(&self, index: TrampolineIndex) -> AllCallFuncPointers {
-        let AllCallFunc {
+        let wasm_call = self
+            .store_invariant_func(FuncKey::ComponentTrampoline(Abi::Wasm, index))
+            .unwrap()
+            .cast();
+        let array_call = self
+            .store_invariant_func(FuncKey::ComponentTrampoline(Abi::Array, index))
+            .unwrap()
+            .cast();
+        AllCallFuncPointers {
             wasm_call,
             array_call,
-        } = &self.inner.info.trampolines[index];
-        AllCallFuncPointers {
-            wasm_call: self.func(wasm_call).cast(),
-            array_call: self.func(array_call).cast(),
         }
     }
 
-    fn func(&self, loc: &FunctionLoc) -> NonNull<VMFunctionBody> {
-        let text = self.text();
-        let trampoline = &text[loc.start as usize..][..loc.length as usize];
-        NonNull::new(trampoline.as_ptr() as *mut VMFunctionBody).unwrap()
+    pub(crate) fn unsafe_intrinsic_ptrs(
+        &self,
+        intrinsic: UnsafeIntrinsic,
+    ) -> Option<AllCallFuncPointers> {
+        let wasm_call = self
+            .store_invariant_func(FuncKey::UnsafeIntrinsic(Abi::Wasm, intrinsic))?
+            .cast();
+        let array_call = self
+            .store_invariant_func(FuncKey::UnsafeIntrinsic(Abi::Array, intrinsic))?
+            .cast();
+        Some(AllCallFuncPointers {
+            wasm_call,
+            array_call,
+        })
     }
 
-    pub(crate) fn code_object(&self) -> &Arc<CodeObject> {
+    /// Look up a function in this component's text section by `FuncKey`.
+    ///
+    /// This supports only `FuncKey`s that do not invoke Wasm code,
+    /// i.e., code that is potentially Store-specific.
+    fn store_invariant_func(&self, key: FuncKey) -> Option<NonNull<u8>> {
+        assert!(key.is_store_invariant());
+        let loc = self.inner.index.func_loc(key)?;
+        Some(self.func_loc_to_pointer(loc))
+    }
+
+    /// Given a function location within this component's text section, get a
+    /// pointer to the function.
+    ///
+    /// This works only for Store-invariant functions.
+    ///
+    /// Panics on out-of-bounds function locations.
+    fn func_loc_to_pointer(&self, loc: &FunctionLoc) -> NonNull<u8> {
+        let text = self.engine_code().text();
+        let trampoline = &text[loc.start as usize..][..loc.length as usize];
+        NonNull::from(trampoline).cast()
+    }
+
+    pub(crate) fn engine_code(&self) -> &Arc<EngineCode> {
         &self.inner.code
     }
 
@@ -518,11 +567,7 @@ impl Component {
     /// [`Module::serialize`]: crate::Module::serialize
     /// [`Module`]: crate::Module
     pub fn serialize(&self) -> Result<Vec<u8>> {
-        Ok(self.code_object().code_memory().mmap().to_vec())
-    }
-
-    pub(crate) fn runtime_info(&self) -> Arc<dyn ComponentRuntimeInfo> {
-        self.inner.clone()
+        Ok(self.engine_code().image().to_vec())
     }
 
     /// Creates a new `VMFuncRef` with all fields filled out for the destructor
@@ -539,11 +584,9 @@ impl Component {
         // then this can't be called by the component, so it's ok to leave it
         // blank.
         let wasm_call = self
-            .inner
-            .info
-            .resource_drop_wasm_to_array_trampoline
-            .as_ref()
-            .map(|i| self.func(i).cast().into());
+            .store_invariant_func(FuncKey::ResourceDropTrampoline)
+            .map(|f| f.cast().into());
+
         VMFuncRef {
             wasm_call,
             ..*dtor.func_ref()
@@ -615,7 +658,7 @@ impl Component {
         };
         for init in &self.env_component().initializers {
             match init {
-                GlobalInitializer::InstantiateModule(inst) => match inst {
+                GlobalInitializer::InstantiateModule(inst, _) => match inst {
                     InstantiateModule::Static(index, _) => {
                         let module = self.static_module(*index);
                         resources.add(&module.resources_required());
@@ -644,7 +687,7 @@ impl Component {
     /// For more information see
     /// [`Module::image_range`](crate::Module::image_range).
     pub fn image_range(&self) -> Range<*const u8> {
-        self.inner.code.code_memory().mmap().image_range()
+        self.inner.code.image().as_ptr_range()
     }
 
     /// Force initialization of copy-on-write images to happen here-and-now
@@ -824,6 +867,35 @@ impl Component {
     pub fn engine(&self) -> &Engine {
         &self.inner.engine
     }
+
+    pub(crate) fn realloc_func_ty(&self) -> &Arc<FuncType> {
+        &self.inner.realloc_func_type
+    }
+
+    #[allow(
+        unused,
+        reason = "used only for verification with wasmtime `rr` feature \
+        and requires a lot of unnecessary gating across crates"
+    )]
+    pub(crate) fn checksum(&self) -> &WasmChecksum {
+        &self.inner.checksum
+    }
+
+    /// Returns the `Export::LiftedFunction` metadata associated with `export`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `export` is out of bounds or if it isn't a `LiftedFunction`.
+    pub(crate) fn export_lifted_function(
+        &self,
+        export: ExportIndex,
+    ) -> (TypeFuncIndex, &CoreDef, OptionsIndex) {
+        let component = self.env_component();
+        match &component.export_items[export] {
+            Export::LiftedFunction { ty, func, options } => (*ty, func, *options),
+            _ => unreachable!(),
+        }
+    }
 }
 
 /// A value which represents a known export of a component.
@@ -847,29 +919,10 @@ impl InstanceExportLookup for ComponentExportIndex {
     }
 }
 
-impl ComponentRuntimeInfo for ComponentInner {
-    fn component(&self) -> &wasmtime_environ::component::Component {
-        &self.info.component
-    }
-
-    fn component_types(&self) -> &Arc<ComponentTypes> {
-        match self.code.types() {
-            crate::code::Types::Component(types) => types,
-            // The only creator of a `Component` is itself which uses the other
-            // variant, so this shouldn't be possible.
-            crate::code::Types::Module(_) => unreachable!(),
-        }
-    }
-
-    fn realloc_func_type(&self) -> &Arc<dyn Any + Send + Sync> {
-        &self.realloc_func_type
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::component::Component;
-    use crate::{Config, Engine};
+    use crate::{CodeBuilder, Config, Engine};
     use wasmtime_environ::MemoryInitialization;
 
     #[test]
@@ -894,5 +947,28 @@ mod tests {
             let init = &module.env_module().memory_initialization;
             assert!(matches!(init, MemoryInitialization::Static { .. }));
         }
+    }
+
+    #[test]
+    #[cfg_attr(miri, ignore)]
+    fn image_range_is_whole_image() {
+        let wat = r#"
+                (component
+                    (core module
+                        (memory 1)
+                        (data (i32.const 0) "1234")
+                        (func (export "f") (param i32) (result i32)
+                            local.get 0)))
+            "#;
+        let engine = Engine::default();
+        let mut builder = CodeBuilder::new(&engine);
+        builder.wasm_binary_or_text(wat.as_bytes(), None).unwrap();
+        let bytes = builder.compile_component_serialized().unwrap();
+
+        let comp = unsafe { Component::deserialize(&engine, &bytes).unwrap() };
+        let image_range = comp.image_range();
+        let len = image_range.end.addr() - image_range.start.addr();
+        // Length may be strictly greater if it becomes page-aligned.
+        assert!(len >= bytes.len());
     }
 }

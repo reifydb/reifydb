@@ -1,6 +1,6 @@
 {
   "git": {
-    "sha1": "351f1537490f7d5e4a61f8ab16302984589d25d2"
+    "sha1": "76927bf4bdbddf4b15f835c5eddfffbdfe3bdbd5"
   },
   "path_in_vcs": "crates/wasmprinter"
 }

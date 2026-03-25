@@ -3,18 +3,20 @@
 use crate::dominator_tree::DominatorTree;
 use crate::ir::{Function, Type};
 use crate::isa::riscv64::settings as riscv_settings;
-use crate::isa::{Builder as IsaBuilder, FunctionAlignment, OwnedTargetIsa, TargetIsa};
+use crate::isa::{
+    Builder as IsaBuilder, FunctionAlignment, IsaFlagsHashKey, OwnedTargetIsa, TargetIsa,
+};
 use crate::machinst::{
-    compile, CompiledCode, CompiledCodeStencil, MachInst, MachTextSectionBuilder, Reg, SigSet,
-    TextSectionBuilder, VCode,
+    CompiledCode, CompiledCodeStencil, MachInst, MachTextSectionBuilder, Reg, SigSet,
+    TextSectionBuilder, VCode, compile,
 };
 use crate::result::CodegenResult;
 use crate::settings::{self as shared_settings, Flags};
-use crate::{ir, CodegenError};
+use crate::{CodegenError, ir};
+use alloc::string::String;
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 use cranelift_control::ControlPlane;
-use std::string::String;
 use target_lexicon::{Architecture, Triple};
 mod abi;
 pub(crate) mod inst;
@@ -73,23 +75,17 @@ impl TargetIsa for Riscv64Backend {
 
         let want_disasm = want_disasm || log::log_enabled!(log::Level::Debug);
         let emit_result = vcode.emit(&regalloc_result, want_disasm, &self.flags, ctrl_plane);
-        let frame_size = emit_result.frame_size;
         let value_labels_ranges = emit_result.value_labels_ranges;
         let buffer = emit_result.buffer;
-        let sized_stackslot_offsets = emit_result.sized_stackslot_offsets;
-        let dynamic_stackslot_offsets = emit_result.dynamic_stackslot_offsets;
 
         if let Some(disasm) = emit_result.disasm.as_ref() {
-            log::debug!("disassembly:\n{}", disasm);
+            log::debug!("disassembly:\n{disasm}");
         }
 
         Ok(CompiledCodeStencil {
             buffer,
-            frame_size,
             vcode: emit_result.disasm,
             value_labels_ranges,
-            sized_stackslot_offsets,
-            dynamic_stackslot_offsets,
             bb_starts: emit_result.bb_offsets,
             bb_edges: emit_result.bb_edges,
         })
@@ -112,6 +108,10 @@ impl TargetIsa for Riscv64Backend {
 
     fn isa_flags(&self) -> Vec<shared_settings::Value> {
         self.isa_flags.iter().collect()
+    }
+
+    fn isa_flags_hash_key(&self) -> IsaFlagsHashKey<'_> {
+        IsaFlagsHashKey(self.isa_flags.hash_key())
     }
 
     #[cfg(feature = "unwind")]
@@ -205,7 +205,7 @@ impl TargetIsa for Riscv64Backend {
         true
     }
 
-    fn has_x86_blendv_lowering(&self, _: Type) -> bool {
+    fn has_blendv_lowering(&self, _: Type) -> bool {
         false
     }
 
@@ -276,7 +276,13 @@ fn isa_constructor(
     // - Zifencei: Instruction-Fetch Fence
     //
     // Ensure that those combination of features is enabled.
-    if !isa_flags.has_g() {
+    if !(isa_flags.has_m()
+        && isa_flags.has_a()
+        && isa_flags.has_f()
+        && isa_flags.has_d()
+        && isa_flags.has_zicsr()
+        && isa_flags.has_zifencei())
+    {
         return Err(CodegenError::Unsupported(
             "The RISC-V Backend currently requires all the features in the G Extension enabled"
                 .into(),

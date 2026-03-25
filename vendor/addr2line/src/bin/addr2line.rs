@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgAction, Command};
 
-use addr2line::{Loader, LoaderReader, Location};
+use addr2line::{Loader, Location};
 
 fn parse_uint_from_hex_string(string: &str) -> Option<u64> {
     if string.len() > 2 && string.starts_with("0x") {
@@ -15,16 +15,16 @@ fn parse_uint_from_hex_string(string: &str) -> Option<u64> {
     }
 }
 
-enum Addrs<'a> {
+enum Addrs<'a, R: gimli::Reader> {
     Args(clap::parser::ValuesRef<'a, String>),
     Stdin(Lines<StdinLock<'a>>),
     All {
-        iter: addr2line::LocationRangeIter<'a, LoaderReader<'a>>,
+        iter: addr2line::LocationRangeIter<'a, R>,
         max: u64,
     },
 }
 
-impl<'a> Iterator for Addrs<'a> {
+impl<'a, R: gimli::Reader> Iterator for Addrs<'a, R> {
     type Item = Option<u64>;
 
     fn next(&mut self) -> Option<Option<u64>> {
@@ -96,6 +96,7 @@ struct Options<'a> {
     llvm: bool,
     exe: &'a PathBuf,
     sup: Option<&'a PathBuf>,
+    section: Option<&'a String>,
 }
 
 fn main() {
@@ -118,6 +119,13 @@ fn main() {
                 .value_name("filename")
                 .value_parser(clap::value_parser!(PathBuf))
                 .help("Path to supplementary object file."),
+            Arg::new("section")
+                .short('j')
+                .long("section")
+                .value_name("name")
+                .help(
+                    "Read offsets relative to the specified section instead of absolute addresses.",
+                ),
             Arg::new("all")
                 .long("all")
                 .action(ArgAction::SetTrue)
@@ -176,9 +184,15 @@ fn main() {
         llvm: matches.get_flag("llvm"),
         exe: matches.get_one::<PathBuf>("exe").unwrap(),
         sup: matches.get_one::<PathBuf>("sup"),
+        section: matches.get_one::<String>("section"),
     };
 
     let ctx = Loader::new_with_sup(opts.exe, opts.sup).unwrap();
+
+    let section_range = opts.section.map(|section_name| {
+        ctx.get_section_range(section_name.as_bytes())
+            .unwrap_or_else(|| panic!("cannot find section {}", section_name))
+    });
 
     let stdin = std::io::stdin();
     let addrs = if matches.get_flag("all") {
@@ -207,6 +221,20 @@ fn main() {
                 println!();
             }
         }
+
+        // If --section is given, add the section address to probe.
+        let probe = probe.and_then(|probe| {
+            if let Some(section_range) = section_range {
+                if probe < (section_range.end - section_range.begin) {
+                    Some(probe + section_range.begin)
+                } else {
+                    // If addr >= section size, treat it as if no line number information was found.
+                    None
+                }
+            } else {
+                Some(probe)
+            }
+        });
 
         if opts.do_functions || opts.do_inlines {
             let mut printed_anything = false;

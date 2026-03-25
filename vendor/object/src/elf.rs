@@ -3856,6 +3856,15 @@ pub const SHT_ARM_ATTRIBUTES: u32 = SHT_LOPROC + 3;
 /// AArch64 attributes section.
 pub const SHT_AARCH64_ATTRIBUTES: u32 = SHT_LOPROC + 3;
 
+// AArch64 values for `Sym64::st_other`.
+pub const STO_AARCH64_VARIANT_PCS: u8 = 0x80;
+
+// AArch64 values for `Dyn64::d_tag`.
+pub const DT_AARCH64_BTI_PLT: u32 = DT_LOPROC + 1;
+pub const DT_AARCH64_PAC_PLT: u32 = DT_LOPROC + 3;
+pub const DT_AARCH64_VARIANT_PCS: u32 = DT_LOPROC + 5;
+pub const DT_AARCH64_NUM: u32 = 6;
+
 // AArch64 values for `Rel*::r_type`.
 
 /// No relocation.
@@ -4201,6 +4210,8 @@ pub const R_AVR_32_PCREL: u32 = 36;
 
 // MSP430 values for `Rel*::r_type`.
 
+/// No reloc
+pub const R_MSP430_NONE: u32 = 0;
 /// Direct 32 bit
 pub const R_MSP430_32: u32 = 1;
 /// Direct 16 bit
@@ -4208,6 +4219,8 @@ pub const R_MSP430_16_BYTE: u32 = 5;
 
 // Hexagon values for `Rel*::r_type`.
 
+/// No reloc
+pub const R_HEX_NONE: u32 = 0;
 /// Direct 32 bit
 pub const R_HEX_32: u32 = 6;
 
@@ -5834,9 +5847,21 @@ pub const EF_RISCV_RVE: u32 = 0x0008;
 pub const EF_RISCV_TSO: u32 = 0x0010;
 pub const EF_RISCV_RV64ILP32: u32 = 0x0020;
 
+// RISC-V values for `Sym64::st_other`.
+/// Function uses variant calling convention.
+pub const STO_RISCV_VARIANT_CC: u8 = 0x80;
+
 // RISC-V values for `SectionHeader*::sh_type`.
 /// RISC-V attributes section.
 pub const SHT_RISCV_ATTRIBUTES: u32 = SHT_LOPROC + 3;
+
+// RISC-V values for `ProgramHeader*::p_type`.
+
+pub const PT_RISCV_ATTRIBUTES: u32 = PT_LOPROC + 3;
+
+// RISC-V values for `Dyn64::d_tag`.
+
+pub const DT_RISCV_VARIANT_CC: u32 = DT_LOPROC + 1;
 
 // RISC-V values `Rel*::r_type`.
 pub const R_RISCV_NONE: u32 = 0;
@@ -6028,6 +6053,10 @@ pub const R_LARCH_TLS_TPREL32: u32 = 10;
 pub const R_LARCH_TLS_TPREL64: u32 = 11;
 /// Runtime local indirect function resolving
 pub const R_LARCH_IRELATIVE: u32 = 12;
+/// Runtime relocation for TLS descriptors
+pub const R_LARCH_TLS_DESC32: u32 = 13;
+/// Runtime relocation for TLS descriptors
+pub const R_LARCH_TLS_DESC64: u32 = 14;
 /// Mark la.abs: load absolute address for static link.
 pub const R_LARCH_MARK_LA: u32 = 20;
 /// Mark external label branch: access PC relative address for static link.
@@ -6263,6 +6292,62 @@ pub const R_LARCH_TLS_LD_PCREL20_S2: u32 = 124;
 pub const R_LARCH_TLS_GD_PCREL20_S2: u32 = 125;
 /// 22-bit PC-relative offset to TLS DESC GOT entry
 pub const R_LARCH_TLS_DESC_PCREL20_S2: u32 = 126;
+/// 12..=31 bits of `S + A - PC` into the `pcaddu12i` instruction at `PC`,
+/// and 2..=11 bits of `S + A - PC` into the `jirl` instruction at `PC + 4`
+pub const R_LARCH_CALL30: u32 = 127;
+/// The signed 32-bit offset `offs` from `PC` to `(S + A + 0x800) & 0xfffff000`.
+///
+/// We define the *PC relative anchor* for `S + A` as `PC + offs` (`offs`
+/// is sign-extended to VA bits).
+pub const R_LARCH_PCADD_HI20: u32 = 128;
+/// 0..=11 bits of the 32-bit offset from the
+/// [PC relative anchor][R_LARCH_PCADD_HI20].
+pub const R_LARCH_PCADD_LO12: u32 = 129;
+/// The signed 32-bit offset `offs` from `PC` to
+/// `(GP + G + 0x800) & 0xfffff000`.
+///
+/// We define the *PC relative anchor* for the GOT entry at `GP + G` as
+/// `PC + offs` (`offs` is sign-extended to VA bits).
+pub const R_LARCH_GOT_PCADD_HI20: u32 = 130;
+/// 0..=11 bits of the 32-bit offset from the
+/// [PC relative anchor][R_LARCH_GOT_PCADD_HI20] to the GOT entry.
+pub const R_LARCH_GOT_PCADD_LO12: u32 = 131;
+/// The signed 32-bit offset `offs` from `PC` to
+/// `(GP + IE + 0x800) & 0xfffff000`.
+///
+/// We define the *PC relative anchor* for the TLS IE GOT entry at
+/// `GP + IE` as `PC + offs` (`offs` is sign-extended to VA bits).
+pub const R_LARCH_TLS_IE_PCADD_HI20: u32 = 132;
+/// 0..=11 bits of the 32-bit offset from the
+/// [PC-relative anchor][R_LARCH_TLS_IE_PCADD_HI20] to the TLS IE GOT entry.
+pub const R_LARCH_TLS_IE_PCADD_LO12: u32 = 133;
+/// The signed 32-bit offset `offs` from `PC` to
+/// `(GP + GD + 0x800) & 0xfffff000`.
+///
+/// We define the *PC relative anchor* for the TLS LD GOT entry at
+/// `GP + GD` as `PC + offs` (`offs` is sign-extended to VA bits).
+pub const R_LARCH_TLS_LD_PCADD_HI20: u32 = 134;
+/// 0..=11 bits of the 32-bit offset from the
+/// [PC-relative anchor][R_LARCH_TLS_LD_PCADD_HI20] to the TLS LD GOT entry.
+pub const R_LARCH_TLS_LD_PCADD_LO12: u32 = 135;
+/// The signed 32-bit offset `offs` from `PC` to
+/// `(GP + GD + 0x800) & 0xfffff000`.
+///
+/// We define the *PC relative anchor* for the TLS GD GOT entry at
+/// `GP + GD` as `PC + offs` (`offs` is sign-extended to VA bits).
+pub const R_LARCH_TLS_GD_PCADD_HI20: u32 = 136;
+/// 0..=11 bits of the 32-bit offset from the
+/// [PC-relative anchor][R_LARCH_TLS_GD_PCADD_HI20] to the TLS GD GOT entry.
+pub const R_LARCH_TLS_GD_PCADD_LO12: u32 = 137;
+/// The signed 32-bit offset `offs` from `PC` to
+/// `(GP + GD + 0x800) & 0xfffff000`.
+///
+/// We define the *PC relative anchor* for the TLS DESC GOT entry at
+/// `GP + GD` as `PC + offs` (`offs` is sign-extended to VA bits).
+pub const R_LARCH_TLS_DESC_PCADD_HI20: u32 = 138;
+/// 0..=11 bits of the 32-bit offset from the
+/// [PC-relative anchor][R_LARCH_TLS_DESC_PCADD_HI20] to the TLS DESC GOT entry.
+pub const R_LARCH_TLS_DESC_PCADD_LO12: u32 = 139;
 
 // Xtensa values Rel*::r_type`.
 pub const R_XTENSA_NONE: u32 = 0;

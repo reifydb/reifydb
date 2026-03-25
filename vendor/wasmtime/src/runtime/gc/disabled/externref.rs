@@ -1,6 +1,6 @@
 use crate::runtime::vm::VMGcRef;
 use crate::{
-    store::AutoAssertNoGc, AsContextMut, GcRefImpl, Result, Rooted, StoreContext, StoreContextMut,
+    AsContextMut, GcRefImpl, Result, Rooted, StoreContext, StoreContextMut, store::AutoAssertNoGc,
 };
 use core::any::Any;
 
@@ -18,7 +18,7 @@ impl ExternRef {
         unreachable!()
     }
 
-    pub fn data<'a, T>(
+    pub fn data<'a, T: 'static>(
         &self,
         _store: impl Into<StoreContext<'a, T>>,
     ) -> Result<&'a (dyn Any + Send + Sync)>
@@ -28,7 +28,7 @@ impl ExternRef {
         match *self {}
     }
 
-    pub fn data_mut<'a, T>(
+    pub fn data_mut<'a, T: 'static>(
         &self,
         _store: impl Into<StoreContextMut<'a, T>>,
     ) -> Result<&'a mut (dyn Any + Send + Sync)>
@@ -38,17 +38,17 @@ impl ExternRef {
         match *self {}
     }
 
-    pub unsafe fn from_raw(_store: impl AsContextMut, raw: u32) -> Option<Rooted<Self>> {
+    pub fn from_raw(_store: impl AsContextMut, raw: u32) -> Option<Rooted<Self>> {
         assert_eq!(raw, 0);
         None
     }
 
-    pub unsafe fn _from_raw(_store: &mut AutoAssertNoGc<'_>, raw: u32) -> Option<Rooted<Self>> {
+    pub fn _from_raw(_store: &mut AutoAssertNoGc<'_>, raw: u32) -> Option<Rooted<Self>> {
         assert_eq!(raw, 0);
         None
     }
 
-    pub unsafe fn to_raw(&self, _store: impl AsContextMut) -> Result<u32> {
+    pub fn to_raw(&self, _store: impl AsContextMut) -> Result<u32> {
         match *self {}
     }
 }

@@ -1,6 +1,6 @@
 use super::invoke_wasm_and_catch_traps;
 use crate::prelude::*;
-use crate::runtime::vm::{VMFuncRef, VMOpaqueContext};
+use crate::runtime::vm::VMFuncRef;
 use crate::store::{AutoAssertNoGc, StoreOpaque};
 use crate::{
     AsContext, AsContextMut, Engine, Func, FuncType, HeapType, NoFunc, RefType, StoreContextMut,
@@ -55,7 +55,7 @@ where
     /// an error then the returned `TypedFunc` is memory unsafe to invoke.
     pub unsafe fn new_unchecked(store: impl AsContext, func: Func) -> TypedFunc<Params, Results> {
         let store = store.as_context().0;
-        Self::_new_unchecked(store, func)
+        unsafe { Self::_new_unchecked(store, func) }
     }
 
     pub(crate) unsafe fn _new_unchecked(
@@ -89,23 +89,13 @@ where
     ///
     /// # Panics
     ///
-    /// This function will panic if it is called when the underlying [`Func`] is
-    /// connected to an asynchronous store.
+    /// Panics if `store` does not contain this function.
     ///
     /// [`Trap`]: crate::Trap
     #[inline]
     pub fn call(&self, mut store: impl AsContextMut, params: Params) -> Result<Results> {
         let mut store = store.as_context_mut();
-        assert!(
-            !store.0.async_support(),
-            "must use `call_async` with async stores"
-        );
-
-        #[cfg(feature = "gc")]
-        if Self::need_gc_before_call_raw(store.0, &params) {
-            store.gc(None);
-        }
-
+        store.0.validate_sync_call()?;
         let func = self.func.vm_func_ref(store.0);
         unsafe { Self::call_raw(&mut store, &self.ty, func, params) }
     }
@@ -128,24 +118,16 @@ where
     ///
     /// [`Trap`]: crate::Trap
     #[cfg(feature = "async")]
-    pub async fn call_async<T>(
+    pub async fn call_async(
         &self,
-        mut store: impl AsContextMut<Data = T>,
+        mut store: impl AsContextMut<Data: Send>,
         params: Params,
     ) -> Result<Results>
     where
-        T: Send,
+        Params: Sync,
+        Results: Sync,
     {
         let mut store = store.as_context_mut();
-        assert!(
-            store.0.async_support(),
-            "must use `call` with non-async stores"
-        );
-
-        #[cfg(feature = "gc")]
-        if Self::need_gc_before_call_raw(store.0, &params) {
-            store.gc_async(None).await?;
-        }
 
         store
             .on_fiber(|store| {
@@ -155,31 +137,12 @@ where
             .await?
     }
 
-    #[inline]
-    #[cfg(feature = "gc")]
-    pub(crate) fn need_gc_before_call_raw(_store: &StoreOpaque, _params: &Params) -> bool {
-        {
-            // See the comment in `Func::call_impl_check_args`.
-            let num_gc_refs = _params.vmgcref_pointing_to_object_count();
-            if let Some(num_gc_refs) = core::num::NonZeroUsize::new(num_gc_refs) {
-                return _store
-                    .unwrap_gc_store()
-                    .gc_heap
-                    .need_gc_before_entering_wasm(num_gc_refs);
-            }
-        }
-
-        false
-    }
-
     /// Do a raw call of a typed function.
     ///
     /// # Safety
     ///
-    /// `func` must be of the given type.
-    ///
-    /// If `Self::need_gc_before_call_raw`, then the caller must have done a GC
-    /// just before calling this method.
+    /// `func` must be of the given type, and it additionally must be a valid
+    /// store-owned pointer within the `store` provided.
     pub(crate) unsafe fn call_raw<T>(
         store: &mut StoreContextMut<'_, T>,
         ty: &FuncType,
@@ -188,8 +151,13 @@ where
     ) -> Result<Results> {
         // double-check that params/results match for this function's type in
         // debug mode.
-        if cfg!(debug_assertions) {
-            Self::debug_typecheck(store.0, func.as_ref().type_index);
+        //
+        // SAFETY: this function requires that `ptr` is a valid function
+        // pointer.
+        unsafe {
+            if cfg!(debug_assertions) {
+                Self::debug_typecheck(store.0, func.as_ref().type_index);
+            }
         }
 
         // Validate that all runtime values flowing into this store indeed
@@ -207,7 +175,11 @@ where
 
         {
             let mut store = AutoAssertNoGc::new(store.0);
-            params.store(&mut store, ty, &mut storage.params)?;
+            // SAFETY: it's safe to use a union field here as the field itself
+            // is `MaybeUninit<_>` meaning nothing is accidentally considered
+            // initialized.
+            let dst: &mut MaybeUninit<_> = unsafe { &mut storage.params };
+            params.store(&mut store, ty, dst)?;
         }
 
         // Try to capture only a single variable (a tuple) in the closure below.
@@ -224,16 +196,22 @@ where
             let storage = storage.cast::<ValRaw>();
             let storage = core::ptr::slice_from_raw_parts_mut(storage, storage_len);
             let storage = NonNull::new(storage).unwrap();
-            func_ref
-                .as_ref()
-                .array_call(vm, VMOpaqueContext::from_vmcontext(caller), storage)
+
+            // SAFETY: this function's own contract is that `func_ref` is safe
+            // to call and additionally that the params/results are correctly
+            // ascribed for this function call to be safe.
+            unsafe { VMFuncRef::array_call(*func_ref, vm, caller, storage) }
         });
 
         let (_, storage) = captures;
         result?;
 
         let mut store = AutoAssertNoGc::new(store.0);
-        Ok(Results::load(&mut store, &storage.results))
+        // SAFETY: this function is itself unsafe to ensure that the result type
+        // ascription is correct for `Results` and matches the actual function.
+        // Additionally given the correct type ascription all of the `results`
+        // accessed here should be validly initialized.
+        unsafe { Ok(Results::load(&mut store, &storage.results)) }
     }
 
     /// Purely a debug-mode assertion, not actually used in release builds.
@@ -549,7 +527,7 @@ unsafe impl WasmTy for Func {
 
     #[inline]
     fn compatible_with_store(&self, store: &StoreOpaque) -> bool {
-        store.store_data().contains(self.0)
+        self.store == store.id()
     }
 
     #[inline]
@@ -574,7 +552,10 @@ unsafe impl WasmTy for Func {
     #[inline]
     unsafe fn load(store: &mut AutoAssertNoGc<'_>, ptr: &ValRaw) -> Self {
         let p = NonNull::new(ptr.get_funcref()).unwrap().cast();
-        Func::from_vm_func_ref(store, p)
+
+        // SAFETY: it's an unsafe contract of `load` that it's only provided
+        // valid wasm values owned by `store`.
+        unsafe { Func::from_vm_func_ref(store.id(), p) }
     }
 }
 
@@ -587,7 +568,7 @@ unsafe impl WasmTy for Option<Func> {
     #[inline]
     fn compatible_with_store(&self, store: &StoreOpaque) -> bool {
         if let Some(f) = self {
-            store.store_data().contains(f.0)
+            f.compatible_with_store(store)
         } else {
             true
         }
@@ -606,7 +587,9 @@ unsafe impl WasmTy for Option<Func> {
         } else if nullable {
             Ok(())
         } else {
-            bail!("argument type mismatch: expected non-nullable (ref {expected}), found null reference")
+            bail!(
+                "argument type mismatch: expected non-nullable (ref {expected}), found null reference"
+            )
         }
     }
 
@@ -624,7 +607,10 @@ unsafe impl WasmTy for Option<Func> {
     #[inline]
     unsafe fn load(store: &mut AutoAssertNoGc<'_>, ptr: &ValRaw) -> Self {
         let ptr = NonNull::new(ptr.get_funcref())?.cast();
-        Some(Func::from_vm_func_ref(store, ptr))
+
+        // SAFETY: it's an unsafe contract of `load` that it's only provided
+        // valid wasm values owned by `store`.
+        unsafe { Some(Func::from_vm_func_ref(store.id(), ptr)) }
     }
 }
 
@@ -690,7 +676,7 @@ where
 
 macro_rules! impl_wasm_params {
     ($n:tt $($t:ident)*) => {
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, reason = "macro-generated code")]
         unsafe impl<$($t: WasmTy,)*> WasmParams for ($($t,)*) {
             type ValRawStorage = [ValRaw; $n];
 
@@ -776,17 +762,24 @@ pub unsafe trait WasmResults: WasmParams {
 // Forwards from a bare type `T` to the 1-tuple type `(T,)`
 unsafe impl<T: WasmTy> WasmResults for T {
     unsafe fn load(store: &mut AutoAssertNoGc<'_>, abi: &Self::ValRawStorage) -> Self {
-        <(T,) as WasmResults>::load(store, abi).0
+        // SAFETY: the one-element tuple and single-type impls behave the same
+        // way.
+        unsafe { <(T,) as WasmResults>::load(store, abi).0 }
     }
 }
 
 macro_rules! impl_wasm_results {
     ($n:tt $($t:ident)*) => {
-        #[allow(non_snake_case, unused_variables)]
+        #[allow(non_snake_case, reason = "macro-generated code")]
         unsafe impl<$($t: WasmTy,)*> WasmResults for ($($t,)*) {
-            unsafe fn load(store: &mut AutoAssertNoGc<'_>, abi: &Self::ValRawStorage) -> Self {
+            unsafe fn load(_store: &mut AutoAssertNoGc<'_>, abi: &Self::ValRawStorage) -> Self {
                 let [$($t,)*] = abi;
-                ($($t::load(store, $t),)*)
+
+                (
+                    // SAFETY: this is forwarding the unsafe contract of the outer
+                    // function to the inner functions here.
+                    $(unsafe { $t::load(_store, $t) },)*
+                )
             }
         }
     };

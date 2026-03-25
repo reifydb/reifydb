@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.84.0"
+edition = "2024"
+rust-version = "1.91.0"
 name = "cranelift-native"
-version = "0.120.2"
+version = "0.130.0"
 authors = ["The Cranelift Project Developers"]
 build = false
 autolib = false
@@ -27,6 +27,7 @@ readme = "README.md"
 categories = ["no-std"]
 license = "Apache-2.0 WITH LLVM-exception"
 repository = "https://github.com/bytecodealliance/wasmtime"
+resolver = "2"
 
 [features]
 core = ["cranelift-codegen/core"]
@@ -38,7 +39,7 @@ name = "cranelift_native"
 path = "src/lib.rs"
 
 [dependencies.cranelift-codegen]
-version = "0.120.2"
+version = "0.130.0"
 features = [
     "std",
     "unwind",
@@ -48,6 +49,6 @@ default-features = false
 [dependencies.target-lexicon]
 version = "0.13.0"
 
-[target.'cfg(any(target_arch = "s390x", target_arch = "riscv64"))'.dependencies.libc]
-version = "0.2.112"
+[target.'cfg(target_arch = "riscv64")'.dependencies.libc]
+version = "0.2.177"
 default-features = true

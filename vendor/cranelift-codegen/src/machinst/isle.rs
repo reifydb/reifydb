@@ -2,15 +2,14 @@ use crate::ir::{BlockCall, Value, ValueList};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use smallvec::SmallVec;
-use std::cell::Cell;
 
 pub use super::MachLabel;
 use super::RetPair;
 pub use crate::ir::{condcodes::CondCode, *};
-pub use crate::isa::{unwind::UnwindInst, TargetIsa};
+pub use crate::isa::{TargetIsa, unwind::UnwindInst};
 pub use crate::machinst::{
-    ABIArg, ABIArgSlot, ABIMachineSpec, CallSite, InputSourceInst, Lower, LowerBackend, RealReg,
-    Reg, RelocDistance, Sig, VCodeInst, Writable,
+    ABIArg, ABIArgSlot, ABIMachineSpec, InputSourceInst, Lower, LowerBackend, RealReg, Reg,
+    RelocDistance, Sig, TryCallInfo, VCodeInst, Writable,
 };
 pub use crate::settings::{StackSwitchModel, TlsModel};
 
@@ -24,17 +23,12 @@ pub type VecRetPair = Vec<RetPair>;
 pub type VecMask = Vec<u8>;
 pub type ValueRegs = crate::machinst::ValueRegs<Reg>;
 pub type WritableValueRegs = crate::machinst::ValueRegs<WritableReg>;
+pub type ValueRegsVec = SmallVec<[ValueRegs; 2]>;
 pub type InstOutput = SmallVec<[ValueRegs; 2]>;
-pub type InstOutputBuilder = Cell<InstOutput>;
 pub type BoxExternalName = Box<ExternalName>;
-pub type Range = (usize, usize);
 pub type MachLabelSlice = [MachLabel];
 pub type BoxVecMachLabel = Box<Vec<MachLabel>>;
-
-pub enum RangeView {
-    Empty,
-    NonEmpty { index: usize, rest: Range },
-}
+pub type OptionTryCallInfo = Option<TryCallInfo>;
 
 /// Helper macro to define methods in `prelude.isle` within `impl Context for
 /// ...` for each backend. These methods are shared amongst all backends.
@@ -93,20 +87,8 @@ macro_rules! isle_lower_prelude_methods {
         }
 
         #[inline]
-        fn output_builder_new(&mut self) -> InstOutputBuilder {
-            std::cell::Cell::new(InstOutput::new())
-        }
-
-        #[inline]
-        fn output_builder_push(&mut self, builder: &InstOutputBuilder, regs: ValueRegs) -> Unit {
-            let mut vec = builder.take();
-            vec.push(regs);
-            builder.set(vec);
-        }
-
-        #[inline]
-        fn output_builder_finish(&mut self, builder: &InstOutputBuilder) -> InstOutput {
-            builder.take()
+        fn output_vec(&mut self, output: &ValueRegsVec) -> InstOutput {
+            output.clone()
         }
 
         #[inline]
@@ -140,6 +122,16 @@ macro_rules! isle_lower_prelude_methods {
         #[inline]
         fn put_in_regs(&mut self, val: Value) -> ValueRegs {
             self.lower_ctx.put_value_in_regs(val)
+        }
+
+        #[inline]
+        fn put_in_regs_vec(&mut self, (list, off): ValueSlice) -> ValueRegsVec {
+            (off..list.len(&self.lower_ctx.dfg().value_lists))
+                .map(|ix| {
+                    let val = list.get(ix, &self.lower_ctx.dfg().value_lists).unwrap();
+                    self.put_in_regs(val)
+                })
+                .collect()
         }
 
         #[inline]
@@ -226,12 +218,8 @@ macro_rules! isle_lower_prelude_methods {
                 _ => return None,
             };
             let ty = self.lower_ctx.output_ty(inst, 0);
-            let shift_amt = std::cmp::max(0, 64 - self.ty_bits(ty));
+            let shift_amt = core::cmp::max(0, 64 - self.ty_bits(ty));
             Some((constant << shift_amt) >> shift_amt)
-        }
-
-        fn i32_from_iconst(&mut self, val: Value) -> Option<i32> {
-            self.i64_from_iconst(val)?.try_into().ok()
         }
 
         fn zero_value(&mut self, value: Value) -> Option<Value> {
@@ -341,14 +329,22 @@ macro_rules! isle_lower_prelude_methods {
         }
 
         #[inline]
-        fn func_ref_data(&mut self, func_ref: FuncRef) -> (SigRef, ExternalName, RelocDistance) {
+        fn func_ref_data(
+            &mut self,
+            func_ref: FuncRef,
+        ) -> (SigRef, ExternalName, RelocDistance, bool) {
             let funcdata = &self.lower_ctx.dfg().ext_funcs[func_ref];
             let reloc_distance = if funcdata.colocated {
                 RelocDistance::Near
             } else {
                 RelocDistance::Far
             };
-            (funcdata.signature, funcdata.name.clone(), reloc_distance)
+            (
+                funcdata.signature,
+                funcdata.name.clone(),
+                reloc_distance,
+                funcdata.patchable,
+            )
         }
 
         #[inline]
@@ -368,15 +364,6 @@ macro_rules! isle_lower_prelude_methods {
         ) -> Option<(ExternalName, RelocDistance, i64)> {
             let (name, reloc, offset) = self.lower_ctx.symbol_value_data(global_value)?;
             Some((name.clone(), reloc, offset))
-        }
-
-        #[inline]
-        fn reloc_distance_near(&mut self, dist: RelocDistance) -> Option<()> {
-            if dist == RelocDistance::Near {
-                Some(())
-            } else {
-                None
-            }
         }
 
         #[inline]
@@ -421,8 +408,20 @@ macro_rules! isle_lower_prelude_methods {
         }
 
         #[inline]
+        fn emit_u64_be_const(&mut self, value: u64) -> VCodeConstant {
+            let data = VCodeConstantData::U64(value.to_be_bytes());
+            self.lower_ctx.use_constant(data)
+        }
+
+        #[inline]
         fn emit_u128_le_const(&mut self, value: u128) -> VCodeConstant {
             let data = VCodeConstantData::Generated(value.to_le_bytes().as_slice().into());
+            self.lower_ctx.use_constant(data)
+        }
+
+        #[inline]
+        fn emit_u128_be_const(&mut self, value: u128) -> VCodeConstant {
+            let data = VCodeConstantData::Generated(value.to_be_bytes().as_slice().into());
             self.lower_ctx.use_constant(data)
         }
 
@@ -440,6 +439,10 @@ macro_rules! isle_lower_prelude_methods {
 
         fn writable_regs_get(&mut self, regs: WritableValueRegs, idx: usize) -> WritableReg {
             regs.regs()[idx]
+        }
+
+        fn abi_sig(&mut self, sig_ref: SigRef) -> Sig {
+            self.lower_ctx.sigs().abi_sig_for_sig_ref(sig_ref)
         }
 
         fn abi_num_args(&mut self, abi: Sig) -> usize {
@@ -512,16 +515,33 @@ macro_rules! isle_lower_prelude_methods {
                 .into()
         }
 
+        fn abi_stackslot_offset_into_slot_region(
+            &mut self,
+            stack_slot: StackSlot,
+            offset1: Offset32,
+            offset2: Offset32,
+        ) -> i32 {
+            let offset1 = i32::from(offset1);
+            let offset2 = i32::from(offset2);
+            i32::try_from(self.lower_ctx.abi().sized_stackslot_offset(stack_slot))
+                .expect("Stack slot region cannot be larger than 2GiB")
+                .checked_add(offset1)
+                .expect("Stack slot region cannot be larger than 2GiB")
+                .checked_add(offset2)
+                .expect("Stack slot region cannot be larger than 2GiB")
+        }
+
         fn abi_dynamic_stackslot_addr(
             &mut self,
             dst: WritableReg,
             stack_slot: DynamicStackSlot,
         ) -> MInst {
-            assert!(self
-                .lower_ctx
-                .abi()
-                .dynamic_stackslot_offsets()
-                .is_valid(stack_slot));
+            assert!(
+                self.lower_ctx
+                    .abi()
+                    .dynamic_stackslot_offsets()
+                    .is_valid(stack_slot)
+            );
             self.lower_ctx
                 .abi()
                 .dynamic_stackslot_addr(stack_slot, dst)
@@ -584,14 +604,74 @@ macro_rules! isle_lower_prelude_methods {
         }
 
         /// Generate the return instruction.
-        fn gen_return(&mut self, (list, off): ValueSlice) {
-            let rets = (off..list.len(&self.lower_ctx.dfg().value_lists))
-                .map(|ix| {
-                    let val = list.get(ix, &self.lower_ctx.dfg().value_lists).unwrap();
-                    self.put_in_regs(val)
-                })
-                .collect();
+        fn gen_return(&mut self, rets: &ValueRegsVec) {
             self.lower_ctx.gen_return(rets);
+        }
+
+        fn gen_call_output(&mut self, sig_ref: SigRef) -> ValueRegsVec {
+            self.lower_ctx.gen_call_output_from_sig_ref(sig_ref)
+        }
+
+        fn gen_call_args(&mut self, sig: Sig, inputs: &ValueRegsVec) -> CallArgList {
+            self.lower_ctx.gen_call_args(sig, inputs)
+        }
+
+        fn gen_return_call_args(&mut self, sig: Sig, inputs: &ValueRegsVec) -> CallArgList {
+            self.lower_ctx.gen_return_call_args(sig, inputs)
+        }
+
+        fn gen_call_rets(&mut self, sig: Sig, outputs: &ValueRegsVec) -> CallRetList {
+            self.lower_ctx.gen_call_rets(sig, &outputs)
+        }
+
+        fn gen_try_call_rets(&mut self, sig: Sig) -> CallRetList {
+            self.lower_ctx.gen_try_call_rets(sig)
+        }
+
+        fn gen_patchable_call_rets(&mut self) -> CallRetList {
+            smallvec::smallvec![]
+        }
+
+        fn try_call_none(&mut self) -> OptionTryCallInfo {
+            None
+        }
+
+        fn try_call_info(
+            &mut self,
+            et: ExceptionTable,
+            labels: &MachLabelSlice,
+        ) -> OptionTryCallInfo {
+            let mut exception_handlers = vec![];
+            let mut labels = labels.iter().cloned();
+            for item in self.lower_ctx.dfg().exception_tables[et].clone().items() {
+                match item {
+                    crate::ir::ExceptionTableItem::Tag(tag, _) => {
+                        exception_handlers.push(crate::machinst::abi::TryCallHandler::Tag(
+                            tag,
+                            labels.next().unwrap(),
+                        ));
+                    }
+                    crate::ir::ExceptionTableItem::Default(_) => {
+                        exception_handlers.push(crate::machinst::abi::TryCallHandler::Default(
+                            labels.next().unwrap(),
+                        ));
+                    }
+                    crate::ir::ExceptionTableItem::Context(ctx) => {
+                        let reg = self.put_in_reg(ctx);
+                        exception_handlers.push(crate::machinst::abi::TryCallHandler::Context(reg));
+                    }
+                }
+            }
+
+            let continuation = labels.next().unwrap();
+            assert_eq!(labels.next(), None);
+
+            let exception_handlers = exception_handlers.into_boxed_slice();
+
+            Some(TryCallInfo {
+                continuation,
+                exception_handlers,
+            })
         }
 
         /// Same as `shuffle32_from_imm`, but for 64-bit lane shuffles.
@@ -680,7 +760,7 @@ macro_rules! isle_lower_prelude_methods {
             &mut self,
             targets: &MachLabelSlice,
         ) -> Option<(MachLabel, BoxVecMachLabel)> {
-            use std::boxed::Box;
+            use alloc::boxed::Box;
             if targets.is_empty() {
                 return None;
             }
@@ -701,6 +781,14 @@ macro_rules! isle_lower_prelude_methods {
 
         fn value_is_unused(&mut self, val: Value) -> bool {
             self.lower_ctx.value_is_unused(val)
+        }
+
+        fn block_exn_successor_label(&mut self, block: &Block, exn_succ: u64) -> MachLabel {
+            // The first N successors are the exceptional edges, and
+            // the normal return is last; so the `exn_succ`'th
+            // exceptional edge is just the `exn_succ`'th edge overall.
+            let succ = usize::try_from(exn_succ).unwrap();
+            self.lower_ctx.block_successor_label(*block, succ)
         }
     };
 }
@@ -739,260 +827,6 @@ pub fn shuffle_imm_as_le_lane_idx(size: u8, bytes: &[u8]) -> Option<u8> {
     // immediate to specify a lane of `size` bytes. The index, when viewed as
     // `size`-byte immediates, will be the first byte divided by the byte size.
     Some(bytes[0] / size)
-}
-
-/// Helpers specifically for machines that use `abi::CallSite`.
-#[macro_export]
-#[doc(hidden)]
-macro_rules! isle_prelude_caller_methods {
-    ($abicaller:ty) => {
-        fn gen_call(
-            &mut self,
-            sig_ref: SigRef,
-            extname: ExternalName,
-            dist: RelocDistance,
-            args @ (inputs, off): ValueSlice,
-        ) -> InstOutput {
-            let caller_conv = self.lower_ctx.abi().call_conv(self.lower_ctx.sigs());
-            let sig = &self.lower_ctx.dfg().signatures[sig_ref];
-            let num_rets = sig.returns.len();
-            let caller = <$abicaller>::from_func(
-                self.lower_ctx.sigs(),
-                sig_ref,
-                &extname,
-                IsTailCall::No,
-                dist,
-                caller_conv,
-                self.backend.flags().clone(),
-            );
-
-            assert_eq!(
-                inputs.len(&self.lower_ctx.dfg().value_lists) - off,
-                sig.params.len()
-            );
-
-            crate::machinst::isle::gen_call_common(
-                &mut self.lower_ctx,
-                num_rets,
-                caller,
-                args,
-                None,
-            )
-        }
-
-        fn gen_call_indirect(
-            &mut self,
-            sig_ref: SigRef,
-            val: Value,
-            args @ (inputs, off): ValueSlice,
-        ) -> InstOutput {
-            let caller_conv = self.lower_ctx.abi().call_conv(self.lower_ctx.sigs());
-            let ptr = self.put_in_reg(val);
-            let sig = &self.lower_ctx.dfg().signatures[sig_ref];
-            let num_rets = sig.returns.len();
-            let caller = <$abicaller>::from_ptr(
-                self.lower_ctx.sigs(),
-                sig_ref,
-                ptr,
-                IsTailCall::No,
-                caller_conv,
-                self.backend.flags().clone(),
-            );
-
-            assert_eq!(
-                inputs.len(&self.lower_ctx.dfg().value_lists) - off,
-                sig.params.len()
-            );
-
-            crate::machinst::isle::gen_call_common(
-                &mut self.lower_ctx,
-                num_rets,
-                caller,
-                args,
-                None,
-            )
-        }
-
-        fn gen_return_call(
-            &mut self,
-            callee_sig: SigRef,
-            callee: ExternalName,
-            distance: RelocDistance,
-            args: ValueSlice,
-        ) -> InstOutput {
-            let caller_conv = isa::CallConv::Tail;
-            debug_assert_eq!(
-                self.lower_ctx.abi().call_conv(self.lower_ctx.sigs()),
-                caller_conv,
-                "Can only do `return_call`s from within a `tail` calling convention function"
-            );
-
-            let call_site = <$abicaller>::from_func(
-                self.lower_ctx.sigs(),
-                callee_sig,
-                &callee,
-                IsTailCall::Yes,
-                distance,
-                caller_conv,
-                self.backend.flags().clone(),
-            );
-            call_site.emit_return_call(self.lower_ctx, args, self.backend);
-
-            InstOutput::new()
-        }
-
-        fn gen_return_call_indirect(
-            &mut self,
-            callee_sig: SigRef,
-            callee: Value,
-            args: ValueSlice,
-        ) -> InstOutput {
-            let caller_conv = isa::CallConv::Tail;
-            debug_assert_eq!(
-                self.lower_ctx.abi().call_conv(self.lower_ctx.sigs()),
-                caller_conv,
-                "Can only do `return_call`s from within a `tail` calling convention function"
-            );
-
-            let callee = self.put_in_reg(callee);
-
-            let call_site = <$abicaller>::from_ptr(
-                self.lower_ctx.sigs(),
-                callee_sig,
-                callee,
-                IsTailCall::Yes,
-                caller_conv,
-                self.backend.flags().clone(),
-            );
-            call_site.emit_return_call(self.lower_ctx, args, self.backend);
-
-            InstOutput::new()
-        }
-
-        fn gen_try_call(
-            &mut self,
-            sig_ref: SigRef,
-            extname: ExternalName,
-            dist: RelocDistance,
-            et: ExceptionTable,
-            args: ValueSlice,
-            targets: &MachLabelSlice,
-        ) -> () {
-            let caller_conv = self.lower_ctx.abi().call_conv(self.lower_ctx.sigs());
-            let sigref = self.lower_ctx.dfg().exception_tables[et].signature();
-            let sig = &self.lower_ctx.dfg().signatures[sigref];
-            let num_rets = sig.returns.len();
-            let caller = <$abicaller>::from_func(
-                self.lower_ctx.sigs(),
-                sig_ref,
-                &extname,
-                IsTailCall::No,
-                dist,
-                caller_conv,
-                self.backend.flags().clone(),
-            );
-
-            crate::machinst::isle::gen_call_common(
-                &mut self.lower_ctx,
-                num_rets,
-                caller,
-                args,
-                Some((et, targets)),
-            );
-        }
-
-        fn gen_try_call_indirect(
-            &mut self,
-            sigref: SigRef,
-            callee: Value,
-            et: ExceptionTable,
-            args: ValueSlice,
-            targets: &MachLabelSlice,
-        ) -> () {
-            let caller_conv = self.lower_ctx.abi().call_conv(self.lower_ctx.sigs());
-            let sig = &self.lower_ctx.dfg().signatures[sigref];
-            let num_rets = sig.returns.len();
-
-            let callee = self.put_in_reg(callee);
-
-            let caller = <$abicaller>::from_ptr(
-                self.lower_ctx.sigs(),
-                sigref,
-                callee,
-                IsTailCall::No,
-                caller_conv,
-                self.backend.flags().clone(),
-            );
-
-            crate::machinst::isle::gen_call_common(
-                &mut self.lower_ctx,
-                num_rets,
-                caller,
-                args,
-                Some((et, targets)),
-            );
-        }
-    };
-}
-
-fn gen_call_common_args<M: ABIMachineSpec>(
-    ctx: &mut Lower<'_, M::I>,
-    call_site: &mut CallSite<M>,
-    (inputs, off): ValueSlice,
-) {
-    let num_args = call_site.num_args(ctx.sigs());
-
-    assert_eq!(inputs.len(&ctx.dfg().value_lists) - off, num_args);
-    let mut arg_regs = vec![];
-    for i in 0..num_args {
-        let input = inputs.get(off + i, &ctx.dfg().value_lists).unwrap();
-        arg_regs.push(ctx.put_value_in_regs(input));
-    }
-    for (i, arg_regs) in arg_regs.iter().enumerate() {
-        call_site.emit_copy_regs_to_buffer(ctx, i, *arg_regs);
-    }
-    for (i, arg_regs) in arg_regs.iter().enumerate() {
-        call_site.gen_arg(ctx, i, *arg_regs);
-    }
-}
-
-pub fn gen_call_common<M: ABIMachineSpec>(
-    ctx: &mut Lower<'_, M::I>,
-    num_rets: usize,
-    mut caller: CallSite<M>,
-    args: ValueSlice,
-    try_call_info: Option<(ExceptionTable, &MachLabelSlice)>,
-) -> InstOutput {
-    gen_call_common_args(ctx, &mut caller, args);
-
-    // Handle retvals prior to emitting call, so the
-    // constraints are on the call instruction.
-    let mut outputs = InstOutput::new();
-    // We take the *last* `num_rets` returns of the sig:
-    // this skips a StructReturn, if any, that is present.
-    let sigdata_num_rets = caller.num_rets(ctx.sigs());
-    debug_assert!(num_rets <= sigdata_num_rets);
-    for i in (sigdata_num_rets - num_rets)..sigdata_num_rets {
-        let retval_regs = caller.gen_retval(ctx, i);
-        outputs.push(retval_regs);
-    }
-
-    caller.emit_call(ctx, try_call_info);
-
-    // If this is a try-call, alias return value vregs to the ones
-    // already allocated for the block-call arg defs.
-    if try_call_info.is_some() {
-        for i in 0..outputs.len() {
-            let result_regs = outputs[i];
-            let def_regs = ctx.try_call_return_defs(ctx.cur_inst())[i];
-            for (result_reg, def_reg) in result_regs.regs().iter().zip(def_regs.regs().iter()) {
-                ctx.vregs_mut()
-                    .set_vreg_alias(def_reg.to_reg(), *result_reg);
-            }
-        }
-    }
-
-    outputs
 }
 
 /// This structure is used to implement the ISLE-generated `Context` trait and

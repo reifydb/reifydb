@@ -1,32 +1,30 @@
 //! ISLE integration glue code for riscv64 lowering.
 
 // Pull in the ISLE generated code.
-#[allow(unused)]
 pub mod generated_code;
 use generated_code::MInst;
 
 // Types that the generated ISLE code uses via `use super::*`.
 use self::generated_code::{FpuOPWidth, VecAluOpRR, VecLmul};
-use crate::isa;
-use crate::isa::riscv64::abi::Riscv64ABICallSite;
+use crate::isa::riscv64::Riscv64Backend;
 use crate::isa::riscv64::lower::args::{
     FReg, VReg, WritableFReg, WritableVReg, WritableXReg, XReg,
 };
-use crate::isa::riscv64::Riscv64Backend;
 use crate::machinst::Reg;
-use crate::machinst::{isle::*, CallInfo, MachInst};
+use crate::machinst::{CallInfo, MachInst, isle::*};
 use crate::machinst::{VCodeConstant, VCodeConstantData};
 use crate::{
     ir::{
-        immediates::*, types::*, AtomicRmwOp, BlockCall, ExternalName, Inst, InstructionData,
-        MemFlags, Opcode, TrapCode, Value, ValueList,
+        AtomicRmwOp, BlockCall, ExternalName, Inst, InstructionData, MemFlags, Opcode, TrapCode,
+        Value, ValueList, immediates::*, types::*,
     },
     isa::riscv64::inst::*,
-    machinst::{ArgPair, InstOutput, IsTailCall},
+    machinst::{ArgPair, CallArgList, CallRetList, InstOutput},
 };
+use alloc::boxed::Box;
+use alloc::vec::Vec;
 use regalloc2::PReg;
-use std::boxed::Box;
-use std::vec::Vec;
+use wasmtime_core::math::{f32_cvt_to_int_bounds, f64_cvt_to_int_bounds};
 
 type BoxCallInfo = Box<CallInfo<ExternalName>>;
 type BoxCallIndInfo = Box<CallInfo<Reg>>;
@@ -64,7 +62,83 @@ impl<'a, 'b> RV64IsleContext<'a, 'b, MInst, Riscv64Backend> {
 
 impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> {
     isle_lower_prelude_methods!();
-    isle_prelude_caller_methods!(Riscv64ABICallSite);
+
+    fn gen_call_info(
+        &mut self,
+        sig: Sig,
+        dest: ExternalName,
+        uses: CallArgList,
+        defs: CallRetList,
+        try_call_info: Option<TryCallInfo>,
+        patchable: bool,
+    ) -> BoxCallInfo {
+        let stack_ret_space = self.lower_ctx.sigs()[sig].sized_stack_ret_space();
+        let stack_arg_space = self.lower_ctx.sigs()[sig].sized_stack_arg_space();
+        self.lower_ctx
+            .abi_mut()
+            .accumulate_outgoing_args_size(stack_ret_space + stack_arg_space);
+
+        Box::new(
+            self.lower_ctx
+                .gen_call_info(sig, dest, uses, defs, try_call_info, patchable),
+        )
+    }
+
+    fn gen_call_ind_info(
+        &mut self,
+        sig: Sig,
+        dest: Reg,
+        uses: CallArgList,
+        defs: CallRetList,
+        try_call_info: Option<TryCallInfo>,
+    ) -> BoxCallIndInfo {
+        let stack_ret_space = self.lower_ctx.sigs()[sig].sized_stack_ret_space();
+        let stack_arg_space = self.lower_ctx.sigs()[sig].sized_stack_arg_space();
+        self.lower_ctx
+            .abi_mut()
+            .accumulate_outgoing_args_size(stack_ret_space + stack_arg_space);
+
+        Box::new(
+            self.lower_ctx
+                .gen_call_info(sig, dest, uses, defs, try_call_info, false),
+        )
+    }
+
+    fn gen_return_call_info(
+        &mut self,
+        sig: Sig,
+        dest: ExternalName,
+        uses: CallArgList,
+    ) -> BoxReturnCallInfo {
+        let new_stack_arg_size = self.lower_ctx.sigs()[sig].sized_stack_arg_space();
+        self.lower_ctx
+            .abi_mut()
+            .accumulate_tail_args_size(new_stack_arg_size);
+
+        Box::new(ReturnCallInfo {
+            dest,
+            uses,
+            new_stack_arg_size,
+        })
+    }
+
+    fn gen_return_call_ind_info(
+        &mut self,
+        sig: Sig,
+        dest: Reg,
+        uses: CallArgList,
+    ) -> BoxReturnCallIndInfo {
+        let new_stack_arg_size = self.lower_ctx.sigs()[sig].sized_stack_arg_space();
+        self.lower_ctx
+            .abi_mut()
+            .accumulate_tail_args_size(new_stack_arg_size);
+
+        Box::new(ReturnCallInfo {
+            dest,
+            uses,
+            new_stack_arg_size,
+        })
+    }
 
     fn fpu_op_width_from_ty(&mut self, ty: Type) -> FpuOPWidth {
         match ty {
@@ -177,11 +251,7 @@ impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> 
             _ => false,
         };
 
-        if supported {
-            Some(ty)
-        } else {
-            None
-        }
+        if supported { Some(ty) } else { None }
     }
 
     fn ty_supported_float_size(&mut self, ty: Type) -> Option<Type> {
@@ -289,11 +359,7 @@ impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> 
     }
     #[inline]
     fn imm12_is_zero(&mut self, imm: Imm12) -> Option<()> {
-        if imm.as_i16() == 0 {
-            Some(())
-        } else {
-            None
-        }
+        if imm.as_i16() == 0 { Some(()) } else { None }
     }
 
     #[inline]
@@ -306,11 +372,7 @@ impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> 
     }
     #[inline]
     fn imm20_is_zero(&mut self, imm: Imm20) -> Option<()> {
-        if imm.as_i32() == 0 {
-            Some(())
-        } else {
-            None
-        }
+        if imm.as_i32() == 0 { Some(()) } else { None }
     }
 
     #[inline]
@@ -370,10 +432,6 @@ impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> 
 
     fn frm_bits(&mut self, frm: &FRM) -> UImm5 {
         UImm5::maybe_from_u8(frm.bits()).unwrap()
-    }
-
-    fn u8_as_i32(&mut self, x: u8) -> i32 {
-        x as i32
     }
 
     fn imm12_const(&mut self, val: i32) -> Imm12 {
@@ -518,15 +576,6 @@ impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> 
     fn store_op(&mut self, ty: Type) -> StoreOP {
         StoreOP::from_type(ty)
     }
-    fn load_ext_name(&mut self, name: ExternalName, offset: i64) -> Reg {
-        let tmp = self.temp_writable_reg(I64);
-        self.emit(&MInst::LoadExtName {
-            rd: tmp,
-            name: Box::new(name),
-            offset,
-        });
-        tmp.to_reg()
-    }
 
     fn gen_stack_addr(&mut self, slot: StackSlot, offset: Offset32) -> Reg {
         let result = self.temp_writable_reg(I64);
@@ -669,6 +718,10 @@ impl generated_code::Context for RV64IsleContext<'_, '_, MInst, Riscv64Backend> 
             F64 => (-1.0f64).to_bits(),
             _ => unimplemented!(),
         }
+    }
+
+    fn is_pic(&mut self) -> bool {
+        self.backend.flags.is_pic()
     }
 }
 

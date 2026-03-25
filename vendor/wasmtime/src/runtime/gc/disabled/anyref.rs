@@ -1,8 +1,8 @@
 use crate::runtime::vm::VMGcRef;
 use crate::{
+    ArrayRef, AsContext, AsContextMut, EqRef, GcRefImpl, HeapType, I31, OwnedRooted, Result,
+    Rooted, StructRef,
     store::{AutoAssertNoGc, StoreOpaque},
-    ArrayRef, AsContext, AsContextMut, EqRef, GcRefImpl, HeapType, ManuallyRooted, Result, Rooted,
-    StructRef, I31,
 };
 
 /// Support for `anyref` disabled at compile time because the `gc` cargo feature
@@ -16,9 +16,9 @@ impl From<Rooted<EqRef>> for Rooted<AnyRef> {
     }
 }
 
-impl From<ManuallyRooted<EqRef>> for ManuallyRooted<AnyRef> {
+impl From<OwnedRooted<EqRef>> for OwnedRooted<AnyRef> {
     #[inline]
-    fn from(s: ManuallyRooted<EqRef>) -> Self {
+    fn from(s: OwnedRooted<EqRef>) -> Self {
         match s.inner {}
     }
 }
@@ -30,9 +30,9 @@ impl From<Rooted<StructRef>> for Rooted<AnyRef> {
     }
 }
 
-impl From<ManuallyRooted<StructRef>> for ManuallyRooted<AnyRef> {
+impl From<OwnedRooted<StructRef>> for OwnedRooted<AnyRef> {
     #[inline]
-    fn from(s: ManuallyRooted<StructRef>) -> Self {
+    fn from(s: OwnedRooted<StructRef>) -> Self {
         match s.inner {}
     }
 }
@@ -44,9 +44,9 @@ impl From<Rooted<ArrayRef>> for Rooted<AnyRef> {
     }
 }
 
-impl From<ManuallyRooted<ArrayRef>> for ManuallyRooted<AnyRef> {
+impl From<OwnedRooted<ArrayRef>> for OwnedRooted<AnyRef> {
     #[inline]
-    fn from(s: ManuallyRooted<ArrayRef>) -> Self {
+    fn from(s: OwnedRooted<ArrayRef>) -> Self {
         match s.inner {}
     }
 }
@@ -61,17 +61,17 @@ impl AnyRef {
         unreachable!()
     }
 
-    pub unsafe fn from_raw(_store: impl AsContextMut, raw: u32) -> Option<Rooted<Self>> {
+    pub fn from_raw(_store: impl AsContextMut, raw: u32) -> Option<Rooted<Self>> {
         assert_eq!(raw, 0);
         None
     }
 
-    pub unsafe fn _from_raw(_store: &mut AutoAssertNoGc<'_>, raw: u32) -> Option<Rooted<Self>> {
+    pub fn _from_raw(_store: &mut AutoAssertNoGc<'_>, raw: u32) -> Option<Rooted<Self>> {
         assert_eq!(raw, 0);
         None
     }
 
-    pub unsafe fn to_raw(&self, _store: impl AsContextMut) -> Result<u32> {
+    pub fn to_raw(&self, _store: impl AsContextMut) -> Result<u32> {
         match *self {}
     }
 

@@ -23,7 +23,7 @@
 //! # #[macro_use] extern crate target_lexicon;
 //! use cranelift_codegen::isa;
 //! use cranelift_codegen::settings::{self, Configurable};
-//! use std::str::FromStr;
+//! use core::str::FromStr;
 //! use target_lexicon::Triple;
 //!
 //! let shared_builder = settings::builder();
@@ -46,21 +46,21 @@
 use crate::dominator_tree::DominatorTree;
 pub use crate::isa::call_conv::CallConv;
 
+use crate::CodegenResult;
 use crate::ir::{self, Function, Type};
 #[cfg(feature = "unwind")]
-use crate::isa::unwind::{systemv::RegisterMappingError, UnwindInfoKind};
-use crate::machinst::{CompiledCode, CompiledCodeStencil, TextSectionBuilder};
+use crate::isa::unwind::{UnwindInfoKind, systemv::RegisterMappingError};
+use crate::machinst::{CompiledCodeStencil, TextSectionBuilder};
 use crate::settings;
 use crate::settings::Configurable;
 use crate::settings::SetResult;
-use crate::CodegenResult;
-use crate::{flowgraph, Reg};
+use crate::{Reg, flowgraph};
+use alloc::string::String;
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::fmt;
 use core::fmt::{Debug, Formatter};
 use cranelift_control::ControlPlane;
-use std::string::String;
-use target_lexicon::{triple, Architecture, PointerWidth, Triple};
+use target_lexicon::{Architecture, PointerWidth, Triple, triple};
 
 // This module is made public here for benchmarking purposes. No guarantees are
 // made regarding API stability.
@@ -146,7 +146,7 @@ pub enum LookupError {
 
 // This is manually implementing Error and Display instead of using thiserror to reduce the amount
 // of dependencies used by Cranelift.
-impl std::error::Error for LookupError {}
+impl core::error::Error for LookupError {}
 
 impl fmt::Display for LookupError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
@@ -294,6 +294,9 @@ pub trait TargetIsa: fmt::Display + Send + Sync {
     /// Get the ISA-dependent flag values that were used to make this trait object.
     fn isa_flags(&self) -> Vec<settings::Value>;
 
+    /// Get the ISA-dependent flag values as raw bytes for hashing.
+    fn isa_flags_hash_key(&self) -> IsaFlagsHashKey<'_>;
+
     /// Get a flag indicating whether branch protection is enabled.
     fn is_branch_protection_enabled(&self) -> bool {
         false
@@ -326,7 +329,7 @@ pub trait TargetIsa: fmt::Display + Send + Sync {
     #[cfg(feature = "unwind")]
     fn emit_unwind_info(
         &self,
-        result: &CompiledCode,
+        result: &crate::machinst::CompiledCode,
         kind: UnwindInfoKind,
     ) -> CodegenResult<Option<crate::isa::unwind::UnwindInfo>>;
 
@@ -388,9 +391,9 @@ pub trait TargetIsa: fmt::Display + Send + Sync {
     /// Returns whether this ISA has instructions for `ceil`, `floor`, etc.
     fn has_round(&self) -> bool;
 
-    /// Returns whether the CLIF `x86_blendv` instruction is implemented for
+    /// Returns whether the CLIF `blendv` instruction is implemented for
     /// this ISA for the specified type.
-    fn has_x86_blendv_lowering(&self, ty: Type) -> bool;
+    fn has_blendv_lowering(&self, ty: Type) -> bool;
 
     /// Returns whether the CLIF `x86_pshufb` instruction is implemented for
     /// this ISA.
@@ -414,6 +417,10 @@ pub trait TargetIsa: fmt::Display + Send + Sync {
     /// generally only necessary for the `default_call_conv`.
     fn default_argument_extension(&self) -> ir::ArgumentExtension;
 }
+
+/// A wrapper around the ISA-dependent flags types which only implements `Hash`.
+#[derive(Hash)]
+pub struct IsaFlagsHashKey<'a>(&'a [u8]);
 
 /// Function alignment specifications as required by an ISA, returned by
 /// [`TargetIsa::function_alignment`].

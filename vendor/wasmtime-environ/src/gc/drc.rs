@@ -3,13 +3,28 @@
 use super::*;
 
 /// The size of the `VMDrcHeader` header for GC objects.
-pub const HEADER_SIZE: u32 = 16;
+pub const HEADER_SIZE: u32 = 24;
 
 /// The align of the `VMDrcHeader` header for GC objects.
 pub const HEADER_ALIGN: u32 = 8;
 
 /// The offset of the length field in a `VMDrcArrayHeader`.
 pub const ARRAY_LENGTH_OFFSET: u32 = HEADER_SIZE;
+
+/// The offset of the tag-instance-index field in an exception header.
+pub const EXCEPTION_TAG_INSTANCE_OFFSET: u32 = HEADER_SIZE;
+
+/// The offset of the tag-defined-index field in an exception header.
+pub const EXCEPTION_TAG_DEFINED_OFFSET: u32 = HEADER_SIZE + 4;
+
+/// The bit within a `VMDrcHeader`'s reserved bits that is the mark
+/// bit. Collectively, this bit in all the heap's objects' headers implements
+/// the precise-stack-roots set.
+pub const HEADER_MARK_BIT: u32 = 1 << 0;
+
+/// The bit within a `VMDrcHeader`'s reserved bits that is the
+/// in-the-over-approximated-stack-roots list bit.
+pub const HEADER_IN_OVER_APPROX_LIST_BIT: u32 = 1 << 1;
 
 /// The layout of Wasm GC objects in the deferred reference-counting collector.
 #[derive(Default)]
@@ -20,11 +35,23 @@ impl GcTypeLayouts for DrcTypeLayouts {
         ARRAY_LENGTH_OFFSET
     }
 
+    fn exception_tag_instance_offset(&self) -> u32 {
+        EXCEPTION_TAG_INSTANCE_OFFSET
+    }
+
+    fn exception_tag_defined_offset(&self) -> u32 {
+        EXCEPTION_TAG_DEFINED_OFFSET
+    }
+
     fn array_layout(&self, ty: &WasmArrayType) -> GcArrayLayout {
         common_array_layout(ty, HEADER_SIZE, HEADER_ALIGN, ARRAY_LENGTH_OFFSET)
     }
 
     fn struct_layout(&self, ty: &WasmStructType) -> GcStructLayout {
         common_struct_layout(ty, HEADER_SIZE, HEADER_ALIGN)
+    }
+
+    fn exn_layout(&self, ty: &WasmExnType) -> GcStructLayout {
+        common_exn_layout(ty, HEADER_SIZE, HEADER_ALIGN)
     }
 }

@@ -4,7 +4,7 @@ use crate::ir::types::*;
 use crate::isa::aarch64::inst::{OperandSize, ScalarSize};
 use crate::machinst::PrettyPrint;
 
-use std::string::String;
+use alloc::string::String;
 
 /// An immediate that represents the NZCV flags.
 #[derive(Clone, Copy, Debug)]
@@ -270,6 +270,12 @@ pub struct Imm12 {
 }
 
 impl Imm12 {
+    /// Handy 0-value constant.
+    pub const ZERO: Imm12 = Imm12 {
+        bits: 0,
+        shift12: false,
+    };
+
     /// Compute a Imm12 from raw bits, if possible.
     pub fn maybe_from_u64(val: u64) -> Option<Imm12> {
         if val & !0xfff == 0 {
@@ -289,11 +295,7 @@ impl Imm12 {
 
     /// Bits for 2-bit "shift" field in e.g. AddI.
     pub fn shift_bits(&self) -> u32 {
-        if self.shift12 {
-            0b01
-        } else {
-            0b00
-        }
+        if self.shift12 { 0b01 } else { 0b00 }
     }
 
     /// Bits for 12-bit "imm" field in e.g. AddI.
@@ -304,11 +306,7 @@ impl Imm12 {
     /// Get the actual value that this immediate corresponds to.
     pub fn value(&self) -> u32 {
         let base = self.bits as u32;
-        if self.shift12 {
-            base << 12
-        } else {
-            base
-        }
+        if self.shift12 { base << 12 } else { base }
     }
 }
 

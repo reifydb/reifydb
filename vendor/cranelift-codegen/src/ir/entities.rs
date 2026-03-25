@@ -42,11 +42,7 @@ impl Block {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -61,7 +57,6 @@ impl Block {
 /// - [`f64const`](super::InstBuilder::f64const) for 64-bit float constants
 /// - [`f128const`](super::InstBuilder::f128const) for 128-bit float constants
 /// - [`vconst`](super::InstBuilder::vconst) for vector constants
-/// - [`null`](super::InstBuilder::null) for null reference constants
 ///
 /// Any `InstBuilder` instruction that has an output will also return a `Value`.
 ///
@@ -128,11 +123,7 @@ impl StackSlot {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -147,11 +138,7 @@ impl DynamicStackSlot {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -166,11 +153,7 @@ impl DynamicType {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -200,11 +183,7 @@ impl GlobalValue {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -223,11 +202,7 @@ impl MemoryType {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -249,11 +224,7 @@ impl Constant {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -275,11 +246,7 @@ impl Immediate {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -305,11 +272,7 @@ impl JumpTable {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -338,11 +301,7 @@ impl FuncRef {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -376,11 +335,7 @@ impl SigRef {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -403,11 +358,7 @@ impl ExceptionTag {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 
@@ -425,11 +376,7 @@ impl ExceptionTable {
     ///
     /// This method is for use by the parser.
     pub fn with_number(n: u32) -> Option<Self> {
-        if n < u32::MAX {
-            Some(Self(n))
-        } else {
-            None
-        }
+        if n < u32::MAX { Some(Self(n)) } else { None }
     }
 }
 

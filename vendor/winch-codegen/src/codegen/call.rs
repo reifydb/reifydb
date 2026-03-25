@@ -37,7 +37,7 @@
 //! │  are used as function arguments.                 │
 //! │                                                  │
 //! ├──────────────────────────────────────────────────┤ ---> The Wasm value stack at this point in time would look like:
-//! │                                                  │      
+//! │                                                  │
 //! │   Stack space created by spilling locals and     |
 //! │   registers at the callsite.                     │
 //! │                                                  │
@@ -59,19 +59,18 @@
 //! └──────────────────────────────────────────────────┘ ------> Stack pointer when emitting the call
 
 use crate::{
-    abi::{scratch, vmctx, ABIOperand, ABISig, RetArea},
+    FuncEnv, Result,
+    abi::{ABIOperand, ABISig, RetArea, vmctx},
     codegen::{BuiltinFunction, BuiltinType, Callee, CodeGenContext, CodeGenError, Emission},
+    ensure,
     masm::{
-        CalleeKind, ContextArgs, MacroAssembler, MemMoveDirection, OperandSize, SPOffset,
-        VMContextLoc,
+        CalleeKind, ContextArgs, IntScratch, MacroAssembler, MemMoveDirection, OperandSize,
+        SPOffset, VMContextLoc,
     },
-    reg::writable,
-    reg::Reg,
+    reg::{Reg, writable},
     stack::Val,
-    FuncEnv,
 };
-use anyhow::{ensure, Result};
-use wasmtime_environ::{FuncIndex, PtrSize, VMOffsets};
+use wasmtime_environ::{DefinedFuncIndex, FuncIndex, PtrSize, VMOffsets};
 
 /// All the information needed to emit a function call.
 #[derive(Copy, Clone)]
@@ -142,11 +141,17 @@ impl FnCall {
     ) -> Result<(CalleeKind, ContextArgs)> {
         let ptr = vmoffsets.ptr.size();
         match callee {
-            Callee::Builtin(b) => Ok(Self::lower_builtin(env, b)),
+            Callee::Builtin(b) => Ok(Self::lower_builtin(env, b, None)),
+            Callee::BuiltinWithDifferentVmctx(b, offset) => {
+                Ok(Self::lower_builtin(env, b, Some(*offset)))
+            }
             Callee::FuncRef(_) => {
                 Self::lower_funcref(env.callee_sig::<M::ABI>(callee)?, ptr, context, masm)
             }
-            Callee::Local(i) => Ok(Self::lower_local(env, *i)),
+            Callee::Local(i) => {
+                let f = env.translation.module.defined_func_index(*i).unwrap();
+                Ok(Self::lower_local(env, f))
+            }
             Callee::Import(i) => {
                 let sig = env.callee_sig::<M::ABI>(callee)?;
                 Self::lower_import(*i, sig, context, masm, vmoffsets)
@@ -159,11 +164,15 @@ impl FnCall {
     fn lower_builtin<P: PtrSize>(
         env: &mut FuncEnv<P>,
         builtin: &BuiltinFunction,
+        vmctx_offset: Option<u32>,
     ) -> (CalleeKind, ContextArgs) {
         match builtin.ty() {
             BuiltinType::Builtin(idx) => (
                 CalleeKind::direct(env.name_builtin(idx)),
-                ContextArgs::pinned_vmctx(),
+                match vmctx_offset {
+                    Some(offset) => ContextArgs::offset_from_pinned_vmctx(offset),
+                    None => ContextArgs::pinned_vmctx(),
+                },
             ),
         }
     }
@@ -171,7 +180,7 @@ impl FnCall {
     /// Lower  a local function to a [`CalleeKind`] and [ContextArgs] pair.
     fn lower_local<P: PtrSize>(
         env: &mut FuncEnv<P>,
-        index: FuncIndex,
+        index: DefinedFuncIndex,
     ) -> (CalleeKind, ContextArgs) {
         (
             CalleeKind::direct(env.name_wasm(index)),
@@ -271,6 +280,13 @@ impl FnCall {
                     let addr = masm.address_at_sp(SPOffset::from_u32(*offset))?;
                     masm.store(vmctx!(M).into(), addr, (*ty).try_into()?)?;
                 }
+                (VMContextLoc::OffsetFromPinned(offset), ABIOperand::Reg { ty, reg, .. }) => {
+                    let addr = masm.address_at_vmctx(*offset)?;
+                    masm.load(addr, writable!(*reg), (*ty).try_into()?)?;
+                }
+                (VMContextLoc::OffsetFromPinned(_), ABIOperand::Stack { .. }) => {
+                    crate::bail!("unimplemented load from vmctx into stack");
+                }
 
                 (VMContextLoc::Reg(src), ABIOperand::Reg { ty, reg, .. }) => {
                     masm.mov(writable!(*reg), (*src).into(), (*ty).try_into()?)?;
@@ -315,9 +331,10 @@ impl FnCall {
                 &ABIOperand::Stack { ty, offset, .. } => {
                     let addr = masm.address_at_sp(SPOffset::from_u32(offset))?;
                     let size: OperandSize = ty.try_into()?;
-                    let scratch = scratch!(M, &ty);
-                    context.move_val_to_reg(val, scratch, masm)?;
-                    masm.store(scratch.into(), addr, size)?;
+                    masm.with_scratch_for(ty, |masm, scratch| {
+                        context.move_val_to_reg(val, scratch.inner(), masm)?;
+                        masm.store(scratch.inner().into(), addr, size)
+                    })?;
                 }
             }
         }
@@ -335,9 +352,10 @@ impl FnCall {
                     let slot = masm.address_at_sp(SPOffset::from_u32(offset))?;
                     // Don't rely on `ABI::scratch_for` as we always use
                     // an int register as the return pointer.
-                    let scratch = scratch!(M);
-                    masm.compute_addr(addr, writable!(scratch), ty.try_into()?)?;
-                    masm.store(scratch.into(), slot, ty.try_into()?)?;
+                    masm.with_scratch::<IntScratch, _>(|masm, scratch| {
+                        masm.compute_addr(addr, scratch.writable(), ty.try_into()?)?;
+                        masm.store(scratch.inner().into(), slot, ty.try_into()?)
+                    })?;
                 }
             }
         }

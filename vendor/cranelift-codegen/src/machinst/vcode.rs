@@ -17,26 +17,27 @@
 //! See the main module comment in `mod.rs` for more details on the VCode-based
 //! backend pipeline.
 
+use crate::CodegenError;
+use crate::FxHashMap;
 use crate::ir::pcc::*;
-use crate::ir::{self, types, Constant, ConstantData, ValueLabel};
+use crate::ir::{self, Constant, ConstantData, ValueLabel, types};
 use crate::ranges::Ranges;
 use crate::timing;
 use crate::trace;
-use crate::CodegenError;
-use crate::{machinst::*, trace_log_enabled};
 use crate::{LabelValueLoc, ValueLocRange};
+use crate::{machinst::*, trace_log_enabled};
 use regalloc2::{
-    Edit, Function as RegallocFunction, InstOrEdit, InstPosition, InstRange, MachineEnv, Operand,
+    Edit, Function as RegallocFunction, InstOrEdit, InstPosition, InstRange, Operand,
     OperandConstraint, OperandKind, PRegSet, ProgPoint, RegClass,
 };
-use rustc_hash::FxHashMap;
 
+use crate::HashMap;
+use crate::hash_map::Entry;
 use core::cmp::Ordering;
 use core::fmt::{self, Write};
 use core::mem::take;
-use cranelift_entity::{entity_impl, Keys};
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use core::ops::Range;
+use cranelift_entity::{Keys, entity_impl};
 
 /// Index referring to an instruction in VCode.
 pub type InsnIndex = regalloc2::Inst;
@@ -102,6 +103,15 @@ pub struct VCode<I: VCodeInst> {
     /// are safepoints, and only for a subset of those that have an associated
     /// user stack map.
     user_stack_maps: FxHashMap<BackwardsInsnIndex, ir::UserStackMap>,
+
+    /// A map from backwards instruction index to the debug tags for
+    /// that instruction. Each entry indexes a range in the
+    /// `debug_tag_pool`.
+    debug_tags: FxHashMap<BackwardsInsnIndex, Range<u32>>,
+
+    /// Pooled storage for sequences of debug tags; indexed by entries
+    /// in `debug_tags`.
+    debug_tag_pool: Vec<ir::DebugTag>,
 
     /// Operands: pre-regalloc references to virtual registers with
     /// constraints, in one flattened array. This allows the regalloc
@@ -208,15 +218,12 @@ pub struct EmitResult {
     pub buffer: MachBufferFinalized<Stencil>,
 
     /// Offset of each basic block, recorded during emission. Computed
-    /// only if `debug_value_labels` is non-empty.
+    /// only if `machine_code_cfg_info` is enabled.
     pub bb_offsets: Vec<CodeOffset>,
 
     /// Final basic-block edges, in terms of code offsets of
-    /// bb-starts. Computed only if `debug_value_labels` is non-empty.
+    /// bb-starts. Computed only if `machine_code_cfg_info` is enabled.
     pub bb_edges: Vec<(CodeOffset, CodeOffset)>,
-
-    /// Final length of function body.
-    pub func_body_len: CodeOffset,
 
     /// The pretty-printed disassembly, if any. This uses the same
     /// pretty-printing for MachInsts as the pre-regalloc VCode Debug
@@ -224,17 +231,8 @@ pub struct EmitResult {
     /// epilogue(s), and makes use of the regalloc results.
     pub disasm: Option<String>,
 
-    /// Offsets of sized stackslots.
-    pub sized_stackslot_offsets: PrimaryMap<StackSlot, u32>,
-
-    /// Offsets of dynamic stackslots.
-    pub dynamic_stackslot_offsets: PrimaryMap<DynamicStackSlot, u32>,
-
     /// Value-labels information (debug metadata).
     pub value_labels_ranges: ValueLabelsRanges,
-
-    /// Stack frame size.
-    pub frame_size: u32,
 }
 
 /// A builder for a VCode function body.
@@ -517,7 +515,7 @@ impl<I: VCodeInst> VCodeBuilder<I> {
     }
 
     fn collect_operands(&mut self, vregs: &VRegAllocator<I>) {
-        let allocatable = PRegSet::from(self.vcode.machine_env());
+        let allocatable = PRegSet::from(self.vcode.abi.machine_env());
         for (i, insn) in self.vcode.insts.iter_mut().enumerate() {
             // Push operands from the instruction onto the operand list.
             //
@@ -620,6 +618,14 @@ impl<I: VCodeInst> VCodeBuilder<I> {
         let old_entry = self.vcode.user_stack_maps.insert(inst, stack_map);
         debug_assert!(old_entry.is_none());
     }
+
+    /// Add debug tags for the associated instruction.
+    pub fn add_debug_tags(&mut self, inst: BackwardsInsnIndex, entries: &[ir::DebugTag]) {
+        let start = u32::try_from(self.vcode.debug_tag_pool.len()).unwrap();
+        self.vcode.debug_tag_pool.extend(entries.iter().cloned());
+        let end = u32::try_from(self.vcode.debug_tag_pool.len()).unwrap();
+        self.vcode.debug_tags.insert(inst, start..end);
+    }
 }
 
 const NO_INST_OFFSET: CodeOffset = u32::MAX;
@@ -640,6 +646,8 @@ impl<I: VCodeInst> VCode<I> {
             vreg_types: vec![],
             insts: Vec::with_capacity(10 * n_blocks),
             user_stack_maps: FxHashMap::default(),
+            debug_tags: FxHashMap::default(),
+            debug_tag_pool: vec![],
             operands: Vec::with_capacity(30 * n_blocks),
             operand_ranges: Ranges::with_capacity(10 * n_blocks),
             clobbers: FxHashMap::default(),
@@ -665,11 +673,6 @@ impl<I: VCodeInst> VCode<I> {
         }
     }
 
-    /// Get the ABI-dependent MachineEnv for managing register allocation.
-    pub fn machine_env(&self) -> &MachineEnv {
-        self.abi.machine_env(&self.sigs)
-    }
-
     /// Get the number of blocks. Block indices will be in the range `0 ..
     /// (self.num_blocks() - 1)`.
     pub fn num_blocks(&self) -> usize {
@@ -681,8 +684,12 @@ impl<I: VCodeInst> VCode<I> {
         self.insts.len()
     }
 
-    fn compute_clobbers(&self, regalloc: &regalloc2::Output) -> Vec<Writable<RealReg>> {
+    fn compute_clobbers_and_function_calls(
+        &self,
+        regalloc: &regalloc2::Output,
+    ) -> (Vec<Writable<RealReg>>, FunctionCalls) {
         let mut clobbered = PRegSet::default();
+        let mut function_calls = FunctionCalls::None;
 
         // All moves are included in clobbers.
         for (_, Edit::Move { to, .. }) in &regalloc.edits {
@@ -701,6 +708,8 @@ impl<I: VCodeInst> VCode<I> {
                     }
                 }
             }
+
+            function_calls.update(self.insts[i].call_type());
 
             // Also add explicitly-clobbered registers.
             //
@@ -728,10 +737,12 @@ impl<I: VCodeInst> VCode<I> {
             }
         }
 
-        clobbered
+        let clobbered_regs = clobbered
             .into_iter()
             .map(|preg| Writable::from_reg(RealReg::from(preg)))
-            .collect()
+            .collect();
+
+        (clobbered_regs, function_calls)
     }
 
     /// Emit the instructions to a `MachBuffer`, containing fixed-up
@@ -785,15 +796,19 @@ impl<I: VCodeInst> VCode<I> {
         // mutate `VCode`. The info it usually carries prior to
         // setting clobbers is fairly minimal so this should be
         // relatively cheap.
-        let clobbers = self.compute_clobbers(regalloc);
-        self.abi
-            .compute_frame_layout(&self.sigs, regalloc.num_spillslots, clobbers);
+        let (clobbers, function_calls) = self.compute_clobbers_and_function_calls(regalloc);
+        self.abi.compute_frame_layout(
+            &self.sigs,
+            regalloc.num_spillslots,
+            clobbers,
+            function_calls,
+        );
 
         // Emit blocks.
         let mut cur_srcloc = None;
         let mut last_offset = None;
         let mut inst_offsets = vec![];
-        let mut state = I::State::new(&self.abi, std::mem::take(ctrl_plane));
+        let mut state = I::State::new(&self.abi, core::mem::take(ctrl_plane));
 
         let mut disasm = String::new();
 
@@ -934,8 +949,11 @@ impl<I: VCodeInst> VCode<I> {
                                 // function.
                                 let index = iix.to_backwards_insn_index(self.num_insts());
                                 let user_stack_map = self.user_stack_maps.remove(&index);
-                                let user_stack_map_disasm =
-                                    user_stack_map.as_ref().map(|m| format!("  ; {m:?}"));
+                                let user_stack_map_disasm = if want_disasm {
+                                    user_stack_map.as_ref().map(|m| format!("  ; {m:?}"))
+                                } else {
+                                    None
+                                };
                                 (user_stack_map, user_stack_map_disasm)
                             };
 
@@ -946,11 +964,50 @@ impl<I: VCodeInst> VCode<I> {
                             None
                         };
 
+                        // Place debug tags in the emission buffer
+                        // either at the offset prior to the
+                        // instruction or after the instruction,
+                        // depending on whether this is a call. See
+                        // the documentation on [`MachDebugTagPos`]
+                        // for details on why.
+                        let mut debug_tag_disasm = None;
+                        let mut place_debug_tags =
+                            |this: &VCode<I>, pos: MachDebugTagPos, buffer: &mut MachBuffer<I>| {
+                                // As above, translate the forward instruction
+                                // index to a backward index for the lookup.
+                                let debug_tag_range = {
+                                    let index = iix.to_backwards_insn_index(this.num_insts());
+                                    this.debug_tags.get(&index)
+                                };
+                                if let Some(range) = debug_tag_range {
+                                    let start = usize::try_from(range.start).unwrap();
+                                    let end = usize::try_from(range.end).unwrap();
+                                    let tags = &this.debug_tag_pool[start..end];
+
+                                    if want_disasm {
+                                        debug_tag_disasm =
+                                            Some(format!("  ; ^-- debug @ {pos:?}: {tags:?}"));
+                                    }
+                                    buffer.push_debug_tags(pos, tags);
+                                }
+                            };
+                        let debug_tag_pos =
+                            if self.insts[iix.index()].call_type() == CallType::Regular {
+                                MachDebugTagPos::Post
+                            } else {
+                                MachDebugTagPos::Pre
+                            };
+
+                        if debug_tag_pos == MachDebugTagPos::Pre {
+                            place_debug_tags(&self, debug_tag_pos, &mut buffer);
+                        }
+
                         // If the instruction we are about to emit is
                         // a return, place an epilogue at this point
                         // (and don't emit the return; the actual
                         // epilogue will contain it).
                         if self.insts[iix.index()].is_term() == MachTerminator::Ret {
+                            log::trace!("emitting epilogue");
                             for inst in self.abi.gen_epilogue() {
                                 do_emit(&inst, &mut disasm, &mut buffer, &mut state);
                             }
@@ -977,6 +1034,8 @@ impl<I: VCodeInst> VCode<I> {
                             );
                             debug_assert!(allocs.next().is_none());
 
+                            log::trace!("emitting: {:?}", self.insts[iix.index()]);
+
                             // Emit the instruction!
                             do_emit(
                                 &self.insts[iix.index()],
@@ -984,8 +1043,17 @@ impl<I: VCodeInst> VCode<I> {
                                 &mut buffer,
                                 &mut state,
                             );
+
+                            if debug_tag_pos == MachDebugTagPos::Post {
+                                place_debug_tags(&self, debug_tag_pos, &mut buffer);
+                            }
+
                             if let Some(stack_map_disasm) = stack_map_disasm {
                                 disasm.push_str(&stack_map_disasm);
+                                disasm.push('\n');
+                            }
+                            if let Some(debug_tag_disasm) = debug_tag_disasm {
+                                disasm.push_str(&debug_tag_disasm);
                                 disasm.push('\n');
                             }
                         }
@@ -1109,18 +1177,16 @@ impl<I: VCodeInst> VCode<I> {
         self.monotonize_inst_offsets(&mut inst_offsets[..], func_body_len);
         let value_labels_ranges =
             self.compute_value_labels_ranges(regalloc, &inst_offsets[..], func_body_len);
-        let frame_size = self.abi.frame_size();
+
+        // Store metadata about frame layout in the MachBuffer.
+        buffer.set_frame_layout(self.abi.frame_slot_metadata());
 
         EmitResult {
             buffer: buffer.finish(&self.constants, ctrl_plane),
             bb_offsets,
             bb_edges,
-            func_body_len,
             disasm: if want_disasm { Some(disasm) } else { None },
-            sized_stackslot_offsets: self.abi.sized_stackslot_offsets().clone(),
-            dynamic_stackslot_offsets: self.abi.dynamic_stackslot_offsets().clone(),
             value_labels_ranges,
-            frame_size,
         }
     }
 
@@ -1152,9 +1218,7 @@ impl<I: VCodeInst> VCode<I> {
             if inst_offset > next_offset {
                 trace!(
                     "Fixing code offset of the removed Inst {}: {} -> {}",
-                    inst_index,
-                    inst_offset,
-                    next_offset
+                    inst_index, inst_offset, next_offset
                 );
                 inst_offsets[inst_index] = next_offset;
                 continue;
@@ -1189,36 +1253,44 @@ impl<I: VCodeInst> VCode<I> {
                 }
                 inst.index()
             };
+            let inst_to_offset = |inst_index: usize| {
+                // Skip over cold blocks.
+                for offset in &inst_offsets[inst_index..] {
+                    if *offset != NO_INST_OFFSET {
+                        return *offset;
+                    }
+                }
+                func_body_len
+            };
             let from_inst_index = prog_point_to_inst(from);
             let to_inst_index = prog_point_to_inst(to);
-            let from_offset = inst_offsets[from_inst_index];
-            let to_offset = if to_inst_index == inst_offsets.len() {
-                func_body_len
-            } else {
-                inst_offsets[to_inst_index]
-            };
+            let from_offset = inst_to_offset(from_inst_index);
+            let to_offset = inst_to_offset(to_inst_index);
 
             // Empty ranges or unavailable offsets can happen
             // due to cold blocks and branch removal (see above).
-            if from_offset == NO_INST_OFFSET
-                || to_offset == NO_INST_OFFSET
-                || from_offset == to_offset
-            {
+            if from_offset == to_offset {
                 continue;
             }
 
             let loc = if let Some(preg) = alloc.as_reg() {
                 LabelValueLoc::Reg(Reg::from(preg))
             } else {
-                let slot = alloc.as_stack().unwrap();
-                let slot_offset = self.abi.get_spillslot_offset(slot);
-                let slot_base_to_caller_sp_offset = self.abi.slot_base_to_caller_sp_offset();
-                let caller_sp_to_cfa_offset =
-                    crate::isa::unwind::systemv::caller_sp_to_cfa_offset();
-                // NOTE: this is a negative offset because it's relative to the caller's SP
-                let cfa_to_sp_offset =
-                    -((slot_base_to_caller_sp_offset + caller_sp_to_cfa_offset) as i64);
-                LabelValueLoc::CFAOffset(cfa_to_sp_offset + slot_offset)
+                #[cfg(not(feature = "unwind"))]
+                continue;
+
+                #[cfg(feature = "unwind")]
+                {
+                    let slot = alloc.as_stack().unwrap();
+                    let slot_offset = self.abi.get_spillslot_offset(slot);
+                    let slot_base_to_caller_sp_offset = self.abi.slot_base_to_caller_sp_offset();
+                    let caller_sp_to_cfa_offset =
+                        crate::isa::unwind::systemv::caller_sp_to_cfa_offset();
+                    // NOTE: this is a negative offset because it's relative to the caller's SP
+                    let cfa_to_sp_offset =
+                        -((slot_base_to_caller_sp_offset + caller_sp_to_cfa_offset) as i64);
+                    LabelValueLoc::CFAOffset(cfa_to_sp_offset + slot_offset)
+                }
             };
 
             // Coalesce adjacent ranges that for the same location
@@ -1227,10 +1299,7 @@ impl<I: VCodeInst> VCode<I> {
                 if last_loc_range.loc == loc && last_loc_range.end == from_offset {
                     trace!(
                         "Extending debug range for {:?} in {:?} to Inst {} ({})",
-                        label,
-                        loc,
-                        to_inst_index,
-                        to_offset
+                        label, loc, to_inst_index, to_offset
                     );
                     last_loc_range.end = to_offset;
                     continue;
@@ -1239,12 +1308,7 @@ impl<I: VCodeInst> VCode<I> {
 
             trace!(
                 "Recording debug range for {:?} in {:?}: [Inst {}..Inst {}) [{}..{})",
-                label,
-                loc,
-                from_inst_index,
-                to_inst_index,
-                from_offset,
-                to_offset
+                label, loc, from_inst_index, to_inst_index, from_offset, to_offset
             );
 
             ranges.push(ValueLocRange {
@@ -1496,7 +1560,7 @@ impl<I: VCodeInst> VCode<I> {
     }
 }
 
-impl<I: VCodeInst> std::ops::Index<InsnIndex> for VCode<I> {
+impl<I: VCodeInst> core::ops::Index<InsnIndex> for VCode<I> {
     type Output = I;
     fn index(&self, idx: InsnIndex) -> &Self::Output {
         &self.insts[idx.index()]
@@ -1716,13 +1780,23 @@ impl<I: VCodeInst> VRegAllocator<I> {
         }
         let v = self.vreg_types.len();
         let (regclasses, tys) = I::rc_for_type(ty)?;
-        if v + regclasses.len() >= VReg::MAX {
+
+        // Check that new indices are in-bounds for regalloc2's
+        // VReg/Operand representation.
+        if v + regclasses.len() > VReg::MAX {
             return Err(CodegenError::CodeTooLarge);
         }
 
+        // Check that new indices are in-bounds for our Reg
+        // bit-packing on top of the RA2 types, which represents
+        // spillslots as well.
+        let check = |vreg: regalloc2::VReg| -> CodegenResult<Reg> {
+            Reg::from_virtual_reg_checked(vreg).ok_or(CodegenError::CodeTooLarge)
+        };
+
         let regs: ValueRegs<Reg> = match regclasses {
-            &[rc0] => ValueRegs::one(VReg::new(v, rc0).into()),
-            &[rc0, rc1] => ValueRegs::two(VReg::new(v, rc0).into(), VReg::new(v + 1, rc1).into()),
+            &[rc0] => ValueRegs::one(check(VReg::new(v, rc0))?),
+            &[rc0, rc1] => ValueRegs::two(check(VReg::new(v, rc0))?, check(VReg::new(v + 1, rc1))?),
             // We can extend this if/when we support 32-bit targets; e.g.,
             // an i128 on a 32-bit machine will need up to four machine regs
             // for a `Value`.
@@ -1977,18 +2051,14 @@ impl VCodeConstantData {
 
     /// Calculate the alignment of the constant data.
     pub fn alignment(&self) -> u32 {
-        if self.as_slice().len() <= 8 {
-            8
-        } else {
-            16
-        }
+        if self.as_slice().len() <= 8 { 8 } else { 16 }
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::mem::size_of;
+    use core::mem::size_of;
 
     #[test]
     fn size_of_constant_structs() {

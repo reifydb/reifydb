@@ -54,8 +54,10 @@ impl ProfilingAgent for JitDumpAgent {
         let mut jitdump_file = JITDUMP_FILE.lock().unwrap();
         let jitdump_file = jitdump_file.as_mut().unwrap();
         let timestamp = jitdump_file.get_time_stamp();
-        #[allow(trivial_numeric_casts)]
-        let tid = rustix::thread::gettid().as_raw_nonzero().get() as u32;
+        let tid = rustix::thread::gettid()
+            .as_raw_nonzero()
+            .get()
+            .cast_unsigned();
         if let Err(err) = jitdump_file.dump_code_load_record(&name, code, timestamp, self.pid, tid)
         {
             println!("Jitdump: write_code_load_failed_record failed: {err:?}\n");

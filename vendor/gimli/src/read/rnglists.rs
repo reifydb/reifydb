@@ -5,8 +5,8 @@ use crate::common::{
 use crate::constants;
 use crate::endianity::Endianity;
 use crate::read::{
-    lists::ListsHeader, DebugAddr, EndianSlice, Error, Reader, ReaderAddress, ReaderOffset,
-    ReaderOffsetId, Result, Section,
+    DebugAddr, EndianSlice, Error, Reader, ReaderAddress, ReaderOffset, ReaderOffsetId, Result,
+    Section, lists::ListsHeader,
 };
 
 /// The raw contents of the `.debug_ranges` section.
@@ -213,9 +213,6 @@ impl<R: Reader> RangeLists<R> {
     ///
     /// The `base_address` should be obtained from the `DW_AT_low_pc` attribute in the
     /// `DW_TAG_compile_unit` entry for the compilation unit that contains this range list.
-    ///
-    /// Can be [used with
-    /// `FallibleIterator`](./index.html#using-with-fallibleiterator).
     pub fn ranges(
         &self,
         offset: RangeListsOffset<R::Offset>,
@@ -239,9 +236,6 @@ impl<R: Reader> RangeLists<R> {
     ///
     /// This iterator does not perform any processing of the range entries,
     /// such as handling base addresses.
-    ///
-    /// Can be [used with
-    /// `FallibleIterator`](./index.html#using-with-fallibleiterator).
     pub fn raw_ranges(
         &self,
         offset: RangeListsOffset<R::Offset>,
@@ -464,6 +458,14 @@ impl<R: Reader> fallible_iterator::FallibleIterator for RawRngListIter<R> {
     }
 }
 
+impl<R: Reader> Iterator for RawRngListIter<R> {
+    type Item = Result<RawRngListEntry<R::Offset>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        RawRngListIter::next(self).transpose()
+    }
+}
+
 /// An iterator over an address range list.
 ///
 /// This iterator internally handles processing of base addresses and different
@@ -528,12 +530,6 @@ impl<R: Reader> RngListIter<R> {
     #[doc(hidden)]
     pub fn convert_raw(&mut self, raw_range: RawRngListEntry<R::Offset>) -> Result<Option<Range>> {
         let address_size = self.raw.encoding.address_size;
-        let mask = u64::ones_sized(address_size);
-        let tombstone = if self.raw.encoding.version <= 4 {
-            mask - 1
-        } else {
-            mask
-        };
 
         let range = match raw_range {
             RawRngListEntry::BaseAddress { addr } => {
@@ -557,11 +553,11 @@ impl<R: Reader> RngListIter<R> {
             RawRngListEntry::AddressOrOffsetPair { begin, end }
             | RawRngListEntry::OffsetPair { begin, end } => {
                 // Skip tombstone entries (see below).
-                if self.base_address == tombstone {
+                if self.base_address >= u64::min_tombstone(address_size) {
                     return Ok(None);
                 }
                 let mut range = Range { begin, end };
-                range.add_base_address(self.base_address, self.raw.encoding.address_size);
+                range.add_base_address(self.base_address, address_size);
                 range
             }
             RawRngListEntry::StartEnd { begin, end } => Range { begin, end },
@@ -581,7 +577,7 @@ impl<R: Reader> RngListIter<R> {
         //
         // In addition to skipping tombstone entries, we also skip invalid entries
         // where `begin` is greater than `end`. This can occur due to compiler bugs.
-        if range.begin == tombstone || range.begin >= range.end {
+        if range.begin >= u64::min_tombstone(address_size) || range.begin >= range.end {
             return Ok(None);
         }
 
@@ -596,6 +592,14 @@ impl<R: Reader> fallible_iterator::FallibleIterator for RngListIter<R> {
 
     fn next(&mut self) -> ::core::result::Result<Option<Self::Item>, Self::Error> {
         RngListIter::next(self)
+    }
+}
+
+impl<R: Reader> Iterator for RngListIter<R> {
+    type Item = Result<Range>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        RngListIter::next(self).transpose()
     }
 }
 

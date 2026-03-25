@@ -1,17 +1,20 @@
 //! This module defines the `Type` type, representing the dynamic form of a component interface type.
 
+#[cfg(feature = "component-model-async")]
+use crate::component::ComponentType;
 use crate::component::matching::InstanceType;
-use crate::{Engine, ExternType, FuncType};
+use crate::{Engine, ExternType, FuncType, prelude::*};
 use alloc::sync::Arc;
 use core::fmt;
 use core::ops::Deref;
 use wasmtime_environ::component::{
     ComponentTypes, Export, InterfaceType, ResourceIndex, TypeComponentIndex,
     TypeComponentInstanceIndex, TypeDef, TypeEnumIndex, TypeFlagsIndex, TypeFuncIndex,
-    TypeListIndex, TypeModuleIndex, TypeOptionIndex, TypeRecordIndex, TypeResourceTableIndex,
-    TypeResultIndex, TypeTupleIndex, TypeVariantIndex,
+    TypeFutureIndex, TypeFutureTableIndex, TypeListIndex, TypeModuleIndex, TypeOptionIndex,
+    TypeRecordIndex, TypeResourceTable, TypeResourceTableIndex, TypeResultIndex, TypeStreamIndex,
+    TypeStreamTableIndex, TypeTupleIndex, TypeVariantIndex,
 };
-use wasmtime_environ::PrimaryMap;
+use wasmtime_environ::{PanicOnOom as _, PrimaryMap};
 
 pub use crate::component::resources::ResourceType;
 
@@ -145,9 +148,17 @@ impl TypeChecker<'_> {
             (InterfaceType::String, _) => false,
             (InterfaceType::Char, InterfaceType::Char) => true,
             (InterfaceType::Char, _) => false,
-            (InterfaceType::Future(_), _)
-            | (InterfaceType::Stream(_), _)
-            | (InterfaceType::ErrorContext(_), _) => todo!(),
+            (InterfaceType::Future(t1), InterfaceType::Future(t2)) => {
+                self.future_table_types_equal(t1, t2)
+            }
+            (InterfaceType::Future(_), _) => false,
+            (InterfaceType::Stream(t1), InterfaceType::Stream(t2)) => {
+                self.stream_table_types_equal(t1, t2)
+            }
+            (InterfaceType::Stream(_), _) => false,
+            (InterfaceType::ErrorContext(_), InterfaceType::ErrorContext(_)) => true,
+            (InterfaceType::ErrorContext(_), _) => false,
+            (InterfaceType::FixedLengthList(_), _) => todo!(), // FIXME(#12279)
         }
     }
 
@@ -158,9 +169,23 @@ impl TypeChecker<'_> {
     }
 
     fn resources_equal(&self, o1: TypeResourceTableIndex, o2: TypeResourceTableIndex) -> bool {
-        let a = &self.a_types[o1];
-        let b = &self.b_types[o2];
-        self.a_resource[a.ty] == self.b_resource[b.ty]
+        match (&self.a_types[o1], &self.b_types[o2]) {
+            // Concrete resource types are the same if they map back to the
+            // exact same `ResourceType` at runtime, so look them up in resource
+            // type tables and compare the types themselves.
+            (
+                TypeResourceTable::Concrete { ty: a, .. },
+                TypeResourceTable::Concrete { ty: b, .. },
+            ) => self.a_resource[*a] == self.b_resource[*b],
+            (TypeResourceTable::Concrete { .. }, _) => false,
+
+            // Abstract resource types are only the same if they have the same
+            // index and come from the exact same component.
+            (TypeResourceTable::Abstract(a), TypeResourceTable::Abstract(b)) => {
+                core::ptr::eq(self.a_types, self.b_types) && a == b
+            }
+            (TypeResourceTable::Abstract(_), _) => false,
+        }
     }
 
     fn records_equal(&self, r1: TypeRecordIndex, r2: TypeRecordIndex) -> bool {
@@ -246,6 +271,34 @@ impl TypeChecker<'_> {
         let a = &self.a_types[f1];
         let b = &self.b_types[f2];
         a.names == b.names
+    }
+
+    fn future_table_types_equal(&self, t1: TypeFutureTableIndex, t2: TypeFutureTableIndex) -> bool {
+        self.futures_equal(self.a_types[t1].ty, self.b_types[t2].ty)
+    }
+
+    fn futures_equal(&self, t1: TypeFutureIndex, t2: TypeFutureIndex) -> bool {
+        let a = &self.a_types[t1];
+        let b = &self.b_types[t2];
+        match (a.payload, b.payload) {
+            (Some(t1), Some(t2)) => self.interface_types_equal(t1, t2),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+
+    fn stream_table_types_equal(&self, t1: TypeStreamTableIndex, t2: TypeStreamTableIndex) -> bool {
+        self.streams_equal(self.a_types[t1].ty, self.b_types[t2].ty)
+    }
+
+    fn streams_equal(&self, t1: TypeStreamIndex, t2: TypeStreamIndex) -> bool {
+        let a = &self.a_types[t1];
+        let b = &self.b_types[t2];
+        match (a.payload, b.payload) {
+            (Some(t1), Some(t2)) => self.interface_types_equal(t1, t2),
+            (None, None) => true,
+            _ => false,
+        }
     }
 }
 
@@ -351,12 +404,12 @@ impl Variant {
     }
 
     /// Retrieve the cases of this `variant` in declaration order.
-    pub fn cases(&self) -> impl ExactSizeIterator<Item = Case> {
+    pub fn cases(&self) -> impl ExactSizeIterator<Item = Case<'_>> {
         self.0.types[self.0.index]
             .cases
             .iter()
             .map(|(name, ty)| Case {
-                name: name,
+                name,
                 ty: ty.as_ref().map(|ty| Type::from(ty, &self.0.instance())),
             })
     }
@@ -419,7 +472,7 @@ impl PartialEq for OptionType {
 
 impl Eq for OptionType {}
 
-/// An `expected` interface type
+/// A `result` interface type
 #[derive(Clone, Debug)]
 pub struct ResultType(Handle<TypeResultIndex>);
 
@@ -479,9 +532,143 @@ impl PartialEq for Flags {
 
 impl Eq for Flags {}
 
+#[cfg(feature = "component-model-async")]
+pub(crate) fn typecheck_payload<T>(
+    payload: Option<&InterfaceType>,
+    types: &InstanceType<'_>,
+) -> crate::Result<()>
+where
+    T: ComponentType,
+{
+    match payload {
+        Some(a) => T::typecheck(a, types),
+        None => {
+            if T::IS_RUST_UNIT_TYPE {
+                Ok(())
+            } else {
+                crate::bail!("future payload types differ")
+            }
+        }
+    }
+}
+
+/// An `future` interface type
+#[derive(Clone, Debug)]
+pub struct FutureType(Handle<TypeFutureIndex>);
+
+impl FutureType {
+    pub(crate) fn from(index: TypeFutureIndex, ty: &InstanceType<'_>) -> Self {
+        FutureType(Handle::new(index, ty))
+    }
+
+    /// Retrieve the type parameter for this `future`.
+    pub fn ty(&self) -> Option<Type> {
+        Some(Type::from(
+            self.0.types[self.0.index].payload.as_ref()?,
+            &self.0.instance(),
+        ))
+    }
+
+    #[cfg(feature = "component-model-async")]
+    pub(crate) fn equivalent_payload_guest(
+        &self,
+        ty: &InstanceType<'_>,
+        payload: Option<&InterfaceType>,
+    ) -> bool {
+        let my_payload = self.0.types[self.0.index].payload.as_ref();
+        match (my_payload, payload) {
+            (Some(a), Some(b)) => TypeChecker {
+                a_types: &self.0.types,
+                a_resource: &self.0.resources,
+                b_types: ty.types,
+                b_resource: ty.resources,
+            }
+            .interface_types_equal(*a, *b),
+            (None, None) => true,
+            (Some(_), None) | (None, Some(_)) => false,
+        }
+    }
+
+    #[cfg(feature = "component-model-async")]
+    pub(crate) fn equivalent_payload_host<T>(&self) -> crate::Result<()>
+    where
+        T: ComponentType,
+    {
+        typecheck_payload::<T>(
+            self.0.types[self.0.index].payload.as_ref(),
+            &self.0.instance(),
+        )
+    }
+}
+
+impl PartialEq for FutureType {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.equivalent(&other.0, TypeChecker::futures_equal)
+    }
+}
+
+impl Eq for FutureType {}
+
+/// An `stream` interface type
+#[derive(Clone, Debug)]
+pub struct StreamType(Handle<TypeStreamIndex>);
+
+impl StreamType {
+    pub(crate) fn from(index: TypeStreamIndex, ty: &InstanceType<'_>) -> Self {
+        StreamType(Handle::new(index, ty))
+    }
+
+    /// Retrieve the type parameter for this `stream`.
+    pub fn ty(&self) -> Option<Type> {
+        Some(Type::from(
+            self.0.types[self.0.index].payload.as_ref()?,
+            &self.0.instance(),
+        ))
+    }
+
+    #[cfg(feature = "component-model-async")]
+    pub(crate) fn equivalent_payload_guest(
+        &self,
+        ty: &InstanceType<'_>,
+        payload: Option<&InterfaceType>,
+    ) -> bool {
+        let my_payload = self.0.types[self.0.index].payload.as_ref();
+        match (my_payload, payload) {
+            (Some(a), Some(b)) => TypeChecker {
+                a_types: &self.0.types,
+                a_resource: &self.0.resources,
+                b_types: ty.types,
+                b_resource: ty.resources,
+            }
+            .interface_types_equal(*a, *b),
+            (None, None) => true,
+            (Some(_), None) | (None, Some(_)) => false,
+        }
+    }
+
+    #[cfg(feature = "component-model-async")]
+    pub(crate) fn equivalent_payload_host<T>(&self) -> crate::Result<()>
+    where
+        T: ComponentType,
+    {
+        typecheck_payload::<T>(
+            self.0.types[self.0.index].payload.as_ref(),
+            &self.0.instance(),
+        )
+    }
+}
+
+impl PartialEq for StreamType {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.equivalent(&other.0, TypeChecker::streams_equal)
+    }
+}
+
+impl Eq for StreamType {}
+
 /// Represents a component model interface type
 #[derive(Clone, PartialEq, Eq, Debug)]
-#[allow(missing_docs)]
+#[expect(missing_docs, reason = "self-describing variants")]
 pub enum Type {
     Bool,
     S8,
@@ -506,6 +693,9 @@ pub enum Type {
     Flags(Flags),
     Own(ResourceType),
     Borrow(ResourceType),
+    Future(FutureType),
+    Stream(StreamType),
+    ErrorContext,
 }
 
 impl Type {
@@ -663,9 +853,10 @@ impl Type {
             InterfaceType::Flags(index) => Type::Flags(Flags::from(*index, instance)),
             InterfaceType::Own(index) => Type::Own(instance.resource_type(*index)),
             InterfaceType::Borrow(index) => Type::Borrow(instance.resource_type(*index)),
-            InterfaceType::Future(_)
-            | InterfaceType::Stream(_)
-            | InterfaceType::ErrorContext(_) => todo!(),
+            InterfaceType::Future(index) => Type::Future(instance.future_type(*index)),
+            InterfaceType::Stream(index) => Type::Stream(instance.stream_type(*index)),
+            InterfaceType::ErrorContext(_) => Type::ErrorContext,
+            InterfaceType::FixedLengthList(_) => todo!(), // FIXME(#12279)
         }
     }
 
@@ -694,6 +885,9 @@ impl Type {
             Type::Flags(_) => "flags",
             Type::Own(_) => "own",
             Type::Borrow(_) => "borrow",
+            Type::Future(_) => "future",
+            Type::Stream(_) => "stream",
+            Type::ErrorContext => "error-context",
         }
     }
 }
@@ -705,6 +899,11 @@ pub struct ComponentFunc(Handle<TypeFuncIndex>);
 impl ComponentFunc {
     pub(crate) fn from(index: TypeFuncIndex, ty: &InstanceType<'_>) -> Self {
         Self(Handle::new(index, ty))
+    }
+
+    /// Returns whether this is an async function
+    pub fn async_(&self) -> bool {
+        self.0.types[self.0.index].async_
     }
 
     /// Iterates over types of function parameters and names.
@@ -727,7 +926,7 @@ impl ComponentFunc {
     }
 
     #[doc(hidden)]
-    pub fn typecheck<Params, Return>(&self, cx: &InstanceType) -> anyhow::Result<()>
+    pub fn typecheck<Params, Return>(&self, cx: &InstanceType) -> crate::Result<()>
     where
         Params: crate::component::ComponentNamedList + crate::component::Lower,
         Return: crate::component::ComponentNamedList + crate::component::Lift,
@@ -900,25 +1099,34 @@ impl ComponentItem {
             TypeDef::Module(idx) => Self::Module(Module::from(*idx, ty)),
             TypeDef::CoreFunc(idx) => {
                 let subty = &ty.types[*idx];
-                Self::CoreFunc(FuncType::from_wasm_func_type(
-                    engine,
-                    subty.is_final,
-                    subty.supertype,
-                    subty.unwrap_func().clone(),
-                ))
+                Self::CoreFunc(
+                    FuncType::from_wasm_func_type(
+                        engine,
+                        subty.is_final,
+                        subty.supertype,
+                        subty.unwrap_func().try_clone().panic_on_oom(),
+                    )
+                    .panic_on_oom(),
+                )
             }
-            TypeDef::Resource(idx) => {
-                let resource_index = ty.types[*idx].ty;
-                let ty = match ty.resources.get(resource_index) {
-                    // This resource type was substituted by a linker for
-                    // example so it's replaced here.
-                    Some(ty) => *ty,
+            TypeDef::Resource(idx) => match ty.types[*idx] {
+                TypeResourceTable::Concrete {
+                    ty: resource_index, ..
+                } => {
+                    let ty = match ty.resources.get(resource_index) {
+                        // This resource type was substituted by a linker for
+                        // example so it's replaced here.
+                        Some(ty) => *ty,
 
-                    // This resource type was not substituted.
-                    None => ResourceType::uninstantiated(&ty.types, resource_index),
-                };
-                Self::Resource(ty)
-            }
+                        // This resource type was not substituted.
+                        None => ResourceType::uninstantiated(&ty.types, resource_index),
+                    };
+                    Self::Resource(ty)
+                }
+                TypeResourceTable::Abstract(resource_index) => {
+                    Self::Resource(ResourceType::abstract_(&ty.types, resource_index))
+                }
+            },
         }
     }
     pub(crate) fn from_export(engine: &Engine, export: &Export, ty: &InstanceType<'_>) -> Self {

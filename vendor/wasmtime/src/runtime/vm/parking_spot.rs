@@ -15,8 +15,8 @@ use crate::prelude::*;
 use crate::runtime::vm::{SendSyncPtr, WaitResult};
 use std::collections::BTreeMap;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::SeqCst};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering::SeqCst};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
@@ -246,15 +246,17 @@ impl Spot {
     /// in any other queue and additionally only exclusively used by this queue
     /// now.
     unsafe fn push(&mut self, mut waiter: SendSyncPtr<WaiterInner>) {
-        assert!(waiter.as_ref().next.is_none());
-        assert!(waiter.as_ref().prev.is_none());
+        unsafe {
+            assert!(waiter.as_ref().next.is_none());
+            assert!(waiter.as_ref().prev.is_none());
 
-        waiter.as_mut().prev = self.tail;
-        match self.tail {
-            Some(mut tail) => tail.as_mut().next = Some(waiter),
-            None => self.head = Some(waiter),
+            waiter.as_mut().prev = self.tail;
+            match self.tail {
+                Some(mut tail) => tail.as_mut().next = Some(waiter),
+                None => self.head = Some(waiter),
+            }
+            self.tail = Some(waiter);
         }
-        self.tail = Some(waiter);
     }
 
     /// Removes `waiter` from the queue.
@@ -265,17 +267,19 @@ impl Spot {
     /// spot's mutex. Additionally `waiter` must be a valid pointer in this
     /// queue.
     unsafe fn remove(&mut self, mut waiter: SendSyncPtr<WaiterInner>) {
-        let w = waiter.as_mut();
-        match w.prev {
-            Some(mut prev) => prev.as_mut().next = w.next,
-            None => self.head = w.next,
+        unsafe {
+            let w = waiter.as_mut();
+            match w.prev {
+                Some(mut prev) => prev.as_mut().next = w.next,
+                None => self.head = w.next,
+            }
+            match w.next {
+                Some(mut next) => next.as_mut().prev = w.prev,
+                None => self.tail = w.prev,
+            }
+            w.prev = None;
+            w.next = None;
         }
-        match w.next {
-            Some(mut next) => next.as_mut().prev = w.prev,
-            None => self.tail = w.prev,
-        }
-        w.prev = None;
-        w.next = None;
     }
 
     /// Pops the head of the queue from this linked list to wake up a waiter.
@@ -286,7 +290,9 @@ impl Spot {
     /// spot's mutex.
     unsafe fn pop(&mut self) -> Option<SendSyncPtr<WaiterInner>> {
         let ret = self.head?;
-        self.remove(ret);
+        unsafe {
+            self.remove(ret);
+        }
         Some(ret)
     }
 
@@ -363,8 +369,8 @@ mod tests {
         // This is a modified version of the parking_lot_core tests,
         // which are licensed under the MIT and Apache 2.0 licenses.
         use super::*;
-        use std::sync::atomic::AtomicU32;
         use std::sync::Arc;
+        use std::sync::atomic::AtomicU32;
 
         macro_rules! test {
             ( $( $name:ident(

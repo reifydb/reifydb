@@ -45,10 +45,10 @@
 //! |        + arguments            |
 //! |                               | ----> Space allocated for calls
 //! |                               |
+use crate::Result;
 use crate::codegen::ptr_type_from_ptr_size;
-use crate::isa::{reg::Reg, CallingConvention};
+use crate::isa::{CallingConvention, reg::Reg};
 use crate::masm::SPOffset;
-use anyhow::Result;
 use smallvec::SmallVec;
 use std::collections::HashSet;
 use std::ops::{Add, BitAnd, Not, Sub};
@@ -72,18 +72,6 @@ macro_rules! vmctx {
     };
 }
 
-/// Macro to get the designated general purpose scratch register or the
-/// designated scratch register for the given type.
-macro_rules! scratch {
-    ($m:ident) => {
-        <$m::ABI as $crate::abi::ABI>::scratch_for(&wasmtime_environ::WasmValType::I64)
-    };
-    ($m:ident, $wasm_type:expr) => {
-        <$m::ABI as $crate::abi::ABI>::scratch_for($wasm_type)
-    };
-}
-
-pub(crate) use scratch;
 pub(crate) use vmctx;
 
 /// Constructs an [ABISig] using Winch's ABI.
@@ -93,7 +81,7 @@ pub(crate) fn wasm_sig<A: ABI>(ty: &WasmFuncType) -> Result<ABISig> {
     params.extend_from_slice(&vmctx_types::<A>());
     params.extend_from_slice(ty.params());
 
-    A::sig_from(&params, ty.returns(), &CallingConvention::Default)
+    A::sig_from(&params, ty.results(), &CallingConvention::Default)
 }
 
 /// Returns the callee and caller [VMContext] types.
@@ -124,7 +112,7 @@ pub(crate) trait ABI {
     /// function type.
     #[cfg(test)]
     fn sig(wasm_sig: &WasmFuncType, call_conv: &CallingConvention) -> Result<ABISig> {
-        Self::sig_from(wasm_sig.params(), wasm_sig.returns(), call_conv)
+        Self::sig_from(wasm_sig.params(), wasm_sig.results(), call_conv)
     }
 
     /// Construct an ABI signature from WasmType params and returns.
@@ -144,9 +132,6 @@ pub(crate) trait ABI {
     fn word_bytes() -> u8 {
         Self::word_bits() / 8
     }
-
-    /// Returns the designated scratch register for the given [WasmType].
-    fn scratch_for(ty: &WasmValType) -> Reg;
 
     /// Returns the pinned register used to hold
     /// the `VMContext`.

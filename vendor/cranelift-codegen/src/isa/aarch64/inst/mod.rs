@@ -1,19 +1,19 @@
 //! This module defines aarch64-specific machine instruction types.
 
 use crate::binemit::{Addend, CodeOffset, Reloc};
-use crate::ir::types::{F128, F16, F32, F64, I128, I16, I32, I64, I8, I8X16};
-use crate::ir::{types, MemFlags, Type};
+use crate::ir::types::{F16, F32, F64, F128, I8, I8X16, I16, I32, I64, I128};
+use crate::ir::{MemFlags, Type, types};
 use crate::isa::{CallConv, FunctionAlignment};
 use crate::machinst::*;
-use crate::{settings, CodegenError, CodegenResult};
+use crate::{CodegenError, CodegenResult, settings};
 
 use crate::machinst::{PrettyPrint, Reg, RegClass, Writable};
 
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::fmt::Write;
 use core::slice;
-use smallvec::{smallvec, SmallVec};
-use std::fmt::Write;
-use std::string::{String, ToString};
+use smallvec::{SmallVec, smallvec};
 
 pub(crate) mod regs;
 pub(crate) use self::regs::*;
@@ -105,11 +105,7 @@ fn count_zero_half_words(mut value: u64, num_half_words: u8) -> usize {
 impl Inst {
     /// Create an instruction that loads a constant, using one of several options (MOVZ, MOVN,
     /// logical immediate, or constant pool).
-    pub fn load_constant<F: FnMut(Type) -> Writable<Reg>>(
-        rd: Writable<Reg>,
-        value: u64,
-        alloc_tmp: &mut F,
-    ) -> SmallVec<[Inst; 4]> {
+    pub fn load_constant(rd: Writable<Reg>, value: u64) -> SmallVec<[Inst; 4]> {
         // NB: this is duplicated in `lower/isle.rs` and `inst.isle` right now,
         // if modifications are made here before this is deleted after moving to
         // ISLE then those locations should be updated as well.
@@ -170,10 +166,8 @@ impl Inst {
                 .collect();
 
             let mut prev_result = None;
-            let last_index = halfwords.last().unwrap().0;
             for (i, imm16) in halfwords {
                 let shift = i * 16;
-                let rd = if i == last_index { rd } else { alloc_tmp(I16) };
 
                 if let Some(rn) = prev_result {
                     let imm = MoveWideConst::maybe_with_shift(imm16 as u16, shift).unwrap();
@@ -819,6 +813,9 @@ fn aarch64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                 }
             }
             collector.reg_clobbers(info.clobbers);
+            if let Some(try_call_info) = &mut info.try_call_info {
+                try_call_info.collect_operands(collector);
+            }
         }
         Inst::CallInd { info, .. } => {
             let CallInfo {
@@ -835,6 +832,9 @@ fn aarch64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
                 }
             }
             collector.reg_clobbers(info.clobbers);
+            if let Some(try_call_info) = &mut info.try_call_info {
+                try_call_info.collect_operands(collector);
+            }
         }
         Inst::ReturnCall { info } => {
             for CallArgPair { vreg, preg } in &mut info.uses {
@@ -879,7 +879,9 @@ fn aarch64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
             collector.reg_early_def(rtmp1);
             collector.reg_early_def(rtmp2);
         }
-        Inst::LoadExtName { rd, .. } => {
+        Inst::LoadExtNameGot { rd, .. }
+        | Inst::LoadExtNameNear { rd, .. }
+        | Inst::LoadExtNameFar { rd, .. } => {
             collector.reg_def(rd);
         }
         Inst::LoadAddr { rd, mem } => {
@@ -914,6 +916,10 @@ fn aarch64_get_operands(inst: &mut Inst, collector: &mut impl OperandVisitor) {
         Inst::DummyUse { reg } => {
             collector.reg_use(reg);
         }
+        Inst::LabelAddress { dst, .. } => {
+            collector.reg_def(dst);
+        }
+        Inst::SequencePoint { .. } => {}
         Inst::StackProbeLoop { start, end, .. } => {
             collector.reg_early_def(start);
             collector.reg_use(end);
@@ -976,7 +982,7 @@ impl MachInst for Inst {
         //
         // See the note in [crate::isa::aarch64::abi::is_caller_save_reg] for
         // more information on this ABI-implementation hack.
-        let caller_clobbers = AArch64MachineDeps::get_regs_clobbered_by_call(caller, is_exception);
+        let caller_clobbers = AArch64MachineDeps::get_regs_clobbered_by_call(caller, false);
         let callee_clobbers = AArch64MachineDeps::get_regs_clobbered_by_call(callee, is_exception);
 
         let mut all_clobbers = caller_clobbers;
@@ -995,6 +1001,19 @@ impl MachInst for Inst {
         match self {
             Self::Args { .. } => true,
             _ => false,
+        }
+    }
+
+    fn call_type(&self) -> CallType {
+        match self {
+            Inst::Call { .. }
+            | Inst::CallInd { .. }
+            | Inst::ElfTlsGetAddr { .. }
+            | Inst::MachOTlsGetAddr { .. } => CallType::Regular,
+
+            Inst::ReturnCall { .. } | Inst::ReturnCallInd { .. } => CallType::TailCall,
+
+            _ => CallType::None,
         }
     }
 
@@ -1089,6 +1108,10 @@ impl MachInst for Inst {
         // We can't give a NOP (or any insn) < 4 bytes.
         assert!(preferred_size >= 4);
         Inst::Nop4
+    }
+
+    fn gen_nop_units() -> Vec<Vec<u8>> {
+        vec![vec![0x1f, 0x20, 0x03, 0xd5]]
     }
 
     fn rc_for_type(ty: Type) -> CodegenResult<(&'static [RegClass], &'static [Type])> {
@@ -1187,13 +1210,11 @@ fn mem_finalize_for_show(mem: &AMode, access_ty: Type, state: &EmitState) -> (St
 }
 
 fn pretty_print_try_call(info: &TryCallInfo) -> String {
-    let dests = info
-        .exception_dests
-        .iter()
-        .map(|(tag, label)| format!("{tag:?}: {label:?}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("; b {:?}; catch [{dests}]", info.continuation)
+    format!(
+        "; b {:?}; catch [{}]",
+        info.continuation,
+        info.pretty_print_dests()
+    )
 }
 
 impl Inst {
@@ -2200,10 +2221,6 @@ impl Inst {
                     VecALUOp::Fcmeq => ("fcmeq", size),
                     VecALUOp::Fcmgt => ("fcmgt", size),
                     VecALUOp::Fcmge => ("fcmge", size),
-                    VecALUOp::And => ("and", VectorSize::Size8x16),
-                    VecALUOp::Bic => ("bic", VectorSize::Size8x16),
-                    VecALUOp::Orr => ("orr", VectorSize::Size8x16),
-                    VecALUOp::Eor => ("eor", VectorSize::Size8x16),
                     VecALUOp::Umaxp => ("umaxp", size),
                     VecALUOp::Add => ("add", size),
                     VecALUOp::Sub => ("sub", size),
@@ -2229,6 +2246,14 @@ impl Inst {
                     VecALUOp::Uzp2 => ("uzp2", size),
                     VecALUOp::Trn1 => ("trn1", size),
                     VecALUOp::Trn2 => ("trn2", size),
+
+                    // Lane division does not affect bitwise operations.
+                    // However, when printing, use 8-bit lane division to conform to ARM formatting.
+                    VecALUOp::And => ("and", size.as_scalar8_vector()),
+                    VecALUOp::Bic => ("bic", size.as_scalar8_vector()),
+                    VecALUOp::Orr => ("orr", size.as_scalar8_vector()),
+                    VecALUOp::Orn => ("orn", size.as_scalar8_vector()),
+                    VecALUOp::Eor => ("eor", size.as_scalar8_vector()),
                 };
                 let rd = pretty_print_vreg_vector(rd.to_reg(), size);
                 let rn = pretty_print_vreg_vector(rn, size);
@@ -2360,15 +2385,6 @@ impl Inst {
             }
             &Inst::VecMisc { op, rd, rn, size } => {
                 let (op, size, suffix) = match op {
-                    VecMisc2::Not => (
-                        "mvn",
-                        if size.is_128bits() {
-                            VectorSize::Size8x16
-                        } else {
-                            VectorSize::Size8x8
-                        },
-                        "",
-                    ),
                     VecMisc2::Neg => ("neg", size, ""),
                     VecMisc2::Abs => ("abs", size, ""),
                     VecMisc2::Fabs => ("fabs", size, ""),
@@ -2396,6 +2412,10 @@ impl Inst {
                     VecMisc2::Fcmgt0 => ("fcmgt", size, ", #0.0"),
                     VecMisc2::Fcmle0 => ("fcmle", size, ", #0.0"),
                     VecMisc2::Fcmlt0 => ("fcmlt", size, ", #0.0"),
+
+                    // Lane division does not affect bitwise operations.
+                    // However, when printing, use 8-bit lane division to conform to ARM formatting.
+                    VecMisc2::Not => ("mvn", size.as_scalar8_vector(), ""),
                 };
                 let rd = pretty_print_vreg_vector(rd.to_reg(), size);
                 let rn = pretty_print_vreg_vector(rn, size);
@@ -2680,7 +2700,7 @@ impl Inst {
                 let rn = pretty_print_reg(rn);
                 format!("br {rn}")
             }
-            &Inst::Brk => "brk #0".to_string(),
+            &Inst::Brk => "brk #0xf000".to_string(),
             &Inst::Udf { .. } => "udf #0xc11f".to_string(),
             &Inst::TrapIf {
                 ref kind,
@@ -2748,13 +2768,25 @@ impl Inst {
                     targets
                 )
             }
-            &Inst::LoadExtName {
+            &Inst::LoadExtNameGot { rd, ref name } => {
+                let rd = pretty_print_reg(rd.to_reg());
+                format!("load_ext_name_got {rd}, {name:?}")
+            }
+            &Inst::LoadExtNameNear {
                 rd,
                 ref name,
                 offset,
             } => {
                 let rd = pretty_print_reg(rd.to_reg());
-                format!("load_ext_name {rd}, {name:?}+{offset}")
+                format!("load_ext_name_near {rd}, {name:?}+{offset}")
+            }
+            &Inst::LoadExtNameFar {
+                rd,
+                ref name,
+                offset,
+            } => {
+                let rd = pretty_print_reg(rd.to_reg());
+                format!("load_ext_name_far {rd}, {name:?}+{offset}")
             }
             &Inst::LoadAddr { rd, ref mem } => {
                 // TODO: we really should find a better way to avoid duplication of
@@ -2805,7 +2837,7 @@ impl Inst {
                     ret.push_str(&add.print_with_state(&mut EmitState::default()));
                 } else {
                     let tmp = writable_spilltmp_reg();
-                    for inst in Inst::load_constant(tmp, abs_offset, &mut |_| tmp).into_iter() {
+                    for inst in Inst::load_constant(tmp, abs_offset).into_iter() {
                         ret.push_str(&inst.print_with_state(&mut EmitState::default()));
                     }
                     let add = Inst::AluRRR {
@@ -2862,6 +2894,13 @@ impl Inst {
                 let reg = pretty_print_reg(reg);
                 format!("dummy_use {reg}")
             }
+            &Inst::LabelAddress { dst, label } => {
+                let dst = pretty_print_reg(dst.to_reg());
+                format!("label_address {dst}, {label:?}")
+            }
+            &Inst::SequencePoint {} => {
+                format!("sequence_point")
+            }
             &Inst::StackProbeLoop { start, end, step } => {
                 let start = pretty_print_reg(start.to_reg());
                 let end = pretty_print_reg(end);
@@ -2887,11 +2926,9 @@ pub enum LabelUse {
     /// 26-bit branch offset (unconditional branches). PC-rel, offset is imm << 2. Immediate is 26
     /// signed bits, in bits 25:0. Used by b, bl.
     Branch26,
-    #[allow(dead_code)]
     /// 19-bit offset for LDR (load literal). PC-rel, offset is imm << 2. Immediate is 19 signed bits,
     /// in bits 23:5.
     Ldr19,
-    #[allow(dead_code)]
     /// 21-bit offset for ADR (get address of label). PC-rel, offset is not shifted. Immediate is
     /// 21 signed bits, with high 19 bits in bits 23:5 and low 2 bits in bits 30:29.
     Adr21,
@@ -2960,7 +2997,9 @@ impl MachInstLabelUse for LabelUse {
             LabelUse::Branch14 => (pc_rel_shifted & 0x3fff) << 5,
             LabelUse::Branch19 | LabelUse::Ldr19 => (pc_rel_shifted & 0x7ffff) << 5,
             LabelUse::Branch26 => pc_rel_shifted & 0x3ffffff,
-            LabelUse::Adr21 => (pc_rel_shifted & 0x7ffff) << 5 | (pc_rel_shifted & 0x180000) << 10,
+            // Note: the *low* two bits of offset are put in the
+            // *high* bits (30, 29).
+            LabelUse::Adr21 => (pc_rel_shifted & 0x1ffffc) << 3 | (pc_rel_shifted & 3) << 29,
             LabelUse::PCRel32 => pc_rel_shifted,
         };
         let is_add = match self {
@@ -3070,6 +3109,6 @@ mod tests {
         } else {
             32
         };
-        assert_eq!(expected, std::mem::size_of::<Inst>());
+        assert_eq!(expected, core::mem::size_of::<Inst>());
     }
 }

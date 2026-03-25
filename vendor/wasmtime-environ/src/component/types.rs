@@ -1,6 +1,6 @@
 use crate::component::{MAX_FLAT_PARAMS, MAX_FLAT_RESULTS};
-use crate::{prelude::*, TypeTrace};
 use crate::{EntityType, ModuleInternedTypeIndex, ModuleTypes, PrimaryMap};
+use crate::{TypeTrace, prelude::*};
 use core::hash::{Hash, Hasher};
 use core::ops::Index;
 use serde_derive::{Deserialize, Serialize};
@@ -89,6 +89,8 @@ indices! {
     pub struct TypeResultIndex(u32);
     /// Index pointing to a list type in the component model.
     pub struct TypeListIndex(u32);
+    /// Index pointing to a fixed size list type in the component model.
+    pub struct TypeFixedLengthListIndex(u32);
     /// Index pointing to a future type in the component model.
     pub struct TypeFutureIndex(u32);
 
@@ -240,6 +242,17 @@ indices! {
 
     /// An index into `Component::export_items` at the end of compilation.
     pub struct ExportIndex(u32);
+
+    /// An index into `Component::options` at the end of compilation.
+    pub struct OptionsIndex(u32);
+
+    /// An index that doesn't actually index into a list but instead represents
+    /// a unique counter.
+    ///
+    /// This is used for "abstract" resources which aren't actually instantiated
+    /// in the component model. For example this represents a resource in a
+    /// component or instance type, but not an actual concrete instance.
+    pub struct AbstractResourceIndex(u32);
 }
 
 // Reexport for convenience some core-wasm indices which are also used in the
@@ -285,6 +298,7 @@ pub struct ComponentTypes {
     pub(super) stream_tables: PrimaryMap<TypeStreamTableIndex, TypeStreamTable>,
     pub(super) error_context_tables:
         PrimaryMap<TypeComponentLocalErrorContextTableIndex, TypeErrorContextTable>,
+    pub(super) fixed_length_lists: PrimaryMap<TypeFixedLengthListIndex, TypeFixedLengthList>,
 }
 
 impl TypeTrace for ComponentTypes {
@@ -358,6 +372,7 @@ impl ComponentTypes {
             InterfaceType::Enum(i) => &self[*i].abi,
             InterfaceType::Option(i) => &self[*i].abi,
             InterfaceType::Result(i) => &self[*i].abi,
+            InterfaceType::FixedLengthList(i) => &self[*i].abi,
         }
     }
 
@@ -407,6 +422,7 @@ impl_index! {
     impl Index<TypeFutureTableIndex> for ComponentTypes { TypeFutureTable => future_tables }
     impl Index<TypeStreamTableIndex> for ComponentTypes { TypeStreamTable => stream_tables }
     impl Index<TypeComponentLocalErrorContextTableIndex> for ComponentTypes { TypeErrorContextTable => error_context_tables }
+    impl Index<TypeFixedLengthListIndex> for ComponentTypes { TypeFixedLengthList => fixed_length_lists }
 }
 
 // Additionally forward anything that can index `ModuleTypes` to `ModuleTypes`
@@ -539,6 +555,8 @@ pub struct TypeComponentInstance {
 /// A component function type in the component model.
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct TypeFunc {
+    /// Whether or not this is an async function.
+    pub async_: bool,
     /// Names of parameters.
     pub param_names: Vec<String>,
     /// Parameters to the function represented as a tuple.
@@ -582,6 +600,7 @@ pub enum InterfaceType {
     Future(TypeFutureTableIndex),
     Stream(TypeStreamTableIndex),
     ErrorContext(TypeComponentLocalErrorContextTableIndex),
+    FixedLengthList(TypeFixedLengthListIndex),
 }
 
 /// Bye information about a type in the canonical ABI, with metadata for both
@@ -623,11 +642,7 @@ const fn align_to(a: u32, b: u32) -> u32 {
 }
 
 const fn max(a: u32, b: u32) -> u32 {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 impl CanonicalAbiInfo {
@@ -856,11 +871,7 @@ impl CanonicalAbiInfo {
     /// doesn't exceed the `max` specified.
     pub fn flat_count(&self, max: usize) -> Option<usize> {
         let flat = usize::from(self.flat_count?);
-        if flat > max {
-            None
-        } else {
-            Some(flat)
-        }
+        if flat > max { None } else { Some(flat) }
     }
 }
 
@@ -915,7 +926,7 @@ impl VariantInfo {
 
 mod serde_discrim_size {
     use super::DiscriminantSize;
-    use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
 
     pub fn serialize<S>(disc: &DiscriminantSize, ser: S) -> Result<S::Ok, S::Error>
     where
@@ -1111,15 +1122,56 @@ pub struct TypeErrorContextTable {
 
 /// Metadata about a resource table added to a component.
 #[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
-pub struct TypeResourceTable {
-    /// The original resource that this table contains.
+pub enum TypeResourceTable {
+    /// This resource is for an actual concrete resource which has runtime state
+    /// associated with it.
     ///
-    /// This is used when destroying resources within this table since this
-    /// original definition will know how to execute destructors.
-    pub ty: ResourceIndex,
+    /// This is used for any resource which might actually enter a component.
+    /// For example when a resource is either imported or defined in a component
+    /// it'll get this case.
+    Concrete {
+        /// The original resource that this table contains.
+        ///
+        /// This is used when destroying resources within this table since this
+        /// original definition will know how to execute destructors.
+        ty: ResourceIndex,
 
-    /// The component instance that contains this resource table.
-    pub instance: RuntimeComponentInstanceIndex,
+        /// The component instance that contains this resource table.
+        instance: RuntimeComponentInstanceIndex,
+    },
+
+    /// This table does not actually exist at runtime but instead represents
+    /// type information for an uninstantiable resource. This tracks, for
+    /// example, resources in component and instance types.
+    Abstract(AbstractResourceIndex),
+}
+
+impl TypeResourceTable {
+    /// Asserts that this is `TypeResourceTable::Concrete` and returns the `ty`
+    /// field.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this is `TypeResourceTable::Abstract`.
+    pub fn unwrap_concrete_ty(&self) -> ResourceIndex {
+        match self {
+            TypeResourceTable::Concrete { ty, .. } => *ty,
+            TypeResourceTable::Abstract(_) => panic!("not a concrete resource table"),
+        }
+    }
+
+    /// Asserts that this is `TypeResourceTable::Concrete` and returns the
+    /// `instance` field.
+    ///
+    /// # Panics
+    ///
+    /// Panics if this is `TypeResourceTable::Abstract`.
+    pub fn unwrap_concrete_instance(&self) -> RuntimeComponentInstanceIndex {
+        match self {
+            TypeResourceTable::Concrete { instance, .. } => *instance,
+            TypeResourceTable::Abstract(_) => panic!("not a concrete resource table"),
+        }
+    }
 }
 
 /// Shape of a "list" interface type.
@@ -1127,6 +1179,17 @@ pub struct TypeResourceTable {
 pub struct TypeList {
     /// The element type of the list.
     pub element: InterfaceType,
+}
+
+/// Shape of a "fixed size list" interface type.
+#[derive(Serialize, Deserialize, Clone, Hash, Eq, PartialEq, Debug)]
+pub struct TypeFixedLengthList {
+    /// The element type of the list.
+    pub element: InterfaceType,
+    /// The fixed length of the list.
+    pub size: u32,
+    /// Byte information about this type in the canonical ABI.
+    pub abi: CanonicalAbiInfo,
 }
 
 /// Maximum number of flat types, for either params or results.
@@ -1145,11 +1208,7 @@ const fn add_flat(a: Option<u8>, b: Option<u8>) -> Option<u8> {
         },
         _ => return None,
     };
-    if sum > MAX {
-        None
-    } else {
-        Some(sum)
-    }
+    if sum > MAX { None } else { Some(sum) }
 }
 
 const fn max_flat(a: Option<u8>, b: Option<u8>) -> Option<u8> {

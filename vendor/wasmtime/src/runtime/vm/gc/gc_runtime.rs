@@ -3,12 +3,13 @@
 use crate::prelude::*;
 use crate::runtime::vm::{
     ExternRefHostDataId, ExternRefHostDataTable, GcHeapObject, SendSyncPtr, TypedGcRef, VMArrayRef,
-    VMExternRef, VMGcHeader, VMGcObjectData, VMGcRef, VMStructRef,
+    VMExternRef, VMGcHeader, VMGcObjectData, VMGcRef,
 };
+use crate::store::Asyncness;
 use crate::vm::VMMemoryDefinition;
 use core::ptr::NonNull;
 use core::slice;
-use core::{alloc::Layout, any::Any, marker, mem, num::NonZeroUsize, ops::Range, ptr};
+use core::{alloc::Layout, any::Any, marker, mem, ops::Range, ptr};
 use wasmtime_environ::{GcArrayLayout, GcStructLayout, GcTypeLayouts, VMSharedTypeIndex};
 
 /// Trait for integrating a garbage collector with the runtime.
@@ -188,13 +189,6 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     /// failures such as panics or incorrect results.
     fn expose_gc_ref_to_wasm(&mut self, gc_ref: VMGcRef);
 
-    /// Predicate invoked before calling into or returning to Wasm to determine
-    /// whether we should GC first.
-    ///
-    /// `num_gc_refs` is the number of non-`i31ref` GC references that will be
-    /// passed into Wasm.
-    fn need_gc_before_entering_wasm(&self, num_gc_refs: NonZeroUsize) -> bool;
-
     ////////////////////////////////////////////////////////////////////////////
     // `externref` Methods
 
@@ -203,7 +197,7 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     ///
     /// Return values:
     ///
-    /// * `Ok(Some(_))`: The allocation was successful.
+    /// * `Ok(Ok(_))`: The allocation was successful.
     ///
     /// * `Ok(Err(n))`: There is currently not enough available space for this
     ///   allocation of size `n`. The caller should either grow the heap or run
@@ -260,7 +254,7 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     ///
     /// Return values:
     ///
-    /// * `Ok(Some(_))`: The allocation was successful.
+    /// * `Ok(Ok(_))`: The allocation was successful.
     ///
     /// * `Ok(Err(n))`: There is currently not enough available space for this
     ///   allocation of size `n`. The caller should either grow the heap or run
@@ -285,7 +279,7 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     ///
     /// Return values:
     ///
-    /// * `Ok(Some(_))`: The allocation was successful.
+    /// * `Ok(Ok(_))`: The allocation was successful.
     ///
     /// * `Ok(Err(n))`: There is currently not enough available space for this
     ///   allocation of size `n`. The caller should either grow the heap or run
@@ -296,19 +290,19 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     ///   collection. This could be because, for example, the requested
     ///   allocation is larger than this collector's implementation limit for
     ///   object size.
-    fn alloc_uninit_struct(
+    fn alloc_uninit_struct_or_exn(
         &mut self,
         ty: VMSharedTypeIndex,
         layout: &GcStructLayout,
-    ) -> Result<Result<VMStructRef, u64>>;
+    ) -> Result<Result<VMGcRef, u64>>;
 
-    /// Deallocate an uninitialized, GC-managed struct.
+    /// Deallocate an uninitialized, GC-managed struct or exception.
     ///
     /// This is useful for if initialization of the struct's fields fails, so
     /// that the struct's allocation can be eagerly reclaimed, and so that the
     /// collector doesn't attempt to treat any of the uninitialized fields as
     /// valid GC references, or something like that.
-    fn dealloc_uninit_struct(&mut self, structref: VMStructRef);
+    fn dealloc_uninit_struct_or_exn(&mut self, structref: VMGcRef);
 
     /// * `Ok(Ok(_))`: The allocation was successful.
     ///
@@ -386,10 +380,11 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
 
     /// Take the underlying memory storage out of this GC heap.
     ///
-    /// # Safety
+    /// # Panics
     ///
-    /// You may not use this GC heap again until after you replace the memory.
-    unsafe fn take_memory(&mut self) -> crate::vm::Memory;
+    /// If this GC heap is used while the memory is taken then a panic will
+    /// occur. This will also panic if the memory is already taken.
+    fn take_memory(&mut self) -> crate::vm::Memory;
 
     /// Replace this GC heap's underlying memory storage.
     ///
@@ -411,6 +406,7 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     fn vmmemory(&self) -> VMMemoryDefinition;
 
     /// Get a slice of the raw bytes of the GC heap.
+    #[inline]
     fn heap_slice(&self) -> &[u8] {
         let vmmemory = self.vmmemory();
         let ptr = vmmemory.base.as_ptr().cast_const();
@@ -419,6 +415,7 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     }
 
     /// Get a mutable slice of the raw bytes of the GC heap.
+    #[inline]
     fn heap_slice_mut(&mut self) -> &mut [u8] {
         let vmmemory = self.vmmemory();
         let ptr = vmmemory.base.as_ptr();
@@ -435,6 +432,7 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     /// # Panics
     ///
     /// Panics on out of bounds or if the `gc_ref` is an `i31ref`.
+    #[inline]
     fn index<T>(&self, gc_ref: &TypedGcRef<T>) -> &T
     where
         Self: Sized,
@@ -455,6 +453,7 @@ pub unsafe trait GcHeap: 'static + Send + Sync {
     /// # Panics
     ///
     /// Panics on out of bounds or if the `gc_ref` is an `i31ref`.
+    #[inline]
     fn index_mut<T>(&mut self, gc_ref: &TypedGcRef<T>) -> &mut T
     where
         Self: Sized,
@@ -578,22 +577,26 @@ impl GcRootsList {
     /// Add a GC root that is inside a Wasm stack frame to this list.
     #[inline]
     pub unsafe fn add_wasm_stack_root(&mut self, ptr_to_root: SendSyncPtr<u32>) {
-        log::trace!(
-            "Adding Wasm stack root: {:#p} -> {:#p}",
-            ptr_to_root,
-            VMGcRef::from_raw_u32(*ptr_to_root.as_ref()).unwrap()
-        );
-        debug_assert!(VMGcRef::from_raw_u32(*ptr_to_root.as_ref()).is_some());
+        unsafe {
+            log::trace!(
+                "Adding Wasm stack root: {:#p} -> {:#p}",
+                ptr_to_root,
+                VMGcRef::from_raw_u32(*ptr_to_root.as_ref()).unwrap()
+            );
+            debug_assert!(VMGcRef::from_raw_u32(*ptr_to_root.as_ref()).is_some());
+        }
         self.0.push(RawGcRoot::Stack(ptr_to_root));
     }
 
     /// Add a GC root to this list.
     #[inline]
     pub unsafe fn add_root(&mut self, ptr_to_root: SendSyncPtr<VMGcRef>, why: &str) {
-        log::trace!(
-            "Adding non-stack root: {why}: {:#p}",
-            ptr_to_root.as_ref().unchecked_copy()
-        );
+        unsafe {
+            log::trace!(
+                "Adding non-stack root: {why}: {:#p}",
+                ptr_to_root.as_ref().unchecked_copy()
+            );
+        }
         self.0.push(RawGcRoot::NonStack(ptr_to_root))
     }
 
@@ -743,11 +746,18 @@ pub enum GcProgress {
 
 /// Asynchronously run the given garbage collection process to completion,
 /// cooperatively yielding back to the event loop after each increment of work.
-#[cfg(feature = "async")]
-pub async fn collect_async<'a>(mut collection: Box<dyn GarbageCollection<'a> + 'a>) {
+pub async fn collect_async<'a>(
+    mut collection: Box<dyn GarbageCollection<'a> + 'a>,
+    asyncness: Asyncness,
+) {
     loop {
         match collection.collect_increment() {
-            GcProgress::Continue => crate::runtime::vm::Yield::new().await,
+            GcProgress::Continue => {
+                if asyncness != Asyncness::No {
+                    #[cfg(feature = "async")]
+                    crate::runtime::vm::Yield::new().await
+                }
+            }
             GcProgress::Complete => return,
         }
     }
@@ -762,7 +772,7 @@ mod collect_async_tests {
         fn _assert_send_sync<T: Send + Sync>(_: T) {}
 
         fn _foo<'a>(collection: Box<dyn GarbageCollection<'a>>) {
-            _assert_send_sync(collect_async(collection));
+            _assert_send_sync(collect_async(collection, Asyncness::Yes));
         }
     }
 }

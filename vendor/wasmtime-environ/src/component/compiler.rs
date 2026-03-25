@@ -1,6 +1,6 @@
-use crate::component::{AllCallFunc, ComponentTranslation, ComponentTypesBuilder, TrampolineIndex};
-use crate::{CompiledFunctionBody, Tunables};
-use anyhow::Result;
+use crate::component::{ComponentTranslation, ComponentTypesBuilder, UnsafeIntrinsic};
+use crate::error::Result;
+use crate::{Abi, CompiledFunctionBody, FuncKey, Tunables};
 
 /// Compilation support necessary for components.
 pub trait ComponentCompiler: Send + Sync {
@@ -14,7 +14,20 @@ pub trait ComponentCompiler: Send + Sync {
         &self,
         component: &ComponentTranslation,
         types: &ComponentTypesBuilder,
-        trampoline: TrampolineIndex,
+        key: FuncKey,
+        abi: Abi,
         tunables: &Tunables,
-    ) -> Result<AllCallFunc<CompiledFunctionBody>>;
+        symbol: &str,
+    ) -> Result<CompiledFunctionBody>;
+
+    /// Compile the given Wasmtime intrinsic.
+    fn compile_intrinsic(
+        &self,
+        tunables: &Tunables,
+        component: &ComponentTranslation,
+        types: &ComponentTypesBuilder,
+        intrinsic: UnsafeIntrinsic,
+        abi: Abi,
+        symbol: &str,
+    ) -> Result<CompiledFunctionBody>;
 }

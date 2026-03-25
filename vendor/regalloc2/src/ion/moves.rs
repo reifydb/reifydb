@@ -119,8 +119,8 @@ impl<'a, F: Function> Env<'a, F> {
                 self.prev_ins_idx
             }
 
-            /// Record this index as the next index to use when the previous liverange buffer
-            /// anvances.
+            /// Record this index as the next index to use when the previous
+            /// liverange buffer advances.
             #[inline(always)]
             fn update_blockparam_ins_idx(&mut self, idx: usize) {
                 self.buffered_ins_idx = idx;
@@ -893,12 +893,8 @@ impl<'a, F: Function> Env<'a, F> {
 
                 let resolved = parallel_moves.resolve();
                 let mut scratch_iter = RegTraversalIter::new(
-                    self.env,
-                    regclass,
-                    PReg::invalid(),
-                    PReg::invalid(),
-                    0,
-                    None,
+                    self.env, regclass, None, None, 0,
+                    None, // We assume there is no limit on the set of registers available for moves.
                 );
                 let mut dedicated_scratch = self.env.scratch_by_class[regclass as usize];
                 let key = LiveRangeKey::from_range(&CodeRange {

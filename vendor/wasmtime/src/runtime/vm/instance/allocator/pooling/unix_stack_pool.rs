@@ -4,7 +4,7 @@ use super::index_allocator::{SimpleIndexAllocator, SlotId};
 use crate::prelude::*;
 use crate::runtime::vm::sys::vm::commit_pages;
 use crate::runtime::vm::{
-    mmap::AlignedLength, HostAlignedByteCount, Mmap, PoolingInstanceAllocatorConfig,
+    HostAlignedByteCount, Mmap, PoolingInstanceAllocatorConfig, mmap::AlignedLength,
 };
 
 /// Represents a pool of execution stacks (used for the async fiber implementation).
@@ -29,8 +29,13 @@ pub struct StackPool {
 }
 
 impl StackPool {
+    #[cfg(test)]
+    pub fn enabled() -> bool {
+        true
+    }
+
     pub fn new(config: &PoolingInstanceAllocatorConfig) -> Result<Self> {
-        use rustix::mm::{mprotect, MprotectFlags};
+        use rustix::mm::{MprotectFlags, mprotect};
 
         let page_size = HostAlignedByteCount::host_page_size();
 
@@ -85,7 +90,6 @@ impl StackPool {
     }
 
     /// Are there zero slots in use right now?
-    #[allow(unused)] // some cfgs don't use this
     pub fn is_empty(&self) -> bool {
         self.index_allocator.is_empty()
     }
@@ -147,7 +151,7 @@ impl StackPool {
         &self,
         stack: &mut wasmtime_fiber::FiberStack,
         mut decommit: impl FnMut(*mut u8, usize),
-    ) {
+    ) -> usize {
         assert!(stack.is_from_raw_parts());
         assert!(
             !self.stack_size.is_zero(),
@@ -156,7 +160,7 @@ impl StackPool {
         );
 
         if !self.async_stack_zeroing {
-            return;
+            return 0;
         }
 
         let top = stack
@@ -191,14 +195,21 @@ impl StackPool {
         let rest = stack_size
             .checked_sub(size_to_memset)
             .expect("stack_size >= size_to_memset");
-        std::ptr::write_bytes(
-            (bottom_of_stack + rest.byte_count()) as *mut u8,
-            0,
-            size_to_memset.byte_count(),
-        );
+
+        // SAFETY: this function's own contract requires that the stack is not
+        // in use so it's safe to pave over part of it with zero.
+        unsafe {
+            std::ptr::write_bytes(
+                (bottom_of_stack + rest.byte_count()) as *mut u8,
+                0,
+                size_to_memset.byte_count(),
+            );
+        }
 
         // Use the system to reset remaining stack pages to zero.
         decommit(bottom_of_stack as _, rest.byte_count());
+
+        size_to_memset.byte_count()
     }
 
     /// Deallocate a previously-allocated fiber.
@@ -210,7 +221,7 @@ impl StackPool {
     ///
     /// The caller must have already called `zero_stack` on the fiber stack and
     /// flushed any enqueued decommits for this stack's memory.
-    pub unsafe fn deallocate(&self, stack: wasmtime_fiber::FiberStack) {
+    pub unsafe fn deallocate(&self, stack: wasmtime_fiber::FiberStack, bytes_resident: usize) {
         assert!(stack.is_from_raw_parts());
 
         let top = stack
@@ -235,7 +246,19 @@ impl StackPool {
         assert!(index < self.max_stacks);
         let index = u32::try_from(index).unwrap();
 
-        self.index_allocator.free(SlotId(index));
+        self.index_allocator.free(SlotId(index), bytes_resident);
+    }
+
+    pub fn unused_warm_slots(&self) -> u32 {
+        self.index_allocator.unused_warm_slots()
+    }
+
+    pub fn unused_bytes_resident(&self) -> Option<usize> {
+        if self.async_stack_zeroing {
+            Some(self.index_allocator.unused_bytes_resident())
+        } else {
+            None
+        }
     }
 }
 
@@ -282,7 +305,7 @@ mod tests {
 
         for stack in stacks {
             unsafe {
-                pool.deallocate(stack);
+                pool.deallocate(stack, 0);
             }
         }
 

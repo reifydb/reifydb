@@ -203,12 +203,14 @@ pub struct LiveBundle {
     pub allocation: Allocation,
     pub prio: u32, // recomputed after every bulk update
     pub spill_weight_and_props: u32,
+    pub limit: Option<u8>,
 }
 
-pub const BUNDLE_MAX_SPILL_WEIGHT: u32 = (1 << 29) - 1;
+pub const BUNDLE_MAX_SPILL_WEIGHT: u32 = (1 << 28) - 1;
 pub const MINIMAL_FIXED_BUNDLE_SPILL_WEIGHT: u32 = BUNDLE_MAX_SPILL_WEIGHT;
-pub const MINIMAL_BUNDLE_SPILL_WEIGHT: u32 = BUNDLE_MAX_SPILL_WEIGHT - 1;
-pub const BUNDLE_MAX_NORMAL_SPILL_WEIGHT: u32 = BUNDLE_MAX_SPILL_WEIGHT - 2;
+pub const MINIMAL_LIMITED_BUNDLE_SPILL_WEIGHT: u32 = BUNDLE_MAX_SPILL_WEIGHT - 1;
+pub const MINIMAL_BUNDLE_SPILL_WEIGHT: u32 = MINIMAL_LIMITED_BUNDLE_SPILL_WEIGHT - 256;
+pub const BUNDLE_MAX_NORMAL_SPILL_WEIGHT: u32 = MINIMAL_BUNDLE_SPILL_WEIGHT - 1;
 
 impl LiveBundle {
     #[inline(always)]
@@ -218,12 +220,14 @@ impl LiveBundle {
         minimal: bool,
         fixed: bool,
         fixed_def: bool,
+        stack: bool,
     ) {
         debug_assert!(spill_weight <= BUNDLE_MAX_SPILL_WEIGHT);
         self.spill_weight_and_props = spill_weight
             | (if minimal { 1 << 31 } else { 0 })
             | (if fixed { 1 << 30 } else { 0 })
-            | (if fixed_def { 1 << 29 } else { 0 });
+            | (if fixed_def { 1 << 29 } else { 0 })
+            | (if stack { 1 << 28 } else { 0 });
     }
 
     #[inline(always)]
@@ -242,6 +246,11 @@ impl LiveBundle {
     }
 
     #[inline(always)]
+    pub fn cached_stack(&self) -> bool {
+        self.spill_weight_and_props & (1 << 28) != 0
+    }
+
+    #[inline(always)]
     pub fn set_cached_fixed(&mut self) {
         self.spill_weight_and_props |= 1 << 30;
     }
@@ -249,6 +258,11 @@ impl LiveBundle {
     #[inline(always)]
     pub fn set_cached_fixed_def(&mut self) {
         self.spill_weight_and_props |= 1 << 29;
+    }
+
+    #[inline(always)]
+    pub fn set_cached_stack(&mut self) {
+        self.spill_weight_and_props |= 1 << 28;
     }
 
     #[inline(always)]
@@ -283,7 +297,7 @@ const fn no_bloat_capacity<T>() -> usize {
 #[derive(Clone, Debug)]
 pub struct SpillSet {
     pub slot: SpillSlotIndex,
-    pub reg_hint: PReg,
+    pub hint: PReg,
     pub class: RegClass,
     pub spill_bundle: LiveBundleIndex,
     pub required: bool,
@@ -401,6 +415,7 @@ impl LiveBundles {
             spillset: SpillSetIndex::invalid(),
             prio: 0,
             spill_weight_and_props: 0,
+            limit: None,
         })
     }
 }
@@ -456,10 +471,10 @@ pub struct Ctx {
     // single VReg at a single program point (this can happen for,
     // e.g., call args that use the same value multiple times), we
     // remove all but one of the fixed-register constraints, make a
-    // note here, and add a clobber with that PReg instread to keep
+    // note here, and add a clobber with that PReg instead to keep
     // the register available. When we produce the final edit-list, we
     // will insert a copy from wherever the VReg's primary allocation
-    // was to the approprate PReg.
+    // was to the appropriate PReg.
     pub(crate) multi_fixed_reg_fixups: Vec<MultiFixedRegFixup>,
 
     pub(crate) allocated_bundle_count: usize,
@@ -582,7 +597,7 @@ pub struct PrioQueue {
 pub struct PrioQueueEntry {
     pub prio: u32,
     pub bundle: LiveBundleIndex,
-    pub reg_hint: PReg,
+    pub hint: PReg,
 }
 
 #[derive(Clone, Debug)]
@@ -652,11 +667,11 @@ impl<'a> ContainerComparator for PrioQueueComparator<'a> {
 
 impl PrioQueue {
     #[inline(always)]
-    pub fn insert(&mut self, bundle: LiveBundleIndex, prio: usize, reg_hint: PReg) {
+    pub fn insert(&mut self, bundle: LiveBundleIndex, prio: usize, hint: PReg) {
         self.heap.push(PrioQueueEntry {
             prio: prio as u32,
             bundle,
-            reg_hint,
+            hint,
         });
     }
 
@@ -667,7 +682,7 @@ impl PrioQueue {
 
     #[inline(always)]
     pub fn pop(&mut self) -> Option<(LiveBundleIndex, PReg)> {
-        self.heap.pop().map(|entry| (entry.bundle, entry.reg_hint))
+        self.heap.pop().map(|entry| (entry.bundle, entry.hint))
     }
 }
 

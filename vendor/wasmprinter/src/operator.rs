@@ -1,5 +1,5 @@
 use super::{Config, Print, PrintTermcolor, Printer, State};
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use termcolor::{Ansi, NoColor};
 use wasmparser::VisitSimdOperator;
 use wasmparser::{
@@ -175,7 +175,12 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
             let depth = self.cur_depth();
             self.push_str(" ")?;
             self.result().start_comment()?;
-            write!(self.result(), ";; label = @{}", depth)?;
+            match self.operator_state.sep {
+                OperatorSeparator::Newline | OperatorSeparator::None => {
+                    write!(self.result(), ";; label = @{depth}")
+                }
+                _ => write!(self.result(), " (; label = @{depth} ;)"),
+            }?;
             self.result().reset_color()?;
         }
 
@@ -236,7 +241,7 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
                     Some(name) if !name_conflict => name.write(self.printer)?,
 
                     // If there's no name conflict, and we're synthesizing
-                    // names, and this isn't targetting the function itself then
+                    // names, and this isn't targeting the function itself then
                     // print a synthesized names.
                     //
                     // Note that synthesized label names don't handle the
@@ -291,7 +296,7 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
     fn local_index(&mut self, idx: u32) -> Result<()> {
         self.push_str(" ")?;
         self.printer
-            .print_local_idx(self.state, self.state.core.funcs as u32, idx)
+            .print_local_idx(self.state, self.state.core.funcs, idx)
     }
 
     fn global_index(&mut self, idx: u32) -> Result<()> {
@@ -406,11 +411,8 @@ impl<'printer, 'state, 'a, 'b> PrintOperator<'printer, 'state, 'a, 'b> {
             write!(self.result(), " offset={}", memarg.offset)?;
         }
         if memarg.align != memarg.max_align {
-            if memarg.align >= 32 {
-                bail!("alignment in memarg too large");
-            }
-            let align = 1 << memarg.align;
-            write!(self.result(), " align={}", align)?;
+            let align = 1_u64 << memarg.align;
+            write!(self.result(), " align={align}")?;
         }
         Ok(())
     }
@@ -560,10 +562,16 @@ macro_rules! define_visit {
         $self.push_str(" ")?;
         $self.printer.print_idx(&$self.state.core.type_names, $ty)?;
     );
-    (payload $self:ident TypedSelect $ty:ident) => (
+    (payload $self:ident TypedSelect $select_ty:ident) => (
         $self.push_str(" ")?;
         $self.printer.start_group("result ")?;
-        $self.printer.print_valtype($self.state, $ty)?;
+        $self.printer.print_valtype($self.state, $select_ty)?;
+        $self.printer.end_group()?;
+    );
+    (payload $self:ident TypedSelectMulti $select_tys:ident) => (
+        $self.push_str(" ")?;
+        $self.printer.start_group("result")?;
+        $self.printer.print_valtypes($self.state, $select_tys)?;
         $self.printer.end_group()?;
     );
     (payload $self:ident RefNull $hty:ident) => (
@@ -715,12 +723,6 @@ macro_rules! define_visit {
         $self.push_str(" ")?;
         $self.printer.print_field_idx($self.state, $ty, $field)?;
     );
-    (payload $self:ident StructAtomicSet $order:ident $ty:ident $field:ident) => (
-        $self.ordering($order)?;
-        $self.struct_type_index($ty)?;
-        $self.push_str(" ")?;
-        $self.printer.print_field_idx($self.state, $ty, $field)?;
-    );
     (payload $self:ident StructAtomicRmwAdd $order:ident $ty:ident $field:ident) => (
         $self.ordering($order)?;
         $self.struct_type_index($ty)?;
@@ -763,6 +765,23 @@ macro_rules! define_visit {
         $self.push_str(" ")?;
         $self.printer.print_field_idx($self.state, $ty, $field)?;
     );
+
+    (payload $self:ident RefGetDesc $hty:ident) => (
+        $self.struct_type_index($hty)?;
+    );
+    (payload $self:ident RefCastDescEqNonNull $hty:ident) => (
+        $self.push_str(" ")?;
+        let rty = RefType::new(false, $hty)
+            .ok_or_else(|| anyhow!("implementation limit: type index too large"))?;
+        $self.printer.print_reftype($self.state, rty)?;
+    );
+    (payload $self:ident RefCastDescEqNullable $hty:ident) => (
+        $self.push_str(" ")?;
+        let rty = RefType::new(true, $hty)
+            .ok_or_else(|| anyhow!("implementation limit: type index too large"))?;
+        $self.printer.print_reftype($self.state, rty)?;
+    );
+
     (payload $self:ident $op:ident $($arg:ident)*) => (
         $($self.$arg($arg)?;)*
     );
@@ -789,6 +808,7 @@ macro_rules! define_visit {
     (name Drop) => ("drop");
     (name Select) => ("select");
     (name TypedSelect) => ("select");
+    (name TypedSelectMulti) => ("select");
     (name LocalGet) => ("local.get");
     (name LocalSet) => ("local.set");
     (name LocalTee) => ("local.tee");
@@ -1306,6 +1326,8 @@ macro_rules! define_visit {
     (name StructGetS) => ("struct.get_s");
     (name StructGetU) => ("struct.get_u");
     (name StructSet) => ("struct.set");
+    (name StructNewDesc) => ("struct.new_desc");
+    (name StructNewDefaultDesc) => ("struct.new_default_desc");
     (name ArrayNew) => ("array.new");
     (name ArrayNewDefault) => ("array.new_default");
     (name ArrayNewFixed) => ("array.new_fixed");
@@ -1380,11 +1402,17 @@ macro_rules! define_visit {
     (name Suspend) => ("suspend");
     (name Resume) => ("resume");
     (name ResumeThrow) => ("resume_throw");
+    (name ResumeThrowRef) => ("resume_throw_ref");
     (name Switch) => ("switch");
     (name I64Add128) => ("i64.add128");
     (name I64Sub128) => ("i64.sub128");
     (name I64MulWideS) => ("i64.mul_wide_s");
     (name I64MulWideU) => ("i64.mul_wide_u");
+    (name RefGetDesc) => ("ref.get_desc");
+    (name RefCastDescEqNonNull) => ("ref.cast_desc_eq");
+    (name RefCastDescEqNullable) => ("ref.cast_desc_eq");
+    (name BrOnCastDescEq) => ("br_on_cast_desc_eq");
+    (name BrOnCastDescEqFail) => ("br_on_cast_desc_eq_fail");
 }
 
 impl<'a> VisitOperator<'a> for PrintOperator<'_, '_, '_, '_> {
@@ -1404,7 +1432,13 @@ impl<'a> VisitSimdOperator<'a> for PrintOperator<'_, '_, '_, '_> {
 pub trait OpPrinter {
     fn branch_hint(&mut self, offset: usize, taken: bool) -> Result<()>;
     fn set_offset(&mut self, offset: usize);
-    fn visit_operator(&mut self, reader: &mut OperatorsReader<'_>) -> Result<()>;
+    fn visit_operator(
+        &mut self,
+        reader: &mut OperatorsReader<'_>,
+        annotation: Option<&str>,
+    ) -> Result<()>;
+    fn finalize(&mut self, annotation: Option<&str>) -> Result<()>;
+    fn use_color(&self) -> bool;
 }
 
 impl OpPrinter for PrintOperator<'_, '_, '_, '_> {
@@ -1421,8 +1455,33 @@ impl OpPrinter for PrintOperator<'_, '_, '_, '_> {
         self.operator_state.op_offset = offset;
     }
 
-    fn visit_operator(&mut self, reader: &mut OperatorsReader<'_>) -> Result<()> {
-        reader.visit_operator(self)?
+    fn visit_operator(
+        &mut self,
+        reader: &mut OperatorsReader<'_>,
+        annotation: Option<&str>,
+    ) -> Result<()> {
+        reader.visit_operator(self)??;
+        if let Some(s) = annotation {
+            self.printer.newline_unknown_pos()?;
+            self.result().start_comment()?;
+            write!(self.result(), ";; {s}")?;
+            self.result().reset_color()?;
+        }
+        Ok(())
+    }
+
+    fn finalize(&mut self, annotation: Option<&str>) -> Result<()> {
+        if let Some(s) = annotation {
+            self.printer.newline_unknown_pos()?;
+            self.result().start_comment()?;
+            write!(self.printer.result, ";; {s}")?;
+            self.result().reset_color()?;
+        }
+        Ok(())
+    }
+
+    fn use_color(&self) -> bool {
+        self.printer.result.supports_async_color()
     }
 }
 
@@ -1444,12 +1503,13 @@ impl OpPrinter for PrintOperatorFolded<'_, '_, '_, '_> {
         self.operator_state.op_offset = offset;
     }
 
-    fn visit_operator(&mut self, reader: &mut OperatorsReader<'_>) -> Result<()> {
+    fn visit_operator(
+        &mut self,
+        reader: &mut OperatorsReader<'_>,
+        annotation: Option<&str>,
+    ) -> Result<()> {
         let operator = reader.clone().read()?;
-        let (params, results) = operator
-            .operator_arity(self)
-            .ok_or_else(|| anyhow::anyhow!("could not calculate operator arity"))?;
-        let use_color = self.printer.result.supports_async_color();
+        let (params, results) = operator.operator_arity(self).unwrap_or((0, 0));
         let mut buf_color = PrintTermcolor(Ansi::new(Vec::new()));
         let mut buf_nocolor = PrintTermcolor(NoColor::new(Vec::new()));
         let internal_config = Config {
@@ -1458,7 +1518,7 @@ impl OpPrinter for PrintOperatorFolded<'_, '_, '_, '_> {
         };
         let mut internal_printer = Printer {
             config: &internal_config,
-            result: if use_color {
+            result: if self.use_color() {
                 &mut buf_color
             } else {
                 &mut buf_nocolor
@@ -1472,11 +1532,18 @@ impl OpPrinter for PrintOperatorFolded<'_, '_, '_, '_> {
         let mut op_printer =
             PrintOperator::new(&mut internal_printer, self.state, self.operator_state);
         reader.visit_operator(&mut op_printer)??;
+        if let Some(s) = annotation {
+            internal_printer.result.start_comment()?;
+            write!(internal_printer.result, " (; {s}")?;
+            internal_printer.result.start_comment()?;
+            write!(internal_printer.result, " ;)")?;
+            internal_printer.result.reset_color()?;
+        }
 
         self.printer.nesting = internal_printer.nesting;
         self.printer.line = internal_printer.line;
 
-        let inst = String::from_utf8(if use_color {
+        let inst = String::from_utf8(if self.use_color() {
             buf_color.0.into_inner()
         } else {
             buf_nocolor.0.into_inner()
@@ -1501,6 +1568,27 @@ impl OpPrinter for PrintOperatorFolded<'_, '_, '_, '_> {
             }
             _ => self.handle_plain(inst, params, results),
         }
+    }
+
+    // Recurse through the stack and print each folded instruction.
+    fn finalize(&mut self, annotation: Option<&str>) -> Result<()> {
+        if self.control.len() != 1 {
+            bail!("instruction sequence not closed");
+        }
+        for inst in &self.control.last().unwrap().folded {
+            PrintOperatorFolded::print(&mut self.printer, &mut self.original_separator, &inst)?;
+        }
+        if let Some(s) = annotation {
+            self.printer.newline_unknown_pos()?;
+            self.printer.result.start_comment()?;
+            write!(self.printer.result, ";; {s}")?;
+            self.printer.result.reset_color()?;
+        }
+        Ok(())
+    }
+
+    fn use_color(&self) -> bool {
+        self.printer.result.supports_async_color()
     }
 }
 
@@ -1643,17 +1731,6 @@ impl<'printer, 'state, 'a, 'b> PrintOperatorFolded<'printer, 'state, 'a, 'b> {
         }
         stack.folded.push(inst);
 
-        Ok(())
-    }
-
-    // Recurse through the stack and print each folded instruction.
-    pub fn finalize(&mut self) -> Result<()> {
-        if self.control.len() != 1 {
-            bail!("instruction sequence not closed");
-        }
-        for inst in &self.control.last().unwrap().folded {
-            PrintOperatorFolded::print(&mut self.printer, &mut self.original_separator, &inst)?;
-        }
         Ok(())
     }
 

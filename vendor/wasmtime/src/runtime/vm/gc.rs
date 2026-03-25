@@ -22,6 +22,7 @@ pub use i31::*;
 
 use crate::prelude::*;
 use crate::runtime::vm::{GcHeapAllocationIndex, VMMemoryDefinition};
+use crate::store::Asyncness;
 use core::any::Any;
 use core::mem::MaybeUninit;
 use core::{alloc::Layout, num::NonZeroU32};
@@ -67,17 +68,10 @@ impl GcStore {
         self.gc_heap.vmmemory()
     }
 
-    /// Perform garbage collection within this heap.
-    pub fn gc(&mut self, roots: GcRootsIter<'_>) {
-        let mut collection = self.gc_heap.gc(roots, &mut self.host_data_table);
-        collection.collect();
-    }
-
     /// Asynchronously perform garbage collection within this heap.
-    #[cfg(feature = "async")]
-    pub async fn gc_async(&mut self, roots: GcRootsIter<'_>) {
+    pub async fn gc(&mut self, asyncness: Asyncness, roots: GcRootsIter<'_>) {
         let collection = self.gc_heap.gc(roots, &mut self.host_data_table);
-        collect_async(collection).await;
+        collect_async(collection, asyncness).await;
     }
 
     /// Get the kind of the given GC reference.
@@ -95,7 +89,7 @@ impl GcStore {
     /// Clone a GC reference, calling GC write barriers as necessary.
     pub fn clone_gc_ref(&mut self, gc_ref: &VMGcRef) -> VMGcRef {
         if gc_ref.is_i31() {
-            gc_ref.unchecked_copy()
+            gc_ref.copy_i31()
         } else {
             self.gc_heap.clone_gc_ref(gc_ref)
         }
@@ -114,21 +108,55 @@ impl GcStore {
         self.write_gc_ref(destination, source);
     }
 
+    /// Dynamically tests whether a `init_gc_ref` is needed to write `gc_ref`
+    /// into an uninitialized destination.
+    pub(crate) fn needs_init_barrier(gc_ref: Option<&VMGcRef>) -> bool {
+        assert!(cfg!(feature = "gc") || gc_ref.is_none());
+        gc_ref.is_some_and(|r| !r.is_i31())
+    }
+
+    /// Dynamically tests whether a `write_gc_ref` is needed to write `gc_ref`
+    /// into `dest`.
+    pub(crate) fn needs_write_barrier(
+        dest: &mut Option<VMGcRef>,
+        gc_ref: Option<&VMGcRef>,
+    ) -> bool {
+        assert!(cfg!(feature = "gc") || gc_ref.is_none());
+        assert!(cfg!(feature = "gc") || dest.is_none());
+        dest.as_ref().is_some_and(|r| !r.is_i31()) || gc_ref.is_some_and(|r| !r.is_i31())
+    }
+
+    /// Same as [`Self::write_gc_ref`] but doesn't require a `store` when
+    /// possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `store` is `None` and one of `dest` or `gc_ref` requires a
+    /// write barrier.
+    pub(crate) fn write_gc_ref_optional_store(
+        store: Option<&mut Self>,
+        dest: &mut Option<VMGcRef>,
+        gc_ref: Option<&VMGcRef>,
+    ) {
+        if Self::needs_write_barrier(dest, gc_ref) {
+            store.unwrap().write_gc_ref(dest, gc_ref)
+        } else {
+            *dest = gc_ref.map(|r| r.copy_i31());
+        }
+    }
+
     /// Write the `source` GC reference into the `destination` slot, performing
     /// write barriers as necessary.
     pub fn write_gc_ref(&mut self, destination: &mut Option<VMGcRef>, source: Option<&VMGcRef>) {
         // If neither the source nor destination actually point to a GC object
         // (that is, they are both either null or `i31ref`s) then we can skip
         // the GC barrier.
-        if destination.as_ref().map_or(true, |d| d.is_i31())
-            && source.as_ref().map_or(true, |s| s.is_i31())
-        {
-            *destination = source.map(|s| s.unchecked_copy());
-            return;
+        if Self::needs_write_barrier(destination, source) {
+            self.gc_heap
+                .write_gc_ref(&mut self.host_data_table, destination, source);
+        } else {
+            *destination = source.map(|s| s.copy_i31());
         }
-
-        self.gc_heap
-            .write_gc_ref(&mut self.host_data_table, destination, source);
     }
 
     /// Drop the given GC reference, performing drop barriers as necessary.
@@ -169,7 +197,6 @@ impl GcStore {
     ) -> Result<Result<VMExternRef, (Box<dyn Any + Send + Sync>, u64)>> {
         let host_data_id = self.host_data_table.alloc(value);
         match self.gc_heap.alloc_externref(host_data_id)? {
-            #[cfg_attr(not(feature = "gc"), allow(unreachable_patterns))]
             Ok(x) => Ok(Ok(x)),
             Err(n) => Ok(Err((self.host_data_table.dealloc(host_data_id), n))),
         }
@@ -218,12 +245,14 @@ impl GcStore {
         ty: VMSharedTypeIndex,
         layout: &GcStructLayout,
     ) -> Result<Result<VMStructRef, u64>> {
-        self.gc_heap.alloc_uninit_struct(ty, layout)
+        self.gc_heap
+            .alloc_uninit_struct_or_exn(ty, layout)
+            .map(|r| r.map(|r| r.into_structref_unchecked()))
     }
 
     /// Deallocate an uninitialized struct.
     pub fn dealloc_uninit_struct(&mut self, structref: VMStructRef) {
-        self.gc_heap.dealloc_uninit_struct(structref);
+        self.gc_heap.dealloc_uninit_struct_or_exn(structref.into())
     }
 
     /// Get the data for the given object reference.
@@ -268,5 +297,27 @@ impl GcStore {
     /// Get the length of the given array.
     pub fn array_len(&self, arrayref: &VMArrayRef) -> u32 {
         self.gc_heap.array_len(arrayref)
+    }
+
+    /// Allocate an uninitialized exception object with the given type
+    /// index.
+    ///
+    /// This does NOT check that the index is currently allocated in the types
+    /// registry or that the layout matches the index's type. Failure to uphold
+    /// those invariants is memory safe, but will lead to general incorrectness
+    /// such as panics and wrong results.
+    pub fn alloc_uninit_exn(
+        &mut self,
+        ty: VMSharedTypeIndex,
+        layout: &GcStructLayout,
+    ) -> Result<Result<VMExnRef, u64>> {
+        self.gc_heap
+            .alloc_uninit_struct_or_exn(ty, layout)
+            .map(|r| r.map(|r| r.into_exnref_unchecked()))
+    }
+
+    /// Deallocate an uninitialized exception object.
+    pub fn dealloc_uninit_exn(&mut self, exnref: VMExnRef) {
+        self.gc_heap.dealloc_uninit_struct_or_exn(exnref.into());
     }
 }

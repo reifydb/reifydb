@@ -290,7 +290,7 @@ pub enum SetError {
     BadValue(String),
 }
 
-impl std::error::Error for SetError {}
+impl core::error::Error for SetError {}
 
 impl fmt::Display for SetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -308,28 +308,6 @@ impl fmt::Display for SetError {
 
 /// A result returned when changing a setting.
 pub type SetResult<T> = Result<T, SetError>;
-
-/// A reference to just the boolean predicates of a settings object.
-///
-/// The settings objects themselves are generated and appear in the `isa/*/settings.rs` modules.
-/// Each settings object provides a `predicate_view()` method that makes it possible to query
-/// ISA predicates by number.
-#[derive(Clone, Copy, Hash)]
-pub struct PredicateView<'a>(&'a [u8]);
-
-impl<'a> PredicateView<'a> {
-    /// Create a new view of a precomputed predicate vector.
-    ///
-    /// See the `predicate_view()` method on the various `Flags` types defined for each ISA.
-    pub fn new(bits: &'a [u8]) -> Self {
-        PredicateView(bits)
-    }
-
-    /// Check a numbered predicate.
-    pub fn test(self, p: usize) -> bool {
-        self.0[p / 8] & (1 << (p % 8)) != 0
-    }
-}
 
 /// Implementation details for generated code.
 ///
@@ -500,7 +478,7 @@ impl<'a> From<&'a dyn TargetIsa> for FlagsOrIsa<'a> {
 mod tests {
     use super::Configurable;
     use super::SetError::*;
-    use super::{builder, Flags};
+    use super::{Flags, builder};
     use alloc::string::ToString;
 
     #[test]
@@ -525,18 +503,14 @@ enable_verifier = true
 enable_pcc = false
 is_pic = false
 use_colocated_libcalls = false
-enable_float = true
 enable_nan_canonicalization = false
 enable_pinned_reg = false
-enable_atomics = true
-enable_safepoints = false
 enable_llvm_abi_extensions = false
 enable_multi_ret_implicit_sret = false
 unwind_info = true
 preserve_frame_pointers = false
 machine_code_cfg_info = false
 enable_probestack = false
-enable_jump_tables = true
 enable_heap_access_spectre_mitigation = true
 enable_table_access_spectre_mitigation = true
 enable_incremental_compilation_cache_checks = false
@@ -556,11 +530,11 @@ enable_incremental_compilation_cache_checks = false
     fn modify_bool() {
         let mut b = builder();
         assert_eq!(b.enable("not_there"), Err(BadName("not_there".to_string())));
-        assert_eq!(b.enable("enable_atomics"), Ok(()));
-        assert_eq!(b.set("enable_atomics", "false"), Ok(()));
+        assert_eq!(b.enable("enable_verifier"), Ok(()));
+        assert_eq!(b.set("enable_verifier", "false"), Ok(()));
 
         let f = Flags::new(b);
-        assert_eq!(f.enable_atomics(), false);
+        assert_eq!(f.enable_verifier(), false);
     }
 
     #[test]
@@ -571,11 +545,11 @@ enable_incremental_compilation_cache_checks = false
             Err(BadName("not_there".to_string()))
         );
         assert_eq!(
-            b.set("enable_atomics", ""),
+            b.set("enable_verifier", ""),
             Err(BadValue("bool".to_string()))
         );
         assert_eq!(
-            b.set("enable_atomics", "best"),
+            b.set("enable_verifier", "best"),
             Err(BadValue("bool".to_string()))
         );
         assert_eq!(
@@ -585,10 +559,10 @@ enable_incremental_compilation_cache_checks = false
             ))
         );
         assert_eq!(b.set("opt_level", "speed"), Ok(()));
-        assert_eq!(b.set("enable_atomics", "0"), Ok(()));
+        assert_eq!(b.set("enable_verifier", "0"), Ok(()));
 
         let f = Flags::new(b);
-        assert_eq!(f.enable_atomics(), false);
+        assert_eq!(f.enable_verifier(), false);
         assert_eq!(f.opt_level(), super::OptLevel::Speed);
     }
 }

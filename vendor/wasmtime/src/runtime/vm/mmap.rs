@@ -91,13 +91,13 @@ impl Mmap<AlignedLength> {
         } else if accessible_size == mapping_size {
             Ok(Mmap {
                 sys: mmap::Mmap::new(mapping_size)
-                    .context(format!("mmap failed to allocate {mapping_size:#x} bytes"))?,
+                    .with_context(|| format!("mmap failed to allocate {mapping_size:#x} bytes"))?,
                 data: AlignedLength {},
             })
         } else {
             let result = Mmap {
                 sys: mmap::Mmap::reserve(mapping_size)
-                    .context(format!("mmap failed to reserve {mapping_size:#x} bytes"))?,
+                    .with_context(|| format!("mmap failed to reserve {mapping_size:#x} bytes"))?,
                 data: AlignedLength {},
             };
             if !accessible_size.is_zero() {
@@ -105,9 +105,9 @@ impl Mmap<AlignedLength> {
                 unsafe {
                     result
                         .make_accessible(HostAlignedByteCount::ZERO, accessible_size)
-                        .context(format!(
-                            "mmap failed to allocate {accessible_size:#x} bytes"
-                        ))?;
+                        .with_context(|| {
+                            format!("mmap failed to allocate {accessible_size:#x} bytes")
+                        })?;
                 }
             }
             Ok(result)
@@ -187,7 +187,7 @@ impl Mmap<AlignedLength> {
             self.len_aligned()
         );
 
-        self.sys.make_accessible(start, len)
+        unsafe { self.sys.make_accessible(start, len) }
     }
 }
 
@@ -231,7 +231,9 @@ impl<T> Mmap<T> {
     pub unsafe fn slice(&self, range: Range<usize>) -> &[u8] {
         assert!(range.start <= range.end);
         assert!(range.end <= self.len());
-        core::slice::from_raw_parts(self.as_ptr().add(range.start), range.end - range.start)
+        unsafe {
+            core::slice::from_raw_parts(self.as_ptr().add(range.start), range.end - range.start)
+        }
     }
 
     /// Return the allocated memory as a mutable slice of u8.
@@ -247,7 +249,12 @@ impl<T> Mmap<T> {
     pub unsafe fn slice_mut(&mut self, range: Range<usize>) -> &mut [u8] {
         assert!(range.start <= range.end);
         assert!(range.end <= self.len());
-        core::slice::from_raw_parts_mut(self.as_mut_ptr().add(range.start), range.end - range.start)
+        unsafe {
+            core::slice::from_raw_parts_mut(
+                self.as_mut_ptr().add(range.start),
+                range.end - range.start,
+            )
+        }
     }
 
     /// Return the allocated memory as a pointer to u8.
@@ -312,9 +319,11 @@ impl<T> Mmap<T> {
             return Ok(());
         }
 
-        self.sys
-            .make_executable(range, enable_branch_protection)
-            .context("failed to make memory executable")
+        unsafe {
+            self.sys
+                .make_executable(range, enable_branch_protection)
+                .context("failed to make memory executable")
+        }
     }
 
     /// Makes the specified `range` within this `Mmap` to be readonly.
@@ -334,9 +343,35 @@ impl<T> Mmap<T> {
             return Ok(());
         }
 
-        self.sys
-            .make_readonly(range)
-            .context("failed to make memory readonly")
+        unsafe {
+            self.sys
+                .make_readonly(range)
+                .context("failed to make memory readonly")
+        }
+    }
+
+    /// Makes the specified `range` within this `Mmap` to be read-write.
+    pub unsafe fn make_readwrite(&self, range: Range<usize>) -> Result<()> {
+        assert!(range.start <= self.len());
+        assert!(range.end <= self.len());
+        assert!(range.start <= range.end);
+        assert!(
+            range.start % crate::runtime::vm::host_page_size() == 0,
+            "changing of protections isn't page-aligned",
+        );
+
+        if range.start == range.end {
+            // A zero-sized mprotect (or equivalent) is allowed on some
+            // platforms but not others (notably Windows). Treat it as a no-op
+            // everywhere.
+            return Ok(());
+        }
+
+        unsafe {
+            self.sys
+                .make_readwrite(range)
+                .context("failed to make memory read-write")
+        }
     }
 }
 
@@ -407,7 +442,7 @@ impl MmapOffset {
     ///
     /// ## Safety
     ///
-    /// The caller must ensure that noone else has a reference to this memory.
+    /// The caller must ensure that no one else has a reference to this memory.
     pub unsafe fn map_image_at(
         &self,
         image_source: &MemoryImageSource,
@@ -419,9 +454,11 @@ impl MmapOffset {
             .offset
             .checked_add(memory_offset)
             .expect("self.offset + memory_offset is in bounds");
-        self.mmap
-            .sys
-            .map_image_at(image_source, source_offset, total_offset, memory_len)
+        unsafe {
+            self.mmap
+                .sys
+                .map_image_at(image_source, source_offset, total_offset, memory_len)
+        }
     }
 }
 

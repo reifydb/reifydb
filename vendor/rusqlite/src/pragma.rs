@@ -51,7 +51,7 @@ impl Sql {
         let value = match value {
             ToSqlOutput::Borrowed(v) => v,
             ToSqlOutput::Owned(ref v) => ValueRef::from(v),
-            #[cfg(any(feature = "blob", feature = "functions", feature = "array"))]
+            #[cfg(any(feature = "blob", feature = "functions", feature = "pointer"))]
             _ => {
                 return Err(err!(ffi::SQLITE_MISUSE, "Unsupported value \"{value:?}\""));
             }
@@ -292,6 +292,9 @@ fn is_identifier_continue(c: char) -> bool {
 
 #[cfg(test)]
 mod test {
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
+
     use super::Sql;
     use crate::pragma;
     use crate::{Connection, Result};
@@ -305,7 +308,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "modern_sqlite")]
     fn pragma_func_query_value() -> Result<()> {
         let db = Connection::open_in_memory()?;
         let user_version: i32 =
@@ -352,7 +354,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "modern_sqlite")]
     fn pragma_func() -> Result<()> {
         let db = Connection::open_in_memory()?;
         let mut table_info = db.prepare("SELECT * FROM pragma_table_info(?1)")?;

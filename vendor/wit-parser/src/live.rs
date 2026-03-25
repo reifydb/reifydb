@@ -1,8 +1,7 @@
 use crate::{
-    Function, FunctionKind, InterfaceId, Resolve, Type, TypeDef, TypeDefKind, TypeId, WorldId,
-    WorldItem,
+    Function, FunctionKind, IndexSet, InterfaceId, Resolve, Type, TypeDef, TypeDefKind, TypeId,
+    WorldId, WorldItem,
 };
-use indexmap::IndexSet;
 
 #[derive(Default)]
 pub struct LiveTypes {
@@ -95,7 +94,7 @@ pub trait TypeIdVisitor {
         match item {
             WorldItem::Interface { id, .. } => self.visit_interface(resolve, *id),
             WorldItem::Function(f) => self.visit_func(resolve, f),
-            WorldItem::Type(t) => self.visit_type_id(resolve, *t),
+            WorldItem::Type { id, .. } => self.visit_type_id(resolve, *id),
         }
     }
 
@@ -117,8 +116,8 @@ pub trait TypeIdVisitor {
             FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => {}
         }
 
-        for (_, ty) in func.params.iter() {
-            self.visit_type(resolve, ty);
+        for param in func.params.iter() {
+            self.visit_type(resolve, &param.ty);
         }
         if let Some(ty) = &func.result {
             self.visit_type(resolve, ty);
@@ -136,7 +135,7 @@ pub trait TypeIdVisitor {
         match &ty.kind {
             TypeDefKind::Type(t)
             | TypeDefKind::List(t)
-            | TypeDefKind::FixedSizeList(t, ..)
+            | TypeDefKind::FixedLengthList(t, ..)
             | TypeDefKind::Option(t)
             | TypeDefKind::Future(Some(t))
             | TypeDefKind::Stream(Some(t)) => self.visit_type(resolve, t),
@@ -193,6 +192,8 @@ pub trait TypeIdVisitor {
 #[cfg(test)]
 mod tests {
     use super::{LiveTypes, Resolve};
+    use alloc::string::String;
+    use alloc::vec::Vec;
 
     fn live(wit: &str, ty: &str) -> Vec<String> {
         let mut resolve = Resolve::default();

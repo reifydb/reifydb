@@ -5,17 +5,17 @@ use crate::ir::{self, Function, Type};
 use crate::isa::s390x::settings as s390x_settings;
 #[cfg(feature = "unwind")]
 use crate::isa::unwind::systemv::RegisterMappingError;
-use crate::isa::{Builder as IsaBuilder, FunctionAlignment, TargetIsa};
+use crate::isa::{Builder as IsaBuilder, FunctionAlignment, IsaFlagsHashKey, TargetIsa};
 use crate::machinst::{
-    compile, CompiledCode, CompiledCodeStencil, MachInst, MachTextSectionBuilder, Reg, SigSet,
-    TextSectionBuilder, VCode,
+    CompiledCode, CompiledCodeStencil, MachInst, MachTextSectionBuilder, Reg, SigSet,
+    TextSectionBuilder, VCode, compile,
 };
 use crate::result::CodegenResult;
 use crate::settings as shared_settings;
+use alloc::string::String;
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 use cranelift_control::ControlPlane;
-use std::string::String;
 use target_lexicon::{Architecture, Triple};
 
 // New backend:
@@ -74,23 +74,17 @@ impl TargetIsa for S390xBackend {
         let (vcode, regalloc_result) = self.compile_vcode(func, domtree, ctrl_plane)?;
 
         let emit_result = vcode.emit(&regalloc_result, want_disasm, flags, ctrl_plane);
-        let frame_size = emit_result.frame_size;
         let value_labels_ranges = emit_result.value_labels_ranges;
         let buffer = emit_result.buffer;
-        let sized_stackslot_offsets = emit_result.sized_stackslot_offsets;
-        let dynamic_stackslot_offsets = emit_result.dynamic_stackslot_offsets;
 
         if let Some(disasm) = emit_result.disasm.as_ref() {
-            log::debug!("disassembly:\n{}", disasm);
+            log::debug!("disassembly:\n{disasm}");
         }
 
         Ok(CompiledCodeStencil {
             buffer,
-            frame_size,
             vcode: emit_result.disasm,
             value_labels_ranges,
-            sized_stackslot_offsets,
-            dynamic_stackslot_offsets,
             bb_starts: emit_result.bb_offsets,
             bb_edges: emit_result.bb_edges,
         })
@@ -110,6 +104,10 @@ impl TargetIsa for S390xBackend {
 
     fn isa_flags(&self) -> Vec<shared_settings::Value> {
         self.isa_flags.iter().collect()
+    }
+
+    fn isa_flags_hash_key(&self) -> IsaFlagsHashKey<'_> {
+        IsaFlagsHashKey(self.isa_flags.hash_key())
     }
 
     fn dynamic_vector_bytes(&self, _dyn_ty: Type) -> u32 {
@@ -187,8 +185,8 @@ impl TargetIsa for S390xBackend {
         true
     }
 
-    fn has_x86_blendv_lowering(&self, _: Type) -> bool {
-        false
+    fn has_blendv_lowering(&self, _: Type) -> bool {
+        self.isa_flags.has_vxrs_ext3()
     }
 
     fn has_x86_pshufb_lowering(&self) -> bool {

@@ -11,7 +11,10 @@
 ;; needs to handle situations such as when the `Value` is 64-bits an explicit
 ;; comparison must be made. Additionally if `Value` is smaller than 32-bits
 ;; then it must be sign-extended up to at least 32 bits.
-(decl lower_cond (Value) Cond)
+;;
+;; Recursion: peeling away `uextend` operations must be bounded since each
+;; extend must be on a strictly smaller type.
+(decl rec lower_cond (Value) Cond)
 (rule 0 (lower_cond val @ (value_type (fits_in_32 _))) (Cond.If32 (zext32 val)))
 (rule 1 (lower_cond val @ (value_type $I64))
   (Cond.IfXneq64I32 val 0))
@@ -138,41 +141,106 @@
 (rule (lower (return args))
       (lower_return args))
 
-;;;; Rules for calls ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Rules for `call` and `call_indirect` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(rule (lower (call (func_ref_data sig_ref extname dist) inputs))
-      (gen_call sig_ref extname dist inputs))
+;; Direct call to a pulley function.
+(rule 1 (lower (call (func_ref_data sig_ref name (RelocDistance.Near) patchable) args))
+      (let ((output ValueRegsVec (gen_call_output sig_ref))
+            (abi Sig (abi_sig sig_ref))
+            (uses CallArgList (gen_call_args abi args))
+            (defs CallRetList (gen_call_rets abi output))
+            (info BoxCallInfo (gen_call_info abi name uses defs (try_call_none) patchable))
+            (_ Unit (emit_side_effect (call_impl info))))
+        output))
 
-(rule (lower (call_indirect sig_ref val inputs))
-      (gen_call_indirect sig_ref val inputs))
+;; Direct call to a host function.
+(rule (lower (call (func_ref_data sig_ref name _ false) args))
+      (let ((output ValueRegsVec (gen_call_output sig_ref))
+            (abi Sig (abi_sig sig_ref))
+            (uses CallArgList (gen_call_args abi args))
+            (defs CallRetList (gen_call_rets abi output))
+            (info BoxCallIndirectHostInfo (gen_call_host_info abi name uses defs (try_call_none)))
+            (_ Unit (emit_side_effect (indirect_call_host_impl info))))
+        output))
 
-(rule (lower_branch (try_call (func_ref_data sig_ref extname dist) inputs et) targets)
-      (gen_try_call sig_ref extname dist et inputs targets))
+;; Indirect call (assumed to be pulley->pulley).
+(rule (lower (call_indirect sig_ref ptr args))
+      (let ((output ValueRegsVec (gen_call_output sig_ref))
+            (abi Sig (abi_sig sig_ref))
+            (target Reg (put_in_reg ptr))
+            (uses CallArgList (gen_call_args abi args))
+            (defs CallRetList (gen_call_rets abi output))
+            (info BoxCallIndInfo (gen_call_ind_info abi target uses defs (try_call_none)))
+            (_ Unit (emit_side_effect (indirect_call_impl info))))
+        output))
 
-(rule (lower_branch (try_call_indirect val inputs et) targets)
+;;;; Rules for `try_call` and `try_call_indirect` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Direct call to a pulley function.
+(rule 1 (lower_branch (try_call (func_ref_data sig_ref name (RelocDistance.Near) patchable) args et) targets)
+      (let ((abi Sig (abi_sig sig_ref))
+            (trycall OptionTryCallInfo (try_call_info et targets))
+            (uses CallArgList (gen_call_args abi args))
+            (defs CallRetList (gen_try_call_rets abi))
+            (info BoxCallInfo (gen_call_info abi name uses defs trycall patchable)))
+        (emit_side_effect (call_impl info))))
+
+;; Direct call to a host function.
+(rule (lower_branch (try_call (func_ref_data sig_ref name _ false) args et) targets)
+      (let ((abi Sig (abi_sig sig_ref))
+            (trycall OptionTryCallInfo (try_call_info et targets))
+            (uses CallArgList (gen_call_args abi args))
+            (defs CallRetList (gen_try_call_rets abi))
+            (info BoxCallIndirectHostInfo (gen_call_host_info abi name uses defs trycall)))
+        (emit_side_effect (indirect_call_host_impl info))))
+
+;; Indirect call (assumed to be pulley->pulley).
+(rule (lower_branch (try_call_indirect ptr args et) targets)
       (if-let (exception_sig sig_ref) et)
-      (gen_try_call_indirect sig_ref val et inputs targets))
+      (let ((abi Sig (abi_sig sig_ref))
+            (trycall OptionTryCallInfo (try_call_info et targets))
+            (target Reg (put_in_reg ptr))
+            (uses CallArgList (gen_call_args abi args))
+            (defs CallRetList (gen_try_call_rets abi))
+            (info BoxCallIndInfo (gen_call_ind_info abi target uses defs trycall)))
+        (emit_side_effect (indirect_call_impl info))))
 
 ;;;; Rules for `return_call` and `return_call_indirect` ;;;;;;;;;;;;;;;;;;;;;;;;
 
-(rule (lower (return_call (func_ref_data sig_ref extname dist) args))
-      (gen_return_call sig_ref extname dist args))
+;; Direct call to a pulley function.
+(rule 1 (lower (return_call (func_ref_data sig_ref name (RelocDistance.Near) false) args))
+      (let ((abi Sig (abi_sig sig_ref))
+            (uses CallArgList (gen_return_call_args abi args))
+            (info BoxReturnCallInfo (gen_return_call_info abi name uses)))
+        (side_effect (return_call_impl info))))
 
-(rule (lower (return_call_indirect sig_ref callee args))
-      (gen_return_call_indirect sig_ref callee args))
+;; Direct call to a pulley function.
+(rule (lower (return_call (func_ref_data sig_ref name dist false) args))
+      (let ((abi Sig (abi_sig sig_ref))
+            (uses CallArgList (gen_return_call_args abi args))
+            (target Reg (load_ext_name name 0 dist))
+            (info BoxReturnCallIndInfo (gen_return_call_ind_info abi target uses)))
+        (side_effect (return_indirect_call_impl info))))
+
+;; Indirect call (assumed to be pulley->pulley).
+(rule (lower (return_call_indirect sig_ref ptr args))
+      (let ((abi Sig (abi_sig sig_ref))
+            (target Reg (put_in_reg ptr))
+            (uses CallArgList (gen_return_call_args abi args))
+            (info BoxReturnCallIndInfo (gen_return_call_ind_info abi target uses)))
+        (side_effect (return_indirect_call_impl info))))
 
 ;;;; Rules for `iconst` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(rule (lower (has_type ty (iconst (u64_from_imm64 n))))
-      (imm ty n))
+(rule (lower (has_type ty (iconst c))) (imm (i64_sextend_imm64 ty c)))
 
 ;;;; Rules for `f32const`;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(rule (lower (f32const (u32_from_ieee32 x))) (imm $F32 x))
+(rule (lower (f32const (u32_from_ieee32 x))) (pulley_fconst32 x))
 
 ;;;; Rules for `f64const`;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(rule (lower (f64const (u64_from_ieee64 x))) (imm $F64 x))
+(rule (lower (f64const (u64_from_ieee64 x))) (pulley_fconst64 x))
 
 ;;;; Rules for `iadd` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -208,18 +276,16 @@
 ;; `u8`.
 (decl pure partial u8_from_negated_iconst (Value) u8)
 (rule (u8_from_negated_iconst (i32_from_iconst i))
-  (if-let neg_i64 (i64_neg (i32_as_i64 i)))
-  (if-let neg_u64 (u64_try_from_i64 neg_i64))
-  (if-let neg_u8 (u8_try_from_u64 neg_u64))
+  (if-let neg_i64 (i64_checked_neg i))
+  (if-let neg_u8 (i64_try_into_u8 neg_i64))
   neg_u8)
 
 ;; Helper extract a constant from a `Value`, negate it, and fit it within a
 ;; `u32`.
 (decl pure partial u32_from_negated_iconst (Value) u32)
 (rule (u32_from_negated_iconst (i32_from_iconst i))
-  (if-let neg_i64 (i64_neg (i32_as_i64 i)))
-  (if-let neg_u64 (u64_try_from_i64 neg_i64))
-  (if-let neg_u32 (u32_try_from_u64 neg_u64))
+  (if-let neg_i64 (i64_checked_neg i))
+  (if-let neg_u32 (i64_try_into_u32 neg_i64))
   neg_u32)
 
 ;; 128-bit addition
@@ -362,15 +428,15 @@
 ;;;; Rules for `umulhi` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (rule (lower (has_type $I8 (umulhi a b)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 8))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 8))
   (pulley_xshr32_u_u6 (pulley_xmul32 (zext32 a) (zext32 b)) shift))
 
 (rule (lower (has_type $I16 (umulhi a b)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 16))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 16))
   (pulley_xshr32_u_u6 (pulley_xmul32 (zext32 a) (zext32 b)) shift))
 
 (rule (lower (has_type $I32 (umulhi a b)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 32))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 32))
   (pulley_xshr64_u_u6 (pulley_xmul64 (zext64 a) (zext64 b)) shift))
 
 (rule (lower (has_type $I64 (umulhi a b)))
@@ -379,15 +445,15 @@
 ;;;; Rules for `smulhi` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (rule (lower (has_type $I8 (smulhi a b)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 8))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 8))
   (pulley_xshr32_s_u6 (pulley_xmul32 (sext32 a) (sext32 b)) shift))
 
 (rule (lower (has_type $I16 (smulhi a b)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 16))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 16))
   (pulley_xshr32_s_u6 (pulley_xmul32 (sext32 a) (sext32 b)) shift))
 
 (rule (lower (has_type $I32 (smulhi a b)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 32))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 32))
   (pulley_xshr64_s_u6 (pulley_xmul64 (sext64 a) (sext64 b)) shift))
 
 (rule (lower (has_type $I64 (smulhi a b)))
@@ -459,7 +525,7 @@
 ;; `U6`.
 (decl pure partial u6_shift_from_iconst (Value) U6)
 (rule (u6_shift_from_iconst (u64_from_iconst val))
-  (if-let (u6_from_u8 x) (u64_as_u8 (u64_and val 0x3f)))
+  (if-let (u6_from_u8 x) (u64_try_into_u8 (u64_and val 0x3f)))
   x)
 
 (decl u6_from_u8 (U6) u8)
@@ -674,7 +740,9 @@
 (rule (lower (icmp cc a b @ (value_type (ty_int ty))))
       (lower_icmp ty cc a b))
 
-(decl lower_icmp (Type IntCC Value Value) XReg)
+; Recursion: bounded since only recursive rules swap condition code order from
+; greater into less, which can only apply once.
+(decl rec lower_icmp (Type IntCC Value Value) XReg)
 
 (rule (lower_icmp $I64 (IntCC.Equal) a b)
       (pulley_xeq64 a b))
@@ -783,7 +851,9 @@
 (rule 1 (lower (icmp cc a @ (value_type (ty_vec128 ty)) b))
   (lower_vcmp ty cc a b))
 
-(decl lower_vcmp (Type IntCC Value Value) VReg)
+; Recursion: bounded since only recursive rules swap condition code order from
+; greater into less, which can only apply once.
+(decl rec lower_vcmp (Type IntCC Value Value) VReg)
 (rule (lower_vcmp $I8X16 (IntCC.Equal) a b) (pulley_veq8x16 a b))
 (rule (lower_vcmp $I8X16 (IntCC.NotEqual) a b) (pulley_vneq8x16 a b))
 (rule (lower_vcmp $I8X16 (IntCC.SignedLessThan) a b) (pulley_vslt8x16 a b))
@@ -827,7 +897,9 @@
 (rule 1 (lower (fcmp cc a b @ (value_type (ty_vec128 ty))))
   (lower_vfcmp ty cc a b))
 
-(decl lower_fcmp (Type FloatCC Value Value) XReg)
+; Recursion: bounded since recursive rules only implement certain condition
+; codes in terms of a smaller canonical set, to which recursive rules don't apply.
+(decl rec lower_fcmp (Type FloatCC Value Value) XReg)
 
 (rule (lower_fcmp $F32 (FloatCC.Equal) a b) (pulley_feq32 a b))
 (rule (lower_fcmp $F64 (FloatCC.Equal) a b) (pulley_feq64 a b))
@@ -858,7 +930,9 @@
   (if-let true (floatcc_unordered cc))
   (pulley_xbxor32_s8 (lower_fcmp ty (floatcc_complement cc) a b) 1))
 
-(decl lower_vfcmp (Type FloatCC Value Value) VReg)
+; Recursion: bounded since recursive rules only implement certain condition
+; codes in terms of a smaller canonical set, to which recursive rules don't apply.
+(decl rec lower_vfcmp (Type FloatCC Value Value) VReg)
 
 (rule (lower_vfcmp $F32X4 (FloatCC.Equal) a b) (pulley_veqf32x4 a b))
 (rule (lower_vfcmp $F64X2 (FloatCC.Equal) a b) (pulley_veqf64x2 a b))
@@ -893,7 +967,7 @@
   (gen_fload addr offset flags ty))
 
 (rule 3 (lower (has_type $I128 (load flags addr offset)))
-  (if-let offsetp8 (s32_add_fallible offset 8))
+  (if-let offsetp8 (i32_checked_add offset 8))
   (let ((lo XReg (pulley_xload (amode addr offset) $I64 flags))
         (hi XReg (pulley_xload (amode addr offsetp8) $I64 flags)))
     (value_regs lo hi)))
@@ -1248,7 +1322,7 @@
   (sext64 val))
 
 (rule 1 (lower (has_type $I128 (sextend val)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 63))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 63))
   (let ((lo XReg (sext64 val))
         (hi XReg (pulley_xshr64_s_u6 lo shift)))
     (value_regs lo hi)))
@@ -1277,6 +1351,18 @@
 
 (rule (lower (has_type $I64 (uadd_overflow_trap a b tc)))
   (pulley_xadd64_uoverflow_trap a b tc))
+
+;;;; Rules for `uadd_overflow` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (has_type $I32 (uadd_overflow a b)))
+      (let ((sum XReg (pulley_xadd32 a b))
+            (is_overflow XReg (pulley_xult32 sum a)))
+        (output_pair sum is_overflow)))
+
+(rule (lower (has_type $I64 (uadd_overflow a b)))
+      (let ((sum XReg (pulley_xadd64 a b))
+            (is_overflow XReg (pulley_xult64 sum a)))
+        (output_pair  sum is_overflow)))
 
 ;;;; Rules for `select` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1312,51 +1398,31 @@
 (rule (emit_cond (Cond.IfXult64 src1 src2)) (pulley_xult64 src1 src2))
 (rule (emit_cond (Cond.IfXulteq64 src1 src2)) (pulley_xulteq64 src1 src2))
 
-(rule (emit_cond (Cond.IfXeq32I32 src1 src2))
-  (pulley_xeq32 src1 (imm $I32 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXneq32I32 src1 src2))
-  (pulley_xneq32 src1 (imm $I32 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXslt32I32 src1 src2))
-  (pulley_xslt32 src1 (imm $I32 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXslteq32I32 src1 src2))
-  (pulley_xslteq32 src1 (imm $I32 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXult32I32 src1 src2))
-  (pulley_xult32 src1 (imm $I32 (u32_as_u64 src2))))
-(rule (emit_cond (Cond.IfXulteq32I32 src1 src2))
-  (pulley_xulteq32 src1 (imm $I32 (u32_as_u64 src2))))
+(rule (emit_cond (Cond.IfXeq32I32 src1 src2)) (pulley_xeq32 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXneq32I32 src1 src2)) (pulley_xneq32 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXslt32I32 src1 src2)) (pulley_xslt32 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXslteq32I32 src1 src2)) (pulley_xslteq32 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXult32I32 src1 src2)) (pulley_xult32 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXulteq32I32 src1 src2)) (pulley_xulteq32 src1 (imm src2)))
 
 ;; Note the operand swaps here
-(rule (emit_cond (Cond.IfXsgt32I32 src1 src2))
-  (pulley_xslt32 (imm $I32 (i64_as_u64 (i32_as_i64 src2))) src1))
-(rule (emit_cond (Cond.IfXsgteq32I32 src1 src2))
-  (pulley_xslteq32 (imm $I32 (i64_as_u64 (i32_as_i64 src2))) src1))
-(rule (emit_cond (Cond.IfXugt32I32 src1 src2))
-  (pulley_xult32 (imm $I32 (u32_as_u64 src2)) src1))
-(rule (emit_cond (Cond.IfXugteq32I32 src1 src2))
-  (pulley_xulteq32 (imm $I32 (u32_as_u64 src2)) src1))
+(rule (emit_cond (Cond.IfXsgt32I32 src1 src2)) (pulley_xslt32 (imm src2) src1))
+(rule (emit_cond (Cond.IfXsgteq32I32 src1 src2)) (pulley_xslteq32 (imm src2) src1))
+(rule (emit_cond (Cond.IfXugt32I32 src1 src2)) (pulley_xult32 (imm src2) src1))
+(rule (emit_cond (Cond.IfXugteq32I32 src1 src2)) (pulley_xulteq32 (imm src2) src1))
 
-(rule (emit_cond (Cond.IfXeq64I32 src1 src2))
-  (pulley_xeq64 src1 (imm $I64 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXneq64I32 src1 src2))
-  (pulley_xneq64 src1 (imm $I64 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXslt64I32 src1 src2))
-  (pulley_xslt64 src1 (imm $I64 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXslteq64I32 src1 src2))
-  (pulley_xslteq64 src1 (imm $I64 (i64_as_u64 (i32_as_i64 src2)))))
-(rule (emit_cond (Cond.IfXult64I32 src1 src2))
-  (pulley_xult64 src1 (imm $I64 (u32_as_u64 src2))))
-(rule (emit_cond (Cond.IfXulteq64I32 src1 src2))
-  (pulley_xulteq64 src1 (imm $I64 (u32_as_u64 src2))))
+(rule (emit_cond (Cond.IfXeq64I32 src1 src2)) (pulley_xeq64 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXneq64I32 src1 src2)) (pulley_xneq64 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXslt64I32 src1 src2)) (pulley_xslt64 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXslteq64I32 src1 src2)) (pulley_xslteq64 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXult64I32 src1 src2)) (pulley_xult64 src1 (imm src2)))
+(rule (emit_cond (Cond.IfXulteq64I32 src1 src2)) (pulley_xulteq64 src1 (imm src2)))
 
 ;; Note the operand swaps here
-(rule (emit_cond (Cond.IfXsgt64I32 src1 src2))
-  (pulley_xslt64 (imm $I64 (i64_as_u64 (i32_as_i64 src2))) src1))
-(rule (emit_cond (Cond.IfXsgteq64I32 src1 src2))
-  (pulley_xslteq64 (imm $I64 (i64_as_u64 (i32_as_i64 src2))) src1))
-(rule (emit_cond (Cond.IfXugt64I32 src1 src2))
-  (pulley_xult64 (imm $I64 (u32_as_u64 src2)) src1))
-(rule (emit_cond (Cond.IfXugteq64I32 src1 src2))
-  (pulley_xulteq64 (imm $I64 (u32_as_u64 src2)) src1))
+(rule (emit_cond (Cond.IfXsgt64I32 src1 src2)) (pulley_xslt64 (imm src2) src1))
+(rule (emit_cond (Cond.IfXsgteq64I32 src1 src2)) (pulley_xslteq64 (imm src2) src1))
+(rule (emit_cond (Cond.IfXugt64I32 src1 src2)) (pulley_xult64 (imm src2) src1))
+(rule (emit_cond (Cond.IfXugteq64I32 src1 src2)) (pulley_xulteq64 (imm src2) src1))
 
 ;;;; Rules for `bitcast` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1615,7 +1681,7 @@
 ;;;; Rules for `bswap` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (rule (lower (has_type $I16 (bswap a)))
-  (if-let (u6_from_u8 shift) (u64_as_u8 16))
+  (if-let (u6_from_u8 shift) (u64_try_into_u8 16))
   (pulley_xshr32_u_u6 (pulley_bswap32 a) shift))
 (rule (lower (has_type $I32 (bswap a))) (pulley_bswap32 a))
 (rule (lower (has_type $I64 (bswap a))) (pulley_bswap64 a))
@@ -1776,3 +1842,26 @@
 
 (rule (lower (has_type $F32X4 (fma a b c))) (pulley_vfma32x4 a b c))
 (rule (lower (has_type $F64X2 (fma a b c))) (pulley_vfma64x2 a b c))
+
+;; Rules for `symbol_value` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (symbol_value (symbol_value_data extname dist offset)))
+  (load_ext_name extname offset dist))
+
+;; Rules for `func_addr` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (func_addr (func_ref_data _ extname dist _)))
+      (load_ext_name extname 0 dist))
+
+
+;; Rules for `get_exception_handler_address` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (get_exception_handler_address (u64_from_imm64 idx) block))
+      (let ((succ_label MachLabel (block_exn_successor_label block idx)))
+        (pulley_label_address succ_label)))
+
+;; Rules for `sequence_point` ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(rule (lower (sequence_point))
+      (side_effect
+       (pulley_sequence_point)))

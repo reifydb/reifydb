@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.84.0"
+edition = "2024"
+rust-version = "1.91.0"
 name = "cranelift-srcgen"
-version = "0.120.2"
+version = "0.130.0"
 authors = ["The Wasmtime Project Developers"]
 build = false
 autolib = false
@@ -25,6 +25,7 @@ description = "Helper functions for generating Rust and ISLE files"
 readme = false
 license = "Apache-2.0 WITH LLVM-exception"
 repository = "https://github.com/bytecodealliance/wasmtime"
+resolver = "2"
 
 [lib]
 name = "cranelift_srcgen"
@@ -35,29 +36,25 @@ path = "src/lib.rs"
 [lints.clippy]
 allow_attributes_without_reason = "warn"
 clone_on_copy = "warn"
+extra_unused_type_parameters = "warn"
+from_over_into = "warn"
 manual_strip = "warn"
 map_clone = "warn"
+multiple_bound_locations = "warn"
+redundant_field_names = "warn"
 uninlined_format_args = "warn"
 unnecessary_cast = "warn"
 unnecessary_fallible_conversions = "warn"
 unnecessary_mut_passed = "warn"
 unnecessary_to_owned = "warn"
+useless_conversion = "warn"
 
 [lints.clippy.all]
 level = "allow"
 priority = -1
 
 [lints.rust]
-deprecated-safe-2024 = "warn"
-impl-trait-overcaptures = "warn"
-keyword_idents_2024 = "warn"
-missing-unsafe-on-extern = "warn"
-rust-2024-guarded-string-incompatible-syntax = "warn"
-rust-2024-incompatible-pat = "warn"
-rust-2024-prelude-collisions = "warn"
 trivial_numeric_casts = "warn"
-unsafe-attr-outside-unsafe = "warn"
-unsafe-op-in-unsafe-fn = "warn"
 unstable_features = "warn"
 unused-lifetimes = "warn"
 unused-macro-rules = "warn"
@@ -70,4 +67,5 @@ priority = 0
 check-cfg = [
     "cfg(pulley_tail_calls)",
     "cfg(pulley_assume_llvm_makes_tail_calls)",
+    "cfg(pulley_disable_interp_simd)",
 ]

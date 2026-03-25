@@ -1,123 +1,113 @@
-use crate::{MachineEnv, PReg, RegClass};
+//! Iterate over available registers.
 
-/// This iterator represents a traversal through all allocatable
-/// registers of a given class, in a certain order designed to
-/// minimize allocation contention.
-///
-/// The order in which we try registers is somewhat complex:
-/// - First, if there is a hint, we try that.
-/// - Then, we try registers in a traversal order that is based on an
-///   "offset" (usually the bundle index) spreading pressure evenly
-///   among registers to reduce commitment-map contention.
-/// - Within that scan, we try registers in two groups: first,
-///   prferred registers; then, non-preferred registers. (In normal
-///   usage, these consist of caller-save and callee-save registers
-///   respectively, to minimize clobber-saves; but they need not.)
+use crate::{MachineEnv, PReg, PRegSet, PRegSetIter, RegClass};
 
-pub struct RegTraversalIter<'a> {
-    env: &'a MachineEnv,
-    class: usize,
-    hints: [Option<PReg>; 2],
-    hint_idx: usize,
-    pref_idx: usize,
-    non_pref_idx: usize,
-    offset_pref: usize,
-    offset_non_pref: usize,
-    is_fixed: bool,
-    fixed: Option<PReg>,
+/// Keep track of where we are in the register traversal.
+struct Cursor {
+    first: PRegSetIter,
+    second: PRegSetIter,
 }
 
-impl<'a> RegTraversalIter<'a> {
-    pub fn new(
-        env: &'a MachineEnv,
-        class: RegClass,
-        hint_reg: PReg,
-        hint2_reg: PReg,
-        offset: usize,
-        fixed: Option<PReg>,
-    ) -> Self {
-        let mut hint_reg = if hint_reg != PReg::invalid() {
-            Some(hint_reg)
-        } else {
-            None
-        };
-        let mut hint2_reg = if hint2_reg != PReg::invalid() {
-            Some(hint2_reg)
-        } else {
-            None
-        };
-
-        if hint_reg.is_none() {
-            hint_reg = hint2_reg;
-            hint2_reg = None;
-        }
-        let hints = [hint_reg, hint2_reg];
-        let class = class as u8 as usize;
-        let offset_pref = if env.preferred_regs_by_class[class].len() > 0 {
-            offset % env.preferred_regs_by_class[class].len()
-        } else {
-            0
-        };
-        let offset_non_pref = if env.non_preferred_regs_by_class[class].len() > 0 {
-            offset % env.non_preferred_regs_by_class[class].len()
-        } else {
-            0
-        };
+impl Cursor {
+    #[inline]
+    fn new(registers: &PRegSet, class: RegClass, offset_hint: usize) -> Self {
+        let mut mask = PRegSet::empty();
+        mask.add_up_to(PReg::new(offset_hint % PReg::MAX, class));
+        let first = *registers & mask.invert();
+        let second = *registers & mask;
         Self {
-            env,
-            class,
-            hints,
-            hint_idx: 0,
-            pref_idx: 0,
-            non_pref_idx: 0,
-            offset_pref,
-            offset_non_pref,
+            first: first.into_iter(),
+            second: second.into_iter(),
+        }
+    }
+
+    fn next(&mut self) -> Option<PReg> {
+        self.first.next().or_else(|| self.second.next())
+    }
+}
+
+/// This iterator represents a traversal through all allocatable registers of a
+/// given class, in a certain order designed to minimize allocation contention.
+///
+/// The order in which we try registers is somewhat complex:
+/// - First, if the register is fixed (i.e., pre-assigned), return that and stop
+///   iteration.
+/// - Then, if there is a hint, try that one.
+/// - Next we try registers in a traversal order that is based on an "offset"
+///   (usually the bundle index) spreading pressure evenly among registers to
+///   reduce commitment-map contention.
+/// - Within that scan, we try registers in two groups: first, preferred
+///   registers; then, non-preferred registers. (In normal usage, these consist
+///   of caller-save and callee-save registers respectively, to minimize
+///   clobber-saves; but they need not.)
+pub struct RegTraversalIter {
+    is_fixed: bool,
+    fixed: Option<PReg>,
+    use_hint: bool,
+    hint: Option<PReg>,
+    preferred: Cursor,
+    non_preferred: Cursor,
+    limit: Option<usize>,
+}
+
+impl RegTraversalIter {
+    pub fn new(
+        env: &MachineEnv,
+        class: RegClass,
+        fixed: Option<PReg>,
+        hint: Option<PReg>,
+        offset: usize,
+        limit: Option<usize>,
+    ) -> Self {
+        debug_assert!(fixed != Some(PReg::invalid()));
+        debug_assert!(hint != Some(PReg::invalid()));
+
+        let class_index = class as u8 as usize;
+        let preferred = Cursor::new(&env.preferred_regs_by_class[class_index], class, offset);
+        let non_preferred =
+            Cursor::new(&env.non_preferred_regs_by_class[class_index], class, offset);
+
+        Self {
             is_fixed: fixed.is_some(),
             fixed,
+            use_hint: hint.is_some(),
+            hint,
+            preferred,
+            non_preferred,
+            limit,
         }
     }
 }
 
-impl<'a> core::iter::Iterator for RegTraversalIter<'a> {
+impl core::iter::Iterator for RegTraversalIter {
     type Item = PReg;
 
     fn next(&mut self) -> Option<PReg> {
         if self.is_fixed {
-            let ret = self.fixed;
-            self.fixed = None;
-            return ret;
+            return self.fixed.take();
         }
 
-        fn wrap(idx: usize, limit: usize) -> usize {
-            if idx >= limit {
-                idx - limit
-            } else {
-                idx
+        if self.use_hint {
+            self.use_hint = false;
+            if self.hint.unwrap().hw_enc() < self.limit.unwrap_or(usize::MAX) {
+                return self.hint;
             }
         }
-        if self.hint_idx < 2 && self.hints[self.hint_idx].is_some() {
-            let h = self.hints[self.hint_idx];
-            self.hint_idx += 1;
-            return h;
-        }
-        while self.pref_idx < self.env.preferred_regs_by_class[self.class].len() {
-            let arr = &self.env.preferred_regs_by_class[self.class][..];
-            let r = arr[wrap(self.pref_idx + self.offset_pref, arr.len())];
-            self.pref_idx += 1;
-            if Some(r) == self.hints[0] || Some(r) == self.hints[1] {
-                continue;
+
+        while let Some(reg) = self.preferred.next() {
+            if Some(reg) == self.hint || reg.hw_enc() >= self.limit.unwrap_or(usize::MAX) {
+                continue; // Try again; we already tried the hint or we are outside of the register range limit.
             }
-            return Some(r);
+            return Some(reg);
         }
-        while self.non_pref_idx < self.env.non_preferred_regs_by_class[self.class].len() {
-            let arr = &self.env.non_preferred_regs_by_class[self.class][..];
-            let r = arr[wrap(self.non_pref_idx + self.offset_non_pref, arr.len())];
-            self.non_pref_idx += 1;
-            if Some(r) == self.hints[0] || Some(r) == self.hints[1] {
-                continue;
+
+        while let Some(reg) = self.non_preferred.next() {
+            if Some(reg) == self.hint || reg.hw_enc() >= self.limit.unwrap_or(usize::MAX) {
+                continue; // Try again; we already tried the hint or we are outside of the register range limit.
             }
-            return Some(r);
+            return Some(reg);
         }
+
         None
     }
 }

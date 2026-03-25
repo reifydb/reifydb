@@ -111,9 +111,10 @@
       (from_bits u8)
       (to_bits u8))
 
+    ;; A machine direct-call instruction.
     (Call (info BoxCallInfo))
 
-      ;; A machine indirect-call instruction.
+    ;; A machine indirect-call instruction.
     (CallInd (info BoxCallIndInfo))
 
     ;; A direct return-call macro instruction.
@@ -139,7 +140,14 @@
       (kind IntegerCompare))
 
     ;; Load an inline symbol reference.
-    (LoadExtName
+    (LoadExtNameGot
+      (rd WritableReg)
+      (name BoxExternalName))
+    (LoadExtNameNear
+      (rd WritableReg)
+      (name BoxExternalName)
+      (offset i64))
+    (LoadExtNameFar
       (rd WritableReg)
       (name BoxExternalName)
       (offset i64))
@@ -247,6 +255,10 @@
        (DummyUse
         (reg Reg))
 
+    ;; A pseudoinstruction that loads the address of a label.
+    (LabelAddress (dst WritableReg)
+                  (label MachLabel))
+
     ;; popcnt  if target doesn't support extension B
     ;; use iteration to implement.
     (Popcnt
@@ -349,6 +361,9 @@
     (EmitIsland
      ;; The needed space before the next deadline.
      (needed_space u32))
+
+    ;; A pseudoinstruction that serves as a sequence point.
+    (SequencePoint)
 ))
 
 (type AtomicOP (enum
@@ -987,12 +1002,6 @@
 (decl temp_writable_vreg () WritableVReg)
 (rule (temp_writable_vreg) (temp_writable_reg $I8X16))
 
-
-;; Converters
-
-(convert u8 i32 u8_as_i32)
-(decl u8_as_i32 (u8) i32)
-(extern constructor u8_as_i32 u8_as_i32)
 
 ;; ISA Extension helpers
 
@@ -1864,7 +1873,10 @@
 ;; Immediate Loading rules
 ;; TODO: Loading the zero reg directly causes a bunch of regalloc errors, we should look into it.
 ;; TODO: Load floats using `fld` instead of `ld`
-(decl imm (Type u64) Reg)
+;;
+;; Recursion: bounded since either float cases are reduced to integers, or the
+;; shift case reduces to a smaller constant.
+(decl rec imm (Type u64) Reg)
 
 ;; Special-case 0.0 for floats to use the `(zero_reg)` directly.
 ;; See #7162 for why this doesn't fall out of the rules below.
@@ -1922,7 +1934,7 @@
 (rule 0 (imm (ty_int ty) c)
   (if-let (i64_shift c_shifted shift) (i64_sextend_u64 ty c))  ;; constant to make
   (if-let (i64_generate_imm _ _) c_shifted)                    ;; can the smaller constant be made?
-  (rv_slli (imm ty (i64_as_u64 c_shifted)) shift))
+  (rv_slli (imm ty (i64_cast_unsigned c_shifted)) shift))
 
 ;; Otherwise we fall back to loading the immediate from the constant pool.
 (rule -1 (imm (ty_int ty) c)
@@ -1972,7 +1984,7 @@
 (decl pure partial imm12_from_negated_value (Value) Imm12)
 (rule
   (imm12_from_negated_value (has_type ty (iconst n)))
-  (if-let (imm12_from_u64 imm) (i64_as_u64 (i64_neg (i64_sextend_imm64 ty n))))
+  (if-let (imm12_from_u64 imm) (i64_cast_unsigned (i64_wrapping_neg (i64_sextend_imm64 ty n))))
   imm)
 
 (decl imm12_from_u64 (Imm12) u64)
@@ -2019,7 +2031,7 @@
 ;; Like imm5_from_value, but first negates the `Value`.
 (decl pure partial imm5_from_negated_value (Value) Imm5)
 (rule (imm5_from_negated_value (has_type ty (iconst n)))
-  (if-let (imm5_from_i64 imm) (i64_neg (i64_sextend_imm64 ty n)))
+  (if-let (imm5_from_i64 imm) (i64_wrapping_neg (i64_sextend_imm64 ty n)))
   imm)
 
 ;; Constructor that matches a `Value` equivalent to a replicated Imm5 on all lanes.
@@ -2030,7 +2042,7 @@
   (if-let (u64_replicated_u32 n32) n64)
   (if-let (u32_replicated_u16 n16) n32)
   (if-let (u16_replicated_u8 n8) n16)
-  (if-let n (i8_to_imm5 (u8_as_i8 n8)))
+  (if-let n (i8_to_imm5 (u8_cast_signed n8)))
   n)
 
 ;; Like replicated_imm5, but first negates the `Value`.
@@ -2043,7 +2055,7 @@
   (if-let (u64_replicated_u32 n32) n64)
   (if-let (u32_replicated_u16 n16) n32)
   (if-let (u16_replicated_u8 n8) n16)
-  (if-let n (i8_to_imm5 (i8_neg (u8_as_i8 n8))))
+  (if-let n (i8_to_imm5 (i8_wrapping_neg (u8_cast_signed n8))))
   n)
 
 ;; UImm5 Helpers
@@ -2223,7 +2235,7 @@
 
 ;; In the most generic case, we shift left and then shift right.
 (rule 0 (zext val @ (value_type (fits_in_32 ty)))
-  (let ((shift Imm12 (imm_from_bits (u64_sub 64 (ty_bits ty)))))
+  (let ((shift Imm12 (imm_from_bits (u64_wrapping_sub 64 (ty_bits ty)))))
     (rv_srli (rv_slli val shift) shift)))
 
 ;; If we are zero extending a U8 we can use a `andi` instruction.
@@ -2264,7 +2276,7 @@
 
 ;; Same base case as `zext`, shift left-then-right.
 (rule 0 (sext val @ (value_type (fits_in_32 ty)))
-  (let ((shift Imm12 (imm_from_bits (u64_sub 64 (ty_bits ty)))))
+  (let ((shift Imm12 (imm_from_bits (u64_wrapping_sub 64 (ty_bits ty)))))
     (rv_srai (rv_slli val shift) shift)))
 
 ;; If we have the `zbb` extension we can use the dedicated `sext.b` instruction.
@@ -2352,18 +2364,18 @@
 (decl gen_bseti (Reg u64) Reg)
 (rule (gen_bseti val bit)
   (if-let false (has_zbs))
-  (if-let false (u64_le bit 12))
-  (let ((const XReg (imm $I64 (u64_shl 1 bit))))
+  (if-let false (u64_lt_eq bit 12))
+  (let ((const XReg (imm $I64 (u64_wrapping_shl 1 (u64_unwrap_into_u32 bit)))))
     (rv_or val const)))
 
 (rule (gen_bseti val bit)
   (if-let false (has_zbs))
-  (if-let true (u64_le bit 12))
-  (rv_ori val (imm12_const (u64_as_i32 (u64_shl 1 bit)))))
+  (if-let true (u64_lt_eq bit 12))
+  (rv_ori val (imm12_const (u32_cast_signed (u32_wrapping_shl 1 (u64_unwrap_into_u32 bit))))))
 
 (rule (gen_bseti val bit)
   (if-let true (has_zbs))
-  (rv_bseti val (imm12_const (u64_as_i32 bit))))
+  (rv_bseti val (imm12_const (u32_cast_signed (u64_unwrap_into_u32 bit)))))
 
 
 (decl gen_popcnt (XReg) Reg)
@@ -2407,10 +2419,10 @@
 ;; We can't recurse into `amode` again since that could cause stack overflows.
 ;; See: https://github.com/bytecodealliance/wasmtime/pull/6968
 (rule 1 (amode (iadd addr (i32_from_iconst y)) offset)
-  (if-let new_offset (s32_add_fallible y offset))
+  (if-let new_offset (i32_checked_add y offset))
   (amode_inner addr new_offset))
 (rule 2 (amode (iadd (i32_from_iconst x) addr) offset)
-  (if-let new_offset (s32_add_fallible x offset))
+  (if-let new_offset (i32_checked_add x offset))
   (amode_inner addr new_offset))
 
 
@@ -2431,7 +2443,7 @@
 
 ;; Similarly if the value is a `stack_addr` we can also turn that into an sp offset.
 (rule 1 (amode_inner (stack_addr ss ss_offset) amode_offset)
-  (if-let combined_offset (s32_add_fallible ss_offset amode_offset))
+  (if-let combined_offset (i32_checked_add ss_offset amode_offset))
   (gen_stack_slot_amode ss combined_offset))
 
 
@@ -2450,7 +2462,7 @@
 (decl sinkable_load (Inst Type MemFlags Value Offset32) Value)
 (extractor (sinkable_load inst ty flags addr offset)
            (and
-              (load flags addr offset)
+              (load (little_or_native_endian flags) addr offset)
               (sinkable_inst (has_type ty inst))))
 
 ;; Returns a canonical type for a LoadOP. We only return I64 or F64.
@@ -2461,7 +2473,10 @@
 (rule 0 (load_op_reg_type _) $I64)
 
 ;; Helper constructor to build a load instruction.
-(decl gen_load (AMode LoadOP MemFlags) Reg)
+;;
+;; Recursion: recursive rule can only match once, since it matches on
+;; `LoadOP.Flh` and emits `LoadOP.Lh`.
+(decl rec gen_load (AMode LoadOP MemFlags) Reg)
 (rule (gen_load amode op flags)
   (let ((dst WritableReg (temp_writable_reg (load_op_reg_type op)))
       (_ Unit (emit (MInst.Load dst op flags amode))))
@@ -2652,7 +2667,9 @@
 (decl gen_stack_addr (StackSlot Offset32) Reg)
 (extern constructor gen_stack_addr gen_stack_addr)
 
-(decl gen_select_xreg (IntegerCompare XReg XReg) XReg)
+; Recursion: bounded by only matching when one of the inputs is a zero register,
+; but not both.
+(decl rec gen_select_xreg (IntegerCompare XReg XReg) XReg)
 
 (rule 6 (gen_select_xreg (int_compare_decompose cc x y) x y)
   (if-let (IntCC.UnsignedLessThan) (intcc_without_eq cc))
@@ -2756,8 +2773,43 @@
 
 
 ;;;; load extern name
-(decl load_ext_name (ExternalName i64) Reg)
-(extern constructor load_ext_name load_ext_name)
+(decl load_ext_name (ExternalName i64 RelocDistance) Reg)
+(rule (load_ext_name name offset _dist)
+  (if-let true (is_pic))
+  (rv_add (load_ext_name_got name) (imm $I64 (i64_cast_unsigned offset))))
+(rule 1 (load_ext_name name 0 _dist)
+  (if-let true (is_pic))
+  (load_ext_name_got name))
+(rule (load_ext_name name offset (RelocDistance.Near))
+  (if-let false (is_pic))
+  (load_ext_name_near name offset))
+(rule (load_ext_name name offset (RelocDistance.Far))
+  (if-let false (is_pic))
+  (load_ext_name_far name offset))
+
+(decl pure is_pic () bool)
+(extern constructor is_pic is_pic)
+
+;; Helper for emitting `MInst.LoadExtNameGot` instructions.
+(decl load_ext_name_got (BoxExternalName) Reg)
+(rule (load_ext_name_got extname)
+      (let ((dst WritableReg (temp_writable_reg $I64))
+            (_ Unit (emit (MInst.LoadExtNameGot dst extname))))
+        dst))
+
+;; Helper for emitting `MInst.LoadExtNameNear` instructions.
+(decl load_ext_name_near (BoxExternalName i64) Reg)
+(rule (load_ext_name_near extname offset)
+      (let ((dst WritableReg (temp_writable_reg $I64))
+            (_ Unit (emit (MInst.LoadExtNameNear dst extname offset))))
+        dst))
+
+;; Helper for emitting `MInst.LoadExtNameFar` instructions.
+(decl load_ext_name_far (BoxExternalName i64) Reg)
+(rule (load_ext_name_far extname offset)
+      (let ((dst WritableReg (temp_writable_reg $I64))
+            (_ Unit (emit (MInst.LoadExtNameFar dst extname offset))))
+        dst))
 
 (decl elf_tls_get_addr (ExternalName) Reg)
 (rule (elf_tls_get_addr name)
@@ -2778,9 +2830,9 @@
     (move_x_to_f tmp ty)))
 
 
-(decl i128_sub (ValueRegs ValueRegs) ValueRegs)
+(decl sub_i128 (ValueRegs ValueRegs) ValueRegs)
 (rule
-  (i128_sub x y )
+  (sub_i128 x y )
   (let (
       ;; low part.
       (low XReg (rv_sub (value_regs_get x 0) (value_regs_get y 0)))
@@ -2944,20 +2996,16 @@
 (rule (lower_branch (br_table index _) targets)
   (lower_br_table index targets))
 
-(rule (lower_branch (try_call (func_ref_data sig_ref extname dist) inputs et) targets)
-      (gen_try_call sig_ref extname dist et inputs targets))
-
-(rule (lower_branch (try_call_indirect val inputs et) targets)
-      (if-let (exception_sig sig_ref) et)
-      (gen_try_call_indirect sig_ref val et inputs targets))
-
 (decl load_ra () Reg)
 (extern constructor load_ra load_ra)
 
 
 ;; Generates a bitcast instruction.
 ;; Args are: src, src_ty, dst_ty
-(decl gen_bitcast (Reg Type Type) Reg)
+;;
+;; Recursion: only recursive rule matches on vec-to-float, and emits vec-to-int
+;; and int-to-float bitcasts, so this can only recurse once.
+(decl rec gen_bitcast (Reg Type Type) Reg)
 
 (rule 9 (gen_bitcast r (ty_supported_float_size $F16) (ty_supported_vec _)) (if-let false (has_zvfh)) (rv_vfmv_sf r (vstate_from_type $F32)))
 (rule 8 (gen_bitcast r (ty_supported_vec ty) (ty_supported_float_size $F16)) (if-let false (has_zvfh)) (gen_bitcast (gen_bitcast r ty $I16) $I16 $F16))
@@ -3018,7 +3066,7 @@
     (rv_neg (value_regs_get val 0))))
 
 (rule 2 (neg $I128 val)
-  (i128_sub (value_regs_zero) val))
+  (sub_i128 (value_regs_zero) val))
 
 
 ;; Builds an instruction sequence that traps if the comparison succeeds.
@@ -3056,17 +3104,38 @@
 
 ;;;; Helpers for Emitting Calls ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(decl gen_call (SigRef ExternalName RelocDistance ValueSlice) InstOutput)
-(extern constructor gen_call gen_call)
+(decl gen_call_info (Sig ExternalName CallArgList CallRetList OptionTryCallInfo bool) BoxCallInfo)
+(extern constructor gen_call_info gen_call_info)
 
-(decl gen_call_indirect (SigRef Value ValueSlice) InstOutput)
-(extern constructor gen_call_indirect gen_call_indirect)
+(decl gen_call_ind_info (Sig Reg CallArgList CallRetList OptionTryCallInfo) BoxCallIndInfo)
+(extern constructor gen_call_ind_info gen_call_ind_info)
 
-(decl gen_try_call (SigRef ExternalName RelocDistance ExceptionTable ValueSlice MachLabelSlice) Unit)
-(extern constructor gen_try_call gen_try_call)
+(decl gen_return_call_info (Sig ExternalName CallArgList) BoxReturnCallInfo)
+(extern constructor gen_return_call_info gen_return_call_info)
 
-(decl gen_try_call_indirect (SigRef Value ExceptionTable ValueSlice MachLabelSlice) Unit)
-(extern constructor gen_try_call_indirect gen_try_call_indirect)
+(decl gen_return_call_ind_info (Sig Reg CallArgList) BoxReturnCallIndInfo)
+(extern constructor gen_return_call_ind_info gen_return_call_ind_info)
+
+;; Helper for creating `MInst.Call` instructions.
+(decl call_impl (BoxCallInfo) SideEffectNoResult)
+(rule (call_impl info)
+      (SideEffectNoResult.Inst (MInst.Call info)))
+
+;; Helper for creating `MInst.CallInd` instructions.
+(decl call_ind_impl (BoxCallIndInfo) SideEffectNoResult)
+(rule (call_ind_impl info)
+      (SideEffectNoResult.Inst (MInst.CallInd info)))
+
+;; Helper for creating `MInst.ReturnCall` instructions.
+(decl return_call_impl (BoxReturnCallInfo) SideEffectNoResult)
+(rule (return_call_impl info)
+      (SideEffectNoResult.Inst (MInst.ReturnCall info)))
+
+;; Helper for creating `MInst.ReturnCallInd` instructions.
+(decl return_call_ind_impl (BoxReturnCallIndInfo) SideEffectNoResult)
+(rule (return_call_ind_impl info)
+      (SideEffectNoResult.Inst (MInst.ReturnCallInd info)))
+
 
 ;;; this is trying to imitate aarch64 `madd` instruction.
 (decl madd (XReg XReg XReg) XReg)
@@ -3156,7 +3225,9 @@
 (convert FloatCompare IntegerCompare float_to_int_compare)
 
 ;; Compare two floating point numbers and return a zero/non-zero result.
-(decl fcmp_to_float_compare (FloatCC Type FReg FReg) FloatCompare)
+;;
+;; Recursion: at most once to convert unordered comparisons into ordered comparisons.
+(decl rec fcmp_to_float_compare (FloatCC Type FReg FReg) FloatCompare)
 
 ;; Direct codegen for unordered comparisons is not that efficient, so invert
 ;; the comparison to get an ordered comparison and generate that. Then invert
@@ -3200,3 +3271,16 @@
 ;; a >= b
 (rule 1 (fcmp_to_float_compare (FloatCC.GreaterThanOrEqual) ty a b)
   (FloatCompare.One (rv_fge ty a b)))
+
+
+;; Helper for creating an `LabelAddress` instruction.
+(decl rv64_label_address (MachLabel) Reg)
+(rule (rv64_label_address label)
+      (let ((dst WritableReg (temp_writable_reg $I64))
+            (_ Unit (emit (MInst.LabelAddress dst label))))
+        dst))
+
+;; Helper for creating a `SequencePoint` instruction.
+(decl rv64_sequence_point () SideEffectNoResult)
+(rule (rv64_sequence_point)
+      (SideEffectNoResult.Inst (MInst.SequencePoint)))

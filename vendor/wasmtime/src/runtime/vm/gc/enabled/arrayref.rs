@@ -1,10 +1,10 @@
-use super::{truncate_i32_to_i16, truncate_i32_to_i8};
+use super::{truncate_i32_to_i8, truncate_i32_to_i16};
 use crate::{
+    AnyRef, ExnRef, ExternRef, Func, HeapType, RootedGcRefImpl, StorageType, Val, ValType,
     prelude::*,
     runtime::vm::{GcHeap, GcStore, VMGcRef},
     store::{AutoAssertNoGc, StoreOpaque},
     vm::{FuncRefTableId, SendSyncPtr},
-    AnyRef, ExternRef, Func, HeapType, RootedGcRefImpl, StorageType, Val, ValType,
 };
 use core::fmt;
 use wasmtime_environ::{GcArrayLayout, VMGcKind};
@@ -164,6 +164,10 @@ impl VMArrayRef {
                     let raw = data.read_u32(offset);
                     Val::AnyRef(AnyRef::_from_raw(store, raw))
                 }
+                HeapType::Exn => {
+                    let raw = data.read_u32(offset);
+                    Val::ExnRef(ExnRef::_from_raw(store, raw))
+                }
                 HeapType::Func => {
                     let func_ref_id = data.read_u32(offset);
                     let func_ref_id = FuncRefTableId::from_raw(func_ref_id);
@@ -172,7 +176,7 @@ impl VMArrayRef {
                         .func_ref_table
                         .get_untyped(func_ref_id);
                     Val::FuncRef(unsafe {
-                        func_ref.map(|p| Func::from_vm_func_ref(store, p.as_non_null()))
+                        func_ref.map(|p| Func::from_vm_func_ref(store.id(), p.as_non_null()))
                     })
                 }
                 otherwise => unreachable!("not a top type: {otherwise:?}"),
@@ -231,8 +235,9 @@ impl VMArrayRef {
                     Some(e) => Some(e.try_gc_ref(store)?.unchecked_copy()),
                     None => None,
                 };
-                store.gc_store_mut()?.write_gc_ref(&mut gc_ref, e.as_ref());
-                let data = store.gc_store_mut()?.gc_object_data(self.as_gc_ref());
+                let store = store.require_gc_store_mut()?;
+                store.write_gc_ref(&mut gc_ref, e.as_ref());
+                let data = store.gc_object_data(self.as_gc_ref());
                 data.write_u32(offset, gc_ref.map_or(0, |r| r.as_raw_u32()));
             }
             Val::AnyRef(a) => {
@@ -242,8 +247,21 @@ impl VMArrayRef {
                     Some(a) => Some(a.try_gc_ref(store)?.unchecked_copy()),
                     None => None,
                 };
-                store.gc_store_mut()?.write_gc_ref(&mut gc_ref, a.as_ref());
-                let data = store.gc_store_mut()?.gc_object_data(self.as_gc_ref());
+                let store = store.require_gc_store_mut()?;
+                store.write_gc_ref(&mut gc_ref, a.as_ref());
+                let data = store.gc_object_data(self.as_gc_ref());
+                data.write_u32(offset, gc_ref.map_or(0, |r| r.as_raw_u32()));
+            }
+            Val::ExnRef(e) => {
+                let raw = data.read_u32(offset);
+                let mut gc_ref = VMGcRef::from_raw_u32(raw);
+                let e = match e {
+                    Some(e) => Some(e.try_gc_ref(store)?.unchecked_copy()),
+                    None => None,
+                };
+                let store = store.require_gc_store_mut()?;
+                store.write_gc_ref(&mut gc_ref, e.as_ref());
+                let data = store.gc_object_data(self.as_gc_ref());
                 data.write_u32(offset, gc_ref.map_or(0, |r| r.as_raw_u32()));
             }
 
@@ -252,11 +270,17 @@ impl VMArrayRef {
                     Some(f) => Some(SendSyncPtr::new(f.vm_func_ref(store))),
                     None => None,
                 };
-                let id = unsafe { store.gc_store_mut()?.func_ref_table.intern(func_ref) };
+                let store = store.require_gc_store_mut()?;
+                let id = unsafe { store.func_ref_table.intern(func_ref) };
                 store
-                    .gc_store_mut()?
                     .gc_object_data(self.as_gc_ref())
                     .write_u32(offset, id.into_raw());
+            }
+            Val::ContRef(_) => {
+                // TODO(#10248): Implement array continuation reference element handling
+                return Err(crate::format_err!(
+                    "setting continuation references in array elements not yet supported"
+                ));
             }
         }
         Ok(())
@@ -296,33 +320,27 @@ impl VMArrayRef {
     ) -> Result<()> {
         debug_assert!(val._matches_ty(&store, &ty.unpack())?);
         let offset = layout.elem_offset(index);
+        let gcstore = store.require_gc_store_mut()?;
         match val {
-            Val::I32(i) if ty.is_i8() => store
-                .gc_store_mut()?
+            Val::I32(i) if ty.is_i8() => gcstore
                 .gc_object_data(self.as_gc_ref())
                 .write_i8(offset, truncate_i32_to_i8(i)),
-            Val::I32(i) if ty.is_i16() => store
-                .gc_store_mut()?
+            Val::I32(i) if ty.is_i16() => gcstore
                 .gc_object_data(self.as_gc_ref())
                 .write_i16(offset, truncate_i32_to_i16(i)),
-            Val::I32(i) => store
-                .gc_store_mut()?
+            Val::I32(i) => gcstore
                 .gc_object_data(self.as_gc_ref())
                 .write_i32(offset, i),
-            Val::I64(i) => store
-                .gc_store_mut()?
+            Val::I64(i) => gcstore
                 .gc_object_data(self.as_gc_ref())
                 .write_i64(offset, i),
-            Val::F32(f) => store
-                .gc_store_mut()?
+            Val::F32(f) => gcstore
                 .gc_object_data(self.as_gc_ref())
                 .write_u32(offset, f),
-            Val::F64(f) => store
-                .gc_store_mut()?
+            Val::F64(f) => gcstore
                 .gc_object_data(self.as_gc_ref())
                 .write_u64(offset, f),
-            Val::V128(v) => store
-                .gc_store_mut()?
+            Val::V128(v) => gcstore
                 .gc_object_data(self.as_gc_ref())
                 .write_v128(offset, v),
 
@@ -335,7 +353,7 @@ impl VMArrayRef {
                     Some(x) => x.try_clone_gc_ref(store)?.as_raw_u32(),
                 };
                 store
-                    .gc_store_mut()?
+                    .require_gc_store_mut()?
                     .gc_object_data(self.as_gc_ref())
                     .write_u32(offset, x);
             }
@@ -345,7 +363,17 @@ impl VMArrayRef {
                     Some(x) => x.try_clone_gc_ref(store)?.as_raw_u32(),
                 };
                 store
-                    .gc_store_mut()?
+                    .require_gc_store_mut()?
+                    .gc_object_data(self.as_gc_ref())
+                    .write_u32(offset, x);
+            }
+            Val::ExnRef(x) => {
+                let x = match x {
+                    None => 0,
+                    Some(x) => x.try_clone_gc_ref(store)?.as_raw_u32(),
+                };
+                store
+                    .require_gc_store_mut()?
                     .gc_object_data(self.as_gc_ref())
                     .write_u32(offset, x);
             }
@@ -355,11 +383,17 @@ impl VMArrayRef {
                     Some(f) => Some(SendSyncPtr::new(f.vm_func_ref(store))),
                     None => None,
                 };
-                let id = unsafe { store.gc_store_mut()?.func_ref_table.intern(func_ref) };
-                store
-                    .gc_store_mut()?
+                let gcstore = store.require_gc_store_mut()?;
+                let id = unsafe { gcstore.func_ref_table.intern(func_ref) };
+                gcstore
                     .gc_object_data(self.as_gc_ref())
                     .write_u32(offset, id.into_raw());
+            }
+            Val::ContRef(_) => {
+                // TODO(#10248): Implement array continuation reference init handling
+                return Err(crate::format_err!(
+                    "initializing continuation references in array elements not yet supported"
+                ));
             }
         }
         Ok(())

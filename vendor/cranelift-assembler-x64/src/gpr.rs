@@ -1,13 +1,13 @@
 //! Pure register operands; see [`Gpr`].
 
-use crate::rex::RexFlags;
 use crate::AsReg;
+use alloc::string::String;
 
 /// A general purpose x64 register (e.g., `%rax`).
 ///
 /// This container wraps true register type `R` to allow users to specify their
 /// own; by default this will use `u8`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Gpr<R: AsReg = u8>(pub(crate) R);
 
 impl<R: AsReg> Gpr<R> {
@@ -33,12 +33,6 @@ impl<R: AsReg> Gpr<R> {
     pub fn to_string(&self, size: Size) -> String {
         self.0.to_string(Some(size))
     }
-
-    /// Proxy on the 8-bit REX flag emission; helpful for simplifying generated
-    /// code.
-    pub(crate) fn always_emit_if_8bit_needed(&self, rex: &mut RexFlags) {
-        rex.always_emit_if_8bit_needed(self.enc());
-    }
 }
 
 impl<R: AsReg> AsRef<R> for Gpr<R> {
@@ -50,6 +44,12 @@ impl<R: AsReg> AsRef<R> for Gpr<R> {
 impl<R: AsReg> AsMut<R> for Gpr<R> {
     fn as_mut(&mut self) -> &mut R {
         &mut self.0
+    }
+}
+
+impl<R: AsReg> From<R> for Gpr<R> {
+    fn from(reg: R) -> Gpr<R> {
+        Gpr(reg)
     }
 }
 
@@ -70,7 +70,7 @@ pub enum Size {
 ///
 /// This is due to avoid special cases of REX encodings, see Intel SDM Vol. 2A,
 /// table 2-5.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NonRspGpr<R: AsReg>(R);
 
 impl<R: AsReg> NonRspGpr<R> {
@@ -97,9 +97,21 @@ impl<R: AsReg> NonRspGpr<R> {
     }
 }
 
+impl<R: AsReg> AsRef<R> for NonRspGpr<R> {
+    fn as_ref(&self) -> &R {
+        &self.0
+    }
+}
+
 impl<R: AsReg> AsMut<R> for NonRspGpr<R> {
     fn as_mut(&mut self) -> &mut R {
         &mut self.0
+    }
+}
+
+impl<R: AsReg> From<R> for NonRspGpr<R> {
+    fn from(reg: R) -> NonRspGpr<R> {
+        NonRspGpr(reg)
     }
 }
 

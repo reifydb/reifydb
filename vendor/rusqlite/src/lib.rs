@@ -52,11 +52,15 @@
 //! }
 //! ```
 #![warn(missing_docs)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub use fallible_iterator;
 pub use fallible_streaming_iterator;
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub use libsqlite3_sys as ffi;
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+pub use sqlite_wasm_rs as ffi;
 
 use std::cell::RefCell;
 use std::default::Default;
@@ -68,12 +72,14 @@ use std::result;
 use std::str;
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "cache")]
 use crate::cache::StatementCache;
 use crate::inner_connection::InnerConnection;
 use crate::raw_statement::RawStatement;
 use crate::types::ValueRef;
 
 pub use crate::bind::BindIndex;
+#[cfg(feature = "cache")]
 pub use crate::cache::CachedStatement;
 #[cfg(feature = "column_decltype")]
 pub use crate::column::Column;
@@ -107,6 +113,7 @@ mod bind;
 #[cfg(feature = "blob")]
 pub mod blob;
 mod busy;
+#[cfg(feature = "cache")]
 mod cache;
 #[cfg(feature = "collation")]
 mod collation;
@@ -149,6 +156,7 @@ pub(crate) mod util;
 compile_error!("feature \"loadable_extension\" and feature \"load_extension\" cannot be enabled at the same time");
 
 // Number of cached prepared statements we'll hold on to.
+#[cfg(feature = "cache")]
 const STATEMENT_CACHE_DEFAULT_CAPACITY: usize = 16;
 
 /// A macro making it more convenient to pass longer lists of
@@ -297,31 +305,26 @@ fn str_to_cstring(s: &str) -> Result<util::SmallCString> {
     Ok(util::SmallCString::new(s)?)
 }
 
-/// Returns `Ok((string ptr, len as c_int, SQLITE_STATIC | SQLITE_TRANSIENT))`
+/// Returns `(string ptr, len as c_int, SQLITE_STATIC | SQLITE_TRANSIENT)`
 /// normally.
-/// Returns error if the string is too large for sqlite.
 /// The `sqlite3_destructor_type` item is always `SQLITE_TRANSIENT` unless
 /// the string was empty (in which case it's `SQLITE_STATIC`, and the ptr is
 /// static).
-fn str_for_sqlite(s: &[u8]) -> Result<(*const c_char, c_int, ffi::sqlite3_destructor_type)> {
-    let len = len_as_c_int(s.len())?;
+fn str_for_sqlite(
+    s: &[u8],
+) -> (
+    *const c_char,
+    ffi::sqlite3_uint64,
+    ffi::sqlite3_destructor_type,
+) {
+    let len = s.len();
     let (ptr, dtor_info) = if len != 0 {
         (s.as_ptr().cast::<c_char>(), ffi::SQLITE_TRANSIENT())
     } else {
         // Return a pointer guaranteed to live forever
         ("".as_ptr().cast::<c_char>(), ffi::SQLITE_STATIC())
     };
-    Ok((ptr, len, dtor_info))
-}
-
-// Helper to cast to c_int safely, returning the correct error type if the cast
-// failed.
-fn len_as_c_int(len: usize) -> Result<c_int> {
-    if len >= (c_int::MAX as usize) {
-        Err(err!(ffi::SQLITE_TOOBIG))
-    } else {
-        Ok(len as c_int)
-    }
+    (ptr, len as ffi::sqlite3_uint64, dtor_info)
 }
 
 #[cfg(unix)]
@@ -344,6 +347,7 @@ pub const TEMP_DB: &CStr = c"temp";
 /// A connection to a SQLite database.
 pub struct Connection {
     db: RefCell<InnerConnection>,
+    #[cfg(feature = "cache")]
     cache: StatementCache,
     transaction_behavior: TransactionBehavior,
 }
@@ -353,6 +357,7 @@ unsafe impl Send for Connection {}
 impl Drop for Connection {
     #[inline]
     fn drop(&mut self) {
+        #[cfg(feature = "cache")]
         self.flush_prepared_statement_cache();
     }
 }
@@ -410,6 +415,15 @@ impl Connection {
     ///
     /// Will return `Err` if `path` cannot be converted to a C-compatible string
     /// or if the underlying SQLite open call fails.
+    ///
+    /// # WASM support
+    ///
+    /// If you plan to use this connection type on the `wasm32-unknown-unknown` target please
+    /// make sure to read the following notes:
+    ///
+    /// - The database is stored in memory by default.
+    /// - Persistent VFS (Virtual File Systems) is optional,
+    ///   see <https://github.com/Spxg/sqlite-wasm-rs> for details
     #[inline]
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let flags = OpenFlags::default();
@@ -441,6 +455,7 @@ impl Connection {
         let c_path = path_to_cstring(path.as_ref())?;
         InnerConnection::open_with_flags(&c_path, flags, None).map(|db| Self {
             db: RefCell::new(db),
+            #[cfg(feature = "cache")]
             cache: StatementCache::with_capacity(STATEMENT_CACHE_DEFAULT_CAPACITY),
             transaction_behavior: TransactionBehavior::Deferred,
         })
@@ -466,6 +481,7 @@ impl Connection {
         let c_vfs = vfs.as_cstr()?;
         InnerConnection::open_with_flags(&c_path, flags, Some(&c_vfs)).map(|db| Self {
             db: RefCell::new(db),
+            #[cfg(feature = "cache")]
             cache: StatementCache::with_capacity(STATEMENT_CACHE_DEFAULT_CAPACITY),
             transaction_behavior: TransactionBehavior::Deferred,
         })
@@ -605,9 +621,7 @@ impl Connection {
     /// likely to be more robust.
     #[inline]
     pub fn path(&self) -> Option<&str> {
-        unsafe {
-            crate::inner_connection::db_filename(std::marker::PhantomData, self.handle(), MAIN_DB)
-        }
+        unsafe { inner_connection::db_filename(std::marker::PhantomData, self.handle(), MAIN_DB) }
     }
 
     /// Attempts to free as much heap memory as possible from the database
@@ -784,9 +798,10 @@ impl Connection {
     /// # Failure
     ///
     /// Will return `Err` if the underlying SQLite call fails.
-    #[allow(clippy::result_large_err)]
+    #[expect(clippy::result_large_err)]
     #[inline]
     pub fn close(self) -> Result<(), (Self, Error)> {
+        #[cfg(feature = "cache")]
         self.flush_prepared_statement_cache();
         let r = self.db.borrow_mut().close();
         r.map_err(move |err| (self, err))
@@ -942,6 +957,7 @@ impl Connection {
         let db = InnerConnection::new(db, false);
         Ok(Self {
             db: RefCell::new(db),
+            #[cfg(feature = "cache")]
             cache: StatementCache::with_capacity(STATEMENT_CACHE_DEFAULT_CAPACITY),
             transaction_behavior: TransactionBehavior::Deferred,
         })
@@ -990,6 +1006,7 @@ impl Connection {
         let db = InnerConnection::new(db, true);
         Ok(Self {
             db: RefCell::new(db),
+            #[cfg(feature = "cache")]
             cache: StatementCache::with_capacity(STATEMENT_CACHE_DEFAULT_CAPACITY),
             transaction_behavior: TransactionBehavior::Deferred,
         })
@@ -1087,7 +1104,7 @@ impl fmt::Debug for Connection {
 ///
 /// # Warning
 ///
-/// There is no recovery on parsing error, when a invalid statement is found in `sql`, SQLite cannot jump to the next statement.
+/// There is no recovery on parsing error, when an invalid statement is found in `sql`, SQLite cannot jump to the next statement.
 /// So you should break the loop when an error is raised by the `next` method.
 ///
 /// ```rust
@@ -1121,8 +1138,8 @@ impl<'conn, 'sql> Batch<'conn, 'sql> {
     }
 }
 impl<'conn> fallible_iterator::FallibleIterator for Batch<'conn, '_> {
-    type Error = Error;
     type Item = Statement<'conn>;
+    type Error = Error;
 
     /// Iterates on each batch statements.
     ///
@@ -1235,7 +1252,7 @@ impl Default for OpenFlags {
 
 bitflags::bitflags! {
     /// Prepare flags. See
-    /// [sqlite3_prepare_v3](https://sqlite.org/c3ref/c_prepare_normalize.html) for details.
+    /// [sqlite3_prepare_v3](https://sqlite.org/c3ref/c_prepare_dont_log.html) for details.
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
     #[repr(C)]
     pub struct PrepFlags: c_uint {
@@ -1272,6 +1289,9 @@ doc_comment::doctest!("../README.md");
 
 #[cfg(test)]
 mod test {
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
+
     use super::*;
     use fallible_iterator::FallibleIterator;
     use std::error::Error as StdError;
@@ -1297,6 +1317,10 @@ mod test {
         Connection::open_in_memory().unwrap()
     }
 
+    #[cfg_attr(
+        all(target_family = "wasm", target_os = "unknown"),
+        ignore = "no filesystem on this platform"
+    )]
     #[test]
     fn test_concurrent_transactions_busy_commit() -> Result<()> {
         use std::time::Duration;
@@ -1339,6 +1363,10 @@ mod test {
         Ok(())
     }
 
+    #[cfg_attr(
+        all(target_family = "wasm", target_os = "unknown"),
+        ignore = "no filesystem on this platform"
+    )]
     #[test]
     fn test_persistence() -> Result<()> {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -1368,6 +1396,10 @@ mod test {
         db.close().unwrap();
     }
 
+    #[cfg_attr(
+        all(target_family = "wasm", target_os = "unknown"),
+        ignore = "no filesystem on this platform"
+    )]
     #[test]
     fn test_path() -> Result<()> {
         let tmp = tempfile::tempdir().unwrap();
@@ -1935,6 +1967,8 @@ mod test {
     }
 
     mod query_and_then_tests {
+        #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+        use wasm_bindgen_test::wasm_bindgen_test as test;
 
         use super::*;
 

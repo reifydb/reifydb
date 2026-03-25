@@ -39,6 +39,8 @@ impl WasmValue for crate::Val {
             Self::FuncRef(_) => WasmTypeKind::Unsupported,
             Self::ExternRef(_) => WasmTypeKind::Unsupported,
             Self::AnyRef(_) => WasmTypeKind::Unsupported,
+            Self::ExnRef(_) => WasmTypeKind::Unsupported,
+            Self::ContRef(_) => WasmTypeKind::Unsupported,
         }
     }
 
@@ -65,14 +67,19 @@ impl WasmValue for crate::Val {
             _ => {
                 return Err(WasmValueError::Other(
                     "tuples only used for v128 (v64x2)".to_string(),
-                ))
+                ));
             }
         }
-        let [l_val, h_val]: [Self; 2] = vals
-            .into_iter()
-            .collect::<Vec<_>>()
-            .try_into()
-            .map_err(|_| WasmValueError::Other("expected 2 values".to_string()))?;
+        let mut iter = vals.into_iter();
+        let Some(l_val) = iter.next() else {
+            return Err(WasmValueError::Other("expected 2 values".to_string()));
+        };
+        let Some(h_val) = iter.next() else {
+            return Err(WasmValueError::Other("expected 2 values".to_string()));
+        };
+        if iter.next().is_some() {
+            return Err(WasmValueError::Other("expected 2 values".to_string()));
+        }
 
         let (Some(l), Some(h)) = (l_val.i64(), h_val.i64()) else {
             return Err(WasmValueError::Other("expected 2 i64s (v64x2)".to_string()));
@@ -97,8 +104,8 @@ impl WasmValue for crate::Val {
         let val = f64::from_bits(*unwrap_val!(self, Self::F64, "f64"));
         canonicalize_nan64(val)
     }
-    #[allow(clippy::cast_possible_truncation)]
-    fn unwrap_tuple(&self) -> Box<dyn Iterator<Item = Cow<Self>> + '_> {
+    #[expect(clippy::cast_possible_truncation, reason = "handled losslessly here")]
+    fn unwrap_tuple(&self) -> Box<dyn Iterator<Item = Cow<'_, Self>> + '_> {
         let v = unwrap_val!(self, Self::V128, "tuple").as_u128();
         let low = v as i64;
         let high = (v >> 64) as i64;

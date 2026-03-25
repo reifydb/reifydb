@@ -1,20 +1,20 @@
 use crate::{
-    abi::{wasm_sig, ABISig, ABI},
-    codegen::{control, BlockSig, BuiltinFunction, BuiltinFunctions, OperandSize},
+    Result,
+    abi::{ABI, ABISig, wasm_sig},
+    codegen::{BlockSig, BuiltinFunction, BuiltinFunctions, OperandSize, control},
     isa::TargetIsa,
 };
-use anyhow::Result;
 use cranelift_codegen::ir::{UserExternalName, UserExternalNameRef};
 use std::collections::{
-    hash_map::Entry::{Occupied, Vacant},
     HashMap,
+    hash_map::Entry::{Occupied, Vacant},
 };
 use std::mem;
 use wasmparser::BlockType;
 use wasmtime_environ::{
-    BuiltinFunctionIndex, FuncIndex, GlobalIndex, IndexType, Memory, MemoryIndex,
-    ModuleTranslation, ModuleTypesBuilder, PrimaryMap, PtrSize, Table, TableIndex, TypeConvert,
-    TypeIndex, VMOffsets, WasmHeapType, WasmValType,
+    BuiltinFunctionIndex, DefinedFuncIndex, FuncIndex, FuncKey, GlobalIndex, IndexType, Memory,
+    MemoryIndex, ModuleTranslation, ModuleTypesBuilder, PrimaryMap, PtrSize, Table, TableIndex,
+    TypeConvert, TypeIndex, VMOffsets, WasmHeapType, WasmValType, collections::TryClone as _,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -84,6 +84,9 @@ pub(crate) enum Callee {
     FuncRef(TypeIndex),
     /// A built-in function.
     Builtin(BuiltinFunction),
+    /// A built-in function, but the vmctx argument is located at the static
+    /// offset provided from the current function's vmctx.
+    BuiltinWithDifferentVmctx(BuiltinFunction, u32),
 }
 
 /// The function environment.
@@ -191,7 +194,7 @@ impl<'a, 'translation, 'data, P: PtrSize> FuncEnv<'a, 'translation, 'data, P> {
                 let sig_index = self.translation.module.types[TypeIndex::from_u32(idx)]
                     .unwrap_module_type_index();
                 let sig = self.types[sig_index].unwrap_func();
-                BlockSig::new(control::BlockType::func(sig.clone()))
+                BlockSig::new(control::BlockType::func(sig.clone_panic_on_oom()))
             }
         })
     }
@@ -345,24 +348,22 @@ impl<'a, 'translation, 'data, P: PtrSize> FuncEnv<'a, 'translation, 'data, P> {
                     Ok(self.resolved_sigs.get(idx).unwrap())
                 }
             }
-            Callee::Builtin(b) => Ok(b.sig()),
+            Callee::Builtin(b) | Callee::BuiltinWithDifferentVmctx(b, _) => Ok(b.sig()),
         }
     }
 
     /// Creates a name to reference the `builtin` provided.
     pub fn name_builtin(&mut self, builtin: BuiltinFunctionIndex) -> UserExternalNameRef {
-        self.intern_name(UserExternalName {
-            namespace: wasmtime_cranelift::NS_WASMTIME_BUILTIN,
-            index: builtin.index(),
-        })
+        let key = FuncKey::WasmToBuiltinTrampoline(builtin);
+        let (namespace, index) = key.into_raw_parts();
+        self.intern_name(UserExternalName { namespace, index })
     }
 
     /// Creates a name to reference the wasm function `index` provided.
-    pub fn name_wasm(&mut self, index: FuncIndex) -> UserExternalNameRef {
-        self.intern_name(UserExternalName {
-            namespace: wasmtime_cranelift::NS_WASM_FUNC,
-            index: index.as_u32(),
-        })
+    pub fn name_wasm(&mut self, def_func: DefinedFuncIndex) -> UserExternalNameRef {
+        let key = FuncKey::DefinedWasmFunction(self.translation.module_index(), def_func);
+        let (namespace, index) = key.into_raw_parts();
+        self.intern_name(UserExternalName { namespace, index })
     }
 
     /// Interns `name` into a `UserExternalNameRef` and ensures that duplicate

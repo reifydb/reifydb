@@ -3,11 +3,11 @@
 use crate::cdsl::camel_case;
 use crate::cdsl::formats::InstructionFormat;
 use crate::cdsl::instructions::{AllInstructions, Instruction};
-use crate::cdsl::operands::Operand;
+use crate::cdsl::operands::{Operand, OperandKindFields};
 use crate::cdsl::typevar::{TypeSet, TypeVar};
 use crate::unique_table::{UniqueSeqTable, UniqueTable};
 use cranelift_codegen_shared::constant_hash;
-use cranelift_srcgen::{error, fmtln, Formatter, Language, Match};
+use cranelift_srcgen::{Formatter, Language, Match, error, fmtln};
 use std::fmt;
 use std::rc::Rc;
 
@@ -63,7 +63,7 @@ fn gen_formats(formats: &[Rc<InstructionFormat>], fmt: &mut Formatter) {
 fn gen_instruction_data(formats: &[Rc<InstructionFormat>], fmt: &mut Formatter) {
     fmt.line("#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]");
     fmt.line(r#"#[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]"#);
-    fmt.line("#[allow(missing_docs)]");
+    fmt.line("#[allow(missing_docs, reason = \"generated code\")]");
     fmt.add_block("pub enum InstructionData", |fmt| {
         for format in formats {
             fmt.add_block(&format!("{}", format.name), |fmt| {
@@ -84,6 +84,12 @@ fn gen_instruction_data(formats: &[Rc<InstructionFormat>], fmt: &mut Formatter) 
                         "blocks: [ir::BlockCall; {}],",
                         format.num_block_operands
                     ),
+                    n => panic!("Too many block operands in instruction: {n}"),
+                }
+
+                match format.num_raw_block_operands {
+                    0 => (),
+                    1 => fmt.line("block: ir::Block,"),
                     n => panic!("Too many block operands in instruction: {n}"),
                 }
 
@@ -159,7 +165,7 @@ fn gen_arguments_method(formats: &[Rc<InstructionFormat>], fmt: &mut Formatter, 
 /// - `pub fn eq(&self, &other: Self, &pool) -> bool`
 /// - `pub fn hash<H: Hasher>(&self, state: &mut H, &pool)`
 fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Formatter) {
-    fmt.add_block("impl InstructionData",|fmt| {
+    fmt.add_block("impl InstructionData", |fmt| {
         fmt.doc_comment("Get the opcode of this instruction.");
         fmt.add_block("pub fn opcode(&self) -> Opcode",|fmt| {
             let mut m = Match::new("*self");
@@ -249,6 +255,15 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                         }
                     };
 
+                    let raw_blocks_eq = match format.num_raw_block_operands {
+                        0 => None,
+                        1 => {
+                            members.push("block");
+                            Some("block1 == block2")
+                        }
+                        _ => unreachable!("Not a valid format"),
+                    };
+
                     for field in &format.imm_fields {
                         members.push(field.member);
                     }
@@ -265,6 +280,9 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                         }
                         if let Some(blocks_eq) = blocks_eq {
                             fmtln!(fmt, "&& {}", blocks_eq);
+                        }
+                        if let Some(raw_blocks_eq) = raw_blocks_eq {
+                            fmtln!(fmt, "&& {}", raw_blocks_eq);
                         }
                     });
                 }
@@ -294,7 +312,7 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                         (Some("args.as_slice(pool)"), "args.len(pool)")
                     } else if format.num_value_operands == 1 {
                         members.push("ref arg");
-                        (Some("std::slice::from_ref(arg)"), "1")
+                        (Some("core::slice::from_ref(arg)"), "1")
                     } else if format.num_value_operands > 0 {
                         members.push("ref args");
                         (Some("args"), "args.len()")
@@ -306,12 +324,21 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                         0 => None,
                         1 => {
                             members.push("ref destination");
-                            Some(("std::slice::from_ref(destination)", "1"))
+                            Some(("core::slice::from_ref(destination)", "1"))
                         }
                         _ => {
                             members.push("ref blocks");
                             Some(("blocks", "blocks.len()"))
                         }
+                    };
+
+                    let raw_block = match format.num_raw_block_operands {
+                        0 => None,
+                        1 => {
+                            members.push("block");
+                            Some("block")
+                        }
+                        _ => panic!("Too many raw block operands"),
                     };
 
                     for field in &format.imm_fields {
@@ -340,6 +367,10 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                                     fmtln!(fmt, "::core::hash::Hash::hash(&arg, state);");
                                 });
                             });
+                        }
+
+                        if let Some(raw_block) = raw_block {
+                            fmtln!(fmt, "::core::hash::Hash::hash(&{raw_block}, state);");
                         }
                     });
                 }
@@ -378,6 +409,14 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                         }
                     };
 
+                    match format.num_raw_block_operands {
+                        0 => {}
+                        1 => {
+                            members.push("block");
+                        }
+                        _ => panic!("Too many raw-block operands to format"),
+                    }
+
                     for field in &format.imm_fields {
                         members.push(field.member);
                     }
@@ -406,6 +445,14 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                                 _ => panic!("Too many block targets in instruction"),
                             }
 
+                            match format.num_raw_block_operands {
+                                0 => {}
+                                1 => {
+                                    fmtln!(fmt, "block,");
+                                }
+                                _ => panic!("Too many raw-block operands in instruction"),
+                            }
+
                             for field in &format.imm_fields {
                                 fmtln!(fmt, "{},", field.member);
                             }
@@ -413,8 +460,114 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                     });
                 }
             });
+        });
+        fmt.doc_comment(r#"
+            Map some functions, described by the given `InstructionMapper`, over each of the
+            entities within this instruction, producing a new `InstructionData`.
+        "#);
+        fmt.add_block("pub fn map(&self, mut mapper: impl crate::ir::instructions::InstructionMapper) -> Self", |fmt| {
+            fmt.add_block("match *self",|fmt| {
+                for format in formats {
+                    let name = format!("Self::{}", format.name);
+                    let mut members = vec!["opcode"];
+
+                    if format.has_value_list {
+                        members.push("args");
+                    } else if format.num_value_operands == 1 {
+                        members.push("arg");
+                    } else if format.num_value_operands > 0 {
+                        members.push("args");
+                    }
+
+                    match format.num_block_operands {
+                        0 => {}
+                        1 => {
+                            members.push("destination");
+                        }
+                        _ => {
+                            members.push("blocks");
+                        }
+                    };
+
+                    match format.num_raw_block_operands {
+                        0 => {}
+                        1 => {
+                            members.push("block");
+                        }
+                        _ => panic!("Too many raw-block operands"),
+                    }
+
+                    for field in &format.imm_fields {
+                        members.push(field.member);
+                    }
+                    let members = members.join(", ");
+
+                    fmt.add_block(&format!("{name}{{{members}}} => "), |fmt| {
+                        fmt.add_block(&format!("Self::{}", format.name), |fmt| {
+                            fmtln!(fmt, "opcode,");
+
+                            if format.has_value_list {
+                                fmtln!(fmt, "args: mapper.map_value_list(args),");
+                            } else if format.num_value_operands == 1 {
+                                fmtln!(fmt, "arg: mapper.map_value(arg),");
+                            } else if format.num_value_operands > 0 {
+                                let maps = (0..format.num_value_operands)
+                                    .map(|i| format!("mapper.map_value(args[{i}])"))
+                                    .collect::<Box<[_]>>()
+                                    .join(", ");
+                                fmtln!(fmt, "args: [{maps}],");
+                            }
+
+                            match format.num_block_operands {
+                                0 => {}
+                                1 => {
+                                    fmtln!(fmt, "destination: mapper.map_block_call(destination),");
+                                }
+                                2 => {
+                                    fmtln!(fmt, "blocks: [mapper.map_block_call(blocks[0]), mapper.map_block_call(blocks[1])],");
+                                }
+                                _ => panic!("Too many block targets in instruction"),
+                            }
+
+                            match format.num_raw_block_operands {
+                                0 => {}
+                                1 => {
+                                    fmtln!(fmt, "block: mapper.map_block(block),");
+                                }
+                                _ => panic!("Too many raw block arguments in instruction"),
+                            }
+
+                            for field in &format.imm_fields {
+                                let member = field.member;
+                                match &field.kind.fields {
+                                    OperandKindFields::EntityRef => {
+                                        let mut kind = heck::ToSnakeCase::to_snake_case(
+                                            field
+                                                .kind
+                                                .rust_type
+                                                .split("::")
+                                                .last()
+                                                .unwrap_or(field.kind.rust_type),
+                                        );
+                                        if kind == "block" {
+                                            kind.push_str("_call");
+                                        }
+                                        fmtln!(fmt, "{member}: mapper.map_{kind}({member}),");
+                                    }
+                                    OperandKindFields::VariableArgs => {
+                                        fmtln!(fmt, "{member}: mapper.map_value_list({member}),");
+                                    }
+                                    OperandKindFields::ImmValue |
+                                    OperandKindFields::ImmEnum(_) |
+                                    OperandKindFields::TypeVar(_) => fmtln!(fmt, "{member},"),
+                                }
+                            }
+                        });
                     });
+                }
             });
+        });
+    });
 }
 
 fn gen_bool_accessor<T: Fn(&Instruction) -> bool>(
@@ -868,6 +1021,13 @@ fn gen_member_inits(format: &InstructionFormat, fmt: &mut Formatter) {
             fmtln!(fmt, "blocks: [{}],", blocks.join(", "));
         }
     }
+
+    // Raw block operands.
+    match format.num_raw_block_operands {
+        0 => (),
+        1 => fmt.line("block: block0,"),
+        _ => panic!("Too many raw block arguments"),
+    }
 }
 
 /// Emit a method for creating and inserting an instruction format.
@@ -881,6 +1041,9 @@ fn gen_format_constructor(format: &InstructionFormat, fmt: &mut Formatter) {
         "opcode: Opcode".into(),
         "ctrl_typevar: Type".into(),
     ];
+
+    // Raw block operands.
+    args.extend((0..format.num_raw_block_operands).map(|i| format!("block{i}: ir::Block")));
 
     // Normal operand arguments. Start with the immediate operands.
     for f in &format.imm_fields {
@@ -914,7 +1077,7 @@ fn gen_format_constructor(format: &InstructionFormat, fmt: &mut Formatter) {
         .any(|f| f.kind.rust_type == "ir::immediates::Imm64");
 
     fmt.doc_comment(format.to_string());
-    fmt.line("#[allow(non_snake_case)]");
+    fmt.line("#[allow(non_snake_case, reason = \"generated code\")]");
     fmt.add_block(&format!("fn {proto}"), |fmt| {
         // Generate the instruction data.
         fmt.add_block(&format!(
@@ -984,6 +1147,9 @@ fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Fo
             args_doc.push(format!("- {}_args: {}", op.name, "Block arguments"));
 
             block_args.push(op);
+        } else if op.kind.is_raw_block() {
+            args.push("block: ir::Block".into());
+            args_doc.push("- block: raw basic block".into());
         } else {
             let t = if op.is_immediate() {
                 let t = format!("T{}", tmpl_types.len() + 1);
@@ -1048,7 +1214,7 @@ fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Fo
         }
     }
 
-    fmt.line("#[allow(non_snake_case)]");
+    fmt.line("#[allow(non_snake_case, reason = \"generated code\")]");
     fmt.add_block(&format!("fn {proto}"), |fmt| {
         // Convert all of the `Into<>` arguments.
         for arg in into_args {

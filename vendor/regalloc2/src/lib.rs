@@ -14,7 +14,7 @@
 #![allow(clippy::all)]
 #![no_std]
 
-#[cfg(feature = "std")]
+#[cfg(feature = "fuzzing")]
 extern crate std;
 
 extern crate alloc;
@@ -115,6 +115,7 @@ impl PReg {
     pub const MAX_BITS: usize = 6;
     pub const MAX: usize = (1 << Self::MAX_BITS) - 1;
     pub const NUM_INDEX: usize = 1 << (Self::MAX_BITS + 2); // including RegClass bits
+    pub const INVALID: u8 = ((RegClass::Int as u8) << Self::MAX_BITS) | (Self::MAX as u8);
 
     /// Create a new PReg. The `hw_enc` range is 6 bits.
     #[inline(always)]
@@ -162,7 +163,19 @@ impl PReg {
     /// data structures.
     #[inline(always)]
     pub const fn invalid() -> Self {
-        PReg::new(Self::MAX, RegClass::Int)
+        PReg {
+            bits: Self::INVALID,
+        }
+    }
+
+    /// Return a valid [`PReg`] or [`None`] if it is invalid.
+    #[inline(always)]
+    pub const fn as_valid(self) -> Option<Self> {
+        if self.bits == Self::INVALID {
+            None
+        } else {
+            Some(self)
+        }
     }
 }
 
@@ -244,7 +257,7 @@ impl PRegSet {
     }
 
     /// Add a physical register (PReg) to the set.
-    pub fn add(&mut self, reg: PReg) {
+    pub const fn add(&mut self, reg: PReg) {
         let (index, bit) = Self::split_index(reg);
         self.bits[index] |= 1 << bit;
     }
@@ -280,6 +293,25 @@ impl PRegSet {
     pub fn is_empty(&self, regclass: RegClass) -> bool {
         self.bits[regclass as usize] == 0
     }
+
+    /// Returns the number of register in this set.
+    pub fn len(&self) -> u32 {
+        self.bits.iter().map(|s| s.count_ones()).sum()
+    }
+
+    /// Returns the maximum register in this set, with the highest hw_enc value.
+    pub fn max_preg(&self) -> Option<PReg> {
+        self.into_iter().last()
+    }
+
+    /// Add all registers from `0..reg` to this set, not including `reg` itself.
+    pub fn add_up_to(&mut self, reg: PReg) {
+        let (index, bit) = Self::split_index(reg);
+        for i in 0..index {
+            self.bits[i] = !0;
+        }
+        self.bits[index] = (1 << bit) - 1;
+    }
 }
 
 impl core::ops::BitAnd<PRegSet> for PRegSet {
@@ -299,6 +331,14 @@ impl core::ops::BitOr<PRegSet> for PRegSet {
         let mut out = self;
         out.union_from(rhs);
         out
+    }
+}
+
+impl IntoIterator for &PRegSet {
+    type Item = PReg;
+    type IntoIter = PRegSetIter;
+    fn into_iter(self) -> PRegSetIter {
+        (*self).into_iter()
     }
 }
 
@@ -339,15 +379,11 @@ impl From<&MachineEnv> for PRegSet {
         let mut res = Self::default();
 
         for class in env.preferred_regs_by_class.iter() {
-            for preg in class {
-                res.add(*preg)
-            }
+            res.union_from(*class)
         }
 
         for class in env.non_preferred_regs_by_class.iter() {
-            for preg in class {
-                res.add(*preg)
-            }
+            res.union_from(*class)
         }
 
         res
@@ -390,7 +426,7 @@ pub struct VReg {
 }
 
 impl VReg {
-    pub const MAX_BITS: usize = 21;
+    pub const MAX_BITS: usize = 30;
     pub const MAX: usize = (1 << Self::MAX_BITS) - 1;
 
     #[inline(always)]
@@ -425,6 +461,11 @@ impl VReg {
     #[inline(always)]
     pub const fn bits(self) -> usize {
         self.bits as usize
+    }
+
+    #[inline(always)]
+    pub const fn from_bits(bits: u32) -> VReg {
+        Self { bits }
     }
 }
 
@@ -528,10 +569,19 @@ pub enum OperandConstraint {
     Any,
     /// Operand must be in a register. Register is read-only for Uses.
     Reg,
+    /// Operand must be on the stack.
+    Stack,
     /// Operand must be in a fixed register.
     FixedReg(PReg),
     /// On defs only: reuse a use's register.
     Reuse(usize),
+    /// Operand must be in a specific range of registers.
+    ///
+    /// The contained `usize` indicates the (exclusive) upper limit of a
+    /// register range, `n`. An operand with this constraint may allocate a
+    /// register between `0 ..= n-1`. Due to encoding constraints, `n` must be a
+    /// power of two and below 2^16.
+    Limit(usize),
 }
 
 impl core::fmt::Display for OperandConstraint {
@@ -539,8 +589,10 @@ impl core::fmt::Display for OperandConstraint {
         match self {
             Self::Any => write!(f, "any"),
             Self::Reg => write!(f, "reg"),
-            Self::FixedReg(preg) => write!(f, "fixed({})", preg),
-            Self::Reuse(idx) => write!(f, "reuse({})", idx),
+            Self::Stack => write!(f, "stack"),
+            Self::FixedReg(preg) => write!(f, "fixed({preg})"),
+            Self::Reuse(idx) => write!(f, "reuse({idx})"),
+            Self::Limit(max) => write!(f, "limit(0..={})", max - 1),
         }
     }
 }
@@ -604,9 +656,9 @@ pub enum OperandPos {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "enable-serde", derive(Serialize, Deserialize))]
 pub struct Operand {
-    /// Bit-pack into 32 bits.
+    /// Bit-pack into 64 bits.
     ///
-    /// constraint:7 kind:1 pos:1 class:2 vreg:21
+    /// unused:21 constraint:7 kind:1 pos:1 class:2 vreg:32
     ///
     /// where `constraint` is an `OperandConstraint`, `kind` is an
     /// `OperandKind`, `pos` is an `OperandPos`, `class` is a
@@ -615,14 +667,37 @@ pub struct Operand {
     /// The constraints are encoded as follows:
     /// - 1xxxxxx => FixedReg(preg)
     /// - 01xxxxx => Reuse(index)
+    /// - 001xxxx => Limit(max)
     /// - 0000000 => Any
     /// - 0000001 => Reg
     /// - 0000010 => Stack
     /// - _ => Unused for now
-    bits: u32,
+    bits: u64,
 }
 
 impl Operand {
+    const VREG_BITS: usize = 32;
+    const VREG_SHIFT: usize = 0;
+    const VREG_MASK: u64 = (1 << Self::VREG_BITS) - 1;
+
+    const CLASS_BITS: usize = 2;
+    const CLASS_SHIFT: usize = Self::VREG_SHIFT + Self::VREG_BITS;
+    const CLASS_MASK: u64 = (1 << Self::CLASS_BITS) - 1;
+
+    const POS_BITS: usize = 1;
+    const POS_SHIFT: usize = Self::CLASS_SHIFT + Self::CLASS_BITS;
+    const POS_MASK: u64 = (1 << Self::POS_BITS) - 1;
+
+    const KIND_BITS: usize = 1;
+    const KIND_SHIFT: usize = Self::POS_SHIFT + Self::POS_BITS;
+    const KIND_MASK: u64 = (1 << Self::KIND_BITS) - 1;
+
+    const CONSTRAINT_BITS: usize = 7;
+    const CONSTRAINT_SHIFT: usize = Self::KIND_SHIFT + Self::KIND_BITS;
+    const CONSTRAINT_MASK: u64 = (1 << Self::CONSTRAINT_BITS) - 1;
+
+    const TOTAL_BITS: usize = Self::CONSTRAINT_SHIFT + Self::CONSTRAINT_BITS;
+
     /// Construct a new operand.
     #[inline(always)]
     pub fn new(
@@ -634,24 +709,35 @@ impl Operand {
         let constraint_field = match constraint {
             OperandConstraint::Any => 0,
             OperandConstraint::Reg => 1,
+            OperandConstraint::Stack => 2,
             OperandConstraint::FixedReg(preg) => {
                 debug_assert_eq!(preg.class(), vreg.class());
-                0b1000000 | preg.hw_enc() as u32
+                0b1000000 | preg.hw_enc() as u64
             }
             OperandConstraint::Reuse(which) => {
-                debug_assert!(which <= 31);
-                0b0100000 | which as u32
+                debug_assert!(which <= 0b11111);
+                0b0100000 | which as u64
+            }
+            OperandConstraint::Limit(max) => {
+                assert!(max.is_power_of_two());
+                assert!(
+                    max <= PReg::MAX + 1,
+                    "limit is larger than the allowed register encoding"
+                );
+                let log2 = max.ilog2();
+                debug_assert!(log2 <= 0b1111);
+                0b0010000 | log2 as u64
             }
         };
-        let class_field = vreg.class() as u8 as u32;
-        let pos_field = pos as u8 as u32;
-        let kind_field = kind as u8 as u32;
+        let class_field = vreg.class() as u8 as u64;
+        let pos_field = pos as u8 as u64;
+        let kind_field = kind as u8 as u64;
         Operand {
-            bits: vreg.vreg() as u32
-                | (class_field << 21)
-                | (pos_field << 23)
-                | (kind_field << 24)
-                | (constraint_field << 25),
+            bits: ((vreg.vreg() as u64) << Self::VREG_SHIFT)
+                | (class_field << Self::CLASS_SHIFT)
+                | (pos_field << Self::POS_SHIFT)
+                | (kind_field << Self::KIND_SHIFT)
+                | (constraint_field << Self::CONSTRAINT_SHIFT),
         }
     }
 
@@ -851,14 +937,14 @@ impl Operand {
     /// are used to track dataflow.
     #[inline(always)]
     pub fn vreg(self) -> VReg {
-        let vreg_idx = ((self.bits as usize) & VReg::MAX) as usize;
+        let vreg_idx = ((self.bits >> Self::VREG_SHIFT) & Self::VREG_MASK) as usize;
         VReg::new(vreg_idx, self.class())
     }
 
     /// Get the register class used by this operand.
     #[inline(always)]
     pub fn class(self) -> RegClass {
-        let class_field = (self.bits >> 21) & 3;
+        let class_field = (self.bits >> Self::CLASS_SHIFT) & Self::CLASS_MASK;
         match class_field {
             0 => RegClass::Int,
             1 => RegClass::Float,
@@ -871,7 +957,7 @@ impl Operand {
     /// (read).
     #[inline(always)]
     pub fn kind(self) -> OperandKind {
-        let kind_field = (self.bits >> 24) & 1;
+        let kind_field = (self.bits >> Self::KIND_SHIFT) & Self::KIND_MASK;
         match kind_field {
             0 => OperandKind::Def,
             1 => OperandKind::Use,
@@ -885,7 +971,7 @@ impl Operand {
     /// at "after", though there are cases where this is not true.
     #[inline(always)]
     pub fn pos(self) -> OperandPos {
-        let pos_field = (self.bits >> 23) & 1;
+        let pos_field = (self.bits >> Self::POS_SHIFT) & Self::POS_MASK;
         match pos_field {
             0 => OperandPos::Early,
             1 => OperandPos::Late,
@@ -897,15 +983,19 @@ impl Operand {
     /// its allocation must fulfill.
     #[inline(always)]
     pub fn constraint(self) -> OperandConstraint {
-        let constraint_field = ((self.bits >> 25) as usize) & 127;
+        let constraint_field =
+            ((self.bits >> Self::CONSTRAINT_SHIFT) & Self::CONSTRAINT_MASK) as usize;
         if constraint_field & 0b1000000 != 0 {
             OperandConstraint::FixedReg(PReg::new(constraint_field & 0b0111111, self.class()))
         } else if constraint_field & 0b0100000 != 0 {
             OperandConstraint::Reuse(constraint_field & 0b0011111)
+        } else if constraint_field & 0b0010000 != 0 {
+            OperandConstraint::Limit(1 << (constraint_field & 0b0001111))
         } else {
             match constraint_field {
                 0 => OperandConstraint::Any,
                 1 => OperandConstraint::Reg,
+                2 => OperandConstraint::Stack,
                 _ => unreachable!(),
             }
         }
@@ -922,17 +1012,17 @@ impl Operand {
         }
     }
 
-    /// Get the raw 32-bit encoding of this operand's fields.
+    /// Get the raw 64-bit encoding of this operand's fields.
     #[inline(always)]
-    pub fn bits(self) -> u32 {
+    pub fn bits(self) -> u64 {
         self.bits
     }
 
-    /// Construct an `Operand` from the raw 32-bit encoding returned
+    /// Construct an `Operand` from the raw 64-bit encoding returned
     /// from `bits()`.
     #[inline(always)]
-    pub fn from_bits(bits: u32) -> Self {
-        debug_assert!(bits >> 29 <= 4);
+    pub fn from_bits(bits: u64) -> Self {
+        debug_assert_eq!(bits >> Self::TOTAL_BITS, 0);
         Operand { bits }
     }
 }
@@ -1444,7 +1534,7 @@ pub struct MachineEnv {
     ///
     /// If an explicit scratch register is provided in `scratch_by_class` then
     /// it must not appear in this list.
-    pub preferred_regs_by_class: [Vec<PReg>; 3],
+    pub preferred_regs_by_class: [PRegSet; 3],
 
     /// Non-preferred physical registers for each class. These are the
     /// registers that will be allocated if a preferred register is
@@ -1453,7 +1543,7 @@ pub struct MachineEnv {
     ///
     /// If an explicit scratch register is provided in `scratch_by_class` then
     /// it must not appear in this list.
-    pub non_preferred_regs_by_class: [Vec<PReg>; 3],
+    pub non_preferred_regs_by_class: [PRegSet; 3],
 
     /// Optional dedicated scratch register per class. This is needed to perform
     /// moves between registers when cyclic move patterns occur. The
@@ -1588,8 +1678,7 @@ impl core::fmt::Display for RegAllocError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for RegAllocError {}
+impl core::error::Error for RegAllocError {}
 
 /// Run the allocator.
 pub fn run<F: Function>(
@@ -1734,5 +1823,75 @@ unsafe impl allocator_api2::alloc::Allocator for Bump {
         new_layout: core::alloc::Layout,
     ) -> Result<core::ptr::NonNull<[u8]>, allocator_api2::alloc::AllocError> {
         self.0.deref().shrink(ptr, old_layout, new_layout)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PReg, PRegSet, RegClass::*};
+
+    #[test]
+    fn preg_set_len() {
+        let mut set = PRegSet::empty();
+        assert_eq!(set.len(), 0);
+
+        set.add(PReg::new(3, Int));
+        assert_eq!(set.len(), 1);
+        set.add(PReg::new(3, Int));
+        assert_eq!(set.len(), 1);
+
+        set.add(PReg::new(4, Int));
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn preg_set_max_preg() {
+        let mut set = PRegSet::empty();
+        assert_eq!(set.max_preg(), None);
+
+        set.add(PReg::new(3, Int));
+        assert_eq!(set.max_preg(), Some(PReg::new(3, Int)));
+
+        set.add(PReg::new(4, Int));
+        assert_eq!(set.max_preg(), Some(PReg::new(4, Int)));
+
+        set.add(PReg::new(2, Int));
+        assert_eq!(set.max_preg(), Some(PReg::new(4, Int)));
+    }
+
+    #[test]
+    fn preg_set_new_up_to() {
+        for class in [Int, Float, Vector] {
+            let p0 = PReg::new(0, class);
+            let p1 = PReg::new(1, class);
+            let p2 = PReg::new(2, class);
+            let p3 = PReg::new(3, class);
+            {
+                let mut set = PRegSet::empty();
+                set.add_up_to(p1);
+                assert!(set.contains(p0));
+                assert!(!set.contains(p1));
+            }
+            {
+                let mut set = PRegSet::empty();
+                set.add_up_to(p0);
+                assert!(!set.contains(p0));
+            }
+            {
+                let mut set = PRegSet::empty();
+                set.add_up_to(p3);
+                assert!(set.contains(p0));
+                assert!(set.contains(p1));
+                assert!(set.contains(p2));
+                assert!(!set.contains(p3));
+            }
+            for i in 1..64 {
+                let mut set = PRegSet::empty();
+                set.add_up_to(PReg::new(i, class));
+                assert!(set.contains(p0));
+                assert!(set.contains(PReg::new(i - 1, class)));
+                assert!(!set.contains(PReg::new(i, class)));
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-use crate::{Operand, OperandConstraint, OperandKind};
+use crate::{Operand, OperandConstraint, OperandKind, OperandPos};
 
 pub struct Operands<'a>(pub &'a [Operand]);
 
@@ -32,6 +32,18 @@ impl<'a> Operands<'a> {
 
     pub fn fixed(&self) -> impl Iterator<Item = (usize, Operand)> + 'a {
         self.matches(|op| matches!(op.constraint(), OperandConstraint::FixedReg(_)))
+    }
+
+    pub fn any_reg(&self) -> impl Iterator<Item = (usize, Operand)> + 'a {
+        self.matches(|op| matches!(op.constraint(), OperandConstraint::Reg))
+    }
+
+    pub fn late(&self) -> impl Iterator<Item = (usize, Operand)> + 'a {
+        self.matches(|op| op.pos() == OperandPos::Late)
+    }
+
+    pub fn early(&self) -> impl Iterator<Item = (usize, Operand)> + 'a {
+        self.matches(|op| op.pos() == OperandPos::Early)
     }
 }
 

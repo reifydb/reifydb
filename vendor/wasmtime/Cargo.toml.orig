@@ -17,26 +17,26 @@ workspace = true
 all-features = true
 
 [dependencies]
-wasmtime-asm-macros = { workspace = true, optional = true }
 wasmtime-environ = { workspace = true }
-wasmtime-jit-debug = { workspace = true, features = ["gdb_jit_int", "perf_jitdump"], optional = true }
+wasmtime-jit-debug = { workspace = true, optional = true }
 wasmtime-jit-icache-coherence = { workspace = true, optional = true }
 wasmtime-cache = { workspace = true, optional = true }
 wasmtime-fiber = { workspace = true, optional = true }
 wasmtime-cranelift = { workspace = true, optional = true, features = ['pulley'] }
+wasmtime-unwinder = { workspace = true, optional = true }
 wasmtime-winch = { workspace = true, optional = true }
 wasmtime-component-macro = { workspace = true, optional = true }
 wasmtime-component-util = { workspace = true, optional = true }
-wasmtime-slab = { workspace = true, optional = true }
 wasmtime-versioned-export-macros = { workspace = true }
 wasmtime-wmemcheck = { workspace = true, optional = true }
-wasmtime-math = { workspace = true }
+wasmtime-core = { workspace = true, features = ['serde'] }
 pulley-interpreter = { workspace = true }
 target-lexicon = { workspace = true }
 wasmparser = { workspace = true }
 wasm-encoder = { workspace = true, optional = true }
 wasm-wave = { workspace = true, optional = true }
-anyhow = { workspace = true }
+wasm-compose = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
 libc = { workspace = true }
 cfg-if = { workspace = true }
 log = { workspace = true }
@@ -44,24 +44,21 @@ wat = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true, optional = true }
-sptr = { workspace = true }
 postcard = { workspace = true }
-indexmap = { workspace = true }
 once_cell = { version = "1.12.0", optional = true }
-rayon = { version = "1.0", optional = true }
-object = { workspace = true }
+rayon = { workspace = true, optional = true }
+object = { workspace = true, features = ['unaligned'] }
 async-trait = { workspace = true, optional = true }
-trait-variant = { workspace = true, optional = true }
 encoding_rs = { version = "0.8.31", optional = true }
-bumpalo = "3.11.0"
-fxprof-processed-profile = { version = "0.6.0", optional = true }
+bumpalo = { workspace = true }
+fxprof-processed-profile = { version = "0.8.1", optional = true }
 gimli = { workspace = true, optional = true }
 addr2line = { workspace = true, optional = true }
 semver = { workspace = true, optional = true }
 smallvec = { workspace = true, optional = true }
-hashbrown = { workspace = true, features = ["default-hasher"] }
 bitflags = { workspace = true }
 futures = { workspace = true, features = ["alloc"], optional = true }
+bytes = { workspace = true, optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows-sys]
 workspace = true
@@ -93,20 +90,17 @@ memfd = { workspace = true, optional = true }
 mach2 = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { workspace = true, optional = true }
-
-[target.'cfg(target_arch = "s390x")'.dependencies]
-psm = { workspace = true, optional = true }
+rustix = { workspace = true, optional = true, features = ["mm", "param"] }
 
 [dev-dependencies]
 env_logger = { workspace = true }
 proptest = { workspace = true }
 rand = { workspace = true }
 tempfile = { workspace = true }
-wasi-common = { path = "../wasi-common", default-features = true }
 libtest-mimic = { workspace = true }
 cranelift-native = { workspace = true }
 wasmtime-test-util = { workspace = true }
+tokio = { workspace = true, features = ["macros", "sync", "rt-multi-thread"] }
 
 [build-dependencies]
 cc = { workspace = true, optional = true }
@@ -114,6 +108,14 @@ wasmtime-versioned-export-macros = { workspace = true, optional = true }
 
 [[test]]
 name = "host_segfault"
+harness = false
+
+[[test]]
+name = "engine_across_forks"
+harness = false
+
+[[test]]
+name = "pooling_alloc_near_oom"
 harness = false
 
 # =============================================================================
@@ -127,7 +129,9 @@ harness = false
 # for a particular embedding.
 [features]
 default = [
+  'anyhow',
   'async',
+  'backtrace',
   'cache',
   'gc',
   'gc-drc',
@@ -143,15 +147,25 @@ default = [
   'debug-builtins',
   'runtime',
   'component-model',
+  'component-model-async',
   'threads',
+  'stack-switching',
   'std',
+  'debug',
+  'compile-time-builtins',
 ]
+
+# Enables conversion helpers between `anyhow::Error` and `wasmtime::Error`.
+anyhow = ["wasmtime-environ/anyhow"]
+
+# Enables backtrace capturing in `wasmtime::Error`.
+backtrace = ["std", "wasmtime-environ/backtrace"]
 
 # An on-by-default feature enabling runtime compilation of WebAssembly modules
 # with the Cranelift compiler. Cranelift is the default compilation backend of
 # Wasmtime. If disabled then WebAssembly modules can only be created from
 # precompiled WebAssembly modules.
-cranelift = ["dep:wasmtime-cranelift", "std"]
+cranelift = ["dep:wasmtime-cranelift", "std", "wasmtime-unwinder/cranelift"]
 
 # Enables support for Winch, the WebAssembly baseline compiler. The Winch compiler
 # strategy in `Config` will be available. It is currently in active development
@@ -176,12 +190,12 @@ incremental-cache = ["wasmtime-cranelift?/incremental-cache", "std"]
 # Enables support for profiling guest modules.
 profiling = [
   "dep:fxprof-processed-profile",
-  "dep:wasmtime-jit-debug",
   "dep:ittapi",
   "dep:rustix",
   "rustix/thread",
   "dep:serde_json",
   "std",
+  "wasmtime-jit-debug/perf_jitdump",
 ]
 
 # Enables parallel compilation of WebAssembly code.
@@ -194,8 +208,6 @@ cache = ["dep:wasmtime-cache", "std"]
 # `async fn` and calling functions asynchronously.
 async = [
   "dep:wasmtime-fiber",
-  "dep:async-trait",
-  "dep:trait-variant",
   "wasmtime-component-macro?/async",
   "runtime",
 ]
@@ -244,7 +256,9 @@ coredump = ["dep:wasm-encoder", "runtime", "std"]
 
 # Export some symbols from the final binary to assist in debugging
 # Cranelift-generated code with native debuggers like GDB and LLDB.
-debug-builtins = ["dep:wasmtime-jit-debug", "std"]
+debug-builtins = [
+  "wasmtime-jit-debug/gdb_jit_int",
+]
 
 # Enable support for executing compiled Wasm modules.
 runtime = [
@@ -252,15 +266,11 @@ runtime = [
   "dep:smallvec",
   "dep:mach2",
   "dep:memfd",
-  "dep:wasmtime-asm-macros",
-  "dep:wasmtime-slab",
   "dep:wasmtime-versioned-export-macros",
   "dep:windows-sys",
-  "dep:psm",
-  "dep:rustix",
-  "rustix/mm",
   "pulley-interpreter/interp",
-  "dep:wasmtime-jit-icache-coherence",
+  "dep:wasmtime-unwinder",
+  "dep:async-trait",
 ]
 
 # Enable support for garbage collection-related things.
@@ -309,6 +319,14 @@ threads = [
   "std",
 ]
 
+stack-switching = [
+  "runtime",
+  "std",
+  "wasmtime-environ/stack-switching",
+  "wasmtime-cranelift?/stack-switching",
+  "wasmtime-winch?/stack-switching",
+]
+
 # Controls whether backtraces will attempt to parse DWARF information in
 # WebAssembly modules and components to provide filenames and line numbers in
 # stack traces.
@@ -322,12 +340,16 @@ addr2line = ["dep:addr2line", "dep:gimli", "std"]
 std = [
   'postcard/use-std',
   'wasmtime-environ/std',
+  'wasmtime-core/std',
   'object/std',
   'once_cell',
   'wasmtime-fiber?/std',
   'pulley-interpreter/std',
-  'wasmtime-math/std',
+  'wasmtime-core/std',
   'addr2line?/std',
+  "dep:rustix",
+  "wasmtime-jit-icache-coherence",
+  "wasmtime-jit-debug?/std",
 ]
 
 # Enables support for the `Store::call_hook` API which enables injecting custom
@@ -374,10 +396,13 @@ custom-virtual-memory = []
 # Same as `custom-virtual-memory` above, but for custom signal-handling APIs.
 custom-native-signals = []
 
+# Same as `custom-virtual-memory` above, but for custom sync primitive APIs.
+custom-sync-primitives = []
+
 # Off-by-default support to profile the Pulley interpreter. This has a
 # performance hit, even when not profiling, so it's disabled by default at
 # compile time.
-profile-pulley = ['pulley', 'profiling', 'pulley-interpreter/profile']
+profile-pulley = ['anyhow', 'pulley', 'profiling', 'pulley-interpreter/profile']
 
 # Enables support for the Component Model Async ABI, along with `future`,
 # `stream`, and `error-context` types.
@@ -386,5 +411,27 @@ component-model-async = [
   "component-model",
   "std",
   "wasmtime-component-macro?/component-model-async",
-  "dep:futures"
+  "dep:futures",
+  "futures/std",
+]
+
+# Enables support for `stream` interop with the `bytes` crate.
+component-model-async-bytes = [
+  "component-model-async",
+  "dep:bytes",
+]
+
+# Enables support for guest debugging.
+debug = [
+    'runtime',
+    'async'
+]
+
+# Enables support for defining compile-time builtins.
+compile-time-builtins = ['anyhow', 'dep:wasm-compose', 'dep:tempfile']
+
+# Enable support for the common base infrastructure of record/replay
+rr = [
+  "component-model",
+  "wasmtime-environ/rr"
 ]

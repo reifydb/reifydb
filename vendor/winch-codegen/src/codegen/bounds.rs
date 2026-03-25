@@ -3,14 +3,13 @@
 //! recommended when working on this area of Winch.
 use super::env::HeapData;
 use crate::{
-    abi::{scratch, vmctx},
+    Result,
+    abi::vmctx,
     codegen::{CodeGenContext, Emission},
-    isa::reg::{writable, Reg},
-    masm::{IntCmpKind, MacroAssembler, OperandSize, RegImm, TrapCode},
+    isa::reg::{Reg, writable},
+    masm::{IntCmpKind, IntScratch, MacroAssembler, OperandSize, RegImm, TrapCode},
     stack::TypedReg,
 };
-use anyhow::Result;
-use wasmtime_environ::Signed;
 
 /// A newtype to represent an immediate offset argument for a heap access.
 #[derive(Debug, Copy, Clone)]
@@ -94,19 +93,20 @@ where
     let dst = context.any_gpr(masm)?;
     match heap.memory.static_heap_size() {
         // Constant size, no need to perform a load.
-        Some(size) => masm.mov(writable!(dst), RegImm::i64(size.signed()), ptr_size)?,
+        Some(size) => masm.mov(writable!(dst), RegImm::i64(size.cast_signed()), ptr_size)?,
 
         None => {
-            let scratch = scratch!(M);
-            let base = if let Some(offset) = heap.import_from {
-                let addr = masm.address_at_vmctx(offset)?;
-                masm.load_ptr(addr, writable!(scratch))?;
-                scratch
-            } else {
-                vmctx!(M)
-            };
-            let addr = masm.address_at_reg(base, heap.current_length_offset)?;
-            masm.load_ptr(addr, writable!(dst))?;
+            masm.with_scratch::<IntScratch, _>(|masm, scratch| {
+                let base = if let Some(offset) = heap.import_from {
+                    let addr = masm.address_at_vmctx(offset)?;
+                    masm.load_ptr(addr, scratch.writable())?;
+                    scratch.inner()
+                } else {
+                    vmctx!(M)
+                };
+                let addr = masm.address_at_reg(base, heap.current_length_offset)?;
+                masm.load_ptr(addr, writable!(dst))
+            })?;
         }
     }
 
@@ -200,20 +200,22 @@ pub(crate) fn load_heap_addr_unchecked<M>(
 where
     M: MacroAssembler,
 {
-    let base = if let Some(offset) = heap.import_from {
-        // If the WebAssembly memory is imported, load the address into
-        // the scratch register.
-        let scratch = scratch!(M);
-        masm.load_ptr(masm.address_at_vmctx(offset)?, writable!(scratch))?;
-        scratch
-    } else {
-        // Else if the WebAssembly memory is defined in the current module,
-        // simply use the `VMContext` as the base for subsequent operations.
-        vmctx!(M)
-    };
+    masm.with_scratch::<IntScratch, _>(|masm, scratch| {
+        let base = if let Some(offset) = heap.import_from {
+            // If the WebAssembly memory is imported, load the address into
+            // the scratch register.
+            masm.load_ptr(masm.address_at_vmctx(offset)?, scratch.writable())?;
+            scratch.inner()
+        } else {
+            // Else if the WebAssembly memory is defined in the current module,
+            // simply use the `VMContext` as the base for subsequent operations.
+            vmctx!(M)
+        };
 
-    // Load the base of the memory into the `addr` register.
-    masm.load_ptr(masm.address_at_reg(base, heap.offset)?, writable!(dst))?;
+        // Load the base of the memory into the `addr` register.
+        masm.load_ptr(masm.address_at_reg(base, heap.offset)?, writable!(dst))
+    })?;
+
     // Start by adding the index to the heap base addr.
     let index_reg = index.as_typed_reg().reg;
     masm.add(writable!(dst), dst, index_reg.into(), ptr_size)?;

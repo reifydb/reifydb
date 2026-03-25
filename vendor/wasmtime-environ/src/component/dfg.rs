@@ -28,10 +28,12 @@
 //! fused adapters, what arguments make their way to core wasm modules, etc.
 
 use crate::component::*;
+use crate::error::Result;
 use crate::prelude::*;
 use crate::{EntityIndex, EntityRef, ModuleInternedTypeIndex, PrimaryMap, WasmValType};
-use anyhow::Result;
+use cranelift_entity::packed_option::PackedOption;
 use indexmap::IndexMap;
+use info::LinearMemoryOptions;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::ops::Index;
@@ -53,6 +55,10 @@ pub struct ComponentDfg {
     /// compiled by Cranelift.
     pub trampolines: Intern<TrampolineIndex, (ModuleInternedTypeIndex, Trampoline)>,
 
+    /// A map from `UnsafeIntrinsic::index()` to that intrinsic's
+    /// module-interned type.
+    pub unsafe_intrinsics: [PackedOption<ModuleInternedTypeIndex>; UnsafeIntrinsic::len() as usize],
+
     /// Know reallocation functions which are used by `lowerings` (e.g. will be
     /// used by the host)
     pub reallocs: Intern<ReallocId, CoreDef>,
@@ -63,8 +69,11 @@ pub struct ComponentDfg {
     /// Same as `reallocs`, but for post-return.
     pub post_returns: Intern<PostReturnId, CoreDef>,
 
-    /// Same as `reallocs`, but for post-return.
+    /// Same as `reallocs`, but for memories.
     pub memories: Intern<MemoryId, CoreExport<MemoryIndex>>,
+
+    /// Same as `reallocs`, but for tables.
+    pub tables: Intern<TableId, CoreExport<TableIndex>>,
 
     /// Metadata about identified fused adapters.
     ///
@@ -137,6 +146,10 @@ pub struct ComponentDfg {
     /// of this component by idnicating what order operations should be
     /// performed during instantiation.
     pub side_effects: Vec<SideEffect>,
+
+    /// Interned map of id-to-`CanonicalOptions`, or all sets-of-options used by
+    /// this component.
+    pub options: Intern<OptionsId, CanonicalOptions>,
 }
 
 /// Possible side effects that are possible with instantiating this component.
@@ -147,7 +160,7 @@ pub enum SideEffect {
     /// as traps and the core wasm `start` function which may call component
     /// imports. Instantiation order from the original component must be done in
     /// the same order.
-    Instance(InstanceId),
+    Instance(InstanceId, RuntimeComponentInstanceIndex),
 
     /// A resource was declared in this component.
     ///
@@ -156,6 +169,40 @@ pub enum SideEffect {
     /// destructors. Destructors are loaded from core wasm instances (or
     /// lowerings) which are produced by prior side-effectful operations.
     Resource(DefinedResourceIndex),
+}
+
+/// A sound approximation of a particular module's set of instantiations.
+///
+/// This type forms a simple lattice that we can use in static analyses that in
+/// turn let us specialize a module's compilation to exactly the imports it is
+/// given.
+#[derive(Clone, Copy, Default)]
+pub enum AbstractInstantiations<'a> {
+    /// The associated module is instantiated many times.
+    Many,
+
+    /// The module is instantiated exactly once, with the given definitions as
+    /// arguments to that instantiation.
+    One(&'a [info::CoreDef]),
+
+    /// The module is never instantiated.
+    #[default]
+    None,
+}
+
+impl AbstractInstantiations<'_> {
+    /// Join two facts about a particular module's instantiation together.
+    ///
+    /// This is the least-upper-bound operation on the lattice.
+    pub fn join(&mut self, other: Self) {
+        *self = match (*self, other) {
+            (Self::Many, _) | (_, Self::Many) => Self::Many,
+            (Self::One(a), Self::One(b)) if a == b => Self::One(a),
+            (Self::One(_), Self::One(_)) => Self::Many,
+            (Self::One(a), Self::None) | (Self::None, Self::One(a)) => Self::One(a),
+            (Self::None, Self::None) => Self::None,
+        }
+    }
 }
 
 macro_rules! id {
@@ -176,6 +223,7 @@ id! {
     pub struct AdapterId(u32);
     pub struct PostReturnId(u32);
     pub struct AdapterModuleId(u32);
+    pub struct OptionsId(u32);
 }
 
 /// Same as `info::InstantiateModule`
@@ -194,7 +242,7 @@ pub enum Export {
     LiftedFunction {
         ty: TypeFuncIndex,
         func: CoreDef,
-        options: CanonicalOptions,
+        options: OptionsId,
     },
     ModuleStatic {
         ty: ComponentCoreModuleTypeId,
@@ -218,6 +266,9 @@ pub enum CoreDef {
     Export(CoreExport<EntityIndex>),
     InstanceFlags(RuntimeComponentInstanceIndex),
     Trampoline(TrampolineIndex),
+    UnsafeIntrinsic(ModuleInternedTypeIndex, UnsafeIntrinsic),
+    TaskMayBlock,
+
     /// This is a special variant not present in `info::CoreDef` which
     /// represents that this definition refers to a fused adapter function. This
     /// adapter is fully processed after the initial translation and
@@ -265,7 +316,7 @@ impl<T> CoreExport<T> {
 pub enum Trampoline {
     LowerImport {
         import: RuntimeImportIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
         lower_ty: TypeFuncIndex,
     },
     Transcoder {
@@ -275,29 +326,42 @@ pub enum Trampoline {
         to: MemoryId,
         to64: bool,
     },
-    AlwaysTrap,
-    ResourceNew(TypeResourceTableIndex),
-    ResourceRep(TypeResourceTableIndex),
-    ResourceDrop(TypeResourceTableIndex),
-    BackpressureSet {
+    ResourceNew {
+        instance: RuntimeComponentInstanceIndex,
+        ty: TypeResourceTableIndex,
+    },
+    ResourceRep {
+        instance: RuntimeComponentInstanceIndex,
+        ty: TypeResourceTableIndex,
+    },
+    ResourceDrop {
+        instance: RuntimeComponentInstanceIndex,
+        ty: TypeResourceTableIndex,
+    },
+    BackpressureInc {
+        instance: RuntimeComponentInstanceIndex,
+    },
+    BackpressureDec {
         instance: RuntimeComponentInstanceIndex,
     },
     TaskReturn {
+        instance: RuntimeComponentInstanceIndex,
         results: TypeTupleIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
+    },
+    TaskCancel {
+        instance: RuntimeComponentInstanceIndex,
     },
     WaitableSetNew {
         instance: RuntimeComponentInstanceIndex,
     },
     WaitableSetWait {
         instance: RuntimeComponentInstanceIndex,
-        async_: bool,
-        memory: MemoryId,
+        options: OptionsId,
     },
     WaitableSetPoll {
         instance: RuntimeComponentInstanceIndex,
-        async_: bool,
-        memory: MemoryId,
+        options: OptionsId,
     },
     WaitableSetDrop {
         instance: RuntimeComponentInstanceIndex,
@@ -305,89 +369,146 @@ pub enum Trampoline {
     WaitableJoin {
         instance: RuntimeComponentInstanceIndex,
     },
-    Yield {
-        async_: bool,
+    ThreadYield {
+        instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
     },
     SubtaskDrop {
         instance: RuntimeComponentInstanceIndex,
     },
+    SubtaskCancel {
+        instance: RuntimeComponentInstanceIndex,
+        async_: bool,
+    },
     StreamNew {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeStreamTableIndex,
     },
     StreamRead {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeStreamTableIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
     },
     StreamWrite {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeStreamTableIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
     },
     StreamCancelRead {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeStreamTableIndex,
         async_: bool,
     },
     StreamCancelWrite {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeStreamTableIndex,
         async_: bool,
     },
-    StreamCloseReadable {
+    StreamDropReadable {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeStreamTableIndex,
     },
-    StreamCloseWritable {
+    StreamDropWritable {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeStreamTableIndex,
     },
     FutureNew {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeFutureTableIndex,
     },
     FutureRead {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeFutureTableIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
     },
     FutureWrite {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeFutureTableIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
     },
     FutureCancelRead {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeFutureTableIndex,
         async_: bool,
     },
     FutureCancelWrite {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeFutureTableIndex,
         async_: bool,
     },
-    FutureCloseReadable {
+    FutureDropReadable {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeFutureTableIndex,
     },
-    FutureCloseWritable {
+    FutureDropWritable {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeFutureTableIndex,
     },
     ErrorContextNew {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeComponentLocalErrorContextTableIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
     },
     ErrorContextDebugMessage {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeComponentLocalErrorContextTableIndex,
-        options: CanonicalOptions,
+        options: OptionsId,
     },
     ErrorContextDrop {
+        instance: RuntimeComponentInstanceIndex,
         ty: TypeComponentLocalErrorContextTableIndex,
     },
     ResourceTransferOwn,
     ResourceTransferBorrow,
-    ResourceEnterCall,
-    ResourceExitCall,
-    SyncEnterCall,
-    SyncExitCall {
+    PrepareCall {
+        memory: Option<MemoryId>,
+    },
+    SyncStartCall {
         callback: Option<CallbackId>,
     },
-    AsyncEnterCall,
-    AsyncExitCall {
+    AsyncStartCall {
         callback: Option<CallbackId>,
         post_return: Option<PostReturnId>,
     },
     FutureTransfer,
     StreamTransfer,
     ErrorContextTransfer,
+    Trap,
+    EnterSyncCall,
+    ExitSyncCall,
+    ContextGet {
+        instance: RuntimeComponentInstanceIndex,
+        slot: u32,
+    },
+    ContextSet {
+        instance: RuntimeComponentInstanceIndex,
+        slot: u32,
+    },
+    ThreadIndex,
+    ThreadNewIndirect {
+        instance: RuntimeComponentInstanceIndex,
+        start_func_ty_idx: ComponentTypeIndex,
+        start_func_table_id: TableId,
+    },
+    ThreadSuspendToSuspended {
+        instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
+    },
+    ThreadSuspend {
+        instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
+    },
+    ThreadSuspendTo {
+        instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
+    },
+    ThreadUnsuspend {
+        instance: RuntimeComponentInstanceIndex,
+    },
+    ThreadYieldToSuspended {
+        instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
+    },
 }
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
@@ -404,17 +525,29 @@ pub struct StreamInfo {
     pub payload_type: InterfaceType,
 }
 
+/// Same as `info::CanonicalOptionsDataModel`.
+#[derive(Clone, Hash, Eq, PartialEq)]
+#[expect(missing_docs, reason = "self-describing fields")]
+pub enum CanonicalOptionsDataModel {
+    Gc {},
+    LinearMemory {
+        memory: Option<MemoryId>,
+        realloc: Option<ReallocId>,
+    },
+}
+
 /// Same as `info::CanonicalOptions`
 #[derive(Clone, Hash, Eq, PartialEq)]
 #[expect(missing_docs, reason = "self-describing fields")]
 pub struct CanonicalOptions {
     pub instance: RuntimeComponentInstanceIndex,
     pub string_encoding: StringEncoding,
-    pub memory: Option<MemoryId>,
-    pub realloc: Option<ReallocId>,
     pub callback: Option<CallbackId>,
     pub post_return: Option<PostReturnId>,
     pub async_: bool,
+    pub cancellable: bool,
+    pub core_type: ModuleInternedTypeIndex,
+    pub data_model: CanonicalOptionsDataModel,
 }
 
 /// Same as `info::Resource`
@@ -495,9 +628,12 @@ impl ComponentDfg {
             runtime_callbacks: Default::default(),
             runtime_instances: Default::default(),
             num_lowerings: 0,
+            unsafe_intrinsics: Default::default(),
             trampolines: Default::default(),
             trampoline_defs: Default::default(),
             trampoline_map: Default::default(),
+            options: Default::default(),
+            options_map: Default::default(),
         };
 
         // Handle all side effects of this component in the order that they're
@@ -527,8 +663,10 @@ impl ComponentDfg {
                 exports,
                 export_items,
                 initializers: linearize.initializers,
+                unsafe_intrinsics: linearize.unsafe_intrinsics,
                 trampolines: linearize.trampolines,
                 num_lowerings: linearize.num_lowerings,
+                options: linearize.options,
 
                 num_runtime_memories: linearize.runtime_memories.len() as u32,
                 num_runtime_tables: linearize.runtime_tables.len() as u32,
@@ -563,8 +701,10 @@ impl ComponentDfg {
 struct LinearizeDfg<'a> {
     dfg: &'a ComponentDfg,
     initializers: Vec<GlobalInitializer>,
+    unsafe_intrinsics: [PackedOption<ModuleInternedTypeIndex>; UnsafeIntrinsic::len() as usize],
     trampolines: PrimaryMap<TrampolineIndex, ModuleInternedTypeIndex>,
     trampoline_defs: PrimaryMap<TrampolineIndex, info::Trampoline>,
+    options: PrimaryMap<OptionsIndex, info::CanonicalOptions>,
     trampoline_map: HashMap<TrampolineIndex, TrampolineIndex>,
     runtime_memories: HashMap<MemoryId, RuntimeMemoryIndex>,
     runtime_tables: HashMap<TableId, RuntimeTableIndex>,
@@ -572,6 +712,7 @@ struct LinearizeDfg<'a> {
     runtime_callbacks: HashMap<CallbackId, RuntimeCallbackIndex>,
     runtime_post_return: HashMap<PostReturnId, RuntimePostReturnIndex>,
     runtime_instances: HashMap<RuntimeInstance, RuntimeInstanceIndex>,
+    options_map: HashMap<OptionsId, OptionsIndex>,
     num_lowerings: u32,
 }
 
@@ -584,8 +725,8 @@ enum RuntimeInstance {
 impl LinearizeDfg<'_> {
     fn side_effect(&mut self, effect: &SideEffect) {
         match effect {
-            SideEffect::Instance(i) => {
-                self.instantiate(*i, &self.dfg.instances[*i]);
+            SideEffect::Instance(i, ci) => {
+                self.instantiate(*i, &self.dfg.instances[*i], *ci);
             }
             SideEffect::Resource(i) => {
                 self.resource(*i, &self.dfg.resources[*i]);
@@ -593,7 +734,12 @@ impl LinearizeDfg<'_> {
         }
     }
 
-    fn instantiate(&mut self, instance: InstanceId, args: &Instance) {
+    fn instantiate(
+        &mut self,
+        instance: InstanceId,
+        args: &Instance,
+        component_instance: RuntimeComponentInstanceIndex,
+    ) {
         log::trace!("creating instance {instance:?}");
         let instantiation = match args {
             Instance::Static(index, args) => InstantiateModule::Static(
@@ -614,8 +760,10 @@ impl LinearizeDfg<'_> {
             ),
         };
         let index = RuntimeInstanceIndex::new(self.runtime_instances.len());
-        self.initializers
-            .push(GlobalInitializer::InstantiateModule(instantiation));
+        self.initializers.push(GlobalInitializer::InstantiateModule(
+            instantiation,
+            Some(component_instance),
+        ));
         let prev = self
             .runtime_instances
             .insert(RuntimeInstance::Normal(instance), index);
@@ -643,7 +791,7 @@ impl LinearizeDfg<'_> {
         let item = match export {
             Export::LiftedFunction { ty, func, options } => {
                 let func = self.core_def(func);
-                let options = self.options(options);
+                let options = self.options(*options);
                 info::Export::LiftedFunction {
                     ty: *ty,
                     func,
@@ -675,20 +823,38 @@ impl LinearizeDfg<'_> {
         Ok(items.push(item))
     }
 
-    fn options(&mut self, options: &CanonicalOptions) -> info::CanonicalOptions {
-        let memory = options.memory.map(|mem| self.runtime_memory(mem));
-        let realloc = options.realloc.map(|mem| self.runtime_realloc(mem));
+    fn options(&mut self, options: OptionsId) -> OptionsIndex {
+        self.intern_no_init(
+            options,
+            |me| &mut me.options_map,
+            |me, options| me.convert_options(options),
+        )
+    }
+
+    fn convert_options(&mut self, options: OptionsId) -> OptionsIndex {
+        let options = &self.dfg.options[options];
+        let data_model = match options.data_model {
+            CanonicalOptionsDataModel::Gc {} => info::CanonicalOptionsDataModel::Gc {},
+            CanonicalOptionsDataModel::LinearMemory { memory, realloc } => {
+                info::CanonicalOptionsDataModel::LinearMemory(LinearMemoryOptions {
+                    memory: memory.map(|mem| self.runtime_memory(mem)),
+                    realloc: realloc.map(|mem| self.runtime_realloc(mem)),
+                })
+            }
+        };
         let callback = options.callback.map(|mem| self.runtime_callback(mem));
         let post_return = options.post_return.map(|mem| self.runtime_post_return(mem));
-        info::CanonicalOptions {
+        let options = info::CanonicalOptions {
             instance: options.instance,
             string_encoding: options.string_encoding,
-            memory,
-            realloc,
             callback,
             post_return,
             async_: options.async_,
-        }
+            cancellable: options.cancellable,
+            core_type: options.core_type,
+            data_model,
+        };
+        self.options.push(options)
     }
 
     fn runtime_memory(&mut self, mem: MemoryId) -> RuntimeMemoryIndex {
@@ -697,6 +863,15 @@ impl LinearizeDfg<'_> {
             |me| &mut me.runtime_memories,
             |me, mem| me.core_export(&me.dfg.memories[mem]),
             |index, export| GlobalInitializer::ExtractMemory(ExtractMemory { index, export }),
+        )
+    }
+
+    fn runtime_table(&mut self, table: TableId) -> RuntimeTableIndex {
+        self.intern(
+            table,
+            |me| &mut me.runtime_tables,
+            |me, table| me.core_export(&me.dfg.tables[table]),
+            |index, export| GlobalInitializer::ExtractTable(ExtractTable { index, export }),
         )
     }
 
@@ -733,6 +908,14 @@ impl LinearizeDfg<'_> {
             CoreDef::InstanceFlags(i) => info::CoreDef::InstanceFlags(*i),
             CoreDef::Adapter(id) => info::CoreDef::Export(self.adapter(*id)),
             CoreDef::Trampoline(index) => info::CoreDef::Trampoline(self.trampoline(*index)),
+            CoreDef::UnsafeIntrinsic(ty, i) => {
+                let index = usize::try_from(i.index()).unwrap();
+                if self.unsafe_intrinsics[index].is_none() {
+                    self.unsafe_intrinsics[index] = Some(*ty).into();
+                }
+                info::CoreDef::UnsafeIntrinsic(*i)
+            }
+            CoreDef::TaskMayBlock => info::CoreDef::TaskMayBlock,
         }
     }
 
@@ -755,7 +938,7 @@ impl LinearizeDfg<'_> {
                 });
                 info::Trampoline::LowerImport {
                     index,
-                    options: self.options(options),
+                    options: self.options(*options),
                     lower_ty: *lower_ty,
                 }
             }
@@ -772,124 +955,267 @@ impl LinearizeDfg<'_> {
                 to: self.runtime_memory(*to),
                 to64: *to64,
             },
-            Trampoline::AlwaysTrap => info::Trampoline::AlwaysTrap,
-            Trampoline::ResourceNew(ty) => info::Trampoline::ResourceNew(*ty),
-            Trampoline::ResourceDrop(ty) => info::Trampoline::ResourceDrop(*ty),
-            Trampoline::ResourceRep(ty) => info::Trampoline::ResourceRep(*ty),
-            Trampoline::BackpressureSet { instance } => info::Trampoline::BackpressureSet {
+            Trampoline::ResourceNew { instance, ty } => info::Trampoline::ResourceNew {
+                instance: *instance,
+                ty: *ty,
+            },
+            Trampoline::ResourceDrop { instance, ty } => info::Trampoline::ResourceDrop {
+                instance: *instance,
+                ty: *ty,
+            },
+            Trampoline::ResourceRep { instance, ty } => info::Trampoline::ResourceRep {
+                instance: *instance,
+                ty: *ty,
+            },
+            Trampoline::BackpressureInc { instance } => info::Trampoline::BackpressureInc {
                 instance: *instance,
             },
-            Trampoline::TaskReturn { results, options } => info::Trampoline::TaskReturn {
+            Trampoline::BackpressureDec { instance } => info::Trampoline::BackpressureDec {
+                instance: *instance,
+            },
+            Trampoline::TaskReturn {
+                instance,
+                results,
+                options,
+            } => info::Trampoline::TaskReturn {
+                instance: *instance,
                 results: *results,
-                options: self.options(options),
+                options: self.options(*options),
+            },
+            Trampoline::TaskCancel { instance } => info::Trampoline::TaskCancel {
+                instance: *instance,
             },
             Trampoline::WaitableSetNew { instance } => info::Trampoline::WaitableSetNew {
                 instance: *instance,
             },
-            Trampoline::WaitableSetWait {
-                instance,
-                async_,
-                memory,
-            } => info::Trampoline::WaitableSetWait {
-                instance: *instance,
-                async_: *async_,
-                memory: self.runtime_memory(*memory),
-            },
-            Trampoline::WaitableSetPoll {
-                instance,
-                async_,
-                memory,
-            } => info::Trampoline::WaitableSetPoll {
-                instance: *instance,
-                async_: *async_,
-                memory: self.runtime_memory(*memory),
-            },
+            Trampoline::WaitableSetWait { instance, options } => {
+                info::Trampoline::WaitableSetWait {
+                    instance: *instance,
+                    options: self.options(*options),
+                }
+            }
+            Trampoline::WaitableSetPoll { instance, options } => {
+                info::Trampoline::WaitableSetPoll {
+                    instance: *instance,
+                    options: self.options(*options),
+                }
+            }
             Trampoline::WaitableSetDrop { instance } => info::Trampoline::WaitableSetDrop {
                 instance: *instance,
             },
             Trampoline::WaitableJoin { instance } => info::Trampoline::WaitableJoin {
                 instance: *instance,
             },
-            Trampoline::Yield { async_ } => info::Trampoline::Yield { async_: *async_ },
+            Trampoline::ThreadYield {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadYield {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
             Trampoline::SubtaskDrop { instance } => info::Trampoline::SubtaskDrop {
                 instance: *instance,
             },
-            Trampoline::StreamNew { ty } => info::Trampoline::StreamNew { ty: *ty },
-            Trampoline::StreamRead { ty, options } => info::Trampoline::StreamRead {
-                ty: *ty,
-                options: self.options(options),
+            Trampoline::SubtaskCancel { instance, async_ } => info::Trampoline::SubtaskCancel {
+                instance: *instance,
+                async_: *async_,
             },
-            Trampoline::StreamWrite { ty, options } => info::Trampoline::StreamWrite {
+            Trampoline::StreamNew { instance, ty } => info::Trampoline::StreamNew {
+                instance: *instance,
                 ty: *ty,
-                options: self.options(options),
             },
-            Trampoline::StreamCancelRead { ty, async_ } => info::Trampoline::StreamCancelRead {
+            Trampoline::StreamRead {
+                instance,
+                ty,
+                options,
+            } => info::Trampoline::StreamRead {
+                instance: *instance,
+                ty: *ty,
+                options: self.options(*options),
+            },
+            Trampoline::StreamWrite {
+                instance,
+                ty,
+                options,
+            } => info::Trampoline::StreamWrite {
+                instance: *instance,
+                ty: *ty,
+                options: self.options(*options),
+            },
+            Trampoline::StreamCancelRead {
+                instance,
+                ty,
+                async_,
+            } => info::Trampoline::StreamCancelRead {
+                instance: *instance,
                 ty: *ty,
                 async_: *async_,
             },
-            Trampoline::StreamCancelWrite { ty, async_ } => info::Trampoline::StreamCancelWrite {
+            Trampoline::StreamCancelWrite {
+                instance,
+                ty,
+                async_,
+            } => info::Trampoline::StreamCancelWrite {
+                instance: *instance,
                 ty: *ty,
                 async_: *async_,
             },
-            Trampoline::StreamCloseReadable { ty } => {
-                info::Trampoline::StreamCloseReadable { ty: *ty }
-            }
-            Trampoline::StreamCloseWritable { ty } => {
-                info::Trampoline::StreamCloseWritable { ty: *ty }
-            }
-            Trampoline::FutureNew { ty } => info::Trampoline::FutureNew { ty: *ty },
-            Trampoline::FutureRead { ty, options } => info::Trampoline::FutureRead {
-                ty: *ty,
-                options: self.options(options),
-            },
-            Trampoline::FutureWrite { ty, options } => info::Trampoline::FutureWrite {
-                ty: *ty,
-                options: self.options(options),
-            },
-            Trampoline::FutureCancelRead { ty, async_ } => info::Trampoline::FutureCancelRead {
-                ty: *ty,
-                async_: *async_,
-            },
-            Trampoline::FutureCancelWrite { ty, async_ } => info::Trampoline::FutureCancelWrite {
-                ty: *ty,
-                async_: *async_,
-            },
-            Trampoline::FutureCloseReadable { ty } => {
-                info::Trampoline::FutureCloseReadable { ty: *ty }
-            }
-            Trampoline::FutureCloseWritable { ty } => {
-                info::Trampoline::FutureCloseWritable { ty: *ty }
-            }
-            Trampoline::ErrorContextNew { ty, options } => info::Trampoline::ErrorContextNew {
-                ty: *ty,
-                options: self.options(options),
-            },
-            Trampoline::ErrorContextDebugMessage { ty, options } => {
-                info::Trampoline::ErrorContextDebugMessage {
+            Trampoline::StreamDropReadable { instance, ty } => {
+                info::Trampoline::StreamDropReadable {
+                    instance: *instance,
                     ty: *ty,
-                    options: self.options(options),
                 }
             }
-            Trampoline::ErrorContextDrop { ty } => info::Trampoline::ErrorContextDrop { ty: *ty },
+            Trampoline::StreamDropWritable { instance, ty } => {
+                info::Trampoline::StreamDropWritable {
+                    instance: *instance,
+                    ty: *ty,
+                }
+            }
+            Trampoline::FutureNew { instance, ty } => info::Trampoline::FutureNew {
+                instance: *instance,
+                ty: *ty,
+            },
+            Trampoline::FutureRead {
+                instance,
+                ty,
+                options,
+            } => info::Trampoline::FutureRead {
+                instance: *instance,
+                ty: *ty,
+                options: self.options(*options),
+            },
+            Trampoline::FutureWrite {
+                instance,
+                ty,
+                options,
+            } => info::Trampoline::FutureWrite {
+                instance: *instance,
+                ty: *ty,
+                options: self.options(*options),
+            },
+            Trampoline::FutureCancelRead {
+                instance,
+                ty,
+                async_,
+            } => info::Trampoline::FutureCancelRead {
+                instance: *instance,
+                ty: *ty,
+                async_: *async_,
+            },
+            Trampoline::FutureCancelWrite {
+                instance,
+                ty,
+                async_,
+            } => info::Trampoline::FutureCancelWrite {
+                instance: *instance,
+                ty: *ty,
+                async_: *async_,
+            },
+            Trampoline::FutureDropReadable { instance, ty } => {
+                info::Trampoline::FutureDropReadable {
+                    instance: *instance,
+                    ty: *ty,
+                }
+            }
+            Trampoline::FutureDropWritable { instance, ty } => {
+                info::Trampoline::FutureDropWritable {
+                    instance: *instance,
+                    ty: *ty,
+                }
+            }
+            Trampoline::ErrorContextNew {
+                instance,
+                ty,
+                options,
+            } => info::Trampoline::ErrorContextNew {
+                instance: *instance,
+                ty: *ty,
+                options: self.options(*options),
+            },
+            Trampoline::ErrorContextDebugMessage {
+                instance,
+                ty,
+                options,
+            } => info::Trampoline::ErrorContextDebugMessage {
+                instance: *instance,
+                ty: *ty,
+                options: self.options(*options),
+            },
+            Trampoline::ErrorContextDrop { instance, ty } => info::Trampoline::ErrorContextDrop {
+                instance: *instance,
+                ty: *ty,
+            },
             Trampoline::ResourceTransferOwn => info::Trampoline::ResourceTransferOwn,
             Trampoline::ResourceTransferBorrow => info::Trampoline::ResourceTransferBorrow,
-            Trampoline::ResourceEnterCall => info::Trampoline::ResourceEnterCall,
-            Trampoline::ResourceExitCall => info::Trampoline::ResourceExitCall,
-            Trampoline::SyncEnterCall => info::Trampoline::SyncEnterCall,
-            Trampoline::SyncExitCall { callback } => info::Trampoline::SyncExitCall {
+            Trampoline::PrepareCall { memory } => info::Trampoline::PrepareCall {
+                memory: memory.map(|v| self.runtime_memory(v)),
+            },
+            Trampoline::SyncStartCall { callback } => info::Trampoline::SyncStartCall {
                 callback: callback.map(|v| self.runtime_callback(v)),
             },
-            Trampoline::AsyncEnterCall => info::Trampoline::AsyncEnterCall,
-            Trampoline::AsyncExitCall {
+            Trampoline::AsyncStartCall {
                 callback,
                 post_return,
-            } => info::Trampoline::AsyncExitCall {
+            } => info::Trampoline::AsyncStartCall {
                 callback: callback.map(|v| self.runtime_callback(v)),
                 post_return: post_return.map(|v| self.runtime_post_return(v)),
             },
             Trampoline::FutureTransfer => info::Trampoline::FutureTransfer,
             Trampoline::StreamTransfer => info::Trampoline::StreamTransfer,
             Trampoline::ErrorContextTransfer => info::Trampoline::ErrorContextTransfer,
+            Trampoline::Trap => info::Trampoline::Trap,
+            Trampoline::EnterSyncCall => info::Trampoline::EnterSyncCall,
+            Trampoline::ExitSyncCall => info::Trampoline::ExitSyncCall,
+            Trampoline::ContextGet { instance, slot } => info::Trampoline::ContextGet {
+                instance: *instance,
+                slot: *slot,
+            },
+            Trampoline::ContextSet { instance, slot } => info::Trampoline::ContextSet {
+                instance: *instance,
+                slot: *slot,
+            },
+            Trampoline::ThreadIndex => info::Trampoline::ThreadIndex,
+            Trampoline::ThreadNewIndirect {
+                instance,
+                start_func_ty_idx,
+                start_func_table_id,
+            } => info::Trampoline::ThreadNewIndirect {
+                instance: *instance,
+                start_func_ty_idx: *start_func_ty_idx,
+                start_func_table_idx: self.runtime_table(*start_func_table_id),
+            },
+            Trampoline::ThreadSuspendToSuspended {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadSuspendToSuspended {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
+            Trampoline::ThreadSuspendTo {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadSuspendTo {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
+            Trampoline::ThreadSuspend {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadSuspend {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
+            Trampoline::ThreadUnsuspend { instance } => info::Trampoline::ThreadUnsuspend {
+                instance: *instance,
+            },
+            Trampoline::ThreadYieldToSuspended {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadYieldToSuspended {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
         };
         let i1 = self.trampolines.push(*signature);
         let i2 = self.trampoline_defs.push(trampoline);
@@ -934,7 +1260,7 @@ impl LinearizeDfg<'_> {
                 let (module_index, args) = &me.dfg.adapter_modules[adapter_module];
                 let args = args.iter().map(|arg| me.core_def(arg)).collect();
                 let instantiate = InstantiateModule::Static(*module_index, args);
-                GlobalInitializer::InstantiateModule(instantiate)
+                GlobalInitializer::InstantiateModule(instantiate, None)
             },
             |_, init| init,
         )
@@ -965,12 +1291,41 @@ impl LinearizeDfg<'_> {
         K: Hash + Eq + Copy,
         V: EntityRef,
     {
+        self.intern_(key, map, generate, |me, key, val| {
+            me.initializers.push(init(key, val));
+        })
+    }
+
+    fn intern_no_init<K, V, T>(
+        &mut self,
+        key: K,
+        map: impl Fn(&mut Self) -> &mut HashMap<K, V>,
+        generate: impl FnOnce(&mut Self, K) -> T,
+    ) -> V
+    where
+        K: Hash + Eq + Copy,
+        V: EntityRef,
+    {
+        self.intern_(key, map, generate, |_me, _key, _val| {})
+    }
+
+    fn intern_<K, V, T>(
+        &mut self,
+        key: K,
+        map: impl Fn(&mut Self) -> &mut HashMap<K, V>,
+        generate: impl FnOnce(&mut Self, K) -> T,
+        init: impl FnOnce(&mut Self, V, T),
+    ) -> V
+    where
+        K: Hash + Eq + Copy,
+        V: EntityRef,
+    {
         if let Some(val) = map(self).get(&key) {
             return *val;
         }
         let tmp = generate(self, key);
         let index = V::new(map(self).len());
-        self.initializers.push(init(index, tmp));
+        init(self, index, tmp);
         let prev = map(self).insert(key, index);
         assert!(prev.is_none());
         index

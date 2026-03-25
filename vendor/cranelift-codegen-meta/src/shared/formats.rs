@@ -42,6 +42,7 @@ pub(crate) struct Formats {
     pub(crate) unary_ieee32: Rc<InstructionFormat>,
     pub(crate) unary_ieee64: Rc<InstructionFormat>,
     pub(crate) unary_imm: Rc<InstructionFormat>,
+    pub(crate) exception_handler_address: Rc<InstructionFormat>,
 }
 
 impl Formats {
@@ -57,7 +58,9 @@ impl Formats {
 
             unary_ieee64: Builder::new("UnaryIeee64").imm(&imm.ieee64).build(),
 
-            unary_const: Builder::new("UnaryConst").imm(&imm.pool_constant).build(),
+            unary_const: Builder::new("UnaryConst")
+                .imm(&entities.pool_constant)
+                .build(),
 
             unary_global_value: Builder::new("UnaryGlobalValue")
                 .imm(&entities.global_value)
@@ -94,7 +97,7 @@ impl Formats {
             shuffle: Builder::new("Shuffle")
                 .value()
                 .value()
-                .imm(&imm.uimm128)
+                .imm(&entities.uimm128)
                 .build(),
 
             int_compare: Builder::new("IntCompare")
@@ -216,6 +219,11 @@ impl Formats {
                 .value()
                 .value()
                 .imm(&imm.trapcode)
+                .build(),
+
+            exception_handler_address: Builder::new("ExceptionHandlerAddress")
+                .raw_block()
+                .imm(&imm.imm64)
                 .build(),
         }
     }

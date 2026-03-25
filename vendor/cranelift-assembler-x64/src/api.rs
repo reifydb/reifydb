@@ -2,7 +2,11 @@
 
 use crate::gpr;
 use crate::xmm;
-use std::{num::NonZeroU8, ops::Index, vec::Vec};
+use crate::{Amode, DeferredTarget, GprMem, XmmMem};
+use alloc::string::String;
+use alloc::vec::Vec;
+use core::fmt;
+use core::num::NonZeroU8;
 
 /// Describe how an instruction is emitted into a code buffer.
 pub trait CodeSink {
@@ -22,17 +26,15 @@ pub trait CodeSink {
     /// required for assembling memory accesses.
     fn add_trap(&mut self, code: TrapCode);
 
-    /// Return the byte offset of the current location in the code buffer;
-    /// required for assembling RIP-relative memory accesses.
-    fn current_offset(&self) -> u32;
+    /// Inform the code buffer that a use of `target` is about to happen at the
+    /// current offset.
+    ///
+    /// After this method is called the bytes of the target are then expected to
+    /// be placed using one of the above `put*` methods.
+    fn use_target(&mut self, target: DeferredTarget);
 
-    /// Inform the code buffer of a use of `label` at `offset`; required for
-    /// assembling RIP-relative memory accesses.
-    fn use_label_at_offset(&mut self, offset: u32, label: Label);
-
-    /// Return the label for a constant `id`; required for assembling
-    /// RIP-relative memory accesses of constants.
-    fn get_label_for_constant(&mut self, id: Constant) -> Label;
+    /// Resolves a `KnownOffset` value to the actual signed offset.
+    fn known_offset(&self, offset: KnownOffset) -> i32;
 }
 
 /// Provide a convenient implementation for testing.
@@ -55,49 +57,37 @@ impl CodeSink for Vec<u8> {
 
     fn add_trap(&mut self, _: TrapCode) {}
 
-    fn current_offset(&self) -> u32 {
-        self.len().try_into().unwrap()
-    }
+    fn use_target(&mut self, _: DeferredTarget) {}
 
-    fn use_label_at_offset(&mut self, _: u32, _: Label) {}
-
-    fn get_label_for_constant(&mut self, c: Constant) -> Label {
-        Label(c.0)
+    fn known_offset(&self, offset: KnownOffset) -> i32 {
+        panic!("unknown offset {offset:?}")
     }
 }
 
 /// Wrap [`CodeSink`]-specific labels.
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(any(test, feature = "fuzz"), derive(arbitrary::Arbitrary))]
 pub struct Label(pub u32);
 
 /// Wrap [`CodeSink`]-specific constant keys.
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[cfg_attr(any(test, feature = "fuzz"), derive(arbitrary::Arbitrary))]
 pub struct Constant(pub u32);
 
 /// Wrap [`CodeSink`]-specific trap codes.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(any(test, feature = "fuzz"), derive(arbitrary::Arbitrary))]
 pub struct TrapCode(pub NonZeroU8);
 
-/// A table mapping `KnownOffset` identifiers to their `i32` offset values.
-///
-/// When encoding instructions, Cranelift may not know all of the information
-/// needed to construct an immediate. Specifically, addressing modes that
-/// require knowing the size of the tail arguments or outgoing arguments (see
-/// `SyntheticAmode::finalize`) will not know these sizes until emission.
-///
-/// This table allows up to do a "late" look up of these values by their
-/// `KnownOffset`.
-pub trait KnownOffsetTable: Index<KnownOffset, Output = i32> {}
-impl KnownOffsetTable for Vec<i32> {}
-/// Provide a convenient implementation for testing.
-impl KnownOffsetTable for [i32; 2] {}
+impl fmt::Display for TrapCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "trap={}", self.0)
+    }
+}
 
 /// A `KnownOffset` is a unique identifier for a specific offset known only at
 /// emission time.
-pub type KnownOffset = usize;
+pub type KnownOffset = u8;
 
 /// A type set fixing the register types used in the assembler.
 ///
@@ -111,15 +101,21 @@ pub trait Registers {
     /// An x64 general purpose register that may be read and written.
     type ReadWriteGpr: AsReg;
 
+    /// An x64 general purpose register that may be written.
+    type WriteGpr: AsReg;
+
     /// An x64 SSE register that may be read.
     type ReadXmm: AsReg;
 
     /// An x64 SSE register that may be read and written.
     type ReadWriteXmm: AsReg;
+
+    /// An x64 SSE register that may be written.
+    type WriteXmm: AsReg;
 }
 
 /// Describe how to interact with an external register type.
-pub trait AsReg: Clone + std::fmt::Debug {
+pub trait AsReg: Copy + Clone + core::fmt::Debug + PartialEq {
     /// Create a register from its hardware encoding.
     ///
     /// This is primarily useful for fuzzing, though it is also useful for
@@ -159,20 +155,91 @@ pub trait RegisterVisitor<R: Registers> {
     fn read_gpr(&mut self, reg: &mut R::ReadGpr);
     /// Visit a read-write register.
     fn read_write_gpr(&mut self, reg: &mut R::ReadWriteGpr);
+    /// Visit a write-only register.
+    fn write_gpr(&mut self, reg: &mut R::WriteGpr);
+
     /// Visit a read-only fixed register; this register can be modified in-place
     /// but must emit as the hardware encoding `enc`.
     fn fixed_read_gpr(&mut self, reg: &mut R::ReadGpr, enc: u8);
     /// Visit a read-write fixed register; this register can be modified
     /// in-place but must emit as the hardware encoding `enc`.
     fn fixed_read_write_gpr(&mut self, reg: &mut R::ReadWriteGpr, enc: u8);
+    /// Visit a write-only fixed register; this register can be modified
+    /// in-place but must emit as the hardware encoding `enc`.
+    fn fixed_write_gpr(&mut self, reg: &mut R::WriteGpr, enc: u8);
+
     /// Visit a read-only SSE register.
     fn read_xmm(&mut self, reg: &mut R::ReadXmm);
     /// Visit a read-write SSE register.
     fn read_write_xmm(&mut self, reg: &mut R::ReadWriteXmm);
+    /// Visit a write-only SSE register.
+    fn write_xmm(&mut self, reg: &mut R::WriteXmm);
+
     /// Visit a read-only fixed SSE register; this register can be modified
     /// in-place but must emit as the hardware encoding `enc`.
     fn fixed_read_xmm(&mut self, reg: &mut R::ReadXmm, enc: u8);
     /// Visit a read-write fixed SSE register; this register can be modified
     /// in-place but must emit as the hardware encoding `enc`.
     fn fixed_read_write_xmm(&mut self, reg: &mut R::ReadWriteXmm, enc: u8);
+    /// Visit a read-only fixed SSE register; this register can be modified
+    /// in-place but must emit as the hardware encoding `enc`.
+    fn fixed_write_xmm(&mut self, reg: &mut R::WriteXmm, enc: u8);
+
+    /// Visit the registers in an [`Amode`].
+    ///
+    /// This is helpful for generated code: it allows capturing the `R::ReadGpr`
+    /// type (which an `Amode` method cannot) and simplifies the code to be
+    /// generated.
+    fn read_amode(&mut self, amode: &mut Amode<R::ReadGpr>) {
+        match amode {
+            Amode::ImmReg { base, .. } => {
+                self.read_gpr(base);
+            }
+            Amode::ImmRegRegShift { base, index, .. } => {
+                self.read_gpr(base);
+                self.read_gpr(index.as_mut());
+            }
+            Amode::RipRelative { .. } => {}
+        }
+    }
+
+    /// Helper method to handle a read/write [`GprMem`] operand.
+    fn read_write_gpr_mem(&mut self, op: &mut GprMem<R::ReadWriteGpr, R::ReadGpr>) {
+        match op {
+            GprMem::Gpr(r) => self.read_write_gpr(r),
+            GprMem::Mem(m) => self.read_amode(m),
+        }
+    }
+
+    /// Helper method to handle a write [`GprMem`] operand.
+    fn write_gpr_mem(&mut self, op: &mut GprMem<R::WriteGpr, R::ReadGpr>) {
+        match op {
+            GprMem::Gpr(r) => self.write_gpr(r),
+            GprMem::Mem(m) => self.read_amode(m),
+        }
+    }
+
+    /// Helper method to handle a read-only [`GprMem`] operand.
+    fn read_gpr_mem(&mut self, op: &mut GprMem<R::ReadGpr, R::ReadGpr>) {
+        match op {
+            GprMem::Gpr(r) => self.read_gpr(r),
+            GprMem::Mem(m) => self.read_amode(m),
+        }
+    }
+
+    /// Helper method to handle a read-only [`XmmMem`] operand.
+    fn read_xmm_mem(&mut self, op: &mut XmmMem<R::ReadXmm, R::ReadGpr>) {
+        match op {
+            XmmMem::Xmm(r) => self.read_xmm(r),
+            XmmMem::Mem(m) => self.read_amode(m),
+        }
+    }
+
+    /// Helper method to handle a write [`XmmMem`] operand.
+    fn write_xmm_mem(&mut self, op: &mut XmmMem<R::WriteXmm, R::ReadGpr>) {
+        match op {
+            XmmMem::Xmm(r) => self.write_xmm(r),
+            XmmMem::Mem(m) => self.read_amode(m),
+        }
+    }
 }

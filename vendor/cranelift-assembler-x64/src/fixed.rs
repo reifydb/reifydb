@@ -1,6 +1,7 @@
 //! Operands with fixed register encodings.
 
-use crate::AsReg;
+use crate::{AsReg, Size};
+use alloc::string::String;
 
 /// A _fixed_ register.
 ///
@@ -22,7 +23,7 @@ use crate::AsReg;
 /// let fixed = Fixed::<u8, { gpr::enc::RAX }>(invalid_reg);
 /// fixed.enc(); // Will panic because `invalid_reg` does not match `RAX`.
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Fixed<R, const E: u8>(pub R);
 
 impl<R, const E: u8> Fixed<R, E> {
@@ -32,6 +33,14 @@ impl<R, const E: u8> Fixed<R, E> {
     /// able to know what this register should encode as.
     pub fn expected_enc(&self) -> u8 {
         E
+    }
+
+    /// Return the register name at the given `size`.
+    pub fn to_string(&self, size: Option<Size>) -> String
+    where
+        R: AsReg,
+    {
+        self.0.to_string(size)
     }
 }
 
@@ -50,5 +59,11 @@ impl<R: AsReg, const E: u8> AsReg for Fixed<R, E> {
 impl<R, const E: u8> AsRef<R> for Fixed<R, E> {
     fn as_ref(&self) -> &R {
         &self.0
+    }
+}
+
+impl<R, const E: u8> From<R> for Fixed<R, E> {
+    fn from(reg: R) -> Fixed<R, E> {
+        Fixed(reg)
     }
 }

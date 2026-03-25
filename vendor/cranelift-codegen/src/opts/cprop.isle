@@ -1,33 +1,56 @@
 ;; Constant propagation.
 
 (rule (simplify
+      (clz (fits_in_64 ty)
+            (iconst ty kx)))
+      (subsume (iconst ty (imm64_clz ty kx))))
+
+
+(rule (simplify
+       (ctz (fits_in_64 ty)
+             (iconst ty kx)))
+      (subsume (iconst ty (imm64_ctz ty kx))))
+
+(rule (simplify
        (iadd (fits_in_64 ty)
              (iconst ty (u64_from_imm64 k1))
              (iconst ty (u64_from_imm64 k2))))
-      (subsume (iconst ty (imm64_masked ty (u64_add k1 k2)))))
+      (subsume (iconst ty (imm64_masked ty (u64_wrapping_add k1 k2)))))
 
 (rule (simplify
        (isub (fits_in_64 ty)
              (iconst ty (u64_from_imm64 k1))
              (iconst ty (u64_from_imm64 k2))))
-      (subsume (iconst ty (imm64_masked ty (u64_sub k1 k2)))))
+      (subsume (iconst ty (imm64_masked ty (u64_wrapping_sub k1 k2)))))
 
 (rule (simplify
        (imul (fits_in_64 ty)
              (iconst ty (u64_from_imm64 k1))
              (iconst ty (u64_from_imm64 k2))))
-      (subsume (iconst ty (imm64_masked ty (u64_mul k1 k2)))))
+      (subsume (iconst ty (imm64_masked ty (u64_wrapping_mul k1 k2)))))
 
 (rule (simplify_skeleton
        (sdiv (iconst ty k1)
-             (iconst _ k2)))
+             (iconst ty k2)))
       (if-let d (imm64_sdiv ty k1 k2))
+      (iconst ty d))
+
+(rule (simplify_skeleton
+       (srem (iconst ty k1)
+             (iconst ty k2)))
+      (if-let d (imm64_srem ty k1 k2))
       (iconst ty d))
 
 (rule (simplify_skeleton
        (udiv (iconst_u ty k1)
              (iconst_u ty k2)))
-      (if-let d (u64_udiv k1 k2))
+      (if-let d (u64_checked_div k1 k2))
+      (iconst ty (imm64_masked ty d)))
+
+(rule (simplify_skeleton
+       (urem (iconst_u ty k1)
+             (iconst_u ty k2)))
+      (if-let d (u64_checked_rem k1 k2))
       (iconst ty (imm64_masked ty d)))
 
 (rule (simplify
@@ -134,23 +157,23 @@
 (rule (simplify (isub ty
                       (isub ty x (iconst ty (u64_from_imm64 k1)))
                       (iconst ty (u64_from_imm64 k2))))
-      (isub ty x (iconst ty (imm64_masked ty (u64_add k1 k2)))))
+      (isub ty x (iconst ty (imm64_masked ty (u64_wrapping_add k1 k2)))))
 (rule (simplify (isub ty
                       (isub ty (iconst ty (u64_from_imm64 k1)) x)
                       (iconst ty (u64_from_imm64 k2))))
-      (isub ty (iconst ty (imm64_masked ty (u64_sub k1 k2))) x))
+      (isub ty (iconst ty (imm64_masked ty (u64_wrapping_sub k1 k2))) x))
 (rule (simplify (isub ty
                       (iadd ty x (iconst ty (u64_from_imm64 k1)))
                       (iconst ty (u64_from_imm64 k2))))
-      (isub ty x (iconst ty (imm64_masked ty (u64_sub k2 k1)))))
+      (isub ty x (iconst ty (imm64_masked ty (u64_wrapping_sub k2 k1)))))
 (rule (simplify (iadd ty
                       (isub ty x (iconst ty (u64_from_imm64 k1)))
                       (iconst ty (u64_from_imm64 k2))))
-      (iadd ty x (iconst ty (imm64_masked ty (u64_sub k2 k1)))))
+      (iadd ty x (iconst ty (imm64_masked ty (u64_wrapping_sub k2 k1)))))
 (rule (simplify (iadd ty
                       (isub ty (iconst ty (u64_from_imm64 k1)) x)
                       (iconst ty (u64_from_imm64 k2))))
-      (isub ty (iconst ty (imm64_masked ty (u64_add k1 k2))) x))
+      (isub ty (iconst ty (imm64_masked ty (u64_wrapping_add k1 k2))) x))
 
 (rule (simplify
        (imul ty (imul ty x k1 @ (iconst ty _)) k2 @ (iconst ty _)))
@@ -165,7 +188,7 @@
        (bxor ty (bxor ty x k1 @ (iconst ty _)) k2 @ (iconst ty _)))
       (bxor ty x (bxor ty k1 k2)))
 
-(rule (simplify (select ty (iconst_u _ (u64_nonzero _)) x _))
+(rule (simplify (select ty (iconst_u _ (u64_when_non_zero)) x _))
       (subsume x))
 (rule (simplify (select ty (iconst_u _ 0) _ y))
       (subsume y))
@@ -195,22 +218,23 @@
 ;; that needs work in lowering first to avoid regressing addressing modes.
 
 (rule (simplify (isub ty x (iconst_s ty k)))
-      (if-let true (u64_lt (i64_as_u64 (i64_neg k)) (i64_as_u64 k)))
-      (iadd ty x (iconst ty (imm64_masked ty (i64_as_u64 (i64_neg k))))))
+      (if-let true (u64_lt (i64_cast_unsigned (i64_wrapping_neg k))
+                           (i64_cast_unsigned k)))
+      (iadd ty x (iconst ty (imm64_masked ty (i64_cast_unsigned (i64_wrapping_neg k))))))
 
 ;; A splat of a constant can become a direct `vconst` with the appropriate bit
 ;; pattern.
-(rule (simplify (splat dst (iconst $I8 n)))
+(rule (simplify (splat (ty_vec128 dst) (iconst $I8 n)))
       (vconst dst (splat8 (u64_uextend_imm64 $I8 n))))
-(rule (simplify (splat dst (iconst $I16 n)))
+(rule (simplify (splat (ty_vec128 dst) (iconst $I16 n)))
       (vconst dst (splat16 (u64_uextend_imm64 $I16 n))))
-(rule (simplify (splat dst (iconst $I32 n)))
+(rule (simplify (splat (ty_vec128 dst) (iconst $I32 n)))
       (vconst dst (splat32 (u64_uextend_imm64 $I32 n))))
-(rule (simplify (splat dst (iconst $I64 n)))
+(rule (simplify (splat (ty_vec128 dst) (iconst $I64 n)))
       (vconst dst (splat64 (u64_uextend_imm64 $I64 n))))
-(rule (simplify (splat dst (f32const _ (u32_from_ieee32 n))))
+(rule (simplify (splat (ty_vec128 dst) (f32const _ (u32_from_ieee32 n))))
       (vconst dst (splat32 n)))
-(rule (simplify (splat dst (f64const _ (u64_from_ieee64 n))))
+(rule (simplify (splat (ty_vec128 dst) (f64const _ (u64_from_ieee64 n))))
       (vconst dst (splat64 n)))
 
 (decl splat8 (u64) Constant)

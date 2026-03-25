@@ -5,8 +5,7 @@ use core::cmp::Ordering;
 use core::mem;
 use core::num::NonZeroU64;
 
-use crate::lazy::LazyResult;
-use crate::{Error, Location};
+use crate::{Error, LazyResult, Location};
 
 pub(crate) struct LazyLines(LazyResult<Lines>);
 
@@ -21,7 +20,7 @@ impl LazyLines {
         ilnp: &gimli::IncompleteLineProgram<R, R::Offset>,
     ) -> Result<&Lines, Error> {
         self.0
-            .borrow_with(|| Lines::parse(dw_unit, ilnp.clone()))
+            .get_or_init(|| Lines::parse(dw_unit, ilnp.clone()))
             .as_ref()
             .map_err(Error::clone)
     }
@@ -59,11 +58,13 @@ impl Lines {
                     let end = row.address();
                     let mut rows = Vec::new();
                     mem::swap(&mut rows, &mut sequence_rows);
-                    sequences.push(LineSequence {
-                        start,
-                        end,
-                        rows: rows.into_boxed_slice(),
-                    });
+                    if start < end {
+                        sequences.push(LineSequence {
+                            start,
+                            end,
+                            rows: rows.into_boxed_slice(),
+                        });
+                    }
                 }
                 continue;
             }
@@ -95,7 +96,7 @@ impl Lines {
                 column,
             });
         }
-        sequences.sort_by_key(|x| x.start);
+        sequences.sort_unstable_by_key(|x| x.start);
 
         let mut files = Vec::new();
         let header = rows.header();
@@ -287,10 +288,10 @@ fn render_file<R: gimli::Reader>(
 }
 
 fn path_push(path: &mut String, p: &str) {
-    if has_unix_root(p) || has_windows_root(p) {
+    if has_forward_slash_root(p) || has_backward_slash_root(p) {
         *path = p.to_string();
     } else {
-        let dir_separator = if has_windows_root(path.as_str()) {
+        let dir_separator = if has_backward_slash_root(path.as_str()) {
             '\\'
         } else {
             '/'
@@ -304,11 +305,11 @@ fn path_push(path: &mut String, p: &str) {
 }
 
 /// Check if the path in the given string has a unix style root
-fn has_unix_root(p: &str) -> bool {
-    p.starts_with('/')
+fn has_forward_slash_root(p: &str) -> bool {
+    p.starts_with('/') || p.get(1..3) == Some(":/")
 }
 
 /// Check if the path in the given string has a windows style root
-fn has_windows_root(p: &str) -> bool {
+fn has_backward_slash_root(p: &str) -> bool {
     p.starts_with('\\') || p.get(1..3) == Some(":\\")
 }

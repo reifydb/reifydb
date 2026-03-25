@@ -1,12 +1,12 @@
 use super::regs;
 use crate::{
-    abi::{align_to, ABIOperand, ABIParams, ABIResults, ABISig, ParamsOrReturns, ABI},
+    RegIndexEnv, Result,
+    abi::{ABI, ABIOperand, ABIParams, ABIResults, ABISig, ParamsOrReturns, align_to},
+    bail,
     codegen::CodeGenError,
-    isa::{reg::Reg, CallingConvention},
-    RegIndexEnv,
+    isa::{CallingConvention, reg::Reg},
 };
-use anyhow::{bail, Result};
-use wasmtime_environ::{WasmHeapType, WasmRefType, WasmValType};
+use wasmtime_environ::{WasmHeapType, WasmValType};
 
 #[derive(Default)]
 pub(crate) struct X64ABI;
@@ -96,19 +96,6 @@ impl ABI for X64ABI {
                 ParamsOrReturns::Returns,
             )
         })
-    }
-
-    fn scratch_for(ty: &WasmValType) -> Reg {
-        match ty {
-            WasmValType::I32
-            | WasmValType::I64
-            | WasmValType::Ref(WasmRefType {
-                heap_type: WasmHeapType::Func,
-                ..
-            }) => regs::scratch(),
-            WasmValType::F32 | WasmValType::F64 | WasmValType::V128 => regs::scratch_xmm(),
-            _ => unimplemented!(),
-        }
     }
 
     fn vmctx_reg() -> Reg {
@@ -286,12 +273,10 @@ impl X64ABI {
 mod tests {
     use super::X64ABI;
     use crate::{
-        abi::{ABIOperand, ABI},
-        isa::{reg::Reg, x64::regs, CallingConvention},
+        Result,
+        abi::{ABI, ABIOperand},
+        isa::{CallingConvention, reg::Reg, x64::regs},
     };
-
-    use anyhow::Result;
-
     use wasmtime_environ::{
         WasmFuncType,
         WasmValType::{self, *},
@@ -299,8 +284,7 @@ mod tests {
 
     #[test]
     fn int_abi_sig() -> Result<()> {
-        let wasm_sig =
-            WasmFuncType::new([I32, I64, I32, I64, I32, I32, I64, I32].into(), [].into());
+        let wasm_sig = WasmFuncType::new([I32, I64, I32, I64, I32, I32, I64, I32], [])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::Default)?;
         let params = sig.params;
@@ -318,10 +302,8 @@ mod tests {
 
     #[test]
     fn int_abi_sig_multi_returns() -> Result<()> {
-        let wasm_sig = WasmFuncType::new(
-            [I32, I64, I32, I64, I32, I32, I64, I32].into(),
-            [I32, I32, I32].into(),
-        );
+        let wasm_sig =
+            WasmFuncType::new([I32, I64, I32, I64, I32, I32, I64, I32], [I32, I32, I32])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::Default)?;
         let params = sig.params;
@@ -344,10 +326,7 @@ mod tests {
 
     #[test]
     fn float_abi_sig() -> Result<()> {
-        let wasm_sig = WasmFuncType::new(
-            [F32, F64, F32, F64, F32, F32, F64, F32, F64].into(),
-            [].into(),
-        );
+        let wasm_sig = WasmFuncType::new([F32, F64, F32, F64, F32, F32, F64, F32, F64], [])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::Default)?;
         let params = sig.params;
@@ -367,9 +346,9 @@ mod tests {
     #[test]
     fn vector_abi_sig() -> Result<()> {
         let wasm_sig = WasmFuncType::new(
-            [V128, V128, V128, V128, V128, V128, V128, V128, V128, V128].into(),
-            [].into(),
-        );
+            [V128, V128, V128, V128, V128, V128, V128, V128, V128, V128],
+            [],
+        )?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::Default)?;
         let params = sig.params;
@@ -389,7 +368,7 @@ mod tests {
 
     #[test]
     fn vector_abi_sig_multi_returns() -> Result<()> {
-        let wasm_sig = WasmFuncType::new([].into(), [V128, V128, V128].into());
+        let wasm_sig = WasmFuncType::new([], [V128, V128, V128])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::Default)?;
         let results = sig.results;
@@ -402,10 +381,7 @@ mod tests {
 
     #[test]
     fn mixed_abi_sig() -> Result<()> {
-        let wasm_sig = WasmFuncType::new(
-            [F32, I32, I64, F64, I32, F32, F64, F32, F64].into(),
-            [].into(),
-        );
+        let wasm_sig = WasmFuncType::new([F32, I32, I64, F64, I32, F32, F64, F32, F64], [])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::Default)?;
         let params = sig.params;
@@ -420,10 +396,8 @@ mod tests {
         match_reg_arg(params.get(7).unwrap(), F32, regs::xmm4());
         match_reg_arg(params.get(8).unwrap(), F64, regs::xmm5());
 
-        let wasm_sig = WasmFuncType::new(
-            [F32, F32, F32, F32, F32, F32, F32, F32, F32, V128].into(),
-            [V128].into(),
-        );
+        let wasm_sig =
+            WasmFuncType::new([F32, F32, F32, F32, F32, F32, F32, F32, F32, V128], [V128])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::Default)?;
         let params = sig.params;
@@ -435,10 +409,7 @@ mod tests {
 
     #[test]
     fn system_v_call_conv() -> Result<()> {
-        let wasm_sig = WasmFuncType::new(
-            [F32, I32, I64, F64, I32, F32, F64, F32, F64].into(),
-            [].into(),
-        );
+        let wasm_sig = WasmFuncType::new([F32, I32, I64, F64, I32, F32, F64, F32, F64], [])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::SystemV)?;
         let params = sig.params;
@@ -457,10 +428,7 @@ mod tests {
 
     #[test]
     fn fastcall_call_conv() -> Result<()> {
-        let wasm_sig = WasmFuncType::new(
-            [F32, I32, I64, F64, I32, F32, F64, F32, F64].into(),
-            [].into(),
-        );
+        let wasm_sig = WasmFuncType::new([F32, I32, I64, F64, I32, F32, F64, F32, F64], [])?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::WindowsFastcall)?;
         let params = sig.params;
@@ -477,9 +445,9 @@ mod tests {
     #[test]
     fn fastcall_call_conv_multi_returns() -> Result<()> {
         let wasm_sig = WasmFuncType::new(
-            [F32, I32, I64, F64, I32, F32, F64, F32, F64].into(),
-            [I32, F32, I32, F32, I64].into(),
-        );
+            [F32, I32, I64, F64, I32, F32, F64, F32, F64],
+            [I32, F32, I32, F32, I64],
+        )?;
 
         let sig = X64ABI::sig(&wasm_sig, &CallingConvention::WindowsFastcall)?;
         let params = sig.params;

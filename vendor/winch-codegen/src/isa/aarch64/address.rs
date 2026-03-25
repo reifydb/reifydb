@@ -1,13 +1,13 @@
 //! Aarch64 addressing mode.
 
-use anyhow::{anyhow, Context, Result};
+use super::regs;
+use crate::reg::Reg;
+use crate::{Context as _, Result, format_err};
+use cranelift_codegen::VCodeConstant;
 use cranelift_codegen::{
     ir::types,
     isa::aarch64::inst::{AMode, PairAMode, SImm7Scaled, SImm9},
 };
-
-use super::regs;
-use crate::reg::Reg;
 
 /// Aarch64 indexing mode.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -38,6 +38,8 @@ pub(crate) enum Address {
         /// Indexing mode.
         indexing: Indexing,
     },
+    /// Address of a constant in the constant pool.
+    Const(VCodeConstant),
 }
 
 impl Address {
@@ -84,6 +86,11 @@ impl Address {
         Self::Offset { base, offset }
     }
 
+    /// Create an address for a constant.
+    pub fn constant(data: VCodeConstant) -> Self {
+        Self::Const(data)
+    }
+
     /// Returns the register base and immediate offset of the given [`Address`].
     ///
     /// # Panics
@@ -100,7 +107,7 @@ impl Address {
 // and `cranelift-codegen`s addressing mode representation for aarch64.
 
 impl TryFrom<Address> for PairAMode {
-    type Error = anyhow::Error;
+    type Error = crate::Error;
 
     fn try_from(addr: Address) -> Result<Self> {
         use Address::*;
@@ -118,16 +125,15 @@ impl TryFrom<Address> for PairAMode {
                     Ok(PairAMode::SPPostIndexed { simm7 })
                 }
             }
-            other => Err(anyhow!(
-                "Could not convert {:?} to addressing mode for register pairs",
-                other
+            other => Err(format_err!(
+                "Could not convert {other:?} to addressing mode for register pairs"
             )),
         }
     }
 }
 
 impl TryFrom<Address> for AMode {
-    type Error = anyhow::Error;
+    type Error = crate::Error;
 
     fn try_from(addr: Address) -> Result<Self> {
         use Address::*;
@@ -136,7 +142,8 @@ impl TryFrom<Address> for AMode {
         match addr {
             IndexedSPOffset { offset, indexing } => {
                 let simm9 = SImm9::maybe_from_i64(offset).ok_or_else(|| {
-                    anyhow!("Failed to convert {} to signed 9-bit offset", offset)
+                    // TODO: non-string error
+                    format_err!("Failed to convert {offset} to signed 9-bit offset")
                 })?;
 
                 if indexing == Pre {
@@ -149,6 +156,7 @@ impl TryFrom<Address> for AMode {
                 rn: base.into(),
                 off: offset,
             }),
+            Const(data) => Ok(AMode::Const { addr: data }),
         }
     }
 }

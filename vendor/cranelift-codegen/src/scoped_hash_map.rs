@@ -10,7 +10,7 @@
 //! self-contained.
 
 use crate::ctxhash::{CtxEq, CtxHash, CtxHashMap};
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 
 struct Val<V> {
     value: V,
@@ -87,7 +87,7 @@ where
     K: Clone,
 {
     /// Creates an empty `ScopedHashMap`.
-    #[allow(dead_code)] // Used in testing.
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::with_capacity(16)
     }

@@ -1,6 +1,10 @@
 use serde::ser::{Serialize, SerializeMap, Serializer};
 
-use crate::{ProcessHandle, Timestamp};
+use crate::serialization_helpers::SliceWithPermutation;
+use crate::timestamp::{
+    SerializableTimestampSliceAsDeltas, SerializableTimestampSliceAsDeltasWithPermutation,
+};
+use crate::{GraphColor, ProcessHandle, Timestamp};
 
 /// A counter. Can be created with [`Profile::add_counter`](crate::Profile::add_counter).
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
@@ -14,6 +18,7 @@ pub struct Counter {
     process: ProcessHandle,
     pid: String,
     samples: CounterSamples,
+    color: Option<GraphColor>,
 }
 
 impl Counter {
@@ -31,6 +36,7 @@ impl Counter {
             process,
             pid: pid.to_owned(),
             samples: CounterSamples::new(),
+            color: None,
         }
     }
 
@@ -48,6 +54,10 @@ impl Counter {
             .add_sample(timestamp, value_delta, number_of_operations_delta)
     }
 
+    pub fn set_color(&mut self, color: GraphColor) {
+        self.color = Some(color);
+    }
+
     pub fn as_serializable(&self, main_thread_index: usize) -> impl Serialize + '_ {
         SerializableCounter {
             counter: self,
@@ -62,7 +72,7 @@ struct SerializableCounter<'a> {
     main_thread_index: usize,
 }
 
-impl<'a> Serialize for SerializableCounter<'a> {
+impl Serialize for SerializableCounter<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("category", &self.counter.category)?;
@@ -70,21 +80,10 @@ impl<'a> Serialize for SerializableCounter<'a> {
         map.serialize_entry("description", &self.counter.description)?;
         map.serialize_entry("mainThreadIndex", &self.main_thread_index)?;
         map.serialize_entry("pid", &self.counter.pid)?;
-        map.serialize_entry(
-            "sampleGroups",
-            &[SerializableCounterSampleGroup(self.counter)],
-        )?;
-        map.end()
-    }
-}
-
-struct SerializableCounterSampleGroup<'a>(&'a Counter);
-
-impl<'a> Serialize for SerializableCounterSampleGroup<'a> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut map = serializer.serialize_map(None)?;
-        map.serialize_entry("id", &0)?; // It's not clear what the meaning of this ID is.
-        map.serialize_entry("samples", &self.0.samples)?;
+        map.serialize_entry("samples", &self.counter.samples)?;
+        if let Some(color) = self.counter.color {
+            map.serialize_entry("color", &color)?;
+        }
         map.end()
     }
 }
@@ -94,6 +93,9 @@ struct CounterSamples {
     time: Vec<Timestamp>,
     number: Vec<u32>,
     count: Vec<f64>,
+
+    is_sorted_by_time: bool,
+    last_sample_timestamp: Timestamp,
 }
 
 impl CounterSamples {
@@ -102,6 +104,9 @@ impl CounterSamples {
             time: Vec::new(),
             number: Vec::new(),
             count: Vec::new(),
+
+            is_sorted_by_time: true,
+            last_sample_timestamp: Timestamp::from_nanos_since_reference(0),
         }
     }
 
@@ -114,6 +119,11 @@ impl CounterSamples {
         self.time.push(timestamp);
         self.count.push(value_delta);
         self.number.push(number_of_operations_delta);
+
+        if timestamp < self.last_sample_timestamp {
+            self.is_sorted_by_time = false;
+        }
+        self.last_sample_timestamp = timestamp;
     }
 }
 
@@ -122,9 +132,25 @@ impl Serialize for CounterSamples {
         let len = self.time.len();
         let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("length", &len)?;
-        map.serialize_entry("count", &self.count)?;
-        map.serialize_entry("number", &self.number)?;
-        map.serialize_entry("time", &self.time)?;
+
+        if self.is_sorted_by_time {
+            map.serialize_entry("count", &self.count)?;
+            map.serialize_entry("number", &self.number)?;
+            map.serialize_entry(
+                "timeDeltas",
+                &SerializableTimestampSliceAsDeltas(&self.time),
+            )?;
+        } else {
+            let mut indexes: Vec<usize> = (0..self.time.len()).collect();
+            indexes.sort_unstable_by_key(|index| self.time[*index]);
+            map.serialize_entry("count", &SliceWithPermutation(&self.count, &indexes))?;
+            map.serialize_entry("number", &SliceWithPermutation(&self.number, &indexes))?;
+            map.serialize_entry(
+                "timeDeltas",
+                &SerializableTimestampSliceAsDeltasWithPermutation(&self.time, &indexes),
+            )?;
+        }
+
         map.end()
     }
 }

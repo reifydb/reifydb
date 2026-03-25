@@ -153,7 +153,7 @@ impl FreeList {
 
         let alloc_size = u32::try_from(layout.size()).map_err(|e| {
             let trap = crate::Trap::AllocationTooLarge;
-            let err = anyhow::Error::from(trap);
+            let err = crate::Error::from(trap);
             err.context(e)
                 .context("requested allocation's size does not fit in a u32")
         })?;
@@ -161,7 +161,7 @@ impl FreeList {
             .checked_next_multiple_of(ALIGN_U32)
             .ok_or_else(|| {
                 let trap = crate::Trap::AllocationTooLarge;
-                let err = anyhow::Error::from(trap);
+                let err = crate::Error::from(trap);
                 let err = err.context(format!(
                     "failed to round allocation size of {alloc_size} up to next \
                      multiple of {ALIGN_USIZE}"
@@ -820,10 +820,12 @@ mod tests {
 
         // Attempt to allocate something that is 20 times the size of our
         // min-sized block.
-        assert!(free_list
-            .alloc(Layout::from_size_align(ALIGN_USIZE * 20, ALIGN_USIZE).unwrap())
-            .unwrap()
-            .is_none());
+        assert!(
+            free_list
+                .alloc(Layout::from_size_align(ALIGN_USIZE * 20, ALIGN_USIZE).unwrap())
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -834,9 +836,11 @@ mod tests {
 
         // Attempt to allocate something that requires larger alignment than
         // `FreeList` supports.
-        assert!(free_list
-            .alloc(Layout::from_size_align(ALIGN_USIZE, ALIGN_USIZE * 2).unwrap(),)
-            .is_err());
+        assert!(
+            free_list
+                .alloc(Layout::from_size_align(ALIGN_USIZE, ALIGN_USIZE * 2).unwrap(),)
+                .is_err()
+        );
     }
 
     #[test]

@@ -1,8 +1,6 @@
 use serde::ser::{Serialize, SerializeMap, SerializeSeq, Serializer};
 
-use crate::category::{
-    Category, CategoryHandle, CategoryPairHandle, SerializableSubcategoryColumn, Subcategory,
-};
+use crate::category::{CategoryHandle, CategoryPairHandle, SubcategoryIndex};
 use crate::fast_hash_map::FastHashMap;
 use crate::frame::FrameFlags;
 use crate::func_table::{FuncIndex, FuncTable};
@@ -16,7 +14,7 @@ use crate::thread_string_table::{ThreadInternalStringIndex, ThreadStringTable};
 pub struct FrameTable {
     addresses: Vec<Option<u32>>,
     categories: Vec<CategoryHandle>,
-    subcategories: Vec<Subcategory>,
+    subcategories: Vec<SubcategoryIndex>,
     funcs: Vec<FuncIndex>,
     native_symbols: Vec<Option<NativeSymbolIndex>>,
     internal_frame_to_frame_index: FastHashMap<InternalFrame, usize>,
@@ -33,7 +31,7 @@ impl FrameTable {
         resource_table: &mut ResourceTable,
         func_table: &mut FuncTable,
         native_symbol_table: &mut NativeSymbols,
-        global_libs: &GlobalLibTable,
+        global_libs: &mut GlobalLibTable,
         frame: InternalFrame,
     ) -> usize {
         let addresses = &mut self.addresses;
@@ -73,6 +71,9 @@ impl FrameTable {
                                 (Some(native_symbol), name_string_index)
                             }
                             None => {
+                                // This isn't in the pre-provided symbol table, and we know it's in a library.
+                                global_libs.add_lib_used_rva(lib_index, address);
+
                                 let location_string = format!("0x{address:x}");
                                 (None, string_table.index_for_string(&location_string))
                             }
@@ -83,11 +84,7 @@ impl FrameTable {
                 };
                 let func_index =
                     func_table.index_for_func(location_string_index, resource, frame.flags);
-                let CategoryPairHandle(category, subcategory_index) = frame.category_pair;
-                let subcategory = match subcategory_index {
-                    Some(index) => Subcategory::Normal(index),
-                    None => Subcategory::Other(category),
-                };
+                let CategoryPairHandle(category, subcategory) = frame.category_pair;
                 addresses.push(address);
                 categories.push(category);
                 subcategories.push(subcategory);
@@ -96,49 +93,32 @@ impl FrameTable {
                 frame_index
             })
     }
-
-    pub fn as_serializable<'a>(&'a self, categories: &'a [Category]) -> impl Serialize + 'a {
-        SerializableFrameTable {
-            table: self,
-            categories,
-        }
-    }
 }
 
-struct SerializableFrameTable<'a> {
-    table: &'a FrameTable,
-    categories: &'a [Category],
-}
-
-impl<'a> Serialize for SerializableFrameTable<'a> {
+impl Serialize for FrameTable {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let len = self.table.addresses.len();
+        let len = self.addresses.len();
         let mut map = serializer.serialize_map(None)?;
         map.serialize_entry("length", &len)?;
         map.serialize_entry(
             "address",
-            &SerializableFrameTableAddressColumn(&self.table.addresses),
+            &SerializableFrameTableAddressColumn(&self.addresses),
         )?;
         map.serialize_entry("inlineDepth", &SerializableSingleValueColumn(0u32, len))?;
-        map.serialize_entry("category", &self.table.categories)?;
-        map.serialize_entry(
-            "subcategory",
-            &SerializableSubcategoryColumn(&self.table.subcategories, self.categories),
-        )?;
-        map.serialize_entry("func", &self.table.funcs)?;
-        map.serialize_entry("nativeSymbol", &self.table.native_symbols)?;
-        map.serialize_entry("innerWindowID", &SerializableSingleValueColumn((), len))?;
-        map.serialize_entry("implementation", &SerializableSingleValueColumn((), len))?;
+        map.serialize_entry("category", &self.categories)?;
+        map.serialize_entry("subcategory", &self.subcategories)?;
+        map.serialize_entry("func", &self.funcs)?;
+        map.serialize_entry("nativeSymbol", &self.native_symbols)?;
+        map.serialize_entry("innerWindowID", &SerializableSingleValueColumn(0, len))?;
         map.serialize_entry("line", &SerializableSingleValueColumn((), len))?;
         map.serialize_entry("column", &SerializableSingleValueColumn((), len))?;
-        map.serialize_entry("optimizations", &SerializableSingleValueColumn((), len))?;
         map.end()
     }
 }
 
 struct SerializableFrameTableAddressColumn<'a>(&'a [Option<u32>]);
 
-impl<'a> Serialize for SerializableFrameTableAddressColumn<'a> {
+impl Serialize for SerializableFrameTableAddressColumn<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
         for address in self.0 {

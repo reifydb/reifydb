@@ -8,18 +8,18 @@
 //! a conditional jump inline when emitting the control flow instruction.
 use super::{CodeGenContext, CodeGenError, Emission, OperandSize, Reg, TypedReg};
 use crate::{
-    abi::{ABIOperand, ABIResults, ABISig, RetArea, ABI},
+    CallingConvention, Result,
+    abi::{ABI, ABIOperand, ABIResults, ABISig, RetArea},
+    bail, ensure, format_err,
     masm::{IntCmpKind, MacroAssembler, MemMoveDirection, RegImm, SPOffset},
     reg::writable,
     stack::Val,
-    CallingConvention,
 };
-use anyhow::{anyhow, bail, ensure, Result};
 use cranelift_codegen::MachLabel;
-use wasmtime_environ::{WasmFuncType, WasmValType};
+use wasmtime_environ::{WasmFuncType, WasmValType, collections::TryClone as _};
 
 /// Categorization of the type of the block.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) enum BlockType {
     /// Doesn't produce or consume any values.
     Void,
@@ -29,6 +29,17 @@ pub(crate) enum BlockType {
     Func(WasmFuncType),
     /// An already resolved ABI signature.
     ABISig(ABISig),
+}
+
+impl Clone for BlockType {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Void => Self::Void,
+            Self::Single(x) => Self::Single(*x),
+            Self::ABISig(x) => Self::ABISig(x.clone()),
+            Self::Func(f) => Self::Func(f.clone_panic_on_oom()),
+        }
+    }
 }
 
 /// Holds all the information about the signature of the block.
@@ -84,7 +95,7 @@ impl BlockSig {
                 <M::ABI as ABI>::abi_results(&[*ty], &CallingConvention::Default)
             }
             BlockType::Func(f) => {
-                <M::ABI as ABI>::abi_results(f.returns(), &CallingConvention::Default)
+                <M::ABI as ABI>::abi_results(f.results(), &CallingConvention::Default)
             }
             BlockType::ABISig(_) => unreachable!(),
         };
@@ -136,7 +147,7 @@ impl BlockSig {
         match &self.ty {
             BlockType::Void => 0,
             BlockType::Single(_) => 1,
-            BlockType::Func(f) => f.returns().len(),
+            BlockType::Func(f) => f.results().len(),
             BlockType::ABISig(sig) => sig.results().len(),
         }
     }
@@ -452,7 +463,7 @@ impl ControlStackFrame {
                 self.init(masm, context)?;
                 masm.branch(
                     IntCmpKind::Eq,
-                    top.reg.into(),
+                    top.reg,
                     top.reg.into(),
                     cont,
                     OperandSize::S32,
@@ -466,7 +477,7 @@ impl ControlStackFrame {
                 masm.bind(head)?;
                 Ok(())
             }
-            _ => Err(anyhow!(CodeGenError::if_control_frame_expected())),
+            _ => Err(format_err!(CodeGenError::if_control_frame_expected())),
         }
     }
 
@@ -689,7 +700,7 @@ impl ControlStackFrame {
         Self::pop_abi_results_impl(self.results::<M>()?, context, masm, calculate_ret_area)
     }
 
-    /// Shared implementation for poppping the ABI results.
+    /// Shared implementation for popping the ABI results.
     /// This is needed because, in some cases, params must be interpreted and
     /// used as the results of the block. When emitting code at control flow
     /// joins, the block params are interpreted as results, to ensure that they
@@ -1051,5 +1062,14 @@ impl ControlStackFrame {
             Self::Loop { .. } => true,
             _ => false,
         }
+    }
+
+    /// Returns true if the current stack pointer is unbalanced
+    /// relative to the the expected control frame stack pointer
+    /// offset. The stack pointer is considered unbalanced relative
+    /// to the control frame if the stack pointer is greater than the
+    /// the target stack pointer offset expected by the control frame.
+    pub fn unbalanced<M: MacroAssembler>(&self, masm: &mut M) -> Result<bool> {
+        Ok(masm.sp_offset()? > self.stack_state().target_offset)
     }
 }
