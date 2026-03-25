@@ -85,8 +85,6 @@ pub async fn health() -> impl IntoResponse {
 pub struct AuthenticateRequest {
 	/// Authentication method: "password", "solana", "token".
 	pub method: String,
-	/// Principal to authenticate as.
-	pub principal: String,
 	/// Credentials (method-specific key-value pairs).
 	#[serde(default)]
 	pub credentials: HashMap<String, String>,
@@ -114,36 +112,11 @@ pub struct AuthenticateResponse {
 	pub reason: Option<String>,
 }
 
-/// Authenticate a user.
-///
-/// Supports single-step (password, token) and multi-step (solana challenge-response) flows.
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///   "method": "password",
-///   "principal": "alice",
-///   "credentials": { "password": "secret" }
-/// }
-/// ```
-///
-/// # Response
-///
-/// On success:
-/// ```json
-/// { "status": "authenticated", "token": "...", "identity": "..." }
-/// ```
-///
-/// On challenge (multi-step):
-/// ```json
-/// { "status": "challenge", "challenge_id": "...", "payload": { "message": "..." } }
-/// ```
 pub async fn handle_authenticate(
 	State(state): State<AppState>,
 	Json(request): Json<AuthenticateRequest>,
 ) -> Result<Response, AppError> {
-	match state.auth_service().authenticate(&request.method, &request.principal, request.credentials) {
+	match state.auth_service().authenticate(&request.method, request.credentials) {
 		Ok(EngineAuthResponse::Authenticated {
 			identity,
 			token,

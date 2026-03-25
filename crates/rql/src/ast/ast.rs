@@ -341,14 +341,6 @@ impl<'bump> Ast<'bump> {
 		}
 	}
 
-	pub fn as_environment(&self) -> &AstEnvironment<'bump> {
-		if let Ast::Environment(result) = self {
-			result
-		} else {
-			panic!("not environment")
-		}
-	}
-
 	pub fn as_apply(&self) -> &AstApply<'bump> {
 		if let Ast::Apply(result) = self {
 			result

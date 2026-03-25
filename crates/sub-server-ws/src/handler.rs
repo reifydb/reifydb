@@ -233,10 +233,9 @@ async fn process_message(
 
 	match request.payload {
 		RequestPayload::Auth(auth) => {
-			// Login flow: method + principal + credentials present
-			if let (Some(method), Some(principal)) = (auth.method.as_deref(), auth.principal.as_deref()) {
+			if let Some(method) = auth.method.as_deref() {
 				let credentials = auth.credentials.unwrap_or_default();
-				match state.auth_service().authenticate(method, principal, credentials) {
+				match state.auth_service().authenticate(method, credentials) {
 					Ok(AuthResponse::Authenticated {
 						identity: id,
 						token,

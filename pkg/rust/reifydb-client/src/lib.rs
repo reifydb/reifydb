@@ -189,8 +189,6 @@ pub struct AuthRequest {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub method: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
-	pub principal: Option<String>,
-	#[serde(skip_serializing_if = "Option::is_none")]
 	pub credentials: Option<HashMap<String, String>>,
 }
 

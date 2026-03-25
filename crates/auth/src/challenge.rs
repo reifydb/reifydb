@@ -15,7 +15,7 @@ use reifydb_type::value::uuid::Uuid7;
 
 /// A pending authentication challenge.
 struct ChallengeEntry {
-	pub principal: String,
+	pub identifier: String,
 	pub method: String,
 	pub payload: HashMap<String, String>,
 	pub created_at: Instant,
@@ -23,7 +23,7 @@ struct ChallengeEntry {
 
 /// Stored challenge info returned when consuming a challenge.
 pub struct ChallengeInfo {
-	pub principal: String,
+	pub identifier: String,
 	pub method: String,
 	pub payload: HashMap<String, String>,
 }
@@ -47,10 +47,10 @@ impl ChallengeStore {
 	}
 
 	/// Create a new challenge and return its ID.
-	pub fn create(&self, principal: String, method: String, payload: HashMap<String, String>) -> String {
+	pub fn create(&self, identifier: String, method: String, payload: HashMap<String, String>) -> String {
 		let challenge_id = Uuid7::generate().to_string();
 		let entry = ChallengeEntry {
-			principal,
+			identifier,
 			method,
 			payload,
 			created_at: Instant::now(),
@@ -71,7 +71,7 @@ impl ChallengeStore {
 		}
 
 		Some(ChallengeInfo {
-			principal: entry.principal,
+			identifier: entry.identifier,
 			method: entry.method,
 			payload: entry.payload,
 		})
@@ -99,7 +99,7 @@ mod tests {
 		let id = store.create("alice".to_string(), "solana".to_string(), data);
 		let info = store.consume(&id).unwrap();
 
-		assert_eq!(info.principal, "alice");
+		assert_eq!(info.identifier, "alice");
 		assert_eq!(info.method, "solana");
 		assert_eq!(info.payload.get("nonce").unwrap(), "abc123");
 	}

@@ -54,19 +54,10 @@ pub struct AdminRequest {
 }
 
 /// Authentication request payload.
-///
-/// Supports two modes:
-/// - Token validation: provide `token` only
-/// - Login flow: provide `method`, `principal`, and `credentials`
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthRequest {
-	/// Bearer token for authentication (token validation mode).
 	pub token: Option<String>,
-	/// Authentication method for login flow (e.g., "password", "solana").
 	pub method: Option<String>,
-	/// Principal for login flow.
-	pub principal: Option<String>,
-	/// Credentials for login flow (method-specific key-value pairs).
 	pub credentials: Option<HashMap<String, String>>,
 }
 

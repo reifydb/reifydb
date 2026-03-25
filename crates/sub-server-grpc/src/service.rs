@@ -353,7 +353,7 @@ impl ReifyDb for ReifyDbService {
 		request: Request<AuthenticateRequest>,
 	) -> Result<Response<AuthenticateResponse>, Status> {
 		let inner = request.into_inner();
-		match self.state.auth_service().authenticate(&inner.method, &inner.principal, inner.credentials) {
+		match self.state.auth_service().authenticate(&inner.method, inner.credentials) {
 			Ok(EngineAuthResponse::Authenticated {
 				identity,
 				token,

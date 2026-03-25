@@ -82,9 +82,7 @@ pub struct UnsubscribeResponse {
 pub struct AuthenticateRequest {
     #[prost(string, tag = "1")]
     pub method: ::prost::alloc::string::String,
-    #[prost(string, tag = "2")]
-    pub principal: ::prost::alloc::string::String,
-    #[prost(map = "string, string", tag = "3")]
+    #[prost(map = "string, string", tag = "2")]
     pub credentials: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
