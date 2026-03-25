@@ -56,7 +56,7 @@ pub(crate) fn create_transactional_view(
 	)?;
 	txn.track_view_def_created(result.clone())?;
 
-	create_deferred_view_flow(&services.catalog, txn, &result, *plan.as_clause)?;
+	create_deferred_view_flow(&services.catalog, txn, &result, *plan.as_clause, plan.tick)?;
 
 	Ok(Columns::single_row([
 		("id", Value::Uint8(result.id().0)),

@@ -17,6 +17,7 @@ pub mod variable;
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
+	time::Duration,
 };
 
 use query::window::WindowNode;
@@ -599,6 +600,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -608,6 +610,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]

@@ -221,6 +221,7 @@ pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> F
 			name: Fragment::internal(flow),
 			namespace: namespace.id(),
 			status: FlowStatus::Active,
+			tick: None,
 		},
 	)
 	.unwrap()

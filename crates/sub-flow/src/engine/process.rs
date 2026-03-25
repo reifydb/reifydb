@@ -9,7 +9,7 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 	node::{FlowNode, FlowNodeType::SourceInlineData},
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -138,6 +138,37 @@ impl FlowEngine {
 		}
 		Span::current().record("propagation_time_us", propagation_start.elapsed().as_micros() as u64);
 
+		Ok(())
+	}
+
+	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
+		flow_id = ?flow_id,
+		timestamp = %timestamp
+	))]
+	pub fn process_tick(&self, txn: &mut FlowTransaction, flow_id: FlowId, timestamp: DateTime) -> Result<()> {
+		let flow = match self.flows.get(&flow_id) {
+			Some(f) => f.clone(),
+			None => return Ok(()),
+		};
+
+		for node_id in flow.topological_order()? {
+			let operator = match self.operators.get(&node_id) {
+				Some(op) => op.clone(),
+				None => continue,
+			};
+
+			if let Some(change) = operator.tick(txn, timestamp)? {
+				let node = flow.get_node(&node_id).unwrap();
+				for &output_id in &node.outputs {
+					self.process_change(
+						txn,
+						&flow,
+						flow.get_node(&output_id).unwrap(),
+						change.clone(),
+					)?;
+				}
+			}
+		}
 		Ok(())
 	}
 }

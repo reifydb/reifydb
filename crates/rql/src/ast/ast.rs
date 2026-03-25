@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::Index;
+use std::{ops::Index, time::Duration};
 
 use reifydb_core::{
 	common::{IndexType, JoinType},
@@ -665,6 +665,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -674,6 +675,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

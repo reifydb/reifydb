@@ -11,6 +11,7 @@
 use std::sync::Mutex;
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::actor::{
@@ -18,7 +19,10 @@ use reifydb_runtime::actor::{
 	system::ActorConfig,
 	traits::{Actor, Directive},
 };
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 use tracing::{Span, error, field, instrument};
 
 use super::instruction::WorkerBatch;
@@ -37,6 +41,13 @@ pub enum FlowMsg {
 	/// Register a new flow
 	Register {
 		flow: FlowDag,
+		reply: Box<dyn FnOnce(FlowResponse) + Send>,
+	},
+	/// Process periodic tick for time-based maintenance
+	Tick {
+		flow_ids: Vec<FlowId>,
+		timestamp: DateTime,
+		state_version: CommitVersion,
 		reply: Box<dyn FnOnce(FlowResponse) + Send>,
 	},
 }
@@ -103,6 +114,22 @@ impl Actor for FlowWorkerActor {
 				};
 				(reply)(resp);
 			}
+			FlowMsg::Tick {
+				flow_ids,
+				timestamp,
+				state_version,
+				reply,
+			} => {
+				let result =
+					self.process_tick(&mut state.flow_engine, flow_ids, timestamp, state_version);
+				let resp = match result {
+					Ok(pending) => FlowResponse::Success {
+						pending,
+					},
+					Err(e) => FlowResponse::Error(e.to_string()),
+				};
+				(reply)(resp);
+			}
 			FlowMsg::Register {
 				flow,
 				reply,
@@ -130,6 +157,39 @@ impl Actor for FlowWorkerActor {
 }
 
 impl FlowWorkerActor {
+	#[instrument(name = "flow::actor::tick", level = "debug", skip(self, flow_engine, flow_ids), fields(
+		flow_count = flow_ids.len(),
+		timestamp = %timestamp
+	))]
+	fn process_tick(
+		&self,
+		flow_engine: &mut FlowEngine,
+		flow_ids: Vec<FlowId>,
+		timestamp: DateTime,
+		state_version: CommitVersion,
+	) -> Result<Pending> {
+		let primitive_query = self.engine.multi().begin_query_at_version(state_version)?;
+		let state_query = self.engine.multi().begin_query_at_version(state_version)?;
+		let interceptors = self.engine.create_interceptors();
+
+		let mut txn = FlowTransaction::deferred_from_parts(
+			state_version,
+			Pending::new(),
+			primitive_query,
+			state_query,
+			self.catalog.clone(),
+			interceptors,
+		);
+
+		for flow_id in flow_ids {
+			if let Err(e) = flow_engine.process_tick(&mut txn, flow_id, timestamp) {
+				error!(flow_id = flow_id.0, error = %e, "failed to process tick");
+			}
+		}
+
+		Ok(txn.take_pending())
+	}
+
 	#[instrument(name = "flow::actor::process", level = "debug", skip(self, flow_engine, batch), fields(
 		instructions = batch.instructions.len(),
 		total_changes = field::Empty

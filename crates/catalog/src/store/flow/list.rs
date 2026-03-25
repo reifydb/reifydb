@@ -9,6 +9,7 @@ use reifydb_core::{
 	key::{Key, flow::FlowKey},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::duration::Duration;
 
 use crate::{CatalogStore, Result, store::flow::schema::flow};
 
@@ -30,11 +31,19 @@ impl CatalogStore {
 					let status_u8 = flow::SCHEMA.get_u8(&entry.row, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 
+					let tick_nanos = flow::SCHEMA.get_u64(&entry.row, flow::TICK_NANOS);
+					let tick = if tick_nanos > 0 {
+						Some(Duration::from_nanoseconds(tick_nanos as i64))
+					} else {
+						None
+					};
+
 					let flow_def = FlowDef {
 						id: flow_id,
 						namespace: namespace_id,
 						name,
 						status,
+						tick,
 					};
 
 					result.push(flow_def);
@@ -124,6 +133,7 @@ pub mod tests {
 				name: Fragment::internal("paused_flow"),
 				namespace: namespace.id(),
 				status: FlowStatus::Paused,
+				tick: None,
 			},
 		)
 		.unwrap();

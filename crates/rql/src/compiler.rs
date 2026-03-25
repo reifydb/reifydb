@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc};
+use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc, time};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -10,7 +10,11 @@ use reifydb_core::{
 };
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, fragment::Fragment, value::Value};
+use reifydb_type::{
+	Result,
+	fragment::Fragment,
+	value::{Value, duration::Duration},
+};
 
 use crate::{
 	ast::{
@@ -296,6 +300,10 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 			}
 		}
 	}
+}
+
+fn compile_tick_duration(std_dur: time::Duration) -> Duration {
+	Duration::from_nanoseconds(std_dur.as_nanos() as i64)
 }
 
 /// Recursively convert a bump-allocated query PhysicalPlan into an owned QueryPlan.
@@ -1008,6 +1016,7 @@ impl InstructionCompiler {
 						node.as_clause,
 					))),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
+					tick: node.tick.map(compile_tick_duration),
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1021,6 +1030,7 @@ impl InstructionCompiler {
 						node.as_clause,
 					))),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
+					tick: node.tick.map(compile_tick_duration),
 				}));
 				self.emit(Instruction::Emit);
 			}

@@ -26,7 +26,10 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId, r#type::Type},
+	value::{
+		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, sumtype::SumTypeId,
+		r#type::Type,
+	},
 };
 
 use crate::{
@@ -171,6 +174,7 @@ pub struct CreateDeferredViewNode {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -181,6 +185,7 @@ pub struct CreateTransactionalViewNode {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]

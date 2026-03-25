@@ -9,7 +9,7 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
@@ -50,6 +50,7 @@ pub(crate) fn create_deferred_view_flow(
 	txn: &mut AdminTransaction,
 	view: &ViewDef,
 	plan: QueryPlan,
+	tick: Option<Duration>,
 ) -> Result<()> {
 	let flow_def = catalog.create_flow(
 		txn,
@@ -57,6 +58,7 @@ pub(crate) fn create_deferred_view_flow(
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
 			status: FlowStatus::Active,
+			tick,
 		},
 	)?;
 
@@ -83,6 +85,7 @@ pub(crate) fn create_subscription_flow(
 			name: Fragment::internal(subscription_flow_name(subscription.id)),
 			namespace: subscription_flow_namespace(),
 			status: FlowStatus::Active,
+			tick: None,
 		},
 	)?;
 

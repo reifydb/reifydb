@@ -8,7 +8,7 @@
 //! - [`CoordinatorMsg`]: Messages (Consume, PoolReply)
 //! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
 
-use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc};
+use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc, time::Duration};
 
 use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
@@ -37,7 +37,11 @@ use reifydb_runtime::{
 	context::clock::{Clock, Instant},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::Error, value::identity::IdentityId};
+use reifydb_type::{
+	Result,
+	error::Error,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 use tracing::{Span, debug, field, info, instrument, warn};
 
 use super::{
@@ -93,6 +97,8 @@ pub enum CoordinatorMsg {
 	},
 	/// Async reply from PoolActor
 	PoolReply(PoolResponse),
+	/// Periodic tick for time-based maintenance
+	Tick,
 }
 
 /// Context needed to resume processing after an async pool reply.
@@ -131,6 +137,13 @@ enum Phase {
 		flows: Vec<FlowId>,
 		ctx: ConsumeContext,
 	},
+	/// Waiting for tick results from pool
+	Ticking,
+}
+
+struct TickSchedule {
+	tick: Duration,
+	last_tick: Instant,
 }
 
 /// Helper to create an error result for coordinator replies.
@@ -176,17 +189,21 @@ pub struct CoordinatorState {
 	states: FlowStates,
 	analyzer: FlowGraphAnalyzer,
 	phase: Phase,
+	tick_schedules: BTreeMap<FlowId, TickSchedule>,
 }
 
 impl Actor for CoordinatorActor {
 	type State = CoordinatorState;
 	type Message = CoordinatorMsg;
 
-	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
+		ctx.schedule_once(Duration::from_secs(1), || CoordinatorMsg::Tick);
+
 		CoordinatorState {
 			states: FlowStates::new(),
 			analyzer: FlowGraphAnalyzer::new(),
 			phase: Phase::Idle,
+			tick_schedules: BTreeMap::new(),
 		}
 	}
 
@@ -202,6 +219,12 @@ impl Actor for CoordinatorActor {
 			}
 			CoordinatorMsg::PoolReply(response) => {
 				self.handle_pool_reply(state, ctx, response);
+			}
+			CoordinatorMsg::Tick => {
+				if matches!(state.phase, Phase::Idle) {
+					self.handle_tick(state, ctx);
+				}
+				ctx.schedule_once(Duration::from_secs(1), || CoordinatorMsg::Tick);
 			}
 		}
 		Directive::Continue
@@ -336,6 +359,7 @@ impl CoordinatorActor {
 			let flow_id = flow.id;
 
 			state.analyzer.add(flow.clone());
+			self.maybe_register_tick_schedule(state, &flow);
 			if flow.is_subscription() {
 				state.states.register_active(flow_id, consume_ctx.current_version);
 				debug!(flow_id = flow_id.0, "registered new subscription flow as active");
@@ -402,6 +426,7 @@ impl CoordinatorActor {
 					let flow_id = flow.id;
 
 					state.analyzer.add(flow.clone());
+					self.maybe_register_tick_schedule(state, &flow);
 					if flow.is_subscription() {
 						state.states.register_active(flow_id, consume_ctx.current_version);
 						debug!(
@@ -501,6 +526,17 @@ impl CoordinatorActor {
 
 				self.advance_next_backfill_flow(state, ctx, remaining_flow_ids, consume_ctx);
 			}
+			Phase::Ticking => match response {
+				PoolResponse::Success {
+					pending,
+				} => {
+					self.commit_tick_writes(pending);
+				}
+				PoolResponse::Error(e) => {
+					warn!(error = %e, "tick processing failed");
+				}
+				_ => {}
+			},
 			Phase::Idle => {}
 		}
 	}
@@ -1010,6 +1046,98 @@ impl CoordinatorActor {
 		Span::current().record("batches", worker_batches.len());
 		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 		worker_batches
+	}
+
+	/// Register a tick schedule for a flow if it has a tick duration configured.
+	fn maybe_register_tick_schedule(&self, state: &mut CoordinatorState, flow: &FlowDag) {
+		if let Some(tick) = flow.tick() {
+			state.tick_schedules.insert(
+				flow.id(),
+				TickSchedule {
+					tick,
+					last_tick: self.clock.instant(),
+				},
+			);
+			debug!(
+				flow_id = flow.id().0,
+				tick_nanos = tick.as_nanos(),
+				"registered tick schedule for flow"
+			);
+		}
+	}
+
+	fn handle_tick(&self, state: &mut CoordinatorState, ctx: &Context<CoordinatorMsg>) {
+		let now = self.clock.instant();
+		let timestamp = DateTime::from_timestamp_millis(self.clock.now_millis());
+
+		let mut due_flows: BTreeMap<usize, Vec<FlowId>> = BTreeMap::new();
+
+		for (flow_id, schedule) in &mut state.tick_schedules {
+			let tick_std = Duration::from_nanos(schedule.tick.as_nanos() as u64);
+			if now.duration_since(schedule.last_tick.clone()) >= tick_std {
+				let worker_id = (flow_id.0 as usize) % self.num_workers;
+				due_flows.entry(worker_id).or_default().push(*flow_id);
+				schedule.last_tick = now.clone();
+			}
+		}
+
+		if due_flows.is_empty() {
+			return;
+		}
+
+		let state_version = match self.engine.begin_query(IdentityId::system()) {
+			Ok(q) => q.version(),
+			Err(e) => {
+				warn!(error = %e, "failed to begin query for tick");
+				return;
+			}
+		};
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(CoordinatorMsg::PoolReply(resp));
+		});
+
+		if self.pool
+			.send(PoolMsg::Tick {
+				ticks: due_flows,
+				timestamp,
+				state_version,
+				reply: callback,
+			})
+			.is_err()
+		{
+			warn!("failed to send tick to pool");
+			return;
+		}
+
+		state.phase = Phase::Ticking;
+	}
+
+	fn commit_tick_writes(&self, pending: Pending) {
+		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
+			Ok(t) => t,
+			Err(e) => {
+				warn!(error = %e, "failed to begin command for tick commit");
+				return;
+			}
+		};
+
+		for (key, pw) in pending.iter_sorted() {
+			let result = match pw {
+				PendingWrite::Set(value) => transaction.set(key, value.clone()),
+				PendingWrite::Remove => transaction.remove(key),
+			};
+			if let Err(e) = result {
+				let _ = transaction.rollback();
+				warn!(error = %e, "failed to apply tick write");
+				return;
+			}
+		}
+
+		if let Err(e) = transaction.commit() {
+			warn!(error = %e, "failed to commit tick writes");
+		}
 	}
 }
 

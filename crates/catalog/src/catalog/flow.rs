@@ -13,7 +13,7 @@ use reifydb_transaction::{
 	change::TransactionalFlowChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{error, fragment::Fragment};
+use reifydb_type::{error, fragment::Fragment, value::duration::Duration};
 use tracing::{instrument, warn};
 
 use crate::{
@@ -27,6 +27,7 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
+	pub tick: Option<Duration>,
 }
 
 impl From<FlowToCreate> for StoreFlowToCreate {
@@ -35,6 +36,7 @@ impl From<FlowToCreate> for StoreFlowToCreate {
 			name: to_create.name,
 			namespace: to_create.namespace,
 			status: to_create.status,
+			tick: to_create.tick,
 		}
 	}
 }

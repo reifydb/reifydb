@@ -4,10 +4,11 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::WindowKind,
+	common::{CommitVersion, WindowKind, WindowSize},
 	error::diagnostic::flow::{flow_window_timestamp_column_not_found, flow_window_timestamp_column_type_mismatch},
 	interface::catalog::flow::FlowNodeId,
 	internal,
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
 use serde::{Deserialize, Serialize};
 
@@ -64,7 +65,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, blob::Blob, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
@@ -695,7 +696,8 @@ impl WindowOperator {
 		Ok(Some((result_row, is_new)))
 	}
 
-	/// Process expired windows: emit Remove diffs for each, then delete state
+	/// Process expired windows: emit Remove diffs for each, then delete state.
+	/// Uses the group registry for per-group targeted expiration.
 	pub fn process_expired_windows(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 
@@ -703,32 +705,50 @@ impl WindowOperator {
 			let window_size_ms = duration.as_millis() as u64;
 			if window_size_ms > 0 {
 				let expire_before = current_timestamp.saturating_sub(window_size_ms * 2);
-				let before_key =
-					self.create_window_key(Hash128::from(0u128), expire_before / window_size_ms);
-				let range =
-					EncodedKeyRange::new(ops::Bound::Excluded(before_key), ops::Bound::Unbounded);
+				let cutoff_id = expire_before / window_size_ms;
+				if cutoff_id == 0 {
+					return Ok(result);
+				}
 
-				// Load expired windows and emit Remove for each before deleting
-				let expired_keys = self.scan_keys_in_range(txn, &range)?;
-				for key in &expired_keys {
-					let window_state = self.load_window_state(txn, key)?;
-					if !window_state.events.is_empty() {
-						if let Some(layout) = &window_state.window_layout {
-							if let Some((row, _)) = self.apply_aggregations(
-								txn,
-								key,
-								layout,
-								&window_state.events,
-							)? {
-								result.push(Diff::Remove {
-									pre: Columns::from_row(&row),
-								});
+				let groups = self.load_group_registry(txn)?;
+				for group_hash in &groups {
+					// Keycode uses inverted ordering (NOT of big-endian)
+					let low_key = self.create_window_key(*group_hash, cutoff_id);
+					let high_key = self.create_window_key(*group_hash, 0);
+					let range = EncodedKeyRange::new(
+						ops::Bound::Excluded(low_key),
+						ops::Bound::Included(high_key),
+					);
+
+					let expired_keys = self.scan_keys_in_range(txn, &range)?;
+					for key in &expired_keys {
+						let window_state = self.load_window_state(txn, key)?;
+						if !window_state.events.is_empty() {
+							if let Some(layout) = &window_state.window_layout {
+								if let Some((row, _)) = self.apply_aggregations(
+									txn,
+									key,
+									layout,
+									&window_state.events,
+								)? {
+									result.push(Diff::Remove {
+										pre: Columns::from_row(&row),
+									});
+								}
 							}
 						}
 					}
-				}
 
-				let _expired_count = self.expire_range(txn, range)?;
+					if !expired_keys.is_empty() {
+						let low_key = self.create_window_key(*group_hash, cutoff_id);
+						let high_key = self.create_window_key(*group_hash, 0);
+						let range = EncodedKeyRange::new(
+							ops::Bound::Excluded(low_key),
+							ops::Bound::Included(high_key),
+						);
+						let _ = self.expire_range(txn, range)?;
+					}
+				}
 			}
 		}
 
@@ -806,6 +826,111 @@ impl WindowOperator {
 		EncodedKey::new(serializer.finish())
 	}
 
+	/// Create the group registry key
+	fn create_group_registry_key(&self) -> EncodedKey {
+		EncodedKey::new(b"grp:")
+	}
+
+	/// Load the set of active group hashes from the registry.
+	pub fn load_group_registry(&self, txn: &mut FlowTransaction) -> Result<Vec<Hash128>> {
+		let key = self.create_group_registry_key();
+		let state_row = self.load_state(txn, &key)?;
+		if state_row.is_empty() || !state_row.is_defined(0) {
+			return Ok(Vec::new());
+		}
+		let blob = self.layout.get_blob(&state_row, 0);
+		if blob.is_empty() {
+			return Ok(Vec::new());
+		}
+		let groups: Vec<u128> = from_bytes(blob.as_ref()).unwrap_or_default();
+		Ok(groups.into_iter().map(Hash128::from).collect())
+	}
+
+	/// Save the group registry.
+	fn save_group_registry(&self, txn: &mut FlowTransaction, groups: &[Hash128]) -> Result<()> {
+		let key = self.create_group_registry_key();
+		let raw: Vec<u128> = groups.iter().map(|h| (*h).into()).collect();
+		let serialized =
+			to_stdvec(&raw).map_err(|e| Error(internal!("Failed to serialize group registry: {}", e)))?;
+		let mut state_row = self.layout.allocate();
+		let blob = Blob::from(serialized);
+		self.layout.set_blob(&mut state_row, 0, &blob);
+		self.save_state(txn, &key, state_row)
+	}
+
+	/// Register a group hash in the registry if not already present.
+	pub fn register_group(&self, txn: &mut FlowTransaction, group_hash: Hash128) -> Result<()> {
+		let mut groups = self.load_group_registry(txn)?;
+		if !groups.contains(&group_hash) {
+			groups.push(group_hash);
+			self.save_group_registry(txn, &groups)?;
+		}
+		Ok(())
+	}
+
+	/// Tick-based window expiration for tumbling/sliding windows.
+	/// Scans all operator state, finds expired "win:" windows, emits Remove and cleans up.
+	pub fn tick_expire_windows(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
+		let mut result = Vec::new();
+		let window_size_ms = match self.size_duration() {
+			Some(d) => d.as_millis() as u64,
+			None => return Ok(result),
+		};
+		if window_size_ms == 0 {
+			return Ok(result);
+		}
+
+		// Scan all state for this operator
+		let all_state = txn.state_scan(self.node)?;
+		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
+		let win_marker = b"win:";
+
+		let mut keys_to_remove = Vec::new();
+
+		for item in &all_state.items {
+			// Strip operator prefix to get the inner key
+			let full_key = &item.key;
+			if full_key.len() <= prefix.len() {
+				continue;
+			}
+			let inner = &full_key[prefix.len()..];
+
+			// Only process "win:" keys
+			if !inner.starts_with(win_marker) {
+				continue;
+			}
+
+			let window_key = EncodedKey::new(inner);
+			let window_state = self.load_window_state(txn, &window_key)?;
+			if window_state.events.is_empty() {
+				continue;
+			}
+
+			// Check if window is expired: newest event older than window size
+			let newest_event_time = window_state.events.iter().map(|e| e.timestamp).max().unwrap_or(0);
+			if current_timestamp.saturating_sub(newest_event_time) > window_size_ms {
+				if let Some(layout) = &window_state.window_layout {
+					if let Some((row, _)) =
+						self.apply_aggregations(txn, &window_key, layout, &window_state.events)?
+					{
+						result.push(Diff::Remove {
+							pre: Columns::from_row(&row),
+						});
+					}
+				}
+				keys_to_remove.push(window_key);
+			}
+		}
+
+		// Clean up expired windows
+		for key in &keys_to_remove {
+			let empty = self.create_state();
+			self.save_state(txn, key, empty)?;
+		}
+
+		Ok(result)
+	}
+
 	/// Shared: partition columns by group keys and call `group_fn` for each group.
 	pub fn process_insert(
 		&self,
@@ -821,6 +946,7 @@ impl WindowOperator {
 		let groups = columns.partition_by_keys(&group_hashes);
 		let mut result = Vec::new();
 		for (group_hash, group_columns) in groups {
+			self.register_group(txn, group_hash)?;
 			let group_result = group_fn(self, txn, &group_columns, group_hash)?;
 			result.extend(group_result);
 		}
@@ -916,6 +1042,31 @@ impl Operator for WindowOperator {
 			WindowKind::Session {
 				..
 			} => apply_session_window(self, txn, change),
+		}
+	}
+
+	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
+		let current_timestamp = (timestamp.to_nanos() / 1_000_000) as u64;
+		let diffs = match &self.kind {
+			WindowKind::Tumbling {
+				..
+			}
+			| WindowKind::Sliding {
+				..
+			} => self.tick_expire_windows(txn, current_timestamp)?,
+			WindowKind::Rolling {
+				size: WindowSize::Duration(_),
+			} => self.tick_rolling_eviction(txn, current_timestamp)?,
+			WindowKind::Session {
+				..
+			} => self.tick_session_expiration(txn, current_timestamp)?,
+			_ => vec![],
+		};
+
+		if diffs.is_empty() {
+			Ok(None)
+		} else {
+			Ok(Some(Change::from_flow(self.node, CommitVersion(0), diffs)))
 		}
 	}
 

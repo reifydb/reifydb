@@ -6,7 +6,7 @@ pub mod create;
 pub mod drop;
 pub mod mutate;
 
-use std::{collections, fmt, iter::once, marker};
+use std::{collections, fmt, iter::once, marker, time::Duration};
 
 use reifydb_catalog::catalog::{
 	Catalog, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
@@ -194,6 +194,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -204,6 +205,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]

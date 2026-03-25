@@ -10,7 +10,7 @@
 
 use std::{collections::BTreeMap, mem::replace};
 
-use reifydb_core::internal;
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId, internal};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -21,7 +21,7 @@ use reifydb_runtime::{
 	},
 	context::clock::{Clock, Instant},
 };
-use reifydb_type::util::hex::encode;
+use reifydb_type::{util::hex::encode, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
 use super::{
@@ -46,6 +46,13 @@ pub enum PoolMsg {
 	SubmitToWorker {
 		worker_id: usize,
 		batch: WorkerBatch,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	},
+	/// Process periodic tick for time-based maintenance
+	Tick {
+		ticks: BTreeMap<usize, Vec<FlowId>>,
+		timestamp: DateTime,
+		state_version: CommitVersion,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	},
 	/// Async reply from a FlowActor worker
@@ -205,6 +212,19 @@ impl Actor for PoolActor {
 					is_register: false,
 				};
 			}
+			PoolMsg::Tick {
+				ticks,
+				timestamp,
+				state_version,
+				reply,
+			} => {
+				if !matches!(state.phase, Phase::Idle) {
+					(reply)(PoolResponse::Error("Pool actor is busy".to_string()));
+					return Directive::Continue;
+				}
+
+				self.handle_tick_async(state, ctx, ticks, timestamp, state_version, reply);
+			}
 			PoolMsg::WorkerReply {
 				worker_id,
 				response,
@@ -271,6 +291,54 @@ impl PoolActor {
 			results: Vec::with_capacity(batch_count),
 			reply,
 			started_at: start,
+		};
+	}
+
+	/// Handle Tick by sending to workers asynchronously.
+	fn handle_tick_async(
+		&self,
+		state: &mut PoolState,
+		ctx: &Context<PoolMsg>,
+		ticks: BTreeMap<usize, Vec<FlowId>>,
+		timestamp: DateTime,
+		state_version: CommitVersion,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	) {
+		let tick_count = ticks.len();
+
+		for (worker_id, flow_ids) in ticks {
+			if worker_id >= self.refs.len() {
+				(reply)(PoolResponse::Error(internal!("Invalid worker_id: {}", worker_id).to_string()));
+				return;
+			}
+
+			let self_ref = ctx.self_ref().clone();
+			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
+				let _ = self_ref.send(PoolMsg::WorkerReply {
+					worker_id,
+					response: resp,
+				});
+			});
+
+			if self.refs[worker_id]
+				.send(FlowMsg::Tick {
+					flow_ids,
+					timestamp,
+					state_version,
+					reply: callback,
+				})
+				.is_err()
+			{
+				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				return;
+			}
+		}
+
+		state.phase = Phase::WaitingForWorkers {
+			pending_count: tick_count,
+			results: Vec::with_capacity(tick_count),
+			reply,
+			started_at: self.clock.instant(),
 		};
 	}
 
