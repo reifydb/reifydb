@@ -36,7 +36,6 @@ pub struct HandlerInvocation {
 /// A captured mutation (insert/update/delete) during test execution.
 #[derive(Clone, Debug)]
 pub struct MutationRecord {
-	pub sequence: u64,
 	pub op: String,
 	pub old: Columns,
 	pub new: Columns,
@@ -53,7 +52,6 @@ pub struct TestingContext {
 	pub mutations: HashMap<String, Vec<MutationRecord>>,
 	event_seq: u64,
 	handler_seq: u64,
-	mutation_seq: u64,
 }
 
 impl TestingContext {
@@ -64,7 +62,6 @@ impl TestingContext {
 			mutations: HashMap::new(),
 			event_seq: 0,
 			handler_seq: 0,
-			mutation_seq: 0,
 		}
 	}
 
@@ -74,7 +71,6 @@ impl TestingContext {
 		self.mutations.clear();
 		self.event_seq = 0;
 		self.handler_seq = 0;
-		self.mutation_seq = 0;
 	}
 
 	pub fn record_event(&mut self, namespace: String, event: String, variant: String, depth: u8, columns: Columns) {
@@ -113,9 +109,7 @@ impl TestingContext {
 	}
 
 	pub fn record_mutation(&mut self, primitive_key: String, op: String, old: Columns, new: Columns) {
-		self.mutation_seq += 1;
 		self.mutations.entry(primitive_key).or_default().push(MutationRecord {
-			sequence: self.mutation_seq,
 			op,
 			old,
 			new,
@@ -132,6 +126,19 @@ impl TestingContext {
 
 	pub fn record_update(&mut self, key: String, old: Columns, new: Columns) {
 		self.record_mutation(key, "update".to_string(), old, new);
+	}
+}
+
+/// Identifies the primitive type category for a `testing::*::changed()` generator.
+pub struct TestingChanged {
+	pub primitive_type: &'static str,
+}
+
+impl TestingChanged {
+	pub fn new(primitive_type: &'static str) -> Self {
+		Self {
+			primitive_type,
+		}
 	}
 }
 

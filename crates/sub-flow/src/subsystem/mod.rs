@@ -34,7 +34,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle, context::RuntimeContext};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
-	interceptor::interceptors::Interceptors, testing::TestingViewMutationCaptor, transaction::Transaction,
+	interceptor::interceptors::Interceptors, testing::TestingViewsChangeCaptor, transaction::Transaction,
 };
 use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::{info, warn};
@@ -263,14 +263,14 @@ impl FlowSubsystem {
 			flow_catalog.clone(),
 		)));
 
-		ioc.register_service::<Arc<dyn TestingViewMutationCaptor>>(Arc::new(
-			ViewInlineTestingMutationCapture {
-				engine: engine.clone(),
-				catalog: engine.catalog(),
-				event_bus: engine.event_bus().clone(),
-				runtime_context: RuntimeContext::with_clock(runtime.clock().clone()),
-				custom_operators: custom_operators.clone(),
-			},
+		ioc.register_service::<Arc<dyn TestingViewsChangeCaptor>>(Arc::new(
+			ViewInlineTestingMutationCapture::new(
+				engine.clone(),
+				engine.catalog(),
+				engine.event_bus().clone(),
+				RuntimeContext::with_clock(runtime.clock().clone()),
+				custom_operators.clone(),
+			),
 		));
 
 		let poll_config =

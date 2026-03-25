@@ -164,6 +164,13 @@ impl AdminTransaction {
 		self.accumulator.clear();
 	}
 
+	/// Returns `true` when the accumulator contains flow changes that have not
+	/// yet been processed.  Used by the VM to trigger eager flow processing in
+	/// testing mode.
+	pub fn has_pending_flow_changes(&self) -> bool {
+		!self.accumulator.is_empty()
+	}
+
 	/// Execute test-only pre-commit style processing without committing.
 	///
 	/// This is used by testing helpers that need commit-time flow work

@@ -24,7 +24,7 @@ use reifydb_transaction::{
 		table::{table_post_delete, table_post_insert, table_post_update},
 		view::{view_post_delete, view_post_insert, view_post_update},
 	},
-	transaction::{Transaction, admin::AdminTransaction},
+	transaction::Transaction,
 };
 use reifydb_type::{
 	params::Params,
@@ -230,7 +230,6 @@ pub(crate) fn run_tests(
 					params,
 					None,
 				);
-				flush_view_mutations(txn);
 				txn.restore_savepoint(savepoint);
 				let elapsed = start.elapsed();
 				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
@@ -282,7 +281,6 @@ pub(crate) fn run_tests(
 						params,
 						Some(&named_vars),
 					);
-					flush_view_mutations(txn);
 					txn.restore_savepoint(savepoint);
 					let elapsed = start.elapsed();
 					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
@@ -312,11 +310,6 @@ pub(crate) fn run_tests(
 
 fn resolve_namespace_name(ns_cache: &HashMap<NamespaceId, String>, ns_id: NamespaceId) -> String {
 	ns_cache.get(&ns_id).cloned().unwrap_or_else(|| format!("{}", ns_id.0))
-}
-
-fn flush_view_mutations(txn: &mut AdminTransaction) {
-	let pre_commit_chain = txn.interceptors.pre_commit.clone();
-	let _ = txn.capture_testing_pre_commit(|ctx| pre_commit_chain.execute(ctx));
 }
 
 fn register_testing_interceptors(

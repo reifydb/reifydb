@@ -7,9 +7,9 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::event::EventBus;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::{context::RuntimeContext, sync::mutex::Mutex};
 use reifydb_transaction::{
-	testing::TestingViewMutationCaptor,
+	testing::TestingViewsChangeCaptor,
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::Result;
@@ -22,9 +22,27 @@ pub(crate) struct ViewInlineTestingMutationCapture {
 	pub event_bus: EventBus,
 	pub runtime_context: RuntimeContext,
 	pub custom_operators: Arc<HashMap<String, OperatorFactory>>,
+	cached_flow_engine: Mutex<Option<FlowEngine>>,
 }
 
 impl ViewInlineTestingMutationCapture {
+	pub fn new(
+		engine: StandardEngine,
+		catalog: Catalog,
+		event_bus: EventBus,
+		runtime_context: RuntimeContext,
+		custom_operators: Arc<HashMap<String, OperatorFactory>>,
+	) -> Self {
+		Self {
+			engine,
+			catalog,
+			event_bus,
+			runtime_context,
+			custom_operators,
+			cached_flow_engine: Mutex::new(None),
+		}
+	}
+
 	fn build_flow_engine(&self, txn: &mut AdminTransaction) -> Result<FlowEngine> {
 		let mut flow_engine = FlowEngine::new(
 			self.catalog.clone(),
@@ -45,11 +63,15 @@ impl ViewInlineTestingMutationCapture {
 	}
 }
 
-impl TestingViewMutationCaptor for ViewInlineTestingMutationCapture {
+impl TestingViewsChangeCaptor for ViewInlineTestingMutationCapture {
 	fn capture(&self, txn: &mut AdminTransaction) -> Result<()> {
-		let flow_engine = self.build_flow_engine(txn)?;
+		let mut cached = self.cached_flow_engine.lock();
+		if cached.is_none() {
+			*cached = Some(self.build_flow_engine(txn)?);
+		}
+		let flow_engine = cached.as_ref().unwrap();
 		txn.capture_testing_pre_commit(|ctx| {
-			execute_inline_flow_changes(&flow_engine, &self.engine, &self.catalog, ctx)
+			execute_inline_flow_changes(flow_engine, &self.engine, &self.catalog, ctx)
 		})
 	}
 }

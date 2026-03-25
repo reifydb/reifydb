@@ -19,7 +19,7 @@ use reifydb_rql::{
 	query::QueryPlan,
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{testing::TestingViewsChangeCaptor, transaction::Transaction};
 use reifydb_type::{
 	error::{Diagnostic, Error, ProcedureErrorKind, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -2090,6 +2090,19 @@ impl Vm {
 							}
 							.into());
 						}
+					}
+				}
+			}
+
+			// Eagerly process accumulated flow changes in testing mode.
+			// In production no TestingViewsChangeCaptor is registered so this
+			// is effectively a no-op (is_empty() is O(1), failed IoC resolve is
+			// a single hash miss).
+			if let Transaction::Admin(admin) = &mut *tx {
+				if admin.has_pending_flow_changes() {
+					if let Ok(captor) = services.ioc.resolve::<Arc<dyn TestingViewsChangeCaptor>>()
+					{
+						let _ = captor.capture(admin);
 					}
 				}
 			}
