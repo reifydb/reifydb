@@ -18,7 +18,7 @@ pub(crate) fn create_authentication(
 	let method = plan.method.text();
 
 	// Find the user
-	let user = services.catalog.get_user_by_name(&mut Transaction::Admin(&mut *txn), user_name)?;
+	let user = services.catalog.get_identity_by_name(&mut Transaction::Admin(&mut *txn), user_name)?;
 
 	// Get the auth provider
 	let provider = services.auth_registry.get(method).ok_or_else(|| {

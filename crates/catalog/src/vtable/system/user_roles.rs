@@ -16,7 +16,7 @@ use crate::{
 	vtable::{Batch, VTable, VTableContext},
 };
 
-/// Virtual table that exposes system user-role assignment information
+/// Virtual table that exposes system identity-role assignment information
 pub struct UserRoles {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
@@ -42,20 +42,20 @@ impl VTable for UserRoles {
 			return Ok(None);
 		}
 
-		let user_roles = CatalogStore::list_all_user_roles(txn)?;
+		let identity_roles = CatalogStore::list_all_identity_roles(txn)?;
 
-		let mut user_ids = ColumnData::uint8_with_capacity(user_roles.len());
-		let mut role_ids = ColumnData::uint8_with_capacity(user_roles.len());
+		let mut identities = ColumnData::identity_id_with_capacity(identity_roles.len());
+		let mut role_ids = ColumnData::uint8_with_capacity(identity_roles.len());
 
-		for ur in user_roles {
-			user_ids.push(ur.user_id);
-			role_ids.push(ur.role_id);
+		for ir in identity_roles {
+			identities.push(ir.identity);
+			role_ids.push(ir.role_id);
 		}
 
 		let columns = vec![
 			Column {
-				name: Fragment::internal("user_id"),
-				data: user_ids,
+				name: Fragment::internal("identity"),
+				data: identities,
 			},
 			Column {
 				name: Fragment::internal("role_id"),

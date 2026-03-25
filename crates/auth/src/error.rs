@@ -46,6 +46,19 @@ pub enum AuthError {
 	VerificationFailed {
 		reason: String,
 	},
+
+	#[error("public key is required for solana authentication")]
+	MissingPublicKey,
+
+	#[error("invalid public key: {reason}")]
+	InvalidPublicKey {
+		reason: String,
+	},
+
+	#[error("invalid signature: {reason}")]
+	InvalidSignature {
+		reason: String,
+	},
 }
 
 impl IntoDiagnostic for AuthError {
@@ -172,6 +185,49 @@ impl IntoDiagnostic for AuthError {
 				fragment: Fragment::None,
 				label: Some("verification failed".to_string()),
 				help: Some("an internal error occurred during password verification".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			AuthError::MissingPublicKey => Diagnostic {
+				code: "AU_010".to_string(),
+				statement: None,
+				message: "public key is required for solana authentication".to_string(),
+				fragment: Fragment::None,
+				label: Some("missing public key".to_string()),
+				help: Some("provide a public_key in the authentication configuration".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			AuthError::InvalidPublicKey {
+				reason,
+			} => Diagnostic {
+				code: "AU_011".to_string(),
+				statement: None,
+				message: format!("invalid public key: {}", reason),
+				fragment: Fragment::None,
+				label: Some("invalid public key".to_string()),
+				help: Some("provide a valid base58-encoded 32-byte Solana public key".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			AuthError::InvalidSignature {
+				reason,
+			} => Diagnostic {
+				code: "AU_012".to_string(),
+				statement: None,
+				message: format!("invalid signature: {}", reason),
+				fragment: Fragment::None,
+				label: Some("invalid signature".to_string()),
+				help: Some("provide a valid base58-encoded 64-byte ed25519 signature".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

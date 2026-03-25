@@ -16,6 +16,7 @@ edition.workspace = true
 default = []
 
 [dependencies]
+reifydb-auth = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-core = { workspace = true }

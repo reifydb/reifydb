@@ -18,6 +18,7 @@ pub mod flow;
 pub mod flow_edge;
 pub mod flow_node;
 pub mod handler;
+pub mod identity;
 pub mod migration;
 pub mod namespace;
 pub mod policy;
@@ -32,7 +33,6 @@ pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod test;
-pub mod user;
 pub mod view;
 pub mod vtable;
 

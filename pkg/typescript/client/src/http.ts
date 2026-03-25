@@ -11,6 +11,7 @@ import type {
 
 import type {
     Column,
+    LoginResult,
 } from "./types";
 import {
     ReifyError
@@ -24,7 +25,7 @@ export interface HttpClientOptions {
 }
 
 export class HttpClient {
-    private readonly options: HttpClientOptions;
+    private options: HttpClientOptions;
 
     private constructor(options: HttpClientOptions) {
         this.options = options;
@@ -32,6 +33,44 @@ export class HttpClient {
 
     static connect(options: HttpClientOptions): HttpClient {
         return new HttpClient(options);
+    }
+
+    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
+        return this.login("password", principal, {password});
+    }
+
+    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
+        return this.login("token", principal, {token});
+    }
+
+    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
+        const timeoutMs = this.options.timeoutMs ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch(`${this.options.url}/v1/authenticate`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({method, principal, credentials}),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeout);
+            const body = await response.json();
+
+            if (body.status !== "authenticated" || !body.token || !body.identity) {
+                throw new Error(body.reason || "Authentication failed");
+            }
+
+            this.options = {...this.options, token: body.token};
+
+            return {token: body.token, identity: body.identity};
+        } catch (err: any) {
+            clearTimeout(timeout);
+            if (err.name === 'AbortError') throw new Error("Login timeout");
+            throw err;
+        }
     }
 
     async admin<const S extends readonly SchemaNode[]>(
@@ -248,11 +287,11 @@ export class HttpClient {
 }
 
 function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.data.length ?? 0;
+    const rowCount = columns[0]?.payload.length ?? 0;
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.data[i]});
+            row[col.name] = decode({type: col.type, value: col.payload[i]});
         }
         return row;
     });

@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
 };
 use reqwest::Client as ReqwestClient;
+use serde::Deserialize;
 
 use crate::{
 	AdminRequest, AdminResponse, AdminResult, ClientFrame, CommandRequest, CommandResponse, CommandResult,
-	ErrResponse, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
+	ErrResponse, LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
@@ -44,12 +45,21 @@ impl HttpFrameResponse {
 }
 
 /// HTTP-specific error response matching the server's format
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 struct HttpErrorResponse {
 	code: String,
 	error: String,
 	#[serde(default)]
 	diagnostic: Option<Diagnostic>,
+}
+
+/// HTTP authentication response matching the server's `/v1/authenticate` format
+#[derive(Debug, Deserialize)]
+struct HttpAuthenticateResponse {
+	status: String,
+	token: Option<String>,
+	identity: Option<String>,
+	reason: Option<String>,
 }
 
 /// Async HTTP client for ReifyDB
@@ -113,6 +123,56 @@ impl HttpClient {
 	/// * `token` - Bearer token for authentication
 	pub fn authenticate(&mut self, token: &str) {
 		self.token = Some(token.to_string());
+	}
+
+	/// Login with principal and password. On success, stores the session token
+	/// for subsequent requests and returns the login result.
+	pub async fn login_with_password(&mut self, principal: &str, password: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("password".to_string(), password.to_string());
+		self.login("password", principal, credentials).await
+	}
+
+	/// Login with principal and a pre-existing authentication token.
+	/// On success, stores the session token for subsequent requests.
+	pub async fn login_with_token(&mut self, principal: &str, token: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("token".to_string(), token.to_string());
+		self.login("token", principal, credentials).await
+	}
+
+	/// Login with the given method, principal, and credentials.
+	/// On success, stores the session token for subsequent requests.
+	pub async fn login(
+		&mut self,
+		method: &str,
+		principal: &str,
+		credentials: HashMap<String, String>,
+	) -> Result<LoginResult, Error> {
+		let body = serde_json::json!({
+			"method": method,
+			"principal": principal,
+			"credentials": credentials
+		});
+
+		let url = format!("{}/v1/authenticate", self.base_url);
+		let response = self.inner.post(&url).json(&body).send().await.unwrap(); // FIXME better error handling
+		let response_body = response.text().await.unwrap(); // FIXME better error handling
+
+		let auth: HttpAuthenticateResponse = serde_json::from_str(&response_body).unwrap(); // FIXME better error handling
+
+		if auth.status == "authenticated" {
+			let token = auth.token.unwrap_or_default();
+			let identity = auth.identity.unwrap_or_default();
+			self.token = Some(token.clone());
+			Ok(LoginResult {
+				token,
+				identity,
+			})
+		} else {
+			let reason = auth.reason.unwrap_or_else(|| "Authentication failed".to_string());
+			panic!("Authentication failed: {}", reason) // FIXME better error handling
+		}
 	}
 
 	/// Execute an admin (DDL + DML + Query) statement.

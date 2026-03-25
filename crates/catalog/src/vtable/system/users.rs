@@ -16,7 +16,7 @@ use crate::{
 	vtable::{Batch, VTable, VTableContext},
 };
 
-/// Virtual table that exposes system user information
+/// Virtual table that exposes system identity information
 pub struct Users {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
@@ -42,18 +42,16 @@ impl VTable for Users {
 			return Ok(None);
 		}
 
-		let users = CatalogStore::list_all_users(txn)?;
+		let identities = CatalogStore::list_all_identities(txn)?;
 
-		let mut ids = ColumnData::uint8_with_capacity(users.len());
-		let mut names = ColumnData::utf8_with_capacity(users.len());
-		let mut enabled_flags = ColumnData::bool_with_capacity(users.len());
-		let mut identities = ColumnData::identity_id_with_capacity(users.len());
+		let mut ids = ColumnData::identity_id_with_capacity(identities.len());
+		let mut names = ColumnData::utf8_with_capacity(identities.len());
+		let mut enabled_flags = ColumnData::bool_with_capacity(identities.len());
 
-		for u in users {
+		for u in identities {
 			ids.push(u.id);
 			names.push(u.name.as_str());
 			enabled_flags.push(u.enabled);
-			identities.push(u.identity);
 		}
 
 		let columns = vec![
@@ -68,10 +66,6 @@ impl VTable for Users {
 			Column {
 				name: Fragment::internal("enabled"),
 				data: enabled_flags,
-			},
-			Column {
-				name: Fragment::internal("identity"),
-				data: identities,
 			},
 		];
 

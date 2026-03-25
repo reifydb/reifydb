@@ -19,13 +19,13 @@ pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
 	let js_array = js_sys::Array::new();
 
 	for response_frame in &response_frames {
-		let row_count = response_frame.columns.first().map_or(0, |c| c.data.len());
+		let row_count = response_frame.columns.first().map_or(0, |c| c.payload.len());
 
 		for row_idx in 0..row_count {
 			let row_obj = js_sys::Object::new();
 
 			for column in &response_frame.columns {
-				let js_value = JsValue::from_str(&column.data[row_idx]);
+				let js_value = JsValue::from_str(&column.payload[row_idx]);
 				js_sys::Reflect::set(&row_obj, &JsValue::from_str(&column.name), &js_value)?;
 			}
 

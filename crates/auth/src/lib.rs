@@ -7,11 +7,10 @@ extern crate core;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod challenge;
-pub mod crypto;
 pub mod error;
-pub mod password;
+pub mod method;
 pub mod registry;
-pub mod token;
+pub mod service;
 
 pub struct AuthVersion;
 

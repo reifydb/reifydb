@@ -87,7 +87,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                                     return {
                                         name: key,
                                         type: dataType,
-                                        data: [],
+                                        payload: [],
                                     };
                                 });
                             } else {
@@ -95,7 +95,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                                 columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
                                     type: 'Utf8', // Default type for plain objects
-                                    data: [],
+                                    payload: [],
                                 }));
                             }
 

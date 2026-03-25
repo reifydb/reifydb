@@ -16,8 +16,8 @@ use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
-		bootstrap_config_defaults, bootstrap_root_user, bootstrap_system_procedures, load_materialized_catalog,
-		load_schema_registry,
+		bootstrap_config_defaults, bootstrap_root_identity, bootstrap_system_procedures,
+		load_materialized_catalog, load_schema_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
@@ -115,7 +115,7 @@ impl Bridge {
 		let schema_registry = SchemaRegistry::new(single.clone());
 
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
-		bootstrap_root_user(&multi, &single, &materialized_catalog, &eventbus)?;
+		bootstrap_root_identity(&multi, &single, &materialized_catalog, &eventbus)?;
 		bootstrap_config_defaults(&multi, &single, &materialized_catalog, &eventbus)?;
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &schema_registry, &eventbus)?;
 		load_schema_registry(&multi, &single, &schema_registry)?;

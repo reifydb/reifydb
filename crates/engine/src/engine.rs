@@ -3,7 +3,7 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use reifydb_auth::registry::AuthenticationRegistry;
+use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
@@ -54,7 +54,6 @@ use tracing::instrument;
 use crate::remote::RemoteRegistry;
 use crate::{
 	Result,
-	auth::{AuthService, AuthServiceConfig},
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
 	procedure::registry::Procedures,
@@ -67,6 +66,20 @@ pub struct StandardEngine(Arc<Inner>);
 impl WithEventBus for StandardEngine {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
+	}
+}
+
+impl AuthEngine for StandardEngine {
+	fn begin_admin(&self) -> Result<AdminTransaction> {
+		StandardEngine::begin_admin(self, IdentityId::system())
+	}
+
+	fn begin_query(&self) -> Result<QueryTransaction> {
+		StandardEngine::begin_query(self, IdentityId::system())
+	}
+
+	fn catalog(&self) -> Catalog {
+		StandardEngine::catalog(self)
 	}
 }
 
@@ -325,10 +338,9 @@ pub struct Inner {
 	single: SingleTransaction,
 	event_bus: EventBus,
 	executor: Executor,
-	interceptors: InterceptorFactory,
+	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
 	flow_operator_store: FlowOperatorStore,
-	auth_service: AuthService,
 }
 
 impl StandardEngine {
@@ -363,16 +375,7 @@ impl StandardEngine {
 				.add(Arc::new(MaterializedCatalogInterceptor::new(materialized.clone())));
 		}));
 
-		let auth_service = AuthService::new(
-			catalog.clone(),
-			Arc::new(AuthenticationRegistry::default()),
-			multi.clone(),
-			single.clone(),
-			event_bus.clone(),
-			runtime_context.rng.clone(),
-			runtime_context.clock.clone(),
-			AuthServiceConfig::default(),
-		);
+		let interceptors = Arc::new(interceptors);
 
 		Self(Arc::new(Inner {
 			multi,
@@ -393,7 +396,6 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
-			auth_service,
 		}))
 	}
 
@@ -499,12 +501,6 @@ impl StandardEngine {
 	#[inline]
 	pub fn executor(&self) -> Executor {
 		self.executor.clone()
-	}
-
-	/// Get the authentication service.
-	#[inline]
-	pub fn auth_service(&self) -> &AuthService {
-		&self.auth_service
 	}
 
 	/// Get the CDC store from the IoC container.

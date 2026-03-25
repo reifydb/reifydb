@@ -9,7 +9,7 @@
 
 use std::{thread, time::Duration};
 
-use reifydb_core::interface::catalog::{token::TokenDef, user::UserId};
+use reifydb_core::interface::catalog::token::TokenDef;
 use reifydb_type::{
 	error::Error,
 	params::Params,
@@ -121,7 +121,7 @@ impl RetryPolicy {
 pub struct Session {
 	engine: StandardEngine,
 	identity: IdentityId,
-	user: Option<UserId>,
+	authenticated: bool,
 	token: Option<String>,
 	retry: RetryPolicy,
 }
@@ -132,7 +132,7 @@ impl Session {
 		Self {
 			engine,
 			identity: info.identity,
-			user: Some(info.user),
+			authenticated: true,
 			token: None,
 			retry: RetryPolicy::default(),
 		}
@@ -143,7 +143,7 @@ impl Session {
 		Self {
 			engine,
 			identity: info.identity,
-			user: Some(info.user),
+			authenticated: true,
 			token: Some(info.token.clone()),
 			retry: RetryPolicy::default(),
 		}
@@ -154,7 +154,7 @@ impl Session {
 		Self {
 			engine,
 			identity,
-			user: None,
+			authenticated: false,
 			token: None,
 			retry: RetryPolicy::default(),
 		}
@@ -177,12 +177,6 @@ impl Session {
 		self.identity
 	}
 
-	/// The user ID, if this session was created from a validated token.
-	#[inline]
-	pub fn user(&self) -> Option<UserId> {
-		self.user
-	}
-
 	/// The auth token, if this session was created from a validated token.
 	#[inline]
 	pub fn token(&self) -> Option<&str> {
@@ -192,7 +186,7 @@ impl Session {
 	/// Whether this session was created from authenticated credentials.
 	#[inline]
 	pub fn is_authenticated(&self) -> bool {
-		self.user.is_some()
+		self.authenticated
 	}
 
 	/// Execute a read-only query.

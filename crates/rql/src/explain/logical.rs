@@ -94,7 +94,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DropSumType(_) => unimplemented!(),
 		LogicalPlan::DropSubscription(_) => unimplemented!(),
 		LogicalPlan::DropSeries(_) => unimplemented!(),
-		LogicalPlan::CreateUser(n) => {
+		LogicalPlan::CreateIdentity(n) => {
 			output.push_str(&format!("{}{} CreateUser name={}\n", prefix, branch, n.name.text()));
 		}
 		LogicalPlan::CreateRole(n) => {
@@ -118,7 +118,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				n.user.text()
 			));
 		}
-		LogicalPlan::DropUser(n) => {
+		LogicalPlan::DropIdentity(n) => {
 			output.push_str(&format!(
 				"{}{} DropUser name={} if_exists={}\n",
 				prefix,

@@ -469,7 +469,7 @@ pub enum AstCreate<'bump> {
 	Event(AstCreateEvent<'bump>),
 	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
-	User(AstCreateUser<'bump>),
+	Identity(AstCreateIdentity<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
 	Policy(AstCreatePolicy<'bump>),
@@ -516,7 +516,7 @@ pub enum AstDrop<'bump> {
 	Enum(AstDropSumType<'bump>),
 	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
-	User(AstDropUser<'bump>),
+	Identity(AstDropIdentity<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
@@ -908,7 +908,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Event(AstCreateEvent<'bump>),
 	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
-	User(AstCreateUser<'bump>),
+	Identity(AstCreateIdentity<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
 	Policy(AstCreatePolicy<'bump>),
@@ -932,7 +932,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Enum(AstDropSumType<'bump>),
 	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
-	User(AstDropUser<'bump>),
+	Identity(AstDropIdentity<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
@@ -1430,10 +1430,10 @@ pub struct AstRequire<'bump> {
 	pub body: BumpBox<'bump, Ast<'bump>>,
 }
 
-// === User/Role/Grant AST nodes ===
+// === Identity/Role/Grant AST nodes ===
 
 #[derive(Debug)]
-pub struct AstCreateUser<'bump> {
+pub struct AstCreateIdentity<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
 }
@@ -1459,7 +1459,7 @@ pub struct AstRevoke<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstDropUser<'bump> {
+pub struct AstDropIdentity<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,

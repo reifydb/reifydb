@@ -49,5 +49,14 @@ fn main() {
 		.unwrap();
 	println!("Auth token configured for root user: mysecrettoken");
 
+	// Create test users for login integration tests
+	db.admin_as_root("CREATE USER alice", Params::None).unwrap();
+	db.admin_as_root("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }", Params::None)
+		.unwrap();
+	db.admin_as_root("CREATE USER bob", Params::None).unwrap();
+	db.admin_as_root("CREATE AUTHENTICATION FOR bob { method: token; token: 'bob-secret-token' }", Params::None)
+		.unwrap();
+	println!("Test users configured: alice (password), bob (token)");
+
 	db.await_signal().unwrap();
 }

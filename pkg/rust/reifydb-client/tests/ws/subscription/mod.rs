@@ -68,12 +68,12 @@ pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, tim
 pub struct JsonColumn {
 	pub name: String,
 	pub r#type: String,
-	pub data: Vec<String>,
+	pub payload: Vec<String>,
 }
 
 /// Extract all columns from the first frame in a ChangePayload body.
 /// The body is expected to be `{ "frames": [{ "row_numbers": [...], "columns": [...] }] }`
-/// where each column is `{ "name": "...", "type": "...", "data": [...] }`.
+/// where each column is `{ "name": "...", "type": "...", "payload": [...] }`.
 pub fn extract_columns(body: &serde_json::Value) -> Vec<JsonColumn> {
 	let frames = body.get("frames").and_then(|f| f.as_array());
 	let frame = frames.and_then(|f| f.first());
@@ -84,7 +84,8 @@ pub fn extract_columns(body: &serde_json::Value) -> Vec<JsonColumn> {
 			.map(|c| JsonColumn {
 				name: c.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string(),
 				r#type: c.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string(),
-				data: c.get("data")
+				payload: c
+					.get("payload")
 					.and_then(|d| d.as_array())
 					.map(|arr| {
 						arr.iter()
@@ -111,7 +112,7 @@ pub fn find_column(body: &serde_json::Value, name: &str) -> Option<JsonColumn> {
 
 /// Get the _op column value from a change body (1=insert, 2=update, 3=delete)
 pub fn get_op_value(body: &serde_json::Value, row_index: usize) -> Option<i32> {
-	find_column(body, "_op").and_then(|col| col.data.get(row_index).cloned()).and_then(|s| s.parse::<i32>().ok())
+	find_column(body, "_op").and_then(|col| col.payload.get(row_index).cloned()).and_then(|s| s.parse::<i32>().ok())
 }
 
 /// Test harness for subscription tests that abstracts away boilerplate

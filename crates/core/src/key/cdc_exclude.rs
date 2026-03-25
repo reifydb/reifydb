@@ -118,9 +118,9 @@ pub mod tests {
 			KeyKind::Series => {}
 			KeyKind::NamespaceSeries => {}
 			KeyKind::SeriesMetadata => {}
-			KeyKind::User => {}
+			KeyKind::Identity => {}
 			KeyKind::Role => {}
-			KeyKind::UserRole => {}
+			KeyKind::IdentityRole => {}
 			KeyKind::Policy => {}
 			KeyKind::PolicyOp => {}
 			KeyKind::Migration => {}
@@ -396,8 +396,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_user() {
-		assert!(!should_exclude_from_cdc(KeyKind::User));
+	fn test_include_identity() {
+		assert!(!should_exclude_from_cdc(KeyKind::Identity));
 	}
 
 	#[test]
@@ -406,8 +406,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_user_role() {
-		assert!(!should_exclude_from_cdc(KeyKind::UserRole));
+	fn test_include_identity_role() {
+		assert!(!should_exclude_from_cdc(KeyKind::IdentityRole));
 	}
 
 	#[test]

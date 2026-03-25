@@ -55,6 +55,7 @@ impl Services {
 		ioc: IocContainer,
 		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
+		let auth_registry = AuthenticationRegistry::new(runtime_context.clock.clone());
 		Self {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,
@@ -66,7 +67,7 @@ impl Services {
 			virtual_table_registry: UserVTableRegistry::new(),
 			stats_reader,
 			ioc,
-			auth_registry: AuthenticationRegistry::new(),
+			auth_registry,
 			#[cfg(not(target_arch = "wasm32"))]
 			remote_registry,
 		}
@@ -95,7 +96,7 @@ impl Services {
 			#[cfg(not(target_arch = "wasm32"))]
 			None,
 		);
-		services.auth_registry = AuthenticationRegistry::new();
+		services.auth_registry = AuthenticationRegistry::default();
 		Arc::new(services)
 	}
 }

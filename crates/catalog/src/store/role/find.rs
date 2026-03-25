@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::user::{RoleDef, RoleId},
+	interface::catalog::identity::{RoleDef, RoleId},
 	key::role::RoleKey,
 };
 use reifydb_transaction::transaction::Transaction;

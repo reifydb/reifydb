@@ -9,6 +9,8 @@ pub mod authentication;
 pub mod dictionary;
 pub mod flow;
 pub mod handler;
+pub mod identity;
+pub mod identity_role;
 pub mod migration;
 pub mod namespace;
 pub mod policy;
@@ -20,8 +22,6 @@ pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod test;
-pub mod user;
-pub mod user_role;
 pub mod view;
 
 // Implement the umbrella trait for AdminTransaction

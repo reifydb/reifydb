@@ -189,12 +189,12 @@ pub enum Instruction {
 	DropSeries(nodes::DropSeriesNode),
 
 	// === Auth/Permissions ===
-	CreateUser(nodes::CreateUserNode),
+	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
 	Grant(nodes::GrantNode),
 	Revoke(nodes::RevokeNode),
-	DropUser(nodes::DropUserNode),
+	DropIdentity(nodes::DropIdentityNode),
 	DropRole(nodes::DropRoleNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
 	CreatePolicy(nodes::CreatePolicyNode),

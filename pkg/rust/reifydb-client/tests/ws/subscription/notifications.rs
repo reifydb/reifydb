@@ -20,10 +20,10 @@ fn test_recv_insert_notification() {
 
 		// Verify data columns
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
-		assert_eq!(id_col.data[0], "1");
+		assert_eq!(id_col.payload[0], "1");
 
 		let name_col = find_column(&change.body, "name").expect("name column should exist");
-		assert_eq!(name_col.data[0], "test");
+		assert_eq!(name_col.payload[0], "test");
 
 		ctx.close(&sub_id).await
 	});
@@ -56,7 +56,7 @@ fn test_recv_update_notification() {
 
 		// Verify updated name
 		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
-		assert_eq!(name_col.data[0], "alice_updated");
+		assert_eq!(name_col.payload[0], "alice_updated");
 
 		ctx.close(&sub_id).await
 	});
@@ -106,7 +106,7 @@ fn test_recv_multiple_rows() {
 
 		// Verify all 3 rows are in the change
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
-		assert_eq!(id_col.data.len(), 3, "Should have 3 rows");
+		assert_eq!(id_col.payload.len(), 3, "Should have 3 rows");
 
 		ctx.close(&sub_id).await
 	});
@@ -124,15 +124,15 @@ fn test_recv_preserves_data_types() {
 
 		// Verify types are preserved
 		let id_col = find_column(&change.body, "id").unwrap();
-		assert_eq!(id_col.data[0], "42");
+		assert_eq!(id_col.payload[0], "42");
 		assert_eq!(id_col.r#type, "Int4", "id should be Int4");
 
 		let value_col = find_column(&change.body, "value").unwrap();
-		assert_eq!(value_col.data[0], "9999999999");
+		assert_eq!(value_col.payload[0], "9999999999");
 		assert_eq!(value_col.r#type, "Int8", "value should be Int8");
 
 		let name_col = find_column(&change.body, "name").unwrap();
-		assert_eq!(name_col.data[0], "test");
+		assert_eq!(name_col.payload[0], "test");
 		assert_eq!(name_col.r#type, "Utf8", "name should be Utf8");
 
 		ctx.close(&sub_id).await

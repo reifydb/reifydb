@@ -36,7 +36,7 @@ fn test_filtered_subscription() {
 
 		let change = change.unwrap();
 		let id_col = find_column(&change.body, "id").unwrap();
-		assert_eq!(id_col.data[0], "15");
+		assert_eq!(id_col.payload[0], "15");
 
 		client.unsubscribe(&sub_id).await.unwrap();
 		client.close().await.unwrap();

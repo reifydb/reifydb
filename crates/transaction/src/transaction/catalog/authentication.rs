@@ -4,9 +4,8 @@
 use reifydb_core::interface::catalog::{
 	authentication::{AuthenticationDef, AuthenticationId},
 	change::CatalogTrackAuthenticationChangeOperations,
-	user::UserId,
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::identity::IdentityId};
 
 use crate::{
 	change::{
@@ -55,12 +54,14 @@ impl TransactionalAuthenticationChanges for AdminTransaction {
 		None
 	}
 
-	fn find_authentication_by_user_and_method(&self, user_id: UserId, method: &str) -> Option<&AuthenticationDef> {
-		self.changes
-			.authentication_def
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|a| a.user_id == user_id && a.method == method))
+	fn find_authentication_by_identity_and_method(
+		&self,
+		identity: IdentityId,
+		method: &str,
+	) -> Option<&AuthenticationDef> {
+		self.changes.authentication_def.iter().rev().find_map(|change| {
+			change.post.as_ref().filter(|a| a.identity == identity && a.method == method)
+		})
 	}
 
 	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool {
@@ -87,8 +88,12 @@ impl TransactionalAuthenticationChanges for SubscriptionTransaction {
 		self.inner.find_authentication(id)
 	}
 
-	fn find_authentication_by_user_and_method(&self, user_id: UserId, method: &str) -> Option<&AuthenticationDef> {
-		self.inner.find_authentication_by_user_and_method(user_id, method)
+	fn find_authentication_by_identity_and_method(
+		&self,
+		identity: IdentityId,
+		method: &str,
+	) -> Option<&AuthenticationDef> {
+		self.inner.find_authentication_by_identity_and_method(identity, method)
 	}
 
 	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool {

@@ -3,12 +3,16 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use reifydb_auth::AuthVersion;
+use reifydb_auth::{
+	AuthVersion,
+	registry::AuthenticationRegistry,
+	service::{AuthService, AuthServiceConfig},
+};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
-		bootstrap_config_defaults, bootstrap_root_user, bootstrap_system_procedures, load_materialized_catalog,
-		load_schema_registry,
+		bootstrap_config_defaults, bootstrap_root_identity, bootstrap_system_procedures,
+		load_materialized_catalog, load_schema_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
@@ -259,7 +263,7 @@ impl DatabaseBuilder {
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		load_materialized_catalog(&multi, &single, &catalog)?;
-		bootstrap_root_user(&multi, &single, &catalog, &eventbus)?;
+		bootstrap_root_identity(&multi, &single, &catalog, &eventbus)?;
 		bootstrap_config_defaults(&multi, &single, &catalog, &eventbus)?;
 		bootstrap_system_procedures(&multi, &single, &catalog, &schema_registry, &eventbus)?;
 		load_schema_registry(&multi, &single, &schema_registry)?;
@@ -348,6 +352,16 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(engine.clone());
 
+		// Create AuthService for token validation
+		let auth_service = AuthService::new(
+			Arc::new(engine.clone()),
+			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
+			runtime.rng().clone(),
+			runtime.clock().clone(),
+			AuthServiceConfig::default(),
+		);
+		self.ioc = self.ioc.register(auth_service.clone());
+
 		// Spawn CDC producer actor and register event listener
 		// The handle is stored in IoC to keep it alive for the database lifetime
 		// Engine is passed for periodic cleanup based on consumer watermarks
@@ -425,6 +439,14 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system, self.migrations))
+		Ok(Database::new(
+			engine,
+			auth_service,
+			subsystems,
+			health_monitor,
+			runtime,
+			actor_system,
+			self.migrations,
+		))
 	}
 }

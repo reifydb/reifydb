@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+import type {
+    LoginResult,
+} from "./types";
 import {
     ReifyError
 } from "./types";
@@ -13,7 +16,7 @@ export interface JsonHttpClientOptions {
 }
 
 export class JsonHttpClient {
-    private readonly options: JsonHttpClientOptions;
+    private options: JsonHttpClientOptions;
 
     private constructor(options: JsonHttpClientOptions) {
         this.options = options;
@@ -21,6 +24,44 @@ export class JsonHttpClient {
 
     static connect(options: JsonHttpClientOptions): JsonHttpClient {
         return new JsonHttpClient(options);
+    }
+
+    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
+        return this.login("password", principal, {password});
+    }
+
+    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
+        return this.login("token", principal, {token});
+    }
+
+    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
+        const timeoutMs = this.options.timeoutMs ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch(`${this.options.url}/v1/authenticate`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({method, principal, credentials}),
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeout);
+            const body = await response.json();
+
+            if (body.status !== "authenticated" || !body.token || !body.identity) {
+                throw new Error(body.reason || "Authentication failed");
+            }
+
+            this.options = {...this.options, token: body.token};
+
+            return {token: body.token, identity: body.identity};
+        } catch (err: any) {
+            clearTimeout(timeout);
+            if (err.name === 'AbortError') throw new Error("Login timeout");
+            throw err;
+        }
     }
 
     async admin(

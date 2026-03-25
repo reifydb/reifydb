@@ -13,6 +13,7 @@ use reifydb_core::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
 			SubscriptionId, TableId, TestId, ViewId,
 		},
+		identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
 		migration::{MigrationDef, MigrationEvent},
 		namespace::Namespace,
 		policy::{PolicyDef, PolicyId},
@@ -23,11 +24,12 @@ use reifydb_core::{
 		sumtype::SumTypeDef,
 		table::TableDef,
 		test::TestDef,
-		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 		view::ViewDef,
 	},
 };
-use reifydb_type::value::{Value, dictionary::DictionaryId, row_number::RowNumber, sumtype::SumTypeId};
+use reifydb_type::value::{
+	Value, dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId,
+};
 
 use crate::TransactionId;
 
@@ -47,8 +49,8 @@ pub trait TransactionalChanges:
 	+ TransactionalTableChanges
 	+ TransactionalTestChanges
 	+ TransactionalAuthenticationChanges
-	+ TransactionalUserChanges
-	+ TransactionalUserRoleChanges
+	+ TransactionalIdentityChanges
+	+ TransactionalIdentityRoleChanges
 	+ TransactionalViewChanges
 {
 }
@@ -169,14 +171,14 @@ pub trait TransactionalHandlerChanges {
 	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
-pub trait TransactionalUserChanges {
-	fn find_user(&self, id: UserId) -> Option<&UserDef>;
+pub trait TransactionalIdentityChanges {
+	fn find_identity(&self, id: IdentityId) -> Option<&IdentityDef>;
 
-	fn find_user_by_name(&self, name: &str) -> Option<&UserDef>;
+	fn find_identity_by_name(&self, name: &str) -> Option<&IdentityDef>;
 
-	fn is_user_deleted(&self, id: UserId) -> bool;
+	fn is_identity_deleted(&self, id: IdentityId) -> bool;
 
-	fn is_user_deleted_by_name(&self, name: &str) -> bool;
+	fn is_identity_deleted_by_name(&self, name: &str) -> bool;
 }
 
 pub trait TransactionalRoleChanges {
@@ -192,15 +194,19 @@ pub trait TransactionalRoleChanges {
 pub trait TransactionalAuthenticationChanges {
 	fn find_authentication(&self, id: AuthenticationId) -> Option<&AuthenticationDef>;
 
-	fn find_authentication_by_user_and_method(&self, user_id: UserId, method: &str) -> Option<&AuthenticationDef>;
+	fn find_authentication_by_identity_and_method(
+		&self,
+		identity: IdentityId,
+		method: &str,
+	) -> Option<&AuthenticationDef>;
 
 	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool;
 }
 
-pub trait TransactionalUserRoleChanges {
-	fn find_user_role(&self, user: UserId, role: RoleId) -> Option<&UserRoleDef>;
+pub trait TransactionalIdentityRoleChanges {
+	fn find_identity_role(&self, identity: IdentityId, role: RoleId) -> Option<&IdentityRoleDef>;
 
-	fn is_user_role_deleted(&self, user: UserId, role: RoleId) -> bool;
+	fn is_identity_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool;
 }
 
 pub trait TransactionalPolicyChanges {
@@ -254,14 +260,14 @@ pub struct TransactionalDefChanges {
 	pub test_def: Vec<Change<TestDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
-	/// All user definition changes in order (no coalescing)
-	pub user_def: Vec<Change<UserDef>>,
+	/// All identity definition changes in order (no coalescing)
+	pub identity_def: Vec<Change<IdentityDef>>,
 	/// All authentication definition changes in order (no coalescing)
 	pub authentication_def: Vec<Change<AuthenticationDef>>,
 	/// All role definition changes in order (no coalescing)
 	pub role_def: Vec<Change<RoleDef>>,
-	/// All user-role definition changes in order (no coalescing)
-	pub user_role_def: Vec<Change<UserRoleDef>>,
+	/// All identity-role definition changes in order (no coalescing)
+	pub identity_role_def: Vec<Change<IdentityRoleDef>>,
 	/// All policy definition changes in order (no coalescing)
 	pub policy_def: Vec<Change<PolicyDef>>,
 	/// All view definition changes in order (no coalescing)
@@ -485,7 +491,7 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_user_def_change(&mut self, change: Change<UserDef>) {
+	pub fn add_identity_def_change(&mut self, change: Change<IdentityDef>) {
 		let id = change
 			.post
 			.as_ref()
@@ -493,8 +499,8 @@ impl TransactionalDefChanges {
 			.map(|u| u.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.user_def.push(change);
-		self.log.push(Operation::User {
+		self.identity_def.push(change);
+		self.log.push(Operation::Identity {
 			id,
 			op,
 		});
@@ -515,12 +521,12 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_user_role_def_change(&mut self, change: Change<UserRoleDef>) {
-		let user = change
+	pub fn add_identity_role_def_change(&mut self, change: Change<IdentityRoleDef>) {
+		let identity = change
 			.post
 			.as_ref()
 			.or(change.pre.as_ref())
-			.map(|ur| ur.user_id)
+			.map(|ur| ur.identity)
 			.expect("Change must have either pre or post state");
 		let role = change
 			.post
@@ -529,9 +535,9 @@ impl TransactionalDefChanges {
 			.map(|ur| ur.role_id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.user_role_def.push(change);
-		self.log.push(Operation::UserRole {
-			user,
+		self.identity_role_def.push(change);
+		self.log.push(Operation::IdentityRole {
+			identity,
 			role,
 			op,
 		});
@@ -643,8 +649,8 @@ pub enum Operation {
 		id: TableId,
 		op: OperationType,
 	},
-	User {
-		id: UserId,
+	Identity {
+		id: IdentityId,
 		op: OperationType,
 	},
 	Authentication {
@@ -655,8 +661,8 @@ pub enum Operation {
 		id: RoleId,
 		op: OperationType,
 	},
-	UserRole {
-		user: UserId,
+	IdentityRole {
+		identity: IdentityId,
 		role: RoleId,
 		op: OperationType,
 	},
@@ -688,10 +694,10 @@ impl TransactionalDefChanges {
 			subscription_def: Vec::new(),
 			test_def: Vec::new(),
 			table_def: Vec::new(),
-			user_def: Vec::new(),
+			identity_def: Vec::new(),
 			authentication_def: Vec::new(),
 			role_def: Vec::new(),
-			user_role_def: Vec::new(),
+			identity_role_def: Vec::new(),
 			policy_def: Vec::new(),
 			view_def: Vec::new(),
 			log: Vec::new(),
@@ -785,10 +791,10 @@ impl TransactionalDefChanges {
 		self.subscription_def.clear();
 		self.test_def.clear();
 		self.table_def.clear();
-		self.user_def.clear();
+		self.identity_def.clear();
 		self.authentication_def.clear();
 		self.role_def.clear();
-		self.user_role_def.clear();
+		self.identity_role_def.clear();
 		self.policy_def.clear();
 		self.view_def.clear();
 		self.log.clear();

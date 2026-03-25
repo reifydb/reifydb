@@ -8,7 +8,6 @@ use reifydb_core::interface::{
 		id::{NamespaceId, SubscriptionId},
 		subscription::SubscriptionDef,
 		token::{TokenDef, TokenId},
-		user::UserId,
 	},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
@@ -57,11 +56,10 @@ pub fn create_token(
 	txn: &mut AdminTransaction,
 	token: &str,
 	identity: IdentityId,
-	user: UserId,
 	expires_at: Option<DateTime>,
 	created_at: DateTime,
 ) -> Result<TokenDef> {
-	CatalogStore::create_token(txn, token, identity, user, expires_at, created_at)
+	CatalogStore::create_token(txn, token, identity, expires_at, created_at)
 }
 
 /// Find a token by its value (constant-time comparison).

@@ -76,12 +76,12 @@ use crate::{
 		ddl::{
 			alter::policy::alter_policy,
 			create::{
-				authentication::create_authentication, event::create_event, policy::create_policy,
-				role::create_role, user::create_user,
+				authentication::create_authentication, event::create_event, identity::create_identity,
+				policy::create_policy, role::create_role,
 			},
 			drop::{
-				authentication::drop_authentication, policy::drop_policy, role::drop_role,
-				user::drop_user,
+				authentication::drop_authentication, identity::drop_identity, policy::drop_policy,
+				role::drop_role,
 			},
 			grant::grant,
 			revoke::revoke,
@@ -1869,7 +1869,7 @@ impl Vm {
 				}
 
 				// Auth/Permissions
-				Instruction::CreateUser(plan) => {
+				Instruction::CreateIdentity(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
@@ -1878,7 +1878,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = create_user(services, txn, plan.clone())?;
+					let columns = create_identity(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateRole(plan) => {
@@ -1917,7 +1917,7 @@ impl Vm {
 					let columns = revoke(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::DropUser(plan) => {
+				Instruction::DropIdentity(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						_ => {
@@ -1926,7 +1926,7 @@ impl Vm {
 							));
 						}
 					};
-					let columns = drop_user(services, txn, plan.clone())?;
+					let columns = drop_identity(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropRole(plan) => {

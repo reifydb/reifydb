@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_type::{
 	error::{Diagnostic, Error},
@@ -31,13 +31,13 @@ use reifydb_type::{
 use tonic::{metadata::MetadataValue, transport::Channel};
 
 use super::generated::{
-	AdminRequest as ProtoAdminRequest, CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, NamedParams,
-	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
-	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
-	UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
-	reify_db_client::ReifyDbClient, subscription_event,
+	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
+	CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, NamedParams, Params as ProtoParams,
+	PositionalParams, QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest,
+	SubscriptionEvent, TypedValue, UnsubscribeRequest as ProtoUnsubscribeRequest,
+	params::Params as ProtoParamsOneof, reify_db_client::ReifyDbClient, subscription_event,
 };
-use crate::{AdminResult, CommandResult, QueryResult};
+use crate::{AdminResult, CommandResult, LoginResult, QueryResult};
 
 #[derive(Clone)]
 pub struct GrpcClient {
@@ -63,6 +63,55 @@ impl GrpcClient {
 
 	pub fn authenticate(&mut self, token: &str) {
 		self.token = Some(token.to_string());
+	}
+
+	/// Login with principal and password. On success, stores the session token
+	/// for subsequent requests and returns the login result.
+	pub async fn login_with_password(&mut self, principal: &str, password: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("password".to_string(), password.to_string());
+		self.login("password", principal, credentials).await
+	}
+
+	/// Login with principal and a pre-existing authentication token.
+	/// On success, stores the session token for subsequent requests.
+	pub async fn login_with_token(&mut self, principal: &str, token: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("token".to_string(), token.to_string());
+		self.login("token", principal, credentials).await
+	}
+
+	/// Login with the given method, principal, and credentials.
+	/// On success, stores the session token for subsequent requests.
+	pub async fn login(
+		&mut self,
+		method: &str,
+		principal: &str,
+		credentials: HashMap<String, String>,
+	) -> Result<LoginResult, Error> {
+		let request = ProtoAuthenticateRequest {
+			method: method.to_string(),
+			principal: principal.to_string(),
+			credentials,
+		};
+
+		let mut client = self.inner.clone();
+		let response = client.authenticate(tonic::Request::new(request)).await.map_err(status_to_error)?;
+		let inner = response.into_inner();
+
+		if inner.status == "authenticated" {
+			self.token = Some(inner.token.clone());
+			Ok(LoginResult {
+				token: inner.token,
+				identity: inner.identity,
+			})
+		} else {
+			Err(Error(Diagnostic {
+				code: "AUTH_FAILED".to_string(),
+				message: inner.reason,
+				..Default::default()
+			}))
+		}
 	}
 
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
@@ -356,7 +405,7 @@ fn proto_frames_to_frames(frames: Vec<ProtoFrame>) -> Vec<Frame> {
 				.into_iter()
 				.map(|c| {
 					let ty = Type::from_u8(c.r#type as u8);
-					let data = decode_column_data(ty, &c.data, &c.bitvec);
+					let data = decode_column_data(ty, &c.payload, &c.bitvec);
 					FrameColumn {
 						name: c.name,
 						data,

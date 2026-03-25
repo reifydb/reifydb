@@ -3,16 +3,15 @@
 
 use std::collections::HashMap;
 
+use reifydb_type::value::identity::IdentityId;
 use serde::{Deserialize, Serialize};
-
-use crate::interface::catalog::user::UserId;
 
 pub type AuthenticationId = u64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuthenticationDef {
 	pub id: AuthenticationId,
-	pub user_id: UserId,
+	pub identity: IdentityId,
 	pub method: String,
 	pub properties: HashMap<String, String>,
 }

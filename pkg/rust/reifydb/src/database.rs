@@ -10,6 +10,7 @@ use std::{
 	time::Duration,
 };
 
+use reifydb_auth::service::AuthService;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
@@ -43,6 +44,7 @@ use crate::{
 
 pub struct Database {
 	engine: StandardEngine,
+	auth_service: AuthService,
 	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
@@ -84,6 +86,7 @@ impl Database {
 impl Database {
 	pub(crate) fn new(
 		engine: StandardEngine,
+		auth_service: AuthService,
 		subsystem_manager: Subsystems,
 		health_monitor: Arc<HealthMonitor>,
 		shared_runtime: SharedRuntime,
@@ -92,6 +95,7 @@ impl Database {
 	) -> Self {
 		Self {
 			engine: engine.clone(),
+			auth_service,
 			bootloader: Bootloader::new(engine),
 			subsystems: subsystem_manager,
 			health_monitor,
@@ -104,6 +108,10 @@ impl Database {
 
 	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
+	}
+
+	pub fn auth_service(&self) -> &AuthService {
+		&self.auth_service
 	}
 
 	pub fn shared_runtime(&self) -> &SharedRuntime {

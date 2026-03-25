@@ -15,7 +15,6 @@ pub(crate) fn convert_token(multi: MultiVersionRow) -> TokenDef {
 	let id = token::SCHEMA.get_u64(&row, token::ID);
 	let token_value = token::SCHEMA.get_utf8(&row, token::TOKEN).to_string();
 	let identity = token::SCHEMA.get_identity_id(&row, token::IDENTITY);
-	let user = token::SCHEMA.get_u64(&row, token::USER);
 	let expires_at = token::SCHEMA.try_get_datetime(&row, token::EXPIRES_AT);
 	let created_at = token::SCHEMA.get_datetime(&row, token::CREATED_AT);
 
@@ -23,7 +22,6 @@ pub(crate) fn convert_token(multi: MultiVersionRow) -> TokenDef {
 		id,
 		token: token_value,
 		identity,
-		user,
 		expires_at,
 		created_at,
 	}

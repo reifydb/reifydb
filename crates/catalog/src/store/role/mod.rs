@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::{catalog::user::RoleDef, store::MultiVersionRow};
+use reifydb_core::interface::{catalog::identity::RoleDef, store::MultiVersionRow};
 
 use crate::store::role::schema::role;
 

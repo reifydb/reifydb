@@ -12,12 +12,15 @@ import type {
 import type {
     AdminRequest,
     AdminResponse,
+    AuthRequest,
+    AuthResponse,
     CommandRequest,
     CommandResponse,
     QueryRequest,
     QueryResponse,
     Column,
     ErrorResponse,
+    LoginResult,
     SubscribeRequest,
     SubscribedResponse,
     UnsubscribeRequest,
@@ -46,7 +49,7 @@ interface SubscriptionState<T = any> {
     callbacks: SubscriptionCallbacks<T>;
 }
 
-type ResponsePayload = ErrorResponse | AdminResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse;
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -458,6 +461,56 @@ export class WsClient {
         return value;
     }
 
+    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
+        return this.login("password", principal, {password});
+    }
+
+    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
+        return this.login("token", principal, {token});
+    }
+
+    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
+        const id = `auth-${this.nextId++}`;
+
+        const request: AuthRequest = {
+            id,
+            type: "Auth",
+            payload: {method, principal, credentials}
+        };
+
+        const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error("Login timeout"));
+            }, timeoutMs);
+
+            this.pending.set(id, (res) => {
+                clearTimeout(timeout);
+                resolve(res);
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+
+        if (response.type === "Err") {
+            throw new ReifyError(response);
+        }
+
+        if (response.type !== "Auth") {
+            throw new Error(`Unexpected response type: ${response.type}`);
+        }
+
+        const payload = (response as AuthResponse).payload;
+        if (payload.status !== "authenticated" || !payload.token || !payload.identity) {
+            throw new Error("Authentication failed");
+        }
+
+        this.options.token = payload.token;
+
+        return {token: payload.token, identity: payload.identity};
+    }
+
     disconnect() {
         this.shouldReconnect = false;
         this.subscriptions.clear();
@@ -572,7 +625,7 @@ export class WsClient {
 
         // Extract _op column to determine operation type
         const opColumn = frame.columns.find((c: any) => c.name === "_op");
-        if (!opColumn || opColumn.data.length === 0) {
+        if (!opColumn || opColumn.payload.length === 0) {
             console.error('Missing or empty _op column:', { opColumn, frame });
             return;
         }
@@ -585,7 +638,7 @@ export class WsClient {
         const batches: Array<{ op: 'INSERT' | 'UPDATE' | 'REMOVE'; rows: any[] }> = [];
 
         for (let i = 0; i < rows.length; i++) {
-            const opValue = parseInt(opColumn.data[i]);
+            const opValue = parseInt(opColumn.payload[i]);
             const operation: 'INSERT' | 'UPDATE' | 'REMOVE' =
                 opValue === 1 ? 'INSERT' :
                     opValue === 2 ? 'UPDATE' :
@@ -622,13 +675,13 @@ export class WsClient {
         // Convert frame columns to array of row objects
         if (!frame.columns || frame.columns.length === 0) return [];
 
-        const rowCount = frame.columns[0].data.length;
+        const rowCount = frame.columns[0].payload.length;
         const rows: any[] = [];
 
         for (let i = 0; i < rowCount; i++) {
             const row: any = {};
             for (const col of frame.columns) {
-                row[col.name] = decode({type: col.type, value: col.data[i]});
+                row[col.name] = decode({type: col.type, value: col.payload[i]});
             }
             rows.push(row);
         }
@@ -695,11 +748,11 @@ export class WsClient {
 
 
 function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.data.length ?? 0;
+    const rowCount = columns[0]?.payload.length ?? 0;
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.data[i]});
+            row[col.name] = decode({type: col.type, value: col.payload[i]});
         }
         return row;
     });

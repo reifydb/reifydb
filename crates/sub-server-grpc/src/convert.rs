@@ -202,7 +202,7 @@ pub fn frames_to_proto(frames: Vec<Frame>) -> Vec<ProtoFrame> {
 					ProtoFrameColumn {
 						name: col.name,
 						r#type: type_u8 as u32,
-						data,
+						payload: data,
 						bitvec,
 					}
 				})

@@ -17,10 +17,10 @@ pub enum AuthStep {
 	/// Credentials were invalid.
 	Failed,
 	/// The provider needs the client to respond to a challenge.
-	/// The `data` map contains provider-specific challenge material
+	/// The `payload` map contains provider-specific challenge material
 	/// (e.g., a nonce for the client to sign).
 	Challenge {
-		data: HashMap<String, String>,
+		payload: HashMap<String, String>,
 	},
 }
 

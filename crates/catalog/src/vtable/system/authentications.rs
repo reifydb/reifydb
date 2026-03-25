@@ -45,12 +45,12 @@ impl VTable for Authentications {
 		let auths = CatalogStore::list_all_authentications(txn)?;
 
 		let mut ids = ColumnData::uint8_with_capacity(auths.len());
-		let mut user_ids = ColumnData::uint8_with_capacity(auths.len());
+		let mut identities = ColumnData::identity_id_with_capacity(auths.len());
 		let mut methods = ColumnData::utf8_with_capacity(auths.len());
 
 		for a in auths {
 			ids.push(a.id);
-			user_ids.push(a.user_id);
+			identities.push(a.identity);
 			methods.push(a.method.as_str());
 		}
 
@@ -60,8 +60,8 @@ impl VTable for Authentications {
 				data: ids,
 			},
 			Column {
-				name: Fragment::internal("user_id"),
-				data: user_ids,
+				name: Fragment::internal("identity"),
+				data: identities,
 			},
 			Column {
 				name: Fragment::internal("method"),

@@ -116,3 +116,29 @@ export interface SubscriptionCallbacks<T = any> {
     onUpdate?: (rows: T[]) => void;
     onRemove?: (rows: T[]) => void;
 }
+
+export interface AuthRequest {
+    id: string;
+    type: "Auth";
+    payload: {
+        token?: string;
+        method?: string;
+        principal?: string;
+        credentials?: Record<string, string>;
+    };
+}
+
+export interface AuthResponse {
+    id: string;
+    type: "Auth";
+    payload: {
+        status?: string;
+        token?: string;
+        identity?: string;
+    };
+}
+
+export interface LoginResult {
+    token: string;
+    identity: string;
+}

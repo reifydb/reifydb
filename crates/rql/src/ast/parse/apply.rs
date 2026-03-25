@@ -16,7 +16,7 @@ impl<'bump> Parser<'bump> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Keyword::Apply)?;
 
-		let operator = self.parse_identifier()?;
+		let operator = self.parse_as_identifier()?;
 
 		if self.is_eof() || !self.current()?.is_operator(Operator::OpenCurly) {
 			return Err(RqlError::OperatorMissingBraces {

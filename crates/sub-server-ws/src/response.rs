@@ -7,6 +7,8 @@
 //! protocol compatibility. Changes to these types should be coordinated
 //! with the client implementation.
 
+use std::collections::HashMap;
+
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string};
@@ -36,7 +38,23 @@ pub enum ResponsePayload {
 }
 
 #[derive(Debug, Serialize)]
-pub struct AuthResponse {}
+pub struct AuthResponse {
+	/// Authentication status: "ok" for token validation, "authenticated" for login, "challenge" for multi-step.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub status: Option<String>,
+	/// Session token (present when login succeeds).
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub token: Option<String>,
+	/// Identity ID (present when login succeeds).
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub identity: Option<String>,
+	/// Challenge ID (present for multi-step auth).
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub challenge_id: Option<String>,
+	/// Challenge payload (present for multi-step auth).
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub payload: Option<HashMap<String, String>>,
+}
 
 #[derive(Debug, Serialize)]
 pub struct ErrResponse {
@@ -90,7 +108,39 @@ impl Response {
 	pub fn auth(id: impl Into<String>) -> Self {
 		Self {
 			id: id.into(),
-			payload: ResponsePayload::Auth(AuthResponse {}),
+			payload: ResponsePayload::Auth(AuthResponse {
+				status: None,
+				token: None,
+				identity: None,
+				challenge_id: None,
+				payload: None,
+			}),
+		}
+	}
+
+	pub fn auth_authenticated(id: impl Into<String>, token: String, identity: String) -> Self {
+		Self {
+			id: id.into(),
+			payload: ResponsePayload::Auth(AuthResponse {
+				status: Some("authenticated".to_string()),
+				token: Some(token),
+				identity: Some(identity),
+				challenge_id: None,
+				payload: None,
+			}),
+		}
+	}
+
+	pub fn auth_challenge(id: impl Into<String>, challenge_id: String, payload: HashMap<String, String>) -> Self {
+		Self {
+			id: id.into(),
+			payload: ResponsePayload::Auth(AuthResponse {
+				status: Some("challenge".to_string()),
+				token: None,
+				identity: None,
+				challenge_id: Some(challenge_id),
+				payload: Some(payload),
+			}),
 		}
 	}
 

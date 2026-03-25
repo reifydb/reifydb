@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_auth::crypto::constant_time_eq;
 use reifydb_core::{interface::catalog::token::TokenDef, key::token::TokenKey};
 use reifydb_transaction::transaction::Transaction;
+use subtle::ConstantTimeEq;
 
 use crate::{
 	CatalogStore, Result,
@@ -18,7 +18,7 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let stored_token = token::SCHEMA.get_utf8(&multi.row, token::TOKEN);
-			if constant_time_eq(stored_token.as_bytes(), value.as_bytes()) {
+			if stored_token.as_bytes().ct_eq(value.as_bytes()).into() {
 				return Ok(Some(convert_token(multi)));
 			}
 		}

@@ -936,8 +936,8 @@ impl InstructionCompiler {
 			}
 
 			// Auth/Permissions — leaf instructions
-			PhysicalPlan::CreateUser(node) => {
-				self.emit(Instruction::CreateUser(node));
+			PhysicalPlan::CreateIdentity(node) => {
+				self.emit(Instruction::CreateIdentity(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateRole(node) => {
@@ -952,8 +952,8 @@ impl InstructionCompiler {
 				self.emit(Instruction::Revoke(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::DropUser(node) => {
-				self.emit(Instruction::DropUser(node));
+			PhysicalPlan::DropIdentity(node) => {
+				self.emit(Instruction::DropIdentity(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DropRole(node) => {

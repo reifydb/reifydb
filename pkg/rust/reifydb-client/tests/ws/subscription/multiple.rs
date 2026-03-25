@@ -121,7 +121,7 @@ fn test_changes_routed_to_correct_subscription() {
 
 		// Verify the data
 		let id_col = find_column(&change.body, "id").unwrap();
-		assert_eq!(id_col.data[0], "100");
+		assert_eq!(id_col.payload[0], "100");
 
 		client.unsubscribe(&sub_id1).await.unwrap();
 		client.unsubscribe(&sub_id2).await.unwrap();

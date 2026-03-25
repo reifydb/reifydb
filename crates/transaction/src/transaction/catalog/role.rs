@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackRoleChangeOperations,
-	user::{RoleDef, RoleId},
+	identity::{RoleDef, RoleId},
 };
 use reifydb_type::Result;
 

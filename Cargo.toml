@@ -208,6 +208,8 @@ bigdecimal = { version = "0.4.8", features = ["serde"] }
 num-traits = { version = "0.2.19" }
 rand = { version = "0.10" }
 argon2 = { version = "0.6.0-rc" }
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+bs58 = { version = "0.5" }
 subtle = { version = "2" }
 
 crossbeam-skiplist = { version = "0.1.3" }

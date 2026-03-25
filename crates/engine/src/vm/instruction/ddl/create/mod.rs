@@ -21,6 +21,7 @@ pub mod deferred;
 pub mod dictionary;
 pub mod event;
 
+pub mod identity;
 pub mod migration;
 pub mod namespace;
 pub mod policy;
@@ -37,7 +38,6 @@ pub mod table;
 pub mod tag;
 pub mod test;
 pub mod transactional;
-pub mod user;
 
 /// Creates a flow for a deferred view.
 ///

@@ -102,7 +102,7 @@ fn convert_envelope_response(body: serde_json::Value) -> Vec<Frame> {
 			.into_iter()
 			.map(|col| FrameColumn {
 				name: col.name,
-				data: convert_column_to_data(col.r#type, col.data),
+				data: convert_column_to_data(col.r#type, col.payload),
 			})
 			.collect();
 

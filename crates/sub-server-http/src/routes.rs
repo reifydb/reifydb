@@ -13,7 +13,7 @@ use reifydb_sub_server::state::AppState;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::handlers::{handle_admin, handle_command, handle_query, health};
+use crate::handlers::{handle_admin, handle_authenticate, handle_command, handle_query, health};
 
 /// Create the HTTP router with all endpoints and middleware.
 ///
@@ -46,6 +46,8 @@ pub fn router(state: AppState) -> Router {
 	let mut app = Router::new()
 		// Health check (no auth required)
 		.route("/health", get(health))
+		// Authentication endpoint (no auth required)
+		.route("/v1/authenticate", post(handle_authenticate))
 		// Query endpoint (auth required)
 		.route("/v1/query", post(handle_query))
 		// Command endpoint (auth required, DML + Query)
