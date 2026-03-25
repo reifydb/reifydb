@@ -103,12 +103,13 @@ impl SinkRingBufferViewOperator {
 	fn save(&self, txn: &mut FlowTransaction, state: &RingBufferState) -> Result<()> {
 		let serialized =
 			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize RingBufferState: {}", e)))?;
-
-		let mut state_row = self.state_schema.allocate();
 		let blob = Blob::from(serialized);
-		self.state_schema.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, state_row)
+		self.update_state(txn, |schema, row| {
+			schema.set_blob(row, 0, &blob);
+			Ok(())
+		})?;
+		Ok(())
 	}
 }
 

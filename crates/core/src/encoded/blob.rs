@@ -7,26 +7,8 @@ use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_blob(&self, row: &mut EncodedValues, index: usize, value: &Blob) {
-		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Blob);
-		debug_assert!(!row.is_defined(index), "BLOB field {} already set", index);
-
-		let bytes = value.as_bytes();
-
-		// Calculate offset in dynamic section (relative to start of
-		// dynamic section)
-		let dynamic_offset = self.dynamic_section_size(row);
-
-		// Append blob bytes to dynamic section
-		row.0.extend_from_slice(bytes);
-
-		// Update reference in static section: [offset: u32][length:
-		// u32]
-		let ref_slice = &mut row.0.make_mut()[field.offset as usize..field.offset as usize + 8];
-		ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
-		ref_slice[4..8].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
-
-		row.set_valid(index, true);
+		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Blob);
+		self.replace_dynamic_data(row, index, value.as_bytes());
 	}
 
 	pub fn get_blob(&self, row: &EncodedValues, index: usize) -> Blob {
@@ -238,5 +220,49 @@ pub mod tests {
 		schema.set_bool(&mut row, 0, true);
 
 		assert_eq!(schema.try_get_blob(&row, 0), None);
+	}
+
+	#[test]
+	fn test_update_blob() {
+		let schema = Schema::testing(&[Type::Blob]);
+		let mut row = schema.allocate();
+
+		let blob1 = Blob::from_slice(&[1, 2, 3]);
+		schema.set_blob(&mut row, 0, &blob1);
+		assert_eq!(schema.get_blob(&row, 0), blob1);
+
+		// Overwrite with larger blob
+		let blob2 = Blob::from_slice(&[4, 5, 6, 7, 8]);
+		schema.set_blob(&mut row, 0, &blob2);
+		assert_eq!(schema.get_blob(&row, 0), blob2);
+
+		// Overwrite with smaller blob
+		let blob3 = Blob::from_slice(&[9]);
+		schema.set_blob(&mut row, 0, &blob3);
+		assert_eq!(schema.get_blob(&row, 0), blob3);
+		assert_eq!(row.len(), schema.total_static_size() + 1);
+
+		// Overwrite with empty blob
+		let empty = Blob::from_slice(&[]);
+		schema.set_blob(&mut row, 0, &empty);
+		assert_eq!(schema.get_blob(&row, 0), empty);
+		assert_eq!(row.len(), schema.total_static_size());
+	}
+
+	#[test]
+	fn test_update_blob_with_other_dynamic_fields() {
+		let schema = Schema::testing(&[Type::Blob, Type::Utf8, Type::Blob]);
+		let mut row = schema.allocate();
+
+		schema.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
+		schema.set_utf8(&mut row, 1, "hello");
+		schema.set_blob(&mut row, 2, &Blob::from_slice(&[4, 5]));
+
+		// Update first blob
+		schema.set_blob(&mut row, 0, &Blob::from_slice(&[10, 20, 30, 40, 50]));
+
+		assert_eq!(schema.get_blob(&row, 0), Blob::from_slice(&[10, 20, 30, 40, 50]));
+		assert_eq!(schema.get_utf8(&row, 1), "hello");
+		assert_eq!(schema.get_blob(&row, 2), Blob::from_slice(&[4, 5]));
 	}
 }

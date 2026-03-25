@@ -67,13 +67,11 @@ impl Store {
 	pub(crate) fn set(&self, txn: &mut FlowTransaction, hash: &Hash128, entry: &JoinSideEntry) -> Result<()> {
 		let key = self.make_key(hash);
 
-		// Serialize JoinSideEntry
 		let serialized =
 			to_stdvec(entry).map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
-		// Store as a blob in an EncodedRow
 		let schema = Schema::testing(&[Type::Blob]);
-		let mut row = schema.allocate();
+		let mut row = state_get(self.node_id, txn, &key)?.unwrap_or_else(|| schema.allocate());
 		let blob = Blob::from(serialized);
 		schema.set_blob(&mut row, 0, &blob);
 

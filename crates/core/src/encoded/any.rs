@@ -229,22 +229,9 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 
 impl Schema {
 	pub fn set_any(&self, row: &mut EncodedValues, index: usize, value: &Value) {
-		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Any);
-		debug_assert!(!row.is_defined(index), "Any field {} already set", index);
-
+		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Any);
 		let encoded = encode_value(value);
-		let encoded_len = encoded.len();
-
-		let dynamic_offset = self.dynamic_section_size(row);
-
-		row.0.extend_from_slice(&encoded);
-
-		let ref_slice = &mut row.0.make_mut()[field.offset as usize..field.offset as usize + 8];
-		ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
-		ref_slice[4..8].copy_from_slice(&(encoded_len as u32).to_le_bytes());
-
-		row.set_valid(index, true);
+		self.replace_dynamic_data(row, index, &encoded);
 	}
 
 	pub fn get_any(&self, row: &EncodedValues, index: usize) -> Value {
@@ -428,5 +415,39 @@ pub mod tests {
 		assert_eq!(schema.get_any(&row, 0), Value::Utf8("first".to_string()));
 		assert_eq!(schema.get_i32(&row, 1), 99);
 		assert_eq!(schema.get_any(&row, 2), Value::Boolean(true));
+	}
+
+	#[test]
+	fn test_update_any() {
+		let schema = Schema::testing(&[Type::Any]);
+		let mut row = schema.allocate();
+
+		schema.set_any(&mut row, 0, &Value::Int4(42));
+		assert_eq!(schema.get_any(&row, 0), Value::Int4(42));
+
+		// Overwrite with a different type
+		schema.set_any(&mut row, 0, &Value::Utf8("hello".to_string()));
+		assert_eq!(schema.get_any(&row, 0), Value::Utf8("hello".to_string()));
+
+		// Overwrite again with boolean
+		schema.set_any(&mut row, 0, &Value::Boolean(true));
+		assert_eq!(schema.get_any(&row, 0), Value::Boolean(true));
+	}
+
+	#[test]
+	fn test_update_any_with_other_dynamic_fields() {
+		let schema = Schema::testing(&[Type::Any, Type::Utf8, Type::Any]);
+		let mut row = schema.allocate();
+
+		schema.set_any(&mut row, 0, &Value::Int4(1));
+		schema.set_utf8(&mut row, 1, "middle");
+		schema.set_any(&mut row, 2, &Value::Boolean(false));
+
+		// Update first any with a larger value
+		schema.set_any(&mut row, 0, &Value::Utf8("a long string value".to_string()));
+
+		assert_eq!(schema.get_any(&row, 0), Value::Utf8("a long string value".to_string()));
+		assert_eq!(schema.get_utf8(&row, 1), "middle");
+		assert_eq!(schema.get_any(&row, 2), Value::Boolean(false));
 	}
 }

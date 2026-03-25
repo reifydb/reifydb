@@ -9,26 +9,8 @@ use crate::encoded::{encoded::EncodedValues, schema::Schema};
 
 impl Schema {
 	pub fn set_utf8(&self, row: &mut EncodedValues, index: usize, value: impl AsRef<str>) {
-		let field = &self.fields()[index];
-		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Utf8);
-		debug_assert!(!row.is_defined(index), "UTF8 field {} already set", index);
-
-		let bytes = value.as_ref().as_bytes();
-
-		// Calculate offset in dynamic section (relative to start of
-		// dynamic section)
-		let dynamic_offset = self.dynamic_section_size(row);
-
-		// Append string to dynamic section
-		row.0.extend_from_slice(bytes);
-
-		// Update reference in static section: [offset: u32][length:
-		// u32]
-		let ref_slice = &mut row.0.make_mut()[field.offset as usize..field.offset as usize + 8];
-		ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
-		ref_slice[4..8].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
-
-		row.set_valid(index, true);
+		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Utf8);
+		self.replace_dynamic_data(row, index, value.as_ref().as_bytes());
 	}
 
 	pub fn get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> &'a str {
@@ -225,5 +207,57 @@ pub mod tests {
 		schema.set_bool(&mut row, 0, true);
 
 		assert_eq!(schema.try_get_utf8(&row, 0), None);
+	}
+
+	#[test]
+	fn test_update_utf8() {
+		let schema = Schema::testing(&[Type::Utf8]);
+		let mut row = schema.allocate();
+
+		schema.set_utf8(&mut row, 0, "hello");
+		assert_eq!(schema.get_utf8(&row, 0), "hello");
+		let size_after_first = row.len();
+
+		// Overwrite with shorter string
+		schema.set_utf8(&mut row, 0, "hi");
+		assert_eq!(schema.get_utf8(&row, 0), "hi");
+		assert_eq!(row.len(), size_after_first - 3); // "hello"(5) -> "hi"(2)
+
+		// Overwrite with longer string
+		schema.set_utf8(&mut row, 0, "hello world");
+		assert_eq!(schema.get_utf8(&row, 0), "hello world");
+
+		// Overwrite with empty string
+		schema.set_utf8(&mut row, 0, "");
+		assert_eq!(schema.get_utf8(&row, 0), "");
+		assert_eq!(row.len(), schema.total_static_size());
+	}
+
+	#[test]
+	fn test_update_utf8_with_other_dynamic_fields() {
+		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let mut row = schema.allocate();
+
+		schema.set_utf8(&mut row, 0, "first");
+		schema.set_utf8(&mut row, 1, "second");
+		schema.set_utf8(&mut row, 2, "third");
+
+		// Update middle field with a longer string
+		schema.set_utf8(&mut row, 1, "much longer second string");
+
+		// All fields should read correctly
+		assert_eq!(schema.get_utf8(&row, 0), "first");
+		assert_eq!(schema.get_utf8(&row, 1), "much longer second string");
+		assert_eq!(schema.get_utf8(&row, 2), "third");
+
+		// Update first field with shorter string
+		schema.set_utf8(&mut row, 0, "f");
+		assert_eq!(schema.get_utf8(&row, 0), "f");
+		assert_eq!(schema.get_utf8(&row, 1), "much longer second string");
+		assert_eq!(schema.get_utf8(&row, 2), "third");
+
+		// No orphan data: total size = static + sum of current strings
+		let expected = schema.total_static_size() + 1 + 25 + 5;
+		assert_eq!(row.len(), expected);
 	}
 }

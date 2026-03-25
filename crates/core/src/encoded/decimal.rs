@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::ptr;
-
 use bigdecimal::BigDecimal as StdBigDecimal;
 use num_bigint::BigInt as StdBigInt;
 use reifydb_type::value::{decimal::Decimal, r#type::Type};
@@ -24,38 +22,18 @@ impl Schema {
 	/// - Values that fit in i128: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_decimal(&self, row: &mut EncodedValues, index: usize, value: &Decimal) {
-		let field = &self.fields()[index];
-		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal { .. }));
-
-		// Get the mantissa and original scale from the BigDecimal
-		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
-
-		// Always use dynamic storage to store both mantissa and scale
-		debug_assert!(!row.is_defined(index), "Decimal field {} already set", index);
+		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal { .. }));
 
 		// Serialize as scale (i64) + mantissa (variable bytes)
+		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
 		let scale_bytes = original_scale.to_le_bytes();
 		let digits_bytes = mantissa.to_signed_bytes_le();
 
-		let dynamic_offset = self.dynamic_section_size(row);
-		let total_size = 8 + digits_bytes.len(); // 8 bytes for scale + variable for mantissa
+		let mut serialized = Vec::with_capacity(8 + digits_bytes.len());
+		serialized.extend_from_slice(&scale_bytes);
+		serialized.extend_from_slice(&digits_bytes);
 
-		// Append to dynamic section: scale first, then mantissa
-		row.0.extend_from_slice(&scale_bytes);
-		row.0.extend_from_slice(&digits_bytes);
-
-		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part = ((total_size as u128) << 64) & DYNAMIC_LENGTH_MASK;
-		let packed = MODE_DYNAMIC | offset_part | length_part;
-
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
-				packed.to_le(),
-			);
-		}
-		row.set_valid(index, true);
+		self.replace_dynamic_data(row, index, &serialized);
 	}
 
 	/// Get a Decimal value, detecting storage mode from MSB
@@ -315,5 +293,42 @@ pub mod tests {
 		schema.set_bool(&mut row, 0, true);
 
 		assert_eq!(schema.try_get_decimal(&row, 0), None);
+	}
+
+	#[test]
+	fn test_update_decimal() {
+		let schema = Schema::testing(&[Type::Decimal]);
+		let mut row = schema.allocate();
+
+		let d1 = Decimal::from_str("123.45").unwrap();
+		schema.set_decimal(&mut row, 0, &d1);
+		assert_eq!(schema.get_decimal(&row, 0).to_string(), "123.45");
+
+		// Overwrite with a different value
+		let d2 = Decimal::from_str("999.99").unwrap();
+		schema.set_decimal(&mut row, 0, &d2);
+		assert_eq!(schema.get_decimal(&row, 0).to_string(), "999.99");
+
+		// Overwrite with a larger precision value
+		let d3 = Decimal::from_str("99999999999999999999999999999.123456789").unwrap();
+		schema.set_decimal(&mut row, 0, &d3);
+		assert_eq!(schema.get_decimal(&row, 0).to_string(), "99999999999999999999999999999.123456789");
+	}
+
+	#[test]
+	fn test_update_decimal_with_other_dynamic_fields() {
+		let schema = Schema::testing(&[Type::Decimal, Type::Utf8, Type::Decimal]);
+		let mut row = schema.allocate();
+
+		schema.set_decimal(&mut row, 0, &Decimal::from_str("1.0").unwrap());
+		schema.set_utf8(&mut row, 1, "test");
+		schema.set_decimal(&mut row, 2, &Decimal::from_str("2.0").unwrap());
+
+		// Update first decimal
+		schema.set_decimal(&mut row, 0, &Decimal::from_str("99999.12345").unwrap());
+
+		assert_eq!(schema.get_decimal(&row, 0).to_string(), "99999.12345");
+		assert_eq!(schema.get_utf8(&row, 1), "test");
+		assert_eq!(schema.get_decimal(&row, 2).to_string(), "2.0");
 	}
 }

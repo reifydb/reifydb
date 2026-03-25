@@ -276,12 +276,13 @@ impl DistinctOperator {
 	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> Result<()> {
 		let serialized =
 			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
-
-		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);
-		self.schema.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, state_row)
+		self.update_state(txn, |schema, row| {
+			schema.set_blob(row, 0, &blob);
+			Ok(())
+		})?;
+		Ok(())
 	}
 
 	/// Process inserts - operates directly on Columns without Row conversion

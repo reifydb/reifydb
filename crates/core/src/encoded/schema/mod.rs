@@ -17,7 +17,9 @@ use std::{
 	alloc::{Layout, alloc_zeroed, handle_alloc_error},
 	fmt,
 	fmt::Debug,
+	iter,
 	ops::Deref,
+	ptr,
 	sync::{Arc, OnceLock},
 };
 
@@ -32,6 +34,12 @@ use crate::encoded::schema::fingerprint::{SchemaFingerprint, compute_fingerprint
 
 /// Size of schema header (fingerprint) in bytes
 pub const SCHEMA_HEADER_SIZE: usize = 8;
+
+/// Constants for packed u128 dynamic references (used by Int, Uint, Decimal)
+const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
+const PACKED_MODE_MASK: u128 = 0x80000000000000000000000000000000;
+const PACKED_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
+const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 /// A field within a schema
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -260,6 +268,149 @@ impl Schema {
 		row.len().saturating_sub(self.total_static_size())
 	}
 
+	/// Returns (offset, length) in the dynamic section for a defined dynamic field.
+	/// Returns None if field is undefined, static-only, or uses inline storage.
+	pub(crate) fn read_dynamic_ref(&self, row: &EncodedValues, index: usize) -> Option<(usize, usize)> {
+		if !row.is_defined(index) {
+			return None;
+		}
+		let field = &self.fields()[index];
+		match field.constraint.get_type().inner_type() {
+			Type::Utf8 | Type::Blob | Type::Any => {
+				let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
+				let offset =
+					u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]])
+						as usize;
+				let length =
+					u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]])
+						as usize;
+				Some((offset, length))
+			}
+			Type::Int
+			| Type::Uint
+			| Type::Decimal {
+				..
+			} => {
+				let packed = unsafe {
+					(row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned()
+				};
+				let packed = u128::from_le(packed);
+				if packed & PACKED_MODE_MASK != 0 {
+					let offset = (packed & PACKED_OFFSET_MASK) as usize;
+					let length = ((packed & PACKED_LENGTH_MASK) >> 64) as usize;
+					Some((offset, length))
+				} else {
+					None // inline storage
+				}
+			}
+			_ => None,
+		}
+	}
+
+	/// Writes a dynamic section reference for the given field in its type-appropriate format.
+	pub(crate) fn write_dynamic_ref(&self, row: &mut EncodedValues, index: usize, offset: usize, length: usize) {
+		let field = &self.fields()[index];
+		match field.constraint.get_type().inner_type() {
+			Type::Utf8 | Type::Blob | Type::Any => {
+				let ref_slice = &mut row.0.make_mut()[field.offset as usize..field.offset as usize + 8];
+				ref_slice[0..4].copy_from_slice(&(offset as u32).to_le_bytes());
+				ref_slice[4..8].copy_from_slice(&(length as u32).to_le_bytes());
+			}
+			Type::Int
+			| Type::Uint
+			| Type::Decimal {
+				..
+			} => {
+				let offset_part = (offset as u128) & PACKED_OFFSET_MASK;
+				let length_part = ((length as u128) << 64) & PACKED_LENGTH_MASK;
+				let packed = PACKED_MODE_DYNAMIC | offset_part | length_part;
+				unsafe {
+					ptr::write_unaligned(
+						row.0.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
+						packed.to_le(),
+					);
+				}
+			}
+			_ => {}
+		}
+	}
+
+	/// Replace dynamic data for a field. Handles both first-set (append) and update (splice).
+	/// On update: splices old bytes out, inserts new bytes, adjusts all other dynamic refs.
+	pub(crate) fn replace_dynamic_data(&self, row: &mut EncodedValues, index: usize, new_data: &[u8]) {
+		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
+			let delta = new_data.len() as isize - old_length as isize;
+
+			// Collect refs that need adjusting BEFORE splice
+			let refs_to_update: Vec<(usize, usize, usize)> = if delta != 0 {
+				self.fields()
+					.iter()
+					.enumerate()
+					.filter(|(i, _)| *i != index && row.is_defined(*i))
+					.filter_map(|(i, _)| {
+						self.read_dynamic_ref(row, i)
+							.filter(|(off, _)| *off > old_offset)
+							.map(|(off, len)| (i, off, len))
+					})
+					.collect()
+			} else {
+				vec![]
+			};
+
+			// Splice bytes in the dynamic section
+			let dynamic_start = self.dynamic_section_start();
+			let abs_start = dynamic_start + old_offset;
+			let abs_end = abs_start + old_length;
+			row.0.make_mut().splice(abs_start..abs_end, new_data.iter().copied());
+
+			// Update this field's reference (same offset, new length)
+			self.write_dynamic_ref(row, index, old_offset, new_data.len());
+
+			// Adjust other dynamic references by the size delta
+			for (i, off, len) in refs_to_update {
+				let new_off = (off as isize + delta) as usize;
+				self.write_dynamic_ref(row, i, new_off, len);
+			}
+		} else {
+			// First set or transitioning from inline — append to dynamic section
+			let dynamic_offset = self.dynamic_section_size(row);
+			row.0.extend_from_slice(new_data);
+			self.write_dynamic_ref(row, index, dynamic_offset, new_data.len());
+		}
+		row.set_valid(index, true);
+	}
+
+	/// Remove dynamic data for a field without setting new data.
+	/// Used for dynamic→inline transitions in Int/Uint.
+	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedValues, index: usize) {
+		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
+			// Collect refs that need adjusting
+			let refs_to_update: Vec<(usize, usize, usize)> = self
+				.fields()
+				.iter()
+				.enumerate()
+				.filter(|(i, _)| *i != index && row.is_defined(*i))
+				.filter_map(|(i, _)| {
+					self.read_dynamic_ref(row, i)
+						.filter(|(off, _)| *off > old_offset)
+						.map(|(off, len)| (i, off, len))
+				})
+				.collect();
+
+			// Remove bytes
+			let dynamic_start = self.dynamic_section_start();
+			let abs_start = dynamic_start + old_offset;
+			let abs_end = abs_start + old_length;
+			row.0.make_mut().splice(abs_start..abs_end, iter::empty());
+
+			// Adjust other references
+			for (i, off, len) in refs_to_update {
+				let new_off = off - old_length;
+				self.write_dynamic_ref(row, i, new_off, len);
+			}
+		}
+	}
+
 	/// Allocate a new encoded row
 	pub fn allocate(&self) -> EncodedValues {
 		let (total_size, max_align) = self.get_cached_layout();
@@ -282,6 +433,7 @@ impl Schema {
 
 	/// Set a field as undefined (not set)
 	pub fn set_none(&self, row: &mut EncodedValues, index: usize) {
+		self.remove_dynamic_data(row, index);
 		row.set_valid(index, false);
 	}
 

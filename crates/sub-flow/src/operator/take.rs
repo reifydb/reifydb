@@ -78,12 +78,13 @@ impl TakeOperator {
 	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> Result<()> {
 		let serialized =
 			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
-
-		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);
-		self.schema.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, state_row)
+		self.update_state(txn, |schema, row| {
+			schema.set_blob(row, 0, &blob);
+			Ok(())
+		})?;
+		Ok(())
 	}
 
 	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> Result<Vec<Diff>> {

@@ -13,7 +13,6 @@ use crate::encoded::{encoded::EncodedValues, schema::Schema};
 /// MSB = 0: Value stored inline in lower 127 bits
 /// MSB = 1: Dynamic storage, lower 127 bits contain offset+length
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
-const MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
 
 /// Bit masks for inline mode (127 bits for value)
@@ -35,6 +34,9 @@ impl Schema {
 		if let Some(i128_val) = value.0.to_i128() {
 			// Check if value fits in 127 bits (MSB must be 0)
 			if i128_val >= -(1i128 << 126) && i128_val < (1i128 << 126) {
+				// Clean up old dynamic data if transitioning from dynamic→inline
+				self.remove_dynamic_data(row, index);
+
 				// Mode 0: Store inline in lower 127 bits
 				let packed = MODE_INLINE | ((i128_val as u128) & INLINE_VALUE_MASK);
 				unsafe {
@@ -49,26 +51,8 @@ impl Schema {
 		}
 
 		// Mode 1: Dynamic storage for arbitrary precision
-		debug_assert!(!row.is_defined(index), "Int field {} already set", index);
-
 		let bytes = value.0.to_signed_bytes_le();
-		let dynamic_offset = self.dynamic_section_size(row);
-
-		// Append to dynamic section
-		row.0.extend_from_slice(&bytes);
-
-		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part = ((bytes.len() as u128) << 64) & DYNAMIC_LENGTH_MASK;
-		let packed = MODE_DYNAMIC | offset_part | length_part;
-
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
-				packed.to_le(),
-			);
-		}
-		row.set_valid(index, true);
+		self.replace_dynamic_data(row, index, &bytes);
 	}
 
 	/// Get a Int value, detecting storage mode from MSB
@@ -280,5 +264,91 @@ pub mod tests {
 		schema.set_bool(&mut row, 0, true);
 
 		assert_eq!(schema.try_get_int(&row, 0), None);
+	}
+
+	#[test]
+	fn test_update_int_inline_to_inline() {
+		let schema = Schema::testing(&[Type::Int]);
+		let mut row = schema.allocate();
+
+		schema.set_int(&mut row, 0, &Int::from(42));
+		assert_eq!(schema.get_int(&row, 0), Int::from(42));
+
+		schema.set_int(&mut row, 0, &Int::from(-999));
+		assert_eq!(schema.get_int(&row, 0), Int::from(-999));
+	}
+
+	#[test]
+	fn test_update_int_inline_to_dynamic() {
+		let schema = Schema::testing(&[Type::Int]);
+		let mut row = schema.allocate();
+
+		schema.set_int(&mut row, 0, &Int::from(42));
+		assert_eq!(schema.get_int(&row, 0), Int::from(42));
+
+		let huge = Int::from(
+			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
+		);
+		schema.set_int(&mut row, 0, &huge);
+		assert_eq!(schema.get_int(&row, 0), huge);
+	}
+
+	#[test]
+	fn test_update_int_dynamic_to_inline() {
+		let schema = Schema::testing(&[Type::Int]);
+		let mut row = schema.allocate();
+
+		let huge = Int::from(
+			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
+		);
+		schema.set_int(&mut row, 0, &huge);
+		assert_eq!(schema.get_int(&row, 0), huge);
+
+		// Transition back to inline
+		schema.set_int(&mut row, 0, &Int::from(42));
+		assert_eq!(schema.get_int(&row, 0), Int::from(42));
+		// Dynamic data should be cleaned up
+		assert_eq!(row.len(), schema.total_static_size());
+	}
+
+	#[test]
+	fn test_update_int_dynamic_to_dynamic() {
+		let schema = Schema::testing(&[Type::Int]);
+		let mut row = schema.allocate();
+
+		let huge1 = Int::from(
+			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
+		);
+		schema.set_int(&mut row, 0, &huge1);
+		assert_eq!(schema.get_int(&row, 0), huge1);
+
+		let huge2 = Int::from(
+			-BigInt::parse_bytes(b"111111111111111111111111111111111111111111111111", 10).unwrap(),
+		);
+		schema.set_int(&mut row, 0, &huge2);
+		assert_eq!(schema.get_int(&row, 0), huge2);
+	}
+
+	#[test]
+	fn test_update_int_with_other_dynamic_fields() {
+		let schema = Schema::testing(&[Type::Int, Type::Utf8, Type::Int]);
+		let mut row = schema.allocate();
+
+		let huge1 = Int::from(
+			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
+		);
+		schema.set_int(&mut row, 0, &huge1);
+		schema.set_utf8(&mut row, 1, "hello");
+		let huge2 = Int::from(
+			BigInt::parse_bytes(b"111111111111111111111111111111111111111111111111", 10).unwrap(),
+		);
+		schema.set_int(&mut row, 2, &huge2);
+
+		// Update first int to inline (removes dynamic data, adjusts other refs)
+		schema.set_int(&mut row, 0, &Int::from(42));
+
+		assert_eq!(schema.get_int(&row, 0), Int::from(42));
+		assert_eq!(schema.get_utf8(&row, 1), "hello");
+		assert_eq!(schema.get_int(&row, 2), huge2);
 	}
 }
