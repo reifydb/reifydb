@@ -76,7 +76,7 @@ fn test_token_login_success() {
 
 	runtime.block_on(async {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", ws_port)).await.unwrap();
-		let result = client.login_with_token("bob", "bob-secret-token").await.unwrap();
+		let result = client.login_with_token("bob-secret-token").await.unwrap();
 
 		assert!(!result.token.is_empty(), "Token should not be empty");
 		assert!(!result.identity.is_empty(), "Identity should not be empty");
@@ -100,24 +100,8 @@ fn test_token_login_wrong_token() {
 
 	runtime.block_on(async {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", ws_port)).await.unwrap();
-		let result = client.login_with_token("bob", "wrong-token").await;
+		let result = client.login_with_token("wrong-token").await;
 		assert!(result.is_err(), "Should fail with wrong token");
-	});
-
-	cleanup_server(Some(server));
-}
-
-#[test]
-fn test_token_login_unknown_user() {
-	let runtime = Arc::new(Runtime::new().unwrap());
-	let _guard = runtime.enter();
-	let mut server = create_server_instance(&runtime);
-	let (ws_port, _, _) = start_server_with_auth_users(&mut server).unwrap();
-
-	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", ws_port)).await.unwrap();
-		let result = client.login_with_token("nonexistent", "some-token").await;
-		assert!(result.is_err(), "Should fail with unknown user");
 	});
 
 	cleanup_server(Some(server));
@@ -142,7 +126,7 @@ fn test_sequential_logins() {
 		assert_eq!(query_result.frames.len(), 1);
 
 		// Login as bob (replaces alice session)
-		let result_b = client.login_with_token("bob", "bob-secret-token").await.unwrap();
+		let result_b = client.login_with_token("bob-secret-token").await.unwrap();
 		assert!(!result_b.token.is_empty());
 		assert_ne!(result_a.token, result_b.token);
 

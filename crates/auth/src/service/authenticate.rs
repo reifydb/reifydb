@@ -22,23 +22,21 @@ impl AuthService {
 	/// a `public_key`, the identity and authentication method are auto-provisioned before
 	/// proceeding with the challenge-response flow.
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
-	pub fn authenticate(
-		&self,
-		method: &str,
-		principal: &str,
-		credentials: HashMap<String, String>,
-	) -> Result<AuthResponse, Error> {
-		// If this is a challenge response, resolve the original challenge
+	pub fn authenticate(&self, method: &str, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
 		if let Some(challenge_id) = credentials.get("challenge_id").cloned() {
 			return self.authenticate_challenge_response(&challenge_id, credentials);
 		}
 
-		// Begin a read-only transaction to look up identity and credentials
+		if method == "token" {
+			return self.authenticate_token(credentials);
+		}
+
+		let identifier = credentials.get("identifier").map(|s| s.as_str()).unwrap_or("");
+
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		// Look up identity
-		let ident = match catalog.find_identity_by_name(&mut Transaction::Query(&mut txn), principal)? {
+		let ident = match catalog.find_identity_by_name(&mut Transaction::Query(&mut txn), identifier)? {
 			Some(u) => u,
 			None => {
 				drop(txn);
@@ -46,7 +44,7 @@ impl AuthService {
 				if method == "solana" {
 					if let Some(public_key) = credentials.get("public_key").cloned() {
 						return self.auto_provision_solana(
-							principal,
+							identifier,
 							&public_key,
 							&credentials,
 						);
@@ -64,7 +62,6 @@ impl AuthService {
 			});
 		}
 
-		// Look up stored auth credentials for this method
 		let stored_auth = match catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Query(&mut txn),
 			ident.id,
@@ -78,14 +75,12 @@ impl AuthService {
 			}
 		};
 
-		// Get the provider
 		let provider = self.auth_registry.get(method).ok_or_else(|| {
 			Error::from(AuthError::UnknownMethod {
 				method: method.to_string(),
 			})
 		})?;
 
-		// Call the provider
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
@@ -102,7 +97,7 @@ impl AuthService {
 				payload,
 			} => {
 				let challenge_id = self.challenges.create(
-					principal.to_string(),
+					identifier.to_string(),
 					method.to_string(),
 					payload.clone(),
 				);
@@ -111,6 +106,31 @@ impl AuthService {
 					payload,
 				})
 			}
+		}
+	}
+
+	fn authenticate_token(&self, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
+		let token_value = match credentials.get("token") {
+			Some(t) if !t.is_empty() => t,
+			_ => {
+				return Ok(AuthResponse::Failed {
+					reason: "invalid credentials".to_string(),
+				});
+			}
+		};
+
+		match self.validate_token(token_value) {
+			Some(token_def) => {
+				let session_token = generate_session_token(&self.rng);
+				self.persist_token(&session_token, token_def.identity)?;
+				Ok(AuthResponse::Authenticated {
+					identity: token_def.identity,
+					token: session_token,
+				})
+			}
+			None => Ok(AuthResponse::Failed {
+				reason: "invalid credentials".to_string(),
+			}),
 		}
 	}
 
@@ -141,15 +161,16 @@ impl AuthService {
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		let ident =
-			match catalog.find_identity_by_name(&mut Transaction::Query(&mut txn), &challenge.principal)? {
-				Some(u) if u.enabled => u,
-				_ => {
-					return Ok(AuthResponse::Failed {
-						reason: "invalid credentials".to_string(),
-					});
-				}
-			};
+		let ident = match catalog
+			.find_identity_by_name(&mut Transaction::Query(&mut txn), &challenge.identifier)?
+		{
+			Some(u) if u.enabled => u,
+			_ => {
+				return Ok(AuthResponse::Failed {
+					reason: "invalid credentials".to_string(),
+				});
+			}
+		};
 
 		let stored_auth = match catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Query(&mut txn),
