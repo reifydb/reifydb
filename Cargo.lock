@@ -3022,6 +3022,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tests-integration"
+version = "0.4.2"
+dependencies = [
+ "reifydb",
+ "reifydb-type",
+ "tokio",
+]
+
+[[package]]
 name = "tests-limit"
 version = "0.4.2"
 dependencies = [

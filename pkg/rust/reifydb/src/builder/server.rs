@@ -5,6 +5,7 @@ use std::path::PathBuf;
 #[cfg(feature = "sub_server")]
 use std::sync::Arc;
 
+use reifydb_auth::service::AuthServiceConfig;
 use reifydb_core::config::SystemConfig;
 use reifydb_engine::procedure::registry::ProceduresBuilder;
 use reifydb_function::registry::FunctionsBuilder;
@@ -53,6 +54,7 @@ pub struct ServerBuilder {
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 	otel_tracing_config: Option<(OtelConfig, Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>)>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
 }
 
 impl ServerBuilder {
@@ -76,6 +78,7 @@ impl ServerBuilder {
 			flow_configurator: None,
 			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 			otel_tracing_config: None,
+			auth_configurator: None,
 		}
 	}
 
@@ -84,6 +87,14 @@ impl ServerBuilder {
 	/// If not set, a default configuration will be used.
 	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
+		self
+	}
+
+	pub fn with_auth<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+	{
+		self.auth_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -230,6 +241,10 @@ impl ServerBuilder {
 		{
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
+		}
+
+		if let Some(configurator) = self.auth_configurator {
+			database_builder = database_builder.with_auth(configurator);
 		}
 
 		if !self.migrations.is_empty() {

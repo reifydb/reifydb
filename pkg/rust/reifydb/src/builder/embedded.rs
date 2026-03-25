@@ -3,6 +3,7 @@
 
 use std::path::PathBuf;
 
+use reifydb_auth::service::AuthServiceConfig;
 use reifydb_core::config::SystemConfig;
 use reifydb_engine::{procedure::registry::ProceduresBuilder, transform::registry::Transforms};
 use reifydb_function::registry::FunctionsBuilder;
@@ -37,6 +38,7 @@ pub struct EmbeddedBuilder {
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
 	migrations: Vec<Migration>,
 }
 
@@ -59,6 +61,7 @@ impl EmbeddedBuilder {
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
+			auth_configurator: None,
 			migrations: Vec::new(),
 		}
 	}
@@ -124,6 +127,14 @@ impl EmbeddedBuilder {
 	///
 	/// Migrations are stored in the database on first encounter and
 	/// applied in name order. Already-applied migrations are skipped.
+	pub fn with_auth<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+	{
+		self.auth_configurator = Some(Box::new(configurator));
+		self
+	}
+
 	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
 		self.migrations = migrations;
 		self
@@ -152,6 +163,10 @@ impl EmbeddedBuilder {
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)
 			.with_stores(multi_store, single_store);
+
+		if let Some(configurator) = self.auth_configurator {
+			builder = builder.with_auth(configurator);
+		}
 
 		if let Some(configurator) = self.functions_configurator {
 			builder = builder.with_functions_configurator(configurator);
