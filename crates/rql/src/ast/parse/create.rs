@@ -236,6 +236,14 @@ impl<'bump> Parser<'bump> {
 			return self.parse_migration(token);
 		}
 
+		if (self.consume_if(TokenKind::Keyword(Keyword::Source))?).is_some() {
+			return self.parse_source(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Sink))?).is_some() {
+			return self.parse_sink(token);
+		}
+
 		if self.peek_is_index_creation()? {
 			return self.parse_create_index(token);
 		}

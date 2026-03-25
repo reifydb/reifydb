@@ -329,6 +329,53 @@ pub struct CreateTagNode {
 	pub variants: Vec<CreateSumTypeVariant>,
 }
 
+/// A resolved key-value config pair
+#[derive(Debug, Clone)]
+pub struct ConfigPair {
+	pub key: Fragment,
+	pub value: Fragment,
+}
+
+/// Physical node for CREATE SOURCE
+#[derive(Debug, Clone)]
+pub struct CreateSourceNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub connector: Fragment,
+	pub config: Vec<ConfigPair>,
+	pub target_namespace: Namespace,
+	pub target_name: Fragment,
+}
+
+/// Physical node for CREATE SINK
+#[derive(Debug, Clone)]
+pub struct CreateSinkNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub source_namespace: Namespace,
+	pub source_name: Fragment,
+	pub connector: Fragment,
+	pub config: Vec<ConfigPair>,
+}
+
+/// Physical node for DROP SOURCE
+#[derive(Debug, Clone)]
+pub struct DropSourceNode {
+	pub if_exists: bool,
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub cascade: bool,
+}
+
+/// Physical node for DROP SINK
+#[derive(Debug, Clone)]
+pub struct DropSinkNode {
+	pub if_exists: bool,
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub cascade: bool,
+}
+
 // Assert Block node (multi-statement ASSERT or ASSERT ERROR)
 #[derive(Debug, Clone)]
 pub struct AssertBlockNode {

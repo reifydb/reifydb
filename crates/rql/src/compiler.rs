@@ -875,6 +875,14 @@ impl InstructionCompiler {
 				self.emit(Instruction::CreateTag(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::CreateSource(node) => {
+				self.emit(Instruction::CreateSource(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateSink(node) => {
+				self.emit(Instruction::CreateSink(node));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::CreateTest(node) => {
 				self.emit(Instruction::CreateTest(node));
 				self.emit(Instruction::Emit);
@@ -932,6 +940,14 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropSeries(node) => {
 				self.emit(Instruction::DropSeries(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSource(node) => {
+				self.emit(Instruction::DropSource(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSink(node) => {
+				self.emit(Instruction::DropSink(node));
 				self.emit(Instruction::Emit);
 			}
 

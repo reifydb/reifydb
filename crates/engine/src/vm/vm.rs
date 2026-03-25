@@ -1382,6 +1382,18 @@ impl Vm {
 					let columns = create_tag(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
+				Instruction::CreateSource(_) => {
+					unimplemented!("CREATE SOURCE execution")
+				}
+				Instruction::CreateSink(_) => {
+					unimplemented!("CREATE SINK execution")
+				}
+				Instruction::DropSource(_) => {
+					unimplemented!("DROP SOURCE execution")
+				}
+				Instruction::DropSink(_) => {
+					unimplemented!("DROP SINK execution")
+				}
 				Instruction::CreateTest(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,

@@ -336,4 +336,52 @@ impl<'bump> Compiler<'bump> {
 			}
 		}
 	}
+
+	pub(crate) fn compile_drop_source(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropSourceNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.source.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.source.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default".to_string())
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		Ok(PhysicalPlan::DropSource(nodes::DropSourceNode {
+			if_exists: drop.if_exists,
+			namespace: namespace.into(),
+			name: self.interner.intern_fragment(&drop.source.name),
+			cascade: drop.cascade,
+		}))
+	}
+
+	pub(crate) fn compile_drop_sink(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		drop: logical::DropSinkNode<'_>,
+	) -> Result<PhysicalPlan<'bump>> {
+		let ns_segments: Vec<&str> = drop.sink.namespace.iter().map(|n| n.text()).collect();
+		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+			let ns_name = ns_segments.join("::");
+			let ns_fragment = if let Some(n) = drop.sink.namespace.first() {
+				self.interner.intern_fragment(n).with_text(&ns_name)
+			} else {
+				Fragment::internal("default".to_string())
+			};
+			return_error!(namespace_not_found(ns_fragment, &ns_name));
+		};
+
+		Ok(PhysicalPlan::DropSink(nodes::DropSinkNode {
+			if_exists: drop.if_exists,
+			namespace: namespace.into(),
+			name: self.interner.intern_fragment(&drop.sink.name),
+			cascade: drop.cascade,
+		}))
+	}
 }
