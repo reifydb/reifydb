@@ -15,11 +15,9 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::InsertTableNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -220,13 +218,6 @@ pub(crate) fn insert_table<'a>(
 
 		if plan.returning.is_some() {
 			returned_rows.push((row_number, stored_row));
-		}
-
-		if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-			let mut log = testing.lock();
-			let new = columns_from_encoded(&table.columns, &schema, row);
-			let key = format!("tables::{}::{}", namespace.name(), table.name);
-			log.record_insert(key, new);
 		}
 
 		// Store primary key index entry if table has one

@@ -16,11 +16,9 @@ use reifydb_core::{
 		index_entry::IndexEntryKey,
 		row::{RowKey, RowKeyRange},
 	},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteTableNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -186,16 +184,6 @@ pub(crate) fn delete<'a>(
 				)?;
 			}
 
-			{
-				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-				let old = columns_from_encoded(&table.columns, &schema, &row_values);
-				if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-					let mut log = testing.lock();
-					let key = format!("tables::{}::{}", namespace.name(), table.name);
-					log.record_delete(key, old);
-				}
-			}
-
 			let deleted_values = txn.remove_from_table(table.clone(), row_number)?;
 			if plan.returning.is_some() {
 				returned_rows.push((row_number, deleted_values));
@@ -234,16 +222,6 @@ pub(crate) fn delete<'a>(
 				txn.remove(
 					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode()
 				)?;
-			}
-
-			{
-				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-				let old = columns_from_encoded(&table.columns, &schema, &multi.row);
-				if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-					let mut log = testing.lock();
-					let key = format!("tables::{}::{}", namespace.name(), table.name);
-					log.record_delete(key, old);
-				}
 			}
 
 			let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");

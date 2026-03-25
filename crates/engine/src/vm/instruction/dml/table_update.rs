@@ -15,11 +15,9 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateTableNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -212,20 +210,6 @@ pub(crate) fn update_table<'a>(
 							.encode(),
 						row_number_encoded,
 					)?;
-				}
-
-				{
-					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&table.columns, &schema, &old_row_data.row)
-					} else {
-						Columns::empty()
-					};
-					let new = columns_from_encoded(&table.columns, &schema, &row);
-					if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-						let mut log = testing.lock();
-						let key = format!("tables::{}::{}", namespace.name(), table.name);
-						log.record_update(key, old, new);
-					}
 				}
 
 				let stored_row = txn.update_table(table.clone(), row_number, row)?;

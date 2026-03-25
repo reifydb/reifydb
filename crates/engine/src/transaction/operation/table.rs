@@ -127,6 +127,8 @@ impl TableOperations for CommandTransaction {
 
 		self.set(&key, row.clone())?;
 
+		TableInterceptor::post_update(self, &table, id, &row, &old_values)?;
+
 		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
 
 		Ok(row)
@@ -143,6 +145,8 @@ impl TableOperations for CommandTransaction {
 		TableInterceptor::pre_delete(self, &table, id)?;
 
 		self.unset(&key, deleted_values.clone())?;
+
+		TableInterceptor::post_delete(self, &table, id, &deleted_values)?;
 
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 
@@ -189,6 +193,8 @@ impl TableOperations for AdminTransaction {
 
 		self.set(&key, row.clone())?;
 
+		TableInterceptor::post_update(self, &table, id, &row, &old_values)?;
+
 		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
 
 		Ok(row)
@@ -205,6 +211,8 @@ impl TableOperations for AdminTransaction {
 		TableInterceptor::pre_delete(self, &table, id)?;
 
 		self.unset(&key, deleted_values.clone())?;
+
+		TableInterceptor::post_delete(self, &table, id, &deleted_values)?;
 
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 

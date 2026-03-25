@@ -6,11 +6,9 @@ use std::sync::Arc;
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
 	interface::catalog::policy::PolicyTargetType,
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -115,13 +113,6 @@ pub(crate) fn insert_dictionary<'a>(
 				DictionaryEntryId::U8(v) => Value::Uint8(v),
 				DictionaryEntryId::U16(v) => Value::Uint16(v),
 			};
-
-			if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-				let mut log = testing.lock();
-				let new = Columns::single_row([("value", coerced_value.clone())]);
-				let key = format!("dictionaries::{}::{}", namespace.name(), dictionary.name);
-				log.record_insert(key, new);
-			}
 
 			ids.push(id_value);
 			values.push(coerced_value);

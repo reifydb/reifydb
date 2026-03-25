@@ -89,7 +89,6 @@ pub(crate) fn execute_inline_flow_changes(
 	};
 
 	let mut available_changes: Vec<Change> = merge_changes_by_origin(&ctx.flow_changes, read_version);
-	let mut testing = ctx.testing.take();
 
 	for flow_id in execution_order {
 		let relevant: Vec<Change> = available_changes
@@ -122,7 +121,6 @@ pub(crate) fn execute_inline_flow_changes(
 			state_query,
 			catalog.clone(),
 			interceptors,
-			testing.take(),
 		);
 
 		for change in relevant {
@@ -130,7 +128,6 @@ pub(crate) fn execute_inline_flow_changes(
 		}
 
 		available_changes.extend(flow_txn.take_view_changes());
-		testing = flow_txn.take_testing();
 
 		let flow_pending = flow_txn.take_pending();
 		for (key, pw) in flow_pending.iter_sorted() {
@@ -141,7 +138,6 @@ pub(crate) fn execute_inline_flow_changes(
 		}
 	}
 
-	ctx.testing = testing;
 	Ok(())
 }
 

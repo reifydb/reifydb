@@ -182,18 +182,6 @@ impl Operator for SinkRingBufferViewOperator {
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, assigned_rn, &encoded)?;
 
-						if let Some(log) = txn.testing_mut() {
-							let new = Columns::single_row(coerced.iter().map(|col| {
-								(col.name().text(), col.data().get_value(row_idx))
-							}));
-							let mutation_key = format!(
-								"views::{}::{}",
-								self.view.namespace().name(),
-								self.view.name()
-							);
-							log.record_insert(mutation_key, new);
-						}
-
 						if metadata.is_empty() {
 							metadata.head = assigned_rn.0;
 						}

@@ -14,11 +14,9 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	},
 	key::row::RowKey,
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteRingBufferNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -160,23 +158,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 					}
 
 					if row_numbers_to_delete.contains(&row_num) {
-						if let Ok(testing) =
-							services.ioc.resolve::<Arc<Mutex<TestingContext>>>()
-						{
-							let mut log = testing.lock();
-							let old = columns_from_encoded(
-								&ringbuffer.columns,
-								&schema,
-								&row_data.row,
-							);
-							let mutation_key = format!(
-								"ringbuffers::{}::{}",
-								namespace.name(),
-								ringbuffer.name
-							);
-							log.record_delete(mutation_key, old);
-						}
-
 						let deleted_values =
 							txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
 						if plan.returning.is_some() {
@@ -231,21 +212,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 							&partition_key,
 						) {
 						continue;
-					}
-
-					if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-						let mut log = testing.lock();
-						let old = columns_from_encoded(
-							&ringbuffer.columns,
-							&schema,
-							&row_data.row,
-						);
-						let mutation_key = format!(
-							"ringbuffers::{}::{}",
-							namespace.name(),
-							ringbuffer.name
-						);
-						log.record_delete(mutation_key, old);
 					}
 
 					let deleted_values = txn.remove_from_ringbuffer(&ringbuffer, row_number)?;

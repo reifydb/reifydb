@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -17,11 +17,9 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
@@ -209,18 +207,6 @@ pub(crate) fn insert_series<'a>(
 
 			if plan.returning.is_some() {
 				returned_rows.push((RowNumber::from(sequence as u64), row.clone()));
-			}
-
-			if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-				let mut log = testing.lock();
-				let new = Columns::single_row(
-					iter::once((key_column_name, key_value_encoded.clone())).chain(data_columns
-						.iter()
-						.enumerate()
-						.map(|(i, col)| (col.name.as_str(), data_values[i].clone()))),
-				);
-				let key = format!("series::{}::{}", namespace.name(), series_def.name);
-				log.record_insert(key, new);
 			}
 
 			// Track flow change for transactional/deferred view processing

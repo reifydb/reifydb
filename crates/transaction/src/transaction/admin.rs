@@ -16,7 +16,6 @@ use reifydb_core::{
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	testing::TestingContext,
 };
 use reifydb_type::{
 	Result,
@@ -111,13 +110,10 @@ pub struct AdminTransaction {
 
 	// Track row changes for post-commit events
 	pub(crate) row_changes: Vec<RowChange>,
-	pub(crate) interceptors: Interceptors,
+	pub interceptors: Interceptors,
 
 	// Track table changes for transactional flow pre-commit processing
 	pub(crate) pending_flow_changes: Vec<Change>,
-
-	/// Testing audit log. Set by the VM when in test context.
-	pub testing: Option<TestingContext>,
 
 	/// The identity executing this transaction.
 	pub identity: IdentityId,
@@ -165,7 +161,6 @@ impl AdminTransaction {
 	/// in-test mutations when `RUN TESTS` later performs an inline flush.
 	pub fn clear_test_flow_state(&mut self) {
 		self.pending_flow_changes.clear();
-		self.testing = None;
 	}
 
 	/// Execute test-only pre-commit style processing without committing.
@@ -192,11 +187,9 @@ impl AdminTransaction {
 			flow_changes: take(&mut self.pending_flow_changes),
 			pending_writes: Vec::new(),
 			transaction_writes,
-			testing: self.testing.take().or_else(|| Some(TestingContext::new())),
 		};
 
 		f(&mut ctx)?;
-		self.testing = ctx.testing;
 
 		for (key, value) in &ctx.pending_writes {
 			match value {
@@ -231,7 +224,6 @@ impl AdminTransaction {
 			changes: TransactionalDefChanges::new(txn_id),
 			row_changes: Vec::new(),
 			pending_flow_changes: Vec::new(),
-			testing: None,
 			identity,
 			executor: None,
 			poison_cause: None,
@@ -310,10 +302,8 @@ impl AdminTransaction {
 			flow_changes: take(&mut self.pending_flow_changes),
 			pending_writes: Vec::new(),
 			transaction_writes,
-			testing: self.testing.take(),
 		};
 		self.interceptors.pre_commit.execute(&mut ctx)?;
-		self.testing = ctx.testing;
 
 		if let Some(mut multi) = self.cmd.take() {
 			// Apply pending view writes produced by pre-commit interceptors

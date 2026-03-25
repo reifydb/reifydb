@@ -75,18 +75,6 @@ impl Operator for SinkSeriesViewOperator {
 						let key = RowKey::encoded(primitive_id, row_number);
 						txn.set(&key, encoded.clone())?;
 						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
-
-						if let Some(log) = txn.testing_mut() {
-							let new = Columns::single_row(coerced.iter().map(|col| {
-								(col.name().text(), col.data().get_value(row_idx))
-							}));
-							let mutation_key = format!(
-								"views::{}::{}",
-								self.view.namespace().name(),
-								self.view.name()
-							);
-							log.record_insert(mutation_key, new);
-						}
 					}
 					let version = txn.version();
 					txn.push_view_change(Change {
@@ -137,21 +125,6 @@ impl Operator for SinkSeriesViewOperator {
 							&post_encoded,
 							&pre_encoded,
 						)?;
-
-						if let Some(log) = txn.testing_mut() {
-							let old = Columns::single_row(coerced_pre.iter().map(|col| {
-								(col.name().text(), col.data().get_value(row_idx))
-							}));
-							let new = Columns::single_row(coerced_post.iter().map(|col| {
-								(col.name().text(), col.data().get_value(row_idx))
-							}));
-							let mutation_key = format!(
-								"views::{}::{}",
-								self.view.namespace().name(),
-								self.view.name()
-							);
-							log.record_update(mutation_key, old, new);
-						}
 					}
 					let version = txn.version();
 					txn.push_view_change(Change {
@@ -177,18 +150,6 @@ impl Operator for SinkSeriesViewOperator {
 						let key = RowKey::encoded(primitive_id, row_number);
 						txn.remove(&key)?;
 						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
-
-						if let Some(log) = txn.testing_mut() {
-							let old = Columns::single_row(coerced.iter().map(|col| {
-								(col.name().text(), col.data().get_value(row_idx))
-							}));
-							let mutation_key = format!(
-								"views::{}::{}",
-								self.view.namespace().name(),
-								self.view.name()
-							);
-							log.record_delete(mutation_key, old);
-						}
 					}
 					let version = txn.version();
 					txn.push_view_change(Change {

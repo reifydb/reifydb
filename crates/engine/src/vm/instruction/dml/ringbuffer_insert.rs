@@ -12,11 +12,9 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::row::RowKey,
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::InsertRingBufferNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -244,13 +242,6 @@ pub(crate) fn insert_ringbuffer<'a>(
 			let stored_row = txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row.clone())?;
 			if plan.returning.is_some() {
 				returned_rows.push((row_number, stored_row));
-			}
-
-			if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-				let mut log = testing.lock();
-				let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
-				let key = format!("ringbuffers::{}::{}", namespace.name(), ringbuffer.name);
-				log.record_insert(key, new);
 			}
 
 			// Update metadata

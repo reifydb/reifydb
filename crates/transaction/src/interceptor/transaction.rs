@@ -5,7 +5,6 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::change::Change,
-	testing::TestingContext,
 };
 use reifydb_type::Result;
 
@@ -30,8 +29,6 @@ pub struct PreCommitContext {
 	/// Snapshot of the committing transaction's pending KV writes (read-only base for flow processing).
 	/// `Some(value)` = set the key, `None` = remove the key.
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
-	/// Testing audit log. Threaded through flow processing so view mutations are captured.
-	pub testing: Option<TestingContext>,
 }
 
 impl PreCommitContext {
@@ -40,7 +37,6 @@ impl PreCommitContext {
 			flow_changes: Vec::new(),
 			pending_writes: Vec::new(),
 			transaction_writes: Vec::new(),
-			testing: None,
 		}
 	}
 
@@ -49,7 +45,6 @@ impl PreCommitContext {
 			flow_changes,
 			pending_writes: Vec::new(),
 			transaction_writes: Vec::new(),
-			testing: None,
 		}
 	}
 }

@@ -14,12 +14,9 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	},
 	internal_error,
-	key::row::RowKey,
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateRingBufferNode;
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -200,25 +197,6 @@ pub(crate) fn update_ringbuffer<'a>(
 
 				if !is_occupied {
 					continue;
-				}
-
-				{
-					let row_key = RowKey::encoded(ringbuffer.id, row_number);
-					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&ringbuffer.columns, &schema, &old_row_data.row)
-					} else {
-						Columns::empty()
-					};
-					let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
-					if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-						let mut log = testing.lock();
-						let key = format!(
-							"ringbuffers::{}::{}",
-							namespace.name(),
-							ringbuffer.name
-						);
-						log.record_update(key, old, new);
-					}
 				}
 
 				// Update the encoded using interceptors

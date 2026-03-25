@@ -18,7 +18,6 @@ use reifydb_type::{
 
 use crate::{GeneratorContext, GeneratorFunction, error::GeneratorFunctionResult, registry::FunctionsBuilder};
 
-/// Register all built-in `testing::*` generators into the builder.
 pub fn register_testing_functions(builder: FunctionsBuilder) -> FunctionsBuilder {
 	builder.register_generator("testing::events::dispatched", TestingEventsDispatched::new)
 		.register_generator("testing::handlers::invoked", TestingHandlersInvoked::new)
@@ -95,10 +94,23 @@ impl GeneratorFunction for TestingViewsChanged {
 		maybe_flush_view_mutations(ctx.ioc, ctx.txn)?;
 		let testing = testing_context_from_ioc(ctx.ioc)?;
 		let guard = testing.lock();
-		let view_ctx = active_view_testing_context(&guard, ctx.txn);
 		let filter_arg = extract_optional_string_arg(&ctx.params);
-		Ok(build_mutations(view_ctx, filter_arg.as_deref(), "views")?)
+		Ok(build_mutations(&guard, filter_arg.as_deref(), "views")?)
 	}
+}
+
+fn maybe_flush_view_mutations(ioc: &IocContainer, tx: &mut Transaction<'_>) -> GeneratorFunctionResult<()> {
+	let Ok(flusher) = ioc.resolve::<Arc<dyn TestingViewMutationCaptor>>() else {
+		return Ok(());
+	};
+
+	match tx {
+		Transaction::Admin(admin) => flusher.capture(admin)?,
+		Transaction::Subscription(sub) => flusher.capture(sub.as_admin_mut())?,
+		_ => {}
+	}
+
+	Ok(())
 }
 
 pub struct TestingMutationsChanged {
@@ -119,29 +131,6 @@ impl GeneratorFunction for TestingMutationsChanged {
 		let guard = testing.lock();
 		let filter_arg = extract_optional_string_arg(&ctx.params);
 		Ok(build_mutations(&guard, filter_arg.as_deref(), self.primitive_type)?)
-	}
-}
-
-fn maybe_flush_view_mutations(ioc: &IocContainer, tx: &mut Transaction<'_>) -> GeneratorFunctionResult<()> {
-	let Ok(flusher) = ioc.resolve::<Arc<dyn TestingViewMutationCaptor>>() else {
-		return Ok(());
-	};
-
-	match tx {
-		Transaction::Admin(admin) => flusher.capture(admin)?,
-		Transaction::Subscription(sub) => flusher.capture(sub.as_admin_mut())?,
-		_ => {}
-	}
-
-	Ok(())
-}
-
-fn active_view_testing_context<'a>(base: &'a TestingContext, tx: &'a Transaction<'_>) -> &'a TestingContext {
-	match tx {
-		Transaction::Admin(admin) => admin.testing.as_ref().unwrap_or(base),
-		Transaction::Command(cmd) => cmd.testing.as_ref().unwrap_or(base),
-		Transaction::Query(_) => base,
-		Transaction::Subscription(sub) => sub.as_admin().testing.as_ref().unwrap_or(base),
 	}
 }
 

@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	testing::TestingContext,
-	value::column::{columns::Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::params::Params;
