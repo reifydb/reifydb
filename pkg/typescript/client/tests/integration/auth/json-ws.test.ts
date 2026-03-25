@@ -110,4 +110,61 @@ describe('Auth Login Tests — JSON WebSocket', () => {
             expect(framesB[0][0].v).toBe(2);
         }, 10000);
     });
+
+    describe('Logout', () => {
+        let client: JsonWebsocketClient;
+
+        afterEach(async () => {
+            if (client) {
+                try { client.disconnect(); } catch {}
+                client = null;
+            }
+        });
+
+        it('should logout and revoke token', async () => {
+            client = await Client.connect_json_ws(WS_URL, {timeoutMs: 10000});
+            const result = await client.loginWithPassword('alice', 'alice-pass');
+            const oldToken = result.token;
+
+            const frames = await client.query('MAP {v: 1}');
+            expect(frames[0][0].v).toBe(1);
+
+            await client.logout();
+
+            // Verify the old token is revoked server-side
+            const client2 = await Client.connect_json_ws(WS_URL, {timeoutMs: 10000, token: oldToken});
+            await expect(client2.query('MAP {v: 2}')).rejects.toThrow();
+            client2.disconnect();
+        }, 10000);
+
+        it('should handle double logout', async () => {
+            client = await Client.connect_json_ws(WS_URL, {timeoutMs: 10000});
+            await client.loginWithPassword('alice', 'alice-pass');
+
+            await client.logout();
+            await client.logout();
+        }, 10000);
+
+        it('should handle logout without token', async () => {
+            client = await Client.connect_json_ws(WS_URL, {timeoutMs: 10000});
+            await client.logout();
+        }, 10000);
+
+        it('should not affect other sessions', async () => {
+            const clientA = await Client.connect_json_ws(WS_URL, {timeoutMs: 10000});
+            const clientB = await Client.connect_json_ws(WS_URL, {timeoutMs: 10000});
+
+            await clientA.loginWithPassword('alice', 'alice-pass');
+            await clientB.loginWithPassword('alice', 'alice-pass');
+
+            await clientA.logout();
+            clientA.disconnect();
+
+            const frames = await clientB.query('MAP {v: 42}');
+            expect(frames[0][0].v).toBe(42);
+
+            clientB.disconnect();
+            client = null;
+        }, 10000);
+    });
 });

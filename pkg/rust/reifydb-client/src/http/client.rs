@@ -168,6 +168,26 @@ impl HttpClient {
 		}
 	}
 
+	/// Logout from the server, revoking the current session token.
+	pub async fn logout(&mut self) -> Result<(), Error> {
+		let token = match self.token.as_ref() {
+			Some(t) => t.clone(),
+			None => return Ok(()),
+		};
+
+		let url = format!("{}/v1/logout", self.base_url);
+		let response = self.inner.post(&url).bearer_auth(&token).send().await.unwrap(); // FIXME better error handling
+
+		let status = response.status();
+		if status.is_success() {
+			self.token = None;
+			Ok(())
+		} else {
+			let body = response.text().await.unwrap(); // FIXME better error handling
+			Err(self.parse_error_response(&body))
+		}
+	}
+
 	/// Execute an admin (DDL + DML + Query) statement.
 	///
 	/// # Arguments

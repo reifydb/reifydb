@@ -237,6 +237,30 @@ impl WsClient {
 		}
 	}
 
+	/// Logout from the server, revoking the current session token.
+	pub async fn logout(&mut self) -> Result<(), Error> {
+		if !self.is_authenticated {
+			return Ok(());
+		}
+
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Logout,
+		};
+
+		let response = self.send_request(request).await?;
+
+		match response.payload {
+			ResponsePayload::Logout(_) => {
+				self.is_authenticated = false;
+				Ok(())
+			}
+			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			_ => panic!("Unexpected response type for logout"), // FIXME better error handling
+		}
+	}
+
 	/// Execute an admin (DDL + DML + Query) statement.
 	///
 	/// # Arguments

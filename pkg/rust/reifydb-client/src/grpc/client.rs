@@ -32,10 +32,11 @@ use tonic::{metadata::MetadataValue, transport::Channel};
 
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
-	CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, NamedParams, Params as ProtoParams,
-	PositionalParams, QueryRequest as ProtoQueryRequest, SubscribeRequest as ProtoSubscribeRequest,
-	SubscriptionEvent, TypedValue, UnsubscribeRequest as ProtoUnsubscribeRequest,
-	params::Params as ProtoParamsOneof, reify_db_client::ReifyDbClient, subscription_event,
+	CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest, NamedParams,
+	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
+	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
+	UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
+	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{AdminResult, CommandResult, LoginResult, QueryResult};
 
@@ -107,6 +108,22 @@ impl GrpcClient {
 				..Default::default()
 			}))
 		}
+	}
+
+	/// Logout from the server, revoking the current session token.
+	pub async fn logout(&mut self) -> Result<(), Error> {
+		if self.token.is_none() {
+			return Ok(());
+		}
+
+		let request = ProtoLogoutRequest {};
+		let mut client = self.inner.clone();
+		let mut req = tonic::Request::new(request);
+		self.attach_auth(&mut req);
+
+		client.logout(req).await.map_err(status_to_error)?;
+		self.token = None;
+		Ok(())
 	}
 
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {

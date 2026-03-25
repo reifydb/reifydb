@@ -28,9 +28,9 @@ use crate::{
 	error::GrpcError,
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, ChangeEvent, CommandRequest,
-		CommandResponse, Params as ProtoParams, QueryRequest, QueryResponse, SubscribeRequest, SubscribedEvent,
-		SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse, reify_db_server::ReifyDb,
-		subscription_event,
+		CommandResponse, LogoutRequest, LogoutResponse, Params as ProtoParams, QueryRequest, QueryResponse,
+		SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse,
+		reify_db_server::ReifyDb, subscription_event,
 	},
 	subscription::GrpcSubscriptionRegistry,
 };
@@ -375,6 +375,30 @@ impl ReifyDb for ReifyDbService {
 				..
 			}) => Err(Status::unimplemented("Challenge-response auth not supported over gRPC")),
 			Err(e) => Err(Status::internal(e.to_string())),
+		}
+	}
+
+	async fn logout(&self, request: Request<LogoutRequest>) -> Result<Response<LogoutResponse>, Status> {
+		let token = request
+			.metadata()
+			.get("authorization")
+			.and_then(|v| v.to_str().ok())
+			.and_then(|h| h.strip_prefix("Bearer "))
+			.map(|t| t.trim().to_string())
+			.ok_or_else(|| Status::unauthenticated("Missing authorization token"))?;
+
+		if token.is_empty() {
+			return Err(Status::unauthenticated("Empty token"));
+		}
+
+		let revoked = self.state.auth_service().revoke_token(&token);
+
+		if revoked {
+			Ok(Response::new(LogoutResponse {
+				status: "ok".to_string(),
+			}))
+		} else {
+			Err(Status::unauthenticated("Invalid or expired token"))
 		}
 	}
 }

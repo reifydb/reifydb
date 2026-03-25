@@ -66,4 +66,6 @@ export type {
     SubscriptionCallbacks,
     SubscriptionOperation,
     LoginResult,
+    LogoutRequest,
+    LogoutResponse,
 } from './types';

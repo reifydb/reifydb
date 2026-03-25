@@ -441,6 +441,21 @@ async fn process_message(
 			.await
 		}
 
+		RequestPayload::Logout => {
+			if let Some(token) = auth_token.as_ref() {
+				let revoked = state.auth_service().revoke_token(token);
+				if revoked {
+					*identity = Some(IdentityId::anonymous());
+					*auth_token = None;
+					Some(Response::logout(&request.id).to_json())
+				} else {
+					Some(build_error(&request.id, "LOGOUT_FAILED", "Token revocation failed"))
+				}
+			} else {
+				Some(build_error(&request.id, "AUTH_REQUIRED", "No active session to logout"))
+			}
+		}
+
 		RequestPayload::Unsubscribe(unsub) => {
 			// Check remote tasks first (not registered in registry/poller)
 			if let Some(handle) = remote_tasks.remove(&unsub.subscription_id) {

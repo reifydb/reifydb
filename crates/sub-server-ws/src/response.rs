@@ -35,6 +35,7 @@ pub enum ResponsePayload {
 	Query(QueryResponse),
 	Subscribed(SubscribedResponse),
 	Unsubscribed(UnsubscribedResponse),
+	Logout(LogoutResponse),
 }
 
 #[derive(Debug, Serialize)]
@@ -87,6 +88,11 @@ pub struct SubscribedResponse {
 #[derive(Debug, Serialize)]
 pub struct UnsubscribedResponse {
 	pub subscription_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LogoutResponse {
+	pub status: String,
 }
 
 /// Server-initiated push message (matches client's `ServerPush`)
@@ -188,6 +194,15 @@ impl Response {
 			id: id.into(),
 			payload: ResponsePayload::Unsubscribed(UnsubscribedResponse {
 				subscription_id: subscription_id.into(),
+			}),
+		}
+	}
+
+	pub fn logout(id: impl Into<String>) -> Self {
+		Self {
+			id: id.into(),
+			payload: ResponsePayload::Logout(LogoutResponse {
+				status: "ok".to_string(),
 			}),
 		}
 	}

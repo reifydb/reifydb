@@ -80,6 +80,12 @@ pub async fn health() -> impl IntoResponse {
 	)
 }
 
+/// Response body for logout endpoint.
+#[derive(Debug, Serialize)]
+pub struct LogoutResponse {
+	pub status: String,
+}
+
 /// Request body for authentication endpoint.
 #[derive(Debug, Deserialize)]
 pub struct AuthenticateRequest {
@@ -173,6 +179,30 @@ pub async fn handle_authenticate(
 			}),
 		)
 			.into_response()),
+	}
+}
+
+pub async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
+	let auth_header = headers.get("authorization").ok_or(AppError::Auth(AuthError::MissingCredentials))?;
+	let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
+	let token = auth_str.strip_prefix("Bearer ").ok_or(AppError::Auth(AuthError::InvalidHeader))?.trim();
+
+	if token.is_empty() {
+		return Err(AppError::Auth(AuthError::InvalidToken));
+	}
+
+	let revoked = state.auth_service().revoke_token(token);
+
+	if revoked {
+		Ok((
+			StatusCode::OK,
+			Json(LogoutResponse {
+				status: "ok".to_string(),
+			}),
+		)
+			.into_response())
+	} else {
+		Err(AppError::Auth(AuthError::InvalidToken))
 	}
 }
 

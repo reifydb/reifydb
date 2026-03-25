@@ -172,6 +172,7 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+	Logout,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -237,6 +238,7 @@ pub enum ResponsePayload {
 	Query(QueryResponse),
 	Subscribed(SubscribedResponse),
 	Unsubscribed(UnsubscribedResponse),
+	Logout(LogoutResponsePayload),
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -290,6 +292,12 @@ pub struct SubscribedResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnsubscribedResponse {
 	pub subscription_id: String,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LogoutResponsePayload {
+	pub status: String,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]

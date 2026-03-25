@@ -96,6 +96,13 @@ pub struct AuthenticateResponse {
     #[prost(string, tag = "4")]
     pub reason: ::prost::alloc::string::String,
 }
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct LogoutRequest {}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LogoutResponse {
+    #[prost(string, tag = "1")]
+    pub status: ::prost::alloc::string::String,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Params {
     #[prost(oneof = "params::Params", tags = "1, 2")]
@@ -367,6 +374,30 @@ pub mod reify_db_client {
             let mut req = request.into_request();
             req.extensions_mut()
                 .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Authenticate"));
+            self.inner.unary(req, path, codec).await
+        }
+        pub async fn logout(
+            &mut self,
+            request: impl tonic::IntoRequest<super::LogoutRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::LogoutResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic_prost::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/reifydb.v1.ReifyDB/Logout",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("reifydb.v1.ReifyDB", "Logout"));
             self.inner.unary(req, path, codec).await
         }
     }
