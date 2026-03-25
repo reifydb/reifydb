@@ -258,7 +258,7 @@ pub mod tests {
 	};
 
 	use super::DictionaryOperations;
-	use crate::test_utils::create_test_admin_transaction;
+	use crate::test_harness::create_test_admin_transaction;
 
 	fn test_dictionary() -> DictionaryDef {
 		DictionaryDef {

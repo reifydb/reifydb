@@ -13,7 +13,7 @@ use reifydb_type::params::Params;
 
 use crate::{
 	Result,
-	test::run::run_tests,
+	run_tests::run::run_tests,
 	vm::{
 		services::Services,
 		stack::SymbolTable,

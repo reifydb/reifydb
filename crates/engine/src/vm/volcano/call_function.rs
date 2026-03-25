@@ -12,7 +12,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::{
-	Result, testing,
+	Result, testing_functions,
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -73,7 +73,7 @@ impl QueryNode for CallFunctionQueryNode {
 			}
 		}
 
-		let columns = testing::handle_testing_call(
+		let columns = testing_functions::handle_testing_call(
 			func_name,
 			&args,
 			&self.context.testing,

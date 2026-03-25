@@ -1,45 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_engine::test_utils::create_test_engine;
-use reifydb_type::value::{frame::frame::Frame, identity::IdentityId};
-
-fn test_identity() -> IdentityId {
-	IdentityId::root()
-}
-
-fn create_namespace(engine: &reifydb_engine::engine::StandardEngine, name: &str) {
-	let identity = test_identity();
-	engine.admin_as(identity, &format!("CREATE NAMESPACE {name}"), Default::default()).unwrap();
-}
-
-fn create_table(engine: &reifydb_engine::engine::StandardEngine, namespace: &str, table: &str, columns: &str) {
-	let identity = test_identity();
-	engine.admin_as(identity, &format!("CREATE TABLE {namespace}::{table} {{ {columns} }}"), Default::default())
-		.unwrap();
-}
-
-fn query_table(engine: &reifydb_engine::engine::StandardEngine, table: &str) -> Vec<Frame> {
-	let identity = test_identity();
-	engine.query_as(identity, &format!("FROM {table}"), Default::default()).unwrap()
-}
-
-fn row_count(frames: &[Frame]) -> usize {
-	frames.first().unwrap().rows().count()
-}
+use reifydb_engine::test_prelude::*;
 
 #[test]
 fn test_positional_insert_basic() {
-	let engine = create_test_engine();
-	let identity = test_identity();
+	let t = TestEngine::new();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "users", "id: int4, name: utf8");
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::users { id: int4, name: utf8 }");
 
-	engine.command_as(identity, r#"INSERT test::users [(1, "Alice"), (2, "Bob")]"#, Default::default()).unwrap();
+	t.command(r#"INSERT test::users [(1, "Alice"), (2, "Bob")]"#);
 
-	let frames = query_table(&engine, "test::users");
-	assert_eq!(row_count(&frames), 2);
+	let frames = t.query("FROM test::users");
+	assert_eq!(TestEngine::row_count(&frames), 2);
 
 	let mut values: Vec<_> = frames[0]
 		.rows()
@@ -51,16 +25,15 @@ fn test_positional_insert_basic() {
 
 #[test]
 fn test_positional_insert_single_row() {
-	let engine = create_test_engine();
-	let identity = test_identity();
+	let t = TestEngine::new();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "items", "id: int4, value: float8");
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::items { id: int4, value: float8 }");
 
-	engine.command_as(identity, r#"INSERT test::items [(1, 10.5)]"#, Default::default()).unwrap();
+	t.command(r#"INSERT test::items [(1, 10.5)]"#);
 
-	let frames = query_table(&engine, "test::items");
-	assert_eq!(row_count(&frames), 1);
+	let frames = t.query("FROM test::items");
+	assert_eq!(TestEngine::row_count(&frames), 1);
 
 	let row = frames[0].rows().next().unwrap();
 	assert_eq!(row.get::<i32>("id").unwrap(), Some(1));
@@ -69,26 +42,23 @@ fn test_positional_insert_single_row() {
 
 #[test]
 fn test_positional_insert_wrong_column_count() {
-	let engine = create_test_engine();
-	let identity = test_identity();
+	let t = TestEngine::new();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "data", "id: int4, name: utf8, active: bool");
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::data { id: int4, name: utf8, active: bool }");
 
-	let result = engine.command_as(identity, r#"INSERT test::data [(1, "Alice")]"#, Default::default());
+	let result = t.command_as(IdentityId::system(), r#"INSERT test::data [(1, "Alice")]"#, Default::default());
 	assert!(result.is_err());
 }
 
 #[test]
 fn test_positional_insert_multiline() {
-	let engine = create_test_engine();
-	let identity = test_identity();
+	let t = TestEngine::new();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "records", "id: int4, name: utf8, active: bool");
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::records { id: int4, name: utf8, active: bool }");
 
-	engine.command_as(
-		identity,
+	t.command(
 		r#"
 			INSERT test::records [
 				(1, "Alice", true),
@@ -96,24 +66,21 @@ fn test_positional_insert_multiline() {
 				(3, "Charlie", true)
 			]
 			"#,
-		Default::default(),
-	)
-	.unwrap();
+	);
 
-	let frames = query_table(&engine, "test::records");
-	assert_eq!(row_count(&frames), 3);
+	let frames = t.query("FROM test::records");
+	assert_eq!(TestEngine::row_count(&frames), 3);
 }
 
 #[test]
 fn test_keyed_insert_still_works() {
-	let engine = create_test_engine();
-	let identity = test_identity();
+	let t = TestEngine::new();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "users", "id: int4, name: utf8");
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::users { id: int4, name: utf8 }");
 
-	engine.command_as(identity, r#"INSERT test::users [{ id: 1, name: "Alice" }]"#, Default::default()).unwrap();
+	t.command(r#"INSERT test::users [{ id: 1, name: "Alice" }]"#);
 
-	let frames = query_table(&engine, "test::users");
-	assert_eq!(row_count(&frames), 1);
+	let frames = t.query("FROM test::users");
+	assert_eq!(TestEngine::row_count(&frames), 1);
 }

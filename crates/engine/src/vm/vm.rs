@@ -70,7 +70,7 @@ use crate::{
 	expression::{context::EvalSession, eval::evaluate},
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
-	testing,
+	testing_functions,
 	vm::instruction::{
 		ddl::{
 			alter::policy::alter_policy,
@@ -642,7 +642,7 @@ impl Vm {
 								"testing::* functions are only available in test context"
 							));
 						}
-						let columns = testing::handle_testing_call(
+						let columns = testing_functions::handle_testing_call(
 							func_name,
 							&args,
 							&self.testing,

@@ -20,11 +20,11 @@ pub mod policy;
 pub mod procedure;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod remote;
+pub mod run_tests;
 pub mod session;
-#[allow(unused)]
-pub mod test;
-pub mod test_utils;
-pub(crate) mod testing;
+pub mod test_harness;
+pub mod test_prelude;
+pub(crate) mod testing_functions;
 pub mod transaction;
 pub mod transform;
 pub mod vm;

@@ -47,7 +47,7 @@ pub mod tests {
 		interface::catalog::id::{RingBufferId, ViewId},
 		retention::{CleanupMode, RetentionPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;

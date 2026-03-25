@@ -167,7 +167,7 @@ macro_rules! impl_generator {
 			#[cfg(test)]
 			mod tests {
 				use reifydb_core::{encoded::key::EncodedKey, error::CoreError};
-				use reifydb_engine::test_utils::create_test_admin_transaction;
+				use reifydb_engine::test_harness::create_test_admin_transaction;
 				use reifydb_type::{error::IntoDiagnostic, value::r#type::Type};
 
 				use super::{SCHEMA, $generator};

@@ -110,7 +110,7 @@ pub mod tests {
 		},
 		key::namespace_flow::NamespaceFlowKey,
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{

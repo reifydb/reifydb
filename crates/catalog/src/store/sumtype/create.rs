@@ -78,7 +78,7 @@ pub mod tests {
 		interface::catalog::sumtype::{SumTypeKind, VariantDef},
 		key::namespace_sumtype::NamespaceSumTypeKey,
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
 
 	use super::*;

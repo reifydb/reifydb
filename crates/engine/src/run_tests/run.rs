@@ -16,7 +16,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	test::result::{TestOutcome, classify_outcome},
+	run_tests::result::{TestOutcome, classify_outcome},
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
 
