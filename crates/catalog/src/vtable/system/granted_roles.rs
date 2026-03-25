@@ -17,21 +17,21 @@ use crate::{
 };
 
 /// Virtual table that exposes system identity-role assignment information
-pub struct UserRoles {
+pub struct GrantedRoles {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
 }
 
-impl UserRoles {
+impl GrantedRoles {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_user_roles_table_def().clone(),
+			definition: SystemCatalog::get_system_granted_roles_table_def().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for UserRoles {
+impl VTable for GrantedRoles {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

@@ -10,22 +10,22 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::user_roles::*, vtable::USER_ROLES};
+use super::ids::{columns::granted_roles::*, vtable::GRANTED_ROLES};
 
-/// Returns the static definition for the system.user_roles virtual table
-/// This table exposes the mapping between users and roles in the database
-pub fn user_roles() -> Arc<VTableDef> {
+/// Returns the static definition for the system.granted_roles virtual table
+/// This table exposes the mapping between identities and roles in the database
+pub fn granted_roles() -> Arc<VTableDef> {
 	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
-			id: USER_ROLES,
+			id: GRANTED_ROLES,
 			namespace: NamespaceId::SYSTEM,
-			name: "user_roles".to_string(),
+			name: "granted_roles".to_string(),
 			columns: vec![
 				ColumnDef {
-					id: USER_ID,
-					name: "user_id".to_string(),
+					id: IDENTITY_ID,
+					name: "identity_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
