@@ -24,6 +24,7 @@ pub mod flow_operator_outputs;
 pub mod flow_operators;
 pub mod flows;
 pub mod handlers;
+pub mod identities;
 pub mod migrations;
 pub mod namespaces;
 pub mod operator_retention_policies;
@@ -52,7 +53,6 @@ pub mod tag_variants;
 pub mod tags;
 pub mod types;
 pub mod user_roles;
-pub mod users;
 pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
@@ -76,6 +76,7 @@ use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
 use flows::flows;
 use handlers::handlers;
+use identities::identities;
 use migrations::migrations;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
@@ -103,7 +104,6 @@ use tag_variants::tag_variants;
 use tags::tags;
 use types::types;
 use user_roles::user_roles;
-use users::users;
 use versions::versions;
 use views::views;
 use virtual_table_columns::virtual_table_columns;
@@ -707,7 +707,7 @@ pub mod ids {
 		pub const HANDLERS: VTableId = VTableId(37);
 		pub const TAGS: VTableId = VTableId(38);
 		pub const SERIES: VTableId = VTableId(39);
-		pub const USERS: VTableId = VTableId(40);
+		pub const IDENTITIES: VTableId = VTableId(40);
 		pub const ROLES: VTableId = VTableId(41);
 		pub const USER_ROLES: VTableId = VTableId(42);
 		pub const POLICIES: VTableId = VTableId(43);
@@ -760,7 +760,7 @@ pub mod ids {
 			HANDLERS,
 			TAGS,
 			SERIES,
-			USERS,
+			IDENTITIES,
 			ROLES,
 			USER_ROLES,
 			POLICIES,
@@ -1008,9 +1008,9 @@ impl SystemCatalog {
 		series()
 	}
 
-	/// Get the users virtual table definition
-	pub fn get_system_users_table_def() -> Arc<VTableDef> {
-		users()
+	/// Get the identities virtual table definition
+	pub fn get_system_identities_table_def() -> Arc<VTableDef> {
+		identities()
 	}
 
 	/// Get the roles virtual table definition

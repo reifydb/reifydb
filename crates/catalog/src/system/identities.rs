@@ -10,18 +10,18 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::users::*, vtable::USERS};
+use super::ids::{columns::users::*, vtable::IDENTITIES};
 
-/// Returns the static definition for the system.users virtual table
-/// This table exposes information about all users in the database
-pub fn users() -> Arc<VTableDef> {
+/// Returns the static definition for the system.identities virtual table
+/// This table exposes information about all identities in the database
+pub fn identities() -> Arc<VTableDef> {
 	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTableDef {
-			id: USERS,
+			id: IDENTITIES,
 			namespace: NamespaceId::SYSTEM,
-			name: "users".to_string(),
+			name: "identities".to_string(),
 			columns: vec![
 				ColumnDef {
 					id: ID,

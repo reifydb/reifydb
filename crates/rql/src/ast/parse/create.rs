@@ -209,10 +209,6 @@ impl<'bump> Parser<'bump> {
 			return self.parse_create_authentication(token);
 		}
 
-		if (self.consume_if(TokenKind::Keyword(Keyword::Identity))?).is_some() {
-			return self.parse_create_identity(token);
-		}
-
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
 			return self.parse_create_identity(token);
 		}

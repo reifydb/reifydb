@@ -149,7 +149,6 @@ Test => "TEST",
 Tests => "TESTS",
 Run => "RUN",
 User => "USER",
-Identity => "IDENTITY",
 Role => "ROLE",
 Grant => "GRANT",
 Revoke => "REVOKE",
@@ -256,7 +255,6 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("TESTS", Keyword::Tests);
 	map.insert("RUN", Keyword::Run);
 	map.insert("USER", Keyword::User);
-	map.insert("IDENTITY", Keyword::Identity);
 	map.insert("ROLE", Keyword::Role);
 	map.insert("GRANT", Keyword::Grant);
 	map.insert("REVOKE", Keyword::Revoke);

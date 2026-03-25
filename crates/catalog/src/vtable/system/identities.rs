@@ -17,21 +17,21 @@ use crate::{
 };
 
 /// Virtual table that exposes system identity information
-pub struct Users {
+pub struct Identities {
 	pub(crate) definition: Arc<VTableDef>,
 	exhausted: bool,
 }
 
-impl Users {
+impl Identities {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_users_table_def().clone(),
+			definition: SystemCatalog::get_system_identities_table_def().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Users {
+impl VTable for Identities {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -47,11 +47,13 @@ impl VTable for Users {
 		let mut ids = ColumnData::identity_id_with_capacity(identities.len());
 		let mut names = ColumnData::utf8_with_capacity(identities.len());
 		let mut enabled_flags = ColumnData::bool_with_capacity(identities.len());
+		let mut identity_ids = ColumnData::identity_id_with_capacity(identities.len());
 
 		for u in identities {
 			ids.push(u.id);
 			names.push(u.name.as_str());
 			enabled_flags.push(u.enabled);
+			identity_ids.push(u.id);
 		}
 
 		let columns = vec![
@@ -66,6 +68,10 @@ impl VTable for Users {
 			Column {
 				name: Fragment::internal("enabled"),
 				data: enabled_flags,
+			},
+			Column {
+				name: Fragment::internal("identity"),
+				data: identity_ids,
 			},
 		];
 
