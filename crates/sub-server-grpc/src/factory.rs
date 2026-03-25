@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
+use reifydb_auth::{
+	registry::AuthenticationRegistry,
+	service::{AuthService, AuthServiceConfig},
+};
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
@@ -118,9 +122,18 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
 
+		let auth_service = AuthService::new(
+			Arc::new(engine.clone()),
+			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
+			runtime.rng().clone(),
+			runtime.clock().clone(),
+			AuthServiceConfig::default(),
+		);
+
 		let state = AppState::new(
 			runtime.actor_system(),
 			engine,
+			auth_service,
 			query_config,
 			interceptors,
 			runtime.clock().clone(),

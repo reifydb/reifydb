@@ -219,7 +219,7 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 				ResponseColumn {
 					name: col.name.to_string(),
 					r#type: col.data().get_type(),
-					data,
+					payload: data,
 				}
 			})
 			.collect();
@@ -270,7 +270,7 @@ pub mod tests {
 				"columns": [{
 					"name": "answer",
 					"type": "Int8",
-					"data": ["42"]
+					"payload": ["42"]
 				}]
 			}]
 		});

@@ -356,7 +356,7 @@ fn proto_frames_to_frames(frames: Vec<ProtoFrame>) -> Vec<Frame> {
 				.into_iter()
 				.map(|c| {
 					let ty = Type::from_u8(c.r#type as u8);
-					let data = decode_column_data(ty, &c.data, &c.bitvec);
+					let data = decode_column_data(ty, &c.payload, &c.bitvec);
 					FrameColumn {
 						name: c.name,
 						data,

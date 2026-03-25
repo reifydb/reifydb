@@ -9,7 +9,7 @@
 
 use std::{error::Error as StdError, fmt};
 
-use reifydb_engine::auth::AuthService;
+use reifydb_auth::service::AuthService;
 use reifydb_type::value::identity::IdentityId;
 
 /// Authentication error types.

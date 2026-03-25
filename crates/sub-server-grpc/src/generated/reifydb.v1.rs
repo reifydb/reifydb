@@ -124,7 +124,7 @@ pub struct FrameColumn {
     #[prost(uint32, tag = "2")]
     pub r#type: u32,
     #[prost(bytes = "vec", tag = "3")]
-    pub data: ::prost::alloc::vec::Vec<u8>,
+    pub payload: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "4")]
     pub bitvec: ::prost::alloc::vec::Vec<u8>,
 }

@@ -572,7 +572,7 @@ export class WsClient {
 
         // Extract _op column to determine operation type
         const opColumn = frame.columns.find((c: any) => c.name === "_op");
-        if (!opColumn || opColumn.data.length === 0) {
+        if (!opColumn || opColumn.payload.length === 0) {
             console.error('Missing or empty _op column:', { opColumn, frame });
             return;
         }
@@ -585,7 +585,7 @@ export class WsClient {
         const batches: Array<{ op: 'INSERT' | 'UPDATE' | 'REMOVE'; rows: any[] }> = [];
 
         for (let i = 0; i < rows.length; i++) {
-            const opValue = parseInt(opColumn.data[i]);
+            const opValue = parseInt(opColumn.payload[i]);
             const operation: 'INSERT' | 'UPDATE' | 'REMOVE' =
                 opValue === 1 ? 'INSERT' :
                     opValue === 2 ? 'UPDATE' :
@@ -622,13 +622,13 @@ export class WsClient {
         // Convert frame columns to array of row objects
         if (!frame.columns || frame.columns.length === 0) return [];
 
-        const rowCount = frame.columns[0].data.length;
+        const rowCount = frame.columns[0].payload.length;
         const rows: any[] = [];
 
         for (let i = 0; i < rowCount; i++) {
             const row: any = {};
             for (const col of frame.columns) {
-                row[col.name] = decode({type: col.type, value: col.data[i]});
+                row[col.name] = decode({type: col.type, value: col.payload[i]});
             }
             rows.push(row);
         }
@@ -695,11 +695,11 @@ export class WsClient {
 
 
 function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.data.length ?? 0;
+    const rowCount = columns[0]?.payload.length ?? 0;
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.data[i]});
+            row[col.name] = decode({type: col.type, value: col.payload[i]});
         }
         return row;
     });

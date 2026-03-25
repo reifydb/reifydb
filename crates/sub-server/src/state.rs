@@ -8,7 +8,8 @@
 
 use std::time::Duration;
 
-use reifydb_engine::{auth::AuthService, engine::StandardEngine};
+use reifydb_auth::service::AuthService;
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 use crate::interceptor::RequestInterceptorChain;
@@ -92,6 +93,7 @@ impl StateConfig {
 pub struct AppState {
 	actor_system: ActorSystem,
 	engine: StandardEngine,
+	auth_service: AuthService,
 	config: StateConfig,
 	request_interceptors: RequestInterceptorChain,
 	clock: Clock,
@@ -103,6 +105,7 @@ impl AppState {
 	pub fn new(
 		actor_system: ActorSystem,
 		engine: StandardEngine,
+		auth_service: AuthService,
 		config: StateConfig,
 		request_interceptors: RequestInterceptorChain,
 		clock: Clock,
@@ -110,6 +113,7 @@ impl AppState {
 		Self {
 			actor_system,
 			engine,
+			auth_service,
 			config,
 			request_interceptors,
 			clock,
@@ -122,6 +126,7 @@ impl AppState {
 		Self {
 			actor_system: self.actor_system.clone(),
 			engine: self.engine.clone(),
+			auth_service: self.auth_service.clone(),
 			config,
 			request_interceptors: self.request_interceptors.clone(),
 			clock: self.clock.clone(),
@@ -195,7 +200,7 @@ impl AppState {
 	/// Get a reference to the authentication service.
 	#[inline]
 	pub fn auth_service(&self) -> &AuthService {
-		self.engine.auth_service()
+		&self.auth_service
 	}
 }
 

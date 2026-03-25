@@ -8,12 +8,15 @@
 //! - `/v1/query` - Execute read-only queries
 //! - `/v1/command` - Execute write commands
 
+use std::collections::HashMap;
+
 use axum::{
 	Json,
 	extract::{Query, State},
 	http::{HeaderMap, StatusCode, header},
 	response::{IntoResponse, Response},
 };
+use reifydb_auth::service::AuthResponse as EngineAuthResponse;
 use reifydb_core::value::frame::response::{ResponseFrame, convert_frames};
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
@@ -75,6 +78,129 @@ pub async fn health() -> impl IntoResponse {
 			status: "ok",
 		}),
 	)
+}
+
+/// Request body for authentication endpoint.
+#[derive(Debug, Deserialize)]
+pub struct AuthenticateRequest {
+	/// Authentication method: "password", "solana", "token".
+	pub method: String,
+	/// Username to authenticate as.
+	pub username: String,
+	/// Credentials (method-specific key-value pairs).
+	#[serde(default)]
+	pub credentials: HashMap<String, String>,
+}
+
+/// Response body for authentication endpoint.
+#[derive(Debug, Serialize)]
+pub struct AuthenticateResponse {
+	/// Authentication status: "authenticated", "challenge", "failed".
+	pub status: String,
+	/// Session token (present when status is "authenticated").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub token: Option<String>,
+	/// Identity ID (present when status is "authenticated").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub identity: Option<String>,
+	/// Challenge ID (present when status is "challenge").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub challenge_id: Option<String>,
+	/// Challenge payload (present when status is "challenge").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub payload: Option<HashMap<String, String>>,
+	/// Failure reason (present when status is "failed").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub reason: Option<String>,
+}
+
+/// Authenticate a user.
+///
+/// Supports single-step (password, token) and multi-step (solana challenge-response) flows.
+///
+/// # Request Body
+///
+/// ```json
+/// {
+///   "method": "password",
+///   "username": "alice",
+///   "credentials": { "password": "secret" }
+/// }
+/// ```
+///
+/// # Response
+///
+/// On success:
+/// ```json
+/// { "status": "authenticated", "token": "...", "identity": "..." }
+/// ```
+///
+/// On challenge (multi-step):
+/// ```json
+/// { "status": "challenge", "challenge_id": "...", "payload": { "message": "..." } }
+/// ```
+pub async fn handle_authenticate(
+	State(state): State<AppState>,
+	Json(request): Json<AuthenticateRequest>,
+) -> Result<Response, AppError> {
+	match state.auth_service().authenticate(&request.method, &request.username, request.credentials) {
+		Ok(EngineAuthResponse::Authenticated {
+			identity,
+			token,
+		}) => Ok((
+			StatusCode::OK,
+			Json(AuthenticateResponse {
+				status: "authenticated".to_string(),
+				token: Some(token),
+				identity: Some(identity.to_string()),
+				challenge_id: None,
+				payload: None,
+				reason: None,
+			}),
+		)
+			.into_response()),
+		Ok(EngineAuthResponse::Challenge {
+			challenge_id,
+			payload,
+		}) => Ok((
+			StatusCode::OK,
+			Json(AuthenticateResponse {
+				status: "challenge".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: Some(challenge_id),
+				payload: Some(payload),
+				reason: None,
+			}),
+		)
+			.into_response()),
+		Ok(EngineAuthResponse::Failed {
+			reason,
+		}) => Ok((
+			StatusCode::UNAUTHORIZED,
+			Json(AuthenticateResponse {
+				status: "failed".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: None,
+				payload: None,
+				reason: Some(reason),
+			}),
+		)
+			.into_response()),
+		Err(e) => Ok((
+			StatusCode::INTERNAL_SERVER_ERROR,
+			Json(AuthenticateResponse {
+				status: "failed".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: None,
+				payload: None,
+				reason: Some(e.to_string()),
+			}),
+		)
+			.into_response()),
+	}
 }
 
 /// Build `RequestMetadata` from HTTP headers.

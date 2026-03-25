@@ -6,8 +6,9 @@ use std::collections::HashMap;
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
 use reifydb_type::{Result, error::Error};
+use subtle::ConstantTimeEq;
 
-use crate::{crypto::constant_time_eq, error::AuthError};
+use crate::error::AuthError;
 
 pub struct TokenProvider;
 
@@ -36,7 +37,7 @@ impl AuthenticationProvider for TokenProvider {
 		let token = stored.get("token").ok_or_else(|| Error::from(AuthError::MissingToken))?;
 
 		// Constant-time comparison
-		if constant_time_eq(token.as_bytes(), credential.as_bytes()) {
+		if token.as_bytes().ct_eq(credential.as_bytes()).into() {
 			Ok(AuthStep::Authenticated)
 		} else {
 			Ok(AuthStep::Failed)

@@ -68,13 +68,13 @@ fn test_basic_receive_insert_notifications() {
 
 		// Verify the data
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
-		assert_eq!(id_col.data[0], "1");
+		assert_eq!(id_col.payload[0], "1");
 
 		let name_col = find_column(&change.body, "name").expect("name column should exist");
-		assert_eq!(name_col.data[0], "test");
+		assert_eq!(name_col.payload[0], "test");
 
 		let value_col = find_column(&change.body, "value").expect("value column should exist");
-		assert_eq!(value_col.data[0], "100");
+		assert_eq!(value_col.payload[0], "100");
 
 		ctx.close(&sub_id).await
 	});
@@ -97,11 +97,11 @@ fn test_op_insert_callback() {
 
 		// Verify both rows
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
-		assert_eq!(id_col.data.len(), 2, "Should have 2 rows");
+		assert_eq!(id_col.payload.len(), 2, "Should have 2 rows");
 
 		let name_col = find_column(&change.body, "name").expect("name column should exist");
-		assert!(name_col.data.contains(&"alice".to_string()));
-		assert!(name_col.data.contains(&"bob".to_string()));
+		assert!(name_col.payload.contains(&"alice".to_string()));
+		assert!(name_col.payload.contains(&"bob".to_string()));
 
 		ctx.close(&sub_id).await
 	});
@@ -131,7 +131,7 @@ fn test_op_update_callback() {
 
 		// Verify updated name
 		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
-		assert_eq!(name_col.data[0], "alice_updated");
+		assert_eq!(name_col.payload[0], "alice_updated");
 
 		ctx.close(&sub_id).await
 	});
@@ -202,12 +202,12 @@ fn test_op_batch_consecutive_rows() {
 
 		// Should be batched into one notification with all 10 rows
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
-		assert_eq!(id_col.data.len(), 10, "Should have 10 rows");
+		assert_eq!(id_col.payload.len(), 10, "Should have 10 rows");
 
 		// Verify all 10 user rows
 		let name_col = find_column(&change.body, "name").expect("name column should exist");
 		for i in 1..=10 {
-			assert!(name_col.data.contains(&format!("user{}", i)), "Should contain user{}", i);
+			assert!(name_col.payload.contains(&format!("user{}", i)), "Should contain user{}", i);
 		}
 
 		ctx.close(&sub_id).await
@@ -343,7 +343,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		assert_eq!(change.subscription_id, sub_id2);
 
 		let name_col = find_column(&change.body, "name").expect("name column should exist");
-		assert_eq!(name_col.data[0], "after_reconnect");
+		assert_eq!(name_col.payload[0], "after_reconnect");
 
 		client2.unsubscribe(&sub_id2).await.unwrap();
 		client2.close().await.unwrap();
@@ -556,10 +556,10 @@ fn test_edge_empty_result_sets() {
 
 		// Verify matching row data
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
-		assert_eq!(id_col.data[0], "1001");
+		assert_eq!(id_col.payload[0], "1001");
 
 		let value_col = find_column(&change.body, "value").expect("value column should exist");
-		assert_eq!(value_col.data[0], "200");
+		assert_eq!(value_col.payload[0], "200");
 
 		ctx.client.unsubscribe(&sub_id).await?;
 		ctx.client.close().await?;
@@ -581,12 +581,12 @@ fn test_edge_large_batch_of_changes() {
 
 		// Should have received all 100 rows
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
-		assert_eq!(id_col.data.len(), 100, "Should have 100 rows");
+		assert_eq!(id_col.payload.len(), 100, "Should have 100 rows");
 
 		// Verify sample rows
-		assert!(id_col.data.contains(&"0".to_string()));
-		assert!(id_col.data.contains(&"49".to_string()));
-		assert!(id_col.data.contains(&"99".to_string()));
+		assert!(id_col.payload.contains(&"0".to_string()));
+		assert!(id_col.payload.contains(&"49".to_string()));
+		assert!(id_col.payload.contains(&"99".to_string()));
 
 		ctx.close(&sub_id).await
 	});
@@ -620,8 +620,10 @@ fn test_edge_rapid_successive_changes() {
 		let changes = recv_multiple_with_timeout(&mut client, 10, 15000).await;
 
 		// Count total rows received
-		let total_rows: usize =
-			changes.iter().map(|c| find_column(&c.body, "id").map(|col| col.data.len()).unwrap_or(0)).sum();
+		let total_rows: usize = changes
+			.iter()
+			.map(|c| find_column(&c.body, "id").map(|col| col.payload.len()).unwrap_or(0))
+			.sum();
 		assert_eq!(total_rows, 10, "Should have received all 10 rows");
 
 		client.unsubscribe(&sub_id).await.unwrap();

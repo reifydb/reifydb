@@ -3,7 +3,11 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use reifydb_auth::AuthVersion;
+use reifydb_auth::{
+	AuthVersion,
+	registry::AuthenticationRegistry,
+	service::{AuthService, AuthServiceConfig},
+};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
@@ -349,6 +353,16 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(engine.clone());
 
+		// Create AuthService for token validation
+		let auth_service = AuthService::new(
+			Arc::new(engine.clone()),
+			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
+			runtime.rng().clone(),
+			runtime.clock().clone(),
+			AuthServiceConfig::default(),
+		);
+		self.ioc = self.ioc.register(auth_service.clone());
+
 		// Spawn CDC producer actor and register event listener
 		// The handle is stored in IoC to keep it alive for the database lifetime
 		// Engine is passed for periodic cleanup based on consumer watermarks
@@ -426,6 +440,14 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system, self.migrations))
+		Ok(Database::new(
+			engine,
+			auth_service,
+			subsystems,
+			health_monitor,
+			runtime,
+			actor_system,
+			self.migrations,
+		))
 	}
 }

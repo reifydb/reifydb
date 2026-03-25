@@ -472,8 +472,6 @@ fn test_int_dynamic_to_dynamic() {
 	let mut row = schema.allocate();
 
 	schema.set_int(&mut row, 0, &huge_int());
-	let size1 = row.len();
-
 	schema.set_int(&mut row, 0, &huge_int2());
 	assert_eq!(schema.get_int(&row, 0), huge_int2());
 	// Both huge values have similar serialized sizes

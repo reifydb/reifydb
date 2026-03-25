@@ -11,6 +11,7 @@ description = "Common infrastructure for HTTP and WebSocket server subsystems"
 default = []
 
 [dependencies]
+reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }

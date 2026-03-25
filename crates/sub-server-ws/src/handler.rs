@@ -4,6 +4,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
+use reifydb_auth::service::AuthResponse;
 use reifydb_core::{
 	interface::catalog::id::SubscriptionId as DbSubscriptionId, value::frame::response::convert_frames,
 };
@@ -232,13 +233,38 @@ async fn process_message(
 
 	match request.payload {
 		RequestPayload::Auth(auth) => {
-			match extract_identity_from_ws_auth(state.auth_service(), auth.token.as_deref()) {
-				Ok(id) => {
-					*identity = Some(id);
-					*auth_token = auth.token;
-					Some(Response::auth(&request.id).to_json())
+			// Login flow: method + username + credentials present
+			if let (Some(method), Some(username)) = (auth.method.as_deref(), auth.username.as_deref()) {
+				let credentials = auth.credentials.unwrap_or_default();
+				match state.auth_service().authenticate(method, username, credentials) {
+					Ok(AuthResponse::Authenticated {
+						identity: id,
+						token,
+					}) => {
+						*identity = Some(id);
+						*auth_token = Some(token.clone());
+						Some(Response::auth_authenticated(&request.id, token, id.to_string())
+							.to_json())
+					}
+					Ok(AuthResponse::Challenge {
+						challenge_id,
+						payload,
+					}) => Some(Response::auth_challenge(&request.id, challenge_id, payload).to_json()),
+					Ok(AuthResponse::Failed {
+						reason,
+					}) => Some(build_error(&request.id, "AUTH_FAILED", &reason)),
+					Err(e) => Some(build_error(&request.id, "AUTH_ERROR", &e.to_string())),
 				}
-				Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
+			} else {
+				// Token validation flow (existing behavior)
+				match extract_identity_from_ws_auth(state.auth_service(), auth.token.as_deref()) {
+					Ok(id) => {
+						*identity = Some(id);
+						*auth_token = auth.token;
+						Some(Response::auth(&request.id).to_json())
+					}
+					Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
+				}
 			}
 		}
 

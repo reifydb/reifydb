@@ -39,6 +39,6 @@ message Frame       { repeated uint64 row_numbers = 1; repeated FrameColumn colu
 message FrameColumn {
   string name    = 1;
   uint32 type    = 2;
-  bytes  data    = 3;
+  bytes  payload = 3;
   bytes  bitvec  = 4;
 }

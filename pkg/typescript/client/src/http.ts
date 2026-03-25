@@ -248,11 +248,11 @@ export class HttpClient {
 }
 
 function columnsToRows(columns: Column[]): Record<string, Value>[] {
-    const rowCount = columns[0]?.data.length ?? 0;
+    const rowCount = columns[0]?.payload.length ?? 0;
     return Array.from({length: rowCount}, (_, i) => {
         const row: Record<string, Value> = {};
         for (const col of columns) {
-            row[col.name] = decode({type: col.type, value: col.data[i]});
+            row[col.name] = decode({type: col.type, value: col.payload[i]});
         }
         return row;
     });

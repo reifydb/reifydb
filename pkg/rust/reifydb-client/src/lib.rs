@@ -281,7 +281,7 @@ pub struct ClientFrame {
 pub struct ClientColumn {
 	pub name: String,
 	pub r#type: Type,
-	pub data: Vec<String>,
+	pub payload: Vec<String>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
