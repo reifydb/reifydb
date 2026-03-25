@@ -13,6 +13,8 @@ pub mod ws;
 
 // Re-export client types
 #[cfg(any(feature = "http", feature = "ws"))]
+use std::collections::HashMap;
+#[cfg(any(feature = "http", feature = "ws"))]
 use std::sync::Arc;
 
 #[cfg(feature = "grpc")]
@@ -62,6 +64,15 @@ pub struct CommandResult {
 #[derive(Debug)]
 pub struct QueryResult {
 	pub frames: Vec<Frame>,
+}
+
+/// Result type for authentication login operations
+#[derive(Debug, Clone)]
+pub struct LoginResult {
+	/// Session token for subsequent requests
+	pub token: String,
+	/// Identity UUID of the authenticated user
+	pub identity: String,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -173,7 +184,14 @@ pub struct AdminRequest {
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthRequest {
+	#[serde(skip_serializing_if = "Option::is_none")]
 	pub token: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub method: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub username: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub credentials: Option<HashMap<String, String>>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -235,7 +253,14 @@ use reifydb_type::error::Diagnostic;
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AuthResponse {}
+pub struct AuthResponse {
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub status: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub token: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub identity: Option<String>,
+}
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]

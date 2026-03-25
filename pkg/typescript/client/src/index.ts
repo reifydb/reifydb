@@ -64,5 +64,6 @@ export type {
     UnsubscribedResponse,
     ChangeMessage,
     SubscriptionCallbacks,
-    SubscriptionOperation
+    SubscriptionOperation,
+    LoginResult,
 } from './types';

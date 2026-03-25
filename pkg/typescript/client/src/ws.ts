@@ -12,12 +12,15 @@ import type {
 import type {
     AdminRequest,
     AdminResponse,
+    AuthRequest,
+    AuthResponse,
     CommandRequest,
     CommandResponse,
     QueryRequest,
     QueryResponse,
     Column,
     ErrorResponse,
+    LoginResult,
     SubscribeRequest,
     SubscribedResponse,
     UnsubscribeRequest,
@@ -46,7 +49,7 @@ interface SubscriptionState<T = any> {
     callbacks: SubscriptionCallbacks<T>;
 }
 
-type ResponsePayload = ErrorResponse | AdminResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse;
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | SubscribedResponse | UnsubscribedResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -456,6 +459,56 @@ export class WsClient {
         }
 
         return value;
+    }
+
+    async loginWithPassword(username: string, password: string): Promise<LoginResult> {
+        return this.login("password", username, {password});
+    }
+
+    async loginWithToken(username: string, token: string): Promise<LoginResult> {
+        return this.login("token", username, {token});
+    }
+
+    async login(method: string, username: string, credentials: Record<string, string>): Promise<LoginResult> {
+        const id = `auth-${this.nextId++}`;
+
+        const request: AuthRequest = {
+            id,
+            type: "Auth",
+            payload: {method, username, credentials}
+        };
+
+        const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error("Login timeout"));
+            }, timeoutMs);
+
+            this.pending.set(id, (res) => {
+                clearTimeout(timeout);
+                resolve(res);
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+
+        if (response.type === "Err") {
+            throw new ReifyError(response);
+        }
+
+        if (response.type !== "Auth") {
+            throw new Error(`Unexpected response type: ${response.type}`);
+        }
+
+        const payload = (response as AuthResponse).payload;
+        if (payload.status !== "authenticated" || !payload.token || !payload.identity) {
+            throw new Error("Authentication failed");
+        }
+
+        this.options.token = payload.token;
+
+        return {token: payload.token, identity: payload.identity};
     }
 
     disconnect() {

@@ -7,6 +7,7 @@ service ReifyDB {
   rpc Query(QueryRequest) returns (QueryResponse);
   rpc Subscribe(SubscribeRequest) returns (stream SubscriptionEvent);
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
+  rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
 }
 
 message AdminRequest  { repeated string statements = 1; optional Params params = 2; }
@@ -27,6 +28,18 @@ message SubscriptionEvent {
 }
 message SubscribedEvent { string subscription_id = 1; }
 message ChangeEvent { repeated Frame frames = 1; }
+
+message AuthenticateRequest {
+  string method = 1;
+  string username = 2;
+  map<string, string> credentials = 3;
+}
+message AuthenticateResponse {
+  string status = 1;
+  string token = 2;
+  string identity = 3;
+  string reason = 4;
+}
 
 message Params {
   oneof params { PositionalParams positional = 1; NamedParams named = 2; }

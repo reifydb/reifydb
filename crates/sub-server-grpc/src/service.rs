@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use reifydb_auth::service::AuthResponse as EngineAuthResponse;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
@@ -26,9 +27,10 @@ use crate::{
 	convert::{frames_to_proto, proto_params_to_params},
 	error::GrpcError,
 	generated::{
-		AdminRequest, AdminResponse, ChangeEvent, CommandRequest, CommandResponse, Params as ProtoParams,
-		QueryRequest, QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
-		UnsubscribeResponse, reify_db_server::ReifyDb, subscription_event,
+		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, ChangeEvent, CommandRequest,
+		CommandResponse, Params as ProtoParams, QueryRequest, QueryResponse, SubscribeRequest, SubscribedEvent,
+		SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse, reify_db_server::ReifyDb,
+		subscription_event,
 	},
 	subscription::GrpcSubscriptionRegistry,
 };
@@ -344,5 +346,35 @@ impl ReifyDb for ReifyDbService {
 		Ok(Response::new(UnsubscribeResponse {
 			subscription_id: inner.subscription_id,
 		}))
+	}
+
+	async fn authenticate(
+		&self,
+		request: Request<AuthenticateRequest>,
+	) -> Result<Response<AuthenticateResponse>, Status> {
+		let inner = request.into_inner();
+		match self.state.auth_service().authenticate(&inner.method, &inner.username, inner.credentials) {
+			Ok(EngineAuthResponse::Authenticated {
+				identity,
+				token,
+			}) => Ok(Response::new(AuthenticateResponse {
+				status: "authenticated".to_string(),
+				token,
+				identity: identity.to_string(),
+				reason: String::new(),
+			})),
+			Ok(EngineAuthResponse::Failed {
+				reason,
+			}) => Ok(Response::new(AuthenticateResponse {
+				status: "failed".to_string(),
+				token: String::new(),
+				identity: String::new(),
+				reason,
+			})),
+			Ok(EngineAuthResponse::Challenge {
+				..
+			}) => Err(Status::unimplemented("Challenge-response auth not supported over gRPC")),
+			Err(e) => Err(Status::internal(e.to_string())),
+		}
 	}
 }
