@@ -51,10 +51,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::constraint::Constraint};
 use tracing::instrument;
 
-use super::{
-	apply_transform::ApplyTransformNode, call_function::CallFunctionQueryNode, filter::resolve_is_variant_tags,
-	run_tests::RunTestsQueryNode,
-};
+use super::{apply_transform::ApplyTransformNode, filter::resolve_is_variant_tags, run_tests::RunTestsQueryNode};
 use crate::vm::{
 	stack::Variable,
 	volcano::{
@@ -678,9 +675,7 @@ pub(crate) fn compile<'a>(
 
 		RqlQueryPlan::RunTests(node) => Box::new(RunTestsQueryNode::new(node, context.clone())),
 
-		RqlQueryPlan::CallFunction(node) => {
-			Box::new(CallFunctionQueryNode::new(node.name, node.arguments, context.clone()))
-		}
+		RqlQueryPlan::CallFunction(node) => Box::new(GeneratorNode::new(node.name, node.arguments)),
 
 		// Row-number optimized access nodes
 		RqlQueryPlan::RowPointLookup(RqlRowPointLookupNode {

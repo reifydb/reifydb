@@ -4,7 +4,10 @@
 use std::{mem, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_core::{
+	util::ioc::IocContainer,
+	value::column::{columns::Columns, headers::ColumnHeaders},
+};
 use reifydb_function::{GeneratorContext, GeneratorFunction};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
@@ -81,6 +84,7 @@ impl QueryNode for GeneratorNode {
 			txn: unsafe { mem::transmute::<&mut Transaction, &'a mut Transaction<'a>>(txn) },
 			catalog: unsafe { mem::transmute::<&Catalog, &'a Catalog>(&stored_ctx.services.catalog) },
 			identity: stored_ctx.identity,
+			ioc: unsafe { mem::transmute::<&IocContainer, &'a IocContainer>(&stored_ctx.services.ioc) },
 		})?;
 
 		self.exhausted = true;

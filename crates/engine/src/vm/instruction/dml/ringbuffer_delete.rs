@@ -18,6 +18,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteRingBufferNode;
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -50,7 +51,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 	plan: DeleteRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -101,7 +101,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 					params: params.clone(),
 					symbols: symbols.clone(),
 					identity: IdentityId::root(),
-					testing: None,
 				}),
 			);
 
@@ -112,7 +111,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 				params: params.clone(),
 				symbols: symbols.clone(),
 				identity: IdentityId::root(),
-				testing: None,
 			};
 
 			input_node.initialize(txn, &context)?;
@@ -162,7 +160,10 @@ pub(crate) fn delete_ringbuffer<'a>(
 					}
 
 					if row_numbers_to_delete.contains(&row_num) {
-						if let Some(log) = testing.as_mut() {
+						if let Ok(testing) =
+							services.ioc.resolve::<Arc<Mutex<TestingContext>>>()
+						{
+							let mut log = testing.lock();
 							let old = columns_from_encoded(
 								&ringbuffer.columns,
 								&schema,
@@ -232,7 +233,8 @@ pub(crate) fn delete_ringbuffer<'a>(
 						continue;
 					}
 
-					if let Some(log) = testing.as_mut() {
+					if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
+						let mut log = testing.lock();
 						let old = columns_from_encoded(
 							&ringbuffer.columns,
 							&schema,

@@ -21,6 +21,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
@@ -55,7 +56,6 @@ pub(crate) fn insert_series<'a>(
 	plan: InsertSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -92,7 +92,6 @@ pub(crate) fn insert_series<'a>(
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -212,7 +211,8 @@ pub(crate) fn insert_series<'a>(
 				returned_rows.push((RowNumber::from(sequence as u64), row.clone()));
 			}
 
-			if let Some(log) = testing.as_mut() {
+			if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
+				let mut log = testing.lock();
 				let new = Columns::single_row(
 					iter::once((key_column_name, key_value_encoded.clone())).chain(data_columns
 						.iter()

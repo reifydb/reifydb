@@ -44,7 +44,7 @@ pub struct MutationRecord {
 
 /// Audit log that captures events, handler invocations, and mutations during test execution.
 ///
-/// Only allocated when `vm.in_test_context` is true. Zero cost in production.
+/// Registered in the IoC container by `RUN TESTS`. Zero cost in production.
 #[derive(Clone, Debug)]
 pub struct TestingContext {
 	pub events: Vec<CapturedEvent>,

@@ -230,6 +230,7 @@ impl DatabaseBuilder {
 	}
 
 	pub fn build(mut self) -> crate::Result<Database> {
+		let default_builder = Functions::defaults();
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -288,8 +289,6 @@ impl DatabaseBuilder {
 
 		// Register single store in IoC for engine to access
 		self.ioc = self.ioc.register(single_store);
-
-		let default_builder = Functions::defaults();
 
 		let functions = if let Some(configurator) = self.functions_configurator {
 			configurator(default_builder).build()

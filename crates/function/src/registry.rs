@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 
 use crate::{
 	AggregateFunction, GeneratorFunction, ScalarFunction, blob, clock, date, datetime, duration, flow, identity,
-	is, json, math, meta, series, subscription, text, time,
+	is, json, math, meta, series, subscription, testing, text, time,
 	uuid::{v4::UuidV4, v7::UuidV7},
 };
 
@@ -26,7 +26,7 @@ impl Functions {
 	}
 
 	pub fn defaults() -> FunctionsBuilder {
-		Functions::builder()
+		let builder = Functions::builder()
 			.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
 			.register_aggregate("math::min", math::aggregate::min::Min::new)
 			.register_aggregate("math::max", math::aggregate::max::Max::new)
@@ -188,7 +188,8 @@ impl Functions {
 			.register_scalar("uuid::v7", UuidV7::new)
 			.register_scalar("gen::series", series::Series::new)
 			.register_generator("generate_series", series::GenerateSeries::new)
-			.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new)
+			.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new);
+		testing::register_testing_functions(builder)
 	}
 }
 

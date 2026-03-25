@@ -19,6 +19,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateTableNode;
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -53,7 +54,6 @@ pub(crate) fn update_table<'a>(
 	plan: UpdateTableNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
@@ -91,7 +91,6 @@ pub(crate) fn update_table<'a>(
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	};
 
 	let mut updated_count = 0;
@@ -215,15 +214,18 @@ pub(crate) fn update_table<'a>(
 					)?;
 				}
 
-				if let Some(log) = testing.as_mut() {
+				{
 					let old = if let Some(old_row_data) = txn.get(&row_key)? {
 						columns_from_encoded(&table.columns, &schema, &old_row_data.row)
 					} else {
 						Columns::empty()
 					};
 					let new = columns_from_encoded(&table.columns, &schema, &row);
-					let key = format!("tables::{}::{}", namespace.name(), table.name);
-					log.record_update(key, old, new);
+					if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
+						let mut log = testing.lock();
+						let key = format!("tables::{}::{}", namespace.name(), table.name);
+						log.record_update(key, old, new);
+					}
 				}
 
 				let stored_row = txn.update_table(table.clone(), row_number, row)?;

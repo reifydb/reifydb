@@ -3,11 +3,14 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::value::column::{
-	Column,
-	columns::Columns,
-	data::ColumnData,
-	view::group_by::{GroupByView, GroupKey},
+use reifydb_core::{
+	util::ioc::IocContainer,
+	value::column::{
+		Column,
+		columns::Columns,
+		data::ColumnData,
+		view::group_by::{GroupByView, GroupKey},
+	},
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;
@@ -35,6 +38,7 @@ pub mod meta;
 pub mod registry;
 pub mod series;
 pub mod subscription;
+pub mod testing;
 pub mod text;
 pub mod time;
 pub mod uuid;
@@ -49,6 +53,7 @@ pub struct GeneratorContext<'a> {
 	pub txn: &'a mut Transaction<'a>,
 	pub catalog: &'a Catalog,
 	pub identity: IdentityId,
+	pub ioc: &'a IocContainer,
 }
 
 pub trait GeneratorFunction: Send + Sync {

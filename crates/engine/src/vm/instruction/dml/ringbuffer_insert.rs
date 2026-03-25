@@ -16,6 +16,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::InsertRingBufferNode;
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -51,7 +52,6 @@ pub(crate) fn insert_ringbuffer<'a>(
 	plan: InsertRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -82,7 +82,6 @@ pub(crate) fn insert_ringbuffer<'a>(
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -247,7 +246,8 @@ pub(crate) fn insert_ringbuffer<'a>(
 				returned_rows.push((row_number, stored_row));
 			}
 
-			if let Some(log) = testing.as_mut() {
+			if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
+				let mut log = testing.lock();
 				let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
 				let key = format!("ringbuffers::{}::{}", namespace.name(), ringbuffer.name);
 				log.record_insert(key, new);

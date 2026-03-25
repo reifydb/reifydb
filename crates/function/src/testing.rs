@@ -9,42 +9,120 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::{testing::TestingViewMutationCaptor, transaction::Transaction};
-use reifydb_type::value::{Value, r#type::Type};
+use reifydb_type::{
+	Result,
+	value::{Value, r#type::Type},
+};
 
-use crate::Result;
+use crate::{GeneratorContext, GeneratorFunction, error::GeneratorFunctionResult, registry::FunctionsBuilder};
 
-/// Handle a built-in `testing::*` function call.
-///
-/// Returns `Columns` to be pushed onto the VM stack.
-pub(crate) fn handle_testing_call(
-	func_name: &str,
-	args: &[Value],
-	testing: &Option<TestingContext>,
-	ioc: &IocContainer,
-	tx: &mut Transaction<'_>,
-) -> Result<Columns> {
-	let base_ctx = testing
-		.as_ref()
-		.ok_or_else(|| internal_error!("testing::* functions require an active test context"))?;
+/// Register all built-in `testing::*` generators into the builder.
+pub fn register_testing_functions(builder: FunctionsBuilder) -> FunctionsBuilder {
+	builder.register_generator("testing::events::dispatched", TestingEventsDispatched::new)
+		.register_generator("testing::handlers::invoked", TestingHandlersInvoked::new)
+		.register_generator("testing::tables::changed", || TestingMutationsChanged::new("tables"))
+		.register_generator("testing::views::changed", TestingViewsChanged::new)
+		.register_generator("testing::series::changed", || TestingMutationsChanged::new("series"))
+		.register_generator("testing::ringbuffers::changed", || TestingMutationsChanged::new("ringbuffers"))
+		.register_generator("testing::dictionaries::changed", || TestingMutationsChanged::new("dictionaries"))
+}
 
-	match func_name {
-		"testing::events::dispatched" => build_dispatched_events(base_ctx, args),
-		"testing::handlers::invoked" => build_handler_invocations(base_ctx, args),
-		"testing::tables::changed" => build_mutations(base_ctx, args, "tables"),
-		"testing::views::changed" => {
-			maybe_flush_view_mutations(ioc, tx)?;
-			let view_ctx = active_view_testing_context(base_ctx, tx);
-			build_mutations(view_ctx, args, "views")
-		}
-		"testing::series::changed" => build_mutations(base_ctx, args, "series"),
-		"testing::ringbuffers::changed" => build_mutations(base_ctx, args, "ringbuffers"),
-		"testing::dictionaries::changed" => build_mutations(base_ctx, args, "dictionaries"),
-		_ => Err(internal_error!("Unknown testing function: {}", func_name)),
+fn testing_context_from_ioc(ioc: &IocContainer) -> GeneratorFunctionResult<Arc<Mutex<TestingContext>>> {
+	ioc.resolve::<Arc<Mutex<TestingContext>>>()
+		.map_err(|_| internal_error!("testing::* functions require an active test context").into())
+}
+
+fn extract_optional_string_arg(params: &Columns) -> Option<String> {
+	if params.is_empty() {
+		return None;
+	}
+	let col = params.iter().next()?;
+	if col.data().len() == 0 {
+		return None;
+	}
+	match col.data().get_value(0) {
+		Value::Utf8(s) => Some(s),
+		_ => None,
 	}
 }
 
-fn maybe_flush_view_mutations(ioc: &IocContainer, tx: &mut Transaction<'_>) -> Result<()> {
+pub struct TestingEventsDispatched;
+
+impl TestingEventsDispatched {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl GeneratorFunction for TestingEventsDispatched {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
+		let testing = testing_context_from_ioc(ctx.ioc)?;
+		let guard = testing.lock();
+		let filter_arg = extract_optional_string_arg(&ctx.params);
+		Ok(build_dispatched_events(&guard, filter_arg.as_deref())?)
+	}
+}
+
+pub struct TestingHandlersInvoked;
+
+impl TestingHandlersInvoked {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl GeneratorFunction for TestingHandlersInvoked {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
+		let testing = testing_context_from_ioc(ctx.ioc)?;
+		let guard = testing.lock();
+		let filter_arg = extract_optional_string_arg(&ctx.params);
+		Ok(build_handler_invocations(&guard, filter_arg.as_deref())?)
+	}
+}
+
+pub struct TestingViewsChanged;
+
+impl TestingViewsChanged {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl GeneratorFunction for TestingViewsChanged {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
+		maybe_flush_view_mutations(ctx.ioc, ctx.txn)?;
+		let testing = testing_context_from_ioc(ctx.ioc)?;
+		let guard = testing.lock();
+		let view_ctx = active_view_testing_context(&guard, ctx.txn);
+		let filter_arg = extract_optional_string_arg(&ctx.params);
+		Ok(build_mutations(view_ctx, filter_arg.as_deref(), "views")?)
+	}
+}
+
+pub struct TestingMutationsChanged {
+	primitive_type: &'static str,
+}
+
+impl TestingMutationsChanged {
+	pub fn new(primitive_type: &'static str) -> Self {
+		Self {
+			primitive_type,
+		}
+	}
+}
+
+impl GeneratorFunction for TestingMutationsChanged {
+	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
+		let testing = testing_context_from_ioc(ctx.ioc)?;
+		let guard = testing.lock();
+		let filter_arg = extract_optional_string_arg(&ctx.params);
+		Ok(build_mutations(&guard, filter_arg.as_deref(), self.primitive_type)?)
+	}
+}
+
+fn maybe_flush_view_mutations(ioc: &IocContainer, tx: &mut Transaction<'_>) -> GeneratorFunctionResult<()> {
 	let Ok(flusher) = ioc.resolve::<Arc<dyn TestingViewMutationCaptor>>() else {
 		return Ok(());
 	};
@@ -67,18 +145,15 @@ fn active_view_testing_context<'a>(base: &'a TestingContext, tx: &'a Transaction
 	}
 }
 
-fn build_dispatched_events(ctx: &TestingContext, args: &[Value]) -> Result<Columns> {
-	// Optional filter by event type name (e.g., "app::order")
-	let filter: Option<(&str, &str)> = if let Some(Value::Utf8(s)) = args.first() {
+fn build_dispatched_events(ctx: &TestingContext, filter_name: Option<&str>) -> Result<Columns> {
+	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {
 			Some((parts[0], parts[1]))
 		} else {
 			None
 		}
-	} else {
-		None
-	};
+	});
 
 	let events: Vec<_> = ctx
 		.events
@@ -96,14 +171,12 @@ fn build_dispatched_events(ctx: &TestingContext, args: &[Value]) -> Result<Colum
 		return Ok(Columns::empty());
 	}
 
-	// Build metadata columns
 	let mut seq_data = ColumnData::uint8_with_capacity(events.len());
 	let mut ns_data = ColumnData::utf8_with_capacity(events.len());
 	let mut event_data = ColumnData::utf8_with_capacity(events.len());
 	let mut variant_data = ColumnData::utf8_with_capacity(events.len());
 	let mut depth_data = ColumnData::uint1_with_capacity(events.len());
 
-	// Collect all unique field names across events (preserving first-seen order)
 	let mut field_names: Vec<String> = Vec::new();
 	for event in &events {
 		for col in event.columns.iter() {
@@ -114,7 +187,6 @@ fn build_dispatched_events(ctx: &TestingContext, args: &[Value]) -> Result<Colum
 		}
 	}
 
-	// Build field columns
 	let mut field_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(events.len()); field_names.len()];
 
 	for event in &events {
@@ -153,18 +225,15 @@ fn build_dispatched_events(ctx: &TestingContext, args: &[Value]) -> Result<Colum
 	Ok(Columns::new(columns))
 }
 
-fn build_handler_invocations(ctx: &TestingContext, args: &[Value]) -> Result<Columns> {
-	// Optional filter by handler name (e.g., "ns::handler_name")
-	let filter: Option<(&str, &str)> = if let Some(Value::Utf8(s)) = args.first() {
+fn build_handler_invocations(ctx: &TestingContext, filter_name: Option<&str>) -> Result<Columns> {
+	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {
 			Some((parts[0], parts[1]))
 		} else {
 			None
 		}
-	} else {
-		None
-	};
+	});
 
 	let invocations: Vec<_> = ctx
 		.handler_invocations
@@ -214,8 +283,6 @@ fn build_handler_invocations(ctx: &TestingContext, args: &[Value]) -> Result<Col
 	]))
 }
 
-/// Create a ColumnData with the correct type for a slice of dynamic values.
-/// Inspects the first non-none value to determine the column type.
 fn column_for_values(values: &[Value]) -> ColumnData {
 	let first_type = values.iter().find_map(|v| {
 		if matches!(v, Value::None { .. }) {
@@ -226,22 +293,18 @@ fn column_for_values(values: &[Value]) -> ColumnData {
 	});
 	match first_type {
 		Some(ty) => ColumnData::with_capacity(ty, values.len()),
-		// All none — use Boolean as the inner type (doesn't matter since all values are none)
 		None => ColumnData::none_typed(Type::Boolean, 0),
 	}
 }
 
-fn build_mutations(ctx: &TestingContext, args: &[Value], primitive_type: &str) -> Result<Columns> {
-	// Collect (target_label, record) pairs — either single-key or all keys for this type
-	let entries: Vec<(&str, &MutationRecord)> = if let Some(Value::Utf8(s)) = args.first() {
-		// With arg: look up prefixed key
+fn build_mutations(ctx: &TestingContext, filter_name: Option<&str>, primitive_type: &str) -> Result<Columns> {
+	let entries: Vec<(&str, &MutationRecord)> = if let Some(s) = filter_name {
 		let full_key = format!("{}::{}", primitive_type, s);
 		match ctx.mutations.get(&full_key) {
-			Some(records) => records.iter().map(|r| (s.as_str(), r)).collect(),
+			Some(records) => records.iter().map(|r| (s, r)).collect(),
 			None => return Ok(Columns::empty()),
 		}
 	} else {
-		// Without arg: iterate all keys starting with "{primitive_type}::"
 		let prefix = format!("{}::", primitive_type);
 		let mut all: Vec<(&str, &MutationRecord)> = Vec::new();
 		for (key, records) in &ctx.mutations {
@@ -259,12 +322,10 @@ fn build_mutations(ctx: &TestingContext, args: &[Value], primitive_type: &str) -
 		return Ok(Columns::empty());
 	}
 
-	// Build metadata columns
 	let mut seq_data = ColumnData::uint8_with_capacity(entries.len());
 	let mut op_data = ColumnData::utf8_with_capacity(entries.len());
 	let mut target_data = ColumnData::utf8_with_capacity(entries.len());
 
-	// Collect all field names from old and new columns
 	let mut field_names: Vec<String> = Vec::new();
 	for (_, rec) in &entries {
 		for col in rec.old.iter() {
@@ -281,7 +342,6 @@ fn build_mutations(ctx: &TestingContext, args: &[Value], primitive_type: &str) -
 		}
 	}
 
-	// Build old_/new_ columns
 	let mut old_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
 	let mut new_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
 

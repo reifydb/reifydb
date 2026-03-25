@@ -13,6 +13,7 @@ use reifydb_core::{
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
+	testing::TestingContext,
 };
 use reifydb_type::{
 	Result,
@@ -238,6 +239,26 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.identity,
 			Self::Query(txn) => txn.identity,
 			Self::Subscription(txn) => txn.identity,
+		}
+	}
+
+	/// Get a mutable reference to the testing context, if available.
+	pub fn testing_mut(&mut self) -> Option<&mut TestingContext> {
+		match self {
+			Self::Admin(txn) => txn.testing.as_mut(),
+			Self::Command(txn) => txn.testing.as_mut(),
+			Self::Query(_) => None,
+			Self::Subscription(sub) => sub.as_admin_mut().testing.as_mut(),
+		}
+	}
+
+	/// Set the testing context on this transaction.
+	pub fn set_testing(&mut self, ctx: TestingContext) {
+		match self {
+			Self::Admin(txn) => txn.testing = Some(ctx),
+			Self::Command(txn) => txn.testing = Some(ctx),
+			Self::Query(_) => {}
+			Self::Subscription(sub) => sub.as_admin_mut().testing = Some(ctx),
 		}
 	}
 

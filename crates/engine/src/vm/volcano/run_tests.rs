@@ -52,8 +52,6 @@ impl QueryNode for RunTestsQueryNode {
 		self.executed = true;
 
 		let mut vm = Vm::new(self.symbols.clone());
-		vm.in_test_context = true;
-		vm.testing = Some(TestingContext::new());
 		let columns = run_tests(&mut vm, &self.services, rx, self.node.clone(), &Params::None)?;
 		Ok(Some(columns))
 	}

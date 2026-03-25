@@ -24,7 +24,6 @@ pub mod run_tests;
 pub mod session;
 pub mod test_harness;
 pub mod test_prelude;
-pub(crate) mod testing_functions;
 pub mod transaction;
 pub mod transform;
 pub mod vm;

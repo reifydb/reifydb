@@ -3,11 +3,12 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_core::{internal_error, testing::TestingContext, value::column::columns::Columns};
 use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{RunTestsNode, RunTestsScope},
 };
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	params::Params,
@@ -31,8 +32,6 @@ fn run_single(
 	params: &Params,
 	named_vars: Option<&HashMap<String, Value>>,
 ) -> (String, String) {
-	vm.in_test_context = true;
-
 	match services.compiler.compile(txn, body) {
 		Ok(compiled) => match compiled {
 			CompilationResult::Ready(compiled_list) => {
@@ -134,6 +133,10 @@ pub(crate) fn run_tests(
 		}
 	};
 
+	// Store TestingContext in IoC so testing::* generators can access it from any execution path
+	let testing_ctx = Arc::new(Mutex::new(TestingContext::new()));
+	services.ioc.register_service::<Arc<Mutex<TestingContext>>>(testing_ctx.clone());
+
 	let tests = match &plan.scope {
 		RunTestsScope::All => services.catalog.list_all_tests(&mut Transaction::Admin(&mut *txn))?,
 		RunTestsScope::Namespace(ns) => {
@@ -175,9 +178,7 @@ pub(crate) fn run_tests(
 		match &test_def.cases {
 			None => {
 				// Non-parameterized: single run
-				if let Some(ctx) = vm.testing.as_mut() {
-					ctx.clear();
-				}
+				testing_ctx.lock().clear();
 				txn.clear_test_flow_state();
 				let start = services.runtime_context.clock.instant();
 				let savepoint = txn.savepoint();
@@ -228,9 +229,7 @@ pub(crate) fn run_tests(
 						named_vars.insert(name.clone(), value);
 					}
 
-					if let Some(ctx) = vm.testing.as_mut() {
-						ctx.clear();
-					}
+					testing_ctx.lock().clear();
 					txn.clear_test_flow_state();
 					let start = services.runtime_context.clock.instant();
 					let savepoint = txn.savepoint();
