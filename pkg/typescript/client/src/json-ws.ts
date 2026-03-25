@@ -11,6 +11,8 @@ import type {
     QueryResponse,
     ErrorResponse,
     LoginResult,
+    LogoutRequest,
+    LogoutResponse,
 } from "./types";
 import {
     ReifyError
@@ -26,7 +28,7 @@ export interface JsonWsClientOptions {
     unwrap?: boolean;
 }
 
-type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse;
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | LogoutResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     if (typeof window !== "undefined" && typeof window.WebSocket !== "undefined") {
@@ -266,6 +268,41 @@ export class JsonWebsocketClient {
         this.options.token = payload.token;
 
         return {token: payload.token, identity: payload.identity};
+    }
+
+    async logout(): Promise<void> {
+        if (!this.options.token) {
+            return;
+        }
+
+        const id = `logout-${this.nextId++}`;
+
+        const request: LogoutRequest = {
+            id,
+            type: "Logout",
+            payload: {}
+        };
+
+        const response = await new Promise<ResponsePayload>((resolve, reject) => {
+            const timeoutMs = this.options.timeoutMs ?? 30_000;
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error("Logout timeout"));
+            }, timeoutMs);
+
+            this.pending.set(id, (res) => {
+                clearTimeout(timeout);
+                resolve(res);
+            });
+
+            this.socket.send(JSON.stringify(request));
+        });
+
+        if (response.type === "Err") {
+            throw new ReifyError(response);
+        }
+
+        this.options = {...this.options, token: undefined};
     }
 
     disconnect() {

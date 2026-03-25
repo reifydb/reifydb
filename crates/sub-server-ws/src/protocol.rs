@@ -38,6 +38,7 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+	Logout,
 }
 
 /// Admin (DDL + DML + Query) request payload.

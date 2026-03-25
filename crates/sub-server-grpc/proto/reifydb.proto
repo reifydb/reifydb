@@ -8,6 +8,7 @@ service ReifyDB {
   rpc Subscribe(SubscribeRequest) returns (stream SubscriptionEvent);
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
 }
 
 message AdminRequest  { repeated string statements = 1; optional Params params = 2; }
@@ -38,6 +39,11 @@ message AuthenticateResponse {
   string token = 2;
   string identity = 3;
   string reason = 4;
+}
+
+message LogoutRequest {}
+message LogoutResponse {
+  string status = 1;
 }
 
 message Params {

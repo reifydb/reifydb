@@ -138,6 +138,20 @@ export interface AuthResponse {
     };
 }
 
+export interface LogoutRequest {
+    id: string;
+    type: "Logout";
+    payload: {};
+}
+
+export interface LogoutResponse {
+    id: string;
+    type: "Logout";
+    payload: {
+        status: string;
+    };
+}
+
 export interface LoginResult {
     token: string;
     identity: string;

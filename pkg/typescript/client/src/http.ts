@@ -73,6 +73,39 @@ export class HttpClient {
         }
     }
 
+    async logout(): Promise<void> {
+        if (!this.options.token) {
+            return;
+        }
+
+        const timeoutMs = this.options.timeoutMs ?? 30_000;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch(`${this.options.url}/v1/logout`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.options.token}`,
+                },
+                signal: controller.signal,
+            });
+
+            clearTimeout(timeout);
+
+            if (!response.ok) {
+                const body = await response.text();
+                throw new Error(`Logout failed: HTTP ${response.status}: ${body}`);
+            }
+
+            this.options = {...this.options, token: undefined};
+        } catch (err: any) {
+            clearTimeout(timeout);
+            if (err.name === 'AbortError') throw new Error("Logout timeout");
+            throw err;
+        }
+    }
+
     async admin<const S extends readonly SchemaNode[]>(
         statements: string | string[],
         params: any,
