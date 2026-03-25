@@ -25,7 +25,7 @@ impl AuthService {
 	pub fn authenticate(
 		&self,
 		method: &str,
-		username: &str,
+		principal: &str,
 		credentials: HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
 		// If this is a challenge response, resolve the original challenge
@@ -38,14 +38,18 @@ impl AuthService {
 		let catalog = self.engine.catalog();
 
 		// Look up user
-		let user = match catalog.find_user_by_name(&mut Transaction::Query(&mut txn), username)? {
+		let user = match catalog.find_user_by_name(&mut Transaction::Query(&mut txn), principal)? {
 			Some(u) => u,
 			None => {
 				drop(txn);
 
 				if method == "solana" {
 					if let Some(public_key) = credentials.get("public_key").cloned() {
-						return self.auto_provision_solana(username, &public_key, &credentials);
+						return self.auto_provision_solana(
+							principal,
+							&public_key,
+							&credentials,
+						);
 					}
 				}
 				return Ok(AuthResponse::Failed {
@@ -98,7 +102,7 @@ impl AuthService {
 				payload,
 			} => {
 				let challenge_id = self.challenges.create(
-					username.to_string(),
+					principal.to_string(),
 					method.to_string(),
 					payload.clone(),
 				);
@@ -137,7 +141,7 @@ impl AuthService {
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		let user = match catalog.find_user_by_name(&mut Transaction::Query(&mut txn), &challenge.username)? {
+		let user = match catalog.find_user_by_name(&mut Transaction::Query(&mut txn), &challenge.principal)? {
 			Some(u) if u.enabled => u,
 			_ => {
 				return Ok(AuthResponse::Failed {

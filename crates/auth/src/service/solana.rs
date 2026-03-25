@@ -15,7 +15,7 @@ impl AuthService {
 	/// Creates the user and Solana auth method, then proceeds with the challenge flow.
 	pub(crate) fn auto_provision_solana(
 		&self,
-		username: &str,
+		principal: &str,
 		public_key: &str,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthResponse, Error> {
@@ -33,7 +33,7 @@ impl AuthService {
 		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();
 
-		let user = catalog.create_user(&mut admin, username)?;
+		let user = catalog.create_user(&mut admin, principal)?;
 		catalog.create_authentication(&mut admin, user.id, "solana", properties.clone())?;
 		admin.commit()?;
 
@@ -43,7 +43,7 @@ impl AuthService {
 				payload,
 			} => {
 				let challenge_id = self.challenges.create(
-					username.to_string(),
+					principal.to_string(),
 					"solana".to_string(),
 					payload.clone(),
 				);

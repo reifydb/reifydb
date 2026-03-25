@@ -83,7 +83,7 @@ pub struct AuthenticateRequest {
     #[prost(string, tag = "1")]
     pub method: ::prost::alloc::string::String,
     #[prost(string, tag = "2")]
-    pub username: ::prost::alloc::string::String,
+    pub principal: ::prost::alloc::string::String,
     #[prost(map = "string, string", tag = "3")]
     pub credentials: ::std::collections::HashMap<::prost::alloc::string::String, ::prost::alloc::string::String>,
 }

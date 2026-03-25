@@ -218,21 +218,21 @@ export class JsonWebsocketClient {
         return response.payload.body;
     }
 
-    async loginWithPassword(username: string, password: string): Promise<LoginResult> {
-        return this.login("password", username, {password});
+    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
+        return this.login("password", principal, {password});
     }
 
-    async loginWithToken(username: string, token: string): Promise<LoginResult> {
-        return this.login("token", username, {token});
+    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
+        return this.login("token", principal, {token});
     }
 
-    async login(method: string, username: string, credentials: Record<string, string>): Promise<LoginResult> {
+    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
         const id = `auth-${this.nextId++}`;
 
         const request: AuthRequest = {
             id,
             type: "Auth",
-            payload: {method, username, credentials}
+            payload: {method, principal, credentials}
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {

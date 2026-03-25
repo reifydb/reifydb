@@ -85,8 +85,8 @@ pub async fn health() -> impl IntoResponse {
 pub struct AuthenticateRequest {
 	/// Authentication method: "password", "solana", "token".
 	pub method: String,
-	/// Username to authenticate as.
-	pub username: String,
+	/// Principal to authenticate as.
+	pub principal: String,
 	/// Credentials (method-specific key-value pairs).
 	#[serde(default)]
 	pub credentials: HashMap<String, String>,
@@ -123,7 +123,7 @@ pub struct AuthenticateResponse {
 /// ```json
 /// {
 ///   "method": "password",
-///   "username": "alice",
+///   "principal": "alice",
 ///   "credentials": { "password": "secret" }
 /// }
 /// ```
@@ -143,7 +143,7 @@ pub async fn handle_authenticate(
 	State(state): State<AppState>,
 	Json(request): Json<AuthenticateRequest>,
 ) -> Result<Response, AppError> {
-	match state.auth_service().authenticate(&request.method, &request.username, request.credentials) {
+	match state.auth_service().authenticate(&request.method, &request.principal, request.credentials) {
 		Ok(EngineAuthResponse::Authenticated {
 			identity,
 			token,

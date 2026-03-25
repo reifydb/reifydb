@@ -170,7 +170,7 @@ impl WsClient {
 			payload: RequestPayload::Auth(AuthRequest {
 				token: Some(token.to_string()),
 				method: None,
-				username: None,
+				principal: None,
 				credentials: None,
 			}),
 		};
@@ -187,28 +187,28 @@ impl WsClient {
 		}
 	}
 
-	/// Login with username and password. On success, stores the session token
+	/// Login with principal and password. On success, stores the session token
 	/// for subsequent requests and returns the login result.
-	pub async fn login_with_password(&mut self, username: &str, password: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_password(&mut self, principal: &str, password: &str) -> Result<LoginResult, Error> {
 		let mut credentials = HashMap::new();
 		credentials.insert("password".to_string(), password.to_string());
-		self.login("password", username, credentials).await
+		self.login("password", principal, credentials).await
 	}
 
-	/// Login with username and a pre-existing authentication token.
+	/// Login with principal and a pre-existing authentication token.
 	/// On success, stores the session token for subsequent requests.
-	pub async fn login_with_token(&mut self, username: &str, token: &str) -> Result<LoginResult, Error> {
+	pub async fn login_with_token(&mut self, principal: &str, token: &str) -> Result<LoginResult, Error> {
 		let mut credentials = HashMap::new();
 		credentials.insert("token".to_string(), token.to_string());
-		self.login("token", username, credentials).await
+		self.login("token", principal, credentials).await
 	}
 
-	/// Login with the given method, username, and credentials.
+	/// Login with the given method, principal, and credentials.
 	/// On success, stores the session token for subsequent requests.
 	pub async fn login(
 		&mut self,
 		method: &str,
-		username: &str,
+		principal: &str,
 		credentials: HashMap<String, String>,
 	) -> Result<LoginResult, Error> {
 		let id = generate_request_id();
@@ -217,7 +217,7 @@ impl WsClient {
 			payload: RequestPayload::Auth(AuthRequest {
 				token: None,
 				method: Some(method.to_string()),
-				username: Some(username.to_string()),
+				principal: Some(principal.to_string()),
 				credentials: Some(credentials),
 			}),
 		};
