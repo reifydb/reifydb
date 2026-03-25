@@ -26,6 +26,7 @@ pub mod from;
 pub mod gate;
 pub mod grant;
 pub mod identifier;
+pub mod identity;
 pub mod infix;
 pub mod inline;
 pub mod insert;
@@ -46,7 +47,6 @@ pub mod sub_query;
 pub mod take;
 pub mod tuple;
 pub mod update;
-pub mod user;
 pub mod window;
 
 use std::cmp::PartialOrd;

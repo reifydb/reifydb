@@ -1,29 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::identity::IdentityId;
+
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::user::UserId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UserKey {
-	pub user: UserId,
+pub struct IdentityKey {
+	pub identity: IdentityId,
 }
 
-impl UserKey {
-	pub fn new(user: UserId) -> Self {
+impl IdentityKey {
+	pub fn new(identity: IdentityId) -> Self {
 		Self {
-			user,
+			identity,
 		}
 	}
 
-	pub fn encoded(user: UserId) -> EncodedKey {
-		Self::new(user).encode()
+	pub fn encoded(identity: IdentityId) -> EncodedKey {
+		Self::new(identity).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -35,12 +36,12 @@ impl UserKey {
 	}
 }
 
-impl EncodableKey for UserKey {
-	const KIND: KeyKind = KeyKind::User;
+impl EncodableKey for IdentityKey {
+	const KIND: KeyKind = KeyKind::Identity;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.user);
+		let mut serializer = KeySerializer::with_capacity(18);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_identity_id(&self.identity);
 		serializer.to_encoded_key()
 	}
 
@@ -54,9 +55,9 @@ impl EncodableKey for UserKey {
 		if kind != Self::KIND {
 			return None;
 		}
-		let user = de.read_u64().ok()?;
+		let identity = de.read_identity_id().ok()?;
 		Some(Self {
-			user,
+			identity,
 		})
 	}
 }

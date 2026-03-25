@@ -26,7 +26,7 @@ use crate::{
 	Result,
 	ast::ast::AstCreate,
 	plan::logical::{
-		Compiler, CreateAuthenticationNode, CreatePolicyNode, CreateRoleNode, CreateUserNode, LogicalPlan,
+		Compiler, CreateAuthenticationNode, CreateIdentityNode, CreatePolicyNode, CreateRoleNode, LogicalPlan,
 	},
 };
 
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Event(node) => self.compile_create_event(node),
 			AstCreate::Tag(node) => self.compile_create_tag(node),
 			AstCreate::Handler(node) => self.compile_create_handler(node),
-			AstCreate::User(node) => Ok(LogicalPlan::CreateUser(CreateUserNode {
+			AstCreate::Identity(node) => Ok(LogicalPlan::CreateIdentity(CreateIdentityNode {
 				name: node.name,
 			})),
 			AstCreate::Authentication(node) => {

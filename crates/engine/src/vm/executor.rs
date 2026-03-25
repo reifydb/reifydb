@@ -160,7 +160,7 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 		symbols.set("identity".to_string(), Variable::Columns(columns), false)?;
 		return Ok(());
 	}
-	if let Some(user) = catalog.find_user_by_identity(tx, identity)? {
+	if let Some(user) = catalog.find_identity(tx, identity)? {
 		let roles = catalog.find_role_names_for_identity(tx, identity)?;
 		let role_values: Vec<Value> = roles.into_iter().map(Value::Utf8).collect();
 		let columns = Columns::single_row([

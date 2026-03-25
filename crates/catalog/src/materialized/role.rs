@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::user::{RoleDef, RoleId},
+	interface::catalog::identity::{RoleDef, RoleId},
 };
 
 use crate::materialized::{MaterializedCatalog, MultiVersionRoleDef};

@@ -5,6 +5,8 @@ pub mod config;
 pub mod dictionary;
 pub mod flow;
 pub mod handler;
+pub mod identity;
+pub mod identity_role;
 pub mod load;
 pub mod migration;
 pub mod namespace;
@@ -19,8 +21,6 @@ pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod test;
-pub mod user;
-pub mod user_role;
 pub mod view;
 
 use std::{ops, sync::Arc};
@@ -38,6 +38,7 @@ use reifydb_core::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
 			SubscriptionId, TableId, TestId, ViewId,
 		},
+		identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
 		key::PrimaryKeyDef,
 		migration::{MigrationDef, MigrationEvent},
 		namespace::Namespace,
@@ -49,7 +50,6 @@ use reifydb_core::{
 		sumtype::SumTypeDef,
 		table::TableDef,
 		test::TestDef,
-		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 		view::ViewDef,
 		vtable::{VTableDef, VTableId},
 	},
@@ -81,9 +81,9 @@ pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
 pub type MultiVersionTestDef = MultiVersionContainer<TestDef>;
 pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
 pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
-pub type MultiVersionUserDef = MultiVersionContainer<UserDef>;
+pub type MultiVersionIdentityDef = MultiVersionContainer<IdentityDef>;
 pub type MultiVersionRoleDef = MultiVersionContainer<RoleDef>;
-pub type MultiVersionUserRoleDef = MultiVersionContainer<UserRoleDef>;
+pub type MultiVersionIdentityRoleDef = MultiVersionContainer<IdentityRoleDef>;
 pub type MultiVersionPolicyDef = MultiVersionContainer<PolicyDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
@@ -149,18 +149,16 @@ pub struct MaterializedCatalogInner {
 	pub(crate) handlers_by_name: SkipMap<(NamespaceId, String), HandlerId>,
 	/// Index from (sumtype_id, variant_tag) to Vec<HandlerId> for dispatch hot-path
 	pub(crate) handlers_by_variant: SkipMap<(SumTypeId, u8), Vec<HandlerId>>,
-	/// MultiVersion user definitions indexed by user ID
-	pub(crate) users: SkipMap<UserId, MultiVersionUserDef>,
-	/// Index from user name to user ID for fast name lookups
-	pub(crate) users_by_name: SkipMap<String, UserId>,
-	/// Index from identity ID to user ID for fast identity lookups
-	pub(crate) users_by_identity: SkipMap<IdentityId, UserId>,
+	/// MultiVersion identity definitions indexed by IdentityId
+	pub(crate) identities: SkipMap<IdentityId, MultiVersionIdentityDef>,
+	/// Index from identity name to IdentityId for fast name lookups
+	pub(crate) identities_by_name: SkipMap<String, IdentityId>,
 	/// MultiVersion role definitions indexed by role ID
 	pub(crate) roles: SkipMap<RoleId, MultiVersionRoleDef>,
 	/// Index from role name to role ID for fast name lookups
 	pub(crate) roles_by_name: SkipMap<String, RoleId>,
-	/// MultiVersion user-role definitions indexed by (user_id, role_id)
-	pub(crate) user_roles: SkipMap<(UserId, RoleId), MultiVersionUserRoleDef>,
+	/// MultiVersion identity-role definitions indexed by (identity_id, role_id)
+	pub(crate) identity_roles: SkipMap<(IdentityId, RoleId), MultiVersionIdentityRoleDef>,
 	/// MultiVersion policy definitions indexed by policy ID
 	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicyDef>,
 	/// Index from policy name to policy ID for fast name lookups
@@ -235,12 +233,11 @@ impl MaterializedCatalog {
 			handlers: SkipMap::new(),
 			handlers_by_name: SkipMap::new(),
 			handlers_by_variant: SkipMap::new(),
-			users: SkipMap::new(),
-			users_by_name: SkipMap::new(),
-			users_by_identity: SkipMap::new(),
+			identities: SkipMap::new(),
+			identities_by_name: SkipMap::new(),
 			roles: SkipMap::new(),
 			roles_by_name: SkipMap::new(),
-			user_roles: SkipMap::new(),
+			identity_roles: SkipMap::new(),
 			policies: SkipMap::new(),
 			policies_by_name: SkipMap::new(),
 			policy_operations: SkipMap::new(),

@@ -13,6 +13,7 @@ use crate::interface::catalog::{
 	dictionary::DictionaryDef,
 	flow::FlowDef,
 	handler::HandlerDef,
+	identity::{IdentityDef, IdentityRoleDef, RoleDef},
 	migration::{MigrationDef, MigrationEvent},
 	namespace::Namespace,
 	policy::PolicyDef,
@@ -23,7 +24,6 @@ use crate::interface::catalog::{
 	sumtype::SumTypeDef,
 	table::TableDef,
 	test::TestDef,
-	user::{RoleDef, UserDef, UserRoleDef},
 	view::ViewDef,
 };
 
@@ -131,13 +131,13 @@ pub trait CatalogTrackHandlerChangeOperations {
 	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> Result<()>;
 }
 
-/// Trait for tracking user definition changes during a transaction.
-pub trait CatalogTrackUserChangeOperations {
-	fn track_user_def_created(&mut self, user: UserDef) -> Result<()>;
+/// Trait for tracking identity definition changes during a transaction.
+pub trait CatalogTrackIdentityChangeOperations {
+	fn track_identity_def_created(&mut self, identity: IdentityDef) -> Result<()>;
 
-	fn track_user_def_updated(&mut self, pre: UserDef, post: UserDef) -> Result<()>;
+	fn track_identity_def_updated(&mut self, pre: IdentityDef, post: IdentityDef) -> Result<()>;
 
-	fn track_user_def_deleted(&mut self, user: UserDef) -> Result<()>;
+	fn track_identity_def_deleted(&mut self, identity: IdentityDef) -> Result<()>;
 }
 
 /// Trait for tracking role definition changes during a transaction.
@@ -149,11 +149,11 @@ pub trait CatalogTrackRoleChangeOperations {
 	fn track_role_def_deleted(&mut self, role: RoleDef) -> Result<()>;
 }
 
-/// Trait for tracking user-role definition changes during a transaction.
-pub trait CatalogTrackUserRoleChangeOperations {
-	fn track_user_role_def_created(&mut self, user_role: UserRoleDef) -> Result<()>;
+/// Trait for tracking identity-role definition changes during a transaction.
+pub trait CatalogTrackIdentityRoleChangeOperations {
+	fn track_identity_role_def_created(&mut self, identity_role: IdentityRoleDef) -> Result<()>;
 
-	fn track_user_role_def_deleted(&mut self, user_role: UserRoleDef) -> Result<()>;
+	fn track_identity_role_def_deleted(&mut self, identity_role: IdentityRoleDef) -> Result<()>;
 }
 
 /// Trait for tracking policy definition changes during a transaction.
@@ -202,8 +202,8 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackTestChangeOperations
 	+ CatalogTrackAuthenticationChangeOperations
-	+ CatalogTrackUserChangeOperations
-	+ CatalogTrackUserRoleChangeOperations
+	+ CatalogTrackIdentityChangeOperations
+	+ CatalogTrackIdentityRoleChangeOperations
 	+ CatalogTrackViewChangeOperations
 {
 }

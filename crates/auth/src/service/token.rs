@@ -47,14 +47,13 @@ impl AuthService {
 
 		for auth in auths {
 			if let Ok(AuthStep::Authenticated) = provider.authenticate(&auth.properties, &creds) {
-				// Look up the user via materialized catalog (no transaction needed)
-				if let Some(user) = catalog.materialized.find_user(auth.user_id) {
-					if user.enabled {
+				// Look up the identity via materialized catalog (no transaction needed)
+				if let Some(ident) = catalog.materialized.find_identity(auth.identity) {
+					if ident.enabled {
 						return Some(TokenDef {
 							id: 0,
 							token: token.to_string(),
-							identity: user.identity,
-							user: user.id,
+							identity: ident.id,
 							expires_at: None,
 							created_at: DateTime::default(),
 						});

@@ -4,13 +4,11 @@
 use reifydb_type::value::identity::IdentityId;
 use serde::{Deserialize, Serialize};
 
-pub type UserId = u64;
 pub type RoleId = u64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct UserDef {
-	pub id: UserId,
-	pub identity: IdentityId,
+pub struct IdentityDef {
+	pub id: IdentityId,
 	pub name: String,
 	pub enabled: bool,
 }
@@ -22,7 +20,7 @@ pub struct RoleDef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct UserRoleDef {
-	pub user_id: UserId,
+pub struct IdentityRoleDef {
+	pub identity: IdentityId,
 	pub role_id: RoleId,
 }

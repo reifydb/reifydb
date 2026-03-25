@@ -11,6 +11,8 @@ use flow::FlowKey;
 use flow_node_internal_state::FlowNodeInternalStateKey;
 use flow_node_state::FlowNodeStateKey;
 use handler::HandlerKey;
+use identity::IdentityKey;
+use identity_role::IdentityRoleKey;
 use index::IndexKey;
 use index_entry::IndexEntryKey;
 use kind::KeyKind;
@@ -42,8 +44,6 @@ use system_version::SystemVersionKey;
 use table::TableKey;
 use token::TokenKey;
 use transaction_version::TransactionVersionKey;
-use user::UserKey;
-use user_role::UserRoleKey;
 use view::ViewKey;
 
 use crate::{
@@ -66,6 +66,8 @@ pub mod flow_node_internal_state;
 pub mod flow_node_state;
 pub mod flow_version;
 pub mod handler;
+pub mod identity;
+pub mod identity_role;
 pub mod index;
 pub mod index_entry;
 pub mod kind;
@@ -101,8 +103,6 @@ pub mod system_version;
 pub mod table;
 pub mod token;
 pub mod transaction_version;
-pub mod user;
-pub mod user_role;
 pub mod variant_handler;
 pub mod view;
 #[derive(Debug)]
@@ -149,10 +149,10 @@ pub enum Key {
 	Series(SeriesKey),
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
-	User(UserKey),
+	Identity(IdentityKey),
 	Authentication(AuthenticationKey),
 	Role(RoleKey),
-	UserRole(UserRoleKey),
+	IdentityRole(IdentityRoleKey),
 	Policy(PolicyKey),
 	PolicyOp(PolicyOpKey),
 	Token(TokenKey),
@@ -203,10 +203,10 @@ impl Key {
 			Key::Series(key) => key.encode(),
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
-			Key::User(key) => key.encode(),
+			Key::Identity(key) => key.encode(),
 			Key::Authentication(key) => key.encode(),
 			Key::Role(key) => key.encode(),
-			Key::UserRole(key) => key.encode(),
+			Key::IdentityRole(key) => key.encode(),
 			Key::Policy(key) => key.encode(),
 			Key::PolicyOp(key) => key.encode(),
 			Key::Token(key) => key.encode(),
@@ -335,10 +335,10 @@ impl Key {
 			KeyKind::Series => SeriesKey::decode(&key).map(Self::Series),
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(&key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(&key).map(Self::SeriesMetadata),
-			KeyKind::User => UserKey::decode(&key).map(Self::User),
+			KeyKind::Identity => IdentityKey::decode(&key).map(Self::Identity),
 			KeyKind::Authentication => AuthenticationKey::decode(&key).map(Self::Authentication),
 			KeyKind::Role => RoleKey::decode(&key).map(Self::Role),
-			KeyKind::UserRole => UserRoleKey::decode(&key).map(Self::UserRole),
+			KeyKind::IdentityRole => IdentityRoleKey::decode(&key).map(Self::IdentityRole),
 			KeyKind::Policy => PolicyKey::decode(&key).map(Self::Policy),
 			KeyKind::PolicyOp => PolicyOpKey::decode(&key).map(Self::PolicyOp),
 			KeyKind::Migration | KeyKind::MigrationEvent => {

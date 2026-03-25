@@ -102,14 +102,14 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_handler(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.user_def {
+		for change in &ctx.changes.identity_def {
 			let id = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
 				.map(|u| u.id)
 				.expect("Change must have either pre or post state");
-			self.catalog.set_user(id, version, change.post.clone());
+			self.catalog.set_identity(id, version, change.post.clone());
 		}
 
 		for change in &ctx.changes.role_def {
@@ -122,13 +122,13 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_role(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.user_role_def {
+		for change in &ctx.changes.identity_role_def {
 			let ur = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
 				.expect("Change must have either pre or post state");
-			self.catalog.set_user_role(ur.user_id, ur.role_id, version, change.post.clone());
+			self.catalog.set_identity_role(ur.identity, ur.role_id, version, change.post.clone());
 		}
 
 		for change in &ctx.changes.policy_def {

@@ -13,13 +13,13 @@ pub(crate) fn revoke(services: &Services, txn: &mut AdminTransaction, plan: Revo
 	let user_name = plan.user.text();
 
 	let role = services.catalog.get_role_by_name(&mut Transaction::Admin(&mut *txn), role_name)?;
-	let user = services.catalog.get_user_by_name(&mut Transaction::Admin(&mut *txn), user_name)?;
+	let identity = services.catalog.get_identity_by_name(&mut Transaction::Admin(&mut *txn), user_name)?;
 
-	services.catalog.revoke_role(txn, user.id, role.id)?;
+	services.catalog.revoke_role(txn, identity.id, role.id)?;
 
 	Ok(Columns::single_row([
 		("role", Value::Utf8(role_name.to_string())),
-		("user", Value::Utf8(user_name.to_string())),
+		("identity", Value::Utf8(user_name.to_string())),
 		("revoked", Value::Boolean(true)),
 	]))
 }

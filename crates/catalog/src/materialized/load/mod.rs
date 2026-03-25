@@ -4,6 +4,8 @@
 pub mod config;
 pub mod dictionary;
 pub mod flow;
+pub mod identity;
+pub mod identity_role;
 pub mod namespace;
 pub mod operator_retention_policy;
 pub mod policy;
@@ -14,13 +16,13 @@ pub mod role;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
-pub mod user;
-pub mod user_role;
 pub mod view;
 
 use config::load_configs;
 use dictionary::load_dictionaries;
 use flow::load_flows;
+use identity::load_identities;
+use identity_role::load_identity_roles;
 use namespace::load_namespaces;
 use operator_retention_policy::load_operator_retention_policies;
 use policy::load_policies;
@@ -32,8 +34,6 @@ use role::load_roles;
 use subscription::load_subscriptions;
 use sumtype::load_sumtypes;
 use table::load_tables;
-use user::load_users;
-use user_role::load_user_roles;
 use view::load_views;
 
 use super::MaterializedCatalog;
@@ -78,9 +78,9 @@ impl MaterializedCatalogLoader {
 
 		load_subscriptions(rx, catalog)?;
 
-		load_users(rx, catalog)?;
+		load_identities(rx, catalog)?;
 		load_roles(rx, catalog)?;
-		load_user_roles(rx, catalog)?;
+		load_identity_roles(rx, catalog)?;
 		load_policies(rx, catalog)?;
 
 		Ok(())

@@ -1,31 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::identity::IdentityId;
+
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::user::{RoleId, UserId},
+	interface::catalog::identity::RoleId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct UserRoleKey {
-	pub user: UserId,
+pub struct IdentityRoleKey {
+	pub identity: IdentityId,
 	pub role: RoleId,
 }
 
-impl UserRoleKey {
-	pub fn new(user: UserId, role: RoleId) -> Self {
+impl IdentityRoleKey {
+	pub fn new(identity: IdentityId, role: RoleId) -> Self {
 		Self {
-			user,
+			identity,
 			role,
 		}
 	}
 
-	pub fn encoded(user: UserId, role: RoleId) -> EncodedKey {
-		Self::new(user, role).encode()
+	pub fn encoded(identity: IdentityId, role: RoleId) -> EncodedKey {
+		Self::new(identity, role).encode()
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
@@ -36,11 +38,11 @@ impl UserRoleKey {
 		EncodedKeyRange::start_end(Some(start.to_encoded_key()), Some(end.to_encoded_key()))
 	}
 
-	pub fn user_scan(user: UserId) -> EncodedKeyRange {
-		let mut start = KeySerializer::with_capacity(10);
-		start.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(user);
-		let mut end = KeySerializer::with_capacity(10);
-		end.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(user);
+	pub fn identity_scan(identity: IdentityId) -> EncodedKeyRange {
+		let mut start = KeySerializer::with_capacity(18);
+		start.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_identity_id(&identity);
+		let mut end = KeySerializer::with_capacity(18);
+		end.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_identity_id(&identity);
 		// The end key needs to be exclusive-upper, so we add a byte past the prefix
 		let start_key = start.to_encoded_key();
 		let mut end_bytes = end.to_encoded_key().to_vec();
@@ -49,12 +51,16 @@ impl UserRoleKey {
 	}
 }
 
-impl EncodableKey for UserRoleKey {
-	const KIND: KeyKind = KeyKind::UserRole;
+impl EncodableKey for IdentityRoleKey {
+	const KIND: KeyKind = KeyKind::IdentityRole;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(18);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.user).extend_u64(self.role);
+		let mut serializer = KeySerializer::with_capacity(26);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_identity_id(&self.identity)
+			.extend_u64(self.role);
 		serializer.to_encoded_key()
 	}
 
@@ -68,10 +74,10 @@ impl EncodableKey for UserRoleKey {
 		if kind != Self::KIND {
 			return None;
 		}
-		let user = de.read_u64().ok()?;
+		let identity = de.read_identity_id().ok()?;
 		let role = de.read_u64().ok()?;
 		Some(Self {
-			user,
+			identity,
 			role,
 		})
 	}

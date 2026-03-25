@@ -477,11 +477,11 @@ pub enum LogicalPlan<'bump> {
 	// Closures
 	DefineClosure(DefineClosureNode<'bump>),
 	// Auth/Permissions
-	CreateUser(CreateUserNode<'bump>),
+	CreateIdentity(CreateIdentityNode<'bump>),
 	CreateRole(CreateRoleNode<'bump>),
 	Grant(GrantNode<'bump>),
 	Revoke(RevokeNode<'bump>),
-	DropUser(DropUserNode<'bump>),
+	DropIdentity(DropIdentityNode<'bump>),
 	DropRole(DropRoleNode<'bump>),
 	CreateAuthentication(CreateAuthenticationNode<'bump>),
 	DropAuthentication(DropAuthenticationNode<'bump>),
@@ -1010,7 +1010,7 @@ pub struct DropSubscriptionNode<'bump> {
 // === Auth/Permissions logical plan nodes ===
 
 #[derive(Debug)]
-pub struct CreateUserNode<'bump> {
+pub struct CreateIdentityNode<'bump> {
 	pub name: BumpFragment<'bump>,
 }
 
@@ -1032,7 +1032,7 @@ pub struct RevokeNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct DropUserNode<'bump> {
+pub struct DropIdentityNode<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
 }

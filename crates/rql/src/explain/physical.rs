@@ -102,8 +102,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropSumType(_) => unimplemented!(),
 		PhysicalPlan::DropSubscription(_) => unimplemented!(),
 		PhysicalPlan::DropSeries(_) => unimplemented!(),
-		PhysicalPlan::CreateUser(n) => {
-			write_node_header(output, prefix, is_last, &format!("CreateUser name={}", n.name.text()));
+		PhysicalPlan::CreateIdentity(n) => {
+			write_node_header(output, prefix, is_last, &format!("CreateIdentity name={}", n.name.text()));
 		}
 		PhysicalPlan::CreateRole(n) => {
 			write_node_header(output, prefix, is_last, &format!("CreateRole name={}", n.name.text()));
@@ -124,12 +124,12 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				&format!("Revoke role={} user={}", n.role.text(), n.user.text()),
 			);
 		}
-		PhysicalPlan::DropUser(n) => {
+		PhysicalPlan::DropIdentity(n) => {
 			write_node_header(
 				output,
 				prefix,
 				is_last,
-				&format!("DropUser name={} if_exists={}", n.name.text(), n.if_exists),
+				&format!("DropIdentity name={} if_exists={}", n.name.text(), n.if_exists),
 			);
 		}
 		PhysicalPlan::DropRole(n) => {

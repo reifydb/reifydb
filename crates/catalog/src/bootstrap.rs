@@ -24,7 +24,7 @@ use crate::{
 	catalog::{Catalog, namespace::NamespaceToCreate, procedure::ProcedureToCreate},
 	materialized::{
 		MaterializedCatalog,
-		load::{MaterializedCatalogLoader, user::load_users},
+		load::{MaterializedCatalogLoader, identity::load_identities},
 	},
 	schema::{SchemaRegistry, load::SchemaRegistryLoader},
 };
@@ -135,22 +135,22 @@ pub fn bootstrap_system_procedures(
 	Ok(())
 }
 
-/// Bootstrap the root user in the catalog.
+/// Bootstrap the root identity in the catalog.
 ///
-/// Creates a user named "root" with `IdentityId::root()` as its identity.
-/// This makes root a real catalog user that can have authentication attached
+/// Creates an identity named "root" with `IdentityId::root()`.
+/// This makes root a real catalog identity that can have authentication attached
 /// (e.g., `CREATE AUTHENTICATION FOR root { method: token; token: '...' }`).
 ///
-/// Skips creation if the root user already exists.
-pub fn bootstrap_root_user(
+/// Skips creation if the root identity already exists.
+pub fn bootstrap_root_identity(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	// Check if root user already exists via storage scan
+	// Check if root identity already exists via storage scan
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
-	if CatalogStore::find_user_by_name(&mut Transaction::Query(&mut qt), "root")?.is_some() {
+	if CatalogStore::find_identity_by_name(&mut Transaction::Query(&mut qt), "root")?.is_some() {
 		return Ok(());
 	}
 	drop(qt);
@@ -163,12 +163,12 @@ pub fn bootstrap_root_user(
 		IdentityId::system(),
 	)?;
 
-	CatalogStore::create_user_with_identity(&mut admin, "root", IdentityId::root())?;
+	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root())?;
 	admin.commit()?;
 
-	// Reload materialized catalog to pick up the new user
+	// Reload materialized catalog to pick up the new identity
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
-	load_users(&mut Transaction::Query(&mut qt), catalog)?;
+	load_identities(&mut Transaction::Query(&mut qt), catalog)?;
 
 	Ok(())
 }

@@ -17,7 +17,7 @@ pub mod schema;
 pub(crate) fn convert_authentication(multi: MultiVersionRow) -> AuthenticationDef {
 	let row = multi.row;
 	let id = authentication::SCHEMA.get_u64(&row, authentication::ID);
-	let user_id = authentication::SCHEMA.get_u64(&row, authentication::USER_ID);
+	let identity = authentication::SCHEMA.get_identity_id(&row, authentication::IDENTITY);
 	let method = authentication::SCHEMA.get_utf8(&row, authentication::METHOD).to_string();
 	let properties_json = authentication::SCHEMA.get_utf8(&row, authentication::PROPERTIES).to_string();
 
@@ -25,7 +25,7 @@ pub(crate) fn convert_authentication(multi: MultiVersionRow) -> AuthenticationDe
 
 	AuthenticationDef {
 		id,
-		user_id,
+		identity,
 		method,
 		properties,
 	}

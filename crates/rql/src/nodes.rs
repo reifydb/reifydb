@@ -137,11 +137,11 @@ pub enum PhysicalPlan {
 	// Auto-scalarization for 1x1 frames
 	Scalarize(ScalarizeNode),
 	// Auth/Permissions
-	CreateUser(CreateUserNode),
+	CreateIdentity(CreateIdentityNode),
 	CreateRole(CreateRoleNode),
 	Grant(GrantNode),
 	Revoke(RevokeNode),
-	DropUser(DropUserNode),
+	DropIdentity(DropIdentityNode),
 	DropRole(DropRoleNode),
 	CreateAuthentication(CreateAuthenticationNode),
 	DropAuthentication(DropAuthenticationNode),
@@ -903,7 +903,7 @@ pub struct DropSeriesNode {
 // === Auth/Permissions physical plan nodes ===
 
 #[derive(Debug, Clone)]
-pub struct CreateUserNode {
+pub struct CreateIdentityNode {
 	pub name: Fragment,
 }
 
@@ -925,7 +925,7 @@ pub struct RevokeNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct DropUserNode {
+pub struct DropIdentityNode {
 	pub name: Fragment,
 	pub if_exists: bool,
 }

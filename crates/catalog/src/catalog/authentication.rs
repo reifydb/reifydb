@@ -4,9 +4,10 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::catalog::{
-	authentication::AuthenticationDef, change::CatalogTrackAuthenticationChangeOperations, user::UserId,
+	authentication::AuthenticationDef, change::CatalogTrackAuthenticationChangeOperations,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_type::value::identity::IdentityId;
 use tracing::instrument;
 
 use crate::{CatalogStore, Result, catalog::Catalog};
@@ -16,23 +17,23 @@ impl Catalog {
 	pub fn create_authentication(
 		&self,
 		txn: &mut AdminTransaction,
-		user_id: UserId,
+		identity: IdentityId,
 		method: &str,
 		properties: HashMap<String, String>,
 	) -> Result<AuthenticationDef> {
-		let auth = CatalogStore::create_authentication(txn, user_id, method, properties)?;
+		let auth = CatalogStore::create_authentication(txn, identity, method, properties)?;
 		txn.track_authentication_def_created(auth.clone())?;
 		Ok(auth)
 	}
 
-	#[instrument(name = "catalog::authentication::find_by_user_and_method", level = "trace", skip(self, txn))]
-	pub fn find_authentication_by_user_and_method(
+	#[instrument(name = "catalog::authentication::find_by_identity_and_method", level = "trace", skip(self, txn))]
+	pub fn find_authentication_by_identity_and_method(
 		&self,
 		txn: &mut Transaction<'_>,
-		user_id: UserId,
+		identity: IdentityId,
 		method: &str,
 	) -> Result<Option<AuthenticationDef>> {
-		CatalogStore::find_authentication_by_user_and_method(txn, user_id, method)
+		CatalogStore::find_authentication_by_identity_and_method(txn, identity, method)
 	}
 
 	#[instrument(name = "catalog::authentication::list_by_method", level = "trace", skip(self, txn))]
@@ -45,10 +46,15 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::authentication::drop", level = "debug", skip(self, txn))]
-	pub fn drop_authentication(&self, txn: &mut AdminTransaction, user_id: UserId, method: &str) -> Result<()> {
-		if let Some(auth) = CatalogStore::find_authentication_by_user_and_method(
+	pub fn drop_authentication(
+		&self,
+		txn: &mut AdminTransaction,
+		identity: IdentityId,
+		method: &str,
+	) -> Result<()> {
+		if let Some(auth) = CatalogStore::find_authentication_by_identity_and_method(
 			&mut Transaction::Admin(&mut *txn),
-			user_id,
+			identity,
 			method,
 		)? {
 			CatalogStore::drop_authentication(txn, auth.id)?;

@@ -16,6 +16,7 @@ use reifydb_core::{
 				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
 				SubscriptionId, TableId, TestId, ViewId,
 			},
+			identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
 			migration::MigrationDef,
 			namespace::Namespace,
 			policy::{PolicyDef, PolicyId},
@@ -26,7 +27,6 @@ use reifydb_core::{
 			sumtype::SumTypeDef,
 			table::TableDef,
 			test::TestDef,
-			user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 			view::ViewDef,
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
@@ -43,11 +43,11 @@ use crate::{
 	TransactionId,
 	change::{
 		TransactionalAuthenticationChanges, TransactionalChanges, TransactionalDictionaryChanges,
-		TransactionalFlowChanges, TransactionalHandlerChanges, TransactionalMigrationChanges,
-		TransactionalNamespaceChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalSeriesChanges,
-		TransactionalSubscriptionChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
-		TransactionalTestChanges, TransactionalUserChanges, TransactionalUserRoleChanges,
+		TransactionalFlowChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
+		TransactionalIdentityRoleChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
+		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
+		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
 		TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
@@ -394,20 +394,20 @@ impl TransactionalHandlerChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalUserChanges for QueryTransaction {
-	fn find_user(&self, _id: UserId) -> Option<&UserDef> {
+impl TransactionalIdentityChanges for QueryTransaction {
+	fn find_identity(&self, _id: IdentityId) -> Option<&IdentityDef> {
 		None
 	}
 
-	fn find_user_by_name(&self, _name: &str) -> Option<&UserDef> {
+	fn find_identity_by_name(&self, _name: &str) -> Option<&IdentityDef> {
 		None
 	}
 
-	fn is_user_deleted(&self, _id: UserId) -> bool {
+	fn is_identity_deleted(&self, _id: IdentityId) -> bool {
 		false
 	}
 
-	fn is_user_deleted_by_name(&self, _name: &str) -> bool {
+	fn is_identity_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }
@@ -430,12 +430,12 @@ impl TransactionalRoleChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalUserRoleChanges for QueryTransaction {
-	fn find_user_role(&self, _user: UserId, _role: RoleId) -> Option<&UserRoleDef> {
+impl TransactionalIdentityRoleChanges for QueryTransaction {
+	fn find_identity_role(&self, _identity: IdentityId, _role: RoleId) -> Option<&IdentityRoleDef> {
 		None
 	}
 
-	fn is_user_role_deleted(&self, _user: UserId, _role: RoleId) -> bool {
+	fn is_identity_role_deleted(&self, _identity: IdentityId, _role: RoleId) -> bool {
 		false
 	}
 }
@@ -481,9 +481,9 @@ impl TransactionalAuthenticationChanges for QueryTransaction {
 		None
 	}
 
-	fn find_authentication_by_user_and_method(
+	fn find_authentication_by_identity_and_method(
 		&self,
-		_user_id: UserId,
+		_identity: IdentityId,
 		_method: &str,
 	) -> Option<&AuthenticationDef> {
 		None

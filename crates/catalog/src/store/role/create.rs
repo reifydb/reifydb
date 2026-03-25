@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::user::RoleDef, key::role::RoleKey};
+use reifydb_core::{interface::catalog::identity::RoleDef, key::role::RoleKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
 

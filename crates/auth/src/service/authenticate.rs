@@ -12,14 +12,14 @@ use super::{AuthResponse, AuthService, generate_session_token};
 use crate::error::AuthError;
 
 impl AuthService {
-	/// Authenticate a user with the given method and credentials.
+	/// Authenticate an identity with the given method and credentials.
 	///
 	/// For single-step methods (password, token), returns `Authenticated` or `Failed`.
 	/// For challenge-response methods, may return `Challenge` first, then `Authenticated`
 	/// on the second call with the challenge response.
 	///
-	/// For Solana authentication, if the user does not exist and the credentials contain
-	/// a `public_key`, the user and authentication method are auto-provisioned before
+	/// For Solana authentication, if the identity does not exist and the credentials contain
+	/// a `public_key`, the identity and authentication method are auto-provisioned before
 	/// proceeding with the challenge-response flow.
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
 	pub fn authenticate(
@@ -33,12 +33,12 @@ impl AuthService {
 			return self.authenticate_challenge_response(&challenge_id, credentials);
 		}
 
-		// Begin a read-only transaction to look up user and credentials
+		// Begin a read-only transaction to look up identity and credentials
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		// Look up user
-		let user = match catalog.find_user_by_name(&mut Transaction::Query(&mut txn), principal)? {
+		// Look up identity
+		let ident = match catalog.find_identity_by_name(&mut Transaction::Query(&mut txn), principal)? {
 			Some(u) => u,
 			None => {
 				drop(txn);
@@ -58,16 +58,16 @@ impl AuthService {
 			}
 		};
 
-		if !user.enabled {
+		if !ident.enabled {
 			return Ok(AuthResponse::Failed {
-				reason: "user is disabled".to_string(),
+				reason: "identity is disabled".to_string(),
 			});
 		}
 
 		// Look up stored auth credentials for this method
-		let stored_auth = match catalog.find_authentication_by_user_and_method(
+		let stored_auth = match catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Query(&mut txn),
-			user.id,
+			ident.id,
 			method,
 		)? {
 			Some(a) => a,
@@ -89,9 +89,9 @@ impl AuthService {
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
-				self.persist_token(&token, user.identity, user.id)?;
+				self.persist_token(&token, ident.id)?;
 				Ok(AuthResponse::Authenticated {
-					identity: user.identity,
+					identity: ident.id,
 					token,
 				})
 			}
@@ -137,22 +137,23 @@ impl AuthService {
 		// Remove the challenge_id from credentials before passing to provider
 		credentials.remove("challenge_id");
 
-		// Look up user and auth again (challenge may have been issued a while ago)
+		// Look up identity and auth again (challenge may have been issued a while ago)
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
-		let user = match catalog.find_user_by_name(&mut Transaction::Query(&mut txn), &challenge.principal)? {
-			Some(u) if u.enabled => u,
-			_ => {
-				return Ok(AuthResponse::Failed {
-					reason: "invalid credentials".to_string(),
-				});
-			}
-		};
+		let ident =
+			match catalog.find_identity_by_name(&mut Transaction::Query(&mut txn), &challenge.principal)? {
+				Some(u) if u.enabled => u,
+				_ => {
+					return Ok(AuthResponse::Failed {
+						reason: "invalid credentials".to_string(),
+					});
+				}
+			};
 
-		let stored_auth = match catalog.find_authentication_by_user_and_method(
+		let stored_auth = match catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Query(&mut txn),
-			user.id,
+			ident.id,
 			&challenge.method,
 		)? {
 			Some(a) => a,
@@ -172,9 +173,9 @@ impl AuthService {
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				let token = generate_session_token(&self.rng);
-				self.persist_token(&token, user.identity, user.id)?;
+				self.persist_token(&token, ident.id)?;
 				Ok(AuthResponse::Authenticated {
-					identity: user.identity,
+					identity: ident.id,
 					token,
 				})
 			}

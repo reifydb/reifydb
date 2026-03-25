@@ -50,7 +50,7 @@ pub enum AuthResponse {
 		challenge_id: String,
 		payload: HashMap<String, String>,
 	},
-	/// Authentication failed (wrong credentials, unknown user, etc.).
+	/// Authentication failed (wrong credentials, unknown identity, etc.).
 	Failed {
 		reason: String,
 	},
@@ -85,7 +85,7 @@ pub struct Inner {
 
 /// Shared authentication service.
 ///
-/// Coordinates between the user catalog, authentication providers, and
+/// Coordinates between the identity catalog, authentication providers, and
 /// token/challenge stores. All transports and embedded mode call through
 /// this single service.
 ///
@@ -132,10 +132,10 @@ impl AuthService {
 	}
 
 	/// Persist a token to the database.
-	pub(super) fn persist_token(&self, token: &str, identity: IdentityId, user: u64) -> Result<TokenDef, Error> {
+	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<TokenDef, Error> {
 		let mut admin = self.engine.begin_admin()?;
 
-		let def = create_token(&mut admin, token, identity, user, self.expires_at(), self.now())?;
+		let def = create_token(&mut admin, token, identity, self.expires_at(), self.now())?;
 
 		admin.commit()?;
 		Ok(def)

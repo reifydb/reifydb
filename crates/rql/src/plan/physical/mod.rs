@@ -167,11 +167,11 @@ pub enum PhysicalPlan<'bump> {
 	Window(WindowNode<'bump>),
 	Scalarize(ScalarizeNode<'bump>),
 	// Auth/Permissions
-	CreateUser(nodes::CreateUserNode),
+	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),
 	Grant(nodes::GrantNode),
 	Revoke(nodes::RevokeNode),
-	DropUser(nodes::DropUserNode),
+	DropIdentity(nodes::DropIdentityNode),
 	DropRole(nodes::DropRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
@@ -806,8 +806,8 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				// Auth/Permissions - pass through logical to physical directly
-				LogicalPlan::CreateUser(node) => {
-					stack.push(PhysicalPlan::CreateUser(nodes::CreateUserNode {
+				LogicalPlan::CreateIdentity(node) => {
+					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
 					}));
 				}
@@ -828,8 +828,8 @@ impl<'bump> Compiler<'bump> {
 						user: self.interner.intern_fragment(&node.user),
 					}));
 				}
-				LogicalPlan::DropUser(node) => {
-					stack.push(PhysicalPlan::DropUser(nodes::DropUserNode {
+				LogicalPlan::DropIdentity(node) => {
+					stack.push(PhysicalPlan::DropIdentity(nodes::DropIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
 						if_exists: node.if_exists,
 					}));

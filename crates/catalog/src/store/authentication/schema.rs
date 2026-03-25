@@ -7,14 +7,14 @@ pub(crate) mod authentication {
 	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
-	pub(crate) const USER_ID: usize = 1;
+	pub(crate) const IDENTITY: usize = 1;
 	pub(crate) const METHOD: usize = 2;
 	pub(crate) const PROPERTIES: usize = 3;
 
 	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
 			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("user_id", Type::Uint8),
+			SchemaField::unconstrained("identity", Type::IdentityId),
 			SchemaField::unconstrained("method", Type::Utf8),
 			SchemaField::unconstrained("properties", Type::Utf8),
 		])
