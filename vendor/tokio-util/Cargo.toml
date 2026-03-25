@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "tokio-util"
-version = "0.7.17"
+version = "0.7.18"
 authors = ["Tokio Contributors <team@tokio.rs>"]
 build = false
 autolib = false
@@ -32,13 +32,13 @@ repository = "https://github.com/tokio-rs/tokio"
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = [
+rustc-args = [
     "--cfg",
     "docsrs",
     "--cfg",
     "tokio_unstable",
 ]
-rustc-args = [
+rustdoc-args = [
     "--cfg",
     "docsrs",
     "--cfg",
@@ -136,6 +136,10 @@ name = "io_reader_stream"
 path = "tests/io_reader_stream.rs"
 
 [[test]]
+name = "io_simplex"
+path = "tests/io_simplex.rs"
+
+[[test]]
 name = "io_sink_writer"
 path = "tests/io_sink_writer.rs"
 
@@ -225,7 +229,7 @@ version = "0.4.4"
 optional = true
 
 [dependencies.tokio]
-version = "1.28.0"
+version = "1.44.0"
 features = ["sync"]
 
 [dependencies.tracing]
@@ -258,6 +262,13 @@ version = "0.1"
 
 [dev-dependencies.tokio-test]
 version = "0.4.0"
+
+[target."cfg(loom)".dev-dependencies.loom]
+version = "0.7"
+features = [
+    "futures",
+    "checkpoint",
+]
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

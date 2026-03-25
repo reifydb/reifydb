@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "tracing-opentelemetry"
-version = "0.32.0"
+version = "0.32.1"
 build = false
 autolib = false
 autobins = false
@@ -52,7 +52,6 @@ default = [
 ]
 metrics = [
     "opentelemetry/metrics",
-    "opentelemetry_sdk/metrics",
     "smallvec",
 ]
 
@@ -77,6 +76,10 @@ path = "examples/opentelemetry-otlp.rs"
 name = "opentelemetry-remote-context"
 path = "examples/opentelemetry-remote-context.rs"
 
+[[example]]
+name = "otel_context"
+path = "examples/otel_context.rs"
+
 [[test]]
 name = "batch_global_subscriber"
 path = "tests/batch_global_subscriber.rs"
@@ -96,6 +99,10 @@ path = "tests/follows_from.rs"
 [[test]]
 name = "metrics_publishing"
 path = "tests/metrics_publishing.rs"
+
+[[test]]
+name = "otel_context"
+path = "tests/otel_context.rs"
 
 [[test]]
 name = "parallel"
@@ -132,21 +139,9 @@ version = "0.31.0"
 features = ["trace"]
 default-features = false
 
-[dependencies.opentelemetry_sdk]
-version = "0.31.0"
-features = ["trace"]
-default-features = false
-
-[dependencies.rustversion]
-version = "1.0.9"
-
 [dependencies.smallvec]
 version = "1.0"
 optional = true
-
-[dependencies.thiserror]
-version = "2"
-default-features = false
 
 [dependencies.tracing]
 version = "0.1.35"
@@ -162,23 +157,16 @@ optional = true
 default-features = false
 
 [dependencies.tracing-subscriber]
-version = "0.3.0"
+version = "0.3.22"
 features = [
     "registry",
     "std",
 ]
 default-features = false
 
-[dev-dependencies.async-trait]
-version = "0.1.56"
-
 [dev-dependencies.criterion]
 version = "0.5.1"
 features = ["html_reports"]
-default-features = false
-
-[dev-dependencies.futures-util]
-version = "0.3.17"
 default-features = false
 
 [dev-dependencies.opentelemetry]
@@ -210,7 +198,6 @@ features = [
 version = "0.31.0"
 features = [
     "trace",
-    "rt-tokio",
     "experimental_metrics_custom_reader",
     "testing",
 ]
@@ -219,9 +206,6 @@ default-features = false
 [dev-dependencies.tokio]
 version = "1"
 features = ["full"]
-
-[dev-dependencies.tokio-stream]
-version = "0.1"
 
 [dev-dependencies.tracing]
 version = "0.1.35"
@@ -255,3 +239,6 @@ features = [
     "flamegraph",
     "criterion",
 ]
+
+[lints.rust]
+unnameable_types = "warn"

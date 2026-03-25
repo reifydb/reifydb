@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "opentelemetry-otlp"
-version = "0.31.0"
+version = "0.31.1"
 build = false
 autolib = false
 autobins = false
@@ -125,6 +125,9 @@ serialize = [
     "serde_json",
 ]
 tls = ["tonic/tls-ring"]
+tls-aws-lc = ["tonic/tls-aws-lc"]
+tls-provider-agnostic = ["tonic/_tls-any"]
+tls-ring = ["tonic/tls-ring"]
 tls-roots = [
     "tls",
     "tonic/tls-native-roots",

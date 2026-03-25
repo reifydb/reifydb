@@ -517,14 +517,14 @@ impl GraphemeCursor {
         for ch in chunk.chars().rev() {
             if self.grapheme_category(ch) != gr::GC_Regional_Indicator {
                 self.ris_count = Some(ris_count);
-                self.decide((ris_count % 2) == 0);
+                self.decide(ris_count.is_multiple_of(2));
                 return;
             }
             ris_count += 1;
         }
         self.ris_count = Some(ris_count);
         if chunk_start == 0 {
-            self.decide((ris_count % 2) == 0);
+            self.decide(ris_count.is_multiple_of(2));
         } else {
             self.pre_context_offset = Some(chunk_start);
             self.state = GraphemeState::Regional;
@@ -800,13 +800,14 @@ impl GraphemeCursor {
                 self.cat_after = self.cat_before.take();
                 self.state = GraphemeState::Unknown;
                 if let Some(incb_linker_count) = self.incb_linker_count {
-                    self.ris_count = if incb_linker_count > 0 && crate::tables::is_incb_linker(ch) {
-                        Some(incb_linker_count - 1)
-                    } else if crate::tables::derived_property::InCB_Extend(ch) {
-                        Some(incb_linker_count)
-                    } else {
-                        None
-                    };
+                    self.incb_linker_count =
+                        if incb_linker_count > 0 && crate::tables::is_incb_linker(ch) {
+                            Some(incb_linker_count - 1)
+                        } else if crate::tables::derived_property::InCB_Extend(ch) {
+                            Some(incb_linker_count)
+                        } else {
+                            None
+                        };
                 }
                 if let Some(ris_count) = self.ris_count {
                     self.ris_count = if ris_count > 0 {

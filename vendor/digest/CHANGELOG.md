@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.11.1 (UNRELEASED)
+## 0.11.2 (2026-03-13)
+### Changed
+- Do not implement `Clone` as part of `(Reset)MacTraits` in the `buffer_fixed!` macro ([#2341])
+- `EagerHash` trait to be a sub-trait of `Clone` ([#2341])
+
+[#2341]: https://github.com/RustCrypto/traits/pull/2341
+
+## 0.11.1 (2026-02-25) [YANKED]
+Note: this version was yanked because v0.11.2 introduces minor breaking changes
+affecting only pre-release versions of downstream crates.
+
 ### Added
 - `SmallBlockSizeUser` helper trait. The trait is a sub-trait of `BlockSizeUser`
   with `BlockSize` bounded by `block_buffer::BlockSizes`. ([#2309])
@@ -16,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#2309]: https://github.com/RustCrypto/traits/pull/2309
 
 ## 0.11.0 (2026-02-13) [YANKED]
+Note: this version was yanked because v0.11.1 introduces breaking changes.
+Users should migrate to `digest` v0.11.1 and `crypto-common` v0.2.1 using `cargo update`.
+
 ### Added
 - `CustomizedInit` trait ([#1334])
 - `SerializableState` support ([#1369])

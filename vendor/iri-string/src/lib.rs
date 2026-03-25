@@ -3,7 +3,7 @@
 //!
 //! Note that this crate does not have any extra knowledge about protocols.
 //! Comparisons between IRI strings by `PartialEq` and `Eq` is implemented as [simple string
-//! comparison](https://tools.ietf.org/html/rfc3986#section-6.2.1).
+//! comparison](https://www.rfc-editor.org/rfc/rfc3986.html#section-6.2.1).
 //! You should implement by yourself or use another crate to use such extra knowledge to compare
 //! IRIs / URIs.
 //!
@@ -34,6 +34,11 @@
 //! [`percent_encode` module][`percent_encode`] provides a converter to encode
 //! user-provided string into percent-encoded one (if syntax requires so).
 //!
+//! Functions in this module is intended for manual URI components manipulation.
+//! If you need to convert a Unicode IRI into ASCII-only URI, check
+//! `encode_to_uri` methods of IRI string types (such as
+//! [`IriStr::encode_to_uri`][`types::IriStr::encode_to_uri`]).
+//!
 //! ## IRI builder
 //!
 //! [`build` module][`build`] provides IRI builder.
@@ -63,7 +68,7 @@
 //!
 //! * `serde`
 //!     + Enables serde support.
-//!     + Implement `Serailize` and `Deserialize` traits for IRI / URI types.
+//!     + Implements `Serailize` and `Deserialize` traits for IRI / URI types.
 //! * `memchr`
 //!     + Enables faster internal character search.
 //!
@@ -95,13 +100,13 @@
 //! > character. When authority is not present, the path cannot begin with two slash characters
 //! > ("//").
 //! >
-//! > --- [RFC 3986, section 3. Syntax Components](https://tools.ietf.org/html/rfc3986#section-3).
+//! > --- [RFC 3986, section 3. Syntax Components](https://www.rfc-editor.org/rfc/rfc3986.html#section-3).
 //!
 //! > If a URI contains an authority component, then the path component must either be empty or
 //! > begin with a slash ("/") character. If a URI does not contain an authority component, then the
 //! > path cannot begin with two slash characters ("//").
 //! >
-//! > --- [RFC 3986, section 3.3. Path](https://tools.ietf.org/html/rfc3986#section-3.3)
+//! > --- [RFC 3986, section 3.3. Path](https://www.rfc-editor.org/rfc/rfc3986.html#section-3.3)
 //!
 //! We should interpret them as "if `authority` rule is completely unused (i.e. does not match any
 //! strings **including empty string**), path cannot start with `//`".
@@ -129,8 +134,8 @@
 //!
 //! For details, see the documentation of [`normalize`] module.
 //!
-//! [RFC 3986]: https://tools.ietf.org/html/rfc3986
-//! [RFC 3987]: https://tools.ietf.org/html/rfc3987
+//! [RFC 3986]: https://www.rfc-editor.org/rfc/rfc3986.html
+//! [RFC 3987]: https://www.rfc-editor.org/rfc/rfc3987.html
 //! [`RiReferenceStr::resolve_against()`]: `types::RiReferenceStr::resolve_against`
 //! [`RiRelativeStr::resolve_against()`]: `types::RiRelativeStr::resolve_against`
 #![warn(missing_docs)]
@@ -138,7 +143,7 @@
 #![warn(clippy::missing_docs_in_private_items)]
 #![warn(clippy::undocumented_unsafe_blocks)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

@@ -1,5 +1,6 @@
 use crate::stack::IdValueStack;
 use crate::{OtelData, OtelDataState};
+pub use filtered::FilteredOpenTelemetryLayer;
 use opentelemetry::ContextGuard;
 use opentelemetry::{
     trace::{self as otel, noop, Span, SpanBuilder, SpanKind, Status, TraceContextExt},
@@ -17,15 +18,19 @@ use tracing_core::{field, Event, Subscriber};
 #[cfg(feature = "tracing-log")]
 use tracing_log::NormalizeEvent;
 use tracing_subscriber::layer::Context;
-use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::layer::Filter;
+use tracing_subscriber::registry::{ExtensionsMut, LookupSpan};
 use tracing_subscriber::Layer;
 #[cfg(all(target_arch = "wasm32", not(target_os = "wasi")))]
 use web_time::Instant;
+
+mod filtered;
 
 const SPAN_NAME_FIELD: &str = "otel.name";
 const SPAN_KIND_FIELD: &str = "otel.kind";
 const SPAN_STATUS_CODE_FIELD: &str = "otel.status_code";
 const SPAN_STATUS_DESCRIPTION_FIELD: &str = "otel.status_description";
+const SPAN_EVENT_COUNT_FIELD: &str = "otel.tracing_event_count";
 
 const EVENT_EXCEPTION_NAME: &str = "exception";
 const FIELD_EXCEPTION_MESSAGE: &str = "exception.message";
@@ -59,6 +64,15 @@ where
 }
 
 /// Construct a layer to track spans via [OpenTelemetry].
+///
+/// It will convert the tracing spans to OpenTelemetry spans
+/// and tracing events which are in a span to events in the currently active OpenTelemetry span.
+/// Child-Parent links will be automatically translated as well.
+/// Follows-From links will also be generated, but only if the originating span has not been closed yet.
+///
+/// Various translations exist between semantic conventions of OpenTelemetry and `tracing`,
+/// such as including level information as fields, or mapping error fields to exceptions.
+/// See the various `layer().with_*` functions for configuration of these features.
 ///
 /// [OpenTelemetry]: https://opentelemetry.io
 ///
@@ -104,6 +118,14 @@ pub(crate) struct WithContext {
     #[allow(clippy::type_complexity)]
     pub(crate) with_activated_context:
         fn(&tracing::Dispatch, &span::Id, f: &mut dyn FnMut(&mut OtelData)),
+
+    ///
+    /// Ensures the given SpanId has been activated - that is, created in the OTel side of things,
+    /// and had its SpanBuilder consumed - and then provides access to the OTel Context associated with it.
+    ///
+    #[allow(clippy::type_complexity)]
+    pub(crate) with_activated_otel_context:
+        fn(&tracing::Dispatch, &mut ExtensionsMut<'_>, f: &mut dyn FnMut(&OtelContext)),
 }
 
 impl WithContext {
@@ -132,6 +154,20 @@ impl WithContext {
         mut f: impl FnMut(&mut OtelData),
     ) {
         (self.with_activated_context)(dispatch, id, &mut f)
+    }
+
+    ///
+    /// Ensures the given SpanId has been activated - that is, created in the OTel side of things,
+    /// and had its SpanBuilder consumed - and then provides access to the OtelData associated with it.
+    ///
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn with_activated_otel_context(
+        &self,
+        dispatch: &tracing::Dispatch,
+        extensions: &mut ExtensionsMut<'_>,
+        mut f: impl FnMut(&OtelContext),
+    ) {
+        (self.with_activated_otel_context)(dispatch, extensions, &mut f)
     }
 }
 
@@ -163,7 +199,7 @@ struct SpanBuilderUpdates {
 }
 
 impl SpanBuilderUpdates {
-    fn update(self, span_builder: &mut SpanBuilder) {
+    fn update(self, span_builder: &mut SpanBuilder, s: &mut Status) {
         let Self {
             name,
             span_kind,
@@ -178,7 +214,7 @@ impl SpanBuilderUpdates {
             span_builder.span_kind = Some(span_kind);
         }
         if let Some(status) = status {
-            span_builder.status = status;
+            *s = status;
         }
         if let Some(attributes) = attributes {
             if let Some(builder_attributes) = &mut span_builder.attributes {
@@ -625,6 +661,7 @@ where
             with_context: WithContext {
                 with_context: Self::get_context,
                 with_activated_context: Self::get_activated_context,
+                with_activated_otel_context: Self::get_activated_otel_context,
             },
             _registry: marker::PhantomData,
         }
@@ -680,6 +717,8 @@ where
             with_context: WithContext {
                 with_context: OpenTelemetryLayer::<S, Tracer>::get_context,
                 with_activated_context: OpenTelemetryLayer::<S, Tracer>::get_activated_context,
+                with_activated_otel_context:
+                    OpenTelemetryLayer::<S, Tracer>::get_activated_otel_context,
             },
             _registry: self._registry,
             // cannot use ``..self` here due to different generics
@@ -846,6 +885,18 @@ where
         }
     }
 
+    /// Adds a filter for events that counts all events that came to the layer. See
+    /// [`FilteredOpenTelemetryLayer`] for more details.
+    ///
+    /// If you just want to filter the events out and you don't need to count how many happened, you
+    /// can use [`Layer::with_filter`] instead.
+    pub fn with_counting_event_filter<F: Filter<S>>(
+        self,
+        filter: F,
+    ) -> FilteredOpenTelemetryLayer<S, T, F> {
+        FilteredOpenTelemetryLayer::new(self, filter)
+    }
+
     /// Retrieve the parent OpenTelemetry [`Context`] from the current tracing
     /// [`span`] through the [`Registry`]. This [`Context`] links spans to their
     /// parent for proper hierarchical visualization.
@@ -925,6 +976,18 @@ where
         }
     }
 
+    /// Retrieves the OpenTelemetry data for a span and activates its context before calling
+    /// the provided function.
+    ///
+    /// This function retrieves the span from the subscriber's registry using the provided
+    /// span ID, activates the OTel `Context` in the span's `OtelData` if present, and then
+    /// applies the callback function `f` to the `OtelData`.
+    ///
+    /// # Parameters
+    ///
+    /// * `dispatch` - The tracing dispatch to downcast and retrieve the span from
+    /// * `id` - The span ID to look up in the registry
+    /// * `f` - The closure to invoke with mutable access to the span's `OtelData`
     fn get_activated_context(
         dispatch: &tracing::Dispatch,
         id: &span::Id,
@@ -937,11 +1000,48 @@ where
             .span(id)
             .expect("registry should have a span for the current ID");
 
+        let mut extensions = span.extensions_mut();
+
+        Self::get_activated_context_extensions(dispatch, &mut extensions, f)
+    }
+
+    /// Retrieves the activated OpenTelemetry context from a span's extensions and passes it
+    /// to the provided function.
+    ///
+    /// This method activates the context and extracts the current OTel `Context` from the
+    /// `OtelData` state if present, and then applies the callback function `f` to a reference
+    /// to the OTel `Context`.
+    ///
+    /// # Parameters
+    ///
+    /// * `dispatch` - The tracing dispatch to downcast to the `OpenTelemetryLayer`
+    /// * `extensions` - Mutable reference to the span's extensions containing `OtelData`
+    /// * `f` - The closure to invoke with a reference to the OTel `Context`
+    fn get_activated_otel_context(
+        dispatch: &tracing::Dispatch,
+        extensions: &mut ExtensionsMut<'_>,
+        f: &mut dyn FnMut(&OtelContext),
+    ) {
+        Self::get_activated_context_extensions(
+            dispatch,
+            extensions,
+            &mut |otel_data: &mut OtelData| {
+                if let OtelDataState::Context { current_cx } = &otel_data.state {
+                    f(current_cx)
+                }
+            },
+        );
+    }
+
+    fn get_activated_context_extensions(
+        dispatch: &tracing::Dispatch,
+        extensions: &mut ExtensionsMut<'_>,
+        f: &mut dyn FnMut(&mut OtelData),
+    ) {
         let layer = dispatch
             .downcast_ref::<OpenTelemetryLayer<S, T>>()
             .expect("layer should downcast to expected type; this is a bug!");
 
-        let mut extensions = span.extensions_mut();
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
             // Activate the context
             layer.start_cx(otel_data);
@@ -973,8 +1073,14 @@ where
     fn start_cx(&self, otel_data: &mut OtelData) {
         if let OtelDataState::Context { .. } = &otel_data.state {
             // If the context is already started, we do nothing.
-        } else if let OtelDataState::Builder { builder, parent_cx } = take(&mut otel_data.state) {
-            let span = builder.start_with_context(&self.tracer, &parent_cx);
+        } else if let OtelDataState::Builder {
+            builder,
+            parent_cx,
+            status,
+        } = take(&mut otel_data.state)
+        {
+            let mut span = builder.start_with_context(&self.tracer, &parent_cx);
+            span.set_status(status);
             let current_cx = parent_cx.with_span(span);
             otel_data.state = OtelDataState::Context { current_cx };
         }
@@ -1076,9 +1182,14 @@ where
             sem_conv_config: self.sem_conv_config,
         });
 
-        updates.update(&mut builder);
+        let mut status = Status::Unset;
+        updates.update(&mut builder, &mut status);
         extensions.insert(OtelData {
-            state: OtelDataState::Builder { builder, parent_cx },
+            state: OtelDataState::Builder {
+                builder,
+                parent_cx,
+                status,
+            },
             end_time: None,
         });
     }
@@ -1152,9 +1263,11 @@ where
         let mut extensions = span.extensions_mut();
         if let Some(otel_data) = extensions.get_mut::<OtelData>() {
             match &mut otel_data.state {
-                OtelDataState::Builder { builder, .. } => {
+                OtelDataState::Builder {
+                    builder, status, ..
+                } => {
                     // If the builder is present, then update it.
-                    updates.update(builder);
+                    updates.update(builder, status);
                 }
                 OtelDataState::Context { current_cx, .. } => {
                     // If the Context has been created, then update the span.
@@ -1167,18 +1280,18 @@ where
     fn on_follows_from(&self, id: &Id, follows: &Id, ctx: Context<S>) {
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
-        let data = extensions
-            .get_mut::<OtelData>()
-            .expect("Missing otel data span extensions");
+        let Some(data) = extensions.get_mut::<OtelData>() else {
+            return; // The span must already have been closed by us
+        };
 
         // The follows span may be filtered away (or closed), from this layer,
         // in which case we just drop the data, as opposed to panicking. This
         // uses the same reasoning as `parent_context` above.
         if let Some(follows_span) = ctx.span(follows) {
             let mut follows_extensions = follows_span.extensions_mut();
-            let follows_data = follows_extensions
-                .get_mut::<OtelData>()
-                .expect("Missing otel data span extensions");
+            let Some(follows_data) = follows_extensions.get_mut::<OtelData>() else {
+                return; // The span must already have been closed by us
+            };
             let follows_context =
                 self.with_started_cx(follows_data, &|cx| cx.span().span_context().clone());
             match &mut data.state {
@@ -1297,14 +1410,16 @@ where
                 }
 
                 match &mut otel_data.state {
-                    OtelDataState::Builder { builder, .. } => {
-                        if builder.status == otel::Status::Unset
+                    OtelDataState::Builder {
+                        builder, status, ..
+                    } => {
+                        if *status == otel::Status::Unset
                             && *meta.level() == tracing_core::Level::ERROR
                         {
-                            builder.status = otel::Status::error("");
+                            *status = otel::Status::error("");
                         }
                         if let Some(builder_updates) = builder_updates {
-                            builder_updates.update(builder);
+                            builder_updates.update(builder, status);
                         }
                         if let Some(ref mut events) = builder.events {
                             events.push(otel_event);
@@ -1357,12 +1472,17 @@ where
             });
 
             match state {
-                OtelDataState::Builder { builder, parent_cx } => {
+                OtelDataState::Builder {
+                    builder,
+                    parent_cx,
+                    status,
+                } => {
                     // Don't create the context here just to get a SpanRef since it's costly
                     let mut span = builder.start_with_context(&self.tracer, &parent_cx);
                     if let Some(timings) = timings {
                         span.set_attributes(timings)
                     };
+                    span.set_status(status);
                     if let Some(end_time) = end_time {
                         span.end_with_timestamp(end_time);
                     } else {
@@ -1430,6 +1550,7 @@ mod tests {
     use opentelemetry_sdk::trace::SpanExporter;
     use std::{collections::HashMap, error::Error, fmt::Display, time::SystemTime};
     use tracing::trace_span;
+    use tracing_core::LevelFilter;
     use tracing_subscriber::prelude::*;
 
     #[derive(Debug, Clone)]
@@ -1748,6 +1869,54 @@ mod tests {
         assert_eq!(iter.next().unwrap().name, "exception"); // error attribute is handled specially
         assert_eq!(iter.next().unwrap().name, "field3"); // message attribute is handled specially
         assert_eq!(iter.next().unwrap().name, "event name 5"); // name attribute should not conflict with event name.
+    }
+
+    #[test]
+    fn event_filter_count() {
+        let mut tracer = TestTracer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            layer()
+                .with_tracer(tracer.clone())
+                .with_counting_event_filter(LevelFilter::INFO)
+                .with_filter(LevelFilter::DEBUG),
+        );
+
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::debug_span!("test span").in_scope(|| {
+                tracing::event!(tracing::Level::TRACE, "1");
+                tracing::event!(tracing::Level::DEBUG, "2");
+                tracing::event!(tracing::Level::INFO, "3");
+                tracing::event!(tracing::Level::WARN, "4");
+                tracing::event!(tracing::Level::ERROR, "5");
+            });
+        });
+
+        let events = tracer.with_data(|data| data.events.clone());
+
+        let mut iter = events.iter();
+
+        assert_eq!(iter.next().unwrap().name, "3");
+        assert_eq!(iter.next().unwrap().name, "4");
+        assert_eq!(iter.next().unwrap().name, "5");
+        assert!(iter.next().is_none());
+
+        let spans = tracer.spans();
+        assert_eq!(spans.len(), 1);
+
+        let Value::I64(event_count) = spans
+            .first()
+            .unwrap()
+            .attributes
+            .iter()
+            .find(|key_value| key_value.key.as_str() == SPAN_EVENT_COUNT_FIELD)
+            .unwrap()
+            .value
+        else {
+            panic!("Unexpected type of `{SPAN_EVENT_COUNT_FIELD}`.");
+        };
+        // We've sent 5 events out of which 1 was filtered out by an actual filter and another by
+        // our event filter.
+        assert_eq!(event_count, 4);
     }
 
     #[test]

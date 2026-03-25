@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "phc"
-version = "0.6.0-rc.1"
+version = "0.6.1"
 authors = ["RustCrypto Developers"]
 build = false
 autolib = false
@@ -43,6 +43,9 @@ license = "Apache-2.0 OR MIT"
 repository = "https://github.com/RustCrypto/formats"
 resolver = "2"
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 alloc = ["base64ct/alloc"]
 default = ["rand_core"]
@@ -68,16 +71,15 @@ path = "tests/test_vectors.rs"
 [dependencies.base64ct]
 version = "1.7"
 
+[dependencies.ctutils]
+version = "0.4"
+
 [dependencies.getrandom]
-version = "0.4.0-rc.0"
+version = "0.4"
 optional = true
 default-features = false
 
 [dependencies.rand_core]
-version = "0.10.0-rc-3"
+version = "0.10"
 optional = true
-default-features = false
-
-[dependencies.subtle]
-version = "2"
 default-features = false

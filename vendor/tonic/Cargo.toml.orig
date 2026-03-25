@@ -15,7 +15,7 @@ keywords = ["rpc", "grpc", "async", "futures", "protobuf"]
 license = "MIT"
 readme = "../README.md"
 repository = "https://github.com/hyperium/tonic"
-version = "0.14.2"
+version = "0.14.5"
 rust-version = {workspace = true}
 exclude = ["benches-disabled"]
 
@@ -57,7 +57,7 @@ transport = ["server", "channel"]
 [dependencies]
 base64 = "0.22"
 bytes = "1.0"
-http = "1"
+http = "1.1.0"
 tracing = "0.1"
 
 http-body = "1"
@@ -75,7 +75,7 @@ async-trait = {version = "0.1.13", optional = true}
 # transport
 h2 = {version = "0.4", optional = true}
 hyper = {version = "1", features = ["http1", "http2"], optional = true}
-hyper-util = { version = "0.1.4", features = ["tokio"], optional = true }
+hyper-util = { version = "0.1.11", features = ["tokio"], optional = true }
 socket2 = { version = "0.6", optional = true, features = ["all"] }
 tokio = {version = "1", default-features = false, optional = true}
 tower = {version = "0.5", default-features = false, optional = true}
@@ -99,7 +99,7 @@ bencher = "0.1.5"
 quickcheck = "1.0"
 quickcheck_macros = "1.0"
 static_assertions = "1.0"
-tokio = {version = "1.0", features = ["rt-multi-thread", "macros"]}
+tokio = {version = "1.0", features = ["rt-multi-thread", "macros", "test-util"]}
 tower = {version = "0.5", features = ["load-shed", "timeout"]}
 
 [lints]

@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "tonic-prost"
-version = "0.14.2"
+version = "0.14.5"
 authors = ["Lucio Franco <luciofranco14@gmail.com>"]
 build = false
 autolib = false
