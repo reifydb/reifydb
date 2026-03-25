@@ -1,197 +1,47 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#![forbid(unsafe_code)]
-
 use std::fmt;
 
-use types::{FunctionType, Instruction, ValueType};
-
-pub mod function;
-pub mod global;
-pub mod memory;
-pub mod module;
-pub mod table;
-pub mod types;
 pub mod value;
 
-pub type BranchingDepth = usize;
 pub type FunctionIndex = usize;
-pub type FunctionTypeIndex = usize;
-pub type GlobalIndex = usize;
-pub type LocalIndex = usize;
-pub type MemoryIndex = usize;
-pub type TableIndex = usize;
-pub type TableElementIndex = usize;
 
-pub const PAGE_SIZE: u32 = 65536; // 64KiB
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExternalIndex(pub u32);
 
-#[derive(Debug, PartialEq)]
-pub enum Error {
-	Trap(Trap),
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValueType {
+	I32,
+	I64,
+	F32,
+	F64,
+	RefExtern,
+	RefFunc,
+}
+
+impl fmt::Display for ValueType {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			ValueType::I32 => write!(f, "i32"),
+			ValueType::I64 => write!(f, "i64"),
+			ValueType::F32 => write!(f, "f32"),
+			ValueType::F64 => write!(f, "f64"),
+			ValueType::RefExtern => write!(f, "extern"),
+			ValueType::RefFunc => write!(f, "func"),
+		}
+	}
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Trap {
-	CallDepthExceeded,
-	Conversion,
-	DivisionByZero(TrapDivisionByZero),
-
-	NotFound(TrapNotFound),
-	NotImplemented(TrapNotImplemented),
-
-	OutOfFuel,
-	OutOfRange(TrapOutOfRange),
-	Overflow(TrapOverflow),
-
-	Type(TrapType),
-	Underflow(TrapUnderflow),
-	Unreachable,
-	UninitializedElement,
-	UndefinedElement,
-	UnresolvedHostFunction(String, String),
+	Error(String),
 }
 
 impl fmt::Display for Trap {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Trap::CallDepthExceeded => write!(f, "call depth exceeded"),
-			Trap::Conversion => write!(f, "invalid conversion to integer"),
-			Trap::DivisionByZero(t) => write!(f, "{}", t),
-			Trap::NotFound(t) => write!(f, "{}", t),
-			Trap::NotImplemented(t) => write!(f, "{}", t),
-			Trap::OutOfFuel => write!(f, "out of fuel"),
-			Trap::OutOfRange(t) => write!(f, "{}", t),
-			Trap::Overflow(t) => write!(f, "{}", t),
-			Trap::Type(t) => write!(f, "{}", t),
-			Trap::Underflow(t) => write!(f, "{}", t),
-			Trap::Unreachable => write!(f, "unreachable"),
-			Trap::UninitializedElement => write!(f, "uninitialized element"),
-			Trap::UndefinedElement => write!(f, "undefined element"),
-			Trap::UnresolvedHostFunction(module, name) => {
-				write!(f, "unresolved host function: {}::{}", module, name)
-			}
-		}
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TrapDivisionByZero {
-	Integer,
-}
-
-impl fmt::Display for TrapDivisionByZero {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TrapDivisionByZero::Integer => write!(f, "integer divide by zero"),
-		}
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TrapNotFound {
-	ExportedFunction(String),
-	Function(String),
-	FunctionLocal(FunctionIndex),
-	FunctionType(FunctionTypeIndex),
-	Memory(MemoryIndex),
-	Module(String),
-	ReturnValue,
-	Table(TableIndex),
-	TableElement(TableIndex, TableElementIndex),
-}
-
-impl fmt::Display for TrapNotFound {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TrapNotFound::ExportedFunction(name) => {
-				write!(f, "unknown function: exported function '{}' not found", name)
-			}
-			TrapNotFound::Function(name) => write!(f, "unknown function '{}'", name),
-			TrapNotFound::FunctionLocal(idx) => write!(f, "unknown function {}", idx),
-			TrapNotFound::FunctionType(idx) => write!(f, "unknown type {}", idx),
-			TrapNotFound::Memory(idx) => write!(f, "unknown memory {}", idx),
-			TrapNotFound::Module(name) => write!(f, "unknown module '{}'", name),
-			TrapNotFound::ReturnValue => write!(f, "missing return value"),
-			TrapNotFound::Table(idx) => write!(f, "unknown table {}", idx),
-			TrapNotFound::TableElement(_, _) => write!(f, "undefined element"),
-		}
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TrapNotImplemented {
-	Instruction(Instruction),
-}
-
-impl fmt::Display for TrapNotImplemented {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TrapNotImplemented::Instruction(i) => {
-				write!(f, "instruction not implemented {:?}", i)
-			}
-		}
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TrapOutOfRange {
-	Memory(MemoryIndex),
-	Table(TableIndex),
-}
-
-impl fmt::Display for TrapOutOfRange {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TrapOutOfRange::Memory(_) => write!(f, "out of bounds memory access"),
-			TrapOutOfRange::Table(_) => write!(f, "out of bounds table access"),
-		}
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TrapOverflow {
-	Integer,
-	Stack,
-}
-
-impl fmt::Display for TrapOverflow {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TrapOverflow::Integer => write!(f, "integer overflow"),
-			TrapOverflow::Stack => write!(f, "stack overflow"),
-		}
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TrapType {
-	MismatchValueType(ValueType, ValueType),
-	MismatchIndirectCallType(FunctionType, FunctionType),
-}
-
-impl fmt::Display for TrapType {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TrapType::MismatchValueType(expected, actual) => {
-				write!(f, "expected type {:?}, got {:?}", expected, actual)
-			}
-			TrapType::MismatchIndirectCallType(_expected, _actual) => {
-				write!(f, "indirect call type mismatch")
-			}
-		}
-	}
-}
-
-#[derive(Debug, PartialEq)]
-pub enum TrapUnderflow {
-	Stack,
-}
-
-impl fmt::Display for TrapUnderflow {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			TrapUnderflow::Stack => write!(f, "stack underflow"),
+			Trap::Error(msg) => write!(f, "{}", msg),
 		}
 	}
 }

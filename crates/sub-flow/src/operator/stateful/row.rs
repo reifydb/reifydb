@@ -61,7 +61,7 @@ impl RowNumberProvider {
 			let map_key = self.make_map_key(key);
 
 			if let Some(existing_row) = internal_state_get(self.node, txn, &map_key)? {
-				let bytes = existing_row.as_ref();
+				let bytes = existing_row.as_slice();
 				if bytes.len() >= 8 {
 					let row_num = u64::from_be_bytes([
 						bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
@@ -112,7 +112,7 @@ impl RowNumberProvider {
 	) -> Result<Option<EncodedKey>> {
 		let reverse_key = self.make_reverse_map_key(row_number);
 		if let Some(key_bytes) = internal_state_get(self.node, txn, &reverse_key)? {
-			Ok(Some(EncodedKey::new(key_bytes.as_ref().to_vec())))
+			Ok(Some(EncodedKey::new(key_bytes.to_vec())))
 		} else {
 			Ok(None)
 		}

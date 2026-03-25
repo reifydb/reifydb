@@ -79,7 +79,7 @@ impl Counter {
 		match internal_state_get(self.node, txn, &self.key)? {
 			None => Ok(self.default_value()),
 			Some(encoded) => {
-				let bytes = encoded.as_ref();
+				let bytes = encoded.as_slice();
 				if bytes.len() >= 8 {
 					Ok(u64::from_be_bytes([
 						bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],

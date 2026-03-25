@@ -44,7 +44,7 @@ pub mod tests {
 		assert_eq!(result.id, node.id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.node_type, 1);
-		assert_eq!(result.data.as_ref(), &[0x01, 0x02, 0x03]);
+		assert_eq!(result.data.as_bytes(), &[0x01, 0x02, 0x03]);
 	}
 
 	#[test]

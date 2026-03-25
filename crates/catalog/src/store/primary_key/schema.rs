@@ -40,7 +40,7 @@ pub(crate) mod primary_key {
 	/// Deserialize a blob into a list of column IDs
 	/// Format: 8 bytes for count, followed by 8 bytes per column ID
 	pub(crate) fn deserialize_column_ids(blob: &Blob) -> Vec<ColumnId> {
-		let bytes = blob.as_ref();
+		let bytes = blob.as_bytes();
 
 		// Read count
 		let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap()) as usize;
@@ -100,7 +100,7 @@ pub mod tests {
 			assert_eq!(original, deserialized, "Failed to round-trip column IDs: {:?}", original);
 
 			// Verify blob format: first 8 bytes should be the count
-			let bytes = blob.as_ref();
+			let bytes = blob.as_bytes();
 			if !original.is_empty() || bytes.len() >= 8 {
 				let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
 				assert_eq!(
@@ -126,7 +126,7 @@ pub mod tests {
 		// Test specific format details
 		let column_ids = vec![ColumnId(0x0123456789ABCDEF), ColumnId(0xFEDCBA9876543210)];
 		let blob = serialize_column_ids(&column_ids);
-		let bytes = blob.as_ref();
+		let bytes = blob.as_bytes();
 
 		// Check count (2 in little-endian)
 		assert_eq!(&bytes[0..8], &[2, 0, 0, 0, 0, 0, 0, 0]);

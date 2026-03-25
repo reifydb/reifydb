@@ -80,7 +80,7 @@ pub mod test {
 
 	/// Helper to verify encoded equality
 	pub fn assert_row_eq(actual: &EncodedRow, expected: &EncodedRow) {
-		assert_eq!(actual.as_ref().to_vec(), expected.as_ref().to_vec(), "Rows do not match");
+		assert_eq!(actual.to_vec(), expected.to_vec(), "Rows do not match");
 	}
 
 	/// Helper to create a test transaction

@@ -263,6 +263,9 @@ paste = { version = "1.0" }
 # load-testing
 hdrhistogram = { version = "7.5" }
 
+# WASM runtime
+wasmtime = "33"
+
 # WASM test dependencies
 wast = "245.0.1"
 wat = "1.245.1"

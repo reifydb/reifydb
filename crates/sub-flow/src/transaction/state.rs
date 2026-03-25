@@ -34,10 +34,10 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
-		value_len = value.as_ref().len()
+		value_len = value.len()
 	))]
 	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
+		let state_key = FlowNodeStateKey::new(id, key.to_vec());
 		let encoded_key = state_key.encode();
 		self.set(&encoded_key, value)
 	}
@@ -418,7 +418,7 @@ pub mod tests {
 		let result = txn.load_or_create_row(node_id, &key, &schema).unwrap();
 
 		// Result should be a newly allocated row (schema.allocate())
-		assert!(!result.as_ref().is_empty());
+		assert!(!result.is_empty());
 	}
 
 	#[test]
