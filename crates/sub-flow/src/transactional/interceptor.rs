@@ -13,18 +13,12 @@
 //! After a `CREATE VIEW` (transactional) commits, eagerly registers the
 //! flow so it is available for the very next transaction's pre-commit phase.
 
-use std::{
-	collections::BTreeMap,
-	sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	common::CommitVersion,
-	interface::{
-		catalog::{flow::FlowId, primitive::PrimitiveId},
-		change::{Change, ChangeOrigin, Diff},
-	},
+use reifydb_core::interface::{
+	catalog::flow::FlowId,
+	change::{Change, ChangeOrigin},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::{
@@ -42,7 +36,7 @@ use crate::{
 	engine::FlowEngine,
 	transaction::{
 		FlowTransaction,
-		pending::{Pending, PendingWrite},
+		pending::{Pending, PendingWrite, ViewChangeCollector},
 	},
 	transactional::registrar::TransactionalFlowRegistrar,
 };
@@ -88,7 +82,16 @@ pub(crate) fn execute_inline_flow_changes(
 		q.version()
 	};
 
-	let mut available_changes: Vec<Change> = merge_changes_by_origin(&ctx.flow_changes, read_version);
+	// Stamp the correct version on changes from the accumulator
+	let mut available_changes: Vec<Change> = ctx
+		.flow_changes
+		.iter()
+		.map(|c| {
+			let mut c = c.clone();
+			c.version = read_version;
+			c
+		})
+		.collect();
 
 	for flow_id in execution_order {
 		let relevant: Vec<Change> = available_changes
@@ -123,11 +126,12 @@ pub(crate) fn execute_inline_flow_changes(
 			interceptors,
 		);
 
+		let mut collector = ViewChangeCollector::new();
 		for change in relevant {
-			flow_engine.process(&mut flow_txn, change, flow_id)?;
+			flow_engine.process(&mut flow_txn, change, flow_id, &mut collector)?;
 		}
 
-		available_changes.extend(flow_txn.take_view_changes());
+		available_changes.extend(collector.take());
 
 		let flow_pending = flow_txn.take_pending();
 		for (key, pw) in flow_pending.iter_sorted() {
@@ -139,118 +143,6 @@ pub(crate) fn execute_inline_flow_changes(
 	}
 
 	Ok(())
-}
-
-/// Merge individual per-row changes into batched changes grouped by origin.
-///
-/// The transactional path tracks one `Change` per row (each with a single `Diff`),
-/// while the deferred/CDC path batches all diffs from the same origin into a single
-/// `Change` with one `Diff::Insert` / `Diff::Update` / `Diff::Remove` containing
-/// multi-row `Columns`. Operators like hash-join group rows by join key within a
-/// single `Diff`, so this deep merge is required for consistent output ordering.
-fn merge_changes_by_origin(changes: &[Change], version: CommitVersion) -> Vec<Change> {
-	let mut grouped: BTreeMap<PrimitiveId, Vec<Diff>> = BTreeMap::new();
-	let mut non_primitive: Vec<Change> = Vec::new();
-
-	for change in changes {
-		match change.origin {
-			ChangeOrigin::Primitive(id) => {
-				grouped.entry(id).or_default().extend(change.diffs.iter().cloned());
-			}
-			_ => {
-				let mut c = change.clone();
-				c.version = version;
-				non_primitive.push(c);
-			}
-		}
-	}
-
-	let mut result: Vec<Change> = grouped
-		.into_iter()
-		.map(|(id, diffs)| {
-			// Merge diffs of the same type into single multi-row diffs,
-			// matching the CDC producer's `merge_diffs` behavior.
-			let merged = merge_diffs(diffs);
-			Change {
-				origin: ChangeOrigin::Primitive(id),
-				diffs: merged,
-				version,
-			}
-		})
-		.collect();
-	result.extend(non_primitive);
-	result
-}
-
-/// Merge multiple single-row diffs into at most 3 multi-row diffs
-/// (one Insert, one Update, one Remove) by appending Columns.
-fn merge_diffs(diffs: Vec<Diff>) -> Vec<Diff> {
-	let mut insert: Option<Diff> = None;
-	let mut update: Option<Diff> = None;
-	let mut remove: Option<Diff> = None;
-
-	for diff in diffs {
-		match diff {
-			Diff::Insert {
-				post,
-			} => {
-				if let Some(Diff::Insert {
-					post: ref mut existing,
-				}) = insert
-				{
-					let _ = existing.append_columns(post);
-				} else {
-					insert = Some(Diff::Insert {
-						post,
-					});
-				}
-			}
-			Diff::Update {
-				pre,
-				post,
-			} => {
-				if let Some(Diff::Update {
-					pre: ref mut existing_pre,
-					post: ref mut existing_post,
-				}) = update
-				{
-					let _ = existing_pre.append_columns(pre);
-					let _ = existing_post.append_columns(post);
-				} else {
-					update = Some(Diff::Update {
-						pre,
-						post,
-					});
-				}
-			}
-			Diff::Remove {
-				pre,
-			} => {
-				if let Some(Diff::Remove {
-					pre: ref mut existing,
-				}) = remove
-				{
-					let _ = existing.append_columns(pre);
-				} else {
-					remove = Some(Diff::Remove {
-						pre,
-					});
-				}
-			}
-		}
-	}
-
-	let mut result = Vec::with_capacity(3);
-	if let Some(d) = insert {
-		result.push(d);
-	}
-	if let Some(d) = update {
-		result.push(d);
-	}
-	if let Some(d) = remove {
-		result.push(d);
-	}
-	result
 }
 
 /// Returns true if the given change is relevant to the given flow.

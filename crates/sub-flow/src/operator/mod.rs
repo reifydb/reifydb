@@ -4,7 +4,7 @@
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
 use reifydb_type::{Result, value::row_number::RowNumber};
 
-use crate::transaction::FlowTransaction;
+use crate::transaction::{FlowTransaction, pending::ViewChangeCollector};
 
 pub mod append;
 pub mod apply;
@@ -47,7 +47,12 @@ use window::WindowOperator;
 pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		collector: &mut ViewChangeCollector,
+	) -> Result<Change>;
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns>;
 }
@@ -79,29 +84,34 @@ pub enum Operators {
 }
 
 impl Operators {
-	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	pub fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		match self {
-			Operators::Filter(op) => op.apply(txn, change),
-			Operators::Gate(op) => op.apply(txn, change),
-			Operators::Map(op) => op.apply(txn, change),
-			Operators::Extend(op) => op.apply(txn, change),
-			Operators::Join(op) => op.apply(txn, change),
-			Operators::Sort(op) => op.apply(txn, change),
-			Operators::Take(op) => op.apply(txn, change),
-			Operators::Distinct(op) => op.apply(txn, change),
-			Operators::Append(op) => op.apply(txn, change),
-			Operators::Apply(op) => op.apply(txn, change),
-			Operators::SinkTableView(op) => op.apply(txn, change),
-			Operators::SinkRingBufferView(op) => op.apply(txn, change),
-			Operators::SinkSeriesView(op) => op.apply(txn, change),
-			Operators::SinkSubscription(op) => op.apply(txn, change),
-			Operators::Window(op) => op.apply(txn, change),
-			Operators::SourceTable(op) => op.apply(txn, change),
-			Operators::SourceView(op) => op.apply(txn, change),
-			Operators::SourceFlow(op) => op.apply(txn, change),
-			Operators::SourceRingBuffer(op) => op.apply(txn, change),
-			Operators::SourceSeries(op) => op.apply(txn, change),
-			Operators::Custom(op) => op.apply(txn, change),
+			Operators::Filter(op) => op.apply(txn, change, collector),
+			Operators::Gate(op) => op.apply(txn, change, collector),
+			Operators::Map(op) => op.apply(txn, change, collector),
+			Operators::Extend(op) => op.apply(txn, change, collector),
+			Operators::Join(op) => op.apply(txn, change, collector),
+			Operators::Sort(op) => op.apply(txn, change, collector),
+			Operators::Take(op) => op.apply(txn, change, collector),
+			Operators::Distinct(op) => op.apply(txn, change, collector),
+			Operators::Append(op) => op.apply(txn, change, collector),
+			Operators::Apply(op) => op.apply(txn, change, collector),
+			Operators::SinkTableView(op) => op.apply(txn, change, collector),
+			Operators::SinkRingBufferView(op) => op.apply(txn, change, collector),
+			Operators::SinkSeriesView(op) => op.apply(txn, change, collector),
+			Operators::SinkSubscription(op) => op.apply(txn, change, collector),
+			Operators::Window(op) => op.apply(txn, change, collector),
+			Operators::SourceTable(op) => op.apply(txn, change, collector),
+			Operators::SourceView(op) => op.apply(txn, change, collector),
+			Operators::SourceFlow(op) => op.apply(txn, change, collector),
+			Operators::SourceRingBuffer(op) => op.apply(txn, change, collector),
+			Operators::SourceSeries(op) => op.apply(txn, change, collector),
+			Operators::Custom(op) => op.apply(txn, change, collector),
 		}
 	}
 

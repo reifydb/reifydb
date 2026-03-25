@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{Operator, Operators},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
 };
 
 pub mod rolling;
@@ -902,7 +902,12 @@ impl Operator for WindowOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		_collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		match &self.kind {
 			WindowKind::Tumbling {
 				..

@@ -24,7 +24,10 @@ use tracing::{Span, error, field, instrument};
 use super::instruction::WorkerBatch;
 use crate::{
 	engine::FlowEngine,
-	transaction::{FlowTransaction, pending::Pending},
+	transaction::{
+		FlowTransaction,
+		pending::{Pending, ViewChangeCollector},
+	},
 };
 
 /// Messages for the flow actor
@@ -46,6 +49,7 @@ pub enum FlowResponse {
 	/// Operation succeeded with pending writes and view changes
 	Success {
 		pending: Pending,
+		collector: ViewChangeCollector,
 	},
 	/// Operation failed with error message
 	Error(String),
@@ -96,8 +100,9 @@ impl Actor for FlowWorkerActor {
 			} => {
 				let result = self.process_request(&mut state.flow_engine, batch);
 				let resp = match result {
-					Ok(pending) => FlowResponse::Success {
+					Ok((pending, collector)) => FlowResponse::Success {
 						pending,
+						collector,
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
@@ -115,6 +120,7 @@ impl Actor for FlowWorkerActor {
 				let resp = match result {
 					Ok(_) => FlowResponse::Success {
 						pending: Pending::new(),
+						collector: ViewChangeCollector::new(),
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
@@ -134,11 +140,16 @@ impl FlowWorkerActor {
 		instructions = batch.instructions.len(),
 		total_changes = field::Empty
 	))]
-	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> Result<Pending> {
+	fn process_request(
+		&self,
+		flow_engine: &mut FlowEngine,
+		batch: WorkerBatch,
+	) -> Result<(Pending, ViewChangeCollector)> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 
 		let mut pending = Pending::new();
+		let mut collector = ViewChangeCollector::new();
 		let interceptors = self.engine.create_interceptors();
 
 		for instruction in batch.instructions {
@@ -163,7 +174,7 @@ impl FlowWorkerActor {
 			);
 
 			for change in &instruction.changes {
-				if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id) {
+				if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id, &mut collector) {
 					error!(flow_id = flow_id.0, error = %e, "failed to process flow");
 				}
 			}
@@ -171,6 +182,6 @@ impl FlowWorkerActor {
 			pending = txn.take_pending();
 		}
 
-		Ok(pending)
+		Ok((pending, collector))
 	}
 }

@@ -13,7 +13,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		WithEventBus,
-		change::Change,
+		change::{Change, ChangeOrigin},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
@@ -28,6 +28,7 @@ use tracing::instrument;
 use crate::{
 	TransactionId,
 	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
+	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
 	interceptor::{
 		WithInterceptors,
@@ -112,8 +113,8 @@ pub struct AdminTransaction {
 	pub(crate) row_changes: Vec<RowChange>,
 	pub interceptors: Interceptors,
 
-	// Track table changes for transactional flow pre-commit processing
-	pub(crate) pending_flow_changes: Vec<Change>,
+	// Accumulate flow changes for transactional view pre-commit processing
+	pub(crate) accumulator: ChangeAccumulator,
 
 	/// The identity executing this transaction.
 	pub identity: IdentityId,
@@ -129,7 +130,7 @@ pub struct AdminTransaction {
 pub struct Savepoint {
 	write: WriteSavepoint,
 	row_changes_len: usize,
-	flow_changes_len: usize,
+	accumulator_len: usize,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -146,7 +147,7 @@ impl AdminTransaction {
 		Savepoint {
 			write: self.cmd.as_ref().unwrap().savepoint(),
 			row_changes_len: self.row_changes.len(),
-			flow_changes_len: self.pending_flow_changes.len(),
+			accumulator_len: self.accumulator.len(),
 		}
 	}
 
@@ -154,13 +155,13 @@ impl AdminTransaction {
 	pub fn restore_savepoint(&mut self, sp: Savepoint) {
 		self.cmd.as_mut().unwrap().restore_savepoint(sp.write);
 		self.row_changes.truncate(sp.row_changes_len);
-		self.pending_flow_changes.truncate(sp.flow_changes_len);
+		self.accumulator.truncate(sp.accumulator_len);
 	}
 
 	/// Reset test-only flow bookkeeping so setup statements do not appear as
 	/// in-test mutations when `RUN TESTS` later performs an inline flush.
 	pub fn clear_test_flow_state(&mut self) {
-		self.pending_flow_changes.clear();
+		self.accumulator.clear();
 	}
 
 	/// Execute test-only pre-commit style processing without committing.
@@ -184,7 +185,7 @@ impl AdminTransaction {
 			.collect();
 
 		let mut ctx = PreCommitContext {
-			flow_changes: take(&mut self.pending_flow_changes),
+			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
 			pending_writes: Vec::new(),
 			transaction_writes,
 		};
@@ -223,7 +224,7 @@ impl AdminTransaction {
 			interceptors,
 			changes: TransactionalDefChanges::new(txn_id),
 			row_changes: Vec::new(),
-			pending_flow_changes: Vec::new(),
+			accumulator: ChangeAccumulator::new(),
 			identity,
 			executor: None,
 			poison_cause: None,
@@ -299,7 +300,7 @@ impl AdminTransaction {
 			.collect();
 
 		let mut ctx = PreCommitContext {
-			flow_changes: take(&mut self.pending_flow_changes),
+			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
 			pending_writes: Vec::new(),
 			transaction_writes,
 		};
@@ -452,9 +453,13 @@ impl AdminTransaction {
 		self.row_changes.push(change);
 	}
 
-	/// Track a flow change for transactional view pre-commit processing
+	/// Track a flow change for transactional view pre-commit processing.
 	pub fn track_flow_change(&mut self, change: Change) {
-		self.pending_flow_changes.push(change);
+		if let ChangeOrigin::Primitive(id) = change.origin {
+			for diff in change.diffs {
+				self.accumulator.track(id, diff);
+			}
+		}
 	}
 
 	/// Get the transaction version

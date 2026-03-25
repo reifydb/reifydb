@@ -11,7 +11,7 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 
 use crate::{
 	operator::{BoxedOperator, Operator, Operators},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
 };
 
 pub struct ApplyOperator {
@@ -35,8 +35,13 @@ impl Operator for ApplyOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		self.inner.apply(txn, change)
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
+		self.inner.apply(txn, change, collector)
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {

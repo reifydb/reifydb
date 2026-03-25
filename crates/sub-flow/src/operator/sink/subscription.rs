@@ -28,7 +28,7 @@ use crate::{
 		Operators,
 		stateful::counter::{Counter, CounterDirection},
 	},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
 };
 
 pub struct SinkSubscriptionOperator {
@@ -75,7 +75,12 @@ impl Operator for SinkSubscriptionOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		_collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let subscription_def = self.subscription.def().clone();
 
 		for diff in change.diffs.iter() {

@@ -5,7 +5,7 @@ use std::mem;
 
 use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{common::CommitVersion, interface::change::Change};
+use reifydb_core::common::CommitVersion;
 use reifydb_transaction::{
 	interceptor::{
 		WithInterceptors,
@@ -70,6 +70,16 @@ pub mod read;
 pub mod state;
 pub mod write;
 
+/// Shared fields between Deferred and Transactional variants.
+pub struct FlowTransactionInner {
+	pub version: CommitVersion,
+	pub pending: Pending,
+	pub primitive_query: MultiReadTransaction,
+	pub state_query: MultiReadTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+}
+
 /// A transaction wrapper for flow processing with dual-version read semantics.
 ///
 /// # Architecture
@@ -124,29 +134,45 @@ pub enum FlowTransaction {
 	/// CDC-driven async flow processing.
 	/// Reads only from committed storage + flow pending writes.
 	Deferred {
-		version: CommitVersion,
-		pending: Pending,
-		primitive_query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
+		inner: FlowTransactionInner,
 	},
 
 	/// Inline flow processing within a committing transaction.
 	/// Can additionally read uncommitted writes from the parent transaction.
 	Transactional {
-		version: CommitVersion,
-		pending: Pending,
+		inner: FlowTransactionInner,
 		/// Read-only snapshot of the committing transaction's KV writes.
 		base_pending: Pending,
-		primitive_query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
 	},
 }
 
 impl FlowTransaction {
+	fn inner(&self) -> &FlowTransactionInner {
+		match self {
+			Self::Deferred {
+				inner,
+				..
+			}
+			| Self::Transactional {
+				inner,
+				..
+			} => inner,
+		}
+	}
+
+	fn inner_mut(&mut self) -> &mut FlowTransactionInner {
+		match self {
+			Self::Deferred {
+				inner,
+				..
+			}
+			| Self::Transactional {
+				inner,
+				..
+			} => inner,
+		}
+	}
+
 	/// Create a deferred (CDC) FlowTransaction from a parent transaction.
 	///
 	/// Used by the async worker path. Reads only from committed storage +
@@ -163,12 +189,14 @@ impl FlowTransaction {
 
 		let state_query = parent.multi.begin_query().unwrap();
 		Self::Deferred {
-			version,
-			pending: Pending::new(),
-			primitive_query,
-			state_query,
-			catalog,
-			interceptors,
+			inner: FlowTransactionInner {
+				version,
+				pending: Pending::new(),
+				primitive_query,
+				state_query,
+				catalog,
+				interceptors,
+			},
 		}
 	}
 
@@ -184,12 +212,14 @@ impl FlowTransaction {
 		interceptors: Interceptors,
 	) -> Self {
 		Self::Deferred {
-			version,
-			pending,
-			primitive_query,
-			state_query,
-			catalog,
-			interceptors,
+			inner: FlowTransactionInner {
+				version,
+				pending,
+				primitive_query,
+				state_query,
+				catalog,
+				interceptors,
+			},
 		}
 	}
 
@@ -208,137 +238,51 @@ impl FlowTransaction {
 		interceptors: Interceptors,
 	) -> Self {
 		Self::Transactional {
-			version,
-			pending,
+			inner: FlowTransactionInner {
+				version,
+				pending,
+				primitive_query,
+				state_query,
+				catalog,
+				interceptors,
+			},
 			base_pending,
-			primitive_query,
-			state_query,
-			catalog,
-			interceptors,
 		}
 	}
 
 	/// Get the transaction version.
 	pub fn version(&self) -> CommitVersion {
-		match self {
-			Self::Deferred {
-				version,
-				..
-			} => *version,
-			Self::Transactional {
-				version,
-				..
-			} => *version,
-		}
+		self.inner().version
 	}
 
 	/// Extract pending writes, replacing them with an empty buffer.
 	pub fn take_pending(&mut self) -> Pending {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => mem::take(pending),
-			Self::Transactional {
-				pending,
-				..
-			} => mem::take(pending),
-		}
+		mem::take(&mut self.inner_mut().pending)
 	}
 
 	/// Get a reference to the pending writes.
 	#[cfg(test)]
 	pub fn pending(&self) -> &Pending {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending,
-			Self::Transactional {
-				pending,
-				..
-			} => pending,
-		}
-	}
-
-	/// Drain all generated view changes, returning them.
-	pub fn take_view_changes(&mut self) -> pending::ViewChanges {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending.take_view_changes(),
-			Self::Transactional {
-				pending,
-				..
-			} => pending.take_view_changes(),
-		}
-	}
-
-	/// Append a view change (used by sink view operators).
-	pub fn push_view_change(&mut self, change: Change) {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending.push_view_change(change),
-			Self::Transactional {
-				pending,
-				..
-			} => pending.push_view_change(change),
-		}
+		&self.inner().pending
 	}
 
 	/// Update the transaction to read at a new version
 	pub fn update_version(&mut self, new_version: CommitVersion) {
-		match self {
-			Self::Deferred {
-				version,
-				primitive_query,
-				..
-			} => {
-				*version = new_version;
-				primitive_query.read_as_of_version_inclusive(new_version);
-			}
-			Self::Transactional {
-				version,
-				primitive_query,
-				..
-			} => {
-				*version = new_version;
-				primitive_query.read_as_of_version_inclusive(new_version);
-			}
-		}
+		let inner = self.inner_mut();
+		inner.version = new_version;
+		inner.primitive_query.read_as_of_version_inclusive(new_version);
 	}
 
 	/// Get access to the catalog for reading metadata
 	pub fn catalog(&self) -> &Catalog {
-		match self {
-			Self::Deferred {
-				catalog,
-				..
-			} => catalog,
-			Self::Transactional {
-				catalog,
-				..
-			} => catalog,
-		}
+		&self.inner().catalog
 	}
 }
 
 macro_rules! interceptor_method {
 	($method:ident, $field:ident, $trait_name:ident) => {
 		fn $method(&mut self) -> &mut Chain<dyn $trait_name + Send + Sync> {
-			match self {
-				Self::Deferred {
-					interceptors,
-					..
-				} => &mut interceptors.$field,
-				Self::Transactional {
-					interceptors,
-					..
-				} => &mut interceptors.$field,
-			}
+			&mut self.inner_mut().interceptors.$field
 		}
 	};
 }

@@ -29,7 +29,7 @@ use reifydb_type::{
 
 use crate::{
 	operator::{Operator, Operators},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -143,7 +143,12 @@ impl Operator for FilterOperator {
 		self.node
 	}
 
-	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		_txn: &mut FlowTransaction,
+		change: Change,
+		_collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {

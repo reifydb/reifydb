@@ -8,14 +8,12 @@ use std::{
 	},
 	mem::take,
 	ops::RangeBounds,
-	slice, vec,
 };
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::change::Change,
 };
-use vec::Drain;
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
@@ -24,46 +22,37 @@ pub enum PendingWrite {
 	Remove,
 }
 
-/// Newtype wrapping `Vec<Change>` for view changes generated during flow processing.
-#[derive(Debug, Default, Clone)]
-pub struct ViewChanges(Vec<Change>);
+/// Collects view changes emitted by sink operators during flow processing.
+///
+/// Separate from `Pending` (KV write buffer) so that only sink operators
+/// can emit view changes, enforced at the type level through the `Operator::apply`
+/// signature.
+#[derive(Debug, Default)]
+pub struct ViewChangeCollector {
+	changes: Vec<Change>,
+}
 
-impl ViewChanges {
+impl ViewChangeCollector {
 	pub fn new() -> Self {
-		Self(Vec::new())
+		Self {
+			changes: Vec::new(),
+		}
 	}
 
 	pub fn push(&mut self, change: Change) {
-		self.0.push(change);
+		self.changes.push(change);
+	}
+
+	pub fn take(&mut self) -> Vec<Change> {
+		take(&mut self.changes)
 	}
 
 	pub fn extend(&mut self, iter: impl IntoIterator<Item = Change>) {
-		self.0.extend(iter);
-	}
-
-	pub fn drain(&mut self) -> Drain<'_, Change> {
-		self.0.drain(..)
+		self.changes.extend(iter);
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.0.is_empty()
-	}
-
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	pub fn iter(&self) -> slice::Iter<'_, Change> {
-		self.0.iter()
-	}
-}
-
-impl IntoIterator for ViewChanges {
-	type Item = Change;
-	type IntoIter = vec::IntoIter<Change>;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
+		self.changes.is_empty()
 	}
 }
 
@@ -72,8 +61,6 @@ impl IntoIterator for ViewChanges {
 pub struct Pending {
 	/// Primary storage - BTreeMap for sorted key access and range queries
 	writes: BTreeMap<EncodedKey, PendingWrite>,
-	/// View changes generated during flow processing
-	view_changes: ViewChanges,
 }
 
 impl Pending {
@@ -81,7 +68,6 @@ impl Pending {
 	pub fn new() -> Self {
 		Self {
 			writes: BTreeMap::new(),
-			view_changes: ViewChanges::new(),
 		}
 	}
 
@@ -124,21 +110,6 @@ impl Pending {
 		R: RangeBounds<EncodedKey>,
 	{
 		self.writes.range(range)
-	}
-
-	/// Take all view changes, leaving an empty collection
-	pub fn take_view_changes(&mut self) -> ViewChanges {
-		take(&mut self.view_changes)
-	}
-
-	/// Append a view change
-	pub fn push_view_change(&mut self, change: Change) {
-		self.view_changes.push(change);
-	}
-
-	/// Extend view changes from another source
-	pub fn extend_view_changes(&mut self, changes: impl IntoIterator<Item = Change>) {
-		self.view_changes.extend(changes);
 	}
 }
 

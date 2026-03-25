@@ -17,7 +17,7 @@ use reifydb_type::{Result, error::Error, value::row_number::RowNumber};
 
 use crate::{
 	operator::{Operator, Operators, stateful::row::RowNumberProvider},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
 };
 
 /// APPEND operator that appends N input flows (N >= 2) with identical schemas
@@ -89,7 +89,12 @@ impl Operator for AppendOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		_collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
 			Error(internal!("Append received change from unknown node: {:?}", change.origin))
 		})?;

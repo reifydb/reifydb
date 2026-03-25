@@ -16,7 +16,10 @@ pub mod test {
 		value::{identity::IdentityId, row_number::RowNumber, r#type::Type},
 	};
 
-	use crate::{operator::Operator, transaction::FlowTransaction};
+	use crate::{
+		operator::Operator,
+		transaction::{FlowTransaction, pending::ViewChangeCollector},
+	};
 
 	/// Test operator implementation for stateful traits
 	pub struct TestOperator {
@@ -59,7 +62,12 @@ pub mod test {
 			self.id
 		}
 
-		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> Result<Change> {
+		fn apply(
+			&self,
+			_txn: &mut FlowTransaction,
+			_change: Change,
+			_collector: &mut ViewChangeCollector,
+		) -> Result<Change> {
 			todo!()
 		}
 

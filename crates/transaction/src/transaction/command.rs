@@ -13,7 +13,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		WithEventBus,
-		change::Change,
+		change::{Change, ChangeOrigin},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
@@ -28,6 +28,7 @@ use tracing::instrument;
 use crate::{
 	TransactionId,
 	change::{RowChange, TransactionalDefChanges},
+	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
 	interceptor::{
 		WithInterceptors,
@@ -105,8 +106,8 @@ pub struct CommandTransaction {
 	pub(crate) row_changes: Vec<RowChange>,
 	pub(crate) interceptors: Interceptors,
 
-	// Track table changes for transactional flow pre-commit processing
-	pub(crate) pending_flow_changes: Vec<Change>,
+	// Accumulate flow changes for transactional view pre-commit processing
+	pub(crate) accumulator: ChangeAccumulator,
 
 	/// The identity executing this transaction.
 	pub identity: IdentityId,
@@ -145,7 +146,7 @@ impl CommandTransaction {
 			event_bus,
 			interceptors,
 			row_changes: Vec::new(),
-			pending_flow_changes: Vec::new(),
+			accumulator: ChangeAccumulator::new(),
 			identity,
 			executor: None,
 			poison_cause: None,
@@ -221,7 +222,7 @@ impl CommandTransaction {
 			.collect();
 
 		let mut ctx = PreCommitContext {
-			flow_changes: take(&mut self.pending_flow_changes),
+			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
 			pending_writes: Vec::new(),
 			transaction_writes,
 		};
@@ -374,9 +375,13 @@ impl CommandTransaction {
 		self.row_changes.push(change);
 	}
 
-	/// Track a flow change for transactional view pre-commit processing
+	/// Track a flow change for transactional view pre-commit processing.
 	pub fn track_flow_change(&mut self, change: Change) {
-		self.pending_flow_changes.push(change);
+		if let ChangeOrigin::Primitive(id) = change.origin {
+			for diff in change.diffs {
+				self.accumulator.track(id, diff);
+			}
+		}
 	}
 
 	/// Get the transaction version

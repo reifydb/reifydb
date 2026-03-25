@@ -27,7 +27,11 @@ use reifydb_type::{
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::{Operator, operator::Operators, transaction::FlowTransaction};
+use crate::{
+	Operator,
+	operator::Operators,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
+};
 
 // Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
@@ -124,7 +128,12 @@ impl Operator for MapOperator {
 		self.node
 	}
 
-	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		_txn: &mut FlowTransaction,
+		change: Change,
+		_collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

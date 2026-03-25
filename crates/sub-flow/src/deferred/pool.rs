@@ -28,7 +28,7 @@ use super::{
 	instruction::WorkerBatch,
 	worker::{FlowMsg, FlowResponse},
 };
-use crate::transaction::pending::{Pending, PendingWrite};
+use crate::transaction::pending::{Pending, PendingWrite, ViewChangeCollector};
 
 /// Messages for the pool actor
 pub enum PoolMsg {
@@ -60,6 +60,7 @@ pub enum PoolResponse {
 	/// Operation succeeded with pending writes and view changes
 	Success {
 		pending: Pending,
+		collector: ViewChangeCollector,
 	},
 	/// Registration succeeded
 	RegisterSuccess,
@@ -74,7 +75,7 @@ enum Phase {
 	/// Waiting for multiple workers to reply
 	WaitingForWorkers {
 		pending_count: usize,
-		results: Vec<Pending>,
+		results: Vec<(Pending, ViewChangeCollector)>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		started_at: Instant,
 	},
@@ -286,12 +287,14 @@ impl PoolActor {
 				let resp = match response {
 					FlowResponse::Success {
 						pending,
+						collector,
 					} => {
 						if is_register {
 							PoolResponse::RegisterSuccess
 						} else {
 							PoolResponse::Success {
 								pending,
+								collector,
 							}
 						}
 					}
@@ -309,20 +312,22 @@ impl PoolActor {
 				match response {
 					FlowResponse::Success {
 						pending,
+						collector,
 					} => {
-						results.push(pending);
+						results.push((pending, collector));
 						pending_count -= 1;
 
 						if pending_count == 0 {
 							// All workers done — aggregate and reply
 							match self.aggregate_pending_writes(results) {
-								Ok(combined) => {
+								Ok((combined, combined_collector)) => {
 									Span::current().record(
 										"elapsed_us",
 										start.elapsed().as_micros() as u64,
 									);
 									(original_reply)(PoolResponse::Success {
 										pending: combined,
+										collector: combined_collector,
 									});
 								}
 								Err(e) => {
@@ -358,11 +363,15 @@ impl PoolActor {
 	}
 
 	/// Aggregate Pending from multiple workers with keyspace overlap detection.
-	fn aggregate_pending_writes(&self, writes: Vec<Pending>) -> Result<Pending, String> {
+	fn aggregate_pending_writes(
+		&self,
+		writes: Vec<(Pending, ViewChangeCollector)>,
+	) -> Result<(Pending, ViewChangeCollector), String> {
 		let mut combined = Pending::new();
+		let mut combined_collector = ViewChangeCollector::new();
 
-		for mut pending in writes {
-			combined.extend_view_changes(pending.take_view_changes());
+		for (pending, mut collector) in writes {
+			combined_collector.extend(collector.take());
 			for (key, value) in pending.iter_sorted() {
 				// Validate no keyspace overlap between workers
 				if combined.contains_key(&key) {
@@ -385,6 +394,6 @@ impl PoolActor {
 			}
 		}
 
-		Ok(combined)
+		Ok((combined, combined_collector))
 	}
 }

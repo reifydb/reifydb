@@ -1095,12 +1095,6 @@ impl Vm {
 								} else if let Some(generator) =
 									services.functions.get_generator(func_name)
 								{
-									let ptr = match &*tx {
-										Transaction::Admin(a) => {
-											format!("{:p}", *a)
-										}
-										_ => "non-admin".to_string(),
-									};
 									let arg_columns: Vec<Column> = args
 										.into_iter()
 										.enumerate()
@@ -1807,10 +1801,6 @@ impl Vm {
 
 				Instruction::Query(plan) => {
 					let mut std_txn = tx.reborrow();
-					let ptr = match &std_txn {
-						Transaction::Admin(a) => format!("{:p}", *a),
-						_ => "non-admin".to_string(),
-					};
 					if let Some(columns) = run_query_plan(
 						services,
 						&mut std_txn,

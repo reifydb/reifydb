@@ -12,7 +12,10 @@ use reifydb_rql::flow::{
 use reifydb_type::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngine, transaction::FlowTransaction};
+use crate::{
+	engine::FlowEngine,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
+};
 
 impl FlowEngine {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn), fields(
@@ -22,7 +25,13 @@ impl FlowEngine {
 		diff_count = change.diffs.len(),
 		nodes_processed = field::Empty
 	))]
-	pub fn process(&self, txn: &mut FlowTransaction, change: Change, flow_id: FlowId) -> Result<()> {
+	pub fn process(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		flow_id: FlowId,
+		collector: &mut ViewChangeCollector,
+	) -> Result<()> {
 		let mut nodes_processed = 0;
 
 		match change.origin {
@@ -52,6 +61,7 @@ impl FlowEngine {
 									change.version,
 									change.diffs.clone(),
 								),
+								collector,
 							)?;
 							nodes_processed += 1;
 						}
@@ -67,7 +77,7 @@ impl FlowEngine {
 				});
 
 				if let Some((flow, node)) = flow_and_node {
-					self.process_change(txn, &flow, &node, change)?;
+					self.process_change(txn, &flow, &node, change, collector)?;
 					nodes_processed += 1;
 				}
 			}
@@ -85,13 +95,19 @@ impl FlowEngine {
 		lock_wait_us = field::Empty,
 		apply_time_us = field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		node: &FlowNode,
+		change: Change,
+		collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let lock_start = self.runtime_context.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		let apply_start = self.runtime_context.clock.instant();
-		let result = operator.apply(txn, change)?;
+		let result = operator.apply(txn, change, collector)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
 		Ok(result)
@@ -111,6 +127,7 @@ impl FlowEngine {
 		flow: &FlowDag,
 		node: &FlowNode,
 		change: Change,
+		collector: &mut ViewChangeCollector,
 	) -> Result<()> {
 		let node_type = &node.ty;
 		let changes = &node.outputs;
@@ -118,7 +135,7 @@ impl FlowEngine {
 		let change = match &node_type {
 			SourceInlineData {} => unimplemented!(),
 			_ => {
-				let result = self.apply(txn, node, change)?;
+				let result = self.apply(txn, node, change, collector)?;
 				Span::current().record("output_diffs", result.diffs.len());
 				result
 			}
@@ -128,13 +145,19 @@ impl FlowEngine {
 		if changes.is_empty() {
 		} else if changes.len() == 1 {
 			let output_id = changes[0];
-			self.process_change(txn, flow, flow.get_node(&output_id).unwrap(), change)?;
+			self.process_change(txn, flow, flow.get_node(&output_id).unwrap(), change, collector)?;
 		} else {
 			let (last, rest) = changes.split_last().unwrap();
 			for output_id in rest {
-				self.process_change(txn, flow, flow.get_node(output_id).unwrap(), change.clone())?;
+				self.process_change(
+					txn,
+					flow,
+					flow.get_node(output_id).unwrap(),
+					change.clone(),
+					collector,
+				)?;
 			}
-			self.process_change(txn, flow, flow.get_node(last).unwrap(), change)?;
+			self.process_change(txn, flow, flow.get_node(last).unwrap(), change, collector)?;
 		}
 		Span::current().record("propagation_time_us", propagation_start.elapsed().as_micros() as u64);
 

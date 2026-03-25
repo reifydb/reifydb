@@ -31,7 +31,7 @@ use crate::{
 		Operators,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful},
 	},
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -126,7 +126,12 @@ impl Operator for SinkRingBufferViewOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let view_def = self.view.def().clone();
 		let schema: Schema = view_def.columns().into();
 		let primitive_id = PrimitiveId::ringbuffer(self.ringbuffer_id);
@@ -189,7 +194,7 @@ impl Operator for SinkRingBufferViewOperator {
 						metadata.tail = assigned_rn.0 + 1;
 					}
 					let version = txn.version();
-					txn.push_view_change(Change {
+					collector.push(Change {
 						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Insert {
@@ -251,7 +256,7 @@ impl Operator for SinkRingBufferViewOperator {
 						)?;
 					}
 					let version = txn.version();
-					txn.push_view_change(Change {
+					collector.push(Change {
 						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Update {
@@ -278,7 +283,7 @@ impl Operator for SinkRingBufferViewOperator {
 						ViewInterceptor::post_delete(txn, &view_def, storage_rn, &encoded)?;
 					}
 					let version = txn.version();
-					txn.push_view_change(Change {
+					collector.push(Change {
 						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Remove {

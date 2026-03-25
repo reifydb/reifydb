@@ -12,7 +12,11 @@ use reifydb_core::{
 };
 use reifydb_type::{Result, fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
-use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
+use crate::{
+	Operator,
+	operator::sink::decode_dictionary_columns,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
+};
 
 pub struct PrimitiveRingBufferOperator {
 	node: FlowNodeId,
@@ -33,7 +37,12 @@ impl Operator for PrimitiveRingBufferOperator {
 		self.node
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		_collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {

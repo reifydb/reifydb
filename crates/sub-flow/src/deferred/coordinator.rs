@@ -48,7 +48,7 @@ use super::{
 };
 use crate::{
 	catalog::FlowCatalog,
-	transaction::pending::{Pending, PendingWrite},
+	transaction::pending::{Pending, PendingWrite, ViewChangeCollector},
 };
 
 pub(crate) struct FlowConsumeRef {
@@ -100,6 +100,7 @@ struct ConsumeContext {
 	state_version: CommitVersion,
 	current_version: CommitVersion,
 	combined: Pending,
+	collector: ViewChangeCollector,
 	checkpoints: Vec<(FlowId, CommitVersion)>,
 	consumer_key: EncodedKey,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
@@ -275,6 +276,7 @@ impl CoordinatorActor {
 			state_version,
 			current_version,
 			combined: Pending::new(),
+			collector: ViewChangeCollector::new(),
 			checkpoints: Vec::new(),
 			consumer_key,
 			original_reply: reply,
@@ -444,8 +446,10 @@ impl CoordinatorActor {
 				match response {
 					PoolResponse::Success {
 						pending,
+						collector,
 					} => {
 						consume_ctx.combined = pending;
+						consume_ctx.collector = collector;
 					}
 					PoolResponse::RegisterSuccess => {
 						// unexpected but not an error
@@ -476,9 +480,10 @@ impl CoordinatorActor {
 				// Collect result from previous backfill worker submission
 				match response {
 					PoolResponse::Success {
-						mut pending,
+						pending,
+						mut collector,
 					} => {
-						consume_ctx.combined.extend_view_changes(pending.take_view_changes());
+						consume_ctx.collector.extend(collector.take());
 						for (key, value) in pending.iter_sorted() {
 							match value {
 								PendingWrite::Set(v) => {
@@ -861,7 +866,7 @@ impl CoordinatorActor {
 
 		// Track view changes so that transactional flows sourcing those views
 		// are triggered by the TransactionalFlowPreCommitInterceptor in the same commit.
-		for change in consume_ctx.combined.take_view_changes() {
+		for change in consume_ctx.collector.take() {
 			transaction.track_flow_change(change);
 		}
 

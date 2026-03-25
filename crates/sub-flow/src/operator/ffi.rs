@@ -33,7 +33,7 @@ use tracing::{Span, error, field, instrument};
 use crate::{
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::Operator,
-	transaction::FlowTransaction,
+	transaction::{FlowTransaction, pending::ViewChangeCollector},
 };
 
 /// FFI operator that wraps an external operator implementation
@@ -145,7 +145,12 @@ impl Operator for FFIOperator {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(
+		&self,
+		txn: &mut FlowTransaction,
+		change: Change,
+		_collector: &mut ViewChangeCollector,
+	) -> Result<Change> {
 		let mut arena = self.arena.borrow_mut();
 
 		let ffi_input = marshal_input(&mut arena, &change);
