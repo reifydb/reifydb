@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
 		catalog::{policy::PolicyTargetType, ringbuffer::RingBufferMetadata},
@@ -88,7 +88,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 	let mut inserted_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::new()
 	} else {
 		Vec::new()
@@ -205,7 +205,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 						if partition_col_indices.is_empty()
 							|| row_matches_partition(
 								&schema,
-								&row_data.values,
+								&row_data.row,
 								&partition_col_indices,
 								&partition_key,
 							) {
@@ -226,7 +226,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 						if partition_col_indices.is_empty()
 							|| row_matches_partition(
 								&schema,
-								&row_data.values,
+								&row_data.row,
 								&partition_col_indices,
 								&partition_key,
 							) {
@@ -285,7 +285,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 fn row_matches_partition(
 	schema: &Schema,
-	row: &EncodedValues,
+	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],
 ) -> bool {

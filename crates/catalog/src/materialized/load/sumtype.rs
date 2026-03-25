@@ -7,7 +7,7 @@ use reifydb_core::{
 			id::NamespaceId,
 			sumtype::{SumTypeDef, SumTypeKind, VariantDef},
 		},
-		store::MultiVersionValues,
+		store::MultiVersionRow,
 	},
 	key::sumtype::SumTypeKey,
 };
@@ -36,8 +36,8 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &MaterializedCata
 	Ok(())
 }
 
-fn convert_sumtype(multi: MultiVersionValues) -> SumTypeDef {
-	let row = multi.values;
+fn convert_sumtype(multi: MultiVersionRow) -> SumTypeDef {
+	let row = multi.row;
 	let id = SumTypeId(SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(SCHEMA.get_u64(&row, NAMESPACE));
 	let name = SCHEMA.get_utf8(&row, NAME).to_string();

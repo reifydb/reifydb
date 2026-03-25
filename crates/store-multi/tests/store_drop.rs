@@ -7,10 +7,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
-	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
+	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -85,8 +85,7 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let value =
-					self.store.get(&key, version)?.map(|sv: MultiVersionValues| sv.values.to_vec());
+				let value = self.store.get(&key, version)?.map(|sv: MultiVersionRow| sv.row.to_vec());
 
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
@@ -176,7 +175,7 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let values = EncodedValues(decode_binary(&kv.value));
+				let row = EncodedRow(decode_binary(&kv.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -189,7 +188,7 @@ impl testscript::runner::Runner for Runner {
 					cow_vec![
 						(Delta::Set {
 							key,
-							values
+							row
 						})
 					],
 					version,
@@ -223,7 +222,7 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let values = EncodedValues(decode_binary(&kv.value));
+				let row = EncodedRow(decode_binary(&kv.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					CommitVersion(v)
 				} else {
@@ -236,7 +235,7 @@ impl testscript::runner::Runner for Runner {
 					cow_vec![
 						(Delta::Unset {
 							key,
-							values
+							row
 						})
 					],
 					version,
@@ -284,8 +283,7 @@ impl testscript::runner::Runner for Runner {
 				let mut count = 0;
 				let mut prev_value: Option<Vec<u8>> = None;
 				for v in 1..=1000 {
-					let current =
-						self.store.get(&key, CommitVersion(v))?.map(|sv| sv.values.to_vec());
+					let current = self.store.get(&key, CommitVersion(v))?.map(|sv| sv.row.to_vec());
 					if current.is_some() && current != prev_value {
 						count += 1;
 					}
@@ -310,9 +308,9 @@ impl testscript::runner::Runner for Runner {
 	}
 }
 
-fn print<I: Iterator<Item = MultiVersionValues>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = MultiVersionRow>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = Raw::key_value(&item.key, item.values.as_slice());
+		let fmtkv = Raw::key_value(&item.key, item.row.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

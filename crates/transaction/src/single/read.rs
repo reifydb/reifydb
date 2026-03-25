@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionValues};
+use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockReadGuard};
 use reifydb_type::{Result, util::hex};
 
@@ -62,7 +62,7 @@ impl<'a> SingleReadTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
 		self.check_key_allowed(key)?;
 		let store = self.inner.store.read().clone();
 		SingleVersionGet::get(&store, key)

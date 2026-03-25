@@ -29,7 +29,7 @@ use reifydb_core::{
 			user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
 			view::ViewDef,
 		},
-		store::{MultiVersionBatch, MultiVersionValues},
+		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
 use reifydb_type::{
@@ -107,8 +107,8 @@ impl QueryTransaction {
 
 	/// Get a value by key
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
-		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_values()))
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	/// Check if a key exists
@@ -142,7 +142,7 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		self.multi.range(range, batch_size)
 	}
 
@@ -152,7 +152,7 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		self.multi.range_rev(range, batch_size)
 	}
 

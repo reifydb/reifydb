@@ -12,18 +12,18 @@ use crate::encoded::schema::fingerprint::SchemaFingerprint;
 pub const SCHEMA_HEADER_SIZE: usize = 8;
 
 /// A boxed values iterator.
-pub type EncodedValuesIter = Box<dyn EncodedValuesIterator>;
+pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
 
-pub trait EncodedValuesIterator: Iterator<Item = EncodedValues> {}
+pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
 
-impl<I: Iterator<Item = EncodedValues>> EncodedValuesIterator for I {}
+impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 // [schema_finger_print]:[bitvec]:[static_values]:[dynamic_values]
 #[derive(PartialEq, Eq)]
-pub struct EncodedValues(pub CowVec<u8>);
+pub struct EncodedRow(pub CowVec<u8>);
 
-impl Deref for EncodedValues {
+impl Deref for EncodedRow {
 	type Target = CowVec<u8>;
 
 	fn deref(&self) -> &Self::Target {
@@ -31,7 +31,7 @@ impl Deref for EncodedValues {
 	}
 }
 
-impl EncodedValues {
+impl EncodedRow {
 	pub fn make_mut(&mut self) -> &mut [u8] {
 		self.0.make_mut()
 	}

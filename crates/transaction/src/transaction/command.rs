@@ -7,14 +7,14 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::EventBus,
 	interface::{
 		WithEventBus,
 		change::Change,
-		store::{MultiVersionBatch, MultiVersionValues},
+		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	testing::TestingContext,
 };
@@ -213,14 +213,14 @@ impl CommandTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedValues>)> = self
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
 			.pending_writes()
 			.iter()
 			.map(|(key, pending)| match &pending.delta {
 				Delta::Set {
-					values,
+					row,
 					..
-				} => (key.clone(), Some(values.clone())),
+				} => (key.clone(), Some(row.clone())),
 				_ => (key.clone(), None),
 			})
 			.collect();
@@ -400,9 +400,9 @@ impl CommandTransaction {
 
 	/// Get a value by key
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_values()))
+		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	/// Check if a key exists
@@ -436,18 +436,18 @@ impl CommandTransaction {
 
 	/// Set a key-value pair
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
 	}
 
 	/// Unset a key, preserving the deleted values.
 	///
-	/// The `values` parameter contains the deleted values for CDC and metrics.
+	/// The `row` parameter contains the deleted row for CDC and metrics.
 	#[inline]
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().unset(key, values)
+		self.cmd.as_mut().unwrap().unset(key, row)
 	}
 
 	/// Remove a key without preserving the deleted values.
@@ -465,7 +465,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(range, batch_size))
 	}
@@ -476,7 +476,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(range, batch_size))
 	}

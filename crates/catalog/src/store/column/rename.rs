@@ -22,7 +22,7 @@ impl CatalogStore {
 		// Update column definition (ColumnsKey)
 		// We must rebuild the row since set_utf8 cannot overwrite existing values
 		if let Some(multi) = txn.get(&ColumnsKey::encoded(column_id))? {
-			let old = multi.values;
+			let old = multi.row;
 			let mut row = column::SCHEMA.allocate();
 			column::SCHEMA.set_u64(&mut row, column::ID, column::SCHEMA.get_u64(&old, column::ID));
 			column::SCHEMA.set_u64(
@@ -53,7 +53,7 @@ impl CatalogStore {
 
 		// Update primitive-column link (ColumnKey)
 		if let Some(multi) = txn.get(&ColumnKey::encoded(primitive, column_id))? {
-			let old = multi.values;
+			let old = multi.row;
 			let mut row = primitive_column::SCHEMA.allocate();
 			primitive_column::SCHEMA.set_u64(
 				&mut row,

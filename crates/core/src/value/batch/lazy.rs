@@ -8,7 +8,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	interface::catalog::dictionary::DictionaryDef,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -33,7 +33,7 @@ pub struct LazyColumnMeta {
 #[derive(Debug, Clone)]
 pub struct LazyBatch {
 	/// Encoded row data
-	rows: Vec<EncodedValues>,
+	rows: Vec<EncodedRow>,
 	/// Row numbers from storage
 	row_numbers: Vec<RowNumber>,
 	/// Schema for interpreting encoded rows
@@ -46,7 +46,7 @@ pub struct LazyBatch {
 
 impl LazyBatch {
 	pub fn new(
-		rows: Vec<EncodedValues>,
+		rows: Vec<EncodedRow>,
 		row_numbers: Vec<RowNumber>,
 		schema: &Schema,
 		column_metas: Vec<LazyColumnMeta>,
@@ -179,7 +179,7 @@ impl LazyBatch {
 	}
 
 	/// Get encoded row by index
-	pub fn encoded_row(&self, row_idx: usize) -> &EncodedValues {
+	pub fn encoded_row(&self, row_idx: usize) -> &EncodedRow {
 		&self.rows[row_idx]
 	}
 

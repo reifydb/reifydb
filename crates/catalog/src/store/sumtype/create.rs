@@ -213,13 +213,13 @@ pub mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		let id2 = sumtype_namespace::SCHEMA.get_u64(row, sumtype_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(sumtype_namespace::SCHEMA.get_utf8(row, sumtype_namespace::NAME), "Shape");
 
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		let id1 = sumtype_namespace::SCHEMA.get_u64(row, sumtype_namespace::ID);
 		assert!(id2 > id1);
 		assert_eq!(sumtype_namespace::SCHEMA.get_utf8(row, sumtype_namespace::NAME), "Color");

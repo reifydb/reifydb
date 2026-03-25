@@ -21,7 +21,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = TableId(table::SCHEMA.get_u64(&row, table::ID));
 		let namespace = NamespaceId(table::SCHEMA.get_u64(&row, table::NAMESPACE));
 		let name = table::SCHEMA.get_utf8(&row, table::NAME).to_string();
@@ -46,7 +46,7 @@ impl CatalogStore {
 		let mut found_table = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let table_name = table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME);
 			if name == table_name {
 				found_table = Some(TableId(table_namespace::SCHEMA.get_u64(row, table_namespace::ID)));

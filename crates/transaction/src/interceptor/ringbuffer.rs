@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferDef};
+use reifydb_core::{encoded::row::EncodedRow, interface::catalog::ringbuffer::RingBufferDef};
 use reifydb_type::{Result, value::row_number::RowNumber};
 
 use super::WithInterceptors;
@@ -11,11 +11,11 @@ use crate::interceptor::chain::InterceptorChain;
 /// Context for ringbuffer pre-insert interceptors
 pub struct RingBufferPreInsertContext<'a> {
 	pub ringbuffer: &'a RingBufferDef,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> RingBufferPreInsertContext<'a> {
-	pub fn new(ringbuffer: &'a RingBufferDef, row: EncodedValues) -> Self {
+	pub fn new(ringbuffer: &'a RingBufferDef, row: EncodedRow) -> Self {
 		Self {
 			ringbuffer,
 			row,
@@ -28,7 +28,7 @@ pub trait RingBufferPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn RingBufferPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferPreInsertContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: RingBufferPreInsertContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -86,11 +86,11 @@ where
 pub struct RingBufferPostInsertContext<'a> {
 	pub ringbuffer: &'a RingBufferDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
 }
 
 impl<'a> RingBufferPostInsertContext<'a> {
-	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, row: &'a EncodedRow) -> Self {
 		Self {
 			ringbuffer,
 			id,
@@ -162,11 +162,11 @@ where
 pub struct RingBufferPreUpdateContext<'a> {
 	pub ringbuffer: &'a RingBufferDef,
 	pub id: RowNumber,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> RingBufferPreUpdateContext<'a> {
-	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, row: EncodedValues) -> Self {
+	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, row: EncodedRow) -> Self {
 		Self {
 			ringbuffer,
 			id,
@@ -180,7 +180,7 @@ pub trait RingBufferPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: RingBufferPreUpdateContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: RingBufferPreUpdateContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -238,17 +238,12 @@ where
 pub struct RingBufferPostUpdateContext<'a> {
 	pub ringbuffer: &'a RingBufferDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
-	pub old_row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
+	pub old_row: &'a EncodedRow,
 }
 
 impl<'a> RingBufferPostUpdateContext<'a> {
-	pub fn new(
-		ringbuffer: &'a RingBufferDef,
-		id: RowNumber,
-		row: &'a EncodedValues,
-		old_row: &'a EncodedValues,
-	) -> Self {
+	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
 		Self {
 			ringbuffer,
 			id,
@@ -395,11 +390,11 @@ where
 pub struct RingBufferPostDeleteContext<'a> {
 	pub ringbuffer: &'a RingBufferDef,
 	pub id: RowNumber,
-	pub deleted_row: &'a EncodedValues,
+	pub deleted_row: &'a EncodedRow,
 }
 
 impl<'a> RingBufferPostDeleteContext<'a> {
-	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, deleted_row: &'a EncodedValues) -> Self {
+	pub fn new(ringbuffer: &'a RingBufferDef, id: RowNumber, deleted_row: &'a EncodedRow) -> Self {
 		Self {
 			ringbuffer,
 			id,
@@ -473,8 +468,8 @@ impl RingBufferInterceptor {
 	pub fn pre_insert(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBufferDef,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let ctx = RingBufferPreInsertContext::new(ringbuffer, row);
 		txn.ringbuffer_pre_insert_interceptors().execute(ctx)
 	}
@@ -483,7 +478,7 @@ impl RingBufferInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
-		row: &EncodedValues,
+		row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = RingBufferPostInsertContext::new(ringbuffer, id, row);
 		txn.ringbuffer_post_insert_interceptors().execute(ctx)
@@ -493,8 +488,8 @@ impl RingBufferInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let ctx = RingBufferPreUpdateContext::new(ringbuffer, id, row);
 		txn.ringbuffer_pre_update_interceptors().execute(ctx)
 	}
@@ -503,8 +498,8 @@ impl RingBufferInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
-		row: &EncodedValues,
-		old_row: &EncodedValues,
+		row: &EncodedRow,
+		old_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = RingBufferPostUpdateContext::new(ringbuffer, id, row, old_row);
 		txn.ringbuffer_post_update_interceptors().execute(ctx)
@@ -519,7 +514,7 @@ impl RingBufferInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBufferDef,
 		id: RowNumber,
-		deleted_row: &EncodedValues,
+		deleted_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = RingBufferPostDeleteContext::new(ringbuffer, id, deleted_row);
 		txn.ringbuffer_post_delete_interceptors().execute(ctx)

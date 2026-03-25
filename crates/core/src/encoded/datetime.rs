@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::{datetime::DateTime, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_datetime(&self, row: &mut EncodedValues, index: usize, value: DateTime) {
+	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
@@ -20,7 +20,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_datetime(&self, row: &EncodedValues, index: usize) -> DateTime {
+	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
@@ -30,7 +30,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_datetime(&self, row: &EncodedValues, index: usize) -> Option<DateTime> {
+	pub fn try_get_datetime(&self, row: &EncodedRow, index: usize) -> Option<DateTime> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::DateTime {
 			Some(self.get_datetime(row, index))
 		} else {

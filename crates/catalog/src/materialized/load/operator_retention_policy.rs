@@ -19,7 +19,7 @@ pub(crate) fn load_operator_retention_policies(rx: &mut Transaction<'_>, catalog
 		let version = multi.version;
 
 		if let Some(key) = OperatorRetentionPolicyKey::decode(&multi.key) {
-			if let Some(policy) = decode_retention_policy(&multi.values) {
+			if let Some(policy) = decode_retention_policy(&multi.row) {
 				catalog.set_operator_retention_policy(key.operator, version, Some(policy));
 			}
 		}

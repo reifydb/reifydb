@@ -301,14 +301,14 @@ pub mod tests {
 
 		// Check first link (descending order, so buffer2 comes first)
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		let id2 = ringbuffer_namespace::SCHEMA.get_u64(row, ringbuffer_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME), "buffer2");
 
 		// Check second link (buffer1 comes second)
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		let id1 = ringbuffer_namespace::SCHEMA.get_u64(row, ringbuffer_namespace::ID);
 		assert!(id2 > id1);
 		assert_eq!(ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME), "buffer1");

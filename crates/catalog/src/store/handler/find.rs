@@ -21,7 +21,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(handler_def_from_row(&multi.values)))
+		Ok(Some(handler_def_from_row(&multi.row)))
 	}
 
 	pub(crate) fn find_handler_by_name(
@@ -35,7 +35,7 @@ impl CatalogStore {
 		let mut found_id = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let entry_name = handler_namespace::SCHEMA.get_utf8(row, handler_namespace::NAME);
 			if name == entry_name {
 				found_id =

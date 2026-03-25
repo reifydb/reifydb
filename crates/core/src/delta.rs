@@ -5,20 +5,20 @@ use std::cmp;
 
 use crate::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 };
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {
 	Set {
 		key: EncodedKey,
-		values: EncodedValues,
+		row: EncodedRow,
 	},
 	/// Unset an entry, preserving the deleted values.
 	/// Symmetric with Set - use when the deleted data matters (e.g., row data, CDC).
 	Unset {
 		key: EncodedKey,
-		values: EncodedValues,
+		row: EncodedRow,
 	},
 	/// Remove an entry without preserving the deleted values.
 	/// Use when only the key matters (e.g., index entries, catalog metadata).
@@ -76,13 +76,13 @@ impl Delta {
 		}
 	}
 
-	/// Returns the encoded values, if None, it means the entry is marked as remove or drop.
-	pub fn values(&self) -> Option<&EncodedValues> {
+	/// Returns the encoded row, if None, it means the entry is marked as remove or drop.
+	pub fn row(&self) -> Option<&EncodedRow> {
 		match self {
 			Self::Set {
-				values,
+				row,
 				..
-			} => Some(values),
+			} => Some(row),
 			Self::Unset {
 				..
 			} => None,
@@ -101,17 +101,17 @@ impl Clone for Delta {
 		match self {
 			Self::Set {
 				key,
-				values,
+				row,
 			} => Self::Set {
 				key: key.clone(),
-				values: values.clone(),
+				row: row.clone(),
 			},
 			Self::Unset {
 				key,
-				values,
+				row,
 			} => Self::Unset {
 				key: key.clone(),
-				values: values.clone(),
+				row: row.clone(),
 			},
 			Self::Remove {
 				key,

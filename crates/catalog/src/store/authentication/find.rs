@@ -33,8 +33,8 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let auth_user_id = authentication::SCHEMA.get_u64(&multi.values, authentication::USER_ID);
-			let auth_method = authentication::SCHEMA.get_utf8(&multi.values, authentication::METHOD);
+			let auth_user_id = authentication::SCHEMA.get_u64(&multi.row, authentication::USER_ID);
+			let auth_method = authentication::SCHEMA.get_utf8(&multi.row, authentication::METHOD);
 			if auth_user_id == user_id && auth_method == method {
 				return Ok(Some(convert_authentication(multi)));
 			}
@@ -53,7 +53,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let auth_method = authentication::SCHEMA.get_utf8(&multi.values, authentication::METHOD);
+			let auth_method = authentication::SCHEMA.get_utf8(&multi.row, authentication::METHOD);
 			if auth_method == method {
 				results.push(convert_authentication(multi));
 			}

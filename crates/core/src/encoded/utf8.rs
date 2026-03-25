@@ -5,15 +5,15 @@ use std::str;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_utf8(&self, row: &mut EncodedValues, index: usize, value: impl AsRef<str>) {
+	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
 		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Utf8);
 		self.replace_dynamic_data(row, index, value.as_ref().as_bytes());
 	}
 
-	pub fn get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> &'a str {
+	pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Utf8);
 
@@ -30,7 +30,7 @@ impl Schema {
 		unsafe { str::from_utf8_unchecked(string_slice) }
 	}
 
-	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedValues, index: usize) -> Option<&'a str> {
+	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> Option<&'a str> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Utf8 {
 			Some(self.get_utf8(row, index))
 		} else {

@@ -13,15 +13,15 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::{
 		EventBus, EventListener,
 		metric::{CdcEntryDrop, CdcEntryStats, CdcStatsDroppedEvent, CdcStatsRecordedEvent},
 		store::StatsProcessedEvent,
 	},
-	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionValues},
+	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
 use reifydb_metric::{
@@ -211,10 +211,8 @@ impl TestRunner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let value = self
-					.multi_store
-					.get(&key, version)?
-					.map(|sv: MultiVersionValues| sv.values.to_vec());
+				let value =
+					self.multi_store.get(&key, version)?.map(|sv: MultiVersionRow| sv.row.to_vec());
 
 				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
 			}
@@ -257,7 +255,7 @@ impl TestRunner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let values = EncodedValues(decode_binary(&kv.value));
+				let row = EncodedRow(decode_binary(&kv.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					let v = CommitVersion(v);
 					// Update self.version to track highest version used
@@ -275,7 +273,7 @@ impl TestRunner for Runner {
 					cow_vec![
 						(Delta::Set {
 							key,
-							values
+							row
 						})
 					],
 					version,
@@ -304,14 +302,14 @@ impl TestRunner for Runner {
 				let current_values = self
 					.multi_store
 					.get(&key, prev_version)?
-					.map(|mv| mv.values)
-					.unwrap_or_else(|| EncodedValues(cow_vec![]));
+					.map(|mv| mv.row)
+					.unwrap_or_else(|| EncodedRow(cow_vec![]));
 
 				self.multi_store.commit(
 					cow_vec![
 						(Delta::Unset {
 							key,
-							values: current_values
+							row: current_values
 						})
 					],
 					version,
@@ -547,9 +545,9 @@ impl TestRunner for Runner {
 	}
 }
 
-fn print<I: Iterator<Item = MultiVersionValues>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = MultiVersionRow>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = format::raw::Raw::key_value(&item.key, item.values.as_slice());
+		let fmtkv = format::raw::Raw::key_value(&item.key, item.row.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::catalog::flow::FlowNodeId,
 	util::encoding::keycode::serializer::KeySerializer,
 };
@@ -94,7 +94,7 @@ impl Counter {
 
 	fn save(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
 		let bytes = value.to_be_bytes().to_vec();
-		internal_state_set(self.node, txn, &self.key, EncodedValues(CowVec::new(bytes)))?;
+		internal_state_set(self.node, txn, &self.key, EncodedRow(CowVec::new(bytes)))?;
 		Ok(())
 	}
 

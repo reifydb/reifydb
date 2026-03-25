@@ -12,7 +12,7 @@
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
 
 use super::test_multi;
-use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
+use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
 
 #[test]
 fn test_range() {
@@ -29,14 +29,14 @@ fn test_range() {
 	let items: Vec<_> = txn.range(four_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));
-		assert_eq!(v.values, as_values!(expected));
+		assert_eq!(v.row, as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
 	let items: Vec<_> = txn.range_rev(four_to_one, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(v.key, as_key!(expected));
-		assert_eq!(v.values, as_values!(expected));
+		assert_eq!(v.row, as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 }
@@ -54,14 +54,14 @@ fn test_range2() {
 	let items: Vec<_> = txn.range(four_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
 	let items: Vec<_> = txn.range_rev(four_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
@@ -77,14 +77,14 @@ fn test_range2() {
 	let items: Vec<_> = txn.range(seven_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
 	let items: Vec<_> = txn.range_rev(seven_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 }
@@ -102,14 +102,14 @@ fn test_range3() {
 	let items: Vec<_> = txn.range(seven_to_four.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (4..=6).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
 	let items: Vec<_> = txn.range_rev(seven_to_four.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (4..=6).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 1);
 	}
 
@@ -125,14 +125,14 @@ fn test_range3() {
 	let items: Vec<_> = txn.range(five_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=5).rev().zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 
 	let items: Vec<_> = txn.range_rev(five_to_one.clone(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=5).zip(items) {
 		assert_eq!(&v.key, &as_key!(expected));
-		assert_eq!(&v.values, &as_values!(expected));
+		assert_eq!(&v.row, &as_values!(expected));
 		assert_eq!(v.version, 2);
 	}
 }
@@ -184,19 +184,19 @@ fn test_range_edge() {
 		assert_eq!(5, engine.version().unwrap());
 	}
 
-	let check_iter = |items: Vec<reifydb_core::interface::store::MultiVersionValues>, expected: &[u64]| {
+	let check_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, &r.values));
+			assert_eq!(expected[i], from_row!(u64, &r.row));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |items: Vec<reifydb_core::interface::store::MultiVersionValues>, expected: &[u64]| {
+	let check_rev_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_values!(u64, &r.values));
+			assert_eq!(expected[i], from_row!(u64, &r.row));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -297,7 +297,7 @@ fn test_range_stream_returns_newest_version() {
 	let item = &items[0];
 	assert_eq!(item.key, as_key!(1));
 	// Must be the NEWEST version's value
-	assert_eq!(from_values!(u64, &item.values), NUM_VERSIONS);
+	assert_eq!(from_row!(u64, &item.row), NUM_VERSIONS);
 }
 
 /// Test that streaming works correctly across multiple keys, each with many versions.
@@ -330,6 +330,6 @@ fn test_range_stream_multiple_keys_many_versions() {
 		let expected_value = expected_key * 1000 + VERSIONS_PER_KEY;
 
 		assert_eq!(item.key, as_key!(expected_key));
-		assert_eq!(from_values!(u64, &item.values), expected_value);
+		assert_eq!(from_row!(u64, &item.row), expected_value);
 	}
 }

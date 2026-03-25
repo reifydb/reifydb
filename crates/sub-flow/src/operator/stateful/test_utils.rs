@@ -4,7 +4,7 @@
 #[cfg(test)]
 pub mod test {
 	use reifydb_core::{
-		encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+		encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
 		interface::{catalog::flow::FlowNodeId, change::Change},
 		value::column::columns::Columns,
 	};
@@ -69,8 +69,8 @@ pub mod test {
 	}
 
 	/// Helper to create test encoded
-	pub fn test_row() -> EncodedValues {
-		EncodedValues(CowVec::new(vec![1, 2, 3, 4, 5]))
+	pub fn test_row() -> EncodedRow {
+		EncodedRow(CowVec::new(vec![1, 2, 3, 4, 5]))
 	}
 
 	/// Helper to create test key with suffix
@@ -79,7 +79,7 @@ pub mod test {
 	}
 
 	/// Helper to verify encoded equality
-	pub fn assert_row_eq(actual: &EncodedValues, expected: &EncodedValues) {
+	pub fn assert_row_eq(actual: &EncodedRow, expected: &EncodedRow) {
 		assert_eq!(actual.as_ref().to_vec(), expected.as_ref().to_vec(), "Rows do not match");
 	}
 

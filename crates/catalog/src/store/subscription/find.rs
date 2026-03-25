@@ -19,7 +19,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = SubscriptionId(subscription::SCHEMA.get_u64(&row, subscription::ID));
 		let acknowledged_version =
 			CommitVersion(subscription::SCHEMA.get_u64(&row, subscription::ACKNOWLEDGED_VERSION));

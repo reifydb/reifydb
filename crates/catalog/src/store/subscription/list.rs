@@ -25,7 +25,7 @@ impl CatalogStore {
 
 						let acknowledged_version =
 							CommitVersion(subscription::SCHEMA.get_u64(
-								&entry.values,
+								&entry.row,
 								subscription::ACKNOWLEDGED_VERSION,
 							));
 

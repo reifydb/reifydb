@@ -13,7 +13,7 @@ use reifydb_abi::{
 	context::iterators::StateIteratorFFI,
 	data::buffer::BufferFFI,
 };
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, instrument};
 
@@ -28,7 +28,7 @@ use crate::{
 	key_len = key.as_bytes().len(),
 	found
 ))]
-pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -55,7 +55,7 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 				// Free the buffer allocated by host
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
 				Span::current().record("found", true);
-				Ok(Some(EncodedValues(CowVec::new(value_bytes))))
+				Ok(Some(EncodedRow(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
 			// Key not found
@@ -73,7 +73,7 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 	key_len = key.as_bytes().len(),
 	value_len = value.as_ref().len()
 ))]
-pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedValues) -> Result<()> {
+pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -125,7 +125,7 @@ pub(crate) fn raw_state_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> R
 	prefix_len = prefix.as_bytes().len(),
 	result_count
 ))]
-pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
@@ -182,9 +182,9 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 
 				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
 					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
-					EncodedValues(CowVec::new(value_bytes))
+					EncodedRow(CowVec::new(value_bytes))
 				} else {
-					EncodedValues(CowVec::new(Vec::new()))
+					EncodedRow(CowVec::new(Vec::new()))
 				};
 
 				// Free buffers allocated by host
@@ -217,7 +217,7 @@ pub(crate) fn raw_state_range(
 	ctx: &OperatorContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
-) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
 	unsafe {
@@ -287,9 +287,9 @@ pub(crate) fn raw_state_range(
 
 				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
 					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
-					EncodedValues(CowVec::new(value_bytes))
+					EncodedRow(CowVec::new(value_bytes))
 				} else {
-					EncodedValues(CowVec::new(Vec::new()))
+					EncodedRow(CowVec::new(Vec::new()))
 				};
 
 				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);

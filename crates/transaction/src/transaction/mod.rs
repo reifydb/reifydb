@@ -6,12 +6,12 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	interface::{
 		change::Change,
-		store::{MultiVersionBatch, MultiVersionValues},
+		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
 use reifydb_type::{
@@ -128,7 +128,7 @@ impl<'a> Transaction<'a> {
 	}
 
 	/// Get a value by key (async method)
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
 			Self::Admin(txn) => txn.get(key),
@@ -182,7 +182,7 @@ impl<'a> Transaction<'a> {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		match self {
 			Transaction::Command(txn) => txn.range(range, batch_size),
 			Transaction::Admin(txn) => txn.range(range, batch_size),
@@ -196,7 +196,7 @@ impl<'a> Transaction<'a> {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		match self {
 			Transaction::Command(txn) => txn.range_rev(range, batch_size),
 			Transaction::Admin(txn) => txn.range_rev(range, batch_size),
@@ -396,7 +396,7 @@ impl<'a> Transaction<'a> {
 	}
 
 	/// Set a key-value pair. Panics on Query transactions.
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		match self {
 			Transaction::Command(txn) => txn.set(key, row),
 			Transaction::Admin(txn) => txn.set(key, row),
@@ -406,12 +406,12 @@ impl<'a> Transaction<'a> {
 	}
 
 	/// Unset (delete with tombstone) a key-value pair. Panics on Query transactions.
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		match self {
-			Transaction::Command(txn) => txn.unset(key, values),
-			Transaction::Admin(txn) => txn.unset(key, values),
+			Transaction::Command(txn) => txn.unset(key, row),
+			Transaction::Admin(txn) => txn.unset(key, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Subscription(txn) => txn.unset(key, values),
+			Transaction::Subscription(txn) => txn.unset(key, row),
 		}
 	}
 

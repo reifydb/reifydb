@@ -304,12 +304,12 @@ pub mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1025);
 		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1026);
 		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "another_view");
 	}

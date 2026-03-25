@@ -6,10 +6,10 @@ use std::ptr;
 use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
+	pub fn set_identity_id(&self, row: &mut EncodedRow, index: usize, value: IdentityId) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
@@ -23,7 +23,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_identity_id(&self, row: &EncodedValues, index: usize) -> IdentityId {
+	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
@@ -37,7 +37,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_identity_id(&self, row: &EncodedValues, index: usize) -> Option<IdentityId> {
+	pub fn try_get_identity_id(&self, row: &EncodedRow, index: usize) -> Option<IdentityId> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::IdentityId {
 			Some(self.get_identity_id(row, index))
 		} else {

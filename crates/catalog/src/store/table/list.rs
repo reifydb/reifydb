@@ -23,10 +23,9 @@ impl CatalogStore {
 					if let Key::Table(table_key) = key {
 						let table_id = table_key.table;
 						let namespace_id = NamespaceId(
-							table::SCHEMA.get_u64(&entry.values, table::NAMESPACE),
+							table::SCHEMA.get_u64(&entry.row, table::NAMESPACE),
 						);
-						let name =
-							table::SCHEMA.get_utf8(&entry.values, table::NAME).to_string();
+						let name = table::SCHEMA.get_utf8(&entry.row, table::NAME).to_string();
 						table_ids.push((table_id, namespace_id, name));
 					}
 				}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::table::TableDef};
+use reifydb_core::{encoded::row::EncodedRow, interface::catalog::table::TableDef};
 use reifydb_type::{Result, value::row_number::RowNumber};
 
 use super::WithInterceptors;
@@ -12,11 +12,11 @@ use crate::interceptor::chain::InterceptorChain;
 pub struct TablePreInsertContext<'a> {
 	pub table: &'a TableDef,
 	pub rn: RowNumber,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> TablePreInsertContext<'a> {
-	pub fn new(table: &'a TableDef, rn: RowNumber, row: EncodedValues) -> Self {
+	pub fn new(table: &'a TableDef, rn: RowNumber, row: EncodedRow) -> Self {
 		Self {
 			table,
 			rn,
@@ -30,7 +30,7 @@ pub trait TablePreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn TablePreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TablePreInsertContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: TablePreInsertContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -88,11 +88,11 @@ where
 pub struct TablePostInsertContext<'a> {
 	pub table: &'a TableDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
 }
 
 impl<'a> TablePostInsertContext<'a> {
-	pub fn new(table: &'a TableDef, id: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(table: &'a TableDef, id: RowNumber, row: &'a EncodedRow) -> Self {
 		Self {
 			table,
 			id,
@@ -164,11 +164,11 @@ where
 pub struct TablePreUpdateContext<'a> {
 	pub table: &'a TableDef,
 	pub id: RowNumber,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> TablePreUpdateContext<'a> {
-	pub fn new(table: &'a TableDef, id: RowNumber, row: EncodedValues) -> Self {
+	pub fn new(table: &'a TableDef, id: RowNumber, row: EncodedRow) -> Self {
 		Self {
 			table,
 			id,
@@ -182,7 +182,7 @@ pub trait TablePreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn TablePreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: TablePreUpdateContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: TablePreUpdateContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -240,12 +240,12 @@ where
 pub struct TablePostUpdateContext<'a> {
 	pub table: &'a TableDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
-	pub old_row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
+	pub old_row: &'a EncodedRow,
 }
 
 impl<'a> TablePostUpdateContext<'a> {
-	pub fn new(table: &'a TableDef, id: RowNumber, row: &'a EncodedValues, old_row: &'a EncodedValues) -> Self {
+	pub fn new(table: &'a TableDef, id: RowNumber, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
 		Self {
 			table,
 			id,
@@ -392,11 +392,11 @@ where
 pub struct TablePostDeleteContext<'a> {
 	pub table: &'a TableDef,
 	pub id: RowNumber,
-	pub deleted_row: &'a EncodedValues,
+	pub deleted_row: &'a EncodedRow,
 }
 
 impl<'a> TablePostDeleteContext<'a> {
-	pub fn new(table: &'a TableDef, id: RowNumber, deleted_row: &'a EncodedValues) -> Self {
+	pub fn new(table: &'a TableDef, id: RowNumber, deleted_row: &'a EncodedRow) -> Self {
 		Self {
 			table,
 			id,
@@ -471,8 +471,8 @@ impl TableInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &TableDef,
 		rn: RowNumber,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let ctx = TablePreInsertContext::new(table, rn, row);
 		txn.table_pre_insert_interceptors().execute(ctx)
 	}
@@ -481,7 +481,7 @@ impl TableInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &TableDef,
 		id: RowNumber,
-		row: &EncodedValues,
+		row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = TablePostInsertContext::new(table, id, row);
 		txn.table_post_insert_interceptors().execute(ctx)
@@ -491,8 +491,8 @@ impl TableInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &TableDef,
 		id: RowNumber,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let ctx = TablePreUpdateContext::new(table, id, row);
 		txn.table_pre_update_interceptors().execute(ctx)
 	}
@@ -501,8 +501,8 @@ impl TableInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &TableDef,
 		id: RowNumber,
-		row: &EncodedValues,
-		old_row: &EncodedValues,
+		row: &EncodedRow,
+		old_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = TablePostUpdateContext::new(table, id, row, old_row);
 		txn.table_post_update_interceptors().execute(ctx)
@@ -517,7 +517,7 @@ impl TableInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &TableDef,
 		id: RowNumber,
-		deleted_row: &EncodedValues,
+		deleted_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = TablePostDeleteContext::new(table, id, deleted_row);
 		txn.table_post_delete_interceptors().execute(ctx)

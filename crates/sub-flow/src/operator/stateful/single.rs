@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::Schema};
 use reifydb_type::Result;
 
 use super::utils;
@@ -18,27 +18,27 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Create a new state encoded with default values
-	fn create_state(&self) -> EncodedValues {
+	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
 	/// Load the operator's single state encoded
-	fn load_state(&self, txn: &mut FlowTransaction) -> Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction) -> Result<EncodedRow> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save the operator's single state encoded
-	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedValues) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedRow) -> Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedValues) -> Result<()>,
+		F: FnOnce(&Schema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.layout();
 		let mut row = self.load_state(txn)?;

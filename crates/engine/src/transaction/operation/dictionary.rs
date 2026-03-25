@@ -3,7 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::dictionary::DictionaryDef,
 	internal_error,
 	key::{
@@ -56,14 +56,14 @@ impl DictionaryOperations for CommandTransaction {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		if let Some(existing) = self.get(&entry_key)? {
 			// Value exists, return existing ID
-			let id = u128::from_be_bytes(existing.values[..16].try_into().unwrap());
+			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
 			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
 		// 3. Value doesn't exist - get next ID from sequence
 		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
 		let next_id = match self.get(&seq_key)? {
-			Some(v) => u128::from_be_bytes(v.values[..16].try_into().unwrap()) + 1,
+			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
 			None => 1, // First entry
 		};
 
@@ -74,16 +74,16 @@ impl DictionaryOperations for CommandTransaction {
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&value_bytes);
-		self.set(&entry_key, EncodedValues(CowVec::new(entry_value)))?;
+		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
 
 		// 6. Store reverse index (id -> value_bytes)
 		// Note: DictionaryEntryIndexKey currently uses u64, so we truncate
 		// This limits practical dictionary size to u64::MAX entries
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
-		self.set(&index_key, EncodedValues(CowVec::new(value_bytes)))?;
+		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
 
 		// 7. Update sequence
-		self.set(&seq_key, EncodedValues(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
 		DictionaryInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
 
@@ -95,7 +95,7 @@ impl DictionaryOperations for CommandTransaction {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = from_bytes(&v.values)
+				let value: Value = from_bytes(&v.row)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -114,7 +114,7 @@ impl DictionaryOperations for CommandTransaction {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.get(&entry_key)? {
 			Some(v) => {
-				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
+				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
 				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
@@ -135,14 +135,14 @@ impl DictionaryOperations for AdminTransaction {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		if let Some(existing) = self.get(&entry_key)? {
 			// Value exists, return existing ID
-			let id = u128::from_be_bytes(existing.values[..16].try_into().unwrap());
+			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
 			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
 		// 3. Value doesn't exist - get next ID from sequence
 		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
 		let next_id = match self.get(&seq_key)? {
-			Some(v) => u128::from_be_bytes(v.values[..16].try_into().unwrap()) + 1,
+			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
 			None => 1, // First entry
 		};
 
@@ -153,14 +153,14 @@ impl DictionaryOperations for AdminTransaction {
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&value_bytes);
-		self.set(&entry_key, EncodedValues(CowVec::new(entry_value)))?;
+		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
 
 		// 6. Store reverse index (id -> value_bytes)
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
-		self.set(&index_key, EncodedValues(CowVec::new(value_bytes)))?;
+		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
 
 		// 7. Update sequence
-		self.set(&seq_key, EncodedValues(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
 		DictionaryInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
 
@@ -171,7 +171,7 @@ impl DictionaryOperations for AdminTransaction {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = from_bytes(&v.values)
+				let value: Value = from_bytes(&v.row)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -190,7 +190,7 @@ impl DictionaryOperations for AdminTransaction {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.get(&entry_key)? {
 			Some(v) => {
-				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
+				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
 				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
@@ -219,7 +219,7 @@ impl DictionaryOperations for Transaction<'_> {
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = from_bytes(&v.values)
+				let value: Value = from_bytes(&v.row)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -239,7 +239,7 @@ impl DictionaryOperations for Transaction<'_> {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.get(&entry_key)? {
 			Some(v) => {
-				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
+				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
 				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}

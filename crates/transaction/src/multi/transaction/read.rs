@@ -12,7 +12,7 @@
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::store::{MultiVersionBatch, MultiVersionValues},
+	interface::store::{MultiVersionBatch, MultiVersionRow},
 };
 use reifydb_type::Result;
 
@@ -99,7 +99,7 @@ impl MultiReadTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		let version = self.tm.version();
 		Box::new(self.engine.store.range(range, version, batch_size))
 	}
@@ -113,7 +113,7 @@ impl MultiReadTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		let version = self.tm.version();
 		Box::new(self.engine.store.range_rev(range, version, batch_size))
 	}

@@ -11,7 +11,7 @@ mod write;
 mod write_skew;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	util::encoding::keycode,
 };
 use reifydb_transaction::multi::transaction::MultiTransaction;
@@ -22,11 +22,11 @@ pub fn test_multi() -> MultiTransaction {
 }
 
 pub trait IntoValues {
-	fn into_values(self) -> EncodedValues;
+	fn into_row(self) -> EncodedRow;
 }
 
-pub trait FromValues: Sized {
-	fn from_values(values: &EncodedValues) -> Option<Self>;
+pub trait FromRow: Sized {
+	fn from_row(row: &EncodedRow) -> Option<Self>;
 }
 
 pub trait FromKey: Sized {
@@ -40,13 +40,13 @@ macro_rules! as_key {
 
 #[macro_export]
 macro_rules! as_values {
-	($val:expr) => {{ <_ as crate::multi::transaction::IntoValues>::into_values($val) }};
+	($val:expr) => {{ <_ as crate::multi::transaction::IntoValues>::into_row($val) }};
 }
 
 #[macro_export]
-macro_rules! from_values {
+macro_rules! from_row {
 	($t:ty, $val:expr) => {
-		<$t as FromValues>::from_values(&$val).unwrap()
+		<$t as FromRow>::from_row(&$val).unwrap()
 	};
 }
 
@@ -60,8 +60,8 @@ macro_rules! from_key {
 macro_rules! impl_kv_for {
 	($t:ty) => {
 		impl IntoValues for $t {
-			fn into_values(self) -> EncodedValues {
-				EncodedValues(CowVec::new(keycode::serialize(&self)))
+			fn into_row(self) -> EncodedRow {
+				EncodedRow(CowVec::new(keycode::serialize(&self)))
 			}
 		}
 		impl FromKey for $t {
@@ -69,9 +69,9 @@ macro_rules! impl_kv_for {
 				keycode::deserialize(key).ok()
 			}
 		}
-		impl FromValues for $t {
-			fn from_values(values: &EncodedValues) -> Option<Self> {
-				keycode::deserialize(&values.0).ok()
+		impl FromRow for $t {
+			fn from_row(row: &EncodedRow) -> Option<Self> {
+				keycode::deserialize(&row.0).ok()
 			}
 		}
 	};

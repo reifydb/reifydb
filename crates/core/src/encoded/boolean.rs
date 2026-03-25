@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_bool(&self, row: &mut EncodedValues, index: usize, value: impl Into<bool>) {
+	pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Boolean);
@@ -21,14 +21,14 @@ impl Schema {
 		}
 	}
 
-	pub fn get_bool(&self, row: &EncodedValues, index: usize) -> bool {
+	pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Boolean);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const bool).read_unaligned() }
 	}
 
-	pub fn try_get_bool(&self, row: &EncodedValues, index: usize) -> Option<bool> {
+	pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Boolean {
 			Some(self.get_bool(row, index))
 		} else {

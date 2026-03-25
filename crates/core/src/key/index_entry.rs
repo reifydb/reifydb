@@ -283,14 +283,13 @@ pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
-	use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+	use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 	#[test]
 	fn test_encode_decode() {
 		// Create a simple index key
-		let layout =
-			EncodedIndexLayout::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
-				.unwrap();
+		let layout = IndexSchema::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
+			.unwrap();
 
 		let mut index_key = layout.allocate_key();
 		layout.set_u64(&mut index_key, 0, 100u64);
@@ -312,7 +311,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ordering() {
-		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+		let layout = IndexSchema::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key1 = layout.allocate_key();
 		layout.set_u64(&mut key1, 0, 100u64);
@@ -345,7 +344,7 @@ pub mod tests {
 		let range = IndexEntryKey::index_range(PrimitiveId::table(10), IndexId::primary(5));
 
 		// Create entries that should be included
-		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+		let layout = IndexSchema::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 50u64);
@@ -387,9 +386,8 @@ pub mod tests {
 
 	#[test]
 	fn test_key_prefix_range() {
-		let layout =
-			EncodedIndexLayout::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
-				.unwrap();
+		let layout = IndexSchema::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
+			.unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 100u64);

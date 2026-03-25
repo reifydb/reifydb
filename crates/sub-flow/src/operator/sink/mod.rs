@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 
 use postcard::from_bytes;
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	interface::{
 		catalog::{
 			column::ColumnDef,
@@ -180,7 +180,7 @@ pub(crate) fn encode_row_at_index(
 	row_idx: usize,
 	schema: &Schema,
 	row_number: RowNumber,
-) -> (RowNumber, EncodedValues) {
+) -> (RowNumber, EncodedRow) {
 	// Use row_number parameter instead of columns.row_numbers[row_idx]
 
 	// Collect values in SCHEMA FIELD ORDER by matching column names

@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::{
 	catalog::{id::NamespaceId, namespace::Namespace},
-	store::MultiVersionValues,
+	store::MultiVersionRow,
 };
 
 use crate::store::namespace::schema::namespace;
@@ -16,8 +16,8 @@ pub mod list;
 pub mod schema;
 pub mod update;
 
-pub(crate) fn convert_namespace(multi: MultiVersionValues) -> Namespace {
-	let row = multi.values;
+pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Namespace {
+	let row = multi.row;
 	let id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::ID));
 	let name = namespace::SCHEMA.get_utf8(&row, namespace::NAME).to_string();
 	let parent_id = NamespaceId(namespace::SCHEMA.get_u64(&row, namespace::PARENT_ID));

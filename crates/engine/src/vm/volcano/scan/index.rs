@@ -89,7 +89,7 @@ impl QueryNode for IndexScanNode {
 		// let index_entries: Vec<_> = rx.range(range)?.into_iter().collect();
 		//
 		// for entry in index_entries.into_iter() {
-		// 	let row_number_layout = EncodedRowLayout::new(&[Uint8]);
+		// 	let row_number_schema = Schema::new(&[Uint8]);
 		//
 		// 	let row_number = row_number_layout.get_u64(&entry.encoded, 0);
 		//

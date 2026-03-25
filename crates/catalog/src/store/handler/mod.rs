@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::{
 		handler::HandlerDef,
 		id::{HandlerId, NamespaceId},
@@ -16,7 +16,7 @@ pub mod find;
 pub mod get;
 pub(crate) mod schema;
 
-pub(crate) fn handler_def_from_row(row: &EncodedValues) -> HandlerDef {
+pub(crate) fn handler_def_from_row(row: &EncodedRow) -> HandlerDef {
 	let id = HandlerId(handler::SCHEMA.get_u64(row, handler::ID));
 	let namespace = NamespaceId(handler::SCHEMA.get_u64(row, handler::NAMESPACE));
 	let name = handler::SCHEMA.get_utf8(row, handler::NAME).to_string();

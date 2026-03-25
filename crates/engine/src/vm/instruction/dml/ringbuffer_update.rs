@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
@@ -91,7 +91,7 @@ pub(crate) fn update_ringbuffer<'a>(
 	};
 
 	let mut updated_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::new()
 	} else {
 		Vec::new()
@@ -206,7 +206,7 @@ pub(crate) fn update_ringbuffer<'a>(
 				if let Some(log) = testing.as_mut() {
 					let row_key = RowKey::encoded(ringbuffer.id, row_number);
 					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&ringbuffer.columns, &schema, &old_row_data.values)
+						columns_from_encoded(&ringbuffer.columns, &schema, &old_row_data.row)
 					} else {
 						Columns::empty()
 					};

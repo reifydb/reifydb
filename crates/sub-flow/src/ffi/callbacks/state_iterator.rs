@@ -39,7 +39,7 @@ impl BatchIterator {
 			.filter_map(|multi| {
 				// Decode the FlowNodeStateKey to extract the user key
 				let state_key = FlowNodeStateKey::decode(&multi.key)?;
-				Some((state_key.key, multi.values.as_ref().to_vec()))
+				Some((state_key.key, multi.row.as_ref().to_vec()))
 			})
 			.collect();
 
@@ -118,10 +118,10 @@ pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::{encoded::EncodedValues, key::EncodedKey},
+		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::{
 			catalog::flow::FlowNodeId,
-			store::{MultiVersionBatch, MultiVersionValues},
+			store::{MultiVersionBatch, MultiVersionRow},
 		},
 		key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	};
@@ -133,15 +133,15 @@ pub mod tests {
 		FlowNodeStateKey::new(FlowNodeId(node_id), key.to_vec()).encode()
 	}
 
-	fn make_value(data: &[u8]) -> EncodedValues {
-		EncodedValues(CowVec::new(data.to_vec()))
+	fn make_value(data: &[u8]) -> EncodedRow {
+		EncodedRow(CowVec::new(data.to_vec()))
 	}
 
 	#[test]
 	fn test_create_and_free_iterator() {
-		let items = vec![MultiVersionValues {
+		let items = vec![MultiVersionRow {
 			key: make_state_key(1, b"key1"),
-			values: make_value(b"value1"),
+			row: make_value(b"value1"),
 			version: CommitVersion(1),
 		}];
 
@@ -164,14 +164,14 @@ pub mod tests {
 	#[test]
 	fn test_iterator_next() {
 		let items = vec![
-			MultiVersionValues {
+			MultiVersionRow {
 				key: make_state_key(1, b"key1"),
-				values: make_value(b"value1"),
+				row: make_value(b"value1"),
 				version: CommitVersion(1),
 			},
-			MultiVersionValues {
+			MultiVersionRow {
 				key: make_state_key(1, b"key2"),
-				values: make_value(b"value2"),
+				row: make_value(b"value2"),
 				version: CommitVersion(1),
 			},
 		];
@@ -210,15 +210,15 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_iterators() {
-		let items1 = vec![MultiVersionValues {
+		let items1 = vec![MultiVersionRow {
 			key: make_state_key(1, b"iter1"),
-			values: make_value(b"value1"),
+			row: make_value(b"value1"),
 			version: CommitVersion(1),
 		}];
 
-		let items2 = vec![MultiVersionValues {
+		let items2 = vec![MultiVersionRow {
 			key: make_state_key(2, b"iter2"),
-			values: make_value(b"value2"),
+			row: make_value(b"value2"),
 			version: CommitVersion(1),
 		}];
 

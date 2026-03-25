@@ -13,10 +13,10 @@ use iter::Peekable;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
-	interface::store::{MultiVersionBatch, MultiVersionValues},
+	interface::store::{MultiVersionBatch, MultiVersionRow},
 	key::{Key, kind::KeyKind},
 };
 use reifydb_type::Result;
@@ -27,7 +27,7 @@ use super::{FlowTransaction, PendingWrite};
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then (if transactional) base_pending, then querying
 	/// multi-version store
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -50,7 +50,7 @@ impl FlowTransaction {
 					primitive_query
 				};
 				match query.get(key)? {
-					Some(multi) => Ok(Some(multi.values().clone())),
+					Some(multi) => Ok(Some(multi.row().clone())),
 					None => Ok(None),
 				}
 			}
@@ -84,7 +84,7 @@ impl FlowTransaction {
 					primitive_query
 				};
 				match query.get(key)? {
-					Some(multi) => Ok(Some(multi.values().clone())),
+					Some(multi) => Ok(Some(multi.row().clone())),
 					None => Ok(None),
 				}
 			}
@@ -176,7 +176,7 @@ impl FlowTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -251,7 +251,7 @@ impl FlowTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -320,7 +320,7 @@ impl FlowTransaction {
 /// Iterator that merges pending writes with storage data (forward order).
 struct FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
 	storage_iter: Peekable<I>,
 	pending_iter: Peekable<IntoIter<(EncodedKey, PendingWrite)>>,
@@ -329,9 +329,9 @@ where
 
 impl<I> Iterator for FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
-	type Item = Result<MultiVersionValues>;
+	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -352,10 +352,10 @@ where
 					if matches!(cmp, Ordering::Less) {
 						// Pending key comes first
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let PendingWrite::Set(values) = value {
-							return Some(Ok(MultiVersionValues {
+						if let PendingWrite::Set(row) = value {
+							return Some(Ok(MultiVersionRow {
 								key,
-								values,
+								row,
 								version: self.version,
 							}));
 						}
@@ -364,10 +364,10 @@ where
 						// Same key - pending shadows storage
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.storage_iter.next(); // Consume storage entry
-						if let PendingWrite::Set(values) = value {
-							return Some(Ok(MultiVersionValues {
+						if let PendingWrite::Set(row) = value {
+							return Some(Ok(MultiVersionRow {
 								key,
-								values,
+								row,
 								version: self.version,
 							}));
 						}
@@ -380,10 +380,10 @@ where
 				(Some(_), None) => {
 					// Only pending left
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let PendingWrite::Set(values) = value {
-						return Some(Ok(MultiVersionValues {
+					if let PendingWrite::Set(row) = value {
+						return Some(Ok(MultiVersionRow {
 							key,
-							values,
+							row,
 							version: self.version,
 						}));
 					}
@@ -406,7 +406,7 @@ fn flow_merge_pending_iterator<I>(
 	version: CommitVersion,
 ) -> FlowMergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
 	FlowMergePendingIterator {
 		storage_iter: storage_iter.peekable(),
@@ -418,7 +418,7 @@ where
 /// Iterator that merges pending writes with storage data (reverse order).
 struct FlowMergePendingIteratorRev<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
 	storage_iter: Peekable<I>,
 	pending_iter: Peekable<IntoIter<(EncodedKey, PendingWrite)>>,
@@ -427,9 +427,9 @@ where
 
 impl<I> Iterator for FlowMergePendingIteratorRev<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
-	type Item = Result<MultiVersionValues>;
+	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -450,10 +450,10 @@ where
 					if matches!(cmp, Ordering::Greater) {
 						// Reverse: Pending key is larger (comes first in reverse)
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let PendingWrite::Set(values) = value {
-							return Some(Ok(MultiVersionValues {
+						if let PendingWrite::Set(row) = value {
+							return Some(Ok(MultiVersionRow {
 								key,
-								values,
+								row,
 								version: self.version,
 							}));
 						}
@@ -462,10 +462,10 @@ where
 						// Same key - pending shadows storage
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.storage_iter.next(); // Consume storage entry
-						if let PendingWrite::Set(values) = value {
-							return Some(Ok(MultiVersionValues {
+						if let PendingWrite::Set(row) = value {
+							return Some(Ok(MultiVersionRow {
 								key,
-								values,
+								row,
 								version: self.version,
 							}));
 						}
@@ -478,10 +478,10 @@ where
 				(Some(_), None) => {
 					// Only pending left
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let PendingWrite::Set(values) = value {
-						return Some(Ok(MultiVersionValues {
+					if let PendingWrite::Set(row) = value {
+						return Some(Ok(MultiVersionRow {
 							key,
-							values,
+							row,
 							version: self.version,
 						}));
 					}
@@ -504,7 +504,7 @@ fn flow_merge_pending_iterator_rev<I>(
 	version: CommitVersion,
 ) -> FlowMergePendingIteratorRev<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
 	FlowMergePendingIteratorRev {
 		storage_iter: storage_iter.peekable(),
@@ -517,8 +517,8 @@ where
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	};
 	use reifydb_engine::test_utils::create_test_engine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -531,8 +531,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]

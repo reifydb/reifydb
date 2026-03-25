@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::Schema};
 use reifydb_type::value::Value;
 
 use super::helpers::get_values;
@@ -11,7 +11,7 @@ use super::helpers::get_values;
 /// Mock state store for testing operators
 #[derive(Debug, Clone, Default)]
 pub struct TestStateStore {
-	data: HashMap<EncodedKey, EncodedValues>,
+	data: HashMap<EncodedKey, EncodedRow>,
 }
 
 impl TestStateStore {
@@ -23,17 +23,17 @@ impl TestStateStore {
 	}
 
 	/// Get a value from the store
-	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedValues> {
+	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		self.data.get(key)
 	}
 
 	/// Set a value in the store
-	pub fn set(&mut self, key: EncodedKey, value: EncodedValues) {
+	pub fn set(&mut self, key: EncodedKey, value: EncodedRow) {
 		self.data.insert(key, value);
 	}
 
 	/// Remove a value from the store
-	pub fn remove(&mut self, key: &EncodedKey) -> Option<EncodedValues> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Option<EncodedRow> {
 		self.data.remove(key)
 	}
 
@@ -63,7 +63,7 @@ impl TestStateStore {
 	}
 
 	/// Get all key-value pairs
-	pub fn entries(&self) -> Vec<(&EncodedKey, &EncodedValues)> {
+	pub fn entries(&self) -> Vec<(&EncodedKey, &EncodedRow)> {
 		self.data.iter().map(|(k, v)| (k, v)).collect()
 	}
 
@@ -100,12 +100,12 @@ impl TestStateStore {
 	}
 
 	/// Create a snapshot of the current state
-	pub fn snapshot(&self) -> HashMap<EncodedKey, EncodedValues> {
+	pub fn snapshot(&self) -> HashMap<EncodedKey, EncodedRow> {
 		self.data.clone()
 	}
 
 	/// Restore from a snapshot
-	pub fn restore(&mut self, snapshot: HashMap<EncodedKey, EncodedValues>) {
+	pub fn restore(&mut self, snapshot: HashMap<EncodedKey, EncodedRow>) {
 		self.data = snapshot;
 	}
 
@@ -134,7 +134,7 @@ impl TestStateStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::encoded::{
-		encoded::EncodedValues,
+		row::EncodedRow,
 		schema::{Schema, SchemaField},
 	};
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
@@ -146,7 +146,7 @@ pub mod tests {
 	fn test_state_store_basic_operations() {
 		let mut store = TestStateStore::new();
 		let key = encode_key("test_key");
-		let value = EncodedValues(CowVec::new(vec![1, 2, 3, 4]));
+		let value = EncodedRow(CowVec::new(vec![1, 2, 3, 4]));
 
 		assert!(store.is_empty());
 
@@ -198,8 +198,8 @@ pub mod tests {
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");
 
-		store.set(key1.clone(), EncodedValues(CowVec::new(vec![1])));
-		store.set(key2.clone(), EncodedValues(CowVec::new(vec![2])));
+		store.set(key1.clone(), EncodedRow(CowVec::new(vec![1])));
+		store.set(key2.clone(), EncodedRow(CowVec::new(vec![2])));
 
 		let snapshot = store.snapshot();
 		assert_eq!(snapshot.len(), 2);
@@ -209,8 +209,8 @@ pub mod tests {
 
 		store.restore(snapshot);
 		assert_eq!(store.len(), 2);
-		assert_eq!(store.get(&key1), Some(&EncodedValues(CowVec::new(vec![1]))));
-		assert_eq!(store.get(&key2), Some(&EncodedValues(CowVec::new(vec![2]))));
+		assert_eq!(store.get(&key1), Some(&EncodedRow(CowVec::new(vec![1]))));
+		assert_eq!(store.get(&key2), Some(&EncodedRow(CowVec::new(vec![2]))));
 	}
 
 	#[test]

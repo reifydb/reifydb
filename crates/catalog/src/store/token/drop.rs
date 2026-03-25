@@ -21,9 +21,9 @@ impl CatalogStore {
 			let mut stream = txn.range(TokenKey::full_scan(), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
-				let token_identity = token::SCHEMA.get_identity_id(&multi.values, token::IDENTITY);
+				let token_identity = token::SCHEMA.get_identity_id(&multi.row, token::IDENTITY);
 				if token_identity == identity {
-					let id = token::SCHEMA.get_u64(&multi.values, token::ID);
+					let id = token::SCHEMA.get_u64(&multi.row, token::ID);
 					to_remove.push(id);
 				}
 			}
@@ -43,11 +43,10 @@ impl CatalogStore {
 			let mut stream = txn.range(TokenKey::full_scan(), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
-				if let Some(expires_at) =
-					token::SCHEMA.try_get_datetime(&multi.values, token::EXPIRES_AT)
+				if let Some(expires_at) = token::SCHEMA.try_get_datetime(&multi.row, token::EXPIRES_AT)
 				{
 					if expires_at < now {
-						let id = token::SCHEMA.get_u64(&multi.values, token::ID);
+						let id = token::SCHEMA.get_u64(&multi.row, token::ID);
 						to_remove.push(id);
 					}
 				}

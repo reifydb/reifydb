@@ -25,7 +25,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = SeriesId(series::SCHEMA.get_u64(&row, series::ID));
 		let namespace = NamespaceId(series::SCHEMA.get_u64(&row, series::NAMESPACE));
 		let name = series::SCHEMA.get_utf8(&row, series::NAME).to_string();
@@ -59,7 +59,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = SeriesId(series_metadata::SCHEMA.get_u64(&row, series_metadata::ID));
 		let row_count = series_metadata::SCHEMA.get_u64(&row, series_metadata::ROW_COUNT);
 		let oldest_key = series_metadata::SCHEMA.get_u64(&row, series_metadata::OLDEST_KEY);
@@ -86,7 +86,7 @@ impl CatalogStore {
 		let mut found_series = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let series_name = series_namespace::SCHEMA.get_utf8(row, series_namespace::NAME);
 			if name == series_name {
 				found_series =

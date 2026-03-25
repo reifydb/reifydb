@@ -32,7 +32,7 @@ pub(crate) fn drop_primitive_metadata(
 	let mut col_entries = Vec::new();
 	while let Some(entry) = stream.next() {
 		let entry = entry?;
-		let col_id = primitive_column::SCHEMA.get_u64(&entry.values, primitive_column::ID);
+		let col_id = primitive_column::SCHEMA.get_u64(&entry.row, primitive_column::ID);
 		col_entries.push((entry.key.clone(), ColumnId(col_id)));
 	}
 	drop(stream);

@@ -8,14 +8,14 @@ pub mod list;
 pub(crate) mod schema;
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	retention::{CleanupMode, RetentionPolicy},
 };
 
 use self::schema::retention_policy;
 
-/// Encode a RetentionPolicy into EncodedValues
-pub(crate) fn encode_retention_policy(policy: &RetentionPolicy) -> EncodedValues {
+/// Encode a RetentionPolicy into EncodedRow
+pub(crate) fn encode_retention_policy(policy: &RetentionPolicy) -> EncodedRow {
 	let mut row = retention_policy::SCHEMA.allocate();
 
 	match policy {
@@ -48,8 +48,8 @@ pub(crate) fn encode_retention_policy(policy: &RetentionPolicy) -> EncodedValues
 	row
 }
 
-/// Decode a RetentionPolicy from EncodedValues
-pub(crate) fn decode_retention_policy(row: &EncodedValues) -> Option<RetentionPolicy> {
+/// Decode a RetentionPolicy from EncodedRow
+pub(crate) fn decode_retention_policy(row: &EncodedRow) -> Option<RetentionPolicy> {
 	let policy_type = retention_policy::SCHEMA.get_u8(row, retention_policy::POLICY_TYPE);
 
 	match policy_type {

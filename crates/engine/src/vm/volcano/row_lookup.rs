@@ -11,7 +11,7 @@
 use std::{iter, sync::Arc};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	interface::{catalog::primitive::PrimitiveId, resolved::ResolvedPrimitive},
 	internal_err, internal_error,
 	key::row::RowKey,
@@ -53,7 +53,7 @@ impl<'a> RowPointLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -91,12 +91,8 @@ impl QueryNode for RowPointLookupNode {
 		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
 			let mut columns = columns_from_primitive(&self.source);
-			let schema = self.get_or_load_schema(rx, &multi_values.values)?;
-			columns.append_rows(
-				&schema,
-				iter::once(multi_values.values),
-				vec![RowNumber(self.row_number)],
-			)?;
+			let schema = self.get_or_load_schema(rx, &multi_values.row)?;
+			columns.append_rows(&schema, iter::once(multi_values.row), vec![RowNumber(self.row_number)])?;
 
 			Ok(Some(columns))
 		} else {
@@ -134,7 +130,7 @@ impl<'a> RowListLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -180,7 +176,7 @@ impl QueryNode for RowListLookupNode {
 
 			// O(1) point lookup for each row
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.values);
+				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 			// Skip rows that don't exist
@@ -237,7 +233,7 @@ impl<'a> RowRangeScanNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -282,7 +278,7 @@ impl QueryNode for RowRangeScanNode {
 			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.values);
+				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 			// Skip rows that don't exist (sparse storage)

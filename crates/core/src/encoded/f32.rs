@@ -5,10 +5,10 @@ use std::{f32, ptr};
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_f32(&self, row: &mut EncodedValues, index: usize, value: impl Into<f32>) {
+	pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float4);
@@ -21,14 +21,14 @@ impl Schema {
 		}
 	}
 
-	pub fn get_f32(&self, row: &EncodedValues, index: usize) -> f32 {
+	pub fn get_f32(&self, row: &EncodedRow, index: usize) -> f32 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float4);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const f32).read_unaligned() }
 	}
 
-	pub fn try_get_f32(&self, row: &EncodedValues, index: usize) -> Option<f32> {
+	pub fn try_get_f32(&self, row: &EncodedRow, index: usize) -> Option<f32> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Float4 {
 			Some(self.get_f32(row, index))
 		} else {

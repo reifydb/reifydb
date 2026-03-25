@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 use reifydb_type::Result;
 
 use super::FlowTransaction;
 
 impl FlowTransaction {
 	/// Set a value, buffering it in pending writes
-	pub fn set(&mut self, key: &EncodedKey, value: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
 		match self {
 			Self::Deferred {
 				pending,
@@ -43,7 +43,7 @@ pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::{encoded::EncodedValues, key::EncodedKey},
+		encoded::{key::EncodedKey, row::EncodedRow},
 	};
 	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
 	use reifydb_type::util::cowvec::CowVec;
@@ -55,12 +55,12 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn get_values(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedValues> {
-		parent.get(key).unwrap().map(|m| m.values.clone())
+	fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedRow> {
+		parent.get(key).unwrap().map(|m| m.row.clone())
 	}
 
 	#[test]
@@ -178,7 +178,7 @@ pub mod tests {
 		txn.set(&key, value.clone()).unwrap();
 
 		// Parent should not see the write
-		assert_eq!(get_values(&mut parent, &key), None);
+		assert_eq!(get_row(&mut parent, &key), None);
 	}
 
 	#[test]
@@ -189,7 +189,7 @@ pub mod tests {
 		let key = make_key("key1");
 		let value = make_value("value1");
 		parent.set(&key, value.clone()).unwrap();
-		assert_eq!(get_values(&mut parent, &key), Some(value.clone()));
+		assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 		// Create FlowTransaction and remove the key
 		let parent_version = parent.version();
@@ -198,7 +198,7 @@ pub mod tests {
 		txn.remove(&key).unwrap();
 
 		// Parent should still see the value
-		assert_eq!(get_values(&mut parent, &key), Some(value));
+		assert_eq!(get_row(&mut parent, &key), Some(value));
 	}
 
 	#[test]

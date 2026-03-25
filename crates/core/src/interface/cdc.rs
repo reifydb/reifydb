@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::change::Change,
 };
 
@@ -37,16 +37,16 @@ impl AsRef<str> for CdcConsumerId {
 pub enum SystemChange {
 	Insert {
 		key: EncodedKey,
-		post: EncodedValues,
+		post: EncodedRow,
 	},
 	Update {
 		key: EncodedKey,
-		pre: EncodedValues,
-		post: EncodedValues,
+		pre: EncodedRow,
+		post: EncodedRow,
 	},
 	Delete {
 		key: EncodedKey,
-		pre: Option<EncodedValues>,
+		pre: Option<EncodedRow>,
 	},
 }
 

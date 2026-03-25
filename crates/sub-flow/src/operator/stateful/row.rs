@@ -4,8 +4,8 @@ use std::iter::once;
 
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
@@ -76,7 +76,7 @@ impl RowNumberProvider {
 
 			// Save the mapping from key to encoded number
 			let row_num_bytes = new_row_number.0.to_be_bytes().to_vec();
-			internal_state_set(self.node, txn, &map_key, EncodedValues(CowVec::new(row_num_bytes)))?;
+			internal_state_set(self.node, txn, &map_key, EncodedRow(CowVec::new(row_num_bytes)))?;
 
 			// Save the reverse mapping from row_number to key
 			let reverse_key = self.make_reverse_map_key(new_row_number);
@@ -84,7 +84,7 @@ impl RowNumberProvider {
 				self.node,
 				txn,
 				&reverse_key,
-				EncodedValues(CowVec::new(key.as_ref().to_vec())),
+				EncodedRow(CowVec::new(key.as_ref().to_vec())),
 			)?;
 
 			results.push((new_row_number, true));

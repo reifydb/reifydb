@@ -10,13 +10,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::metric::{StorageDelete, StorageStatsRecordedEvent, StorageWrite},
 	interface::store::{
 		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
-		MultiVersionStore, MultiVersionValues,
+		MultiVersionRow, MultiVersionStore,
 	},
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
@@ -39,7 +39,7 @@ const TIER_SCAN_CHUNK_SIZE: usize = 4096;
 
 impl MultiVersionGet for StandardMultiStore {
 	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0))]
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let table = classify_key(key);
 
 		// Try hot tier first
@@ -49,9 +49,9 @@ impl MultiVersionGet for StandardMultiStore {
 					value,
 					version: v,
 				} => {
-					return Ok(Some(MultiVersionValues {
+					return Ok(Some(MultiVersionRow {
 						key: key.clone(),
-						values: EncodedValues(value),
+						row: EncodedRow(value),
 						version: v,
 					}));
 				}
@@ -67,9 +67,9 @@ impl MultiVersionGet for StandardMultiStore {
 					value,
 					version: v,
 				} => {
-					return Ok(Some(MultiVersionValues {
+					return Ok(Some(MultiVersionRow {
 						key: key.clone(),
-						values: EncodedValues(value),
+						row: EncodedRow(value),
 						version: v,
 					}));
 				}
@@ -85,9 +85,9 @@ impl MultiVersionGet for StandardMultiStore {
 					value,
 					version: v,
 				} => {
-					return Ok(Some(MultiVersionValues {
+					return Ok(Some(MultiVersionRow {
 						key: key.clone(),
-						values: EncodedValues(value),
+						row: EncodedRow(value),
 						version: v,
 					}));
 				}
@@ -130,7 +130,7 @@ impl MultiVersionCommit for StandardMultiStore {
 			match delta {
 				Delta::Set {
 					key,
-					values,
+					row,
 				} => {
 					if is_single_version {
 						pending_set_keys.insert(key.0.clone());
@@ -138,18 +138,18 @@ impl MultiVersionCommit for StandardMultiStore {
 
 					writes.push(StorageWrite {
 						key: key.clone(),
-						value_bytes: values.len() as u64,
+						value_bytes: row.len() as u64,
 					});
 
-					batches.entry(table).or_default().push((key.0.clone(), Some(values.0.clone())));
+					batches.entry(table).or_default().push((key.0.clone(), Some(row.0.clone())));
 				}
 				Delta::Unset {
 					key,
-					values,
+					row,
 				} => {
 					deletes.push(StorageDelete {
 						key: key.clone(),
-						value_bytes: values.len() as u64,
+						value_bytes: row.len() as u64,
 					});
 
 					batches.entry(table).or_default().push((key.0.clone(), None));
@@ -335,14 +335,14 @@ impl StandardMultiStore {
 			}
 		}
 
-		// Convert to MultiVersionValues in sorted key order, filtering out tombstones
-		let items: Vec<MultiVersionValues> = collected
+		// Convert to MultiVersionRow in sorted key order, filtering out tombstones
+		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.take(batch_size)
 			.filter_map(|(key_bytes, (v, value))| {
-				value.map(|val| MultiVersionValues {
+				value.map(|val| MultiVersionRow {
 					key: EncodedKey(CowVec::new(key_bytes)),
-					values: EncodedValues(val),
+					row: EncodedRow(val),
 					version: v,
 				})
 			})
@@ -537,15 +537,15 @@ impl StandardMultiStore {
 			}
 		}
 
-		// Convert to MultiVersionValues in REVERSE sorted key order, filtering out tombstones
-		let items: Vec<MultiVersionValues> = collected
+		// Convert to MultiVersionRow in REVERSE sorted key order, filtering out tombstones
+		let items: Vec<MultiVersionRow> = collected
 			.into_iter()
 			.rev()
 			.take(batch_size)
 			.filter_map(|(key_bytes, (v, value))| {
-				value.map(|val| MultiVersionValues {
+				value.map(|val| MultiVersionRow {
 					key: EncodedKey(CowVec::new(key_bytes)),
-					values: EncodedValues(val),
+					row: EncodedRow(val),
 					version: v,
 				})
 			})
@@ -615,7 +615,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 		&self,
 		key: &EncodedKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionValues>> {
+	) -> Result<Option<MultiVersionRow>> {
 		if before_version.0 == 0 {
 			return Ok(None);
 		}
@@ -630,9 +630,9 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			Ok(VersionedGetResult::Value {
 				value,
 				version,
-			}) => Ok(Some(MultiVersionValues {
+			}) => Ok(Some(MultiVersionRow {
 				key: key.clone(),
-				values: EncodedValues(CowVec::new(value.to_vec())),
+				row: EncodedRow(CowVec::new(value.to_vec())),
 				version,
 			})),
 			Ok(VersionedGetResult::Tombstone) | Ok(VersionedGetResult::NotFound) => Ok(None),
@@ -650,12 +650,12 @@ pub struct MultiVersionRangeIter {
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	batch_size: usize,
-	current_batch: Vec<MultiVersionValues>,
+	current_batch: Vec<MultiVersionRow>,
 	current_index: usize,
 }
 
 impl Iterator for MultiVersionRangeIter {
-	type Item = Result<MultiVersionValues>;
+	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// If we have items in the current batch, return them
@@ -693,12 +693,12 @@ pub struct MultiVersionRangeRevIter {
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	batch_size: usize,
-	current_batch: Vec<MultiVersionValues>,
+	current_batch: Vec<MultiVersionRow>,
 	current_index: usize,
 }
 
 impl Iterator for MultiVersionRangeRevIter {
-	type Item = Result<MultiVersionValues>;
+	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// If we have items in the current batch, return them

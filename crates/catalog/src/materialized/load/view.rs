@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{
 		catalog::{id::PrimaryKeyId, key::PrimaryKeyDef, view::ViewDef},
-		store::MultiVersionValues,
+		store::MultiVersionRow,
 	},
 	key::view::ViewKey,
 };
@@ -37,12 +37,12 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	Ok(())
 }
 
-fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> Result<ViewDef> {
-	decode_view_def(&multi.values, vec![], primary_key)
+fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> Result<ViewDef> {
+	decode_view_def(&multi.row, vec![], primary_key)
 }
 
-fn get_view_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
-	let pk_id_raw = SCHEMA.get_u64(&multi.values, PRIMARY_KEY);
+fn get_view_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
+	let pk_id_raw = SCHEMA.get_u64(&multi.row, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

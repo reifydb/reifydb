@@ -19,7 +19,7 @@ impl CatalogStore {
 		source: PrimitiveId,
 	) -> Result<Option<RetentionPolicy>> {
 		let value = rx.get(&PrimitiveRetentionPolicyKey::encoded(source))?;
-		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
+		Ok(value.and_then(|v| decode_retention_policy(&v.row)))
 	}
 
 	/// Find a retention policy for an operator
@@ -29,7 +29,7 @@ impl CatalogStore {
 		operator: FlowNodeId,
 	) -> Result<Option<RetentionPolicy>> {
 		let value = rx.get(&OperatorRetentionPolicyKey::encoded(operator))?;
-		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
+		Ok(value.and_then(|v| decode_retention_policy(&v.row)))
 	}
 }
 

@@ -108,7 +108,7 @@ where
 						let decoded = match &delta {
 							Delta::Set {
 								key,
-								values,
+								row,
 							} => {
 								let pre = self
 									.transaction_store
@@ -119,26 +119,26 @@ where
 									build_update_diff(
 										registry,
 										row_number,
-										prev.values,
-										values.clone(),
+										prev.row,
+										row.clone(),
 									)
 								} else {
 									build_insert_diff(
 										registry,
 										row_number,
-										values.clone(),
+										row.clone(),
 									)
 								}
 							}
 							Delta::Unset {
-								values,
+								row,
 								..
 							} => {
-								if !values.is_empty() {
+								if !row.is_empty() {
 									build_remove_diff(
 										registry,
 										row_number,
-										values.clone(),
+										row.clone(),
 									)
 								} else {
 									None
@@ -157,7 +157,7 @@ where
 						let decoded = match &delta {
 							Delta::Set {
 								key,
-								values,
+								row,
 							} => {
 								let pre = self
 									.transaction_store
@@ -168,26 +168,26 @@ where
 									build_update_diff(
 										registry,
 										row_key.row,
-										prev.values,
-										values.clone(),
+										prev.row,
+										row.clone(),
 									)
 								} else {
 									build_insert_diff(
 										registry,
 										row_key.row,
-										values.clone(),
+										row.clone(),
 									)
 								}
 							}
 							Delta::Unset {
-								values,
+								row,
 								..
 							} => {
-								if !values.is_empty() {
+								if !row.is_empty() {
 									build_remove_diff(
 										registry,
 										row_key.row,
-										values.clone(),
+										row.clone(),
 									)
 								} else {
 									None
@@ -212,7 +212,7 @@ where
 			let change = match delta {
 				Delta::Set {
 					key,
-					values,
+					row,
 				} => {
 					let pre = self
 						.transaction_store
@@ -223,24 +223,24 @@ where
 					if let Some(prev_values) = pre {
 						SystemChange::Update {
 							key,
-							pre: prev_values.values,
-							post: values,
+							pre: prev_values.row,
+							post: row,
 						}
 					} else {
 						SystemChange::Insert {
 							key,
-							post: values,
+							post: row,
 						}
 					}
 				}
 				Delta::Unset {
 					key,
-					values,
+					row,
 				} => {
-					let pre = if values.is_empty() {
+					let pre = if row.is_empty() {
 						None
 					} else {
-						Some(values)
+						Some(row)
 					};
 					SystemChange::Delete {
 						key,
@@ -511,7 +511,7 @@ pub mod tests {
 	use reifydb_catalog::schema::SchemaRegistry;
 	use reifydb_core::{
 		config::SystemConfig,
-		encoded::{encoded::EncodedValues, key::EncodedKey},
+		encoded::{key::EncodedKey, row::EncodedRow},
 	};
 	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
 	use reifydb_store_multi::MultiStore;
@@ -531,8 +531,8 @@ pub mod tests {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn make_values(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_row(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[derive(Clone)]
@@ -614,7 +614,7 @@ pub mod tests {
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
-			values: make_values("test_value"),
+			row: make_row("test_value"),
 		}];
 
 		handle.actor_ref()
@@ -659,7 +659,7 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key1"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 			Delta::Drop {
 				key: make_key("key2"),

@@ -175,7 +175,7 @@ pub mod tests {
 		let mut found_flow_two = false;
 
 		for link in &links {
-			let row = &link.values;
+			let row = &link.row;
 			let id = flow_namespace::SCHEMA.get_u64(row, flow_namespace::ID);
 			let name = flow_namespace::SCHEMA.get_utf8(row, flow_namespace::NAME);
 

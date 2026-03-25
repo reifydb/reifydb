@@ -5,7 +5,7 @@ use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
@@ -104,7 +104,7 @@ pub(crate) fn update_series<'a>(
 
 		let row_numbers = &columns.row_numbers;
 
-		let mut updates_to_apply: Vec<(EncodedKey, EncodedValues, usize)> = Vec::new();
+		let mut updates_to_apply: Vec<(EncodedKey, EncodedRow, usize)> = Vec::new();
 
 		for row_idx in 0..row_count {
 			let sequence = u64::from(row_numbers[row_idx]);
@@ -159,7 +159,7 @@ pub(crate) fn update_series<'a>(
 
 		for (encoded_key, row, row_idx) in &updates_to_apply {
 			let old_data = txn.get(encoded_key)?;
-			let old_values = old_data.map(|v| v.values);
+			let old_values = old_data.map(|v| v.row);
 
 			let key_value = columns
 				.iter()

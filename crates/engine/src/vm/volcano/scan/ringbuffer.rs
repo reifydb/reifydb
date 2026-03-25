@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	interface::{
 		catalog::{dictionary::DictionaryDef, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
@@ -101,7 +101,7 @@ impl RingBufferScan {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -220,10 +220,10 @@ impl QueryNode for RingBufferScan {
 					// For partitioned ringbuffers, check if this row belongs to the current
 					// partition
 					if !partition_col_indices.is_empty() {
-						let schema = self.get_or_load_schema(txn, &multi.values)?;
+						let schema = self.get_or_load_schema(txn, &multi.row)?;
 						if !row_matches_partition(
 							&schema,
-							&multi.values,
+							&multi.row,
 							&partition_col_indices,
 							&partition_values,
 						) {
@@ -231,7 +231,7 @@ impl QueryNode for RingBufferScan {
 							continue;
 						}
 					}
-					batch_rows.push(multi.values);
+					batch_rows.push(multi.row);
 					row_numbers.push(row_num);
 					self.rows_returned_in_partition += 1;
 				}
@@ -300,7 +300,7 @@ impl QueryNode for RingBufferScan {
 
 fn row_matches_partition(
 	schema: &Schema,
-	row: &EncodedValues,
+	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],
 ) -> bool {

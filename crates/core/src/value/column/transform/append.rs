@@ -24,7 +24,7 @@ use reifydb_type::{
 use uuid::Uuid;
 
 use crate::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	error::CoreError,
 	value::column::{ColumnData, columns::Columns},
 };
@@ -66,7 +66,7 @@ impl Columns {
 	pub fn append_rows(
 		&mut self,
 		schema: &Schema,
-		rows: impl IntoIterator<Item = EncodedValues>,
+		rows: impl IntoIterator<Item = EncodedRow>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		if self.len() != schema.field_count() {
@@ -80,7 +80,7 @@ impl Columns {
 			.into());
 		}
 
-		let rows: Vec<EncodedValues> = rows.into_iter().collect();
+		let rows: Vec<EncodedRow> = rows.into_iter().collect();
 
 		// Verify row_numbers length if provided
 		if !row_numbers.is_empty() && row_numbers.len() != rows.len() {
@@ -269,7 +269,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_all_defined_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> Result<()> {
+	fn append_all_defined_from_schema(&mut self, schema: &Schema, row: &EncodedRow) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = schema.get_field(index).unwrap();
@@ -420,7 +420,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback_from_schema(&mut self, schema: &Schema, row: &EncodedValues) -> Result<()> {
+	fn append_fallback_from_schema(&mut self, schema: &Schema, row: &EncodedRow) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = schema.get_field(index).unwrap();

@@ -25,9 +25,9 @@ impl CatalogStore {
 					let flow_id = flow_key.flow;
 
 					let namespace_id =
-						NamespaceId(flow::SCHEMA.get_u64(&entry.values, flow::NAMESPACE));
-					let name = flow::SCHEMA.get_utf8(&entry.values, flow::NAME).to_string();
-					let status_u8 = flow::SCHEMA.get_u8(&entry.values, flow::STATUS);
+						NamespaceId(flow::SCHEMA.get_u64(&entry.row, flow::NAMESPACE));
+					let name = flow::SCHEMA.get_utf8(&entry.row, flow::NAME).to_string();
+					let status_u8 = flow::SCHEMA.get_u8(&entry.row, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 
 					let flow_def = FlowDef {

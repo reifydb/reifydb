@@ -18,7 +18,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = table::SCHEMA.get_u64(&multi.values, table::PRIMARY_KEY);
+		let pk_id = table::SCHEMA.get_u64(&multi.row, table::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

@@ -4,9 +4,7 @@
 use std::mem::{take, transmute};
 
 use indexmap::IndexMap;
-use reifydb_core::interface::store::{
-	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionValues,
-};
+use reifydb_core::interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{RwLock, RwLockWriteGuard};
 use reifydb_type::{
 	Result,
@@ -84,17 +82,17 @@ impl<'a> SingleWriteTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
-					values,
+					row,
 					..
-				} => Ok(Some(SingleVersionValues {
+				} => Ok(Some(SingleVersionRow {
 					key: key.clone(),
-					values: values.clone(),
+					row: row.clone(),
 				})),
 				Delta::Unset {
 					..
@@ -139,25 +137,25 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionContains::contains(&store, key)
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		let delta = Delta::Set {
 			key: key.clone(),
-			values,
+			row,
 		};
 		self.pending.insert(key.clone(), delta);
 		Ok(())
 	}
 
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(
 			key.clone(),
 			Delta::Unset {
 				key: key.clone(),
-				values,
+				row,
 			},
 		);
 		Ok(())

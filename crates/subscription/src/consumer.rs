@@ -80,7 +80,7 @@ impl SubscriptionConsumer {
 				row_keys.push(entry.key.clone());
 
 				// Extract schema fingerprint from the encoded row
-				let fingerprint = entry.values.fingerprint();
+				let fingerprint = entry.row.fingerprint();
 
 				// Resolve schema using SchemaRegistry
 				let schema = schema_registry
@@ -96,7 +96,7 @@ impl SubscriptionConsumer {
 
 				// Decode each field using the resolved schema
 				for (idx, field) in schema.fields().iter().enumerate() {
-					let value = schema.get_value(&entry.values, idx);
+					let value = schema.get_value(&entry.row, idx);
 					seen_in_this_entry.insert(field.name.clone());
 
 					// Get or create column data for this field

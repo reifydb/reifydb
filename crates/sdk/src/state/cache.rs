@@ -56,7 +56,7 @@ use std::hash::Hash;
 
 use postcard::{from_bytes, to_allocvec};
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::IntoEncodedKey},
+	encoded::{key::IntoEncodedKey, row::EncodedRow},
 	util::lru::LruCache,
 };
 use reifydb_type::util::cowvec::CowVec;
@@ -109,9 +109,9 @@ where
 		let encoded_key = key.into_encoded_key();
 		let state = ctx.state();
 		match state.get(&encoded_key)? {
-			Some(encoded_values) => {
+			Some(encoded_row) => {
 				// Deserialize and cache
-				let value: V = from_bytes(encoded_values.as_ref()).map_err(|e| {
+				let value: V = from_bytes(encoded_row.as_ref()).map_err(|e| {
 					FFIError::Serialization(format!("deserialization failed: {}", e))
 				})?;
 				self.cache.put(key.clone(), value.clone());
@@ -135,11 +135,11 @@ where
 		// Serialize the value
 		let bytes = to_allocvec(value)
 			.map_err(|e| FFIError::Serialization(format!("serialization failed: {}", e)))?;
-		let encoded_values = EncodedValues(CowVec::new(bytes));
+		let encoded_row = EncodedRow(CowVec::new(bytes));
 
 		// Write through to FFI
 		let encoded_key = key.into_encoded_key();
-		ctx.state().set(&encoded_key, &encoded_values)?;
+		ctx.state().set(&encoded_key, &encoded_row)?;
 
 		// Update cache
 		self.cache.put(key.clone(), value.clone());

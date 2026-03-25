@@ -16,7 +16,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = FlowEdgeId(SCHEMA.get_u64(&row, flow_edge::ID));
 		let flow = FlowId(SCHEMA.get_u64(&row, flow_edge::FLOW));
 		let source = FlowNodeId(SCHEMA.get_u64(&row, flow_edge::SOURCE));

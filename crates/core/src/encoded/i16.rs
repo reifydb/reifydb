@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_i16(&self, row: &mut EncodedValues, index: usize, value: impl Into<i16>) {
+	pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: impl Into<i16>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int2);
@@ -21,14 +21,14 @@ impl Schema {
 		}
 	}
 
-	pub fn get_i16(&self, row: &EncodedValues, index: usize) -> i16 {
+	pub fn get_i16(&self, row: &EncodedRow, index: usize) -> i16 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int2);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const i16).read_unaligned() }
 	}
 
-	pub fn try_get_i16(&self, row: &EncodedValues, index: usize) -> Option<i16> {
+	pub fn try_get_i16(&self, row: &EncodedRow, index: usize) -> Option<i16> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Int2 {
 			Some(self.get_i16(row, index))
 		} else {

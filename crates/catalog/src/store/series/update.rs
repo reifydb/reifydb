@@ -2,13 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues, interface::catalog::series::SeriesMetadata, key::series::SeriesMetadataKey,
+	encoded::row::EncodedRow, interface::catalog::series::SeriesMetadata, key::series::SeriesMetadataKey,
 };
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, store::series::schema::series_metadata};
 
-fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedValues {
+fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedRow {
 	let mut row = series_metadata::SCHEMA.allocate();
 	series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ID, metadata.id.0);
 	series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ROW_COUNT, metadata.row_count);

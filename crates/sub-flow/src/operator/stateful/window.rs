@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 		schema::Schema,
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
@@ -20,18 +20,18 @@ pub trait WindowStateful: RawStatefulOperator {
 	fn layout(&self) -> Schema;
 
 	/// Create a new state encoded with default values
-	fn create_state(&self) -> EncodedValues {
+	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
 	/// Load state for a window
-	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<EncodedRow> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
 	/// Save state for a window
-	fn save_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
 

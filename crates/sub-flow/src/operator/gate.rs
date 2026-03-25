@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -37,7 +37,7 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 /// A sentinel value stored to mark a row as "visible" (latch open).
-static VISIBLE_MARKER: LazyLock<EncodedValues> = LazyLock::new(|| EncodedValues(CowVec::new(vec![1])));
+static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
 
 pub struct GateOperator {
 	parent: Arc<Operators>,

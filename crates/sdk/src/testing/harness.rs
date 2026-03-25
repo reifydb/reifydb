@@ -7,7 +7,7 @@ use ptr::null;
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::EncodableKey,
 	value::column::columns::Columns,
@@ -101,12 +101,12 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	}
 
 	/// Take a snapshot of the current state
-	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedValues> {
+	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedRow> {
 		self.state().snapshot()
 	}
 
 	/// Restore state from a snapshot
-	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedValues>) {
+	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedRow>) {
 		(*self.context).clear_state();
 		for (k, v) in snapshot {
 			(*self.context).set_state(k, v.0.to_vec());
@@ -161,7 +161,7 @@ pub struct TestHarnessBuilder<T: FFIOperator> {
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
 	version: CommitVersion,
-	initial_state: HashMap<EncodedKey, EncodedValues>,
+	initial_state: HashMap<EncodedKey, EncodedRow>,
 	_phantom: PhantomData<T>,
 }
 
@@ -210,7 +210,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 	where
 		K: EncodableKey,
 	{
-		self.initial_state.insert(key.encode(), EncodedValues(CowVec::new(value)));
+		self.initial_state.insert(key.encode(), EncodedRow(CowVec::new(value)));
 		self
 	}
 

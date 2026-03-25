@@ -3,7 +3,7 @@
 
 use OperationType::Delete;
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::{
 		authentication::{AuthenticationDef, AuthenticationId},
 		dictionary::DictionaryDef,
@@ -800,7 +800,7 @@ impl TransactionalDefChanges {
 pub struct TableRowInsertion {
 	pub table_id: TableId,
 	pub row_number: RowNumber,
-	pub encoded: EncodedValues,
+	pub encoded: EncodedRow,
 }
 
 /// Tracks row changes across different entity types for post-commit event emission

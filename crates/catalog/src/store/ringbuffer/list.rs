@@ -28,19 +28,18 @@ impl CatalogStore {
 						let ringbuffer_id = ringbuffer_key.ringbuffer;
 
 						let namespace_id = NamespaceId(
-							ringbuffer::SCHEMA
-								.get_u64(&entry.values, ringbuffer::NAMESPACE),
+							ringbuffer::SCHEMA.get_u64(&entry.row, ringbuffer::NAMESPACE),
 						);
 
 						let name = ringbuffer::SCHEMA
-							.get_utf8(&entry.values, ringbuffer::NAME)
+							.get_utf8(&entry.row, ringbuffer::NAME)
 							.to_string();
 
 						let capacity =
-							ringbuffer::SCHEMA.get_u64(&entry.values, ringbuffer::CAPACITY);
+							ringbuffer::SCHEMA.get_u64(&entry.row, ringbuffer::CAPACITY);
 
 						let partition_by_str = ringbuffer::SCHEMA
-							.get_utf8(&entry.values, ringbuffer::PARTITION_BY);
+							.get_utf8(&entry.row, ringbuffer::PARTITION_BY);
 						let partition_by = if partition_by_str.is_empty() {
 							vec![]
 						} else {

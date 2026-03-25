@@ -945,7 +945,7 @@ pub mod tests {
 		}
 
 		#[test]
-		fn test_binary_encoded_values() {
+		fn test_binary_encoded_row() {
 			let r = EncodedKeyRange::parse("0101..=0aff");
 			// decode_binary("0101") = [0x01, 0x01]
 			assert_eq!(r.start, included(b"0101"));

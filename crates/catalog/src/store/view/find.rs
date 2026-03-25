@@ -23,7 +23,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let columns = Self::list_columns(rx, id)?;
 		let primary_key = Self::find_view_primary_key(rx, id)?;
 		let view_def = decode_view_def(&row, columns, primary_key)?;
@@ -42,7 +42,7 @@ impl CatalogStore {
 		let mut found_view = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let view_name = view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME);
 			if name == view_name {
 				found_view = Some(ViewId(view_namespace::SCHEMA.get_u64(row, view_namespace::ID)));
@@ -61,7 +61,7 @@ impl CatalogStore {
 }
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::{column::ColumnDef, key::PrimaryKeyDef},
 };
 use reifydb_type::{
@@ -70,7 +70,7 @@ use reifydb_type::{
 };
 
 pub(crate) fn decode_view_def(
-	row: &EncodedValues,
+	row: &EncodedRow,
 	columns: Vec<ColumnDef>,
 	primary_key: Option<PrimaryKeyDef>,
 ) -> Result<ViewDef> {

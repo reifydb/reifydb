@@ -7,7 +7,7 @@ use reifydb_core::{
 			flow::{FlowDef, FlowId, FlowStatus},
 			id::NamespaceId,
 		},
-		store::MultiVersionValues,
+		store::MultiVersionRow,
 	},
 	key::flow::FlowKey,
 };
@@ -36,8 +36,8 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	Ok(())
 }
 
-fn convert_flow(multi: MultiVersionValues) -> FlowDef {
-	let row = multi.values;
+fn convert_flow(multi: MultiVersionRow) -> FlowDef {
+	let row = multi.row;
 	let id = FlowId(flow::SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(flow::SCHEMA.get_u64(&row, NAMESPACE));
 	let name = flow::SCHEMA.get_utf8(&row, NAME).to_string();

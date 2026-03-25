@@ -4,12 +4,12 @@
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
-	interface::store::{MultiVersionValues, SingleVersionValues},
+	interface::store::{MultiVersionRow, SingleVersionRow},
 };
 
 #[derive(Debug, Clone)]
 pub enum MultiVersionGetResult {
-	Value(MultiVersionValues),
+	Value(MultiVersionRow),
 	Tombstone {
 		key: EncodedKey,
 		version: CommitVersion,
@@ -26,7 +26,7 @@ impl MultiVersionGetResult {
 		matches!(self, Self::Value(_))
 	}
 
-	pub fn into_option(self) -> Option<MultiVersionValues> {
+	pub fn into_option(self) -> Option<MultiVersionRow> {
 		match self {
 			Self::Value(v) => Some(v),
 			_ => None,
@@ -34,15 +34,15 @@ impl MultiVersionGetResult {
 	}
 }
 
-impl Into<Option<MultiVersionValues>> for MultiVersionGetResult {
-	fn into(self) -> Option<MultiVersionValues> {
+impl Into<Option<MultiVersionRow>> for MultiVersionGetResult {
+	fn into(self) -> Option<MultiVersionRow> {
 		self.into_option()
 	}
 }
 
 #[derive(Debug, Clone)]
 pub enum SingleVersionGetResult {
-	Value(SingleVersionValues),
+	Value(SingleVersionRow),
 	Tombstone {
 		key: EncodedKey,
 	},
@@ -58,7 +58,7 @@ impl SingleVersionGetResult {
 		matches!(self, Self::Value(_))
 	}
 
-	pub fn into_option(self) -> Option<SingleVersionValues> {
+	pub fn into_option(self) -> Option<SingleVersionRow> {
 		match self {
 			Self::Value(v) => Some(v),
 			_ => None,
@@ -66,15 +66,15 @@ impl SingleVersionGetResult {
 	}
 }
 
-impl Into<Option<SingleVersionValues>> for SingleVersionGetResult {
-	fn into(self) -> Option<SingleVersionValues> {
+impl Into<Option<SingleVersionRow>> for SingleVersionGetResult {
+	fn into(self) -> Option<SingleVersionRow> {
 		self.into_option()
 	}
 }
 
 #[derive(Debug, Clone)]
 pub enum MultiVersionIterResult {
-	Value(MultiVersionValues),
+	Value(MultiVersionRow),
 	Tombstone {
 		key: EncodedKey,
 		version: CommitVersion,
@@ -83,14 +83,14 @@ pub enum MultiVersionIterResult {
 
 #[derive(Debug, Clone)]
 pub enum SingleVersionIterResult {
-	Value(SingleVersionValues),
+	Value(SingleVersionRow),
 	Tombstone {
 		key: EncodedKey,
 	},
 }
 
 impl SingleVersionIterResult {
-	pub fn into_option(self) -> Option<SingleVersionValues> {
+	pub fn into_option(self) -> Option<SingleVersionRow> {
 		match self {
 			Self::Value(v) => Some(v),
 			Self::Tombstone {

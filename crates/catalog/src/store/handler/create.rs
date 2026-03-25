@@ -163,12 +163,12 @@ pub mod tests {
 
 		// Descending order: HandlerId(2) encodes to smaller bytes → appears first
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(handler_namespace::SCHEMA.get_u64(row, handler_namespace::ID), 2);
 		assert_eq!(handler_namespace::SCHEMA.get_utf8(row, handler_namespace::NAME), "another_handler");
 
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(handler_namespace::SCHEMA.get_u64(row, handler_namespace::ID), 1);
 		assert_eq!(handler_namespace::SCHEMA.get_utf8(row, handler_namespace::NAME), "test_handler");
 	}

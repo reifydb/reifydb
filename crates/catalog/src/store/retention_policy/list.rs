@@ -43,7 +43,7 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
 			if let Some(key) = PrimitiveRetentionPolicyKey::decode(&entry.key) {
-				if let Some(policy) = decode_retention_policy(&entry.values) {
+				if let Some(policy) = decode_retention_policy(&entry.row) {
 					result.push(PrimitiveRetentionPolicyEntry {
 						primitive: key.primitive,
 						policy,
@@ -66,7 +66,7 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
 			if let Some(key) = OperatorRetentionPolicyKey::decode(&entry.key) {
-				if let Some(policy) = decode_retention_policy(&entry.values) {
+				if let Some(policy) = decode_retention_policy(&entry.row) {
 					result.push(OperatorRetentionPolicyEntry {
 						operator: key.operator,
 						policy,

@@ -20,7 +20,7 @@ impl CatalogStore {
 		let mut found_id = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = multi.values;
+			let row = multi.row;
 			let column = ColumnId(primitive_column::SCHEMA.get_u64(&row, primitive_column::ID));
 			let name = primitive_column::SCHEMA.get_utf8(&row, primitive_column::NAME);
 

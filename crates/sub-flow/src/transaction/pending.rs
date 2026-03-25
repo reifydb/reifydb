@@ -12,7 +12,7 @@ use std::{
 };
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::change::Change,
 };
 use vec::Drain;
@@ -20,7 +20,7 @@ use vec::Drain;
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
-	Set(EncodedValues),
+	Set(EncodedRow),
 	Remove,
 }
 
@@ -86,7 +86,7 @@ impl Pending {
 	}
 
 	/// Insert a write operation
-	pub fn insert(&mut self, key: EncodedKey, value: EncodedValues) {
+	pub fn insert(&mut self, key: EncodedKey, value: EncodedRow) {
 		self.writes.insert(key, PendingWrite::Set(value));
 	}
 
@@ -96,7 +96,7 @@ impl Pending {
 	}
 
 	/// Get a value if it exists and is a write (not a remove)
-	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedValues> {
+	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		match self.writes.get(key) {
 			Some(PendingWrite::Set(value)) => Some(value),
 			_ => None,
@@ -146,7 +146,7 @@ impl Pending {
 pub mod tests {
 	use std::vec;
 
-	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+	use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -155,8 +155,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]

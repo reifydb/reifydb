@@ -125,7 +125,7 @@ impl QueryNode for SeriesScanNode {
 				// Decode data columns from value using schema
 				let mut values = Vec::with_capacity(series_def.data_columns().count());
 				for (i, _) in series_def.data_columns().enumerate() {
-					values.push(read_schema.get_value(&entry.values, i + 1));
+					values.push(read_schema.get_value(&entry.row, i + 1));
 				}
 				data_rows.push(values);
 

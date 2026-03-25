@@ -18,7 +18,7 @@ impl CatalogStore {
 			let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
-				let row = &multi.values;
+				let row = &multi.row;
 				ids.push(SumTypeId(sumtype_namespace::SCHEMA.get_u64(row, sumtype_namespace::ID)));
 			}
 		}
@@ -39,7 +39,7 @@ impl CatalogStore {
 		let mut stream = rx.range(SumTypeKey::full_scan(), 1024)?;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			results.push(sumtype_def_from_row(&multi.values));
+			results.push(sumtype_def_from_row(&multi.row));
 		}
 
 		Ok(results)

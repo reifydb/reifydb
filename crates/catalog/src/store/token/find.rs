@@ -17,7 +17,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let stored_token = token::SCHEMA.get_utf8(&multi.values, token::TOKEN);
+			let stored_token = token::SCHEMA.get_utf8(&multi.row, token::TOKEN);
 			if constant_time_eq(stored_token.as_bytes(), value.as_bytes()) {
 				return Ok(Some(convert_token(multi)));
 			}

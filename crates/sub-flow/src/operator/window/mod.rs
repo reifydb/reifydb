@@ -33,8 +33,8 @@ use std::{ops, sync::LazyLock, time::Duration};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 		schema::{Schema, SchemaField},
 	},
 	interface::change::{Change, Diff},
@@ -117,7 +117,7 @@ impl WindowEvent {
 
 	pub fn to_row(&self, layout: &WindowLayout) -> Row {
 		let schema = layout.to_schema();
-		let encoded = EncodedValues(CowVec::new(self.encoded_bytes.clone()));
+		let encoded = EncodedRow(CowVec::new(self.encoded_bytes.clone()));
 		Row {
 			number: self.row_number,
 			encoded,

@@ -90,7 +90,7 @@ impl CatalogStore {
 		let mut columns = Vec::new();
 		while let Some(result) = stream.next() {
 			let multi = result?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let id =
 				SubscriptionColumnId(subscription_column::SCHEMA.get_u64(row, subscription_column::ID));
 			let name = subscription_column::SCHEMA.get_utf8(row, subscription_column::NAME).to_string();

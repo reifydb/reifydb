@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::view::ViewDef};
+use reifydb_core::{encoded::row::EncodedRow, interface::catalog::view::ViewDef};
 use reifydb_type::{Result, value::row_number::RowNumber};
 
 use super::WithInterceptors;
@@ -12,11 +12,11 @@ use crate::interceptor::chain::InterceptorChain;
 pub struct ViewPreInsertContext<'a> {
 	pub view: &'a ViewDef,
 	pub rn: RowNumber,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> ViewPreInsertContext<'a> {
-	pub fn new(view: &'a ViewDef, rn: RowNumber, row: EncodedValues) -> Self {
+	pub fn new(view: &'a ViewDef, rn: RowNumber, row: EncodedRow) -> Self {
 		Self {
 			view,
 			rn,
@@ -30,7 +30,7 @@ pub trait ViewPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn ViewPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreInsertContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: ViewPreInsertContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -88,11 +88,11 @@ where
 pub struct ViewPostInsertContext<'a> {
 	pub view: &'a ViewDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
 }
 
 impl<'a> ViewPostInsertContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, row: &'a EncodedValues) -> Self {
+	pub fn new(view: &'a ViewDef, id: RowNumber, row: &'a EncodedRow) -> Self {
 		Self {
 			view,
 			id,
@@ -164,11 +164,11 @@ where
 pub struct ViewPreUpdateContext<'a> {
 	pub view: &'a ViewDef,
 	pub id: RowNumber,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> ViewPreUpdateContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, row: EncodedValues) -> Self {
+	pub fn new(view: &'a ViewDef, id: RowNumber, row: EncodedRow) -> Self {
 		Self {
 			view,
 			id,
@@ -182,7 +182,7 @@ pub trait ViewPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn ViewPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -240,12 +240,12 @@ where
 pub struct ViewPostUpdateContext<'a> {
 	pub view: &'a ViewDef,
 	pub id: RowNumber,
-	pub row: &'a EncodedValues,
-	pub old_row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
+	pub old_row: &'a EncodedRow,
 }
 
 impl<'a> ViewPostUpdateContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, row: &'a EncodedValues, old_row: &'a EncodedValues) -> Self {
+	pub fn new(view: &'a ViewDef, id: RowNumber, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
 		Self {
 			view,
 			id,
@@ -392,11 +392,11 @@ where
 pub struct ViewPostDeleteContext<'a> {
 	pub view: &'a ViewDef,
 	pub id: RowNumber,
-	pub deleted_row: &'a EncodedValues,
+	pub deleted_row: &'a EncodedRow,
 }
 
 impl<'a> ViewPostDeleteContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, deleted_row: &'a EncodedValues) -> Self {
+	pub fn new(view: &'a ViewDef, id: RowNumber, deleted_row: &'a EncodedRow) -> Self {
 		Self {
 			view,
 			id,
@@ -471,8 +471,8 @@ impl ViewInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &ViewDef,
 		rn: RowNumber,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let ctx = ViewPreInsertContext::new(view, rn, row);
 		txn.view_pre_insert_interceptors().execute(ctx)
 	}
@@ -481,7 +481,7 @@ impl ViewInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &ViewDef,
 		id: RowNumber,
-		row: &EncodedValues,
+		row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = ViewPostInsertContext::new(view, id, row);
 		txn.view_post_insert_interceptors().execute(ctx)
@@ -491,8 +491,8 @@ impl ViewInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &ViewDef,
 		id: RowNumber,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let ctx = ViewPreUpdateContext::new(view, id, row);
 		txn.view_pre_update_interceptors().execute(ctx)
 	}
@@ -501,8 +501,8 @@ impl ViewInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &ViewDef,
 		id: RowNumber,
-		row: &EncodedValues,
-		old_row: &EncodedValues,
+		row: &EncodedRow,
+		old_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = ViewPostUpdateContext::new(view, id, row, old_row);
 		txn.view_post_update_interceptors().execute(ctx)
@@ -517,7 +517,7 @@ impl ViewInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &ViewDef,
 		id: RowNumber,
-		deleted_row: &EncodedValues,
+		deleted_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = ViewPostDeleteContext::new(view, id, deleted_row);
 		txn.view_post_delete_interceptors().execute(ctx)

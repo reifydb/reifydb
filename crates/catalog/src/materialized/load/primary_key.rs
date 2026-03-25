@@ -31,7 +31,7 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 
 	for multi in entries {
 		let version = multi.version;
-		let row = multi.values;
+		let row = multi.row;
 
 		let pk_id = PrimaryKeyId(primary_key::SCHEMA.get_u64(&row, ID));
 

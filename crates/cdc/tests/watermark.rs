@@ -9,7 +9,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
 };
 use reifydb_engine::test_utils::create_test_engine;
@@ -23,7 +23,7 @@ fn make_cdc(version: u64) -> Cdc {
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
-			post: EncodedValues(CowVec::new(vec![version as u8])),
+			post: EncodedRow(CowVec::new(vec![version as u8])),
 		}],
 	)
 }

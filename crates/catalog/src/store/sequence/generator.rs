@@ -98,7 +98,7 @@ macro_rules! impl_generator {
 					let mut tx = txn.begin_single_command([key])?;
 					let result = match tx.get(key)? {
 						Some(row) => {
-							let mut row = row.values;
+							let mut row = row.row;
 							let current_value = SCHEMA.$getter(&row, 0);
 							let next_value = current_value.saturating_add(incr);
 
@@ -154,7 +154,7 @@ macro_rules! impl_generator {
 				) -> Result<()> {
 					let mut tx = txn.begin_single_command([key])?;
 					let mut row = match tx.get(key)? {
-						Some(row) => row.values,
+						Some(row) => row.row,
 						None => SCHEMA.allocate(),
 					};
 					SCHEMA.$setter(&mut row, 0, value);
@@ -191,7 +191,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
-					assert_eq!(SCHEMA.$getter(&single.values, 0), final_val);
+					assert_eq!(SCHEMA.$getter(&single.row, 0), final_val);
 				}
 
 				#[test]
@@ -287,7 +287,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
-					assert_eq!(SCHEMA.$getter(&single.values, 0), final_val);
+					assert_eq!(SCHEMA.$getter(&single.row, 0), final_val);
 
 					// Test batch allocation by batch_size_2
 					for i in 0..iterations_2 {

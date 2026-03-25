@@ -5,7 +5,7 @@ use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
@@ -144,7 +144,7 @@ pub(crate) fn delete_series<'a>(
 				let Some(old_entry) = txn.get(&encoded_key)? else {
 					continue;
 				};
-				let encoded_values = old_entry.values;
+				let encoded_row = old_entry.row;
 
 				let row_number = RowNumber::from(sequence);
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
@@ -193,8 +193,8 @@ pub(crate) fn delete_series<'a>(
 				}
 
 				SeriesInterceptor::pre_delete(txn, &series_def)?;
-				txn.unset(&encoded_key, encoded_values.clone())?;
-				SeriesInterceptor::post_delete(txn, &series_def, &encoded_values)?;
+				txn.unset(&encoded_key, encoded_row.clone())?;
+				SeriesInterceptor::post_delete(txn, &series_def, &encoded_row)?;
 				deleted_count += 1;
 			}
 
@@ -235,24 +235,24 @@ pub(crate) fn delete_series<'a>(
 	} else {
 		// Delete all rows - scan the full range and delete
 		let range = SeriesRowKeyRange::full_scan(series_def.id, None);
-		let mut entries_to_delete: Vec<(EncodedKey, EncodedValues)> = Vec::new();
+		let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
 		let mut stream = txn.range(range, 4096)?;
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
-			entries_to_delete.push((entry.key, entry.values));
+			entries_to_delete.push((entry.key, entry.row));
 		}
 		drop(stream);
 
 		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
 
-		for (key, encoded_values) in entries_to_delete.iter() {
+		for (key, encoded_row) in entries_to_delete.iter() {
 			if let Some(decoded_key) = SeriesRowKey::decode(key) {
 				let row_number = RowNumber::from(decoded_key.sequence);
 				let data_values: Vec<Value> = series_def
 					.data_columns()
 					.enumerate()
-					.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
+					.map(|(i, _)| delete_all_schema.get_value(encoded_row, i + 1))
 					.collect();
 				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
 				pre_col_vec.push(Column {
@@ -285,7 +285,7 @@ pub(crate) fn delete_series<'a>(
 					let data_values: Vec<Value> = series_def
 						.data_columns()
 						.enumerate()
-						.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
+						.map(|(i, _)| delete_all_schema.get_value(encoded_row, i + 1))
 						.collect();
 					let old = Columns::single_row(
 						iter::once((
@@ -303,13 +303,13 @@ pub(crate) fn delete_series<'a>(
 			}
 
 			SeriesInterceptor::pre_delete(txn, &series_def)?;
-			txn.unset(key, encoded_values.clone())?;
-			SeriesInterceptor::post_delete(txn, &series_def, encoded_values)?;
+			txn.unset(key, encoded_row.clone())?;
+			SeriesInterceptor::post_delete(txn, &series_def, encoded_row)?;
 			deleted_count += 1;
 		}
 
 		if plan.returning.is_some() {
-			let mut returned_rows: Vec<(RowNumber, EncodedValues)> = Vec::new();
+			let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 			for (key, encoded) in entries_to_delete.iter() {
 				if let Some(decoded_key) = SeriesRowKey::decode(key) {
 					returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));

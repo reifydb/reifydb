@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use reifydb_core::encoded::{
-	encoded::EncodedValues,
 	key::{EncodedKey, IntoEncodedKey},
+	row::EncodedRow,
 	schema::Schema,
 };
 use reifydb_type::{
@@ -45,7 +45,7 @@ impl SingleStatefulTestHelper {
 	/// Get the current state
 	pub fn get_state(&self) -> Option<Vec<Value>> {
 		self.state.as_ref().map(|bytes| {
-			let encoded = EncodedValues(CowVec::new(bytes.clone()));
+			let encoded = EncodedRow(CowVec::new(bytes.clone()));
 			get_values(&self.schema, &encoded)
 		})
 	}
@@ -70,7 +70,7 @@ impl SingleStatefulTestHelper {
 /// Test helper for FFIKeyedStateful operators
 pub struct KeyedStatefulTestHelper {
 	schema: Schema,
-	states: HashMap<EncodedKey, EncodedValues>,
+	states: HashMap<EncodedKey, EncodedRow>,
 }
 
 impl KeyedStatefulTestHelper {
@@ -164,7 +164,7 @@ impl KeyedStatefulTestHelper {
 /// Test helper for FFIWindowStateful operators
 pub struct WindowStatefulTestHelper {
 	schema: Schema,
-	windows: HashMap<i64, HashMap<EncodedKey, EncodedValues>>, // window_id -> key -> state
+	windows: HashMap<i64, HashMap<EncodedKey, EncodedRow>>, // window_id -> key -> state
 	window_size: i64,
 }
 
@@ -226,12 +226,12 @@ impl WindowStatefulTestHelper {
 	}
 
 	/// Get all states for a window
-	pub fn get_window(&self, window_id: i64) -> Option<&HashMap<EncodedKey, EncodedValues>> {
+	pub fn get_window(&self, window_id: i64) -> Option<&HashMap<EncodedKey, EncodedRow>> {
 		self.windows.get(&window_id)
 	}
 
 	/// Remove a window
-	pub fn remove_window(&mut self, window_id: i64) -> Option<HashMap<EncodedKey, EncodedValues>> {
+	pub fn remove_window(&mut self, window_id: i64) -> Option<HashMap<EncodedKey, EncodedRow>> {
 		self.windows.remove(&window_id)
 	}
 

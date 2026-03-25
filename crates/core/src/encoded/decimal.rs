@@ -5,7 +5,7 @@ use bigdecimal::BigDecimal as StdBigDecimal;
 use num_bigint::BigInt as StdBigInt;
 use reifydb_type::value::{decimal::Decimal, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 /// Decimal storage using dynamic section
 /// All decimals are stored in dynamic section with MSB=1 to store both mantissa
@@ -21,7 +21,7 @@ impl Schema {
 	/// Set a Decimal value with 2-tier storage optimization
 	/// - Values that fit in i128: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_decimal(&self, row: &mut EncodedValues, index: usize, value: &Decimal) {
+	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
 		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal { .. }));
 
 		// Serialize as scale (i64) + mantissa (variable bytes)
@@ -37,7 +37,7 @@ impl Schema {
 	}
 
 	/// Get a Decimal value, detecting storage mode from MSB
-	pub fn get_decimal(&self, row: &EncodedValues, index: usize) -> Decimal {
+	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
 		let field = &self.fields()[index];
 		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal { .. }));
 
@@ -66,7 +66,7 @@ impl Schema {
 	}
 
 	/// Try to get a Decimal value, returning None if undefined
-	pub fn try_get_decimal(&self, row: &EncodedValues, index: usize) -> Option<Decimal> {
+	pub fn try_get_decimal(&self, row: &EncodedRow, index: usize) -> Option<Decimal> {
 		if row.is_defined(index)
 			&& matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal { .. })
 		{

@@ -21,7 +21,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = FlowId(flow::SCHEMA.get_u64(&row, flow::ID));
 		let namespace = NamespaceId(flow::SCHEMA.get_u64(&row, flow::NAMESPACE));
 		let name = flow::SCHEMA.get_utf8(&row, flow::NAME).to_string();
@@ -47,7 +47,7 @@ impl CatalogStore {
 		let mut found_flow = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let flow_name = flow_namespace::SCHEMA.get_utf8(row, flow_namespace::NAME);
 			if name == flow_name {
 				found_flow = Some(FlowId(flow_namespace::SCHEMA.get_u64(row, flow_namespace::ID)));

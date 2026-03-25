@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Integration tests for updating EncodedValues fields in-place.
+//! Integration tests for updating EncodedRow fields in-place.
 //! Verifies that replace_dynamic_data properly splices bytes, adjusts references,
 //! and leaves no orphan data.
 

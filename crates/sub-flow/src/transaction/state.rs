@@ -3,8 +3,8 @@
 
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 		schema::Schema,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
@@ -22,7 +22,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		found = field::Empty
 	))]
-	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		let result = self.get(&encoded_key)?;
@@ -36,7 +36,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		value_len = value.as_ref().len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedValues) -> Result<()> {
+	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		self.set(&encoded_key, value)
@@ -136,12 +136,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		created
 	))]
-	pub fn load_or_create_row(
-		&mut self,
-		id: FlowNodeId,
-		key: &EncodedKey,
-		schema: &Schema,
-	) -> Result<EncodedValues> {
+	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &EncodedKey, schema: &Schema) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -159,7 +154,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_bytes().len()
 	))]
-	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.state_set(id, key, row)
 	}
 }
@@ -172,8 +167,8 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		encoded::{
-			encoded::EncodedValues,
 			key::{EncodedKey, EncodedKeyRange},
+			row::EncodedRow,
 			schema::Schema,
 		},
 		interface::catalog::flow::FlowNodeId,
@@ -188,8 +183,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]

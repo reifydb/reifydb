@@ -19,7 +19,7 @@ pub(crate) fn load_source_retention_policies(rx: &mut Transaction<'_>, catalog: 
 		let version = multi.version;
 
 		if let Some(key) = PrimitiveRetentionPolicyKey::decode(&multi.key) {
-			if let Some(policy) = decode_retention_policy(&multi.values) {
+			if let Some(policy) = decode_retention_policy(&multi.row) {
 				catalog.set_primitive_retention_policy(key.primitive, version, Some(policy));
 			}
 		}

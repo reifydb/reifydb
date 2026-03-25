@@ -7,7 +7,7 @@ use num_bigint::BigInt as StdBigInt;
 use num_traits::ToPrimitive;
 use reifydb_type::value::{int::Int, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 /// Int storage modes using MSB of i128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -26,7 +26,7 @@ impl Schema {
 	/// Set a Int value with 2-tier storage optimization
 	/// - Values fitting in 127 bits: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_int(&self, row: &mut EncodedValues, index: usize, value: &Int) {
+	pub fn set_int(&self, row: &mut EncodedRow, index: usize, value: &Int) {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int);
 
@@ -56,7 +56,7 @@ impl Schema {
 	}
 
 	/// Get a Int value, detecting storage mode from MSB
-	pub fn get_int(&self, row: &EncodedValues, index: usize) -> Int {
+	pub fn get_int(&self, row: &EncodedRow, index: usize) -> Int {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int);
 
@@ -89,7 +89,7 @@ impl Schema {
 	}
 
 	/// Try to get a Int value, returning None if undefined
-	pub fn try_get_int(&self, row: &EncodedValues, index: usize) -> Option<Int> {
+	pub fn try_get_int(&self, row: &EncodedRow, index: usize) -> Option<Int> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Int {
 			Some(self.get_int(row, index))
 		} else {

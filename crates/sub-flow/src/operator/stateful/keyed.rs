@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::{
@@ -35,27 +35,27 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Create a new state encoded with default values
-	fn create_state(&self) -> EncodedValues {
+	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
 	/// Load state for a specific key
-	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedRow> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save state for a specific key
-	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedValues) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedRow) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state for a key with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedValues) -> Result<()>,
+		F: FnOnce(&Schema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.layout();
 		let mut row = self.load_state(txn, key_values)?;

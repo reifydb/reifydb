@@ -12,7 +12,7 @@
 use reifydb_core::{common::CommitVersion, encoded::key::EncodedKeyRange};
 
 use super::test_multi;
-use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
+use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
 
 #[test]
 fn test_versions() {
@@ -34,7 +34,7 @@ fn test_versions() {
 		let v = idx;
 		{
 			let tv = txn.get(&k0).unwrap().unwrap();
-			assert_eq!(v, from_values!(i32, tv.values()));
+			assert_eq!(v, from_row!(i32, tv.row()));
 		}
 
 		// Try retrieving the latest version forward and reverse.
@@ -42,7 +42,7 @@ fn test_versions() {
 		let mut count = 0;
 		for sv in items {
 			assert_eq!(&sv.key, &k0);
-			let value = from_values!(i32, &sv.values);
+			let value = from_row!(i32, &sv.row);
 			assert_eq!(value, idx, "{idx} {:?}", value);
 			count += 1;
 		}
@@ -51,7 +51,7 @@ fn test_versions() {
 		let items: Vec<_> = txn.range_rev(EncodedKeyRange::all(), 1024).collect::<Result<Vec<_>, _>>().unwrap();
 		let mut count = 0;
 		for sv in items {
-			let value = from_values!(i32, &sv.values);
+			let value = from_row!(i32, &sv.row);
 			assert_eq!(value, idx, "{idx} {:?}", value);
 			count += 1;
 		}
@@ -60,6 +60,6 @@ fn test_versions() {
 
 	let mut txn = engine.begin_command().unwrap();
 	let sv = txn.get(&k0).unwrap().unwrap();
-	let val = from_values!(i32, sv.values());
+	let val = from_row!(i32, sv.row());
 	assert_eq!(9, val)
 }

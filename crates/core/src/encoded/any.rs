@@ -18,7 +18,7 @@ use reifydb_type::value::{
 };
 use uuid::Uuid;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 /// Encodes an inner value to a `[type_byte][payload]` byte vector.
 ///
@@ -228,13 +228,13 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 }
 
 impl Schema {
-	pub fn set_any(&self, row: &mut EncodedValues, index: usize, value: &Value) {
+	pub fn set_any(&self, row: &mut EncodedRow, index: usize, value: &Value) {
 		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Any);
 		let encoded = encode_value(value);
 		self.replace_dynamic_data(row, index, &encoded);
 	}
 
-	pub fn get_any(&self, row: &EncodedValues, index: usize) -> Value {
+	pub fn get_any(&self, row: &EncodedRow, index: usize) -> Value {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Any);
 

@@ -17,8 +17,8 @@ use reifydb_abi::{
 };
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	interface::catalog::flow::FlowNodeId,
 };
@@ -99,12 +99,12 @@ pub(super) extern "C" fn host_state_set(
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
 
-		// Convert raw bytes to EncodedKey and EncodedValues
+		// Convert raw bytes to EncodedKey and EncodedRow
 		let key_bytes = from_raw_parts(key_ptr, key_len);
 		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
 
 		let value_bytes = from_raw_parts(value_ptr, value_len);
-		let value = EncodedValues(CowVec::new(value_bytes.to_vec()));
+		let value = EncodedRow(CowVec::new(value_bytes.to_vec()));
 
 		match flow_txn.state_set(FlowNodeId(operator_id), &key, value) {
 			Ok(_) => FFI_OK,

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::{
 		id::RingBufferId,
 		ringbuffer::{RingBufferDef, RingBufferMetadata},
@@ -14,7 +14,7 @@ use reifydb_type::value::Value;
 
 use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer_metadata};
 
-pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedValues {
+pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
 	let mut row = ringbuffer_metadata::SCHEMA.allocate();
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
@@ -24,7 +24,7 @@ pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedValue
 	row
 }
 
-pub fn decode_ringbuffer_metadata(row: &EncodedValues) -> RingBufferMetadata {
+pub fn decode_ringbuffer_metadata(row: &EncodedRow) -> RingBufferMetadata {
 	RingBufferMetadata {
 		id: RingBufferId(ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::ID)),
 		capacity: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::CAPACITY),

@@ -35,7 +35,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let auth_user_id = authentication::SCHEMA.get_u64(&multi.values, authentication::USER_ID);
+			let auth_user_id = authentication::SCHEMA.get_u64(&multi.row, authentication::USER_ID);
 			if auth_user_id == user_id {
 				result.push(convert_authentication(multi));
 			}

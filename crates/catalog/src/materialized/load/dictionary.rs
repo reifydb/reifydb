@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{
 		catalog::{dictionary::DictionaryDef, id::NamespaceId},
-		store::MultiVersionValues,
+		store::MultiVersionRow,
 	},
 	key::dictionary::DictionaryKey,
 };
@@ -31,8 +31,8 @@ pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &Materialized
 	Ok(())
 }
 
-fn convert_dictionary(multi: MultiVersionValues) -> DictionaryDef {
-	let row = multi.values;
+fn convert_dictionary(multi: MultiVersionRow) -> DictionaryDef {
+	let row = multi.row;
 	let id = DictionaryId(SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(SCHEMA.get_u64(&row, NAMESPACE));
 	let name = SCHEMA.get_utf8(&row, NAME).to_string();

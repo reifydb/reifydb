@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_i64(&self, row: &mut EncodedValues, index: usize, value: impl Into<i64>) {
+	pub fn set_i64(&self, row: &mut EncodedRow, index: usize, value: impl Into<i64>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int8);
@@ -21,14 +21,14 @@ impl Schema {
 		}
 	}
 
-	pub fn get_i64(&self, row: &EncodedValues, index: usize) -> i64 {
+	pub fn get_i64(&self, row: &EncodedRow, index: usize) -> i64 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int8);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const i64).read_unaligned() }
 	}
 
-	pub fn try_get_i64(&self, row: &EncodedValues, index: usize) -> Option<i64> {
+	pub fn try_get_i64(&self, row: &EncodedRow, index: usize) -> Option<i64> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Int8 {
 			Some(self.get_i64(row, index))
 		} else {

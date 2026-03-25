@@ -22,7 +22,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = DictionaryId(dictionary::SCHEMA.get_u64(&row, dictionary::ID));
 		let namespace = NamespaceId(dictionary::SCHEMA.get_u64(&row, dictionary::NAMESPACE));
 		let name = dictionary::SCHEMA.get_utf8(&row, dictionary::NAME).to_string();
@@ -49,7 +49,7 @@ impl CatalogStore {
 		let mut found_dictionary_id = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let dictionary_name = dictionary_namespace::SCHEMA.get_utf8(row, dictionary_namespace::NAME);
 			if name == dictionary_name {
 				found_dictionary_id = Some(DictionaryId(

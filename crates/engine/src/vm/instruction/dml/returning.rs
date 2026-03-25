@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::expression::Expression;
@@ -25,7 +25,7 @@ use crate::{
 };
 
 /// Decode multiple encoded rows into a single Columns structure using the schema.
-pub(crate) fn decode_rows_to_columns(schema: &Schema, rows: &[(RowNumber, EncodedValues)]) -> Columns {
+pub(crate) fn decode_rows_to_columns(schema: &Schema, rows: &[(RowNumber, EncodedRow)]) -> Columns {
 	let fields = schema.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());

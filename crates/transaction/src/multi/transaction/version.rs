@@ -77,17 +77,17 @@ impl StandardVersionProvider {
 		let mut tx = single.begin_query([&key])?;
 		match tx.get(&key)? {
 			None => Ok(0),
-			Some(single) => Ok(schema.get_u64(&single.values, 0)),
+			Some(single) => Ok(schema.get_u64(&single.row, 0)),
 		}
 	}
 
 	fn persist_version(schema: &Schema, single: &SingleTransaction, version: u64) -> Result<()> {
 		let key = TransactionVersionKey {}.encode();
-		let mut values = schema.allocate();
-		schema.set_u64(&mut values, 0, version);
+		let mut row = schema.allocate();
+		schema.set_u64(&mut row, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
-		tx.set(&key, values)?;
+		tx.set(&key, row)?;
 		tx.commit()
 	}
 }
@@ -267,12 +267,12 @@ pub mod tests {
 		// Manually set a version in storage
 		let schema = Schema::testing(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut values = schema.allocate();
-		schema.set_u64(&mut values, 0, 500u64);
+		let mut row = schema.allocate();
+		schema.set_u64(&mut row, 0, 500u64);
 
 		{
 			let mut tx = single.begin_command([&key]).unwrap();
-			tx.set(&key, values).unwrap();
+			tx.set(&key, row).unwrap();
 			tx.commit().unwrap();
 		} // tx is dropped here, releasing the key lock
 

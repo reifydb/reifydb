@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
 	interface::resolved::ResolvedView,
 	internal_error,
 	key::{
@@ -47,7 +47,7 @@ impl ViewScanNode {
 		})
 	}
 
-	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<Schema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -97,7 +97,7 @@ impl QueryNode for ViewScanNode {
 			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
-						batch_rows.push(multi.values);
+						batch_rows.push(multi.row);
 						row_numbers.push(key.row);
 						new_last_key = Some(multi.key);
 					}

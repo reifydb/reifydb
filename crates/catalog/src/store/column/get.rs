@@ -71,7 +71,7 @@ impl CatalogStore {
 			))
 		})?;
 
-		let row = multi.values;
+		let row = multi.row;
 
 		let id = ColumnId(SCHEMA.get_u64(&row, ID));
 		let name = SCHEMA.get_utf8(&row, NAME).to_string();

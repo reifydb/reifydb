@@ -34,7 +34,7 @@ impl BatchIterator {
 		let items = batch
 			.items
 			.into_iter()
-			.map(|multi| (multi.key.as_ref().to_vec(), multi.values.as_ref().to_vec()))
+			.map(|multi| (multi.key.as_ref().to_vec(), multi.row.as_ref().to_vec()))
 			.collect();
 
 		Self {

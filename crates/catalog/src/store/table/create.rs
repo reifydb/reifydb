@@ -207,12 +207,12 @@ pub mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1025);
 		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1026);
 		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "another_table");
 	}

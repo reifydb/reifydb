@@ -25,7 +25,7 @@ impl CatalogStore {
 			let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
-				let row = &multi.values;
+				let row = &multi.row;
 				dictionary_ids.push(DictionaryId(
 					dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID),
 				));
@@ -49,7 +49,7 @@ impl CatalogStore {
 		let mut stream = rx.range(DictionaryKey::full_scan(), 1024)?;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let id = DictionaryId(dictionary::SCHEMA.get_u64(&row, dictionary::ID));
 			let namespace = NamespaceId(dictionary::SCHEMA.get_u64(&row, dictionary::NAMESPACE));
 			let name = dictionary::SCHEMA.get_utf8(&row, dictionary::NAME).to_string();

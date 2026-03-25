@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::encoded::{
-	encoded::EncodedValues,
 	key::{EncodedKey, EncodedKeyRange},
+	row::EncodedRow,
 };
 use reifydb_type::Result;
 
@@ -14,12 +14,12 @@ use crate::{Operator, transaction::FlowTransaction};
 /// This is the foundation for operators that need state management
 pub trait RawStatefulOperator: Operator {
 	/// Get raw bytes for a key
-	fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+	fn state_get(&self, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
 	/// Set raw bytes for a key
-	fn state_set(&self, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedValues) -> Result<()> {
+	fn state_set(&self, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedRow) -> Result<()> {
 		utils::state_set(self.id(), txn, key, value)
 	}
 
@@ -105,7 +105,7 @@ pub mod tests {
 		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
 		for (key_suffix, data) in &entries {
 			let key = test_key(key_suffix);
-			let value = EncodedValues(CowVec::new(data.clone()));
+			let value = EncodedRow(CowVec::new(data.clone()));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -124,7 +124,7 @@ pub mod tests {
 		// Add ordered entries
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // Ensures lexical ordering
-			let value = EncodedValues(CowVec::new(vec![i as u8]));
+			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -148,7 +148,7 @@ pub mod tests {
 		// Add multiple entries
 		for i in 0..5 {
 			let key = test_key(&format!("clear_{}", i));
-			let value = EncodedValues(CowVec::new(vec![i as u8]));
+			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -173,8 +173,8 @@ pub mod tests {
 		let operator2 = TestOperator::simple(FlowNodeId(20));
 		let shared_key = test_key("shared");
 
-		let value1 = EncodedValues(CowVec::new(vec![1]));
-		let value2 = EncodedValues(CowVec::new(vec![2]));
+		let value1 = EncodedRow(CowVec::new(vec![1]));
+		let value2 = EncodedRow(CowVec::new(vec![2]));
 
 		// Set different values for same key in different operators
 		operator1.state_set(&mut txn, &shared_key, value1.clone()).unwrap();
@@ -217,8 +217,8 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(5));
 		let key = test_key("overwrite");
 
-		let value1 = EncodedValues(CowVec::new(vec![1, 1, 1]));
-		let value2 = EncodedValues(CowVec::new(vec![2, 2, 2]));
+		let value1 = EncodedRow(CowVec::new(vec![1, 1, 1]));
+		let value2 = EncodedRow(CowVec::new(vec![2, 2, 2]));
 
 		// Set initial value
 		operator.state_set(&mut txn, &key, value1).unwrap();
@@ -256,7 +256,7 @@ pub mod tests {
 		// Add 5 entries
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
-			let value = EncodedValues(CowVec::new(vec![i as u8]));
+			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 

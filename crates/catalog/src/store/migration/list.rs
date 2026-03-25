@@ -16,7 +16,7 @@ impl CatalogStore {
 		let mut results = Vec::new();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			results.push(migration_def_from_row(&entry.values));
+			results.push(migration_def_from_row(&entry.row));
 		}
 		Ok(results)
 	}
@@ -26,7 +26,7 @@ impl CatalogStore {
 		let mut results = Vec::new();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			results.push(migration_event_from_row(&entry.values));
+			results.push(migration_event_from_row(&entry.row));
 		}
 		Ok(results)
 	}

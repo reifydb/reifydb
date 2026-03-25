@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use crate::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	interface::catalog::column::ColumnDef,
 	value::column::columns::Columns,
 };
@@ -135,7 +135,7 @@ impl TestingContext {
 	}
 }
 
-pub fn columns_from_encoded(columns: &[ColumnDef], schema: &Schema, encoded: &EncodedValues) -> Columns {
+pub fn columns_from_encoded(columns: &[ColumnDef], schema: &Schema, encoded: &EncodedRow) -> Columns {
 	Columns::single_row(
 		columns.iter().enumerate().map(|(i, col)| (col.name.as_str(), schema.get_value(encoded, i))),
 	)

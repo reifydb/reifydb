@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
 	key::{
 		dictionary::{DictionaryKey, DictionarySequenceKey},
@@ -110,7 +110,7 @@ impl CatalogStore {
 		let seq_key = DictionarySequenceKey::encoded(dictionary);
 		let initial_value = 0u128.to_be_bytes().to_vec();
 
-		txn.set(&seq_key, EncodedValues(CowVec::new(initial_value)))?;
+		txn.set(&seq_key, EncodedRow(CowVec::new(initial_value)))?;
 
 		Ok(())
 	}
@@ -201,14 +201,14 @@ pub mod tests {
 
 		// Check first link (descending order, so dict2 comes first)
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		let id2 = dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(dictionary_namespace::SCHEMA.get_utf8(row, dictionary_namespace::NAME), "dict2");
 
 		// Check second link (dict1 comes second)
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		let id1 = dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID);
 		assert!(id2 > id1);
 		assert_eq!(dictionary_namespace::SCHEMA.get_utf8(row, dictionary_namespace::NAME), "dict1");

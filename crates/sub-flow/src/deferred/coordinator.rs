@@ -819,7 +819,7 @@ impl CoordinatorActor {
 					// downstream deferred flows that source from views.
 					if matches!(Key::kind(key), Some(KeyKind::Row)) {
 						match transaction.get(key) {
-							Ok(Some(existing)) => transaction.unset(key, existing.values),
+							Ok(Some(existing)) => transaction.unset(key, existing.row),
 							Ok(None) => transaction.remove(key),
 							Err(e) => {
 								let _ = transaction.rollback();

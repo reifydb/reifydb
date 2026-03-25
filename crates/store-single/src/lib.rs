@@ -20,7 +20,7 @@ use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{
 		SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore, SingleVersionValues,
+		SingleVersionRangeRev, SingleVersionRemove, SingleVersionRow, SingleVersionSet, SingleVersionStore,
 	},
 };
 use reifydb_type::util::cowvec::CowVec;
@@ -78,7 +78,7 @@ impl SingleStore {
 
 impl SingleVersionGet for SingleStore {
 	#[inline]
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
 		match self {
 			SingleStore::Standard(store) => SingleVersionGet::get(store, key),
 		}

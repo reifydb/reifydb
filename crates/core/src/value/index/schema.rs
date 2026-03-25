@@ -8,17 +8,17 @@ use reifydb_type::{Result, util::cowvec::CowVec, value::r#type::Type};
 use crate::{error::CoreError, sort::SortDirection, value::index::encoded::EncodedIndexKey};
 
 #[derive(Debug, Clone)]
-pub struct EncodedIndexLayout(Arc<EncodedIndexLayoutInner>);
+pub struct IndexSchema(Arc<IndexSchemaInner>);
 
-impl Deref for EncodedIndexLayout {
-	type Target = EncodedIndexLayoutInner;
+impl Deref for IndexSchema {
+	type Target = IndexSchemaInner;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl EncodedIndexLayout {
+impl IndexSchema {
 	pub fn new(types: &[Type], directions: &[SortDirection]) -> Result<Self> {
 		if types.len() != directions.len() {
 			return Err(CoreError::IndexTypesDirectionsMismatch {
@@ -34,12 +34,12 @@ impl EncodedIndexLayout {
 			}
 		}
 
-		Ok(Self(Arc::new(EncodedIndexLayoutInner::new(types, directions))))
+		Ok(Self(Arc::new(IndexSchemaInner::new(types, directions))))
 	}
 }
 
 #[derive(Debug)]
-pub struct EncodedIndexLayoutInner {
+pub struct IndexSchemaInner {
 	pub fields: Vec<IndexField>,
 	pub total_size: usize,
 	pub bitvec_size: usize,
@@ -55,7 +55,7 @@ pub struct IndexField {
 	pub direction: SortDirection,
 }
 
-impl EncodedIndexLayoutInner {
+impl IndexSchemaInner {
 	fn new(types: &[Type], directions: &[SortDirection]) -> Self {
 		assert!(!types.is_empty());
 		assert_eq!(types.len(), directions.len());
@@ -86,7 +86,7 @@ impl EncodedIndexLayoutInner {
 
 		let total_size = align_up(offset, max_align);
 
-		EncodedIndexLayoutInner {
+		IndexSchemaInner {
 			fields,
 			total_size,
 			alignment: max_align,
@@ -157,7 +157,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_field_int() {
-		let layout = EncodedIndexLayout::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
+		let layout = IndexSchema::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
 
 		assert_eq!(layout.bitvec_size, 1);
 		assert_eq!(layout.fields.len(), 1);
@@ -170,7 +170,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields_mixed_directions() {
-		let layout = EncodedIndexLayout::new(
+		let layout = IndexSchema::new(
 			&[Type::Int4, Type::Int8, Type::Uint8],
 			&[SortDirection::Desc, SortDirection::Asc, SortDirection::Asc],
 		)
@@ -193,21 +193,17 @@ pub mod tests {
 
 	#[test]
 	fn test_reject_variable_length_types() {
-		let result =
-			EncodedIndexLayout::new(&[Type::Int4, Type::Utf8], &[SortDirection::Asc, SortDirection::Asc]);
+		let result = IndexSchema::new(&[Type::Int4, Type::Utf8], &[SortDirection::Asc, SortDirection::Asc]);
 		assert!(result.is_err());
 
-		let result = EncodedIndexLayout::new(&[Type::Blob], &[SortDirection::Desc]);
+		let result = IndexSchema::new(&[Type::Blob], &[SortDirection::Desc]);
 		assert!(result.is_err());
 	}
 
 	#[test]
 	fn test_allocate_key() {
-		let layout = EncodedIndexLayout::new(
-			&[Type::Boolean, Type::Int4],
-			&[SortDirection::Asc, SortDirection::Desc],
-		)
-		.unwrap();
+		let layout = IndexSchema::new(&[Type::Boolean, Type::Int4], &[SortDirection::Asc, SortDirection::Desc])
+			.unwrap();
 
 		let key = layout.allocate_key();
 		assert_eq!(key.len(), layout.total_size);

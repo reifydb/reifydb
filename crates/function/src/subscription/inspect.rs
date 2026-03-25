@@ -78,13 +78,13 @@ impl GeneratorFunction for InspectSubscription {
 			if let Some(Key::SubscriptionRow(sub_row_key)) = Key::decode(&entry.key) {
 				row_numbers.push(sub_row_key.row);
 
-				let fingerprint = entry.values.fingerprint();
+				let fingerprint = entry.row.fingerprint();
 				let schema = schema_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
 					Error(internal(format!("Schema not found for fingerprint: {:?}", fingerprint)))
 				})?;
 
 				for (idx, (_, data)) in column_data_builders.iter_mut().enumerate() {
-					let value = schema.get_value(&entry.values, idx);
+					let value = schema.get_value(&entry.row, idx);
 					data.push_value(value);
 				}
 			}

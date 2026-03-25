@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::{
 		id::NamespaceId,
 		sumtype::{SumTypeDef, SumTypeKind, VariantDef},
@@ -21,7 +21,7 @@ pub mod get;
 pub mod list;
 pub(crate) mod schema;
 
-pub(crate) fn sumtype_def_from_row(row: &EncodedValues) -> SumTypeDef {
+pub(crate) fn sumtype_def_from_row(row: &EncodedRow) -> SumTypeDef {
 	let id = SumTypeId(sumtype::SCHEMA.get_u64(row, sumtype::ID));
 	let namespace = NamespaceId(sumtype::SCHEMA.get_u64(row, sumtype::NAMESPACE));
 	let name = sumtype::SCHEMA.get_utf8(row, sumtype::NAME).to_string();

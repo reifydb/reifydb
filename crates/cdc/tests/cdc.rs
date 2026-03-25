@@ -16,7 +16,7 @@ use reifydb_cdc::consume::{
 	poll::{PollConsumer, PollConsumerConfig},
 };
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::{id::TableId, primitive::PrimitiveId},
 		cdc::{Cdc, CdcConsumerId, SystemChange},
@@ -151,7 +151,7 @@ fn test_checkpoint_persistence() {
 	let checkpoint = txn.get(&consumer_key).expect("Failed to get checkpoint").expect("Checkpoint should exist");
 
 	let mut buffer = [0u8; 8];
-	buffer.copy_from_slice(&checkpoint.values[0..8]);
+	buffer.copy_from_slice(&checkpoint.row[0..8]);
 	let stored_version = u64::from_be_bytes(buffer);
 
 	assert!(stored_version >= 3, "Checkpoint should be after initial events");
@@ -286,10 +286,10 @@ fn test_multiple_consumers() {
 		txn.get(&consumer2_key).expect("Failed to get checkpoint 2").expect("Checkpoint 2 should exist");
 
 	let mut buffer = [0u8; 8];
-	buffer.copy_from_slice(&checkpoint1.values[0..8]);
+	buffer.copy_from_slice(&checkpoint1.row[0..8]);
 	let version1 = u64::from_be_bytes(buffer);
 
-	buffer.copy_from_slice(&checkpoint2.values[0..8]);
+	buffer.copy_from_slice(&checkpoint2.row[0..8]);
 	let version2 = u64::from_be_bytes(buffer);
 
 	// Both consumers should have processed all events, but their exact
@@ -313,10 +313,10 @@ fn test_non_table_events_filtered() {
 	let mut txn = engine.begin_command(IdentityId::system()).expect("Failed to begin transaction");
 
 	let table_key = RowKey::encoded(PrimitiveId::table(1), RowNumber(1));
-	txn.set(&table_key, EncodedValues(CowVec::new(b"table_value".to_vec()))).expect("Failed to set table encoded");
+	txn.set(&table_key, EncodedRow(CowVec::new(b"table_value".to_vec()))).expect("Failed to set table encoded");
 
 	let non_table_key = EncodedKey(CowVec::new(b"non_table_key".to_vec()));
-	txn.set(&non_table_key, EncodedValues(CowVec::new(b"non_table_value".to_vec())))
+	txn.set(&non_table_key, EncodedRow(CowVec::new(b"non_table_value".to_vec())))
 		.expect("Failed to set non-table encoded");
 
 	txn.commit().expect("Failed to commit transaction");
@@ -732,7 +732,7 @@ fn insert_test_events(engine: &StandardEngine, count: usize) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
 		let key = RowKey::encoded(PrimitiveId::table(1), RowNumber((i + 1) as u64));
 		let value = format!("value_{}", i);
-		txn.set(&key, EncodedValues(CowVec::new(value.into_bytes()))).unwrap();
+		txn.set(&key, EncodedRow(CowVec::new(value.into_bytes()))).unwrap();
 		txn.commit().unwrap();
 	}
 }

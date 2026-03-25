@@ -6,14 +6,14 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::EventBus,
 	interface::{
 		WithEventBus,
 		change::Change,
-		store::{MultiVersionBatch, MultiVersionValues},
+		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
 use reifydb_type::{
@@ -167,7 +167,7 @@ impl SubscriptionTransaction {
 		self.inner.id()
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		self.inner.get(key)
 	}
 
@@ -187,12 +187,12 @@ impl SubscriptionTransaction {
 		self.inner.read_as_of_version_exclusive(version)
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.inner.set(key, row)
 	}
 
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
-		self.inner.unset(key, values)
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		self.inner.unset(key, row)
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
@@ -203,7 +203,7 @@ impl SubscriptionTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.inner.range(range, batch_size)
 	}
 
@@ -211,7 +211,7 @@ impl SubscriptionTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.inner.range_rev(range, batch_size)
 	}
 

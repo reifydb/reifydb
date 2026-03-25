@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::encoded::EncodedValues, interface::catalog::series::SeriesDef};
+use reifydb_core::{encoded::row::EncodedRow, interface::catalog::series::SeriesDef};
 use reifydb_type::Result;
 
 use super::WithInterceptors;
@@ -11,11 +11,11 @@ use crate::interceptor::chain::InterceptorChain;
 /// Context for series pre-insert interceptors
 pub struct SeriesPreInsertContext<'a> {
 	pub series: &'a SeriesDef,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> SeriesPreInsertContext<'a> {
-	pub fn new(series: &'a SeriesDef, row: EncodedValues) -> Self {
+	pub fn new(series: &'a SeriesDef, row: EncodedRow) -> Self {
 		Self {
 			series,
 			row,
@@ -28,7 +28,7 @@ pub trait SeriesPreInsertInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn SeriesPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesPreInsertContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: SeriesPreInsertContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -85,11 +85,11 @@ where
 /// Context for series post-insert interceptors
 pub struct SeriesPostInsertContext<'a> {
 	pub series: &'a SeriesDef,
-	pub row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
 }
 
 impl<'a> SeriesPostInsertContext<'a> {
-	pub fn new(series: &'a SeriesDef, row: &'a EncodedValues) -> Self {
+	pub fn new(series: &'a SeriesDef, row: &'a EncodedRow) -> Self {
 		Self {
 			series,
 			row,
@@ -159,11 +159,11 @@ where
 /// Context for series pre-update interceptors
 pub struct SeriesPreUpdateContext<'a> {
 	pub series: &'a SeriesDef,
-	pub row: EncodedValues,
+	pub row: EncodedRow,
 }
 
 impl<'a> SeriesPreUpdateContext<'a> {
-	pub fn new(series: &'a SeriesDef, row: EncodedValues) -> Self {
+	pub fn new(series: &'a SeriesDef, row: EncodedRow) -> Self {
 		Self {
 			series,
 			row,
@@ -176,7 +176,7 @@ pub trait SeriesPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn SeriesPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: SeriesPreUpdateContext) -> Result<EncodedValues> {
+	pub fn execute(&self, mut ctx: SeriesPreUpdateContext) -> Result<EncodedRow> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -233,12 +233,12 @@ where
 /// Context for series post-update interceptors
 pub struct SeriesPostUpdateContext<'a> {
 	pub series: &'a SeriesDef,
-	pub row: &'a EncodedValues,
-	pub old_row: &'a EncodedValues,
+	pub row: &'a EncodedRow,
+	pub old_row: &'a EncodedRow,
 }
 
 impl<'a> SeriesPostUpdateContext<'a> {
-	pub fn new(series: &'a SeriesDef, row: &'a EncodedValues, old_row: &'a EncodedValues) -> Self {
+	pub fn new(series: &'a SeriesDef, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
 		Self {
 			series,
 			row,
@@ -381,11 +381,11 @@ where
 /// Context for series post-delete interceptors
 pub struct SeriesPostDeleteContext<'a> {
 	pub series: &'a SeriesDef,
-	pub deleted_row: &'a EncodedValues,
+	pub deleted_row: &'a EncodedRow,
 }
 
 impl<'a> SeriesPostDeleteContext<'a> {
-	pub fn new(series: &'a SeriesDef, deleted_row: &'a EncodedValues) -> Self {
+	pub fn new(series: &'a SeriesDef, deleted_row: &'a EncodedRow) -> Self {
 		Self {
 			series,
 			deleted_row,
@@ -455,25 +455,17 @@ where
 pub struct SeriesInterceptor;
 
 impl SeriesInterceptor {
-	pub fn pre_insert(
-		txn: &mut impl WithInterceptors,
-		series: &SeriesDef,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+	pub fn pre_insert(txn: &mut impl WithInterceptors, series: &SeriesDef, row: EncodedRow) -> Result<EncodedRow> {
 		let ctx = SeriesPreInsertContext::new(series, row);
 		txn.series_pre_insert_interceptors().execute(ctx)
 	}
 
-	pub fn post_insert(txn: &mut impl WithInterceptors, series: &SeriesDef, row: &EncodedValues) -> Result<()> {
+	pub fn post_insert(txn: &mut impl WithInterceptors, series: &SeriesDef, row: &EncodedRow) -> Result<()> {
 		let ctx = SeriesPostInsertContext::new(series, row);
 		txn.series_post_insert_interceptors().execute(ctx)
 	}
 
-	pub fn pre_update(
-		txn: &mut impl WithInterceptors,
-		series: &SeriesDef,
-		row: EncodedValues,
-	) -> Result<EncodedValues> {
+	pub fn pre_update(txn: &mut impl WithInterceptors, series: &SeriesDef, row: EncodedRow) -> Result<EncodedRow> {
 		let ctx = SeriesPreUpdateContext::new(series, row);
 		txn.series_pre_update_interceptors().execute(ctx)
 	}
@@ -481,8 +473,8 @@ impl SeriesInterceptor {
 	pub fn post_update(
 		txn: &mut impl WithInterceptors,
 		series: &SeriesDef,
-		row: &EncodedValues,
-		old_row: &EncodedValues,
+		row: &EncodedRow,
+		old_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = SeriesPostUpdateContext::new(series, row, old_row);
 		txn.series_post_update_interceptors().execute(ctx)
@@ -496,7 +488,7 @@ impl SeriesInterceptor {
 	pub fn post_delete(
 		txn: &mut impl WithInterceptors,
 		series: &SeriesDef,
-		deleted_row: &EncodedValues,
+		deleted_row: &EncodedRow,
 	) -> Result<()> {
 		let ctx = SeriesPostDeleteContext::new(series, deleted_row);
 		txn.series_post_delete_interceptors().execute(ctx)

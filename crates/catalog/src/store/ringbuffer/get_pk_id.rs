@@ -21,7 +21,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = ringbuffer::SCHEMA.get_u64(&multi.values, ringbuffer::PRIMARY_KEY);
+		let pk_id = ringbuffer::SCHEMA.get_u64(&multi.row, ringbuffer::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

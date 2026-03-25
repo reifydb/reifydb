@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::{time::Time, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_time(&self, row: &mut EncodedValues, index: usize, value: Time) {
+	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Time);
@@ -21,7 +21,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_time(&self, row: &EncodedValues, index: usize) -> Time {
+	pub fn get_time(&self, row: &EncodedRow, index: usize) -> Time {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Time);
@@ -33,7 +33,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_time(&self, row: &EncodedValues, index: usize) -> Option<Time> {
+	pub fn try_get_time(&self, row: &EncodedRow, index: usize) -> Option<Time> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Time {
 			Some(self.get_time(row, index))
 		} else {

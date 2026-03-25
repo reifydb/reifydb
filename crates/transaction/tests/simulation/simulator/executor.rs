@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	util::encoding::keycode,
 };
@@ -68,8 +68,8 @@ fn encode_key(key: &str) -> EncodedKey {
 	EncodedKey::new(keycode::serialize(&key.to_string()))
 }
 
-fn encode_values(value: &str) -> EncodedValues {
-	EncodedValues(CowVec::new(keycode::serialize(&value.to_string())))
+fn encode_row(value: &str) -> EncodedRow {
+	EncodedRow(CowVec::new(keycode::serialize(&value.to_string())))
 }
 
 fn decode_key(bytes: &[u8]) -> String {
@@ -126,7 +126,7 @@ impl Executor {
 						value,
 					} => match handles.get_mut(&tx_id) {
 						Some(TxHandle::Write(tx)) => {
-							match tx.set(&encode_key(key), encode_values(value)) {
+							match tx.set(&encode_key(key), encode_row(value)) {
 								Ok(()) => OpResult::Ok,
 								Err(e) => {
 									handles.remove(&tx_id);
@@ -143,7 +143,7 @@ impl Executor {
 						key,
 					} => match handles.get_mut(&tx_id) {
 						Some(TxHandle::Write(tx)) => match tx.get(&encode_key(key)) {
-							Ok(Some(tv)) => OpResult::Value(Some(tv.values().to_vec())),
+							Ok(Some(tv)) => OpResult::Value(Some(tv.row().to_vec())),
 							Ok(None) => OpResult::Value(None),
 							Err(e) => {
 								handles.remove(&tx_id);
@@ -151,7 +151,7 @@ impl Executor {
 							}
 						},
 						Some(TxHandle::Read(rx)) => match rx.get(&encode_key(key)) {
-							Ok(Some(tv)) => OpResult::Value(Some(tv.values().to_vec())),
+							Ok(Some(tv)) => OpResult::Value(Some(tv.row().to_vec())),
 							Ok(None) => OpResult::Value(None),
 							Err(e) => {
 								handles.remove(&tx_id);
@@ -185,7 +185,7 @@ impl Executor {
 										let pairs =
 											items.iter()
 												.map(|mv| {
-													(mv.key.as_ref().to_vec(), mv.values.to_vec())
+													(mv.key.as_ref().to_vec(), mv.row.to_vec())
 												})
 												.collect();
 										OpResult::ScanResult(pairs)
@@ -204,7 +204,7 @@ impl Executor {
 										let pairs =
 											items.iter()
 												.map(|mv| {
-													(mv.key.as_ref().to_vec(), mv.values.to_vec())
+													(mv.key.as_ref().to_vec(), mv.row.to_vec())
 												})
 												.collect();
 										OpResult::ScanResult(pairs)
@@ -269,7 +269,7 @@ impl Executor {
 		let mut state = BTreeMap::new();
 		for mv in items {
 			let key = decode_key(mv.key.as_ref());
-			let value = decode_values(mv.values.as_ref());
+			let value = decode_values(mv.row.as_ref());
 			state.insert(key, value);
 		}
 		state

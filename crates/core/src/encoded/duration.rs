@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::{duration::Duration, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_duration(&self, row: &mut EncodedValues, index: usize, value: Duration) {
+	pub fn set_duration(&self, row: &mut EncodedRow, index: usize, value: Duration) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Duration);
@@ -36,7 +36,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_duration(&self, row: &EncodedValues, index: usize) -> Duration {
+	pub fn get_duration(&self, row: &EncodedRow, index: usize) -> Duration {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Duration);
@@ -51,7 +51,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_duration(&self, row: &EncodedValues, index: usize) -> Option<Duration> {
+	pub fn try_get_duration(&self, row: &EncodedRow, index: usize) -> Option<Duration> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Duration {
 			Some(self.get_duration(row, index))
 		} else {

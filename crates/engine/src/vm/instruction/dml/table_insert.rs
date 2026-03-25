@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		index::primary_key_violation,
@@ -96,7 +96,7 @@ pub(crate) fn insert_table<'a>(
 
 	// PASS 1: Validate and encode all rows first, before allocating any row numbers
 	// This ensures we only allocate row numbers for valid rows (fail-fast on validation errors)
-	let mut validated_rows: Vec<EncodedValues> = Vec::new();
+	let mut validated_rows: Vec<EncodedRow> = Vec::new();
 	let mut mutable_context = (*execution_context).clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -209,7 +209,7 @@ pub(crate) fn insert_table<'a>(
 	};
 
 	// PASS 2: Insert all validated rows using the pre-allocated row numbers
-	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::with_capacity(total_rows)
 	} else {
 		Vec::new()

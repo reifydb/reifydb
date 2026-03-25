@@ -5,7 +5,7 @@ use std::{iter, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
 		catalog::{
@@ -98,7 +98,7 @@ pub(crate) fn insert_series<'a>(
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 	let mut inserted_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::with_capacity(16)
 	} else {
 		Vec::new()

@@ -5,7 +5,7 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKeyRange},
+	encoded::{key::EncodedKeyRange, row::EncodedRow},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
@@ -93,7 +93,7 @@ pub(crate) fn delete<'a>(
 	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
 
 	let mut deleted_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::new()
 	} else {
 		Vec::new()
@@ -165,7 +165,7 @@ pub(crate) fn delete<'a>(
 
 			// Get row values for metrics tracking (and for primary key encoding)
 			let row_values = match txn.get(&row_key)? {
-				Some(v) => v.values,
+				Some(v) => v.row,
 				None => continue, // Row doesn't exist, skip
 			};
 
@@ -219,7 +219,7 @@ pub(crate) fn delete<'a>(
 
 		for multi in rows {
 			if let Some(ref pk_def) = pk_def {
-				let fingerprint = multi.values.fingerprint();
+				let fingerprint = multi.row.fingerprint();
 				let schema =
 					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
 						internal_error!(
@@ -228,8 +228,7 @@ pub(crate) fn delete<'a>(
 							table.name
 						)
 					})?;
-				let index_key =
-					primary_key::encode_primary_key(pk_def, &multi.values, &table, &schema)?;
+				let index_key = primary_key::encode_primary_key(pk_def, &multi.row, &table, &schema)?;
 
 				txn.remove(
 					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode()
@@ -238,7 +237,7 @@ pub(crate) fn delete<'a>(
 
 			if let Some(log) = testing.as_mut() {
 				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-				let old = columns_from_encoded(&table.columns, &schema, &multi.values);
+				let old = columns_from_encoded(&table.columns, &schema, &multi.row);
 				let key = format!("tables::{}::{}", namespace.name(), table.name);
 				log.record_delete(key, old);
 			}

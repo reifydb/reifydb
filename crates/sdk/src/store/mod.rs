@@ -11,7 +11,7 @@ pub mod ffi;
 use std::ops::Bound;
 
 use ffi::{raw_store_contains_key, raw_store_get, raw_store_prefix, raw_store_range};
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 use tracing::{Span, instrument};
 
 use crate::{error::Result, operator::context::OperatorContext};
@@ -32,7 +32,7 @@ impl<'a> Store<'a> {
 		key_len = key.as_bytes().len(),
 		found
 	))]
-	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		let result = raw_store_get(self.ctx, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
@@ -49,7 +49,7 @@ impl<'a> Store<'a> {
 		prefix_len = prefix.as_bytes().len(),
 		result_count
 	))]
-	pub fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+	pub fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		let results = raw_store_prefix(self.ctx, prefix)?;
 		Span::current().record("result_count", results.len());
 		Ok(results)
@@ -65,7 +65,7 @@ impl<'a> Store<'a> {
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+	) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		let results = raw_store_range(self.ctx, start, end)?;
 		Span::current().record("result_count", results.len());
 		Ok(results)

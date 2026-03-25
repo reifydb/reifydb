@@ -10,17 +10,17 @@ use reifydb_type::value::{
 };
 
 use super::schema::Schema;
-use crate::encoded::encoded::EncodedValues;
+use crate::encoded::row::EncodedRow;
 
 impl Schema {
-	pub fn set_values(&self, row: &mut EncodedValues, values: &[Value]) {
+	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
 		debug_assert!(values.len() == self.fields().len());
 		for (idx, value) in values.iter().enumerate() {
 			self.set_value(row, idx, value)
 		}
 	}
 
-	pub fn set_value(&self, row: &mut EncodedValues, index: usize, val: &Value) {
+	pub fn set_value(&self, row: &mut EncodedRow, index: usize, val: &Value) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 
@@ -255,7 +255,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_value(&self, row: &EncodedValues, index: usize) -> Value {
+	pub fn get_value(&self, row: &EncodedRow, index: usize) -> Value {
 		let field = &self.fields()[index];
 		if !row.is_defined(index) {
 			return Value::none();

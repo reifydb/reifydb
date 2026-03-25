@@ -52,8 +52,8 @@ impl From<&[SubscriptionColumnDef]> for Schema {
 #[cfg(test)]
 mod tests {
 	mod from_schema {
-		// Tests removed as From<&Schema> for EncodedValuesLayout has been removed
-		// EncodedValuesLayout is being phased out in favor of Schema
+		// Tests removed as From<&Schema> for the old layout type has been removed
+		// Schema is now the canonical layout descriptor
 	}
 
 	mod from_column_def {

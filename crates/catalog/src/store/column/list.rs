@@ -34,7 +34,7 @@ impl CatalogStore {
 			let mut stream = rx.range(ColumnKey::full_scan(source), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
-				let row = multi.values;
+				let row = multi.row;
 				ids.push(ColumnId(primitive_column::SCHEMA.get_u64(&row, primitive_column::ID)));
 			}
 		}

@@ -180,8 +180,7 @@ impl SchemaRegistry {
 			}
 		};
 
-		let field_count =
-			schema_header::SCHEMA.get_u16(&header_entry.values, schema_header::FIELD_COUNT) as usize;
+		let field_count = schema_header::SCHEMA.get_u16(&header_entry.row, schema_header::FIELD_COUNT) as usize;
 
 		let mut fields = Vec::with_capacity(field_count);
 		for i in 0..field_count {
@@ -190,17 +189,17 @@ impl SchemaRegistry {
 				Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
 			})?;
 
-			let name = schema_field::SCHEMA.get_utf8(&field_entry.values, schema_field::NAME).to_string();
-			let base_type = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::TYPE);
+			let name = schema_field::SCHEMA.get_utf8(&field_entry.row, schema_field::NAME).to_string();
+			let base_type = schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::TYPE);
 
 			let constraint_type =
-				schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::CONSTRAINT_TYPE);
+				schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::CONSTRAINT_TYPE);
 
 			let constraint_param1 =
-				schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P1);
+				schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::CONSTRAINT_P1);
 
 			let constraint_param2 =
-				schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::CONSTRAINT_P2);
+				schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::CONSTRAINT_P2);
 
 			let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
 				base_type,
@@ -208,9 +207,9 @@ impl SchemaRegistry {
 				constraint_param1,
 				constraint_param2,
 			});
-			let offset = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::OFFSET);
-			let size = schema_field::SCHEMA.get_u32(&field_entry.values, schema_field::SIZE);
-			let align = schema_field::SCHEMA.get_u8(&field_entry.values, schema_field::ALIGN);
+			let offset = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::OFFSET);
+			let size = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::SIZE);
+			let align = schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::ALIGN);
 
 			fields.push(SchemaField {
 				name,

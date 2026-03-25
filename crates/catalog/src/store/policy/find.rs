@@ -22,7 +22,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let policy_name = policy::SCHEMA.get_utf8(&multi.values, policy::NAME);
+			let policy_name = policy::SCHEMA.get_utf8(&multi.row, policy::NAME);
 			if !policy_name.is_empty() && name == policy_name {
 				return Ok(Some(convert_policy(multi)));
 			}

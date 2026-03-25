@@ -29,7 +29,7 @@ use reifydb_type::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::encoded::EncodedValues;
+use super::row::EncodedRow;
 use crate::encoded::schema::fingerprint::{SchemaFingerprint, compute_fingerprint};
 
 /// Size of schema header (fingerprint) in bytes
@@ -264,13 +264,13 @@ impl Schema {
 	}
 
 	/// Size of the dynamic section
-	pub fn dynamic_section_size(&self, row: &EncodedValues) -> usize {
+	pub fn dynamic_section_size(&self, row: &EncodedRow) -> usize {
 		row.len().saturating_sub(self.total_static_size())
 	}
 
 	/// Returns (offset, length) in the dynamic section for a defined dynamic field.
 	/// Returns None if field is undefined, static-only, or uses inline storage.
-	pub(crate) fn read_dynamic_ref(&self, row: &EncodedValues, index: usize) -> Option<(usize, usize)> {
+	pub(crate) fn read_dynamic_ref(&self, row: &EncodedRow, index: usize) -> Option<(usize, usize)> {
 		if !row.is_defined(index) {
 			return None;
 		}
@@ -308,7 +308,7 @@ impl Schema {
 	}
 
 	/// Writes a dynamic section reference for the given field in its type-appropriate format.
-	pub(crate) fn write_dynamic_ref(&self, row: &mut EncodedValues, index: usize, offset: usize, length: usize) {
+	pub(crate) fn write_dynamic_ref(&self, row: &mut EncodedRow, index: usize, offset: usize, length: usize) {
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
 			Type::Utf8 | Type::Blob | Type::Any => {
@@ -337,7 +337,7 @@ impl Schema {
 
 	/// Replace dynamic data for a field. Handles both first-set (append) and update (splice).
 	/// On update: splices old bytes out, inserts new bytes, adjusts all other dynamic refs.
-	pub(crate) fn replace_dynamic_data(&self, row: &mut EncodedValues, index: usize, new_data: &[u8]) {
+	pub(crate) fn replace_dynamic_data(&self, row: &mut EncodedRow, index: usize, new_data: &[u8]) {
 		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
 			let delta = new_data.len() as isize - old_length as isize;
 
@@ -382,7 +382,7 @@ impl Schema {
 
 	/// Remove dynamic data for a field without setting new data.
 	/// Used for dynamic→inline transitions in Int/Uint.
-	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedValues, index: usize) {
+	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedRow, index: usize) {
 		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
 			// Collect refs that need adjusting
 			let refs_to_update: Vec<(usize, usize, usize)> = self
@@ -412,7 +412,7 @@ impl Schema {
 	}
 
 	/// Allocate a new encoded row
-	pub fn allocate(&self) -> EncodedValues {
+	pub fn allocate(&self) -> EncodedRow {
 		let (total_size, max_align) = self.get_cached_layout();
 		let layout = Layout::from_size_align(total_size, max_align).unwrap();
 		unsafe {
@@ -421,7 +421,7 @@ impl Schema {
 				handle_alloc_error(layout);
 			}
 			let vec = Vec::from_raw_parts(ptr, total_size, total_size);
-			let mut row = EncodedValues(CowVec::new(vec));
+			let mut row = EncodedRow(CowVec::new(vec));
 			row.set_fingerprint(self.fingerprint);
 			row
 		}
@@ -432,7 +432,7 @@ impl Schema {
 	}
 
 	/// Set a field as undefined (not set)
-	pub fn set_none(&self, row: &mut EncodedValues, index: usize) {
+	pub fn set_none(&self, row: &mut EncodedRow, index: usize) {
 		self.remove_dynamic_data(row, index);
 		row.set_valid(index, false);
 	}

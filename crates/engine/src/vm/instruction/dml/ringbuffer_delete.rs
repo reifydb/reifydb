@@ -4,7 +4,7 @@
 use std::{collections, sync::Arc};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
@@ -80,7 +80,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
 	let mut deleted_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::new()
 	} else {
 		Vec::new()
@@ -154,7 +154,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					if !partition_col_indices.is_empty()
 						&& !row_matches_partition(
 							&schema,
-							&row_data.values,
+							&row_data.row,
 							&partition_col_indices,
 							&partition_key,
 						) {
@@ -166,7 +166,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 							let old = columns_from_encoded(
 								&ringbuffer.columns,
 								&schema,
-								&row_data.values,
+								&row_data.row,
 							);
 							let mutation_key = format!(
 								"ringbuffers::{}::{}",
@@ -225,7 +225,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					if !partition_col_indices.is_empty()
 						&& !row_matches_partition(
 							&schema,
-							&row_data.values,
+							&row_data.row,
 							&partition_col_indices,
 							&partition_key,
 						) {
@@ -236,7 +236,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 						let old = columns_from_encoded(
 							&ringbuffer.columns,
 							&schema,
-							&row_data.values,
+							&row_data.row,
 						);
 						let mutation_key = format!(
 							"ringbuffers::{}::{}",
@@ -277,7 +277,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 fn row_matches_partition(
 	schema: &Schema,
-	row: &EncodedValues,
+	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],
 ) -> bool {

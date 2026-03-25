@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::{date::Date, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
+	pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
@@ -21,7 +21,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_date(&self, row: &EncodedValues, index: usize) -> Date {
+	pub fn get_date(&self, row: &EncodedRow, index: usize) -> Date {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
@@ -33,7 +33,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_date(&self, row: &EncodedValues, index: usize) -> Option<Date> {
+	pub fn try_get_date(&self, row: &EncodedRow, index: usize) -> Option<Date> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Date {
 			Some(self.get_date(row, index))
 		} else {

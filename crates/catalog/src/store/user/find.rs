@@ -24,7 +24,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let user_name = user::SCHEMA.get_utf8(&multi.values, user::NAME);
+			let user_name = user::SCHEMA.get_utf8(&multi.row, user::NAME);
 			if name == user_name {
 				return Ok(Some(convert_user(multi)));
 			}
@@ -38,7 +38,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let user_identity = user::SCHEMA.get_identity_id(&multi.values, user::IDENTITY);
+			let user_identity = user::SCHEMA.get_identity_id(&multi.row, user::IDENTITY);
 			if identity == user_identity {
 				return Ok(Some(convert_user(multi)));
 			}

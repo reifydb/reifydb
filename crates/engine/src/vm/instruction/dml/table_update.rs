@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::Schema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
@@ -95,7 +95,7 @@ pub(crate) fn update_table<'a>(
 	};
 
 	let mut updated_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedValues)> = if plan.returning.is_some() {
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::new()
 	} else {
 		Vec::new()
@@ -189,7 +189,7 @@ pub(crate) fn update_table<'a>(
 
 				if let Some(pk_def) = primary_key::get_primary_key(&services.catalog, txn, &table)? {
 					if let Some(old_row_data) = txn.get(&row_key)? {
-						let old_row = old_row_data.values;
+						let old_row = old_row_data.row;
 						let old_key = primary_key::encode_primary_key(
 							&pk_def, &old_row, &table, &schema,
 						)?;
@@ -217,7 +217,7 @@ pub(crate) fn update_table<'a>(
 
 				if let Some(log) = testing.as_mut() {
 					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&table.columns, &schema, &old_row_data.values)
+						columns_from_encoded(&table.columns, &schema, &old_row_data.row)
 					} else {
 						Columns::empty()
 					};

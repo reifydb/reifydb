@@ -32,7 +32,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = RingBufferId(ringbuffer::SCHEMA.get_u64(&row, ringbuffer::ID));
 		let namespace = NamespaceId(ringbuffer::SCHEMA.get_u64(&row, ringbuffer::NAMESPACE));
 		let name = ringbuffer::SCHEMA.get_utf8(&row, ringbuffer::NAME).to_string();
@@ -64,7 +64,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let buffer_id = RingBufferId(ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::ID));
 		let capacity = ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::CAPACITY);
 		let head = ringbuffer_metadata::SCHEMA.get_u64(&row, ringbuffer_metadata::HEAD);
@@ -90,7 +90,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_ringbuffer_metadata(&multi.values)))
+		Ok(Some(decode_ringbuffer_metadata(&multi.row)))
 	}
 
 	pub(crate) fn list_ringbuffer_partition_metadata(
@@ -103,7 +103,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let metadata = decode_ringbuffer_metadata(&multi.values);
+			let metadata = decode_ringbuffer_metadata(&multi.row);
 			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
 			// Skip version (u8), kind (u8), ringbuffer_id (u64)
 			let _ = (de.read_u8(), de.read_u8(), de.read_u64());
@@ -166,7 +166,7 @@ impl CatalogStore {
 		let mut found_ringbuffer = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let ringbuffer_name = ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME);
 			if name == ringbuffer_name {
 				found_ringbuffer = Some(RingBufferId(

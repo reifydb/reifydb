@@ -22,7 +22,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = multi.values;
+			let row = multi.row;
 			let id = ColumnPropertyId(column_property::SCHEMA.get_u64(&row, column_property::ID));
 			let column = ColumnId(column_property::SCHEMA.get_u64(&row, column_property::COLUMN));
 

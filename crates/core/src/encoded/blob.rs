@@ -3,15 +3,15 @@
 
 use reifydb_type::value::{blob::Blob, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::Schema};
 
 impl Schema {
-	pub fn set_blob(&self, row: &mut EncodedValues, index: usize, value: &Blob) {
+	pub fn set_blob(&self, row: &mut EncodedRow, index: usize, value: &Blob) {
 		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Blob);
 		self.replace_dynamic_data(row, index, value.as_bytes());
 	}
 
-	pub fn get_blob(&self, row: &EncodedValues, index: usize) -> Blob {
+	pub fn get_blob(&self, row: &EncodedRow, index: usize) -> Blob {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Blob);
 
@@ -28,7 +28,7 @@ impl Schema {
 		Blob::from_slice(blob_slice)
 	}
 
-	pub fn try_get_blob(&self, row: &EncodedValues, index: usize) -> Option<Blob> {
+	pub fn try_get_blob(&self, row: &EncodedRow, index: usize) -> Option<Blob> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Blob {
 			Some(self.get_blob(row, index))
 		} else {

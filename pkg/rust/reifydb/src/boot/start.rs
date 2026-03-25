@@ -31,7 +31,7 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> crate::Resul
 			tx.set(&key, row)?;
 		}
 		Some(single) => {
-			let version = schema.get_u8(&single.values, 0);
+			let version = schema.get_u8(&single.row, 0);
 			assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
 		}
 	};

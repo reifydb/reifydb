@@ -12,7 +12,7 @@ impl CatalogStore {
 		let range = MigrationKey::full_scan();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			let def = migration_def_from_row(&entry.values);
+			let def = migration_def_from_row(&entry.row);
 			if def.name == name {
 				return Ok(Some(def));
 			}
