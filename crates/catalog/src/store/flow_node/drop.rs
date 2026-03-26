@@ -65,7 +65,7 @@ pub mod tests {
 		interface::catalog::flow::FlowNodeId,
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::util::cowvec::CowVec;
 

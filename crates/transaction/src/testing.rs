@@ -3,10 +3,11 @@
 
 use reifydb_type::Result;
 
-use crate::transaction::admin::AdminTransaction;
+use crate::transaction::TestTransaction;
 
-/// Optional subsystem hook that can materialize pending view mutations into
-/// the active test context without committing the transaction.
-pub trait TestingViewMutationCaptor: Send + Sync {
-	fn capture(&self, txn: &mut AdminTransaction) -> Result<()>;
+/// Processes all flows (transactional + deferred) inline within the current
+/// test transaction. Used by `testing::views::changed()` to materialise view
+/// rows on demand rather than waiting for commit or async CDC processing.
+pub trait TestFlowProcessor: Send + Sync {
+	fn process(&self, txn: &mut TestTransaction<'_>) -> Result<()>;
 }

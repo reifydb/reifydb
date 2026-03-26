@@ -171,6 +171,32 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(table) = TransactionalTableChanges::find_table(t.inner, id) {
+					return Ok(Some(table.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalTableChanges::is_table_deleted(t.inner, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(table) = self.materialized.find_table_at(id, t.inner.version()) {
+					return Ok(Some(table));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(table) =
+					CatalogStore::find_table(&mut Transaction::Admin(&mut *t.inner), id)?
+				{
+					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					return Ok(Some(table));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -285,6 +311,41 @@ impl Catalog {
 				// 4. Fall back to storage as defensive measure
 				if let Some(table) = CatalogStore::find_table_by_name(
 					&mut Transaction::Subscription(&mut *sub),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(table));
+				}
+
+				Ok(None)
+			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(table) =
+					TransactionalTableChanges::find_table_by_name(t.inner, namespace, name)
+				{
+					return Ok(Some(table.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalTableChanges::is_table_deleted_by_name(t.inner, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(table) =
+					self.materialized.find_table_by_name_at(namespace, name, t.inner.version())
+				{
+					return Ok(Some(table));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(table) = CatalogStore::find_table_by_name(
+					&mut Transaction::Admin(&mut *t.inner),
 					namespace,
 					name,
 				)? {

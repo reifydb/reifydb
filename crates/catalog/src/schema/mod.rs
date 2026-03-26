@@ -8,6 +8,7 @@
 //! - Thread-safe access for concurrent reads
 //! - Single-writer semantics for creates
 
+pub mod decode;
 pub mod load;
 
 use std::{fmt, sync::Arc};

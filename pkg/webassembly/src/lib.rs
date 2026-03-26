@@ -205,6 +205,7 @@ impl WasmDB {
 			operators_dir: None, // No FFI operators in WASM
 			num_workers: 1,      // Single-threaded for WASM
 			custom_operators: HashMap::new(),
+			connector_registry: Default::default(),
 		};
 		console_log("[WASM] Creating FlowSubsystem...");
 		let mut flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref);

@@ -28,121 +28,72 @@ impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then (if transactional) base_pending, then querying
 	/// multi-version store
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
-		match self {
-			Self::Deferred {
-				pending,
-				primitive_query,
-				state_query,
-				..
-			} => {
-				// 1. Check flow-generated pending writes
-				if pending.is_removed(key) {
-					return Ok(None);
-				}
-				if let Some(value) = pending.get(key) {
-					return Ok(Some(value.clone()));
-				}
+		// 1. Check flow-generated pending writes
+		let inner = self.inner();
+		if inner.pending.is_removed(key) {
+			return Ok(None);
+		}
+		if let Some(value) = inner.pending.get(key) {
+			return Ok(Some(value.clone()));
+		}
 
-				// 2. Fall through to committed storage
-				let query = if Self::is_flow_state_key(key) {
-					state_query
-				} else {
-					primitive_query
-				};
-				match query.get(key)? {
-					Some(multi) => Ok(Some(multi.row().clone())),
-					None => Ok(None),
-				}
+		// 2. Check transaction's base writes (only for Transactional variant)
+		if let Self::Transactional {
+			base_pending,
+			..
+		} = self
+		{
+			if base_pending.is_removed(key) {
+				return Ok(None);
 			}
-			Self::Transactional {
-				pending,
-				base_pending,
-				primitive_query,
-				state_query,
-				..
-			} => {
-				// 1. Check flow-generated pending writes
-				if pending.is_removed(key) {
-					return Ok(None);
-				}
-				if let Some(value) = pending.get(key) {
-					return Ok(Some(value.clone()));
-				}
-
-				// 2. Check transaction's base writes (uncommitted row data)
-				if base_pending.is_removed(key) {
-					return Ok(None);
-				}
-				if let Some(value) = base_pending.get(key) {
-					return Ok(Some(value.clone()));
-				}
-
-				// 3. Fall through to committed storage
-				let query = if Self::is_flow_state_key(key) {
-					state_query
-				} else {
-					primitive_query
-				};
-				match query.get(key)? {
-					Some(multi) => Ok(Some(multi.row().clone())),
-					None => Ok(None),
-				}
+			if let Some(value) = base_pending.get(key) {
+				return Ok(Some(value.clone()));
 			}
+		}
+
+		// 3. Fall through to committed storage
+		let inner = self.inner_mut();
+		let query = if Self::is_flow_state_key(key) {
+			&inner.state_query
+		} else {
+			&inner.primitive_query
+		};
+		match query.get(key)? {
+			Some(multi) => Ok(Some(multi.row().clone())),
+			None => Ok(None),
 		}
 	}
 
 	/// Check if a key exists
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		match self {
-			Self::Deferred {
-				pending,
-				primitive_query,
-				state_query,
-				..
-			} => {
-				if pending.is_removed(key) {
-					return Ok(false);
-				}
-				if pending.get(key).is_some() {
-					return Ok(true);
-				}
+		let inner = self.inner();
+		if inner.pending.is_removed(key) {
+			return Ok(false);
+		}
+		if inner.pending.get(key).is_some() {
+			return Ok(true);
+		}
 
-				let query = if Self::is_flow_state_key(key) {
-					state_query
-				} else {
-					primitive_query
-				};
-				query.contains_key(key)
+		if let Self::Transactional {
+			base_pending,
+			..
+		} = self
+		{
+			if base_pending.is_removed(key) {
+				return Ok(false);
 			}
-			Self::Transactional {
-				pending,
-				base_pending,
-				primitive_query,
-				state_query,
-				..
-			} => {
-				if pending.is_removed(key) {
-					return Ok(false);
-				}
-				if pending.get(key).is_some() {
-					return Ok(true);
-				}
-
-				if base_pending.is_removed(key) {
-					return Ok(false);
-				}
-				if base_pending.get(key).is_some() {
-					return Ok(true);
-				}
-
-				let query = if Self::is_flow_state_key(key) {
-					state_query
-				} else {
-					primitive_query
-				};
-				query.contains_key(key)
+			if base_pending.get(key).is_some() {
+				return Ok(true);
 			}
 		}
+
+		let inner = self.inner_mut();
+		let query = if Self::is_flow_state_key(key) {
+			&inner.state_query
+		} else {
+			&inner.primitive_query
+		};
+		query.contains_key(key)
 	}
 
 	/// Prefix scan
@@ -179,13 +130,11 @@ impl FlowTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
 			Self::Deferred {
-				pending,
-				version,
-				primitive_query,
-				state_query,
+				inner,
 				..
 			} => {
-				let merged: BTreeMap<EncodedKey, PendingWrite> = pending
+				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
+					.pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
@@ -194,24 +143,21 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&*state_query
+							&inner.state_query
 						} else {
-							&*primitive_query
+							&inner.primitive_query
 						}
 					}
-					Unbounded => &*primitive_query,
+					Unbounded => &inner.primitive_query,
 				};
 
 				let storage_iter = query.range(range, batch_size);
-				let v = *version;
+				let v = inner.version;
 				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
 			Self::Transactional {
-				pending,
+				inner,
 				base_pending,
-				version,
-				primitive_query,
-				state_query,
 				..
 			} => {
 				// Collect base layer entries in range, then let flow pending shadow base for same keys
@@ -219,7 +165,7 @@ impl FlowTransaction {
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
-				for (k, v) in pending.range((range.start.as_ref(), range.end.as_ref())) {
+				for (k, v) in inner.pending.range((range.start.as_ref(), range.end.as_ref())) {
 					merged.insert(k.clone(), v.clone());
 				}
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
@@ -227,16 +173,16 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&*state_query
+							&inner.state_query
 						} else {
-							&*primitive_query
+							&inner.primitive_query
 						}
 					}
-					Unbounded => &*primitive_query,
+					Unbounded => &inner.primitive_query,
 				};
 
 				let storage_iter = query.range(range, batch_size);
-				let v = *version;
+				let v = inner.version;
 				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
 		}
@@ -254,13 +200,11 @@ impl FlowTransaction {
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
 			Self::Deferred {
-				pending,
-				version,
-				primitive_query,
-				state_query,
+				inner,
 				..
 			} => {
-				let merged: BTreeMap<EncodedKey, PendingWrite> = pending
+				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
+					.pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
@@ -269,31 +213,28 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&*state_query
+							&inner.state_query
 						} else {
-							&*primitive_query
+							&inner.primitive_query
 						}
 					}
-					Unbounded => &*primitive_query,
+					Unbounded => &inner.primitive_query,
 				};
 
 				let storage_iter = query.range_rev(range, batch_size);
-				let v = *version;
+				let v = inner.version;
 				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
 			Self::Transactional {
-				pending,
+				inner,
 				base_pending,
-				version,
-				primitive_query,
-				state_query,
 				..
 			} => {
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = base_pending
 					.range((range.start.as_ref(), range.end.as_ref()))
 					.map(|(k, v)| (k.clone(), v.clone()))
 					.collect();
-				for (k, v) in pending.range((range.start.as_ref(), range.end.as_ref())) {
+				for (k, v) in inner.pending.range((range.start.as_ref(), range.end.as_ref())) {
 					merged.insert(k.clone(), v.clone());
 				}
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
@@ -301,16 +242,16 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&*state_query
+							&inner.state_query
 						} else {
-							&*primitive_query
+							&inner.primitive_query
 						}
 					}
-					Unbounded => &*primitive_query,
+					Unbounded => &inner.primitive_query,
 				};
 
 				let storage_iter = query.range_rev(range, batch_size);
-				let v = *version;
+				let v = inner.version;
 				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
 		}
@@ -520,7 +461,7 @@ pub mod tests {
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	};
-	use reifydb_engine::test_utils::create_test_engine;
+	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
 
@@ -553,20 +494,20 @@ pub mod tests {
 
 	#[test]
 	fn test_get_from_committed() {
-		let engine = create_test_engine();
+		let t = TestEngine::new();
 
 		let key = make_key("key1");
 		let value = make_value("value1");
 
 		// Set value in first transaction and commit
 		{
-			let mut cmd_txn = engine.begin_admin(IdentityId::system()).unwrap();
+			let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
 			cmd_txn.set(&key, value.clone()).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
 		// Create new command transaction to read committed data
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 
 		// Create FlowTransaction - should see committed value
@@ -638,19 +579,19 @@ pub mod tests {
 
 	#[test]
 	fn test_contains_key_committed() {
-		let engine = create_test_engine();
+		let t = TestEngine::new();
 
 		let key = make_key("key1");
 
 		// Set value in first transaction and commit
 		{
-			let mut cmd_txn = engine.begin_admin(IdentityId::system()).unwrap();
+			let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
 			cmd_txn.set(&key, make_value("value1")).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
 		// Create new command transaction
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		let mut txn = FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new());
 

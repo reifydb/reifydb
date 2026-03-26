@@ -1,20 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2025 ReifyDB
 
-# Cross-primitive mutation sequence ordering — mutation_seq increments globally
+# Cross-primitive mutation tracking — mutations tracked independently per primitive type
 
 CREATE NAMESPACE cps;
 CREATE TABLE cps::users { id: int4, name: text };
 CREATE SERIES cps::metrics { ts: datetime, value: int4 } WITH { key: ts, precision: millisecond };
 
-CREATE TEST cps::cross_primitive_sequence {
+CREATE TEST cps::cross_primitive_tracking {
     INSERT cps::users [{ id: 1, name: "Alice" }];
     INSERT cps::metrics [{ value: 42 }];
     testing::tables::changed("cps::users")
-        | ASSERT { sequence == 1 }
         | ASSERT { op == "insert" };
     testing::series::changed("cps::metrics")
-        | ASSERT { sequence == 2 }
         | ASSERT { op == "insert" }
 };
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -16,7 +16,6 @@ use reifydb_core::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::DeleteSeriesNode;
@@ -52,7 +51,6 @@ pub(crate) fn delete_series<'a>(
 	plan: DeleteSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -88,7 +86,6 @@ pub(crate) fn delete_series<'a>(
 			params: params.clone(),
 			symbols: symbols.clone(),
 			identity: IdentityId::root(),
-			testing: None,
 		};
 
 		let mut input_node = compile(*input_plan, txn, Arc::new(context.clone()));
@@ -173,24 +170,6 @@ pub(crate) fn delete_series<'a>(
 						pre,
 					}],
 				});
-
-				if let Some(log) = testing.as_mut() {
-					let old = Columns::single_row(
-						iter::once((
-							series_def.key.column(),
-							series_def.key_from_u64(key_value),
-						))
-						.chain(columns
-							.iter()
-							.filter(|c| {
-								c.name().text() != series_def.key.column()
-									&& c.name().text() != "tag"
-							})
-							.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
-					);
-					let mutation_key = format!("series::{}::{}", namespace.name(), series_def.name);
-					log.record_delete(mutation_key, old);
-				}
 
 				SeriesInterceptor::pre_delete(txn, &series_def)?;
 				txn.unset(&encoded_key, encoded_row.clone())?;
@@ -278,28 +257,6 @@ pub(crate) fn delete_series<'a>(
 						pre,
 					}],
 				});
-			}
-
-			if let Some(log) = testing.as_mut() {
-				if let Some(decoded_key) = SeriesRowKey::decode(key) {
-					let data_values: Vec<Value> = series_def
-						.data_columns()
-						.enumerate()
-						.map(|(i, _)| delete_all_schema.get_value(encoded_row, i + 1))
-						.collect();
-					let old = Columns::single_row(
-						iter::once((
-							series_def.key.column(),
-							series_def.key_from_u64(decoded_key.key),
-						))
-						.chain(series_def
-							.data_columns()
-							.enumerate()
-							.map(|(i, col)| (col.name.as_str(), data_values[i].clone()))),
-					);
-					let mutation_key = format!("series::{}::{}", namespace.name(), series_def.name);
-					log.record_delete(mutation_key, old);
-				}
 			}
 
 			SeriesInterceptor::pre_delete(txn, &series_def)?;

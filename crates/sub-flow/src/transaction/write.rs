@@ -9,31 +9,13 @@ use super::FlowTransaction;
 impl FlowTransaction {
 	/// Set a value, buffering it in pending writes
 	pub fn set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending.insert(key.clone(), value),
-			Self::Transactional {
-				pending,
-				..
-			} => pending.insert(key.clone(), value),
-		}
+		self.inner_mut().pending.insert(key.clone(), value);
 		Ok(())
 	}
 
 	/// Remove a key, buffering the deletion in pending operations
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending.remove(key.clone()),
-			Self::Transactional {
-				pending,
-				..
-			} => pending.remove(key.clone()),
-		}
+		self.inner_mut().pending.remove(key.clone());
 		Ok(())
 	}
 }

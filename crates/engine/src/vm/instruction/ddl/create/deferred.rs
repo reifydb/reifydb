@@ -180,7 +180,7 @@ pub mod tests {
 	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
-		test_utils::create_test_admin_transaction_with_internal_schema,
+		test_harness::create_test_admin_transaction_with_internal_schema,
 		vm::{Admin, executor::Executor},
 	};
 

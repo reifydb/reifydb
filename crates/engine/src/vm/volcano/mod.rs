@@ -46,7 +46,6 @@ pub(crate) fn decode_dictionary_columns(
 pub mod aggregate;
 pub mod apply_transform;
 pub mod assert;
-pub mod call_function;
 pub mod compile;
 pub mod distinct;
 pub mod environment;

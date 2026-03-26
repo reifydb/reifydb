@@ -9,7 +9,7 @@ use reifydb_catalog::{
 	vtable::{system::flow_operator_store::FlowOperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
-use reifydb_function::{is, math, registry::Functions, series, subscription};
+use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
@@ -87,24 +87,7 @@ impl Services {
 		let mut services = Self::new(
 			Catalog::testing(),
 			RuntimeContext::default(),
-			Functions::builder()
-				.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
-				.register_aggregate("math::min", math::aggregate::min::Min::new)
-				.register_aggregate("math::max", math::aggregate::max::Max::new)
-				.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
-				.register_aggregate("math::count", math::aggregate::count::Count::new)
-				.register_scalar("math::abs", math::scalar::abs::Abs::new)
-				.register_scalar("math::avg", math::scalar::avg::Avg::new)
-				.register_scalar("is::some", is::some::IsSome::new)
-				.register_scalar("is::none", is::none::IsNone::new)
-				.register_scalar("is::type", is::r#type::IsType::new)
-				.register_scalar("gen::series", series::Series::new)
-				.register_generator("generate_series", series::GenerateSeries::new)
-				.register_generator(
-					"inspect_subscription",
-					subscription::inspect::InspectSubscription::new,
-				)
-				.build(),
+			Functions::defaults().build(),
 			Procedures::empty(),
 			Transforms::empty(),
 			FlowOperatorStore::new(),

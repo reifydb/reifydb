@@ -3,17 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	testing::TestingContext,
-	value::column::{columns::Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::params::Params;
 
 use crate::{
 	Result,
-	test::run::run_tests,
+	run_tests::run::run_tests,
 	vm::{
 		services::Services,
 		stack::SymbolTable,
@@ -52,8 +49,6 @@ impl QueryNode for RunTestsQueryNode {
 		self.executed = true;
 
 		let mut vm = Vm::new(self.symbols.clone());
-		vm.in_test_context = true;
-		vm.testing = Some(TestingContext::new());
 		let columns = run_tests(&mut vm, &self.services, rx, self.node.clone(), &Params::None)?;
 		Ok(Some(columns))
 	}

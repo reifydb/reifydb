@@ -14,7 +14,6 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	},
 	key::row::RowKey,
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteRingBufferNode;
@@ -50,7 +49,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 	plan: DeleteRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -101,7 +99,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 					params: params.clone(),
 					symbols: symbols.clone(),
 					identity: IdentityId::root(),
-					testing: None,
 				}),
 			);
 
@@ -112,7 +109,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 				params: params.clone(),
 				symbols: symbols.clone(),
 				identity: IdentityId::root(),
-				testing: None,
 			};
 
 			input_node.initialize(txn, &context)?;
@@ -162,20 +158,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 					}
 
 					if row_numbers_to_delete.contains(&row_num) {
-						if let Some(log) = testing.as_mut() {
-							let old = columns_from_encoded(
-								&ringbuffer.columns,
-								&schema,
-								&row_data.row,
-							);
-							let mutation_key = format!(
-								"ringbuffers::{}::{}",
-								namespace.name(),
-								ringbuffer.name
-							);
-							log.record_delete(mutation_key, old);
-						}
-
 						let deleted_values =
 							txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
 						if plan.returning.is_some() {
@@ -230,20 +212,6 @@ pub(crate) fn delete_ringbuffer<'a>(
 							&partition_key,
 						) {
 						continue;
-					}
-
-					if let Some(log) = testing.as_mut() {
-						let old = columns_from_encoded(
-							&ringbuffer.columns,
-							&schema,
-							&row_data.row,
-						);
-						let mutation_key = format!(
-							"ringbuffers::{}::{}",
-							namespace.name(),
-							ringbuffer.name
-						);
-						log.record_delete(mutation_key, old);
 					}
 
 					let deleted_values = txn.remove_from_ringbuffer(&ringbuffer, row_number)?;

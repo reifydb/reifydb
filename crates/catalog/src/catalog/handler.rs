@@ -67,6 +67,19 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(handler) = TransactionalHandlerChanges::find_handler_by_id(t.inner, id) {
+					return Ok(Some(handler.clone()));
+				}
+
+				// 2. Check MaterializedCatalog
+				if let Some(handler) = self.materialized.find_handler_at(id, t.inner.version()) {
+					return Ok(Some(handler));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -138,6 +151,28 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(handler) =
+					TransactionalHandlerChanges::find_handler_by_name(t.inner, namespace, name)
+				{
+					return Ok(Some(handler.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalHandlerChanges::is_handler_deleted_by_name(t.inner, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(handler) =
+					self.materialized.find_handler_by_name_at(namespace, name, t.inner.version())
+				{
+					return Ok(Some(handler));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -192,6 +227,29 @@ impl Catalog {
 
 				// Also check transactional changes for newly created handlers
 				for change in &sub.as_admin_mut().changes.handler_def {
+					if let Some(h) = &change.post {
+						if h.on_sumtype_id == sumtype_id
+							&& h.on_variant_tag == variant_tag && !handlers
+							.iter()
+							.any(|existing| existing.id == h.id)
+						{
+							handlers.push(h.clone());
+						}
+					}
+				}
+
+				Ok(handlers)
+			}
+			Transaction::Test(t) => {
+				// Check materialized catalog + transactional additions
+				let mut handlers = self.materialized.list_handlers_for_variant_at(
+					sumtype_id,
+					variant_tag,
+					t.inner.version(),
+				);
+
+				// Also check transactional changes for newly created handlers
+				for change in &t.inner.changes.handler_def {
 					if let Some(h) = &change.post {
 						if h.on_sumtype_id == sumtype_id
 							&& h.on_variant_tag == variant_tag && !handlers

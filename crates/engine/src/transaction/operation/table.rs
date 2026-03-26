@@ -127,6 +127,8 @@ impl TableOperations for CommandTransaction {
 
 		self.set(&key, row.clone())?;
 
+		TableInterceptor::post_update(self, &table, id, &row, &old_values)?;
+
 		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
 
 		Ok(row)
@@ -143,6 +145,8 @@ impl TableOperations for CommandTransaction {
 		TableInterceptor::pre_delete(self, &table, id)?;
 
 		self.unset(&key, deleted_values.clone())?;
+
+		TableInterceptor::post_delete(self, &table, id, &deleted_values)?;
 
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 
@@ -189,6 +193,8 @@ impl TableOperations for AdminTransaction {
 
 		self.set(&key, row.clone())?;
 
+		TableInterceptor::post_update(self, &table, id, &row, &old_values)?;
+
 		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
 
 		Ok(row)
@@ -205,6 +211,8 @@ impl TableOperations for AdminTransaction {
 		TableInterceptor::pre_delete(self, &table, id)?;
 
 		self.unset(&key, deleted_values.clone())?;
+
+		TableInterceptor::post_delete(self, &table, id, &deleted_values)?;
 
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 
@@ -226,6 +234,7 @@ impl TableOperations for Transaction<'_> {
 			Transaction::Subscription(txn) => {
 				txn.as_admin_mut().insert_table(table, schema, row, row_number)
 			}
+			Transaction::Test(t) => t.inner.insert_table(table, schema, row, row_number),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
@@ -235,6 +244,7 @@ impl TableOperations for Transaction<'_> {
 			Transaction::Command(txn) => txn.update_table(table, id, row),
 			Transaction::Admin(txn) => txn.update_table(table, id, row),
 			Transaction::Subscription(txn) => txn.as_admin_mut().update_table(table, id, row),
+			Transaction::Test(t) => t.inner.update_table(table, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
@@ -244,6 +254,7 @@ impl TableOperations for Transaction<'_> {
 			Transaction::Command(txn) => txn.remove_from_table(table, id),
 			Transaction::Admin(txn) => txn.remove_from_table(table, id),
 			Transaction::Subscription(txn) => txn.as_admin_mut().remove_from_table(table, id),
+			Transaction::Test(t) => t.inner.remove_from_table(table, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

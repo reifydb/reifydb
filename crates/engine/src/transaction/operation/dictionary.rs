@@ -3,13 +3,18 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
+	common::CommitVersion,
 	encoded::row::EncodedRow,
-	interface::catalog::dictionary::DictionaryDef,
+	interface::{
+		catalog::{dictionary::DictionaryDef, primitive::PrimitiveId},
+		change::{Change, ChangeOrigin, Diff},
+	},
 	internal_error,
 	key::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
 	},
+	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::{
@@ -164,6 +169,15 @@ impl DictionaryOperations for AdminTransaction {
 
 		DictionaryInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
 
+		// Track for testing::dictionaries::changed()
+		self.track_flow_change(Change {
+			origin: ChangeOrigin::Primitive(PrimitiveId::Dictionary(dictionary.id)),
+			version: CommitVersion(0),
+			diffs: vec![Diff::Insert {
+				post: Columns::single_row([("value", value)]),
+			}],
+		});
+
 		Ok(entry_id)
 	}
 
@@ -208,6 +222,7 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
 			Transaction::Admin(admin) => admin.insert_into_dictionary(dictionary, value),
 			Transaction::Subscription(sub) => sub.as_admin_mut().insert_into_dictionary(dictionary, value),
+			Transaction::Test(t) => t.inner.insert_into_dictionary(dictionary, value),
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction").into())
 			}
@@ -258,7 +273,7 @@ pub mod tests {
 	};
 
 	use super::DictionaryOperations;
-	use crate::test_utils::create_test_admin_transaction;
+	use crate::test_harness::create_test_admin_transaction;
 
 	fn test_dictionary() -> DictionaryDef {
 		DictionaryDef {

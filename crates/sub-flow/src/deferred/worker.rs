@@ -11,7 +11,13 @@
 use std::sync::Mutex;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::flow::FlowId,
+		change::{Change, ChangeOrigin},
+	},
+};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::actor::{
@@ -54,9 +60,10 @@ pub enum FlowMsg {
 
 /// Response from the flow actor
 pub enum FlowResponse {
-	/// Operation succeeded with pending writes and view changes
+	/// Operation succeeded with pending writes and view changes for cascading
 	Success {
 		pending: Pending,
+		view_changes: Vec<Change>,
 	},
 	/// Operation failed with error message
 	Error(String),
@@ -107,8 +114,9 @@ impl Actor for FlowWorkerActor {
 			} => {
 				let result = self.process_request(&mut state.flow_engine, batch);
 				let resp = match result {
-					Ok(pending) => FlowResponse::Success {
+					Ok((pending, view_changes)) => FlowResponse::Success {
 						pending,
+						view_changes,
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
@@ -125,6 +133,7 @@ impl Actor for FlowWorkerActor {
 				let resp = match result {
 					Ok(pending) => FlowResponse::Success {
 						pending,
+						view_changes: Vec::new(),
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
@@ -142,6 +151,7 @@ impl Actor for FlowWorkerActor {
 				let resp = match result {
 					Ok(_) => FlowResponse::Success {
 						pending: Pending::new(),
+						view_changes: Vec::new(),
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
@@ -194,11 +204,12 @@ impl FlowWorkerActor {
 		instructions = batch.instructions.len(),
 		total_changes = field::Empty
 	))]
-	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> Result<Pending> {
+	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> Result<(Pending, Vec<Change>)> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 
 		let mut pending = Pending::new();
+		let mut all_view_changes: Vec<Change> = Vec::new();
 		let interceptors = self.engine.create_interceptors();
 
 		for instruction in batch.instructions {
@@ -228,9 +239,18 @@ impl FlowWorkerActor {
 				}
 			}
 
+			let view_entries = txn.take_accumulator_entries();
+			for (id, diff) in view_entries {
+				all_view_changes.push(Change {
+					origin: ChangeOrigin::Primitive(id),
+					version: primitive_version,
+					diffs: vec![diff],
+				});
+			}
+
 			pending = txn.take_pending();
 		}
 
-		Ok(pending)
+		Ok((pending, all_view_changes))
 	}
 }

@@ -97,7 +97,7 @@ pub mod tests {
 		interface::catalog::id::{HandlerId, NamespaceId},
 		key::namespace_handler::NamespaceHandlerKey,
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
 
 	use crate::{

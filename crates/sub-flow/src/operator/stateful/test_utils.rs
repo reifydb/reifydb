@@ -8,7 +8,7 @@ pub mod test {
 		interface::{catalog::flow::FlowNodeId, change::Change},
 		value::column::columns::Columns,
 	};
-	use reifydb_engine::test_utils::create_test_engine;
+	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_type::{
 		Result,
@@ -85,7 +85,7 @@ pub mod test {
 
 	/// Helper to create a test transaction
 	pub fn create_test_transaction() -> AdminTransaction {
-		let engine = create_test_engine();
-		engine.begin_admin(IdentityId::system()).unwrap()
+		let t = TestEngine::new();
+		t.begin_admin(IdentityId::system()).unwrap()
 	}
 }

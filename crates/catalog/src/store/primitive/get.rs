@@ -44,7 +44,7 @@ pub mod tests {
 		id::{TableId, ViewId},
 		primitive::{PrimitiveDef, PrimitiveId},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,

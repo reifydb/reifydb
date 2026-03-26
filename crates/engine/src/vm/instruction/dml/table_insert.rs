@@ -15,7 +15,6 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::InsertTableNode;
@@ -54,7 +53,6 @@ pub(crate) fn insert_table<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,
 	symbols: &mut SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
@@ -86,7 +84,6 @@ pub(crate) fn insert_table<'a>(
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -221,12 +218,6 @@ pub(crate) fn insert_table<'a>(
 
 		if plan.returning.is_some() {
 			returned_rows.push((row_number, stored_row));
-		}
-
-		if let Some(log) = testing.as_mut() {
-			let new = columns_from_encoded(&table.columns, &schema, row);
-			let key = format!("tables::{}::{}", namespace.name(), table.name);
-			log.record_insert(key, new);
 		}
 
 		// Store primary key index entry if table has one

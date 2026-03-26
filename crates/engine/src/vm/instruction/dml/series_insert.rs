@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -17,7 +17,6 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
@@ -55,7 +54,6 @@ pub(crate) fn insert_series<'a>(
 	plan: InsertSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -92,7 +90,6 @@ pub(crate) fn insert_series<'a>(
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -210,17 +207,6 @@ pub(crate) fn insert_series<'a>(
 
 			if plan.returning.is_some() {
 				returned_rows.push((RowNumber::from(sequence as u64), row.clone()));
-			}
-
-			if let Some(log) = testing.as_mut() {
-				let new = Columns::single_row(
-					iter::once((key_column_name, key_value_encoded.clone())).chain(data_columns
-						.iter()
-						.enumerate()
-						.map(|(i, col)| (col.name.as_str(), data_values[i].clone()))),
-				);
-				let key = format!("series::{}::{}", namespace.name(), series_def.name);
-				log.record_insert(key, new);
 			}
 
 			// Track flow change for transactional/deferred view processing

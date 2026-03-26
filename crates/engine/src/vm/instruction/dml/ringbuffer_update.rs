@@ -14,8 +14,6 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
 	},
 	internal_error,
-	key::row::RowKey,
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateRingBufferNode;
@@ -52,7 +50,6 @@ pub(crate) fn update_ringbuffer<'a>(
 	plan: UpdateRingBufferNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -87,7 +84,6 @@ pub(crate) fn update_ringbuffer<'a>(
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	};
 
 	let mut updated_count = 0;
@@ -201,18 +197,6 @@ pub(crate) fn update_ringbuffer<'a>(
 
 				if !is_occupied {
 					continue;
-				}
-
-				if let Some(log) = testing.as_mut() {
-					let row_key = RowKey::encoded(ringbuffer.id, row_number);
-					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&ringbuffer.columns, &schema, &old_row_data.row)
-					} else {
-						Columns::empty()
-					};
-					let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
-					let key = format!("ringbuffers::{}::{}", namespace.name(), ringbuffer.name);
-					log.record_update(key, old, new);
 				}
 
 				// Update the encoded using interceptors

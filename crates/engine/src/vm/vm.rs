@@ -8,9 +8,9 @@ use reifydb_core::{
 	error::diagnostic::internal::internal_with_context,
 	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
 	internal_error,
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
+use reifydb_function::GeneratorContext;
 use reifydb_rql::{
 	compiler::CompilationResult,
 	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
@@ -72,7 +72,6 @@ use crate::{
 	expression::{context::EvalSession, eval::evaluate},
 	policy::PolicyEvaluator,
 	procedure::context::ProcedureContext,
-	testing,
 	vm::instruction::{
 		ddl::{
 			alter::policy::alter_policy,
@@ -108,9 +107,6 @@ pub struct Vm {
 	pub symbols: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
-	pub(crate) in_test_context: bool,
-	/// Test audit log. Only `Some` when in test context. Zero cost in production.
-	pub(crate) testing: Option<TestingContext>,
 }
 
 impl Vm {
@@ -122,8 +118,6 @@ impl Vm {
 			symbols,
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
-			in_test_context: false,
-			testing: None,
 		}
 	}
 
@@ -631,30 +625,13 @@ impl Vm {
 					let is_procedure_call = *is_procedure_call;
 					let func_name = name.text();
 
+					if func_name.starts_with("testing::") {}
+
 					let mut args = Vec::with_capacity(arity);
 					for _ in 0..arity {
 						args.push(self.pop_value()?);
 					}
 					args.reverse();
-
-					// Built-in testing::* functions (zero cost — only checked in test context)
-					if func_name.starts_with("testing::") {
-						if !self.in_test_context {
-							return Err(internal_error!(
-								"testing::* functions are only available in test context"
-							));
-						}
-						let columns = testing::handle_testing_call(
-							func_name,
-							&args,
-							&self.testing,
-							&services.ioc,
-							tx,
-						)?;
-						self.stack.push(Variable::Columns(columns));
-						self.ip += 1;
-						continue;
-					}
 
 					if let Some(func_def) = self.symbols.get_function(func_name) {
 						let func_def = func_def.clone();
@@ -931,7 +908,7 @@ impl Vm {
 								}
 							}
 							Some(ResolvedProcedure::Test(proc_def)) => {
-								if !self.in_test_context {
+								if !matches!(tx, Transaction::Test(..)) {
 									return Err(TypeError::Procedure {
 										kind: ProcedureErrorKind::UndefinedProcedure {
 											name: func_name.to_string(),
@@ -1110,6 +1087,42 @@ impl Vm {
 										}
 									}
 
+									self.stack.push(Variable::Columns(columns));
+								} else if let Some(generator) =
+									services.functions.get_generator(func_name)
+								{
+									let arg_columns: Vec<Column> = args
+										.into_iter()
+										.enumerate()
+										.map(|(i, v)| {
+											let mut data = ColumnData::with_capacity(v.get_type(), 1);
+											data.push_value(v);
+											Column::new(
+												format!("arg{}", i),
+												data,
+											)
+										})
+										.collect();
+									let identity = tx.identity();
+									// SAFETY: GeneratorContext requires &'a mut
+									// Transaction<'a> but we only have &
+									// mut Transaction<'_>. The generator does not
+									// hold the reference beyond this call.
+									// This matches the pattern in GeneratorNode.
+									let columns = generator.generate(
+										GeneratorContext {
+											fragment: name.clone(),
+											params: Columns::new(
+												arg_columns,
+											),
+											txn: unsafe {
+												mem::transmute::<&mut Transaction, &mut Transaction>(tx)
+											},
+											catalog: &services.catalog,
+											identity,
+											ioc: &services.ioc,
+										},
+									)?;
 									self.stack.push(Variable::Columns(columns));
 								} else if is_procedure_call {
 									return Err(TypeError::Procedure {
@@ -1661,7 +1674,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1681,7 +1693,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1695,13 +1706,8 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = insert_table(
-						services,
-						&mut std_txn,
-						node.clone(),
-						&mut self.symbols,
-						&mut self.testing,
-					)?;
+					let columns =
+						insert_table(services, &mut std_txn, node.clone(), &mut self.symbols)?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::InsertRingBuffer(node) => {
@@ -1720,7 +1726,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1739,7 +1744,6 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						&mut self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1759,7 +1763,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1779,7 +1782,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1799,7 +1801,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1819,7 +1820,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1839,7 +1839,6 @@ impl Vm {
 						node.clone(),
 						params.clone(),
 						&self.symbols,
-						&mut self.testing,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1852,7 +1851,6 @@ impl Vm {
 						plan.clone(),
 						params.clone(),
 						&mut self.symbols,
-						&self.testing,
 					)? {
 						self.stack.push(Variable::Columns(columns));
 					}
@@ -2179,7 +2177,6 @@ fn run_query_plan(
 	plan: QueryPlan,
 	params: Params,
 	symbols: &mut SymbolTable,
-	testing: &Option<TestingContext>,
 ) -> Result<Option<Columns>> {
 	let identity = txn.identity();
 	let context = Arc::new(QueryContext {
@@ -2189,7 +2186,6 @@ fn run_query_plan(
 		params,
 		symbols: symbols.clone(),
 		identity,
-		testing: testing.clone(),
 	});
 
 	let mut query_node = compile(plan, txn, context.clone());

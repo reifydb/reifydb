@@ -143,6 +143,35 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(t.inner, id) {
+					return Ok(Some(namespace.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalNamespaceChanges::is_namespace_deleted(t.inner, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(namespace) = self.materialized.find_namespace_at(id, t.inner.version()) {
+					return Ok(Some(namespace));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(namespace) =
+					CatalogStore::find_namespace(&mut Transaction::Admin(&mut *t.inner), id)?
+				{
+					warn!(
+						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(namespace));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -248,6 +277,37 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(namespace) =
+					TransactionalNamespaceChanges::find_namespace_by_name(t.inner, name)
+				{
+					return Ok(Some(namespace.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalNamespaceChanges::is_namespace_deleted_by_name(t.inner, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(namespace) =
+					self.materialized.find_namespace_by_name_at(name, t.inner.version())
+				{
+					return Ok(Some(namespace));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(namespace) = CatalogStore::find_namespace_by_name(
+					&mut Transaction::Admin(&mut *t.inner),
+					name,
+				)? {
+					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(namespace));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -306,6 +366,22 @@ impl Catalog {
 					return Ok(Some(ns));
 				}
 				let all = CatalogStore::list_namespaces_all(&mut Transaction::Subscription(&mut *sub))?;
+				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
+			}
+			Transaction::Test(t) => {
+				if let Some(ns) = t.inner.changes.namespace.iter().rev().find_map(|change| {
+					change.post
+						.as_ref()
+						.filter(|ns| ns.local_name() == name && ns.parent_id() == parent_id)
+				}) {
+					return Ok(Some(ns.clone()));
+				}
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, t.inner.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Admin(&mut *t.inner))?;
 				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
 			}
 		}

@@ -6,7 +6,6 @@ use std::sync::Arc;
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
 	interface::catalog::policy::PolicyTargetType,
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
@@ -38,7 +37,6 @@ pub(crate) fn insert_dictionary<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,
 	symbols: &mut SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
@@ -60,7 +58,6 @@ pub(crate) fn insert_dictionary<'a>(
 		params: Params::None,
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -116,12 +113,6 @@ pub(crate) fn insert_dictionary<'a>(
 				DictionaryEntryId::U8(v) => Value::Uint8(v),
 				DictionaryEntryId::U16(v) => Value::Uint16(v),
 			};
-
-			if let Some(log) = testing.as_mut() {
-				let new = Columns::single_row([("value", coerced_value.clone())]);
-				let key = format!("dictionaries::{}::{}", namespace.name(), dictionary.name);
-				log.record_insert(key, new);
-			}
 
 			ids.push(id_value);
 			values.push(coerced_value);

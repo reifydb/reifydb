@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_engine::test_utils::create_test_engine;
-use reifydb_type::value::{Value, frame::frame::Frame, identity::IdentityId};
-
-fn test_identity() -> IdentityId {
-	IdentityId::root()
-}
+use reifydb_engine::test_prelude::*;
 
 /// Run an RQL script and return the result frames.
 fn run_script(rql: &str) -> Vec<Frame> {
-	let engine = create_test_engine();
-	let identity = test_identity();
-	engine.query_as(identity, rql, Default::default()).unwrap()
+	let t = TestEngine::new();
+	t.query_as(IdentityId::system(), rql, Default::default()).unwrap()
 }
 
 /// Extract a single i64 scalar from the first frame's first column.

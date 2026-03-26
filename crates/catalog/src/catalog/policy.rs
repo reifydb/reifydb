@@ -103,6 +103,33 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(policy) = TransactionalPolicyChanges::find_policy_by_name(t.inner, name) {
+					return Ok(Some(policy.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalPolicyChanges::is_policy_deleted_by_name(t.inner, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(policy) = self.materialized.find_policy_by_name_at(name, t.inner.version())
+				{
+					return Ok(Some(policy));
+				}
+
+				// 4. Fall back to storage
+				if let Some(policy) =
+					CatalogStore::find_policy_by_name(&mut Transaction::Admin(&mut *t.inner), name)?
+				{
+					warn!("Policy '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(policy));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 

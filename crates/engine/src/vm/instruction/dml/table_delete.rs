@@ -16,7 +16,6 @@ use reifydb_core::{
 		index_entry::IndexEntryKey,
 		row::{RowKey, RowKeyRange},
 	},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteTableNode;
@@ -53,7 +52,6 @@ pub(crate) fn delete<'a>(
 	plan: DeleteTableNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
@@ -114,7 +112,6 @@ pub(crate) fn delete<'a>(
 				params: params.clone(),
 				symbols: symbols.clone(),
 				identity: IdentityId::root(),
-				testing: None,
 			}),
 		);
 
@@ -125,7 +122,6 @@ pub(crate) fn delete<'a>(
 			params: params.clone(),
 			symbols: symbols.clone(),
 			identity: IdentityId::root(),
-			testing: None,
 		};
 
 		// Initialize the operator before execution
@@ -188,13 +184,6 @@ pub(crate) fn delete<'a>(
 				)?;
 			}
 
-			if let Some(log) = testing.as_mut() {
-				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-				let old = columns_from_encoded(&table.columns, &schema, &row_values);
-				let key = format!("tables::{}::{}", namespace.name(), table.name);
-				log.record_delete(key, old);
-			}
-
 			let deleted_values = txn.remove_from_table(table.clone(), row_number)?;
 			if plan.returning.is_some() {
 				returned_rows.push((row_number, deleted_values));
@@ -233,13 +222,6 @@ pub(crate) fn delete<'a>(
 				txn.remove(
 					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode()
 				)?;
-			}
-
-			if let Some(log) = testing.as_mut() {
-				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-				let old = columns_from_encoded(&table.columns, &schema, &multi.row);
-				let key = format!("tables::{}::{}", namespace.name(), table.name);
-				log.record_delete(key, old);
 			}
 
 			let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");

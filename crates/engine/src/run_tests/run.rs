@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
-use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_core::{
+	internal_error,
+	testing::{CapturedEvent, HandlerInvocation},
+	value::column::columns::Columns,
+};
 use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{RunTestsNode, RunTestsScope},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::transaction::{TestTransaction, Transaction};
 use reifydb_type::{
 	params::Params,
 	value::{Value, duration::Duration as RqlDuration, frame::frame::Frame},
@@ -16,7 +20,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	test::result::{TestOutcome, classify_outcome},
+	run_tests::result::{TestOutcome, classify_outcome},
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
 
@@ -31,8 +35,6 @@ fn run_single(
 	params: &Params,
 	named_vars: Option<&HashMap<String, Value>>,
 ) -> (String, String) {
-	vm.in_test_context = true;
-
 	match services.compiler.compile(txn, body) {
 		Ok(compiled) => match compiled {
 			CompilationResult::Ready(compiled_list) => {
@@ -129,10 +131,17 @@ pub(crate) fn run_tests(
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
+		Transaction::Test(t) => &mut *t.inner,
 		_ => {
 			return Err(internal_error!("RUN TESTS requires an admin transaction"));
 		}
 	};
+
+	// Stack-allocated test state — passed into Transaction::Test by reference
+	let mut events: Vec<CapturedEvent> = Vec::new();
+	let mut handler_invocations: Vec<HandlerInvocation> = Vec::new();
+	let mut event_seq: u64 = 0;
+	let mut handler_seq: u64 = 0;
 
 	let tests = match &plan.scope {
 		RunTestsScope::All => services.catalog.list_all_tests(&mut Transaction::Admin(&mut *txn))?,
@@ -175,16 +184,25 @@ pub(crate) fn run_tests(
 		match &test_def.cases {
 			None => {
 				// Non-parameterized: single run
-				if let Some(ctx) = vm.testing.as_mut() {
-					ctx.clear();
-				}
-				txn.clear_test_flow_state();
+				events.clear();
+				handler_invocations.clear();
+				_ = mem::replace(&mut event_seq, 0);
+				_ = mem::replace(&mut handler_seq, 0);
+
 				let start = services.runtime_context.clock.instant();
 				let savepoint = txn.savepoint();
+				let baseline = txn.accumulator_len();
 				let (outcome, message) = run_single(
 					vm,
 					services,
-					&mut Transaction::Admin(&mut *txn),
+					&mut Transaction::Test(TestTransaction {
+						inner: &mut *txn,
+						baseline,
+						events: &mut events,
+						handler_invocations: &mut handler_invocations,
+						event_seq: &mut event_seq,
+						handler_seq: &mut handler_seq,
+					}),
 					&test_def.body,
 					params,
 					None,
@@ -228,16 +246,25 @@ pub(crate) fn run_tests(
 						named_vars.insert(name.clone(), value);
 					}
 
-					if let Some(ctx) = vm.testing.as_mut() {
-						ctx.clear();
-					}
-					txn.clear_test_flow_state();
+					events.clear();
+					handler_invocations.clear();
+					event_seq = 0;
+					handler_seq = 0;
+
 					let start = services.runtime_context.clock.instant();
 					let savepoint = txn.savepoint();
+					let baseline = txn.accumulator_len();
 					let (outcome, message) = run_single(
 						vm,
 						services,
-						&mut Transaction::Admin(&mut *txn),
+						&mut Transaction::Test(TestTransaction {
+							inner: &mut *txn,
+							baseline,
+							events: &mut events,
+							handler_invocations: &mut handler_invocations,
+							event_seq: &mut event_seq,
+							handler_seq: &mut handler_seq,
+						}),
 						&test_def.body,
 						params,
 						Some(&named_vars),

@@ -15,7 +15,6 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateTableNode;
@@ -53,7 +52,6 @@ pub(crate) fn update_table<'a>(
 	plan: UpdateTableNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
@@ -91,7 +89,6 @@ pub(crate) fn update_table<'a>(
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	};
 
 	let mut updated_count = 0;
@@ -213,17 +210,6 @@ pub(crate) fn update_table<'a>(
 							.encode(),
 						row_number_encoded,
 					)?;
-				}
-
-				if let Some(log) = testing.as_mut() {
-					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&table.columns, &schema, &old_row_data.row)
-					} else {
-						Columns::empty()
-					};
-					let new = columns_from_encoded(&table.columns, &schema, &row);
-					let key = format!("tables::{}::{}", namespace.name(), table.name);
-					log.record_update(key, old, new);
 				}
 
 				let stored_row = txn.update_table(table.clone(), row_number, row)?;

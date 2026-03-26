@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -13,7 +13,6 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::UpdateSeriesNode;
@@ -49,7 +48,6 @@ pub(crate) fn update_series<'a>(
 	plan: UpdateSeriesNode,
 	params: Params,
 	symbols: &SymbolTable,
-	testing: &mut Option<TestingContext>,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -77,7 +75,6 @@ pub(crate) fn update_series<'a>(
 		params: params.clone(),
 		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	};
 
 	let mut input_node = compile(*plan.input, txn, Arc::new(context.clone()));
@@ -218,38 +215,12 @@ pub(crate) fn update_series<'a>(
 						post,
 					}],
 				});
-
-				if let Some(log) = testing.as_mut() {
-					let old = Columns::single_row(
-						iter::once((
-							series_def.key.column(),
-							series_def.key_from_u64(key_value),
-						))
-						.chain(series_def.data_columns().enumerate().map(|(i, col)| {
-							(col.name.as_str(), read_schema.get_value(old_vals, i + 1))
-						})),
-					);
-					let new = Columns::single_row(
-						iter::once((
-							series_def.key.column(),
-							series_def.key_from_u64(key_value),
-						))
-						.chain(columns
-							.iter()
-							.filter(|c| {
-								c.name().text() != series_def.key.column()
-									&& c.name().text() != "tag"
-							})
-							.map(|c| (c.name().text(), c.data().get_value(*row_idx)))),
-					);
-					let key = format!("series::{}::{}", namespace.name(), series_def.name);
-					log.record_update(key, old, new);
-				}
 			}
 
+			let old_row_for_interceptor = old_values.clone().unwrap_or_else(|| row.clone());
 			let row = SeriesInterceptor::pre_update(txn, &series_def, row.clone())?;
 			txn.set(encoded_key, row.clone())?;
-			SeriesInterceptor::post_update(txn, &series_def, &row, &row)?;
+			SeriesInterceptor::post_update(txn, &series_def, &row, &old_row_for_interceptor)?;
 			updated_count += 1;
 		}
 

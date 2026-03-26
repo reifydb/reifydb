@@ -10,10 +10,10 @@ INSERT twp::items [{ id: 1, name: "A" }, { id: 2, name: "B" }];
 CREATE TEST twp::wipe_tracking {
     DELETE twp::items FILTER true;
     testing::tables::changed("twp::items")
-        | AGGREGATE { n: math::count(sequence) }
+        | AGGREGATE { n: math::count(op) }
         | ASSERT { n == 2 };
     testing::tables::changed("twp::items")
-        | FILTER { sequence == 1 }
+        | FILTER { old_id == 1 }
         | ASSERT { op == "delete" }
 };
 
