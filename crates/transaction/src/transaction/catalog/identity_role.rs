@@ -13,11 +13,15 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalIdentityRoleChanges,
 	},
+	interceptor::identity_role_def::{IdentityRoleDefPostCreateContext, IdentityRoleDefPreDeleteContext},
 	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackIdentityRoleChangeOperations for AdminTransaction {
 	fn track_identity_role_def_created(&mut self, identity_role: IdentityRoleDef) -> Result<()> {
+		self.interceptors
+			.identity_role_def_post_create
+			.execute(IdentityRoleDefPostCreateContext::new(&identity_role))?;
 		let change = Change {
 			pre: None,
 			post: Some(identity_role),
@@ -28,6 +32,9 @@ impl CatalogTrackIdentityRoleChangeOperations for AdminTransaction {
 	}
 
 	fn track_identity_role_def_deleted(&mut self, identity_role: IdentityRoleDef) -> Result<()> {
+		self.interceptors
+			.identity_role_def_pre_delete
+			.execute(IdentityRoleDefPreDeleteContext::new(&identity_role))?;
 		let change = Change {
 			pre: Some(identity_role),
 			post: None,
@@ -52,6 +59,18 @@ impl TransactionalIdentityRoleChanges for AdminTransaction {
 			}
 		}
 		None
+	}
+
+	fn find_identity_roles_for_identity(&self, identity: IdentityId) -> Vec<&IdentityRoleDef> {
+		let mut result = Vec::new();
+		for change in &self.changes.identity_role_def {
+			if let Some(ir) = &change.post {
+				if ir.identity == identity && change.op == Create {
+					result.push(ir);
+				}
+			}
+		}
+		result
 	}
 
 	fn is_identity_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool {
@@ -79,6 +98,10 @@ impl CatalogTrackIdentityRoleChangeOperations for SubscriptionTransaction {
 impl TransactionalIdentityRoleChanges for SubscriptionTransaction {
 	fn find_identity_role(&self, identity: IdentityId, role: RoleId) -> Option<&IdentityRoleDef> {
 		self.inner.find_identity_role(identity, role)
+	}
+
+	fn find_identity_roles_for_identity(&self, identity: IdentityId) -> Vec<&IdentityRoleDef> {
+		self.inner.find_identity_roles_for_identity(identity)
 	}
 
 	fn is_identity_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool {

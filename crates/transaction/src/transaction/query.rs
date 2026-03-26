@@ -437,6 +437,10 @@ impl TransactionalIdentityRoleChanges for QueryTransaction {
 		None
 	}
 
+	fn find_identity_roles_for_identity(&self, _identity: IdentityId) -> Vec<&IdentityRoleDef> {
+		Vec::new()
+	}
+
 	fn is_identity_role_deleted(&self, _identity: IdentityId, _role: RoleId) -> bool {
 		false
 	}

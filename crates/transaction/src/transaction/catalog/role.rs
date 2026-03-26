@@ -13,11 +13,15 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalRoleChanges,
 	},
+	interceptor::role_def::{
+		RoleDefPostCreateContext, RoleDefPostUpdateContext, RoleDefPreDeleteContext, RoleDefPreUpdateContext,
+	},
 	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackRoleChangeOperations for AdminTransaction {
 	fn track_role_def_created(&mut self, role: RoleDef) -> Result<()> {
+		self.interceptors.role_def_post_create.execute(RoleDefPostCreateContext::new(&role))?;
 		let change = Change {
 			pre: None,
 			post: Some(role),
@@ -28,6 +32,8 @@ impl CatalogTrackRoleChangeOperations for AdminTransaction {
 	}
 
 	fn track_role_def_updated(&mut self, pre: RoleDef, post: RoleDef) -> Result<()> {
+		self.interceptors.role_def_pre_update.execute(RoleDefPreUpdateContext::new(&pre))?;
+		self.interceptors.role_def_post_update.execute(RoleDefPostUpdateContext::new(&pre, &post))?;
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -38,6 +44,7 @@ impl CatalogTrackRoleChangeOperations for AdminTransaction {
 	}
 
 	fn track_role_def_deleted(&mut self, role: RoleDef) -> Result<()> {
+		self.interceptors.role_def_pre_delete.execute(RoleDefPreDeleteContext::new(&role))?;
 		let change = Change {
 			pre: Some(role),
 			post: None,

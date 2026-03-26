@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::{
+	authentication_def::{AuthenticationDefPostCreateInterceptor, AuthenticationDefPreDeleteInterceptor},
 	chain::InterceptorChain,
 	dictionary::{
 		DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor, DictionaryPostUpdateInterceptor,
@@ -11,6 +12,11 @@ use super::{
 		DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
 		DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
 	},
+	identity_def::{
+		IdentityDefPostCreateInterceptor, IdentityDefPostUpdateInterceptor, IdentityDefPreDeleteInterceptor,
+		IdentityDefPreUpdateInterceptor,
+	},
+	identity_role_def::{IdentityRoleDefPostCreateInterceptor, IdentityRoleDefPreDeleteInterceptor},
 	namespace::{
 		NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 		NamespacePreUpdateInterceptor,
@@ -22,6 +28,10 @@ use super::{
 	ringbuffer_def::{
 		RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
 		RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+	},
+	role_def::{
+		RoleDefPostCreateInterceptor, RoleDefPostUpdateInterceptor, RoleDefPreDeleteInterceptor,
+		RoleDefPreUpdateInterceptor,
 	},
 	series::{
 		SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
@@ -123,6 +133,22 @@ pub struct Interceptors {
 	pub series_def_pre_update: Chain<dyn SeriesDefPreUpdateInterceptor + Send + Sync>,
 	pub series_def_post_update: Chain<dyn SeriesDefPostUpdateInterceptor + Send + Sync>,
 	pub series_def_pre_delete: Chain<dyn SeriesDefPreDeleteInterceptor + Send + Sync>,
+	// Identity definition interceptors
+	pub identity_def_post_create: Chain<dyn IdentityDefPostCreateInterceptor + Send + Sync>,
+	pub identity_def_pre_update: Chain<dyn IdentityDefPreUpdateInterceptor + Send + Sync>,
+	pub identity_def_post_update: Chain<dyn IdentityDefPostUpdateInterceptor + Send + Sync>,
+	pub identity_def_pre_delete: Chain<dyn IdentityDefPreDeleteInterceptor + Send + Sync>,
+	// Role definition interceptors
+	pub role_def_post_create: Chain<dyn RoleDefPostCreateInterceptor + Send + Sync>,
+	pub role_def_pre_update: Chain<dyn RoleDefPreUpdateInterceptor + Send + Sync>,
+	pub role_def_post_update: Chain<dyn RoleDefPostUpdateInterceptor + Send + Sync>,
+	pub role_def_pre_delete: Chain<dyn RoleDefPreDeleteInterceptor + Send + Sync>,
+	// Identity-role definition interceptors
+	pub identity_role_def_post_create: Chain<dyn IdentityRoleDefPostCreateInterceptor + Send + Sync>,
+	pub identity_role_def_pre_delete: Chain<dyn IdentityRoleDefPreDeleteInterceptor + Send + Sync>,
+	// Authentication definition interceptors
+	pub authentication_def_post_create: Chain<dyn AuthenticationDefPostCreateInterceptor + Send + Sync>,
+	pub authentication_def_pre_delete: Chain<dyn AuthenticationDefPreDeleteInterceptor + Send + Sync>,
 }
 
 impl Default for Interceptors {
@@ -190,6 +216,18 @@ impl Interceptors {
 			series_def_pre_update: InterceptorChain::new(),
 			series_def_post_update: InterceptorChain::new(),
 			series_def_pre_delete: InterceptorChain::new(),
+			identity_def_post_create: InterceptorChain::new(),
+			identity_def_pre_update: InterceptorChain::new(),
+			identity_def_post_update: InterceptorChain::new(),
+			identity_def_pre_delete: InterceptorChain::new(),
+			role_def_post_create: InterceptorChain::new(),
+			role_def_pre_update: InterceptorChain::new(),
+			role_def_post_update: InterceptorChain::new(),
+			role_def_pre_delete: InterceptorChain::new(),
+			identity_role_def_post_create: InterceptorChain::new(),
+			identity_role_def_pre_delete: InterceptorChain::new(),
+			authentication_def_post_create: InterceptorChain::new(),
+			authentication_def_pre_delete: InterceptorChain::new(),
 		}
 	}
 }
@@ -258,6 +296,18 @@ impl Clone for Interceptors {
 			series_def_pre_update: self.series_def_pre_update.clone(),
 			series_def_post_update: self.series_def_post_update.clone(),
 			series_def_pre_delete: self.series_def_pre_delete.clone(),
+			identity_def_post_create: self.identity_def_post_create.clone(),
+			identity_def_pre_update: self.identity_def_pre_update.clone(),
+			identity_def_post_update: self.identity_def_post_update.clone(),
+			identity_def_pre_delete: self.identity_def_pre_delete.clone(),
+			role_def_post_create: self.role_def_post_create.clone(),
+			role_def_pre_update: self.role_def_pre_update.clone(),
+			role_def_post_update: self.role_def_post_update.clone(),
+			role_def_pre_delete: self.role_def_pre_delete.clone(),
+			identity_role_def_post_create: self.identity_role_def_post_create.clone(),
+			identity_role_def_pre_delete: self.identity_role_def_pre_delete.clone(),
+			authentication_def_post_create: self.authentication_def_post_create.clone(),
+			authentication_def_pre_delete: self.authentication_def_pre_delete.clone(),
 		}
 	}
 }

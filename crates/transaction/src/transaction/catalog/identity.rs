@@ -10,11 +10,16 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalIdentityChanges,
 	},
+	interceptor::identity_def::{
+		IdentityDefPostCreateContext, IdentityDefPostUpdateContext, IdentityDefPreDeleteContext,
+		IdentityDefPreUpdateContext,
+	},
 	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackIdentityChangeOperations for AdminTransaction {
 	fn track_identity_def_created(&mut self, identity: IdentityDef) -> Result<()> {
+		self.interceptors.identity_def_post_create.execute(IdentityDefPostCreateContext::new(&identity))?;
 		let change = Change {
 			pre: None,
 			post: Some(identity),
@@ -25,6 +30,8 @@ impl CatalogTrackIdentityChangeOperations for AdminTransaction {
 	}
 
 	fn track_identity_def_updated(&mut self, pre: IdentityDef, post: IdentityDef) -> Result<()> {
+		self.interceptors.identity_def_pre_update.execute(IdentityDefPreUpdateContext::new(&pre))?;
+		self.interceptors.identity_def_post_update.execute(IdentityDefPostUpdateContext::new(&pre, &post))?;
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -35,6 +42,7 @@ impl CatalogTrackIdentityChangeOperations for AdminTransaction {
 	}
 
 	fn track_identity_def_deleted(&mut self, identity: IdentityDef) -> Result<()> {
+		self.interceptors.identity_def_pre_delete.execute(IdentityDefPreDeleteContext::new(&identity))?;
 		let change = Change {
 			pre: Some(identity),
 			post: None,

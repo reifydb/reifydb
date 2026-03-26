@@ -210,6 +210,8 @@ pub trait TransactionalAuthenticationChanges {
 pub trait TransactionalIdentityRoleChanges {
 	fn find_identity_role(&self, identity: IdentityId, role: RoleId) -> Option<&IdentityRoleDef>;
 
+	fn find_identity_roles_for_identity(&self, identity: IdentityId) -> Vec<&IdentityRoleDef>;
+
 	fn is_identity_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool;
 }
 

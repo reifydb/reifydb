@@ -13,11 +13,15 @@ use crate::{
 		OperationType::{Create, Delete},
 		TransactionalAuthenticationChanges,
 	},
+	interceptor::authentication_def::{AuthenticationDefPostCreateContext, AuthenticationDefPreDeleteContext},
 	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackAuthenticationChangeOperations for AdminTransaction {
 	fn track_authentication_def_created(&mut self, auth: AuthenticationDef) -> Result<()> {
+		self.interceptors
+			.authentication_def_post_create
+			.execute(AuthenticationDefPostCreateContext::new(&auth))?;
 		let change = Change {
 			pre: None,
 			post: Some(auth),
@@ -28,6 +32,9 @@ impl CatalogTrackAuthenticationChangeOperations for AdminTransaction {
 	}
 
 	fn track_authentication_def_deleted(&mut self, auth: AuthenticationDef) -> Result<()> {
+		self.interceptors
+			.authentication_def_pre_delete
+			.execute(AuthenticationDefPreDeleteContext::new(&auth))?;
 		let change = Change {
 			pre: Some(auth),
 			post: None,

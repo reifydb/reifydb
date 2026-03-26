@@ -13,10 +13,22 @@ pub struct IdentityDef {
 	pub enabled: bool,
 }
 
+impl IdentityDef {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RoleDef {
 	pub id: RoleId,
 	pub name: String,
+}
+
+impl RoleDef {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -21,6 +21,11 @@ use super::{
 		DictionaryDefPreUpdateContext, DictionaryDefPreUpdateInterceptor,
 	},
 	filter::InterceptFilter,
+	identity_def::{
+		IdentityDefPostCreateContext, IdentityDefPostCreateInterceptor, IdentityDefPostUpdateContext,
+		IdentityDefPostUpdateInterceptor, IdentityDefPreDeleteContext, IdentityDefPreDeleteInterceptor,
+		IdentityDefPreUpdateContext, IdentityDefPreUpdateInterceptor,
+	},
 	namespace::{
 		NamespacePostCreateContext, NamespacePostCreateInterceptor, NamespacePostUpdateContext,
 		NamespacePostUpdateInterceptor, NamespacePreDeleteContext, NamespacePreDeleteInterceptor,
@@ -36,6 +41,11 @@ use super::{
 		RingBufferDefPostCreateContext, RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateContext,
 		RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteContext, RingBufferDefPreDeleteInterceptor,
 		RingBufferDefPreUpdateContext, RingBufferDefPreUpdateInterceptor,
+	},
+	role_def::{
+		RoleDefPostCreateContext, RoleDefPostCreateInterceptor, RoleDefPostUpdateContext,
+		RoleDefPostUpdateInterceptor, RoleDefPreDeleteContext, RoleDefPreDeleteInterceptor,
+		RoleDefPreUpdateContext, RoleDefPreUpdateInterceptor,
 	},
 	series::{
 		SeriesPostDeleteContext, SeriesPostDeleteInterceptor, SeriesPostInsertContext,
@@ -549,4 +559,62 @@ define_filtered_interceptor!(
 	NamespacePreDeleteContext,
 	pre,
 	name
+);
+
+// Identity definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredIdentityDefPostCreateInterceptor,
+	IdentityDefPostCreateInterceptor,
+	IdentityDefPostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(
+	FilteredIdentityDefPreUpdateInterceptor,
+	IdentityDefPreUpdateInterceptor,
+	IdentityDefPreUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredIdentityDefPostUpdateInterceptor,
+	IdentityDefPostUpdateInterceptor,
+	IdentityDefPostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredIdentityDefPreDeleteInterceptor,
+	IdentityDefPreDeleteInterceptor,
+	IdentityDefPreDeleteContext,
+	pre
+);
+
+// Role definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredRoleDefPostCreateInterceptor,
+	RoleDefPostCreateInterceptor,
+	RoleDefPostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(
+	FilteredRoleDefPreUpdateInterceptor,
+	RoleDefPreUpdateInterceptor,
+	RoleDefPreUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredRoleDefPostUpdateInterceptor,
+	RoleDefPostUpdateInterceptor,
+	RoleDefPostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(
+	FilteredRoleDefPreDeleteInterceptor,
+	RoleDefPreDeleteInterceptor,
+	RoleDefPreDeleteContext,
+	pre
 );

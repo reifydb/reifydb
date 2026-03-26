@@ -9,6 +9,7 @@ use reifydb_core::{common::CommitVersion, interface::change::Change, testing::Te
 use reifydb_transaction::{
 	interceptor::{
 		WithInterceptors,
+		authentication_def::{AuthenticationDefPostCreateInterceptor, AuthenticationDefPreDeleteInterceptor},
 		chain::InterceptorChain as Chain,
 		dictionary::{
 			DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor,
@@ -19,6 +20,11 @@ use reifydb_transaction::{
 			DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
 			DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
 		},
+		identity_def::{
+			IdentityDefPostCreateInterceptor, IdentityDefPostUpdateInterceptor,
+			IdentityDefPreDeleteInterceptor, IdentityDefPreUpdateInterceptor,
+		},
+		identity_role_def::{IdentityRoleDefPostCreateInterceptor, IdentityRoleDefPreDeleteInterceptor},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -32,6 +38,10 @@ use reifydb_transaction::{
 		ringbuffer_def::{
 			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
 			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		},
+		role_def::{
+			RoleDefPostCreateInterceptor, RoleDefPostUpdateInterceptor, RoleDefPreDeleteInterceptor,
+			RoleDefPreUpdateInterceptor,
 		},
 		series::{
 			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
@@ -509,4 +519,48 @@ impl WithInterceptors for FlowTransaction {
 		SeriesDefPostUpdateInterceptor
 	);
 	interceptor_method!(series_def_pre_delete_interceptors, series_def_pre_delete, SeriesDefPreDeleteInterceptor);
+	interceptor_method!(
+		identity_def_post_create_interceptors,
+		identity_def_post_create,
+		IdentityDefPostCreateInterceptor
+	);
+	interceptor_method!(
+		identity_def_pre_update_interceptors,
+		identity_def_pre_update,
+		IdentityDefPreUpdateInterceptor
+	);
+	interceptor_method!(
+		identity_def_post_update_interceptors,
+		identity_def_post_update,
+		IdentityDefPostUpdateInterceptor
+	);
+	interceptor_method!(
+		identity_def_pre_delete_interceptors,
+		identity_def_pre_delete,
+		IdentityDefPreDeleteInterceptor
+	);
+	interceptor_method!(role_def_post_create_interceptors, role_def_post_create, RoleDefPostCreateInterceptor);
+	interceptor_method!(role_def_pre_update_interceptors, role_def_pre_update, RoleDefPreUpdateInterceptor);
+	interceptor_method!(role_def_post_update_interceptors, role_def_post_update, RoleDefPostUpdateInterceptor);
+	interceptor_method!(role_def_pre_delete_interceptors, role_def_pre_delete, RoleDefPreDeleteInterceptor);
+	interceptor_method!(
+		identity_role_def_post_create_interceptors,
+		identity_role_def_post_create,
+		IdentityRoleDefPostCreateInterceptor
+	);
+	interceptor_method!(
+		identity_role_def_pre_delete_interceptors,
+		identity_role_def_pre_delete,
+		IdentityRoleDefPreDeleteInterceptor
+	);
+	interceptor_method!(
+		authentication_def_post_create_interceptors,
+		authentication_def_post_create,
+		AuthenticationDefPostCreateInterceptor
+	);
+	interceptor_method!(
+		authentication_def_pre_delete_interceptors,
+		authentication_def_pre_delete,
+		AuthenticationDefPreDeleteInterceptor
+	);
 }

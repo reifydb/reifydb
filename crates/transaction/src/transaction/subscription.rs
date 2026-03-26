@@ -27,6 +27,7 @@ use crate::{
 	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
 	interceptor::{
 		WithInterceptors,
+		authentication_def::{AuthenticationDefPostCreateInterceptor, AuthenticationDefPreDeleteInterceptor},
 		chain::InterceptorChain as Chain,
 		dictionary::{
 			DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor,
@@ -37,6 +38,11 @@ use crate::{
 			DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
 			DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
 		},
+		identity_def::{
+			IdentityDefPostCreateInterceptor, IdentityDefPostUpdateInterceptor,
+			IdentityDefPreDeleteInterceptor, IdentityDefPreUpdateInterceptor,
+		},
+		identity_role_def::{IdentityRoleDefPostCreateInterceptor, IdentityRoleDefPreDeleteInterceptor},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
@@ -50,6 +56,10 @@ use crate::{
 		ringbuffer_def::{
 			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
 			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		},
+		role_def::{
+			RoleDefPostCreateInterceptor, RoleDefPostUpdateInterceptor, RoleDefPreDeleteInterceptor,
+			RoleDefPreUpdateInterceptor,
 		},
 		series::{
 			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
@@ -527,6 +537,70 @@ impl WithInterceptors for SubscriptionTransaction {
 		&mut self,
 	) -> &mut Chain<dyn SeriesDefPreDeleteInterceptor + Send + Sync> {
 		self.inner.series_def_pre_delete_interceptors()
+	}
+
+	fn identity_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityDefPostCreateInterceptor + Send + Sync> {
+		self.inner.identity_def_post_create_interceptors()
+	}
+
+	fn identity_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityDefPreUpdateInterceptor + Send + Sync> {
+		self.inner.identity_def_pre_update_interceptors()
+	}
+
+	fn identity_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityDefPostUpdateInterceptor + Send + Sync> {
+		self.inner.identity_def_post_update_interceptors()
+	}
+
+	fn identity_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityDefPreDeleteInterceptor + Send + Sync> {
+		self.inner.identity_def_pre_delete_interceptors()
+	}
+
+	fn role_def_post_create_interceptors(&mut self) -> &mut Chain<dyn RoleDefPostCreateInterceptor + Send + Sync> {
+		self.inner.role_def_post_create_interceptors()
+	}
+
+	fn role_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn RoleDefPreUpdateInterceptor + Send + Sync> {
+		self.inner.role_def_pre_update_interceptors()
+	}
+
+	fn role_def_post_update_interceptors(&mut self) -> &mut Chain<dyn RoleDefPostUpdateInterceptor + Send + Sync> {
+		self.inner.role_def_post_update_interceptors()
+	}
+
+	fn role_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn RoleDefPreDeleteInterceptor + Send + Sync> {
+		self.inner.role_def_pre_delete_interceptors()
+	}
+
+	fn identity_role_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityRoleDefPostCreateInterceptor + Send + Sync> {
+		self.inner.identity_role_def_post_create_interceptors()
+	}
+
+	fn identity_role_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn IdentityRoleDefPreDeleteInterceptor + Send + Sync> {
+		self.inner.identity_role_def_pre_delete_interceptors()
+	}
+
+	fn authentication_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn AuthenticationDefPostCreateInterceptor + Send + Sync> {
+		self.inner.authentication_def_post_create_interceptors()
+	}
+
+	fn authentication_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn AuthenticationDefPreDeleteInterceptor + Send + Sync> {
+		self.inner.authentication_def_pre_delete_interceptors()
 	}
 }
 

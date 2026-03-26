@@ -9,7 +9,7 @@ use reifydb_core::interface::catalog::{
 	identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
 };
 use reifydb_transaction::{
-	change::{TransactionalIdentityChanges, TransactionalRoleChanges},
+	change::{TransactionalIdentityChanges, TransactionalIdentityRoleChanges, TransactionalRoleChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
@@ -113,10 +113,22 @@ impl Catalog {
 	pub fn find_identity(&self, txn: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<IdentityDef>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(ident) = TransactionalIdentityChanges::find_identity(admin, identity) {
+					return Ok(Some(ident.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalIdentityChanges::is_identity_deleted(admin, identity) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
 				if let Some(ident) = self.materialized.find_identity_at(identity, admin.version()) {
 					return Ok(Some(ident));
 				}
 
+				// 4. Fall back to storage
 				if let Some(ident) =
 					CatalogStore::find_identity(&mut Transaction::Admin(&mut *admin), identity)?
 				{
@@ -164,10 +176,22 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(ident) = TransactionalIdentityChanges::find_identity(sub, identity) {
+					return Ok(Some(ident.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalIdentityChanges::is_identity_deleted(sub, identity) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
 				if let Some(ident) = self.materialized.find_identity_at(identity, sub.version()) {
 					return Ok(Some(ident));
 				}
 
+				// 4. Fall back to storage
 				if let Some(ident) = CatalogStore::find_identity(
 					&mut Transaction::Subscription(&mut *sub),
 					identity,
@@ -282,6 +306,92 @@ impl Catalog {
 		}
 	}
 
+	#[instrument(name = "catalog::role::find", level = "trace", skip(self, txn))]
+	pub fn find_role(&self, txn: &mut Transaction<'_>, role_id: RoleId) -> Result<Option<RoleDef>> {
+		match txn.reborrow() {
+			Transaction::Admin(admin) => {
+				// 1. Check transactional changes first
+				if let Some(role) = TransactionalRoleChanges::find_role(admin, role_id) {
+					return Ok(Some(role.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalRoleChanges::is_role_deleted(admin, role_id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(role) = self.materialized.find_role_at(role_id, admin.version()) {
+					return Ok(Some(role));
+				}
+
+				// 4. Fall back to storage
+				if let Some(role) =
+					CatalogStore::find_role(&mut Transaction::Admin(&mut *admin), role_id)?
+				{
+					warn!("Role '{}' found in storage but not in MaterializedCatalog", role_id);
+					return Ok(Some(role));
+				}
+
+				Ok(None)
+			}
+			Transaction::Command(cmd) => {
+				if let Some(role) = self.materialized.find_role_at(role_id, cmd.version()) {
+					return Ok(Some(role));
+				}
+
+				if let Some(role) =
+					CatalogStore::find_role(&mut Transaction::Command(&mut *cmd), role_id)?
+				{
+					warn!("Role '{}' found in storage but not in MaterializedCatalog", role_id);
+					return Ok(Some(role));
+				}
+
+				Ok(None)
+			}
+			Transaction::Query(qry) => {
+				if let Some(role) = self.materialized.find_role_at(role_id, qry.version()) {
+					return Ok(Some(role));
+				}
+
+				if let Some(role) =
+					CatalogStore::find_role(&mut Transaction::Query(&mut *qry), role_id)?
+				{
+					warn!("Role '{}' found in storage but not in MaterializedCatalog", role_id);
+					return Ok(Some(role));
+				}
+
+				Ok(None)
+			}
+			Transaction::Subscription(sub) => {
+				// 1. Check transactional changes first
+				if let Some(role) = TransactionalRoleChanges::find_role(sub, role_id) {
+					return Ok(Some(role.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalRoleChanges::is_role_deleted(sub, role_id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(role) = self.materialized.find_role_at(role_id, sub.version()) {
+					return Ok(Some(role));
+				}
+
+				// 4. Fall back to storage
+				if let Some(role) =
+					CatalogStore::find_role(&mut Transaction::Subscription(&mut *sub), role_id)?
+				{
+					warn!("Role '{}' found in storage but not in MaterializedCatalog", role_id);
+					return Ok(Some(role));
+				}
+
+				Ok(None)
+			}
+		}
+	}
+
 	#[instrument(name = "catalog::role::create", level = "debug", skip(self, txn))]
 	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> Result<RoleDef> {
 		let role = CatalogStore::create_role(txn, name)?;
@@ -329,21 +439,101 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		identity: IdentityId,
 	) -> Result<Vec<String>> {
-		let version = match txn.reborrow() {
-			Transaction::Admin(admin) => admin.version(),
-			Transaction::Command(cmd) => cmd.version(),
-			Transaction::Query(qry) => qry.version(),
-			Transaction::Subscription(sub) => sub.version(),
-		};
+		match txn.reborrow() {
+			Transaction::Admin(admin) => {
+				let version = admin.version();
+				let mut names = Vec::new();
+				let mut seen_roles = std::collections::HashSet::new();
 
-		let identity_roles = self.materialized.find_identity_roles_at(identity, version);
-		let mut names = Vec::with_capacity(identity_roles.len());
-		for ir in identity_roles {
-			if let Some(role) = self.materialized.find_role_at(ir.role_id, version) {
-				names.push(role.name);
+				// 1. Check transactional identity-role changes first
+				for ir in TransactionalIdentityRoleChanges::find_identity_roles_for_identity(
+					admin, identity,
+				) {
+					if !TransactionalRoleChanges::is_role_deleted(admin, ir.role_id) {
+						if let Some(role) =
+							TransactionalRoleChanges::find_role(admin, ir.role_id)
+						{
+							seen_roles.insert(ir.role_id);
+							names.push(role.name.clone());
+						} else if let Some(role) =
+							self.materialized.find_role_at(ir.role_id, version)
+						{
+							seen_roles.insert(ir.role_id);
+							names.push(role.name);
+						}
+					}
+				}
+
+				// 2. Check materialized identity-roles
+				for ir in self.materialized.find_identity_roles_at(identity, version) {
+					if !seen_roles.contains(&ir.role_id)
+						&& !TransactionalIdentityRoleChanges::is_identity_role_deleted(
+							admin, identity, ir.role_id,
+						) {
+						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
+						{
+							names.push(role.name);
+						}
+					}
+				}
+
+				Ok(names)
+			}
+			Transaction::Subscription(sub) => {
+				let version = sub.version();
+				let mut names = Vec::new();
+				let mut seen_roles = std::collections::HashSet::new();
+
+				// 1. Check transactional identity-role changes first
+				for ir in TransactionalIdentityRoleChanges::find_identity_roles_for_identity(
+					sub, identity,
+				) {
+					if !TransactionalRoleChanges::is_role_deleted(sub, ir.role_id) {
+						if let Some(role) = TransactionalRoleChanges::find_role(sub, ir.role_id)
+						{
+							seen_roles.insert(ir.role_id);
+							names.push(role.name.clone());
+						} else if let Some(role) =
+							self.materialized.find_role_at(ir.role_id, version)
+						{
+							seen_roles.insert(ir.role_id);
+							names.push(role.name);
+						}
+					}
+				}
+
+				// 2. Check materialized identity-roles
+				for ir in self.materialized.find_identity_roles_at(identity, version) {
+					if !seen_roles.contains(&ir.role_id)
+						&& !TransactionalIdentityRoleChanges::is_identity_role_deleted(
+							sub, identity, ir.role_id,
+						) {
+						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
+						{
+							names.push(role.name);
+						}
+					}
+				}
+
+				Ok(names)
+			}
+			_ => {
+				let version = match txn.reborrow() {
+					Transaction::Command(cmd) => cmd.version(),
+					Transaction::Query(qry) => qry.version(),
+					_ => unreachable!(),
+				};
+
+				let identity_roles = self.materialized.find_identity_roles_at(identity, version);
+				let mut names = Vec::with_capacity(identity_roles.len());
+				for ir in identity_roles {
+					if let Some(role) = self.materialized.find_role_at(ir.role_id, version) {
+						names.push(role.name);
+					}
+				}
+				Ok(names)
 			}
 		}
-		Ok(names)
 	}
 
 	pub fn get_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<IdentityDef> {
