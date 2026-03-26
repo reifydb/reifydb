@@ -11,6 +11,7 @@
 
 pub mod callbacks;
 pub mod catalog;
+pub mod connector;
 pub mod constants;
 pub mod context;
 pub mod data;
