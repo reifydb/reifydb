@@ -1,4 +1,4 @@
-FROM rust:1.85.1-slim AS builder
+FROM rust:1.92.0-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 # Copy workspace root files
-COPY Cargo.toml Cargo.lock rust-toolchain ./
+COPY Cargo.toml Cargo.lock ./
 
 # Copy vendor directory and cargo config for offline builds
 COPY vendor ./vendor

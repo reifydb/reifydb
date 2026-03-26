@@ -105,32 +105,37 @@ impl From<Value> for f64 {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl From<Value> for wasmtime::Val {
-	fn from(value: Value) -> Self {
-		match value {
-			Value::I32(v) => wasmtime::Val::I32(v),
-			Value::I64(v) => wasmtime::Val::I64(v),
-			Value::F32(v) => wasmtime::Val::F32(v.to_bits()),
-			Value::F64(v) => wasmtime::Val::F64(v.to_bits()),
-			Value::RefFunc(_) => wasmtime::Val::null_func_ref(),
-			Value::RefExtern(_) => wasmtime::Val::null_any_ref(),
-			Value::RefNull(ValueType::RefFunc) => wasmtime::Val::null_func_ref(),
-			Value::RefNull(_) => wasmtime::Val::null_any_ref(),
+mod wasmtime_conv {
+	use wasmtime::Val;
+
+	use super::{Value, ValueType};
+
+	impl From<Value> for Val {
+		fn from(value: Value) -> Self {
+			match value {
+				Value::I32(v) => Val::I32(v),
+				Value::I64(v) => Val::I64(v),
+				Value::F32(v) => Val::F32(v.to_bits()),
+				Value::F64(v) => Val::F64(v.to_bits()),
+				Value::RefFunc(_) => Val::null_func_ref(),
+				Value::RefExtern(_) => Val::null_any_ref(),
+				Value::RefNull(ValueType::RefFunc) => Val::null_func_ref(),
+				Value::RefNull(_) => Val::null_any_ref(),
+			}
 		}
 	}
-}
 
-#[cfg(not(target_arch = "wasm32"))]
-impl Value {
-	pub fn from_wasmtime(val: wasmtime::Val) -> Self {
-		match val {
-			wasmtime::Val::I32(v) => Value::I32(v),
-			wasmtime::Val::I64(v) => Value::I64(v),
-			wasmtime::Val::F32(bits) => Value::F32(f32::from_bits(bits)),
-			wasmtime::Val::F64(bits) => Value::F64(f64::from_bits(bits)),
-			wasmtime::Val::FuncRef(None) => Value::RefNull(ValueType::RefFunc),
-			wasmtime::Val::FuncRef(Some(_)) => Value::RefFunc(0),
-			_ => Value::RefNull(ValueType::RefExtern),
+	impl Value {
+		pub fn from_wasmtime(val: Val) -> Self {
+			match val {
+				Val::I32(v) => Value::I32(v),
+				Val::I64(v) => Value::I64(v),
+				Val::F32(bits) => Value::F32(f32::from_bits(bits)),
+				Val::F64(bits) => Value::F64(f64::from_bits(bits)),
+				Val::FuncRef(None) => Value::RefNull(ValueType::RefFunc),
+				Val::FuncRef(Some(_)) => Value::RefFunc(0),
+				_ => Value::RefNull(ValueType::RefExtern),
+			}
 		}
 	}
 }

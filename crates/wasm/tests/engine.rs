@@ -50,9 +50,7 @@ fn alloc_module() -> Vec<u8> {
 #[test]
 fn invoke_add() {
 	let mut engine = Engine::default();
-	engine
-		.spawn(source::binary::bytes(add_module()))
-		.expect("spawn failed");
+	engine.spawn(source::binary::bytes(add_module())).expect("spawn failed");
 
 	let result = engine.invoke("add", &[Value::I32(2), Value::I32(3)]).unwrap();
 	assert_eq!(result.as_ref(), &[Value::I32(5)]);
@@ -61,9 +59,7 @@ fn invoke_add() {
 #[test]
 fn invoke_missing_export() {
 	let mut engine = Engine::default();
-	engine
-		.spawn(source::binary::bytes(add_module()))
-		.expect("spawn failed");
+	engine.spawn(source::binary::bytes(add_module())).expect("spawn failed");
 
 	let err = engine.invoke("nonexistent", &[]).unwrap_err();
 	let msg = format!("{}", err);
@@ -73,9 +69,7 @@ fn invoke_missing_export() {
 #[test]
 fn write_read_memory() {
 	let mut engine = Engine::default();
-	engine
-		.spawn(source::binary::bytes(alloc_module()))
-		.expect("spawn failed");
+	engine.spawn(source::binary::bytes(alloc_module())).expect("spawn failed");
 
 	let data = b"hello world";
 	engine.write_memory(0, data).expect("write failed");
@@ -87,9 +81,7 @@ fn write_read_memory() {
 #[test]
 fn alloc_write_invoke_read_pattern() {
 	let mut engine = Engine::default();
-	engine
-		.spawn(source::binary::bytes(alloc_module()))
-		.expect("spawn failed");
+	engine.spawn(source::binary::bytes(alloc_module())).expect("spawn failed");
 
 	let input = b"test data";
 
@@ -101,9 +93,7 @@ fn alloc_write_invoke_read_pattern() {
 
 	engine.write_memory(ptr as usize, input).expect("write failed");
 
-	let result = engine
-		.invoke("identity", &[Value::I32(ptr), Value::I32(input.len() as i32)])
-		.unwrap();
+	let result = engine.invoke("identity", &[Value::I32(ptr), Value::I32(input.len() as i32)]).unwrap();
 	let out_ptr = match result.first() {
 		Some(Value::I32(v)) => *v as usize,
 		other => panic!("identity returned unexpected: {:?}", other),
@@ -127,9 +117,7 @@ fn invalid_wasm_bytes() {
 #[test]
 fn out_of_bounds_memory() {
 	let mut engine = Engine::default();
-	engine
-		.spawn(source::binary::bytes(alloc_module()))
-		.expect("spawn failed");
+	engine.spawn(source::binary::bytes(alloc_module())).expect("spawn failed");
 
 	let result = engine.read_memory(65536 * 2, 1);
 	assert!(result.is_err());

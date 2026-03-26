@@ -15,8 +15,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Third-party crates that are OK to re-export (whitelist)
 ALLOWED=(
     "native::"
+    "stub::"
     "wasm::"
     "wasi::"
+    "wasmtime;"
+    "wasmtime_wasi;"
 )
 
 echo "Checking for internal pub use re-exports in /crates/..."

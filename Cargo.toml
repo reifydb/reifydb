@@ -265,6 +265,7 @@ hdrhistogram = { version = "7.5.4" }
 
 # WASM runtime
 wasmtime = "43.0.0"
+wasmtime-wasi = "43.0.0"
 
 # WASM test dependencies
 wast = "245.0.1"

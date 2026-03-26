@@ -14,6 +14,10 @@ pub mod module;
 use std::fmt;
 
 use module::Trap;
+#[cfg(not(target_arch = "wasm32"))]
+pub use wasmtime;
+#[cfg(not(target_arch = "wasm32"))]
+pub use wasmtime_wasi;
 
 pub mod source {
 	pub mod binary {
@@ -25,7 +29,9 @@ pub mod source {
 		}
 
 		pub fn bytes<T: AsRef<[u8]>>(data: T) -> Bytes<T> {
-			Bytes { data }
+			Bytes {
+				data,
+			}
 		}
 	}
 }
@@ -78,44 +84,29 @@ pub trait SpawnBinary<SOURCE> {
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
-	use wasmtime::{self, Val};
+	use wasmtime::{Config, Engine as WtEngine, Instance, Linker, Module, ResourceLimiter, Result, Store, Val};
 
-	use crate::{
-		EnvironmentError, LoadError, SpawnBinary, Trap,
-		config::WasmConfig,
-		module::value::Value,
-		source,
-	};
+	use crate::{EnvironmentError, LoadError, SpawnBinary, Trap, config::WasmConfig, module::value::Value, source};
 
 	struct StoreLimits {
 		max_memory_bytes: usize,
 	}
 
-	impl wasmtime::ResourceLimiter for StoreLimits {
-		fn memory_growing(
-			&mut self,
-			_current: usize,
-			desired: usize,
-			_maximum: Option<usize>,
-		) -> wasmtime::Result<bool> {
+	impl ResourceLimiter for StoreLimits {
+		fn memory_growing(&mut self, _current: usize, desired: usize, _maximum: Option<usize>) -> Result<bool> {
 			Ok(desired <= self.max_memory_bytes)
 		}
 
-		fn table_growing(
-			&mut self,
-			_current: usize,
-			_desired: usize,
-			_maximum: Option<usize>,
-		) -> wasmtime::Result<bool> {
+		fn table_growing(&mut self, _current: usize, _desired: usize, _maximum: Option<usize>) -> Result<bool> {
 			Ok(true)
 		}
 	}
 
 	pub struct Engine {
-		wt_engine: wasmtime::Engine,
-		store: wasmtime::Store<StoreLimits>,
-		linker: wasmtime::Linker<StoreLimits>,
-		instance: Option<wasmtime::Instance>,
+		wt_engine: WtEngine,
+		store: Store<StoreLimits>,
+		linker: Linker<StoreLimits>,
+		instance: Option<Instance>,
 		config: WasmConfig,
 	}
 
@@ -127,24 +118,21 @@ mod native {
 
 	impl Engine {
 		pub fn with_config(config: WasmConfig) -> Self {
-			let mut wt_config = wasmtime::Config::new();
+			let mut wt_config = Config::new();
 			wt_config.consume_fuel(true);
 			let stack_bytes = (config.max_call_depth as usize) * 4096;
 			wt_config.max_wasm_stack(stack_bytes);
 
-			let wt_engine =
-				wasmtime::Engine::new(&wt_config).expect("failed to create wasmtime engine");
+			let wt_engine = WtEngine::new(&wt_config).expect("failed to create wasmtime engine");
 
 			let limits = StoreLimits {
 				max_memory_bytes: (config.max_memory_pages as usize) * 65536,
 			};
-			let mut store = wasmtime::Store::new(&wt_engine, limits);
+			let mut store = Store::new(&wt_engine, limits);
 			store.limiter(|s| s);
-			store
-				.set_fuel(config.max_instructions)
-				.expect("failed to set fuel");
+			store.set_fuel(config.max_instructions).expect("failed to set fuel");
 
-			let linker = wasmtime::Linker::new(&wt_engine);
+			let linker = Linker::new(&wt_engine);
 
 			Engine {
 				wt_engine,
@@ -161,18 +149,11 @@ mod native {
 			args: impl AsRef<[Value]>,
 		) -> Result<Box<[Value]>, Trap> {
 			let name = name.into();
-			let instance = self
-				.instance
-				.ok_or_else(|| Trap::Error("no instance loaded".into()))?;
+			let instance = self.instance.ok_or_else(|| Trap::Error("no instance loaded".into()))?;
 
-			let func = instance
-				.get_func(&mut self.store, &name)
-				.ok_or_else(|| {
-					Trap::Error(format!(
-						"unknown function: exported function '{}' not found",
-						name
-					))
-				})?;
+			let func = instance.get_func(&mut self.store, &name).ok_or_else(|| {
+				Trap::Error(format!("unknown function: exported function '{}' not found", name))
+			})?;
 
 			let wt_args: Vec<Val> = args.as_ref().iter().map(|v| v.clone().into()).collect();
 			let result_count = func.ty(&self.store).results().len();
@@ -185,14 +166,8 @@ mod native {
 			Ok(values.into_boxed_slice())
 		}
 
-		pub fn write_memory(
-			&mut self,
-			offset: usize,
-			data: &[u8],
-		) -> Result<(), EnvironmentError> {
-			let instance = self
-				.instance
-				.ok_or_else(|| Trap::Error("no instance loaded".into()))?;
+		pub fn write_memory(&mut self, offset: usize, data: &[u8]) -> Result<(), EnvironmentError> {
+			let instance = self.instance.ok_or_else(|| Trap::Error("no instance loaded".into()))?;
 
 			let memory = instance
 				.get_memory(&mut self.store, "memory")
@@ -207,14 +182,8 @@ mod native {
 			Ok(())
 		}
 
-		pub fn read_memory(
-			&mut self,
-			offset: usize,
-			len: usize,
-		) -> Result<Vec<u8>, EnvironmentError> {
-			let instance = self
-				.instance
-				.ok_or_else(|| Trap::Error("no instance loaded".into()))?;
+		pub fn read_memory(&mut self, offset: usize, len: usize) -> Result<Vec<u8>, EnvironmentError> {
+			let instance = self.instance.ok_or_else(|| Trap::Error("no instance loaded".into()))?;
 
 			let memory = instance
 				.get_memory(&mut self.store, "memory")
@@ -231,7 +200,7 @@ mod native {
 
 	impl<T: AsRef<[u8]>> SpawnBinary<source::binary::Bytes<T>> for Engine {
 		fn spawn(&mut self, source: source::binary::Bytes<T>) -> Result<(), EnvironmentError> {
-			let wt_module = wasmtime::Module::new(&self.wt_engine, source.data.as_ref())
+			let wt_module = Module::new(&self.wt_engine, source.data.as_ref())
 				.map_err(|e| LoadError::CompilationFailed(format!("{}", e)))?;
 
 			self.store
@@ -288,6 +257,5 @@ mod stub {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub use native::Engine;
-
 #[cfg(target_arch = "wasm32")]
 pub use stub::Engine;
