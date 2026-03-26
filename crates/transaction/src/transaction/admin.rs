@@ -13,8 +13,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		WithEventBus,
-		catalog::primitive::PrimitiveId,
-		change::{Change, ChangeOrigin, Diff},
+		change::{Change, ChangeOrigin},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
@@ -95,10 +94,7 @@ use crate::{
 	},
 	multi::{
 		pending::PendingWrites,
-		transaction::{
-			MultiTransaction,
-			write::{MultiWriteTransaction, WriteSavepoint},
-		},
+		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{RqlExecutor, Transaction, query::QueryTransaction},
@@ -137,112 +133,12 @@ pub struct AdminTransaction {
 	poison_cause: Option<Diagnostic>,
 }
 
-/// Opaque savepoint for per-test transaction isolation.
-pub struct Savepoint {
-	write: WriteSavepoint,
-	row_changes_len: usize,
-	accumulator_len: usize,
-}
-
 #[derive(Clone, Copy, PartialEq)]
 enum TransactionState {
 	Active,
 	Committed,
 	RolledBack,
 	Poisoned,
-}
-
-impl AdminTransaction {
-	/// Create a savepoint capturing current transaction state.
-	pub fn savepoint(&self) -> Savepoint {
-		Savepoint {
-			write: self.cmd.as_ref().unwrap().savepoint(),
-			row_changes_len: self.row_changes.len(),
-			accumulator_len: self.accumulator.len(),
-		}
-	}
-
-	/// Restore transaction state to a previously created savepoint.
-	pub fn restore_savepoint(&mut self, sp: Savepoint) {
-		self.cmd.as_mut().unwrap().restore_savepoint(sp.write);
-		self.row_changes.truncate(sp.row_changes_len);
-		self.accumulator.truncate(sp.accumulator_len);
-	}
-
-	/// Returns `true` when the accumulator contains flow changes that have not
-	/// yet been processed.  Used by the VM to trigger eager flow processing in
-	/// testing mode.
-	pub fn has_pending_flow_changes(&self) -> bool {
-		!self.accumulator.is_empty()
-	}
-
-	/// Number of accumulated flow change entries.
-	/// Used as a baseline offset for diff-based mutation tracking.
-	pub fn accumulator_len(&self) -> usize {
-		self.accumulator.len()
-	}
-
-	/// Read accumulator entries from a given offset without draining.
-	/// Used by testing::*::changed() to read mutations since the baseline.
-	pub fn accumulator_entries_from(&self, offset: usize) -> &[(PrimitiveId, Diff)] {
-		self.accumulator.entries_from(offset)
-	}
-
-	/// Execute test-only pre-commit style processing without committing.
-	///
-	/// This is used by testing helpers that need commit-time flow work
-	/// materialized while still staying inside the test savepoint.
-	pub fn capture_testing_pre_commit<F>(&mut self, f: F) -> Result<()>
-	where
-		F: FnOnce(&mut PreCommitContext) -> Result<()>,
-	{
-		self.capture_testing_pre_commit_from(0, f)
-	}
-
-	/// Like `capture_testing_pre_commit` but only processes accumulator entries
-	/// from `offset` onwards.  Entries before `offset` are preserved.
-	///
-	/// The closure receives a `PreCommitContext` built from the accumulator and
-	/// should call `execute_inline_flow_changes` (or similar) to populate
-	/// `ctx.pending_writes` and `ctx.view_entries`.
-	pub fn capture_testing_pre_commit_from<F>(&mut self, offset: usize, f: F) -> Result<()>
-	where
-		F: FnOnce(&mut PreCommitContext) -> Result<()>,
-	{
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
-			.pending_writes()
-			.iter()
-			.map(|(key, pending)| match &pending.delta {
-				Delta::Set {
-					row,
-					..
-				} => (key.clone(), Some(row.clone())),
-				_ => (key.clone(), None),
-			})
-			.collect();
-
-		let mut ctx = PreCommitContext {
-			flow_changes: self.accumulator.take_changes_from(offset, CommitVersion(0)),
-			pending_writes: Vec::new(),
-			transaction_writes,
-			view_entries: Vec::new(),
-		};
-
-		f(&mut ctx)?;
-
-		for (key, value) in &ctx.pending_writes {
-			match value {
-				Some(v) => self.cmd.as_mut().unwrap().set(key, v.clone())?,
-				None => self.cmd.as_mut().unwrap().remove(key)?,
-			}
-		}
-
-		for (id, diff) in ctx.view_entries {
-			self.accumulator.track(id, diff);
-		}
-
-		Ok(())
-	}
 }
 
 impl AdminTransaction {

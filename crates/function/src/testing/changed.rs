@@ -36,15 +36,9 @@ impl GeneratorFunction for TestingChanged {
 			}
 		}
 
-		let txn = &mut *t.inner;
-		let baseline = t.baseline;
-
 		// Read individual mutations from the accumulator
-		let entries: Vec<_> = txn
-			.accumulator_entries_from(baseline)
-			.iter()
-			.map(|(id, diff)| (id.clone(), diff.clone()))
-			.collect();
+		let entries: Vec<_> =
+			t.accumulator_entries_from().iter().map(|(id, diff)| (id.clone(), diff.clone())).collect();
 
 		let mut mutations: Vec<MutationEntry> = Vec::new();
 
@@ -63,7 +57,7 @@ impl GeneratorFunction for TestingChanged {
 
 			let name = match resolve_primitive_name(
 				ctx.catalog,
-				&mut Transaction::Admin(&mut *txn),
+				&mut Transaction::Admin(&mut *t.inner),
 				primitive_id,
 			) {
 				Ok(n) => n,

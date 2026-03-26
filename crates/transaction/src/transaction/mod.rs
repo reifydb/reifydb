@@ -5,12 +5,14 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
+	delta::Delta,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
 	interface::{
-		change::Change,
+		catalog::primitive::PrimitiveId,
+		change::{Change, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	testing::{CapturedEvent, HandlerInvocation},
@@ -77,7 +79,7 @@ use crate::{
 			TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
 			TableDefPreUpdateInterceptor,
 		},
-		transaction::{PostCommitInterceptor, PreCommitInterceptor},
+		transaction::{PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
 		view::{
 			ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor,
 			ViewPreDeleteInterceptor, ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
@@ -87,6 +89,7 @@ use crate::{
 			ViewDefPreUpdateInterceptor,
 		},
 	},
+	multi::transaction::write::WriteSavepoint,
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
 		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
@@ -109,6 +112,13 @@ pub mod command;
 pub mod query;
 pub mod subscription;
 
+/// Opaque savepoint for per-test transaction isolation.
+pub struct Savepoint {
+	write: WriteSavepoint,
+	row_changes_len: usize,
+	accumulator_len: usize,
+}
+
 pub struct TestTransaction<'a> {
 	pub inner: &'a mut AdminTransaction,
 	pub baseline: usize,
@@ -116,6 +126,109 @@ pub struct TestTransaction<'a> {
 	pub handler_invocations: &'a mut Vec<HandlerInvocation>,
 	pub event_seq: &'a mut u64,
 	pub handler_seq: &'a mut u64,
+	savepoint: Option<Savepoint>,
+}
+
+impl<'a> TestTransaction<'a> {
+	pub fn new(
+		inner: &'a mut AdminTransaction,
+		events: &'a mut Vec<CapturedEvent>,
+		handler_invocations: &'a mut Vec<HandlerInvocation>,
+		event_seq: &'a mut u64,
+		handler_seq: &'a mut u64,
+	) -> Self {
+		let baseline = inner.accumulator.len();
+		let savepoint = Savepoint {
+			write: inner.cmd.as_ref().unwrap().savepoint(),
+			row_changes_len: inner.row_changes.len(),
+			accumulator_len: inner.accumulator.len(),
+		};
+		Self {
+			inner,
+			baseline,
+			events,
+			handler_invocations,
+			event_seq,
+			handler_seq,
+			savepoint: Some(savepoint),
+		}
+	}
+
+	/// Restore transaction state to the savepoint captured at construction.
+	pub fn restore(&mut self) {
+		if let Some(sp) = self.savepoint.take() {
+			self.inner.cmd.as_mut().unwrap().restore_savepoint(sp.write);
+			self.inner.row_changes.truncate(sp.row_changes_len);
+			self.inner.accumulator.truncate(sp.accumulator_len);
+		}
+	}
+
+	/// Re-borrow this test transaction with a shorter lifetime,
+	/// producing a TestTransaction suitable for embedding in a
+	/// `Transaction::Test` variant without consuming `self`.
+	pub fn reborrow(&mut self) -> TestTransaction<'_> {
+		TestTransaction {
+			inner: &mut *self.inner,
+			baseline: self.baseline,
+			events: &mut *self.events,
+			handler_invocations: &mut *self.handler_invocations,
+			event_seq: &mut *self.event_seq,
+			handler_seq: &mut *self.handler_seq,
+			savepoint: None,
+		}
+	}
+
+	/// Read accumulator entries since the baseline.
+	/// Used by testing helpers to inspect mutations within the current test.
+	pub fn accumulator_entries_from(&self) -> &[(PrimitiveId, Diff)] {
+		self.inner.accumulator.entries_from(self.baseline)
+	}
+
+	/// Execute test-only pre-commit style processing without committing.
+	///
+	/// Processes accumulator entries from the baseline onwards. Used by
+	/// testing helpers that need commit-time flow work materialized while
+	/// still staying inside the test savepoint.
+	pub fn capture_testing_pre_commit<F>(&mut self, f: F) -> Result<()>
+	where
+		F: FnOnce(&mut PreCommitContext) -> Result<()>,
+	{
+		let offset = self.baseline;
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
+			.inner
+			.pending_writes()
+			.iter()
+			.map(|(key, pending)| match &pending.delta {
+				Delta::Set {
+					row,
+					..
+				} => (key.clone(), Some(row.clone())),
+				_ => (key.clone(), None),
+			})
+			.collect();
+
+		let mut ctx = PreCommitContext {
+			flow_changes: self.inner.accumulator.take_changes_from(offset, CommitVersion(0)),
+			pending_writes: Vec::new(),
+			transaction_writes,
+			view_entries: Vec::new(),
+		};
+
+		f(&mut ctx)?;
+
+		for (key, value) in &ctx.pending_writes {
+			match value {
+				Some(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
+				None => self.inner.cmd.as_mut().unwrap().remove(key)?,
+			}
+		}
+
+		for (id, diff) in ctx.view_entries {
+			self.inner.accumulator.track(id, diff);
+		}
+
+		Ok(())
+	}
 }
 
 /// An enum that can hold either a command, admin, query, or subscription transaction
@@ -335,6 +448,7 @@ impl<'a> Transaction<'a> {
 				handler_invocations: t.handler_invocations,
 				event_seq: t.event_seq,
 				handler_seq: t.handler_seq,
+				savepoint: None,
 			}),
 		}
 	}

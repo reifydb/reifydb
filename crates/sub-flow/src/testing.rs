@@ -65,11 +65,8 @@ impl StandardTestFlowProcessor {
 
 impl TestFlowProcessor for StandardTestFlowProcessor {
 	fn process(&self, txn: &mut TestTransaction<'_>) -> Result<()> {
-		let has_source_changes = txn
-			.inner
-			.accumulator_entries_from(txn.baseline)
-			.iter()
-			.any(|(id, _)| !matches!(id, PrimitiveId::View(_)));
+		let has_source_changes =
+			txn.accumulator_entries_from().iter().any(|(id, _)| !matches!(id, PrimitiveId::View(_)));
 		if !has_source_changes {
 			return Ok(());
 		}
@@ -79,7 +76,7 @@ impl TestFlowProcessor for StandardTestFlowProcessor {
 			*cached = Some(self.build_flow_engine(txn.inner)?);
 		}
 		let flow_engine = cached.as_ref().unwrap();
-		txn.inner.capture_testing_pre_commit_from(txn.baseline, |ctx| {
+		txn.capture_testing_pre_commit(|ctx| {
 			execute_inline_flow_changes(flow_engine, &self.engine, &self.catalog, ctx)
 		})
 	}

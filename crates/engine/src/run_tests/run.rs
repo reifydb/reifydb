@@ -190,24 +190,22 @@ pub(crate) fn run_tests(
 				_ = mem::replace(&mut handler_seq, 0);
 
 				let start = services.runtime_context.clock.instant();
-				let savepoint = txn.savepoint();
-				let baseline = txn.accumulator_len();
+				let mut test_txn = TestTransaction::new(
+					&mut *txn,
+					&mut events,
+					&mut handler_invocations,
+					&mut event_seq,
+					&mut handler_seq,
+				);
 				let (outcome, message) = run_single(
 					vm,
 					services,
-					&mut Transaction::Test(TestTransaction {
-						inner: &mut *txn,
-						baseline,
-						events: &mut events,
-						handler_invocations: &mut handler_invocations,
-						event_seq: &mut event_seq,
-						handler_seq: &mut handler_seq,
-					}),
+					&mut Transaction::Test(test_txn.reborrow()),
 					&test_def.body,
 					params,
 					None,
 				);
-				txn.restore_savepoint(savepoint);
+				test_txn.restore();
 				let elapsed = start.elapsed();
 				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 
@@ -252,24 +250,22 @@ pub(crate) fn run_tests(
 					handler_seq = 0;
 
 					let start = services.runtime_context.clock.instant();
-					let savepoint = txn.savepoint();
-					let baseline = txn.accumulator_len();
+					let mut test_txn = TestTransaction::new(
+						&mut *txn,
+						&mut events,
+						&mut handler_invocations,
+						&mut event_seq,
+						&mut handler_seq,
+					);
 					let (outcome, message) = run_single(
 						vm,
 						services,
-						&mut Transaction::Test(TestTransaction {
-							inner: &mut *txn,
-							baseline,
-							events: &mut events,
-							handler_invocations: &mut handler_invocations,
-							event_seq: &mut event_seq,
-							handler_seq: &mut handler_seq,
-						}),
+						&mut Transaction::Test(test_txn.reborrow()),
 						&test_def.body,
 						params,
 						Some(&named_vars),
 					);
-					txn.restore_savepoint(savepoint);
+					test_txn.restore();
 					let elapsed = start.elapsed();
 					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 
