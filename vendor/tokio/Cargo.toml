@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "tokio"
-version = "1.48.0"
+version = "1.50.0"
 authors = ["Tokio Contributors <team@tokio.rs>"]
 build = false
 autolib = false
@@ -225,12 +225,20 @@ name = "fs_uring"
 path = "tests/fs_uring.rs"
 
 [[test]]
+name = "fs_uring_read"
+path = "tests/fs_uring_read.rs"
+
+[[test]]
 name = "fs_write"
 path = "tests/fs_write.rs"
 
 [[test]]
 name = "io_async_fd"
 path = "tests/io_async_fd.rs"
+
+[[test]]
+name = "io_async_fd_memory_leak"
+path = "tests/io_async_fd_memory_leak.rs"
 
 [[test]]
 name = "io_async_read"
@@ -457,6 +465,10 @@ name = "rt_common"
 path = "tests/rt_common.rs"
 
 [[test]]
+name = "rt_common_before_park"
+path = "tests/rt_common_before_park.rs"
+
+[[test]]
 name = "rt_handle"
 path = "tests/rt_handle.rs"
 
@@ -479,6 +491,10 @@ path = "tests/rt_panic.rs"
 [[test]]
 name = "rt_poll_callbacks"
 path = "tests/rt_poll_callbacks.rs"
+
+[[test]]
+name = "rt_shutdown_err"
+path = "tests/rt_shutdown_err.rs"
 
 [[test]]
 name = "rt_threaded"
@@ -701,6 +717,10 @@ name = "test_clock"
 path = "tests/test_clock.rs"
 
 [[test]]
+name = "time_alt"
+path = "tests/time_alt.rs"
+
+[[test]]
 name = "time_interval"
 path = "tests/time_interval.rs"
 
@@ -798,6 +818,9 @@ features = ["async-await"]
 [dev-dependencies.futures-concurrency]
 version = "7.6.3"
 
+[dev-dependencies.futures-test]
+version = "0.3.31"
+
 [dev-dependencies.mockall]
 version = "0.13.0"
 
@@ -822,7 +845,7 @@ version = "0.3.58"
 optional = true
 
 [target.'cfg(all(tokio_unstable, target_os = "linux"))'.dependencies.io-uring]
-version = "0.7.6"
+version = "0.7.11"
 optional = true
 default-features = false
 

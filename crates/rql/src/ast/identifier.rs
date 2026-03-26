@@ -455,3 +455,67 @@ impl<'bump> MaybeQualifiedTestIdentifier<'bump> {
 		self
 	}
 }
+
+/// Generic maybe-qualified identifier - namespace is optional.
+/// Used for targets/sources in CREATE SOURCE/SINK where the entity type is not known at parse time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}
+
+/// Maybe-qualified source identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedSourceIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedSourceIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}
+
+/// Maybe-qualified sink identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedSinkIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedSinkIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}

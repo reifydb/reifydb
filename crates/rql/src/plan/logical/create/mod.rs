@@ -13,6 +13,8 @@ pub mod procedure;
 pub mod property;
 pub mod ringbuffer;
 pub mod series;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
@@ -74,6 +76,8 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstCreate::Migration(node) => self.compile_create_migration(node),
 			AstCreate::Test(node) => self.compile_create_test(node),
+			AstCreate::Source(node) => self.compile_create_source(node),
+			AstCreate::Sink(node) => self.compile_create_sink(node),
 		}
 	}
 }

@@ -20,6 +20,8 @@ use crate::interface::catalog::{
 	procedure::ProcedureDef,
 	ringbuffer::RingBufferDef,
 	series::SeriesDef,
+	sink::SinkDef,
+	source::SourceDef,
 	subscription::SubscriptionDef,
 	sumtype::SumTypeDef,
 	table::TableDef,
@@ -184,6 +186,20 @@ pub trait CatalogTrackAuthenticationChangeOperations {
 	fn track_authentication_def_deleted(&mut self, auth: AuthenticationDef) -> Result<()>;
 }
 
+/// Trait for tracking source definition changes during a transaction.
+pub trait CatalogTrackSourceChangeOperations {
+	fn track_source_def_created(&mut self, source: SourceDef) -> Result<()>;
+
+	fn track_source_def_deleted(&mut self, source: SourceDef) -> Result<()>;
+}
+
+/// Trait for tracking sink definition changes during a transaction.
+pub trait CatalogTrackSinkChangeOperations {
+	fn track_sink_def_created(&mut self, sink: SinkDef) -> Result<()>;
+
+	fn track_sink_def_deleted(&mut self, sink: SinkDef) -> Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
@@ -197,6 +213,8 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackRoleChangeOperations
 	+ CatalogTrackPolicyChangeOperations
 	+ CatalogTrackSeriesChangeOperations
+	+ CatalogTrackSinkChangeOperations
+	+ CatalogTrackSourceChangeOperations
 	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations
 	+ CatalogTrackTableChangeOperations

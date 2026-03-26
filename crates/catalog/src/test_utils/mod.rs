@@ -9,6 +9,8 @@ use reifydb_core::interface::catalog::{
 	namespace::Namespace,
 	property::ColumnPropertyKind,
 	ringbuffer::RingBufferDef,
+	sink::SinkDef,
+	source::SourceDef,
 	sumtype::{SumTypeDef, SumTypeKind, VariantDef},
 	table::TableDef,
 	view::ViewDef,
@@ -27,6 +29,8 @@ use crate::{
 		handler::create::HandlerToCreate,
 		namespace::create::NamespaceToCreate,
 		ringbuffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
+		sink::create::SinkToCreate,
+		source::create::SourceToCreate,
 		table::create::{TableColumnToCreate, TableToCreate},
 		view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
 	},
@@ -217,6 +221,7 @@ pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> F
 			name: Fragment::internal(flow),
 			namespace: namespace.id(),
 			status: FlowStatus::Active,
+			tick: None,
 		},
 	)
 	.unwrap()
@@ -357,4 +362,40 @@ pub fn ensure_test_sumtype(txn: &mut AdminTransaction) -> SumTypeDef {
 		return result;
 	}
 	create_sumtype(txn, "test_namespace", "test_sumtype", vec![])
+}
+
+pub fn create_source(txn: &mut AdminTransaction, namespace: &str, name: &str, connector: &str) -> SourceDef {
+	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
+	CatalogStore::create_source(
+		txn,
+		SourceToCreate {
+			name: Fragment::internal(name),
+			namespace: namespace.id(),
+			connector: connector.to_string(),
+			config: vec![("key".to_string(), "value".to_string())],
+			target_namespace: namespace.id(),
+			target_name: "target_table".to_string(),
+		},
+	)
+	.unwrap()
+}
+
+pub fn create_sink(txn: &mut AdminTransaction, namespace: &str, name: &str, connector: &str) -> SinkDef {
+	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
+		.unwrap()
+		.expect("Namespace not found");
+	CatalogStore::create_sink(
+		txn,
+		SinkToCreate {
+			name: Fragment::internal(name),
+			namespace: namespace.id(),
+			source_namespace: namespace.id(),
+			source_name: "source_table".to_string(),
+			connector: connector.to_string(),
+			config: vec![("key".to_string(), "value".to_string())],
+		},
+	)
+	.unwrap()
 }

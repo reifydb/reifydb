@@ -49,6 +49,23 @@ pub struct OperatorVTableFFI {
 		output: *mut ColumnsFFI,
 	) -> i32,
 
+	/// Periodic tick for time-based maintenance
+	///
+	/// # Parameters
+	/// - `instance`: The operator instance pointer
+	/// - `ctx`: FFI context for this operation
+	/// - `timestamp_nanos`: Current timestamp as nanoseconds since Unix epoch
+	/// - `output`: Output change (to be filled by operator if it produces changes)
+	///
+	/// # Returns
+	/// - 0 on success with output, 1 on success without output (no-op), negative error code on failure
+	pub tick: extern "C" fn(
+		instance: *mut c_void,
+		ctx: *mut ContextFFI,
+		timestamp_nanos: u64,
+		output: *mut ChangeFFI,
+	) -> i32,
+
 	/// Destroy an operator instance and free its resources
 	///
 	/// # Parameters

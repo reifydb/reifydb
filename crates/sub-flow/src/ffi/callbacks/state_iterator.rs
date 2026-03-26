@@ -39,7 +39,7 @@ impl BatchIterator {
 			.filter_map(|multi| {
 				// Decode the FlowNodeStateKey to extract the user key
 				let state_key = FlowNodeStateKey::decode(&multi.key)?;
-				Some((state_key.key, multi.row.as_ref().to_vec()))
+				Some((state_key.key, multi.row.to_vec()))
 			})
 			.collect();
 

@@ -17,6 +17,7 @@ pub mod variable;
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
+	time::Duration,
 };
 
 use query::window::WindowNode;
@@ -40,18 +41,18 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstInfix, AstPolicyOperationEntry,
-			AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests, AstStatement, AstType,
-			AstVariantDef, AstViewStorageKind, InfixOperator,
+			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstConfigPair, AstInfix,
+			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests,
+			AstStatement, AstType, AstVariantDef, AstViewStorageKind, InfixOperator,
 		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedIndexIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
-			MaybeQualifiedViewIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -403,6 +404,8 @@ pub enum LogicalPlan<'bump> {
 	CreateSeries(CreateSeriesNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
 	CreateTag(CreateTagNode<'bump>),
+	CreateSource(CreateSourceNode<'bump>),
+	CreateSink(CreateSinkNode<'bump>),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
@@ -417,6 +420,8 @@ pub enum LogicalPlan<'bump> {
 	DropSumType(DropSumTypeNode<'bump>),
 	DropSubscription(DropSubscriptionNode<'bump>),
 	DropSeries(DropSeriesNode<'bump>),
+	DropSource(DropSourceNode<'bump>),
+	DropSink(DropSinkNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
@@ -595,6 +600,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -604,6 +610,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -1103,6 +1110,36 @@ pub struct CreateEventNode<'bump> {
 pub struct CreateTagNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub variants: Vec<AstVariantDef<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct CreateSourceNode<'bump> {
+	pub name: MaybeQualifiedSourceIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+	pub target: MaybeQualifiedIdentifier<'bump>,
+}
+
+#[derive(Debug)]
+pub struct CreateSinkNode<'bump> {
+	pub name: MaybeQualifiedSinkIdentifier<'bump>,
+	pub source: MaybeQualifiedIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct DropSourceNode<'bump> {
+	pub source: MaybeQualifiedSourceIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropSinkNode<'bump> {
+	pub sink: MaybeQualifiedSinkIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
 }
 
 #[derive(Debug)]

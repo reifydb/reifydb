@@ -17,6 +17,8 @@ pub mod primitive_retention_policy;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
@@ -36,7 +38,7 @@ use reifydb_core::{
 		handler::HandlerDef,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
-			SubscriptionId, TableId, TestId, ViewId,
+			SinkId, SourceId, SubscriptionId, TableId, TestId, ViewId,
 		},
 		identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
 		key::PrimaryKeyDef,
@@ -46,6 +48,8 @@ use reifydb_core::{
 		primitive::PrimitiveId,
 		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
+		sink::SinkDef,
+		source::SourceDef,
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
 		table::TableDef,
@@ -85,6 +89,8 @@ pub type MultiVersionIdentityDef = MultiVersionContainer<IdentityDef>;
 pub type MultiVersionRoleDef = MultiVersionContainer<RoleDef>;
 pub type MultiVersionIdentityRoleDef = MultiVersionContainer<IdentityRoleDef>;
 pub type MultiVersionPolicyDef = MultiVersionContainer<PolicyDef>;
+pub type MultiVersionSourceDef = MultiVersionContainer<SourceDef>;
+pub type MultiVersionSinkDef = MultiVersionContainer<SinkDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -171,6 +177,14 @@ pub struct MaterializedCatalogInner {
 	pub(crate) migrations_by_name: SkipMap<String, MigrationId>,
 	/// MultiVersion migration events indexed by event ID
 	pub(crate) migration_events: SkipMap<MigrationEventId, MultiVersionMigrationEvent>,
+	/// MultiVersion source definitions indexed by source ID
+	pub(crate) sources: SkipMap<SourceId, MultiVersionSourceDef>,
+	/// Index from (namespace_id, source_name) to source ID for fast name lookups
+	pub(crate) sources_by_name: SkipMap<(NamespaceId, String), SourceId>,
+	/// MultiVersion sink definitions indexed by sink ID
+	pub(crate) sinks: SkipMap<SinkId, MultiVersionSinkDef>,
+	/// Index from (namespace_id, sink_name) to sink ID for fast name lookups
+	pub(crate) sinks_by_name: SkipMap<(NamespaceId, String), SinkId>,
 	/// User-defined virtual table definitions indexed by ID
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
@@ -244,6 +258,10 @@ impl MaterializedCatalog {
 			migrations: SkipMap::new(),
 			migrations_by_name: SkipMap::new(),
 			migration_events: SkipMap::new(),
+			sources: SkipMap::new(),
+			sources_by_name: SkipMap::new(),
+			sinks: SkipMap::new(),
+			sinks_by_name: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 		}))

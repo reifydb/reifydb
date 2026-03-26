@@ -79,6 +79,7 @@ pub mod tests {
 			namespace,
 			name: name.to_string(),
 			status: FlowStatus::Active,
+			tick: None,
 		}
 	}
 

@@ -74,4 +74,32 @@ mod tests {
 
         test_each_file! { #[tokio::test] async in "./examples/readme/resources_simple/" as simple => run }
     }
+
+    mod ignore {
+        use std::path::Path;
+        use test_each_file::{test_each_file, test_each_path};
+
+        fn test_path(_input: &Path) {}
+        async fn test_async(_input: &str) {}
+
+        test_each_path! {
+            in "./examples/readme/resources_simple"
+            as basic
+            => test_path
+            ignore: {
+                "a" => "Slow test"
+            }
+        }
+
+        test_each_file! {
+            #[tokio::test]
+            async
+            in "./examples/readme/resources_simple"
+            as with_async
+            => test_async
+            ignore {
+                "b" => "Requires setup"
+            }
+        }
+    }
 }

@@ -1,11 +1,16 @@
 use crate::{Error, PackageNotFoundError, UnresolvedPackageGroup};
+use alloc::borrow::Cow;
+use alloc::boxed::Box;
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use anyhow::{Context, Result, bail};
+use core::fmt;
+use core::mem;
 use lex::{Span, Token, Tokenizer};
 use semver::Version;
-use std::borrow::Cow;
-use std::fmt;
-use std::mem;
-use std::path::{Path, PathBuf};
+#[cfg(feature = "std")]
+use std::path::Path;
 
 pub mod lex;
 
@@ -287,13 +292,13 @@ impl<'a> PackageName<'a> {
         let version = parse_opt_version(tokens)?;
         Ok(PackageName {
             docs,
-            span: Span {
-                start: namespace.span.start,
-                end: version
+            span: Span::new(
+                namespace.span.start(),
+                version
                     .as_ref()
-                    .map(|(s, _)| s.end)
-                    .unwrap_or(name.span.end),
-            },
+                    .map(|(s, _)| s.end())
+                    .unwrap_or(name.span.end()),
+            ),
             namespace,
             name,
             version,
@@ -600,10 +605,7 @@ impl<'a> UsePath<'a> {
             Ok(UsePath::Package {
                 id: PackageName {
                     docs: Default::default(),
-                    span: Span {
-                        start: namespace.span.start,
-                        end: pkg_name.span.end,
-                    },
+                    span: Span::new(namespace.span.start(), pkg_name.span.end()),
                     namespace,
                     name: pkg_name,
                     version,
@@ -711,7 +713,7 @@ impl<'a> From<&'a str> for Id<'a> {
     fn from(s: &'a str) -> Id<'a> {
         Id {
             name: s.into(),
-            span: Span { start: 0, end: 0 },
+            span: Default::default(),
         }
     }
 }
@@ -726,7 +728,7 @@ impl<'a> Default for Docs<'a> {
     fn default() -> Self {
         Self {
             docs: Default::default(),
-            span: Span { start: 0, end: 0 },
+            span: Default::default(),
         }
     }
 }
@@ -755,7 +757,7 @@ enum Type<'a> {
     Name(Id<'a>),
     List(List<'a>),
     Map(Map<'a>),
-    FixedSizeList(FixedSizeList<'a>),
+    FixedLengthList(FixedLengthList<'a>),
     Handle(Handle<'a>),
     Resource(Resource<'a>),
     Record(Record<'a>),
@@ -919,7 +921,7 @@ struct Map<'a> {
     value: Box<Type<'a>>,
 }
 
-struct FixedSizeList<'a> {
+struct FixedLengthList<'a> {
     span: Span,
     ty: Box<Type<'a>>,
     size: u32,
@@ -1236,12 +1238,12 @@ fn parse_opt_version(tokens: &mut Tokenizer<'_>) -> Result<Option<(Span, Version
 }
 
 fn parse_version(tokens: &mut Tokenizer<'_>) -> Result<(Span, Version)> {
-    let start = tokens.expect(Token::Integer)?.start;
+    let start = tokens.expect(Token::Integer)?.start();
     tokens.expect(Token::Period)?;
     tokens.expect(Token::Integer)?;
     tokens.expect(Token::Period)?;
-    let end = tokens.expect(Token::Integer)?.end;
-    let mut span = Span { start, end };
+    let end = tokens.expect(Token::Integer)?.end();
+    let mut span = Span::new(start, end);
     eat_ids(tokens, Token::Minus, &mut span)?;
     eat_ids(tokens, Token::Plus, &mut span)?;
     let string = tokens.get_span(span);
@@ -1309,12 +1311,12 @@ fn parse_version(tokens: &mut Tokenizer<'_>) -> Result<(Span, Version)> {
             let mut clone = tokens.clone();
             match clone.next()? {
                 Some((span, Token::Id | Token::Integer | Token::Minus)) => {
-                    end.end = span.end;
+                    end.set_end(span.end());
                     *tokens = clone;
                 }
                 Some((_span, Token::Period)) => match clone.next()? {
                     Some((span, Token::Id | Token::Integer | Token::Minus)) => {
-                        end.end = span.end;
+                        end.set_end(span.end());
                         *tokens = clone;
                     }
                     _ => break Ok(()),
@@ -1335,7 +1337,7 @@ fn parse_docs<'a>(tokens: &mut Tokenizer<'a>) -> Result<Docs<'a>> {
             Token::Comment => {
                 let comment = tokens.get_span(span);
                 if !started {
-                    docs.span.start = span.start;
+                    docs.span.set_start(span.start());
                     started = true;
                 }
                 let trailing_ws = comment
@@ -1343,7 +1345,7 @@ fn parse_docs<'a>(tokens: &mut Tokenizer<'a>) -> Result<Docs<'a>> {
                     .rev()
                     .take_while(|ch| ch.is_ascii_whitespace())
                     .count();
-                docs.span.end = span.end - (trailing_ws as u32);
+                docs.span.set_end(span.end() - (trailing_ws as u32));
                 docs.docs.push(comment.into());
             }
             _ => break,
@@ -1393,14 +1395,14 @@ impl<'a> Type<'a> {
                         let size: u32 = tokens.get_span(span).parse()?;
                         Some(size)
                     } else {
-                        return Err(err_expected(tokens, "fixed size", number).into());
+                        return Err(err_expected(tokens, "fixed-length", number).into());
                     }
                 } else {
                     None
                 };
                 tokens.expect(Token::GreaterThan)?;
                 if let Some(size) = size {
-                    Ok(Type::FixedSizeList(FixedSizeList {
+                    Ok(Type::FixedLengthList(FixedLengthList {
                         span,
                         ty: Box::new(ty),
                         size,
@@ -1538,7 +1540,7 @@ impl<'a> Type<'a> {
             Type::Name(id) => id.span,
             Type::List(l) => l.span,
             Type::Map(m) => m.span,
-            Type::FixedSizeList(l) => l.span,
+            Type::FixedLengthList(l) => l.span,
             Type::Handle(h) => h.span(),
             Type::Resource(r) => r.span,
             Type::Record(r) => r.span,
@@ -1684,17 +1686,16 @@ fn eat_id(tokens: &mut Tokenizer<'_>, expected: &str) -> Result<Span> {
 /// [`UnresolvedPackage`].
 ///
 /// [`UnresolvedPackage`]: crate::UnresolvedPackage
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct SourceMap {
     sources: Vec<Source>,
     offset: u32,
-    require_f32_f64: Option<bool>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Source {
     offset: u32,
-    path: PathBuf,
+    path: String,
     contents: String,
 }
 
@@ -1704,13 +1705,9 @@ impl SourceMap {
         SourceMap::default()
     }
 
-    #[doc(hidden)] // NB: only here for a transitionary period
-    pub fn set_require_f32_f64(&mut self, enable: bool) {
-        self.require_f32_f64 = Some(enable);
-    }
-
     /// Reads the file `path` on the filesystem and appends its contents to this
     /// [`SourceMap`].
+    #[cfg(feature = "std")]
     pub fn push_file(&mut self, path: &Path) -> Result<()> {
         let contents = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read file {path:?}"))?;
@@ -1725,7 +1722,19 @@ impl SourceMap {
     /// used to create the final parsed package namely by unioning all the
     /// interfaces and worlds defined together. Note that each file has its own
     /// personal namespace, however, for top-level `use` and such.
+    #[cfg(feature = "std")]
     pub fn push(&mut self, path: &Path, contents: impl Into<String>) {
+        self.push_str(&path.display().to_string(), contents);
+    }
+
+    /// Appends the given contents with the given source name into this source map.
+    ///
+    /// The `path` provided is not read from the filesystem and is instead only
+    /// used during error messages. Each file added to a [`SourceMap`] is
+    /// used to create the final parsed package namely by unioning all the
+    /// interfaces and worlds defined together. Note that each file has its own
+    /// personal namespace, however, for top-level `use` and such.
+    pub fn push_str(&mut self, path: &str, contents: impl Into<String>) {
         let mut contents = contents.into();
         // Guarantee that there's at least one character in these contents by
         // appending a single newline to the end. This is excluded from
@@ -1736,10 +1745,25 @@ impl SourceMap {
         let new_offset = self.offset + u32::try_from(contents.len()).unwrap();
         self.sources.push(Source {
             offset: self.offset,
-            path: path.to_path_buf(),
+            path: path.to_string(),
             contents,
         });
         self.offset = new_offset;
+    }
+
+    /// Appends all sources from another `SourceMap` into this one.
+    ///
+    /// Returns the byte offset that should be added to all `Span.start` and
+    /// `Span.end` values from the appended source map to make them valid
+    /// in the combined source map.
+    pub fn append(&mut self, other: SourceMap) -> u32 {
+        let base = self.offset;
+        for mut source in other.sources {
+            source.offset += base;
+            self.sources.push(source);
+        }
+        self.offset += other.offset;
+        base
     }
 
     /// Parses the files added to this source map into a
@@ -1760,9 +1784,8 @@ impl SourceMap {
                     // passing through the source to get tokenized.
                     &src.contents[..src.contents.len() - 1],
                     src.offset,
-                    self.require_f32_f64,
                 )
-                .with_context(|| format!("failed to tokenize path: {}", src.path.display()))?;
+                .with_context(|| format!("failed to tokenize path: {}", src.path))?;
                 let mut file = PackageFile::parse(&mut tokens)?;
 
                 // Filter out any nested packages and resolve them separately.
@@ -1778,10 +1801,7 @@ impl SourceMap {
                         AstItem::Package(nested_pkg) => {
                             let mut resolve = Resolver::default();
                             resolve.push(nested_pkg).with_context(|| {
-                                format!(
-                                    "failed to handle nested package in: {}",
-                                    src.path.display()
-                                )
+                                format!("failed to handle nested package in: {}", src.path)
                             })?;
 
                             nested.push(resolve.resolve()?);
@@ -1792,9 +1812,9 @@ impl SourceMap {
 
                 // With nested packages handled push this file into the
                 // resolver.
-                resolver.push(file).with_context(|| {
-                    format!("failed to start resolving path: {}", src.path.display())
-                })?;
+                resolver
+                    .push(file)
+                    .with_context(|| format!("failed to start resolving path: {}", src.path))?;
             }
             Ok(resolver.resolve()?)
         })?;
@@ -1814,25 +1834,11 @@ impl SourceMap {
             Err(e) => e,
         };
         if let Some(parse) = err.downcast_mut::<Error>() {
-            if parse.highlighted.is_none() {
-                let msg = self.highlight_err(parse.span.start, Some(parse.span.end), &parse.msg);
-                parse.highlighted = Some(msg);
-            }
-        }
-        if let Some(_) = err.downcast_mut::<Error>() {
+            parse.highlight(self);
             return Err(err);
         }
         if let Some(notfound) = err.downcast_mut::<PackageNotFoundError>() {
-            if notfound.highlighted.is_none() {
-                let msg = self.highlight_err(
-                    notfound.span.start,
-                    Some(notfound.span.end),
-                    &format!("{notfound}"),
-                );
-                notfound.highlighted = Some(msg);
-            }
-        }
-        if let Some(_) = err.downcast_mut::<PackageNotFoundError>() {
+            notfound.highlight(self);
             return Err(err);
         }
 
@@ -1850,17 +1856,17 @@ impl SourceMap {
         }
 
         if let Some(sort) = err.downcast_mut::<toposort::Error>() {
-            if sort.highlighted().is_none() {
-                let span = match sort {
-                    toposort::Error::NonexistentDep { span, .. }
-                    | toposort::Error::Cycle { span, .. } => *span,
-                };
-                let highlighted = self.highlight_err(span.start, Some(span.end), &sort);
-                sort.set_highlighted(highlighted);
-            }
+            sort.highlight(self);
         }
 
         Err(err)
+    }
+
+    pub(crate) fn highlight_span(&self, span: Span, err: impl fmt::Display) -> Option<String> {
+        if !span.is_known() {
+            return None;
+        }
+        Some(self.highlight_err(span.start(), Some(span.end()), err))
     }
 
     fn highlight_err(&self, start: u32, end: Option<u32>, err: impl fmt::Display) -> String {
@@ -1869,6 +1875,15 @@ impl SourceMap {
         let end = end.map(|end| src.to_relative_offset(end));
         let (line, col) = src.linecol(start);
         let snippet = src.contents.lines().nth(line).unwrap_or("");
+        let line = line + 1;
+        let col = col + 1;
+
+        // If the snippet is too large then don't overload output on a terminal
+        // for example and instead just print the error. This also sidesteps
+        // Rust's restriction that `>0$` below has to be less than `u16::MAX`.
+        if snippet.len() > 500 {
+            return format!("{}:{line}:{col}: {err}", src.path);
+        }
         let mut msg = format!(
             "\
 {err}
@@ -1876,10 +1891,8 @@ impl SourceMap {
       |
  {line:4} | {snippet}
       | {marker:>0$}",
-            col + 1,
-            file = src.path.display(),
-            line = line + 1,
-            col = col + 1,
+            col,
+            file = src.path,
             marker = "^",
         );
         if let Some(end) = end {
@@ -1892,13 +1905,18 @@ impl SourceMap {
         return msg;
     }
 
-    pub(crate) fn render_location(&self, span: Span) -> String {
-        let src = self.source_for_offset(span.start);
-        let start = src.to_relative_offset(span.start);
-        let (line, col) = src.linecol(start);
+    /// Renders a span as a human-readable location string (e.g., "file.wit:10:5").
+    pub fn render_location(&self, span: Span) -> String {
+        if !span.is_known() {
+            return "<unknown>".to_string();
+        }
+        let start = span.start();
+        let src = self.source_for_offset(start);
+        let rel_start = src.to_relative_offset(start);
+        let (line, col) = src.linecol(rel_start);
         format!(
             "{file}:{line}:{col}",
-            file = src.path.display(),
+            file = src.path,
             line = line + 1,
             col = col + 1,
         )
@@ -1913,8 +1931,14 @@ impl SourceMap {
     }
 
     /// Returns an iterator over all filenames added to this source map.
+    #[cfg(feature = "std")]
     pub fn source_files(&self) -> impl Iterator<Item = &Path> {
-        self.sources.iter().map(|src| src.path.as_path())
+        self.sources.iter().map(|src| Path::new(&src.path))
+    }
+
+    /// Returns an iterator over all source names added to this source map.
+    pub fn source_names(&self) -> impl Iterator<Item = &str> {
+        self.sources.iter().map(|src| src.path.as_str())
     }
 }
 
@@ -1944,7 +1968,7 @@ pub enum ParsedUsePath {
 }
 
 pub fn parse_use_path(s: &str) -> Result<ParsedUsePath> {
-    let mut tokens = Tokenizer::new(s, 0, None)?;
+    let mut tokens = Tokenizer::new(s, 0)?;
     let path = UsePath::parse(&mut tokens)?;
     if tokens.next()?.is_some() {
         bail!("trailing tokens in path specifier");

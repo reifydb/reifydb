@@ -152,6 +152,26 @@ impl MockClock {
 	pub fn advance_millis(&self, millis: u64) {
 		self.advance_nanos(millis as u128 * 1_000_000);
 	}
+
+	/// Advance time by seconds
+	pub fn advance_secs(&self, secs: u64) {
+		self.advance_nanos(secs as u128 * 1_000_000_000);
+	}
+
+	/// Advance time by minutes
+	pub fn advance_minutes(&self, minutes: u64) {
+		self.advance_secs(minutes * 60);
+	}
+
+	/// Advance time by hours
+	pub fn advance_hours(&self, hours: u64) {
+		self.advance_secs(hours * 3600);
+	}
+
+	/// Advance time by days
+	pub fn advance_days(&self, days: u64) {
+		self.advance_secs(days * 86400);
+	}
 }
 
 #[derive(Clone)]

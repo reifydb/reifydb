@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::time::Duration;
+
 use reifydb_core::sort::SortDirection;
 use reifydb_type::{
 	error::{AstErrorKind, Error, TypeError},
@@ -30,6 +32,7 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
+	plan::logical::Compiler,
 	token::{
 		keyword::{
 			Keyword,
@@ -209,10 +212,6 @@ impl<'bump> Parser<'bump> {
 			return self.parse_create_authentication(token);
 		}
 
-		if (self.consume_if(TokenKind::Keyword(Keyword::Identity))?).is_some() {
-			return self.parse_create_identity(token);
-		}
-
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
 			return self.parse_create_identity(token);
 		}
@@ -238,6 +237,14 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Migration))?).is_some() {
 			return self.parse_migration(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Source))?).is_some() {
+			return self.parse_source(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Sink))?).is_some() {
+			return self.parse_sink(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -867,6 +874,14 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
+		// Parse optional WITH clause for tick configuration
+		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+			self.advance()?;
+			self.parse_view_tick_with_clause()?
+		} else {
+			None
+		};
+
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
 			// Expect opening curly brace
@@ -913,6 +928,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
+			tick,
 		}))
 	}
 
@@ -928,7 +944,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let storage_kind = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
 
 		// Parse optional AS clause
 		let as_clause = self.parse_view_as_clause()?;
@@ -939,6 +955,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind,
+			tick,
 		}))
 	}
 
@@ -949,6 +966,14 @@ impl<'bump> Parser<'bump> {
 		let columns = self.parse_columns()?;
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
+
+		// Parse optional WITH clause for tick configuration
+		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+			self.advance()?;
+			self.parse_view_tick_with_clause()?
+		} else {
+			None
+		};
 
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -996,6 +1021,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
+			tick,
 		}))
 	}
 
@@ -1011,7 +1037,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let storage_kind = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
 
 		// Parse optional AS clause
 		let as_clause = self.parse_view_as_clause()?;
@@ -1022,6 +1048,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			as_clause,
 			storage_kind,
+			tick,
 		}))
 	}
 
@@ -1984,9 +2011,14 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	fn parse_view_storage_with_clause(&mut self, hint: ViewStorageKindHint) -> Result<AstViewStorageKind> {
+	fn parse_view_storage_with_clause(
+		&mut self,
+		hint: ViewStorageKindHint,
+	) -> Result<(AstViewStorageKind, Option<Duration>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut tick: Option<Duration> = None;
 
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
@@ -2058,11 +2090,14 @@ impl<'bump> Parser<'bump> {
 							}
 							self.consume_operator(Operator::CloseCurly)?;
 						}
+						"tick" => {
+							tick = Some(self.parse_tick_duration()?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'propagate_evictions', or 'partition_by'"
+									expected: "'capacity', 'propagate_evictions', 'partition_by', or 'tick'"
 										.to_string(),
 								},
 								message: format!(
@@ -2090,11 +2125,14 @@ impl<'bump> Parser<'bump> {
 					})
 				})?;
 
-				Ok(AstViewStorageKind::RingBuffer {
-					capacity,
-					propagate_evictions,
-					partition_by,
-				})
+				Ok((
+					AstViewStorageKind::RingBuffer {
+						capacity,
+						propagate_evictions,
+						partition_by,
+					},
+					tick,
+				))
 			}
 			ViewStorageKindHint::Series => {
 				let mut key_column: Option<String> = None;
@@ -2133,11 +2171,15 @@ impl<'bump> Parser<'bump> {
 								}
 							});
 						}
+						"tick" => {
+							tick = Some(self.parse_tick_duration()?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key' or 'precision'".to_string(),
+									expected: "'key', 'precision', or 'tick'"
+										.to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2154,12 +2196,61 @@ impl<'bump> Parser<'bump> {
 				self.consume_operator(Operator::CloseCurly)?;
 
 				let key_column = key_column.unwrap_or_default();
-				Ok(AstViewStorageKind::Series {
-					key_column,
-					precision,
-				})
+				Ok((
+					AstViewStorageKind::Series {
+						key_column,
+						precision,
+					},
+					tick,
+				))
 			}
 		}
+	}
+
+	/// Parse a WITH clause containing only `tick` for table-backed views.
+	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m" }`.
+	fn parse_view_tick_with_clause(&mut self) -> Result<Option<Duration>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut tick: Option<Duration> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"tick" => {
+					tick = Some(self.parse_tick_duration()?);
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'tick'".to_string(),
+						},
+						message: format!("unexpected key '{}' in WITH clause", other),
+						fragment,
+					}));
+				}
+			}
+
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(tick)
+	}
+
+	/// Parse a tick duration value (a string literal like "5m", "1h", "30s").
+	fn parse_tick_duration(&mut self) -> Result<Duration> {
+		let token = self.consume(TokenKind::Literal(Literal::Text))?;
+		let duration_str = token.fragment.text();
+		Compiler::parse_duration(duration_str)
 	}
 }
 

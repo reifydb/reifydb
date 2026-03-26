@@ -6,7 +6,7 @@ pub mod create;
 pub mod drop;
 pub mod mutate;
 
-use std::{collections, fmt, iter::once, marker};
+use std::{collections, fmt, iter::once, marker, time::Duration};
 
 use reifydb_catalog::catalog::{
 	Catalog, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
@@ -85,6 +85,8 @@ pub enum PhysicalPlan<'bump> {
 
 	CreateSeries(nodes::CreateSeriesNode),
 	CreateTag(nodes::CreateTagNode),
+	CreateSource(nodes::CreateSourceNode),
+	CreateSink(nodes::CreateSinkNode),
 	CreateTest(nodes::CreateTestNode),
 	RunTests(nodes::RunTestsNode),
 	CreateMigration(nodes::CreateMigrationNode),
@@ -100,6 +102,8 @@ pub enum PhysicalPlan<'bump> {
 	DropSumType(nodes::DropSumTypeNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
+	DropSource(nodes::DropSourceNode),
+	DropSink(nodes::DropSinkNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
@@ -190,6 +194,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -200,6 +205,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -739,6 +745,14 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_tag(rx, create)?);
 				}
 
+				LogicalPlan::CreateSource(create) => {
+					stack.push(self.compile_create_source(rx, create)?);
+				}
+
+				LogicalPlan::CreateSink(create) => {
+					stack.push(self.compile_create_sink(rx, create)?);
+				}
+
 				LogicalPlan::CreateMigration(create) => {
 					stack.push(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
 						name: create.name,
@@ -803,6 +817,12 @@ impl<'bump> Compiler<'bump> {
 				}
 				LogicalPlan::DropSeries(drop) => {
 					stack.push(self.compile_drop_series(rx, drop)?);
+				}
+				LogicalPlan::DropSource(drop) => {
+					stack.push(self.compile_drop_source(rx, drop)?);
+				}
+				LogicalPlan::DropSink(drop) => {
+					stack.push(self.compile_drop_sink(rx, drop)?);
 				}
 
 				// Auth/Permissions - pass through logical to physical directly

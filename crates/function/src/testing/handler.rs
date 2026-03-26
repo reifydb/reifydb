@@ -25,7 +25,10 @@ impl GeneratorFunction for TestingHandlersInvoked {
 		let invocations = match ctx.txn {
 			Transaction::Test(t) => &**t.handler_invocations,
 			_ => {
-				return Err(internal_error!("testing::handlers::invoked() requires a test transaction").into());
+				return Err(internal_error!(
+					"testing::handlers::invoked() requires a test transaction"
+				)
+				.into());
 			}
 		};
 		let filter_arg = extract_optional_string_arg(&ctx.params);

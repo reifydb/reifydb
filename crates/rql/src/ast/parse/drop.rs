@@ -7,13 +7,15 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			AstDrop, AstDropDictionary, AstDropNamespace, AstDropRingBuffer, AstDropSeries,
-			AstDropSubscription, AstDropSumType, AstDropTable, AstDropView, AstPolicyTargetType,
+			AstDrop, AstDropDictionary, AstDropNamespace, AstDropRingBuffer, AstDropSeries, AstDropSink,
+			AstDropSource, AstDropSubscription, AstDropSumType, AstDropTable, AstDropView,
+			AstPolicyTargetType,
 		},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier,
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSeriesIdentifier,
-			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedViewIdentifier,
+			MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
+			MaybeQualifiedTableIdentifier, MaybeQualifiedViewIdentifier,
 		},
 		parse::Parser,
 	},
@@ -77,9 +79,6 @@ impl<'bump> Parser<'bump> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Authentication))?).is_some() {
 			return self.parse_drop_authentication(token);
 		}
-		if (self.consume_if(TokenKind::Keyword(Keyword::Identity))?).is_some() {
-			return self.parse_drop_identity(token);
-		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
 			return self.parse_drop_identity(token);
 		}
@@ -102,16 +101,22 @@ impl<'bump> Parser<'bump> {
 			self.consume_keyword(Keyword::Policy)?;
 			return self.parse_drop_policy(token, AstPolicyTargetType::Procedure);
 		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Source))?).is_some() {
+			return self.parse_drop_source(token);
+		}
+		if (self.consume_if(TokenKind::Keyword(Keyword::Sink))?).is_some() {
+			return self.parse_drop_sink(token);
+		}
 
 		let fragment = self.current()?.fragment.to_owned();
 		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
-				expected: "AUTHENTICATION, FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES"
+				expected: "AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SOURCE, or SINK"
 					.to_string(),
 			},
 			message: format!(
 				"Unexpected token: expected {}, got {}",
-				"AUTHENTICATION, FLOW, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, or SERIES",
+				"AUTHENTICATION, TABLE, VIEW, RINGBUFFER, NAMESPACE, DICTIONARY, ENUM, SUBSCRIPTION, SERIES, SOURCE, or SINK",
 				fragment.text()
 			),
 			fragment,
@@ -308,6 +313,48 @@ impl<'bump> Parser<'bump> {
 			identifier,
 			cascade,
 		}))
+	}
+
+	fn parse_drop_source(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		self.parse_drop_qualified(
+			token,
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedSourceIdentifier::new(name)
+				} else {
+					MaybeQualifiedSourceIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, source, cascade| {
+				AstDrop::Source(AstDropSource {
+					token,
+					if_exists,
+					source,
+					cascade,
+				})
+			},
+		)
+	}
+
+	fn parse_drop_sink(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
+		self.parse_drop_qualified(
+			token,
+			|name, ns| {
+				if ns.is_empty() {
+					MaybeQualifiedSinkIdentifier::new(name)
+				} else {
+					MaybeQualifiedSinkIdentifier::new(name).with_namespace(ns)
+				}
+			},
+			|token, if_exists, sink, cascade| {
+				AstDrop::Sink(AstDropSink {
+					token,
+					if_exists,
+					sink,
+					cascade,
+				})
+			},
+		)
 	}
 }
 

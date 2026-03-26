@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::transaction::FlowTransaction;
 
@@ -48,6 +51,12 @@ pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
+
+	/// Periodic tick for time-based maintenance (e.g., window eviction).
+	/// Returns Some(Change) with diffs if maintenance produced changes.
+	fn tick(&self, _txn: &mut FlowTransaction, _timestamp: DateTime) -> Result<Option<Change>> {
+		Ok(None)
+	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns>;
 }
@@ -102,6 +111,15 @@ impl Operators {
 			Operators::SourceRingBuffer(op) => op.apply(txn, change),
 			Operators::SourceSeries(op) => op.apply(txn, change),
 			Operators::Custom(op) => op.apply(txn, change),
+		}
+	}
+
+	pub fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
+		match self {
+			Operators::Window(op) => op.tick(txn, timestamp),
+			Operators::Custom(op) => op.tick(txn, timestamp),
+			Operators::Apply(op) => op.tick(txn, timestamp),
+			_ => Ok(None),
 		}
 	}
 

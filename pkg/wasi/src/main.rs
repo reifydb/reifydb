@@ -156,6 +156,7 @@ impl Bridge {
 			operators_dir: None,
 			num_workers: 1,
 			custom_operators: HashMap::new(),
+			connector_registry: Default::default(),
 		};
 		eprintln!("[WASI] Creating FlowSubsystem...");
 		let mut flow_subsystem = FlowSubsystem::new(flow_config, engine.clone(), &ioc_ref);

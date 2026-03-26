@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.85"
 name = "hybrid-array"
-version = "0.4.7"
+version = "0.4.8"
 authors = ["RustCrypto Developers"]
 build = false
 autolib = false
@@ -48,6 +48,10 @@ name = "hybrid_array"
 path = "src/lib.rs"
 
 [[test]]
+name = "ctutils"
+path = "tests/ctutils.rs"
+
+[[test]]
 name = "mod"
 path = "tests/mod.rs"
 
@@ -63,6 +67,10 @@ optional = true
 version = "1"
 optional = true
 default-features = false
+
+[dependencies.ctutils]
+version = "0.4"
+optional = true
 
 [dependencies.serde]
 version = "1"

@@ -127,10 +127,15 @@ pub mod tests {
 			KeyKind::Authentication => {}
 			KeyKind::MigrationEvent => {}
 			KeyKind::Config => {}
-			KeyKind::Token => {} /* When adding a new variant, add it here.
-			                      * The compiler will error if you forget.
-			                      * Then add a test and update should_exclude_from_cdc() if
-			                      * needed. */
+			KeyKind::Token => {}
+			KeyKind::Source => {}
+			KeyKind::NamespaceSource => {}
+			KeyKind::Sink => {}
+			KeyKind::NamespaceSink => {}
+			KeyKind::SourceCheckpoint => {} /* When adding a new variant, add it here.
+			                                 * The compiler will error if you forget.
+			                                 * Then add a test and update should_exclude_from_cdc() if
+			                                 * needed. */
 		}
 	}
 

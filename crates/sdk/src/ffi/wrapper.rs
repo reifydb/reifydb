@@ -22,7 +22,7 @@ use reifydb_abi::{
 	operator::vtable::OperatorVTableFFI,
 };
 use reifydb_core::interface::change::Change;
-use reifydb_type::value::row_number::RowNumber;
+use reifydb_type::value::{datetime::DateTime, row_number::RowNumber};
 use tracing::{Span, error, instrument, warn};
 
 use crate::{
@@ -204,6 +204,52 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 	code
 }
 
+#[instrument(name = "flow::operator::ffi::tick", level = "debug", skip_all, fields(
+	operator_type = any::type_name::<O>(),
+	output_diffs
+))]
+pub extern "C" fn ffi_tick<O: FFIOperator>(
+	instance: *mut c_void,
+	ctx: *mut ContextFFI,
+	timestamp_nanos: u64,
+	output: *mut ChangeFFI,
+) -> i32 {
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
+
+		let mut arena = wrapper.arena.borrow_mut();
+		arena.clear();
+
+		let timestamp = DateTime::from_nanos(timestamp_nanos);
+		let mut op_ctx = OperatorContext::new(ctx);
+
+		match wrapper.operator.tick(&mut op_ctx, timestamp) {
+			Ok(Some(change)) => {
+				Span::current().record("output_diffs", change.diffs.len());
+				marshal_output(&mut arena, &change, output);
+				0 // Success with output
+			}
+			Ok(None) => {
+				1 // Success without output (no-op)
+			}
+			Err(e) => {
+				warn!(?e, "Tick failed");
+				-2
+			}
+		}
+	}));
+
+	let code = result.unwrap_or_else(|e| {
+		error!(?e, "Panic in ffi_tick");
+		-99
+	});
+	if code < 0 {
+		error!(code, "ffi_tick failed - aborting");
+		abort();
+	}
+	code
+}
+
 pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;
@@ -226,6 +272,7 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 	OperatorVTableFFI {
 		apply: ffi_apply::<O>,
 		pull: ffi_pull::<O>,
+		tick: ffi_tick::<O>,
 		destroy: ffi_destroy::<O>,
 	}
 }

@@ -11,7 +11,7 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
-	/// Parse `CREATE IDENTITY name` or `CREATE USER name`
+	/// Parse `CREATE USER name`
 	pub(crate) fn parse_create_identity(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 
@@ -31,7 +31,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	/// Parse `DROP IDENTITY [IF EXISTS] name` or `DROP USER [IF EXISTS] name`
+	/// Parse `DROP USER [IF EXISTS] name`
 	pub(crate) fn parse_drop_identity(&mut self, token: Token<'bump>) -> Result<AstDrop<'bump>> {
 		let if_exists = self.parse_if_exists()?;
 		let name_token = self.consume(TokenKind::Identifier)?;
@@ -68,22 +68,7 @@ mod tests {
 	};
 
 	#[test]
-	fn test_create_identity() {
-		let bump = Bump::new();
-		let source = "CREATE IDENTITY alice";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let stmts = parser.parse().unwrap();
-		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
-		let AstCreate::Identity(identity) = node.as_create() else {
-			panic!("expected CreateIdentity")
-		};
-		assert_eq!(identity.name.text(), "alice");
-	}
-
-	#[test]
-	fn test_create_user_alias() {
+	fn test_create_user() {
 		let bump = Bump::new();
 		let source = "CREATE USER alice";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -113,27 +98,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_drop_identity() {
-		let bump = Bump::new();
-		let source = "DROP IDENTITY alice";
-		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
-		let mut parser = Parser::new(&bump, source, tokens);
-		let stmts = parser.parse().unwrap();
-		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
-		let drop = match node {
-			Ast::Drop(d) => d,
-			_ => panic!("expected Drop"),
-		};
-		let AstDrop::Identity(identity) = drop else {
-			panic!("expected DropIdentity")
-		};
-		assert_eq!(identity.name.text(), "alice");
-		assert!(!identity.if_exists);
-	}
-
-	#[test]
-	fn test_drop_user_alias() {
+	fn test_drop_user() {
 		let bump = Bump::new();
 		let source = "DROP USER alice";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -153,9 +118,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_drop_identity_if_exists() {
+	fn test_drop_user_if_exists() {
 		let bump = Bump::new();
-		let source = "DROP IDENTITY IF EXISTS alice";
+		let source = "DROP USER IF EXISTS alice";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();

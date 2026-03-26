@@ -23,7 +23,9 @@ pub mod flow_operator_inputs;
 pub mod flow_operator_outputs;
 pub mod flow_operators;
 pub mod flows;
+pub mod granted_roles;
 pub mod handlers;
+pub mod identities;
 pub mod migrations;
 pub mod namespaces;
 pub mod operator_retention_policies;
@@ -51,8 +53,6 @@ pub mod tables_virtual;
 pub mod tag_variants;
 pub mod tags;
 pub mod types;
-pub mod user_roles;
-pub mod users;
 pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
@@ -75,7 +75,9 @@ use flow_operator_inputs::flow_operator_inputs;
 use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
 use flows::flows;
+use granted_roles::granted_roles;
 use handlers::handlers;
+use identities::identities;
 use migrations::migrations;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
@@ -102,8 +104,6 @@ use tables_virtual::virtual_tables;
 use tag_variants::tag_variants;
 use tags::tags;
 use types::types;
-use user_roles::user_roles;
-use users::users;
 use versions::versions;
 use views::views;
 use virtual_table_columns::virtual_table_columns;
@@ -565,13 +565,13 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [ID, NAME];
 		}
 
-		pub mod user_roles {
+		pub mod granted_roles {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const USER_ID: ColumnId = ColumnId(1);
+			pub const IDENTITY_ID: ColumnId = ColumnId(1);
 			pub const ROLE_ID: ColumnId = ColumnId(2);
 
-			pub const ALL: [ColumnId; 2] = [USER_ID, ROLE_ID];
+			pub const ALL: [ColumnId; 2] = [IDENTITY_ID, ROLE_ID];
 		}
 
 		pub mod policies {
@@ -642,8 +642,10 @@ pub mod ids {
 		pub const AUTHENTICATION: SequenceId = SequenceId(16);
 		pub const TEST: SequenceId = SequenceId(17);
 		pub const TOKEN: SequenceId = SequenceId(18);
+		pub const SOURCE_CONNECTOR: SequenceId = SequenceId(19);
+		pub const SINK_CONNECTOR: SequenceId = SequenceId(20);
 
-		pub const ALL: [SequenceId; 18] = [
+		pub const ALL: [SequenceId; 20] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -662,6 +664,8 @@ pub mod ids {
 			AUTHENTICATION,
 			TEST,
 			TOKEN,
+			SOURCE_CONNECTOR,
+			SINK_CONNECTOR,
 		];
 	}
 
@@ -707,9 +711,9 @@ pub mod ids {
 		pub const HANDLERS: VTableId = VTableId(37);
 		pub const TAGS: VTableId = VTableId(38);
 		pub const SERIES: VTableId = VTableId(39);
-		pub const USERS: VTableId = VTableId(40);
+		pub const IDENTITIES: VTableId = VTableId(40);
 		pub const ROLES: VTableId = VTableId(41);
-		pub const USER_ROLES: VTableId = VTableId(42);
+		pub const GRANTED_ROLES: VTableId = VTableId(42);
 		pub const POLICIES: VTableId = VTableId(43);
 		pub const POLICY_OPERATIONS: VTableId = VTableId(44);
 		pub const MIGRATIONS: VTableId = VTableId(45);
@@ -760,9 +764,9 @@ pub mod ids {
 			HANDLERS,
 			TAGS,
 			SERIES,
-			USERS,
+			IDENTITIES,
 			ROLES,
-			USER_ROLES,
+			GRANTED_ROLES,
 			POLICIES,
 			POLICY_OPERATIONS,
 			MIGRATIONS,
@@ -1008,9 +1012,9 @@ impl SystemCatalog {
 		series()
 	}
 
-	/// Get the users virtual table definition
-	pub fn get_system_users_table_def() -> Arc<VTableDef> {
-		users()
+	/// Get the identities virtual table definition
+	pub fn get_system_identities_table_def() -> Arc<VTableDef> {
+		identities()
 	}
 
 	/// Get the roles virtual table definition
@@ -1018,9 +1022,9 @@ impl SystemCatalog {
 		roles()
 	}
 
-	/// Get the user_roles virtual table definition
-	pub fn get_system_user_roles_table_def() -> Arc<VTableDef> {
-		user_roles()
+	/// Get the granted_roles virtual table definition
+	pub fn get_system_granted_roles_table_def() -> Arc<VTableDef> {
+		granted_roles()
 	}
 
 	/// Get the policies virtual table definition

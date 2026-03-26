@@ -29,6 +29,8 @@ pub mod resolve;
 pub mod ringbuffer;
 pub mod sequence;
 pub mod series;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;

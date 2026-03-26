@@ -2,6 +2,108 @@
 
 ## [Unreleased]
 
+## [v0.7.11]
+
+* Add utility functions to visit a list or an associative array for URI template
+  expansion.
+* Add methods to replace host in allocated IRI string types.
+* Support creating a `build::Builder` from IRI reference types.
+* Add `percent_encode::decode::decode_whatwg_bytes()` and related types for
+  percent-decoding by the user.
+* Add a syntax checker for `reg-name` and `ireg-name` syntax.
+* doc: Add a guidance to apply IDNA conversion to IRI types.
+* internal refactoring: Reduce redundant validation of string type conversions.
+
+### Added
+* Add utility functions to visit a list or an associative array for URI template
+  expansion.
+    + List of added trait methods:
+        + `template::context::Visitor::visit_list_direct()`
+        + `template::context::Visitor::visit_assoc_direct()`
+* Add methods to replace host in allocated IRI string types.
+    + In summary, added `{,try_}replace_host{,_reg_name}` methods to types
+      that can contain authorities (i.e.,
+      `Ri{Absolute,Reference,Relative,}String`).
+    + List of added methods:
+        + `types::generic::RiAbsoluteString::replace_host`
+        + `types::generic::RiAbsoluteString::replace_host_reg_name`
+        + `types::generic::RiAbsoluteString::try_replace_host`
+        + `types::generic::RiAbsoluteString::try_replace_host_reg_name`
+        + `types::generic::RiReferenceString::replace_host`
+        + `types::generic::RiReferenceString::replace_host_reg_name`
+        + `types::generic::RiReferenceString::try_replace_host`
+        + `types::generic::RiReferenceString::try_replace_host_reg_name`
+        + `types::generic::RiRelativeString::replace_host`
+        + `types::generic::RiRelativeString::replace_host_reg_name`
+        + `types::generic::RiRelativeString::try_replace_host`
+        + `types::generic::RiRelativeString::try_replace_host_reg_name`
+        + `types::generic::RiString::replace_host`
+        + `types::generic::RiString::replace_host_reg_name`
+        + `types::generic::RiString::try_replace_host`
+        + `types::generic::RiString::try_replace_host_reg_name`
+* Support creating a `build::Builder` from IRI reference types.
+    + List of added trait impls:
+        + `From<types::RiAbsoluteStr<S>> for build::Builder<'_>`
+        + `From<types::RiReferenceStr<S>> for build::Builder<'_>`
+        + `From<types::RiRelativeStr<S>> for build::Builder<'_>`
+        + `From<types::RiStr<S>> for build::Builder<'_>`
+* Add `percent_encode::decode::decode_whatwg_bytes()` and related types for
+  percent-decoding by the user.
+    + List of added items:
+        + `percent_decode::decode::decode_whatwg_bytes()` function
+        + `percent_decode::decode::PercentDecodedWhatwgBytyes` type
+        + `percent_decode::decode::DecodedFragment` type
+        + `percent_decode::decode::PercentDecodedBytesFragment` iterator type
+* Add a syntax checker for `reg-name` and `ireg-name` syntax.
+    + List of added functions:
+        - `validate::reg_name()`
+* doc: Add a guidance to apply IDNA conversion to IRI types.
+    + See the module documentation for `types::generic`.
+
+### Changed (non-breaking)
+* internal refactoring: Reduce redundant validation of string type conversions.
+    + Previously, syntax validations had sometimes run again on the already
+      validated or always valid strings.
+    + This change will improve performance a bit for some string conversions.
+
+## [0.7.10]
+
+* Add syntax checkers for more components of URIs/IRIs.
+* Put detailed info into `validate::Error` type.
+* Fix `validate::path()` function to accept paths starting with `//`.
+* Update links to IETF RFC documents.
+
+### Added
+* Add syntax checkers for more components of URIs/IRIs.
+    + List of added functions:
+        + `validate::scheme()`
+        + `validate::authority()`
+        + `validate::host()`
+        + `validate::port()`
+        + `validate::userinfo()`
+        + `validate::path_segment()`
+    + Note that functions for `path`, `query`, and `fragment` components have
+      already been provided.
+
+### Changed (non-breaking)
+* Put detailed info into `validate::Error` type.
+    + Now `validate::Error` type will provide a little more detailed error info
+      through `Display` and `ToString`.
+    + Note that the messages or the categorization is not guaranteed to be
+      stable. For now this is purely hint for human, and that is why the error
+      kind is not a public type.
+
+### Fixed
+* Fix `validate::path()` function to accept paths starting with `//`.
+    + Paths such as `//foo/bar` are valid although they cannot be used in some
+      contexts.
+* Update links to IETF RFC documents.
+    + Links to the old domain `tools.ietf.org` has redirect, but the redirection
+      truncates the fragment, so the links to the specific sections of documents
+      had not been working as expected.
+    + Now such links are updated to point to `www.rfc-editor.org`, so the links
+      in the documents and comments must be working as expected.
+
 ## [0.7.9]
 
 * Fix decoding of percent-encoded invalid UTF-8 bytes.
@@ -1024,7 +1126,9 @@ Beleive rustdoc rather than this CHANGELOG.**
 
 Totally rewritten.
 
-[Unreleased]: <https://github.com/lo48576/iri-string/compare/v0.7.9...develop>
+[Unreleased]: <https://github.com/lo48576/iri-string/compare/v0.7.11...develop>
+[0.7.11]: <https://github.com/lo48576/iri-string/releases/tag/v0.7.11>
+[0.7.10]: <https://github.com/lo48576/iri-string/releases/tag/v0.7.10>
 [0.7.9]: <https://github.com/lo48576/iri-string/releases/tag/v0.7.9>
 [0.7.8]: <https://github.com/lo48576/iri-string/releases/tag/v0.7.8>
 [0.7.7]: <https://github.com/lo48576/iri-string/releases/tag/v0.7.7>

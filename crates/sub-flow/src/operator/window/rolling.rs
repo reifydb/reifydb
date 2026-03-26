@@ -3,7 +3,9 @@
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
+	encoded::key::EncodedKey,
 	interface::change::{Change, Diff},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
@@ -37,6 +39,64 @@ impl WindowOperator {
 			}
 			_ => {}
 		}
+	}
+
+	/// Tick-based eviction for duration-based rolling windows.
+	/// Scans all operator state, finds "win:" keys, and evicts old events.
+	pub fn tick_rolling_eviction(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
+		let mut result = Vec::new();
+
+		let all_state = txn.state_scan(self.node)?;
+		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
+		let win_marker = b"win:";
+
+		for item in &all_state.items {
+			let full_key = &item.key;
+			if full_key.len() <= prefix.len() {
+				continue;
+			}
+			let inner = &full_key[prefix.len()..];
+			if !inner.starts_with(win_marker) {
+				continue;
+			}
+
+			let window_key = EncodedKey::new(inner);
+			let mut state = self.load_window_state(txn, &window_key)?;
+			if state.events.is_empty() {
+				continue;
+			}
+			let layout = match &state.window_layout {
+				Some(l) => l.clone(),
+				None => continue,
+			};
+
+			let old_agg = self.apply_aggregations(txn, &window_key, &layout, &state.events)?;
+			let old_count = state.events.len();
+			self.evict_old_events(&mut state, current_timestamp);
+
+			if state.events.len() < old_count {
+				if state.events.is_empty() {
+					self.save_window_state(txn, &window_key, &state)?;
+					if let Some((row, _)) = old_agg {
+						result.push(Diff::Remove {
+							pre: Columns::from_row(&row),
+						});
+					}
+				} else {
+					let new_agg =
+						self.apply_aggregations(txn, &window_key, &layout, &state.events)?;
+					self.save_window_state(txn, &window_key, &state)?;
+					if let (Some((old_row, _)), Some((new_row, _))) = (old_agg, new_agg) {
+						result.push(Diff::Update {
+							pre: Columns::from_row(&old_row),
+							post: Columns::from_row(&new_row),
+						});
+					}
+				}
+			}
+		}
+
+		Ok(result)
 	}
 }
 

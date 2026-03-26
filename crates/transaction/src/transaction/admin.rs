@@ -174,10 +174,7 @@ impl AdminTransaction {
 
 	/// Read accumulator entries from a given offset without draining.
 	/// Used by testing::*::changed() to read mutations since the baseline.
-	pub fn accumulator_entries_from(
-		&self,
-		offset: usize,
-	) -> &[(PrimitiveId, Diff)] {
+	pub fn accumulator_entries_from(&self, offset: usize) -> &[(PrimitiveId, Diff)] {
 		self.accumulator.entries_from(offset)
 	}
 

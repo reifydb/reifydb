@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNodeId},
@@ -23,6 +23,7 @@ pub struct FlowDag {
 pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
+	pub tick: Option<Duration>,
 }
 
 impl Deref for FlowDag {
@@ -37,6 +38,7 @@ impl Deref for FlowDag {
 pub struct FlowBuilder {
 	id: FlowId,
 	graph: DirectedGraph<FlowNode>,
+	tick: Option<Duration>,
 }
 
 impl FlowBuilder {
@@ -45,7 +47,14 @@ impl FlowBuilder {
 		Self {
 			id: id.into(),
 			graph: DirectedGraph::new(),
+			tick: None,
 		}
+	}
+
+	/// Set the tick duration for this flow
+	pub fn tick(mut self, tick: Option<Duration>) -> Self {
+		self.tick = tick;
+		self
 	}
 
 	/// Get the flow ID
@@ -92,6 +101,7 @@ impl FlowBuilder {
 			inner: Arc::new(Inner {
 				id: self.id,
 				graph: self.graph,
+				tick: self.tick,
 			}),
 		}
 	}
@@ -131,6 +141,11 @@ impl FlowDag {
 	/// Get the number of edges in the flow
 	pub fn edge_count(&self) -> usize {
 		self.inner.graph.edge_count()
+	}
+
+	/// Get the tick duration for this flow, if configured.
+	pub fn tick(&self) -> Option<Duration> {
+		self.inner.tick
 	}
 
 	/// Check whether this flow has a subscription sink.

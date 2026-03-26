@@ -7,7 +7,7 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_type::value::blob::Blob;
+use reifydb_type::value::{blob::Blob, duration::Duration};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use crate::interface::catalog::id::NamespaceId;
@@ -260,6 +260,7 @@ pub struct FlowDef {
 	pub namespace: NamespaceId,
 	pub name: String,
 	pub status: FlowStatus,
+	pub tick: Option<Duration>,
 }
 
 /// Catalog definition for a flow node

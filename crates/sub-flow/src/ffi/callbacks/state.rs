@@ -61,7 +61,7 @@ pub(super) extern "C" fn host_state_get(
 		match result {
 			Ok(Some(value)) => {
 				// Copy value to output buffer
-				let value_bytes = value.as_ref();
+				let value_bytes = value.as_slice();
 				let value_ptr = host_alloc(value_bytes.len());
 				if value_ptr.is_null() {
 					return FFI_ERROR_ALLOC;

@@ -251,7 +251,7 @@ pub mod tests {
 
 		// Verify we got all the expected values
 		for i in 0..5 {
-			assert_eq!(entries[i].1.as_ref()[0], i as u8);
+			assert_eq!(entries[i].1.as_slice()[0], i as u8);
 		}
 	}
 

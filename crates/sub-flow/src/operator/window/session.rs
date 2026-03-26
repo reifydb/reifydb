@@ -7,6 +7,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::change::{Change, Diff},
 	internal,
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 	util::encoding::keycode::serializer::KeySerializer,
 	value::column::columns::Columns,
 };
@@ -69,6 +70,59 @@ impl WindowOperator {
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 		self.save_state(txn, &tracker_key, state_row)
+	}
+
+	/// Tick-based session expiration.
+	/// Scans all operator state, finds "win:" keys with expired sessions.
+	pub fn tick_session_expiration(&self, txn: &mut FlowTransaction, current_timestamp: u64) -> Result<Vec<Diff>> {
+		let mut result = Vec::new();
+		let gap_ms = self.session_gap_ms();
+		if gap_ms == 0 {
+			return Ok(result);
+		}
+
+		let all_state = txn.state_scan(self.node)?;
+		let prefix = FlowNodeStateKey::new(self.node, vec![]).encode();
+		let win_marker = b"win:";
+
+		let mut keys_to_clear = Vec::new();
+
+		for item in &all_state.items {
+			let full_key = &item.key;
+			if full_key.len() <= prefix.len() {
+				continue;
+			}
+			let inner = &full_key[prefix.len()..];
+			if !inner.starts_with(win_marker) {
+				continue;
+			}
+
+			let window_key = EncodedKey::new(inner);
+			let state = self.load_window_state(txn, &window_key)?;
+			if state.events.is_empty() || state.last_event_time == 0 {
+				continue;
+			}
+
+			if current_timestamp.saturating_sub(state.last_event_time) > gap_ms {
+				if let Some(layout) = &state.window_layout {
+					if let Some((row, _)) =
+						self.apply_aggregations(txn, &window_key, layout, &state.events)?
+					{
+						result.push(Diff::Remove {
+							pre: Columns::from_row(&row),
+						});
+					}
+				}
+				keys_to_clear.push(window_key);
+			}
+		}
+
+		for key in &keys_to_clear {
+			let empty = self.create_state();
+			self.save_state(txn, key, empty)?;
+		}
+
+		Ok(result)
 	}
 }
 

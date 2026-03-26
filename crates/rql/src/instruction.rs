@@ -167,6 +167,8 @@ pub enum Instruction {
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
+	CreateSource(nodes::CreateSourceNode),
+	CreateSink(nodes::CreateSinkNode),
 	CreateTest(CreateTestNode),
 	AssertBlock(nodes::AssertBlockNode),
 
@@ -187,6 +189,8 @@ pub enum Instruction {
 	DropSumType(nodes::DropSumTypeNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
+	DropSource(nodes::DropSourceNode),
+	DropSink(nodes::DropSinkNode),
 
 	// === Auth/Permissions ===
 	CreateIdentity(nodes::CreateIdentityNode),

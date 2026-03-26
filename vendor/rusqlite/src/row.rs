@@ -126,8 +126,8 @@ impl<F, B> FallibleIterator for Map<'_, F>
 where
     F: FnMut(&Row<'_>) -> Result<B>,
 {
-    type Error = Error;
     type Item = B;
+    type Error = Error;
 
     #[inline]
     fn next(&mut self) -> Result<Option<B>> {
@@ -208,8 +208,8 @@ where
 /// }
 /// ```
 impl<'stmt> FallibleStreamingIterator for Rows<'stmt> {
-    type Error = Error;
     type Item = Row<'stmt>;
+    type Error = Error;
 
     #[inline]
     fn advance(&mut self) -> Result<()> {
@@ -292,6 +292,7 @@ impl Row<'_> {
                 value.data_type(),
             ),
             FromSqlError::OutOfRange(i) => Error::IntegralValueOutOfRange(idx, i),
+            FromSqlError::Utf8Error(err) => Error::Utf8Error(idx, err),
             FromSqlError::Other(err) => {
                 Error::FromSqlConversionFailure(idx, value.data_type(), err)
             }
@@ -343,6 +344,27 @@ impl Row<'_> {
     #[track_caller]
     pub fn get_ref_unwrap<I: RowIndex>(&self, idx: I) -> ValueRef<'_> {
         self.get_ref(idx).unwrap()
+    }
+
+    /// Return raw pointer at `idx`
+    /// # Safety
+    /// This function is unsafe because it uses raw pointer and cast
+    #[cfg(feature = "pointer")]
+    pub unsafe fn get_pointer<I: RowIndex, T: 'static>(
+        &self,
+        idx: I,
+        ptr_type: &'static std::ffi::CStr,
+    ) -> Result<Option<&T>> {
+        let idx = idx.idx(self.stmt)?;
+        debug_assert_eq!(self.stmt.stmt.column_type(idx), super::ffi::SQLITE_NULL);
+        let sv = super::ffi::sqlite3_column_value(self.stmt.stmt.ptr(), idx as std::ffi::c_int);
+        Ok(if sv.is_null() {
+            None
+        } else {
+            super::ffi::sqlite3_value_pointer(sv, ptr_type.as_ptr())
+                .cast::<T>()
+                .as_ref()
+        })
     }
 }
 
@@ -463,6 +485,9 @@ tuples_try_from_row!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    use wasm_bindgen_test::wasm_bindgen_test as test;
+
     use crate::{Connection, Result};
 
     #[test]
@@ -636,6 +661,20 @@ mod tests {
             s,
             r#"{"name": (Text, "Lisa"), "id": (Integer, 1), "pi": (Real, 3.14), "blob": (Blob, 6), "void": (Null, ())}"#
         );
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "pointer")]
+    fn test_pointer() -> Result<()> {
+        use crate::ffi::fts5_api;
+        use crate::types::ToSqlOutput;
+        const PTR_TYPE: &std::ffi::CStr = c"fts5_api_ptr";
+        let p_ret: *mut fts5_api = std::ptr::null_mut();
+        let ptr = ToSqlOutput::Pointer((&p_ret as *const *mut fts5_api as _, PTR_TYPE, None));
+        let db = Connection::open_in_memory()?;
+        db.query_row("SELECT fts5(?)", [ptr], |_| Ok(()))?;
+        assert!(!p_ret.is_null());
         Ok(())
     }
 }

@@ -133,9 +133,9 @@ pub mod tests {
 
 		// Should get keys 02, 03, 04 (not 05 as end is exclusive)
 		assert_eq!(range_result.len(), 3);
-		assert_eq!(range_result[0].1.as_ref()[0], 2);
-		assert_eq!(range_result[1].1.as_ref()[0], 3);
-		assert_eq!(range_result[2].1.as_ref()[0], 4);
+		assert_eq!(range_result[0].1.as_slice()[0], 2);
+		assert_eq!(range_result[1].1.as_slice()[0], 3);
+		assert_eq!(range_result[2].1.as_slice()[0], 4);
 	}
 
 	#[test]

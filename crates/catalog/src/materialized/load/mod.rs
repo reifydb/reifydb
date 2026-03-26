@@ -13,6 +13,8 @@ pub mod primary_key;
 pub mod primitive_retention_policy;
 pub mod ringbuffer;
 pub mod role;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
@@ -31,6 +33,8 @@ use primitive_retention_policy::load_source_retention_policies;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
+use sink::load_sinks;
+use source::load_sources;
 use subscription::load_subscriptions;
 use sumtype::load_sumtypes;
 use table::load_tables;
@@ -77,6 +81,9 @@ impl MaterializedCatalogLoader {
 		load_sumtypes(rx, catalog)?;
 
 		load_subscriptions(rx, catalog)?;
+
+		load_sources(rx, catalog)?;
+		load_sinks(rx, catalog)?;
 
 		load_identities(rx, catalog)?;
 		load_roles(rx, catalog)?;

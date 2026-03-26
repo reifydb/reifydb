@@ -37,14 +37,16 @@ use super::{
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
 				property::create_column_property, remote_namespace::create_remote_namespace,
-				ringbuffer::create_ringbuffer, series::create_series,
-				subscription::create_subscription, sumtype::create_sumtype, table::create_table,
-				tag::create_tag, test::create_test, transactional::create_transactional_view,
+				ringbuffer::create_ringbuffer, series::create_series, sink::create_sink,
+				source::create_source, subscription::create_subscription, sumtype::create_sumtype,
+				table::create_table, tag::create_tag, test::create_test,
+				transactional::create_transactional_view,
 			},
 			drop::{
 				dictionary::drop_dictionary, namespace::drop_namespace, ringbuffer::drop_ringbuffer,
-				series::drop_series, subscription::drop_subscription, sumtype::drop_sumtype,
-				table::drop_table, view::drop_view,
+				series::drop_series, sink::drop_sink, source::drop_source,
+				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
+				view::drop_view,
 			},
 			migrate::{migrate::execute_migrate, rollback::execute_rollback_migration},
 		},
@@ -1393,6 +1395,54 @@ impl Vm {
 						}
 					};
 					let columns = create_tag(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateSource(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_source(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateSink(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_sink(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropSource(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_source(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropSink(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_sink(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateTest(node) => {

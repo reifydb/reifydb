@@ -1,7 +1,6 @@
 [package]
 name = "hashlink"
-version = "0.10.0"
-authors = ["kyren <kerriganw@gmail.com>"]
+version = "0.11.0"
 edition = "2018"
 description = "HashMap-like containers that hold their key-value pairs in a user controllable order"
 repository = "https://github.com/kyren/hashlink"
@@ -18,7 +17,7 @@ circle-ci = { repository = "kyren/hashlink", branch = "master" }
 serde_impl = ["serde"]
 
 [dependencies]
-hashbrown = { version = "0.15", default-features = false, features = ["default-hasher", "inline-more"] }
+hashbrown = { version = "0.16", default-features = false, features = ["default-hasher"] }
 serde = { version = "1.0", default-features = false, optional = true }
 
 [dev-dependencies]

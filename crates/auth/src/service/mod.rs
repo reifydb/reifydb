@@ -74,6 +74,23 @@ impl Default for AuthServiceConfig {
 	}
 }
 
+impl AuthServiceConfig {
+	pub fn session_ttl(mut self, ttl: Duration) -> Self {
+		self.session_ttl = Some(ttl);
+		self
+	}
+
+	pub fn no_session_ttl(mut self) -> Self {
+		self.session_ttl = None;
+		self
+	}
+
+	pub fn challenge_ttl(mut self, ttl: Duration) -> Self {
+		self.challenge_ttl = ttl;
+		self
+	}
+}
+
 pub struct Inner {
 	pub(crate) engine: Arc<dyn AuthEngine>,
 	pub(crate) auth_registry: Arc<AuthenticationRegistry>,

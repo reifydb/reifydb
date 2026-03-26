@@ -7,7 +7,10 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	value::column::columns::Columns,
 };
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{
 	operator::{BoxedOperator, Operator, Operators},
@@ -37,6 +40,10 @@ impl Operator for ApplyOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		self.inner.apply(txn, change)
+	}
+
+	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
+		self.inner.tick(txn, timestamp)
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {

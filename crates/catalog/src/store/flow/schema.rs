@@ -10,6 +10,7 @@ pub(crate) mod flow {
 	pub(crate) const NAMESPACE: usize = 1;
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const STATUS: usize = 3;
+	pub(crate) const TICK_NANOS: usize = 4;
 
 	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
 		Schema::new(vec![
@@ -17,6 +18,7 @@ pub(crate) mod flow {
 			SchemaField::unconstrained("namespace", Type::Uint8),
 			SchemaField::unconstrained("name", Type::Utf8),
 			SchemaField::unconstrained("status", Type::Uint1),
+			SchemaField::unconstrained("tick_nanos", Type::Uint8),
 		])
 	});
 }

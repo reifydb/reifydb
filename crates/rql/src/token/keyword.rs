@@ -149,7 +149,6 @@ Test => "TEST",
 Tests => "TESTS",
 Run => "RUN",
 User => "USER",
-Identity => "IDENTITY",
 Role => "ROLE",
 Grant => "GRANT",
 Revoke => "REVOKE",
@@ -168,6 +167,8 @@ Contains => "CONTAINS",
 Remote => "REMOTE",
 Error => "ERROR",
 Returning => "RETURNING",
+Source => "SOURCE",
+Sink => "SINK",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -256,7 +257,6 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("TESTS", Keyword::Tests);
 	map.insert("RUN", Keyword::Run);
 	map.insert("USER", Keyword::User);
-	map.insert("IDENTITY", Keyword::Identity);
 	map.insert("ROLE", Keyword::Role);
 	map.insert("GRANT", Keyword::Grant);
 	map.insert("REVOKE", Keyword::Revoke);
@@ -275,6 +275,8 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("REMOTE", Keyword::Remote);
 	map.insert("ERROR", Keyword::Error);
 	map.insert("RETURNING", Keyword::Returning);
+	map.insert("SOURCE", Keyword::Source);
+	map.insert("SINK", Keyword::Sink);
 	map
 });
 
@@ -456,6 +458,8 @@ pub mod tests {
 	test_keyword_test => (Test, "TEST"),
 	test_keyword_tests => (Tests, "TESTS"),
 	test_keyword_run => (Run, "RUN"),
+	test_keyword_source => (Source, "SOURCE"),
+	test_keyword_sink => (Sink, "SINK"),
 	}
 
 	fn check_no_keyword(repr: &str) {
@@ -598,6 +602,8 @@ pub mod tests {
 	test_not_keyword_test => ( "test"),
 	test_not_keyword_tests => ( "tests"),
 	test_not_keyword_run => ( "run"),
+	test_not_keyword_source => ( "source"),
+	test_not_keyword_sink => ( "sink"),
 	}
 
 	#[test]

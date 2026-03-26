@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::Index;
+use std::{ops::Index, time::Duration};
 
 use reifydb_core::{
 	common::{IndexType, JoinType},
@@ -11,12 +11,12 @@ use reifydb_core::{
 use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
-		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
 		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
-		MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-		MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier, UnqualifiedIdentifier,
-		UnresolvedPrimitiveIdentifier,
+		MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
+		MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+		MaybeQualifiedViewIdentifier, UnqualifiedIdentifier, UnresolvedPrimitiveIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -467,6 +467,8 @@ pub enum AstCreate<'bump> {
 	Policy(AstCreatePolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
 	Test(AstCreateTest<'bump>),
+	Source(AstCreateSource<'bump>),
+	Sink(AstCreateSink<'bump>),
 }
 
 #[derive(Debug)]
@@ -512,6 +514,8 @@ pub enum AstDrop<'bump> {
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
+	Source(AstDropSource<'bump>),
+	Sink(AstDropSink<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -579,6 +583,46 @@ pub struct AstDropSubscription<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSource<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub source: MaybeQualifiedSourceIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSink<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub sink: MaybeQualifiedSinkIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct AstConfigPair<'bump> {
+	pub key: BumpFragment<'bump>,
+	pub value: Ast<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateSource<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedSourceIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+	pub target: MaybeQualifiedIdentifier<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateSink<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedSinkIdentifier<'bump>,
+	pub source: MaybeQualifiedIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstAlterSequence<'bump> {
 	pub token: Token<'bump>,
 	pub sequence: MaybeQualifiedSequenceIdentifier<'bump>,
@@ -621,6 +665,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -630,6 +675,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -906,6 +952,8 @@ impl_token_for_enum!(AstCreate, 'bump,
 	Policy(AstCreatePolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
 	Test(AstCreateTest<'bump>),
+	Source(AstCreateSource<'bump>),
+	Sink(AstCreateSink<'bump>),
 );
 
 impl_token_for_enum!(AstAlter, 'bump,
@@ -928,6 +976,8 @@ impl_token_for_enum!(AstDrop, 'bump,
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
+	Source(AstDropSource<'bump>),
+	Sink(AstDropSink<'bump>),
 );
 
 #[derive(Debug)]

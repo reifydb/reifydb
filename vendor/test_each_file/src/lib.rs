@@ -1,7 +1,7 @@
 #![doc = include_str!("../README.md")]
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -18,6 +18,7 @@ struct TestEachArgs {
     extensions: Vec<String>,
     attributes: Vec<Meta>,
     async_fn: Option<Async>,
+    ignore_patterns: IgnorePatterns,
 }
 
 macro_rules! abort {
@@ -30,6 +31,68 @@ macro_rules! abort_token_stream {
     ($span:expr, $message:expr) => {
         return syn::Error::new($span, $message).into_compile_error().into()
     };
+}
+
+#[derive(Default)]
+struct IgnorePatterns {
+    patterns: HashMap<String, String>,
+}
+
+impl Parse for IgnorePatterns {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        if !input
+            .fork()
+            .parse::<Ident>()
+            .ok()
+            .is_some_and(|id| id == "ignore")
+        {
+            return Ok(IgnorePatterns::default());
+        }
+        let _: Ident = input.parse().unwrap();
+
+        // Optional ":" separator
+        let _ = input.parse::<Token![:]>();
+
+        let content;
+        syn::braced!(content in input);
+
+        let mut patterns = HashMap::new();
+        while !content.is_empty() {
+            let key: LitStr = match content.parse() {
+                Ok(k) => k,
+                Err(e) => abort!(
+                    e.span(),
+                    "Expected a string literal for ignore pattern name."
+                ),
+            };
+
+            if let Err(e) = content.parse::<Token![=>]>() {
+                abort!(e.span(), "Expected `=>` after ignore pattern name.");
+            }
+
+            let reason: LitStr = match content.parse() {
+                Ok(r) => r,
+                Err(e) => abort!(e.span(), "Expected a string literal for ignore reason."),
+            };
+
+            patterns.insert(key.value(), reason.value());
+
+            // Optional comma
+            let _ = content.parse::<Token![,]>();
+        }
+
+        Ok(IgnorePatterns { patterns })
+    }
+}
+
+impl IgnorePatterns {
+    /// Check if a given name should be ignored
+    ///
+    /// Returns Some(reason) if ignored, or None if not ignored
+    fn should_ignore(&self, name: &str) -> Option<String> {
+        let lookup_name = name.strip_prefix("r#").unwrap_or(name);
+        self.patterns.get(lookup_name).cloned()
+    }
 }
 
 impl Parse for TestEachArgs {
@@ -107,6 +170,9 @@ impl Parse for TestEachArgs {
             Err(e) => abort!(e.span(), "Expected a function to call after `=>`."),
         };
 
+        // Optionally parse ignore patterns if the keyword `ignore` is used.
+        let ignore_patterns = IgnorePatterns::parse(input)?;
+
         Ok(Self {
             path,
             module,
@@ -114,14 +180,15 @@ impl Parse for TestEachArgs {
             extensions,
             attributes,
             async_fn,
+            ignore_patterns,
         })
     }
 }
 
 #[derive(Default)]
 struct Tree {
-    children: HashMap<PathBuf, Tree>,
-    here: HashSet<PathBuf>,
+    children: BTreeMap<PathBuf, Tree>,
+    here: BTreeSet<PathBuf>,
 }
 
 impl Tree {
@@ -267,6 +334,12 @@ fn generate_from_tree(
         for attribute in &parsed.attributes {
             stream.extend(quote! {
                 #[#attribute]
+            });
+        }
+
+        if let Some(reason) = parsed.ignore_patterns.should_ignore(&file_name.to_string()) {
+            stream.extend(quote! {
+                #[ignore = #reason]
             });
         }
 

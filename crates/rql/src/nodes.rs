@@ -26,7 +26,10 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId, r#type::Type},
+	value::{
+		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, sumtype::SumTypeId,
+		r#type::Type,
+	},
 };
 
 use crate::{
@@ -171,6 +174,7 @@ pub struct CreateDeferredViewNode {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -181,6 +185,7 @@ pub struct CreateTransactionalViewNode {
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -327,6 +332,53 @@ pub struct CreateTagNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
 	pub variants: Vec<CreateSumTypeVariant>,
+}
+
+/// A resolved key-value config pair
+#[derive(Debug, Clone)]
+pub struct ConfigPair {
+	pub key: Fragment,
+	pub value: Fragment,
+}
+
+/// Physical node for CREATE SOURCE
+#[derive(Debug, Clone)]
+pub struct CreateSourceNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub connector: Fragment,
+	pub config: Vec<ConfigPair>,
+	pub target_namespace: Namespace,
+	pub target_name: Fragment,
+}
+
+/// Physical node for CREATE SINK
+#[derive(Debug, Clone)]
+pub struct CreateSinkNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub source_namespace: Namespace,
+	pub source_name: Fragment,
+	pub connector: Fragment,
+	pub config: Vec<ConfigPair>,
+}
+
+/// Physical node for DROP SOURCE
+#[derive(Debug, Clone)]
+pub struct DropSourceNode {
+	pub if_exists: bool,
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub cascade: bool,
+}
+
+/// Physical node for DROP SINK
+#[derive(Debug, Clone)]
+pub struct DropSinkNode {
+	pub if_exists: bool,
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub cascade: bool,
 }
 
 // Assert Block node (multi-statement ASSERT or ASSERT ERROR)

@@ -25,7 +25,10 @@ impl GeneratorFunction for TestingEventsDispatched {
 		let events = match ctx.txn {
 			Transaction::Test(t) => &**t.events,
 			_ => {
-				return Err(internal_error!("testing::events::dispatched() requires a test transaction").into());
+				return Err(internal_error!(
+					"testing::events::dispatched() requires a test transaction"
+				)
+				.into());
 			}
 		};
 		let filter_arg = extract_optional_string_arg(&ctx.params);

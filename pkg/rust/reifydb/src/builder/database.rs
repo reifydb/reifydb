@@ -88,6 +88,7 @@ pub struct DatabaseBuilder {
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
 	task_factory: Option<Box<dyn SubsystemFactory>>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
 	migrations: Vec<Migration>,
 }
 
@@ -126,6 +127,7 @@ impl DatabaseBuilder {
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 			task_factory: None,
+			auth_configurator: None,
 			migrations: Vec::new(),
 		}
 	}
@@ -221,6 +223,14 @@ impl DatabaseBuilder {
 
 	pub fn with_actor_system(mut self, system: ActorSystem) -> Self {
 		self.actor_system = Some(system);
+		self
+	}
+
+	pub fn with_auth<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+	{
+		self.auth_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -358,7 +368,10 @@ impl DatabaseBuilder {
 			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
 			runtime.rng().clone(),
 			runtime.clock().clone(),
-			AuthServiceConfig::default(),
+			match self.auth_configurator {
+				Some(configurator) => configurator(AuthServiceConfig::default()),
+				None => AuthServiceConfig::default(),
+			},
 		);
 		self.ioc = self.ioc.register(auth_service.clone());
 
