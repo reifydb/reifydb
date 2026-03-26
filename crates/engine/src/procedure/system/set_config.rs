@@ -58,6 +58,7 @@ impl Procedure for SetConfigProcedure {
 
 		match tx {
 			Transaction::Admin(admin) => ctx.catalog.set_config(admin, &key_str, value)?,
+			Transaction::Test(t) => ctx.catalog.set_config(t.inner, &key_str, value)?,
 			_ => {
 				return Err(ProcedureError::ExecutionFailed {
 					procedure: Fragment::internal("system::config::set"),

@@ -26,6 +26,7 @@ pub(crate) fn execute_migrate(
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
+		Transaction::Test(t) => &mut *t.inner,
 		_ => {
 			return Err(internal_error!("MIGRATE requires an admin transaction"));
 		}

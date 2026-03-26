@@ -27,6 +27,12 @@ pub struct Subscription<'a> {
 	pub params: Params,
 }
 
+#[derive(Debug)]
+pub struct Test<'a> {
+	pub rql: &'a str,
+	pub params: Params,
+}
+
 pub mod executor;
 pub mod instruction;
 pub(crate) mod scalar;

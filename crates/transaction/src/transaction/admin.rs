@@ -218,6 +218,12 @@ impl AdminTransaction {
 		self.poison_cause = Some(cause);
 	}
 
+	/// Clear the poisoned state so the transaction can be reused after a restore.
+	pub(crate) fn unpoison(&mut self) {
+		self.state = TransactionState::Active;
+		self.poison_cause = None;
+	}
+
 	/// Commit the transaction.
 	/// Since single transactions are short-lived and auto-commit,
 	/// this only commits the multi transaction.

@@ -16,8 +16,8 @@ use reifydb_rql::{
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
-	RqlExecutor, Transaction, admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-	subscription::SubscriptionTransaction,
+	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
+	query::QueryTransaction, subscription::SubscriptionTransaction,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_type::error::Diagnostic;
@@ -36,7 +36,7 @@ use crate::{
 	procedure::registry::Procedures,
 	transform::registry::Transforms,
 	vm::{
-		Admin, Command, Query, Subscription,
+		Admin, Command, Query, Subscription, Test,
 		services::Services,
 		stack::{SymbolTable, Variable},
 		vm::Vm,
@@ -263,6 +263,75 @@ impl Executor {
 				)? {
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
+					let mut vm = Vm::new(symbols);
+					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
+					symbols = vm.symbols;
+
+					if compiled.is_output {
+						output_results.append(&mut result);
+					}
+				}
+			}
+		}
+
+		let mut final_result = output_results;
+		final_result.append(&mut result);
+		Ok(final_result)
+	}
+
+	#[instrument(name = "executor::test", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
+	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> Result<Vec<Frame>> {
+		let mut result = vec![];
+		let mut output_results: Vec<Frame> = Vec::new();
+		let mut symbols = SymbolTable::new();
+		populate_symbols(&mut symbols, &cmd.params)?;
+
+		populate_identity(&mut symbols, &self.catalog, &mut Transaction::Test(txn.reborrow()))?;
+
+		let session_type = txn.session_type.clone();
+		let session_default_deny = txn.session_default_deny;
+		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+			&mut Transaction::Test(txn.reborrow()),
+			&session_type,
+			session_default_deny,
+		)?;
+
+		match self.compiler.compile_with_policy(
+			&mut Transaction::Test(txn.reborrow()),
+			cmd.rql,
+			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
+		) {
+			Err(err) => {
+				#[cfg(not(target_arch = "wasm32"))]
+				if let Some(frames) = self.try_forward_remote_query(&err, cmd.rql, cmd.params)? {
+					return Ok(frames);
+				}
+				return Err(err);
+			}
+			Ok(CompilationResult::Ready(compiled)) => {
+				for compiled in compiled.iter() {
+					result.clear();
+					let mut tx = Transaction::Test(txn.reborrow());
+					let mut vm = Vm::new(symbols);
+					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
+					symbols = vm.symbols;
+
+					if compiled.is_output {
+						output_results.append(&mut result);
+					}
+				}
+			}
+			Ok(CompilationResult::Incremental(mut state)) => {
+				let policy = constrain_policy(|plans, bump, cat, tx| {
+					inject_read_policies(plans, bump, cat, tx)
+				});
+				while let Some(compiled) = self.compiler.compile_next_with_policy(
+					&mut Transaction::Test(txn.reborrow()),
+					&mut state,
+					&policy,
+				)? {
+					result.clear();
+					let mut tx = Transaction::Test(txn.reborrow());
 					let mut vm = Vm::new(symbols);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbols = vm.symbols;

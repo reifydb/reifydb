@@ -27,6 +27,7 @@ pub(crate) fn execute_rollback_migration(
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
+		Transaction::Test(t) => &mut *t.inner,
 		_ => {
 			return Err(internal_error!("ROLLBACK MIGRATION requires an admin transaction"));
 		}

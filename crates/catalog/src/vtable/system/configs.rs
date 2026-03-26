@@ -46,10 +46,18 @@ impl VTable for Configs {
 		}
 
 		let version = txn.version();
-		let configs = match self.ioc.resolve::<MaterializedCatalog>() {
+		let mut configs = match self.ioc.resolve::<MaterializedCatalog>() {
 			Ok(catalog) => catalog.list_configs_at(version),
 			Err(_) => vec![],
 		};
+
+		if let Transaction::Test(t) = txn {
+			for (key, value) in &t.inner.changes.config_changes {
+				if let Some(cfg) = configs.iter_mut().find(|c| c.key == *key) {
+					cfg.value = value.clone();
+				}
+			}
+		}
 
 		let mut keys = ColumnData::utf8_with_capacity(configs.len());
 		let mut values = ColumnData::utf8_with_capacity(configs.len());

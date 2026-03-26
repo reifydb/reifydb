@@ -143,29 +143,16 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Test(t) => {
-				// 1. Check transactional changes first
+			Transaction::Test(mut t) => {
 				if let Some(view) = TransactionalViewChanges::find_view(t.inner, id) {
 					return Ok(Some(view.clone()));
 				}
-
-				// 2. Check if deleted
 				if TransactionalViewChanges::is_view_deleted(t.inner, id) {
 					return Ok(None);
 				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(view) = self.materialized.find_view_at(id, t.inner.version()) {
+				if let Some(view) = CatalogStore::find_view(&mut Transaction::Test(t.reborrow()), id)? {
 					return Ok(Some(view));
 				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(view) = CatalogStore::find_view(&mut Transaction::Admin(&mut *t.inner), id)?
-				{
-					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
-					return Ok(Some(view));
-				}
-
 				Ok(None)
 			}
 		}
@@ -292,39 +279,22 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Test(t) => {
-				// 1. Check transactional changes first
+			Transaction::Test(mut t) => {
 				if let Some(view) =
 					TransactionalViewChanges::find_view_by_name(t.inner, namespace, name)
 				{
 					return Ok(Some(view.clone()));
 				}
-
-				// 2. Check if deleted
 				if TransactionalViewChanges::is_view_deleted_by_name(t.inner, namespace, name) {
 					return Ok(None);
 				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(view) =
-					self.materialized.find_view_by_name_at(namespace, name, t.inner.version())
-				{
-					return Ok(Some(view));
-				}
-
-				// 4. Fall back to storage as defensive measure
 				if let Some(view) = CatalogStore::find_view_by_name(
-					&mut Transaction::Admin(&mut *t.inner),
+					&mut Transaction::Test(t.reborrow()),
 					namespace,
 					name,
 				)? {
-					warn!(
-						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
 					return Ok(Some(view));
 				}
-
 				Ok(None)
 			}
 		}

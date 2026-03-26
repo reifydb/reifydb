@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	internal_error,
-	testing::HandlerInvocation,
+	testing::CapturedInvocation,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -23,7 +23,7 @@ impl TestingHandlersInvoked {
 impl GeneratorFunction for TestingHandlersInvoked {
 	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
 		let invocations = match ctx.txn {
-			Transaction::Test(t) => &**t.handler_invocations,
+			Transaction::Test(t) => &**t.invocations,
 			_ => {
 				return Err(internal_error!(
 					"testing::handlers::invoked() requires a test transaction"
@@ -32,11 +32,11 @@ impl GeneratorFunction for TestingHandlersInvoked {
 			}
 		};
 		let filter_arg = extract_optional_string_arg(&ctx.params);
-		Ok(build_handler_invocations(invocations, filter_arg.as_deref())?)
+		Ok(build_invocations(invocations, filter_arg.as_deref())?)
 	}
 }
 
-fn build_handler_invocations(invocations: &[HandlerInvocation], filter_name: Option<&str>) -> Result<Columns> {
+fn build_invocations(invocations: &[CapturedInvocation], filter_name: Option<&str>) -> Result<Columns> {
 	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {

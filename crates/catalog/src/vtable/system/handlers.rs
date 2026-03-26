@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{procedure::ProcedureTrigger, vtable::VTableDef},
+	interface::catalog::{
+		procedure::{ProcedureDef, ProcedureTrigger},
+		vtable::VTableDef,
+	},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -40,7 +43,7 @@ impl VTable for Handlers {
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -51,18 +54,32 @@ impl VTable for Handlers {
 		let mut sumtype_ids = Vec::new();
 		let mut variant_tags = Vec::new();
 
-		for entry in self.catalog.materialized.procedures.iter() {
-			if let Some(proc_def) = entry.value().get_latest() {
-				if let ProcedureTrigger::Event {
-					sumtype_id,
-					variant_tag,
-				} = &proc_def.trigger
-				{
+		let mut collect = |proc_def: &ProcedureDef| {
+			if let ProcedureTrigger::Event {
+				sumtype_id,
+				variant_tag,
+			} = &proc_def.trigger
+			{
+				if !ids.contains(&proc_def.id.0) {
 					ids.push(proc_def.id.0);
 					namespace_ids.push(proc_def.namespace.0);
 					names.push(proc_def.name.clone());
 					sumtype_ids.push(sumtype_id.0);
 					variant_tags.push(*variant_tag);
+				}
+			}
+		};
+
+		for entry in self.catalog.materialized.procedures.iter() {
+			if let Some(ref proc_def) = entry.value().get_latest() {
+				collect(proc_def);
+			}
+		}
+
+		if let Transaction::Test(t) = txn {
+			for change in &t.inner.changes.procedure_def {
+				if let Some(proc_def) = &change.post {
+					collect(proc_def);
 				}
 			}
 		}

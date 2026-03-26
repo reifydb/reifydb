@@ -306,7 +306,87 @@ pub struct TransactionalDefChanges {
 	pub log: Vec<Operation>,
 }
 
+pub struct DefChangesSavepoint {
+	config_changes_len: usize,
+	dictionary_def_len: usize,
+	flow_def_len: usize,
+	handler_def_len: usize,
+	migration_def_len: usize,
+	migration_event_len: usize,
+	namespace_len: usize,
+	procedure_def_len: usize,
+	ringbuffer_def_len: usize,
+	series_def_len: usize,
+	sink_def_len: usize,
+	source_def_len: usize,
+	sumtype_def_len: usize,
+	subscription_def_len: usize,
+	test_def_len: usize,
+	table_def_len: usize,
+	identity_def_len: usize,
+	authentication_def_len: usize,
+	role_def_len: usize,
+	identity_role_def_len: usize,
+	policy_def_len: usize,
+	view_def_len: usize,
+	log_len: usize,
+}
+
 impl TransactionalDefChanges {
+	pub fn savepoint(&self) -> DefChangesSavepoint {
+		DefChangesSavepoint {
+			config_changes_len: self.config_changes.len(),
+			dictionary_def_len: self.dictionary_def.len(),
+			flow_def_len: self.flow_def.len(),
+			handler_def_len: self.handler_def.len(),
+			migration_def_len: self.migration_def.len(),
+			migration_event_len: self.migration_event.len(),
+			namespace_len: self.namespace.len(),
+			procedure_def_len: self.procedure_def.len(),
+			ringbuffer_def_len: self.ringbuffer_def.len(),
+			series_def_len: self.series_def.len(),
+			sink_def_len: self.sink_def.len(),
+			source_def_len: self.source_def.len(),
+			sumtype_def_len: self.sumtype_def.len(),
+			subscription_def_len: self.subscription_def.len(),
+			test_def_len: self.test_def.len(),
+			table_def_len: self.table_def.len(),
+			identity_def_len: self.identity_def.len(),
+			authentication_def_len: self.authentication_def.len(),
+			role_def_len: self.role_def.len(),
+			identity_role_def_len: self.identity_role_def.len(),
+			policy_def_len: self.policy_def.len(),
+			view_def_len: self.view_def.len(),
+			log_len: self.log.len(),
+		}
+	}
+
+	pub fn restore_savepoint(&mut self, sp: DefChangesSavepoint) {
+		self.config_changes.truncate(sp.config_changes_len);
+		self.dictionary_def.truncate(sp.dictionary_def_len);
+		self.flow_def.truncate(sp.flow_def_len);
+		self.handler_def.truncate(sp.handler_def_len);
+		self.migration_def.truncate(sp.migration_def_len);
+		self.migration_event.truncate(sp.migration_event_len);
+		self.namespace.truncate(sp.namespace_len);
+		self.procedure_def.truncate(sp.procedure_def_len);
+		self.ringbuffer_def.truncate(sp.ringbuffer_def_len);
+		self.series_def.truncate(sp.series_def_len);
+		self.sink_def.truncate(sp.sink_def_len);
+		self.source_def.truncate(sp.source_def_len);
+		self.sumtype_def.truncate(sp.sumtype_def_len);
+		self.subscription_def.truncate(sp.subscription_def_len);
+		self.test_def.truncate(sp.test_def_len);
+		self.table_def.truncate(sp.table_def_len);
+		self.identity_def.truncate(sp.identity_def_len);
+		self.authentication_def.truncate(sp.authentication_def_len);
+		self.role_def.truncate(sp.role_def_len);
+		self.identity_role_def.truncate(sp.identity_role_def_len);
+		self.policy_def.truncate(sp.policy_def_len);
+		self.view_def.truncate(sp.view_def_len);
+		self.log.truncate(sp.log_len);
+	}
+
 	pub fn add_config_change(&mut self, key: String, value: Value) {
 		self.config_changes.push((key, value));
 	}
