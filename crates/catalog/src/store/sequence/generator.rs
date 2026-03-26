@@ -216,7 +216,7 @@ macro_rules! impl_generator {
 				}
 
 				#[test]
-				fn test_default() {
+				fn testault() {
 					let mut txn = create_test_admin_transaction();
 
 					let default_val = ($start as u32).saturating_add(99).min($max as u32) as $prim;

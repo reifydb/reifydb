@@ -3,15 +3,15 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
+	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 };
 use reifydb_type::value::dictionary::DictionaryId;
 
-use crate::materialized::{MaterializedCatalog, MultiVersionDictionaryDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionDictionary};
 
 impl MaterializedCatalog {
 	/// Find a dictionary by ID at a specific version
-	pub fn find_dictionary_at(&self, dictionary: DictionaryId, version: CommitVersion) -> Option<DictionaryDef> {
+	pub fn find_dictionary_at(&self, dictionary: DictionaryId, version: CommitVersion) -> Option<Dictionary> {
 		self.dictionaries.get(&dictionary).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -24,7 +24,7 @@ impl MaterializedCatalog {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Option<DictionaryDef> {
+	) -> Option<Dictionary> {
 		self.dictionaries_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let dictionary_id = *entry.value();
 			self.find_dictionary_at(dictionary_id, version)
@@ -32,7 +32,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a dictionary by ID (returns latest version)
-	pub fn find_dictionary(&self, dictionary: DictionaryId) -> Option<DictionaryDef> {
+	pub fn find_dictionary(&self, dictionary: DictionaryId) -> Option<Dictionary> {
 		self.dictionaries.get(&dictionary).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -40,14 +40,14 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a dictionary by name in a namespace (returns latest version)
-	pub fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<DictionaryDef> {
+	pub fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Dictionary> {
 		self.dictionaries_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let dictionary_id = *entry.value();
 			self.find_dictionary(dictionary_id)
 		})
 	}
 
-	pub fn set_dictionary(&self, id: DictionaryId, version: CommitVersion, dictionary: Option<DictionaryDef>) {
+	pub fn set_dictionary(&self, id: DictionaryId, version: CommitVersion, dictionary: Option<Dictionary>) {
 		if let Some(entry) = self.dictionaries.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				// Remove old name from index
@@ -55,7 +55,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.dictionaries.get_or_insert_with(id, MultiVersionDictionaryDef::new);
+		let multi = self.dictionaries.get_or_insert_with(id, MultiVersionDictionary::new);
 		if let Some(new) = dictionary {
 			self.dictionaries_by_name.insert((new.namespace, new.name.clone()), id);
 			multi.value().insert(version, new);
@@ -72,8 +72,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_dictionary(id: DictionaryId, namespace: NamespaceId, name: &str) -> DictionaryDef {
-		DictionaryDef {
+	fn create_test_dictionary(id: DictionaryId, namespace: NamespaceId, name: &str) -> Dictionary {
+		Dictionary {
 			id,
 			namespace,
 			name: name.to_string(),

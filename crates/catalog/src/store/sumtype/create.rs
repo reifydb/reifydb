@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::NamespaceId,
-		sumtype::{SumTypeDef, SumTypeKind},
+		sumtype::{SumType, SumTypeKind},
 	},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
@@ -23,11 +23,11 @@ use crate::{
 pub struct SumTypeToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub def: SumTypeDef,
+	pub def: SumType,
 }
 
 impl CatalogStore {
-	pub(crate) fn create_sumtype(txn: &mut AdminTransaction, to_create: SumTypeToCreate) -> Result<SumTypeDef> {
+	pub(crate) fn create_sumtype(txn: &mut AdminTransaction, to_create: SumTypeToCreate) -> Result<SumType> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(_existing) = CatalogStore::find_sumtype_by_name(
@@ -75,7 +75,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::sumtype::{SumTypeKind, VariantDef},
+		interface::catalog::sumtype::{SumTypeKind, Variant},
 		key::namespace_sumtype::NamespaceSumTypeKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
@@ -90,12 +90,12 @@ pub mod tests {
 		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let variants = vec![
-			VariantDef {
+			Variant {
 				tag: 0,
 				name: "Active".to_string(),
 				fields: vec![],
 			},
-			VariantDef {
+			Variant {
 				tag: 1,
 				name: "Inactive".to_string(),
 				fields: vec![],
@@ -105,7 +105,7 @@ pub mod tests {
 		let to_create = SumTypeToCreate {
 			name: Fragment::internal("Status"),
 			namespace: test_namespace.id(),
-			def: SumTypeDef {
+			def: SumType {
 				id: SumTypeId(0),
 				namespace: test_namespace.id(),
 				name: "Status".to_string(),
@@ -130,11 +130,11 @@ pub mod tests {
 		let to_create = SumTypeToCreate {
 			name: Fragment::internal("Direction"),
 			namespace: test_namespace.id(),
-			def: SumTypeDef {
+			def: SumType {
 				id: SumTypeId(0),
 				namespace: test_namespace.id(),
 				name: "Direction".to_string(),
-				variants: vec![VariantDef {
+				variants: vec![Variant {
 					tag: 0,
 					name: "Up".to_string(),
 					fields: vec![],
@@ -158,7 +158,7 @@ pub mod tests {
 		let to_create = SumTypeToCreate {
 			name: Fragment::internal("UserCreated"),
 			namespace: test_namespace.id(),
-			def: SumTypeDef {
+			def: SumType {
 				id: SumTypeId(0),
 				namespace: test_namespace.id(),
 				name: "UserCreated".to_string(),
@@ -182,7 +182,7 @@ pub mod tests {
 		let to_create1 = SumTypeToCreate {
 			name: Fragment::internal("Color"),
 			namespace: test_namespace.id(),
-			def: SumTypeDef {
+			def: SumType {
 				id: SumTypeId(0),
 				namespace: test_namespace.id(),
 				name: "Color".to_string(),
@@ -195,7 +195,7 @@ pub mod tests {
 		let to_create2 = SumTypeToCreate {
 			name: Fragment::internal("Shape"),
 			namespace: test_namespace.id(),
-			def: SumTypeDef {
+			def: SumType {
 				id: SumTypeId(0),
 				namespace: test_namespace.id(),
 				name: "Shape".to_string(),

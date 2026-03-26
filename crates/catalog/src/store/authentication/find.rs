@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::authentication::{AuthenticationDef, AuthenticationId},
+	interface::catalog::authentication::{Authentication, AuthenticationId},
 	key::authentication::AuthenticationKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -18,7 +18,7 @@ impl CatalogStore {
 	pub(crate) fn find_authentication(
 		rx: &mut Transaction<'_>,
 		id: AuthenticationId,
-	) -> Result<Option<AuthenticationDef>> {
+	) -> Result<Option<Authentication>> {
 		Ok(rx.get(&AuthenticationKey::encoded(id))?.map(convert_authentication))
 	}
 
@@ -26,7 +26,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		identity: IdentityId,
 		method: &str,
-	) -> Result<Option<AuthenticationDef>> {
+	) -> Result<Option<Authentication>> {
 		let mut stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
@@ -46,7 +46,7 @@ impl CatalogStore {
 	pub(crate) fn list_authentications_by_method(
 		rx: &mut Transaction<'_>,
 		method: &str,
-	) -> Result<Vec<AuthenticationDef>> {
+	) -> Result<Vec<Authentication>> {
 		let mut stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
 		let mut results = Vec::new();
 

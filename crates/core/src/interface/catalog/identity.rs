@@ -7,32 +7,32 @@ use serde::{Deserialize, Serialize};
 pub type RoleId = u64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct IdentityDef {
+pub struct Identity {
 	pub id: IdentityId,
 	pub name: String,
 	pub enabled: bool,
 }
 
-impl IdentityDef {
+impl Identity {
 	pub fn name(&self) -> &str {
 		&self.name
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RoleDef {
+pub struct Role {
 	pub id: RoleId,
 	pub name: String,
 }
 
-impl RoleDef {
+impl Role {
 	pub fn name(&self) -> &str {
 		&self.name
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct IdentityRoleDef {
+pub struct GrantedRole {
 	pub identity: IdentityId,
 	pub role_id: RoleId,
 }

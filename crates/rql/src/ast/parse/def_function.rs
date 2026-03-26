@@ -163,7 +163,7 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_def_function_no_params() {
+	fn test_function_no_params() {
 		let bump = Bump::new();
 		let source = "FUN hello () { MAP { \"message\": \"Hello\" } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -180,7 +180,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_def_function_with_params() {
+	fn test_function_with_params() {
 		let bump = Bump::new();
 		let source = "FUN greet ($name) { MAP { \"message\": $name } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -198,7 +198,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_def_function_with_typed_params() {
+	fn test_function_with_typed_params() {
 		let bump = Bump::new();
 		let source = "FUN add ($a: int, $b: int) { $a + $b }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -226,7 +226,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_def_function_with_return_type() {
+	fn test_function_with_return_type() {
 		let bump = Bump::new();
 		let source = "FUN add ($a: int, $b: int) : int { $a + $b }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -245,7 +245,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_def_function_mixed_typed_params() {
+	fn test_function_mixed_typed_params() {
 		let bump = Bump::new();
 		let source = "FUN example ($x, $y: int) { $x + $y }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

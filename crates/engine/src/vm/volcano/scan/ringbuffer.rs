@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::{row::EncodedRow, schema::Schema},
 	interface::{
-		catalog::{dictionary::DictionaryDef, ringbuffer::PartitionedMetadata},
+		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
 	},
 	internal_error,
@@ -37,7 +37,7 @@ pub struct RingBufferScan {
 	/// Storage types for each column (Type::DictionaryId for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
-	dictionaries: Vec<Option<DictionaryDef>>,
+	dictionaries: Vec<Option<Dictionary>>,
 	/// Column indices for partition_by columns (empty for global ringbuffers)
 	partition_col_indices: Vec<usize>,
 	current_position: u64,

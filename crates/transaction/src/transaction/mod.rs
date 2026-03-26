@@ -28,63 +28,63 @@ use crate::{
 	change::RowChange,
 	interceptor::{
 		WithInterceptors,
-		authentication_def::{AuthenticationDefPostCreateInterceptor, AuthenticationDefPreDeleteInterceptor},
+		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
 		chain::InterceptorChain as Chain,
 		dictionary::{
-			DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor,
-			DictionaryPostUpdateInterceptor, DictionaryPreDeleteInterceptor,
-			DictionaryPreInsertInterceptor, DictionaryPreUpdateInterceptor,
+			DictionaryPostCreateInterceptor, DictionaryPostUpdateInterceptor,
+			DictionaryPreDeleteInterceptor, DictionaryPreUpdateInterceptor,
 		},
-		dictionary_def::{
-			DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
-			DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
+		dictionary_row::{
+			DictionaryRowPostDeleteInterceptor, DictionaryRowPostInsertInterceptor,
+			DictionaryRowPostUpdateInterceptor, DictionaryRowPreDeleteInterceptor,
+			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
 		},
-		identity_def::{
-			IdentityDefPostCreateInterceptor, IdentityDefPostUpdateInterceptor,
-			IdentityDefPreDeleteInterceptor, IdentityDefPreUpdateInterceptor,
+		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
+		identity::{
+			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
+			IdentityPreUpdateInterceptor,
 		},
-		identity_role_def::{IdentityRoleDefPostCreateInterceptor, IdentityRoleDefPreDeleteInterceptor},
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 			NamespacePreUpdateInterceptor,
 		},
 		ringbuffer::{
-			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
-			RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
-			RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+			RingBufferPostCreateInterceptor, RingBufferPostUpdateInterceptor,
+			RingBufferPreDeleteInterceptor, RingBufferPreUpdateInterceptor,
 		},
-		ringbuffer_def::{
-			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
-			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		ringbuffer_row::{
+			RingBufferRowPostDeleteInterceptor, RingBufferRowPostInsertInterceptor,
+			RingBufferRowPostUpdateInterceptor, RingBufferRowPreDeleteInterceptor,
+			RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 		},
-		role_def::{
-			RoleDefPostCreateInterceptor, RoleDefPostUpdateInterceptor, RoleDefPreDeleteInterceptor,
-			RoleDefPreUpdateInterceptor,
+		role::{
+			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
+			RolePreUpdateInterceptor,
 		},
 		series::{
-			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
-			SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
+			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
+			SeriesPreUpdateInterceptor,
 		},
-		series_def::{
-			SeriesDefPostCreateInterceptor, SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteInterceptor,
-			SeriesDefPreUpdateInterceptor,
+		series_row::{
+			SeriesRowPostDeleteInterceptor, SeriesRowPostInsertInterceptor, SeriesRowPostUpdateInterceptor,
+			SeriesRowPreDeleteInterceptor, SeriesRowPreInsertInterceptor, SeriesRowPreUpdateInterceptor,
 		},
 		table::{
-			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
-			TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+			TablePostCreateInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+			TablePreUpdateInterceptor,
 		},
-		table_def::{
-			TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
-			TableDefPreUpdateInterceptor,
+		table_row::{
+			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
+			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
 		transaction::{PostCommitInterceptor, PreCommitInterceptor},
 		view::{
-			ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor,
-			ViewPreDeleteInterceptor, ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
+			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
+			ViewPreUpdateInterceptor,
 		},
-		view_def::{
-			ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-			ViewDefPreUpdateInterceptor,
+		view_row::{
+			ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
+			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
 		},
 	},
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
@@ -561,35 +561,53 @@ macro_rules! delegate_interceptor {
 }
 
 impl WithInterceptors for Transaction<'_> {
-	delegate_interceptor!(table_pre_insert_interceptors, &mut Chain<dyn TablePreInsertInterceptor + Send + Sync>);
-	delegate_interceptor!(table_post_insert_interceptors, &mut Chain<dyn TablePostInsertInterceptor + Send + Sync>);
-	delegate_interceptor!(table_pre_update_interceptors, &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync>);
-	delegate_interceptor!(table_post_update_interceptors, &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync>);
-	delegate_interceptor!(table_pre_delete_interceptors, &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync>);
-	delegate_interceptor!(table_post_delete_interceptors, &mut Chain<dyn TablePostDeleteInterceptor + Send + Sync>);
 	delegate_interceptor!(
-		ringbuffer_pre_insert_interceptors,
-		&mut Chain<dyn RingBufferPreInsertInterceptor + Send + Sync>
+		table_row_pre_insert_interceptors,
+		&mut Chain<dyn TableRowPreInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_post_insert_interceptors,
-		&mut Chain<dyn RingBufferPostInsertInterceptor + Send + Sync>
+		table_row_post_insert_interceptors,
+		&mut Chain<dyn TableRowPostInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_pre_update_interceptors,
-		&mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync>
+		table_row_pre_update_interceptors,
+		&mut Chain<dyn TableRowPreUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_post_update_interceptors,
-		&mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync>
+		table_row_post_update_interceptors,
+		&mut Chain<dyn TableRowPostUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_pre_delete_interceptors,
-		&mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync>
+		table_row_pre_delete_interceptors,
+		&mut Chain<dyn TableRowPreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_post_delete_interceptors,
-		&mut Chain<dyn RingBufferPostDeleteInterceptor + Send + Sync>
+		table_row_post_delete_interceptors,
+		&mut Chain<dyn TableRowPostDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		ringbuffer_row_pre_insert_interceptors,
+		&mut Chain<dyn RingBufferRowPreInsertInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		ringbuffer_row_post_insert_interceptors,
+		&mut Chain<dyn RingBufferRowPostInsertInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		ringbuffer_row_pre_update_interceptors,
+		&mut Chain<dyn RingBufferRowPreUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		ringbuffer_row_post_update_interceptors,
+		&mut Chain<dyn RingBufferRowPostUpdateInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		ringbuffer_row_pre_delete_interceptors,
+		&mut Chain<dyn RingBufferRowPreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		ringbuffer_row_post_delete_interceptors,
+		&mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(pre_commit_interceptors, &mut Chain<dyn PreCommitInterceptor + Send + Sync>);
 	delegate_interceptor!(post_commit_interceptors, &mut Chain<dyn PostCommitInterceptor + Send + Sync>);
@@ -609,67 +627,81 @@ impl WithInterceptors for Transaction<'_> {
 		namespace_pre_delete_interceptors,
 		&mut Chain<dyn NamespacePreDeleteInterceptor + Send + Sync>
 	);
+	delegate_interceptor!(table_post_create_interceptors, &mut Chain<dyn TablePostCreateInterceptor + Send + Sync>);
+	delegate_interceptor!(table_pre_update_interceptors, &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync>);
+	delegate_interceptor!(table_post_update_interceptors, &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync>);
+	delegate_interceptor!(table_pre_delete_interceptors, &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync>);
 	delegate_interceptor!(
-		table_def_post_create_interceptors,
-		&mut Chain<dyn TableDefPostCreateInterceptor + Send + Sync>
+		view_row_pre_insert_interceptors,
+		&mut Chain<dyn ViewRowPreInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		table_def_pre_update_interceptors,
-		&mut Chain<dyn TableDefPreUpdateInterceptor + Send + Sync>
+		view_row_post_insert_interceptors,
+		&mut Chain<dyn ViewRowPostInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		table_def_post_update_interceptors,
-		&mut Chain<dyn TableDefPostUpdateInterceptor + Send + Sync>
+		view_row_pre_update_interceptors,
+		&mut Chain<dyn ViewRowPreUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		table_def_pre_delete_interceptors,
-		&mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync>
+		view_row_post_update_interceptors,
+		&mut Chain<dyn ViewRowPostUpdateInterceptor + Send + Sync>
 	);
-	delegate_interceptor!(view_pre_insert_interceptors, &mut Chain<dyn ViewPreInsertInterceptor + Send + Sync>);
-	delegate_interceptor!(view_post_insert_interceptors, &mut Chain<dyn ViewPostInsertInterceptor + Send + Sync>);
+	delegate_interceptor!(
+		view_row_pre_delete_interceptors,
+		&mut Chain<dyn ViewRowPreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		view_row_post_delete_interceptors,
+		&mut Chain<dyn ViewRowPostDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(view_post_create_interceptors, &mut Chain<dyn ViewPostCreateInterceptor + Send + Sync>);
 	delegate_interceptor!(view_pre_update_interceptors, &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync>);
 	delegate_interceptor!(view_post_update_interceptors, &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync>);
 	delegate_interceptor!(view_pre_delete_interceptors, &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync>);
-	delegate_interceptor!(view_post_delete_interceptors, &mut Chain<dyn ViewPostDeleteInterceptor + Send + Sync>);
 	delegate_interceptor!(
-		view_def_post_create_interceptors,
-		&mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync>
+		ringbuffer_post_create_interceptors,
+		&mut Chain<dyn RingBufferPostCreateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		view_def_pre_update_interceptors,
-		&mut Chain<dyn ViewDefPreUpdateInterceptor + Send + Sync>
+		ringbuffer_pre_update_interceptors,
+		&mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		view_def_post_update_interceptors,
-		&mut Chain<dyn ViewDefPostUpdateInterceptor + Send + Sync>
+		ringbuffer_post_update_interceptors,
+		&mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		view_def_pre_delete_interceptors,
-		&mut Chain<dyn ViewDefPreDeleteInterceptor + Send + Sync>
+		ringbuffer_pre_delete_interceptors,
+		&mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_def_post_create_interceptors,
-		&mut Chain<dyn RingBufferDefPostCreateInterceptor + Send + Sync>
+		dictionary_row_pre_insert_interceptors,
+		&mut Chain<dyn DictionaryRowPreInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_def_pre_update_interceptors,
-		&mut Chain<dyn RingBufferDefPreUpdateInterceptor + Send + Sync>
+		dictionary_row_post_insert_interceptors,
+		&mut Chain<dyn DictionaryRowPostInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_def_post_update_interceptors,
-		&mut Chain<dyn RingBufferDefPostUpdateInterceptor + Send + Sync>
+		dictionary_row_pre_update_interceptors,
+		&mut Chain<dyn DictionaryRowPreUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		ringbuffer_def_pre_delete_interceptors,
-		&mut Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync>
+		dictionary_row_post_update_interceptors,
+		&mut Chain<dyn DictionaryRowPostUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		dictionary_pre_insert_interceptors,
-		&mut Chain<dyn DictionaryPreInsertInterceptor + Send + Sync>
+		dictionary_row_pre_delete_interceptors,
+		&mut Chain<dyn DictionaryRowPreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		dictionary_post_insert_interceptors,
-		&mut Chain<dyn DictionaryPostInsertInterceptor + Send + Sync>
+		dictionary_row_post_delete_interceptors,
+		&mut Chain<dyn DictionaryRowPostDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		dictionary_post_create_interceptors,
+		&mut Chain<dyn DictionaryPostCreateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
 		dictionary_pre_update_interceptors,
@@ -684,29 +716,32 @@ impl WithInterceptors for Transaction<'_> {
 		&mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		dictionary_post_delete_interceptors,
-		&mut Chain<dyn DictionaryPostDeleteInterceptor + Send + Sync>
+		series_row_pre_insert_interceptors,
+		&mut Chain<dyn SeriesRowPreInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		dictionary_def_post_create_interceptors,
-		&mut Chain<dyn DictionaryDefPostCreateInterceptor + Send + Sync>
+		series_row_post_insert_interceptors,
+		&mut Chain<dyn SeriesRowPostInsertInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		dictionary_def_pre_update_interceptors,
-		&mut Chain<dyn DictionaryDefPreUpdateInterceptor + Send + Sync>
+		series_row_pre_update_interceptors,
+		&mut Chain<dyn SeriesRowPreUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		dictionary_def_post_update_interceptors,
-		&mut Chain<dyn DictionaryDefPostUpdateInterceptor + Send + Sync>
+		series_row_post_update_interceptors,
+		&mut Chain<dyn SeriesRowPostUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		dictionary_def_pre_delete_interceptors,
-		&mut Chain<dyn DictionaryDefPreDeleteInterceptor + Send + Sync>
+		series_row_pre_delete_interceptors,
+		&mut Chain<dyn SeriesRowPreDeleteInterceptor + Send + Sync>
 	);
-	delegate_interceptor!(series_pre_insert_interceptors, &mut Chain<dyn SeriesPreInsertInterceptor + Send + Sync>);
 	delegate_interceptor!(
-		series_post_insert_interceptors,
-		&mut Chain<dyn SeriesPostInsertInterceptor + Send + Sync>
+		series_row_post_delete_interceptors,
+		&mut Chain<dyn SeriesRowPostDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(
+		series_post_create_interceptors,
+		&mut Chain<dyn SeriesPostCreateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(series_pre_update_interceptors, &mut Chain<dyn SeriesPreUpdateInterceptor + Send + Sync>);
 	delegate_interceptor!(
@@ -715,71 +750,39 @@ impl WithInterceptors for Transaction<'_> {
 	);
 	delegate_interceptor!(series_pre_delete_interceptors, &mut Chain<dyn SeriesPreDeleteInterceptor + Send + Sync>);
 	delegate_interceptor!(
-		series_post_delete_interceptors,
-		&mut Chain<dyn SeriesPostDeleteInterceptor + Send + Sync>
+		identity_post_create_interceptors,
+		&mut Chain<dyn IdentityPostCreateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		series_def_post_create_interceptors,
-		&mut Chain<dyn SeriesDefPostCreateInterceptor + Send + Sync>
+		identity_pre_update_interceptors,
+		&mut Chain<dyn IdentityPreUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		series_def_pre_update_interceptors,
-		&mut Chain<dyn SeriesDefPreUpdateInterceptor + Send + Sync>
+		identity_post_update_interceptors,
+		&mut Chain<dyn IdentityPostUpdateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		series_def_post_update_interceptors,
-		&mut Chain<dyn SeriesDefPostUpdateInterceptor + Send + Sync>
+		identity_pre_delete_interceptors,
+		&mut Chain<dyn IdentityPreDeleteInterceptor + Send + Sync>
+	);
+	delegate_interceptor!(role_post_create_interceptors, &mut Chain<dyn RolePostCreateInterceptor + Send + Sync>);
+	delegate_interceptor!(role_pre_update_interceptors, &mut Chain<dyn RolePreUpdateInterceptor + Send + Sync>);
+	delegate_interceptor!(role_post_update_interceptors, &mut Chain<dyn RolePostUpdateInterceptor + Send + Sync>);
+	delegate_interceptor!(role_pre_delete_interceptors, &mut Chain<dyn RolePreDeleteInterceptor + Send + Sync>);
+	delegate_interceptor!(
+		granted_role_post_create_interceptors,
+		&mut Chain<dyn GrantedRolePostCreateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		series_def_pre_delete_interceptors,
-		&mut Chain<dyn SeriesDefPreDeleteInterceptor + Send + Sync>
+		granted_role_pre_delete_interceptors,
+		&mut Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		identity_def_post_create_interceptors,
-		&mut Chain<dyn IdentityDefPostCreateInterceptor + Send + Sync>
+		authentication_post_create_interceptors,
+		&mut Chain<dyn AuthenticationPostCreateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		identity_def_pre_update_interceptors,
-		&mut Chain<dyn IdentityDefPreUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		identity_def_post_update_interceptors,
-		&mut Chain<dyn IdentityDefPostUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		identity_def_pre_delete_interceptors,
-		&mut Chain<dyn IdentityDefPreDeleteInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		role_def_post_create_interceptors,
-		&mut Chain<dyn RoleDefPostCreateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		role_def_pre_update_interceptors,
-		&mut Chain<dyn RoleDefPreUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		role_def_post_update_interceptors,
-		&mut Chain<dyn RoleDefPostUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		role_def_pre_delete_interceptors,
-		&mut Chain<dyn RoleDefPreDeleteInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		identity_role_def_post_create_interceptors,
-		&mut Chain<dyn IdentityRoleDefPostCreateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		identity_role_def_pre_delete_interceptors,
-		&mut Chain<dyn IdentityRoleDefPreDeleteInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		authentication_def_post_create_interceptors,
-		&mut Chain<dyn AuthenticationDefPostCreateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		authentication_def_pre_delete_interceptors,
-		&mut Chain<dyn AuthenticationDefPreDeleteInterceptor + Send + Sync>
+		authentication_pre_delete_interceptors,
+		&mut Chain<dyn AuthenticationPreDeleteInterceptor + Send + Sync>
 	);
 }

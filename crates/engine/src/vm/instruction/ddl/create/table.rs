@@ -47,7 +47,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 			primary_key_columns: None,
 		},
 	)?;
-	txn.track_table_def_created(table.clone())?;
+	txn.track_table_created(table.clone())?;
 
 	Ok(Columns::single_row([
 		("id", Value::Uint8(table.id.0)),

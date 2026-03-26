@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowEdgeDef,
+	interface::catalog::flow::FlowEdge,
 	key::flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -13,7 +13,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_flow_edge(txn: &mut AdminTransaction, edge_def: &FlowEdgeDef) -> Result<()> {
+	pub(crate) fn create_flow_edge(txn: &mut AdminTransaction, edge_def: &FlowEdge) -> Result<()> {
 		// Write to main flow_edge table
 		let mut row = flow_edge::SCHEMA.allocate();
 		flow_edge::SCHEMA.set_u64(&mut row, flow_edge::ID, edge_def.id);

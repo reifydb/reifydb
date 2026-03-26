@@ -34,7 +34,7 @@ fn main() {
 
 	let mut db = embedded::memory()
 		.intercept()
-		.view("test::active_users")
+		.view_row("test::active_users")
 		.post_insert(|ctx| {
 			info!("[VIEW INTERCEPTOR] Post-insert into view: {}", ctx.view.name());
 			Ok(())

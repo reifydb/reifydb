@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackRingBufferChangeOperations,
 	id::{NamespaceId, RingBufferId},
-	ringbuffer::RingBufferDef,
+	ringbuffer::RingBuffer,
 };
 use reifydb_type::Result;
 
@@ -18,40 +18,40 @@ use crate::{
 };
 
 impl CatalogTrackRingBufferChangeOperations for AdminTransaction {
-	fn track_ringbuffer_def_created(&mut self, ringbuffer: RingBufferDef) -> Result<()> {
+	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(ringbuffer),
 			op: Create,
 		};
-		self.changes.add_ringbuffer_def_change(change);
+		self.changes.add_ringbuffer_change(change);
 		Ok(())
 	}
 
-	fn track_ringbuffer_def_updated(&mut self, pre: RingBufferDef, post: RingBufferDef) -> Result<()> {
+	fn track_ringbuffer_updated(&mut self, pre: RingBuffer, post: RingBuffer) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
 			op: Update,
 		};
-		self.changes.add_ringbuffer_def_change(change);
+		self.changes.add_ringbuffer_change(change);
 		Ok(())
 	}
 
-	fn track_ringbuffer_def_deleted(&mut self, ringbuffer: RingBufferDef) -> Result<()> {
+	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()> {
 		let change = Change {
 			pre: Some(ringbuffer),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_ringbuffer_def_change(change);
+		self.changes.add_ringbuffer_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalRingBufferChanges for AdminTransaction {
-	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef> {
-		for change in self.changes.ringbuffer_def.iter().rev() {
+	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBuffer> {
+		for change in self.changes.ringbuffer.iter().rev() {
 			if let Some(ringbuffer) = &change.post {
 				if ringbuffer.id == id {
 					return Some(ringbuffer);
@@ -66,8 +66,8 @@ impl TransactionalRingBufferChanges for AdminTransaction {
 		None
 	}
 
-	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBufferDef> {
-		for change in self.changes.ringbuffer_def.iter().rev() {
+	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBuffer> {
+		for change in self.changes.ringbuffer.iter().rev() {
 			if let Some(ringbuffer) = &change.post {
 				if ringbuffer.namespace == namespace && ringbuffer.name == name {
 					return Some(ringbuffer);
@@ -84,13 +84,13 @@ impl TransactionalRingBufferChanges for AdminTransaction {
 
 	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool {
 		self.changes
-			.ringbuffer_def
+			.ringbuffer
 			.iter()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|rb| rb.id == id).unwrap_or(false))
 	}
 
 	fn is_ringbuffer_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.changes.ringbuffer_def.iter().any(|change| {
+		self.changes.ringbuffer.iter().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
@@ -102,25 +102,25 @@ impl TransactionalRingBufferChanges for AdminTransaction {
 }
 
 impl CatalogTrackRingBufferChangeOperations for SubscriptionTransaction {
-	fn track_ringbuffer_def_created(&mut self, ringbuffer: RingBufferDef) -> Result<()> {
-		self.inner.track_ringbuffer_def_created(ringbuffer)
+	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<()> {
+		self.inner.track_ringbuffer_created(ringbuffer)
 	}
 
-	fn track_ringbuffer_def_updated(&mut self, pre: RingBufferDef, post: RingBufferDef) -> Result<()> {
-		self.inner.track_ringbuffer_def_updated(pre, post)
+	fn track_ringbuffer_updated(&mut self, pre: RingBuffer, post: RingBuffer) -> Result<()> {
+		self.inner.track_ringbuffer_updated(pre, post)
 	}
 
-	fn track_ringbuffer_def_deleted(&mut self, ringbuffer: RingBufferDef) -> Result<()> {
-		self.inner.track_ringbuffer_def_deleted(ringbuffer)
+	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()> {
+		self.inner.track_ringbuffer_deleted(ringbuffer)
 	}
 }
 
 impl TransactionalRingBufferChanges for SubscriptionTransaction {
-	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef> {
+	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBuffer> {
 		self.inner.find_ringbuffer(id)
 	}
 
-	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBufferDef> {
+	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBuffer> {
 		self.inner.find_ringbuffer_by_name(namespace, name)
 	}
 

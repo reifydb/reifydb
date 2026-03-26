@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	change::CatalogTrackSourceChangeOperations, id::NamespaceId, source::SourceDef,
-};
+use reifydb_core::interface::catalog::{change::CatalogTrackSourceChangeOperations, id::NamespaceId, source::Source};
 use reifydb_transaction::{
 	change::TransactionalSourceChanges,
 	transaction::{Transaction, admin::AdminTransaction},
@@ -43,7 +41,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<SourceDef>> {
+	) -> Result<Option<Source>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -200,21 +198,21 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::source::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_source(&self, txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<SourceDef> {
+	pub fn create_source(&self, txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<Source> {
 		let source = CatalogStore::create_source(txn, to_create.into())?;
-		txn.track_source_def_created(source.clone())?;
+		txn.track_source_created(source.clone())?;
 		Ok(source)
 	}
 
 	#[instrument(name = "catalog::source::drop", level = "debug", skip(self, txn))]
-	pub fn drop_source(&self, txn: &mut AdminTransaction, source: SourceDef) -> Result<()> {
+	pub fn drop_source(&self, txn: &mut AdminTransaction, source: Source) -> Result<()> {
 		CatalogStore::drop_source(txn, source.id)?;
-		txn.track_source_def_deleted(source)?;
+		txn.track_source_deleted(source)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::source::list_all", level = "debug", skip(self, txn))]
-	pub fn list_sources_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<SourceDef>> {
+	pub fn list_sources_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Source>> {
 		CatalogStore::list_sources_all(txn)
 	}
 }

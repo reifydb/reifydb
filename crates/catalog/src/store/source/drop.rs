@@ -11,9 +11,9 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_source(txn: &mut AdminTransaction, source_id: SourceId) -> Result<()> {
-		let source_def = CatalogStore::find_source(&mut Transaction::Admin(&mut *txn), source_id)?;
+		let source = CatalogStore::find_source(&mut Transaction::Admin(&mut *txn), source_id)?;
 
-		if let Some(source) = source_def {
+		if let Some(source) = source {
 			// Delete from namespace index
 			txn.remove(&NamespaceSourceKey::encoded(source.namespace, source_id))?;
 

@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::{NamespaceId, PrimaryKeyId, TableId},
-			key::PrimaryKeyDef,
-			table::TableDef,
+			key::PrimaryKey,
+			table::Table,
 		},
 		store::MultiVersionRow,
 	},
@@ -33,21 +33,21 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalo
 
 		let pk_id = get_table_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let table_def = convert_table(multi, primary_key);
+		let table = convert_table(multi, primary_key);
 
-		catalog.set_table(table_def.id, version, Some(table_def));
+		catalog.set_table(table.id, version, Some(table));
 	}
 
 	Ok(())
 }
 
-fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> TableDef {
+fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Table {
 	let row = multi.row;
 	let id = TableId(table::SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(table::SCHEMA.get_u64(&row, NAMESPACE));
 	let name = table::SCHEMA.get_utf8(&row, NAME).to_string();
 
-	TableDef {
+	Table {
 		id,
 		name,
 		namespace,

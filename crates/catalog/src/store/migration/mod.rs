@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
 		id::{MigrationEventId, MigrationId},
-		migration::{MigrationAction, MigrationDef, MigrationEvent},
+		migration::{Migration, MigrationAction, MigrationEvent},
 	},
 };
 use schema::{migration, migration_event};
@@ -15,7 +15,7 @@ pub mod find;
 pub mod list;
 pub(crate) mod schema;
 
-pub(crate) fn migration_def_from_row(row: &EncodedRow) -> MigrationDef {
+pub(crate) fn migration_from_row(row: &EncodedRow) -> Migration {
 	let id = MigrationId(migration::SCHEMA.get_u64(row, migration::ID));
 	let name = migration::SCHEMA.get_utf8(row, migration::NAME).to_string();
 	let body = migration::SCHEMA.get_utf8(row, migration::BODY).to_string();
@@ -28,7 +28,7 @@ pub(crate) fn migration_def_from_row(row: &EncodedRow) -> MigrationDef {
 		}
 	};
 
-	MigrationDef {
+	Migration {
 		id,
 		name,
 		body,

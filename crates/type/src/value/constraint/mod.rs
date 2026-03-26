@@ -35,7 +35,7 @@ pub enum Constraint {
 	PrecisionScale(Precision, Scale),
 	/// Dictionary constraint: (catalog dictionary ID, id_type)
 	Dictionary(DictionaryId, Type),
-	/// Sum type constraint: links a logical column to a catalog SumTypeDef
+	/// Sum type constraint: links a logical column to a catalog SumType
 	SumType(SumTypeId),
 }
 

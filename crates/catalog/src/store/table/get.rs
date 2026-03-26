@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::TableId, table::TableDef},
+	interface::catalog::{id::TableId, table::Table},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_table(rx: &mut Transaction<'_>, table: TableId) -> Result<TableDef> {
+	pub(crate) fn get_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Table> {
 		CatalogStore::find_table(rx, table)?.ok_or_else(|| {
 			Error(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

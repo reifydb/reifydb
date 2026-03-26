@@ -9,7 +9,7 @@ use crate::interface::catalog::{
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SinkDef {
+pub struct Sink {
 	pub id: SinkId,
 	pub namespace: NamespaceId,
 	pub name: String,

@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::interface::catalog::{
-	authentication::AuthenticationDef, change::CatalogTrackAuthenticationChangeOperations,
+	authentication::Authentication, change::CatalogTrackAuthenticationChangeOperations,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::identity::IdentityId;
@@ -20,9 +20,9 @@ impl Catalog {
 		identity: IdentityId,
 		method: &str,
 		properties: HashMap<String, String>,
-	) -> Result<AuthenticationDef> {
+	) -> Result<Authentication> {
 		let auth = CatalogStore::create_authentication(txn, identity, method, properties)?;
-		txn.track_authentication_def_created(auth.clone())?;
+		txn.track_authentication_created(auth.clone())?;
 		Ok(auth)
 	}
 
@@ -32,7 +32,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		identity: IdentityId,
 		method: &str,
-	) -> Result<Option<AuthenticationDef>> {
+	) -> Result<Option<Authentication>> {
 		CatalogStore::find_authentication_by_identity_and_method(txn, identity, method)
 	}
 
@@ -41,7 +41,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		method: &str,
-	) -> Result<Vec<AuthenticationDef>> {
+	) -> Result<Vec<Authentication>> {
 		CatalogStore::list_authentications_by_method(txn, method)
 	}
 
@@ -58,7 +58,7 @@ impl Catalog {
 			method,
 		)? {
 			CatalogStore::drop_authentication(txn, auth.id)?;
-			txn.track_authentication_def_deleted(auth)?;
+			txn.track_authentication_deleted(auth)?;
 		}
 		Ok(())
 	}

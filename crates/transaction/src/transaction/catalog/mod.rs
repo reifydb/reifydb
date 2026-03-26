@@ -8,9 +8,9 @@ use crate::transaction::{admin::AdminTransaction, subscription::SubscriptionTran
 pub mod authentication;
 pub mod dictionary;
 pub mod flow;
+pub mod granted_role;
 pub mod handler;
 pub mod identity;
-pub mod identity_role;
 pub mod migration;
 pub mod namespace;
 pub mod policy;

@@ -13,7 +13,7 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::columns::Columns,
 };
-use reifydb_transaction::interceptor::view::ViewInterceptor;
+use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
 use reifydb_type::{Result, value::row_number::RowNumber};
 
 use super::{coerce_columns, encode_row_at_index};
@@ -53,8 +53,8 @@ impl Operator for SinkSeriesViewOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let view_def = self.view.def().clone();
-		let schema: Schema = view_def.columns().into();
+		let view = self.view.def().clone();
+		let schema: Schema = view.columns().into();
 		let primitive_id = PrimitiveId::series(self.series_id);
 
 		for diff in change.diffs.iter() {
@@ -62,23 +62,23 @@ impl Operator for SinkSeriesViewOperator {
 				Diff::Insert {
 					post,
 				} => {
-					let coerced = coerce_columns(post, view_def.columns())?;
+					let coerced = coerce_columns(post, view.columns())?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						let row_number = coerced.row_numbers[row_idx];
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
-						let encoded = ViewInterceptor::pre_insert(
-							txn, &view_def, row_number, encoded,
+						let encoded = ViewRowInterceptor::pre_insert(
+							txn, &view, row_number, encoded,
 						)?;
 						let key = RowKey::encoded(primitive_id, row_number);
 						txn.set(&key, encoded.clone())?;
-						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
+						ViewRowInterceptor::post_insert(txn, &view, row_number, &encoded)?;
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
@@ -89,8 +89,8 @@ impl Operator for SinkSeriesViewOperator {
 					pre,
 					post,
 				} => {
-					let coerced_pre = coerce_columns(pre, view_def.columns())?;
-					let coerced_post = coerce_columns(post, view_def.columns())?;
+					let coerced_pre = coerce_columns(pre, view.columns())?;
+					let coerced_post = coerce_columns(post, view.columns())?;
 					let row_count = coerced_post.row_count();
 					for row_idx in 0..row_count {
 						let pre_row_number = coerced_pre.row_numbers[row_idx];
@@ -108,9 +108,9 @@ impl Operator for SinkSeriesViewOperator {
 							post_row_number,
 						);
 
-						let post_encoded = ViewInterceptor::pre_update(
+						let post_encoded = ViewRowInterceptor::pre_update(
 							txn,
-							&view_def,
+							&view,
 							post_row_number,
 							post_encoded,
 						)?;
@@ -118,9 +118,9 @@ impl Operator for SinkSeriesViewOperator {
 						let new_key = RowKey::encoded(primitive_id, post_row_number);
 						txn.remove(&old_key)?;
 						txn.set(&new_key, post_encoded.clone())?;
-						ViewInterceptor::post_update(
+						ViewRowInterceptor::post_update(
 							txn,
-							&view_def,
+							&view,
 							post_row_number,
 							&post_encoded,
 							&pre_encoded,
@@ -128,7 +128,7 @@ impl Operator for SinkSeriesViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
 						version,
 						diffs: vec![Diff::Update {
 							pre: coerced_pre,
@@ -139,21 +139,21 @@ impl Operator for SinkSeriesViewOperator {
 				Diff::Remove {
 					pre,
 				} => {
-					let coerced = coerce_columns(pre, view_def.columns())?;
+					let coerced = coerce_columns(pre, view.columns())?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						let row_number = coerced.row_numbers[row_idx];
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, row_number);
 
-						ViewInterceptor::pre_delete(txn, &view_def, row_number)?;
+						ViewRowInterceptor::pre_delete(txn, &view, row_number)?;
 						let key = RowKey::encoded(primitive_id, row_number);
 						txn.remove(&key)?;
-						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
+						ViewRowInterceptor::post_delete(txn, &view, row_number, &encoded)?;
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{handler::HandlerDef, id::HandlerId},
+	interface::catalog::{handler::Handler, id::HandlerId},
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> Result<HandlerDef> {
+	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> Result<Handler> {
 		match Self::find_handler(rx, handler)? {
 			Some(def) => Ok(def),
 			None => return_internal_error!("Handler with ID {:?} not found in catalog.", handler),

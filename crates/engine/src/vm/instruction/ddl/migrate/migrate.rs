@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::migration::{MigrationAction, MigrationDef},
+	interface::catalog::migration::{Migration, MigrationAction},
 	internal_error,
 	value::column::columns::Columns,
 };
@@ -39,7 +39,7 @@ pub(crate) fn execute_migrate(
 	let events = services.catalog.list_migration_events(&mut Transaction::Admin(&mut *txn))?;
 
 	// Determine pending migrations: those whose latest event is not "Applied"
-	let pending: Vec<MigrationDef> = migrations
+	let pending: Vec<Migration> = migrations
 		.into_iter()
 		.filter(|m| {
 			let latest = events.iter().filter(|e| e.migration_id == m.id).last();
@@ -51,7 +51,7 @@ pub(crate) fn execute_migrate(
 		.collect();
 
 	// Filter by target if specified
-	let to_apply: Vec<MigrationDef> = if let Some(ref target) = plan.target {
+	let to_apply: Vec<Migration> = if let Some(ref target) = plan.target {
 		// Apply up to and including the target
 		let mut result = Vec::new();
 		for m in pending {

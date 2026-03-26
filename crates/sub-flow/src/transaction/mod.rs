@@ -16,64 +16,64 @@ use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	interceptor::{
 		WithInterceptors,
-		authentication_def::{AuthenticationDefPostCreateInterceptor, AuthenticationDefPreDeleteInterceptor},
+		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
 		chain::InterceptorChain as Chain,
 		dictionary::{
-			DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor,
-			DictionaryPostUpdateInterceptor, DictionaryPreDeleteInterceptor,
-			DictionaryPreInsertInterceptor, DictionaryPreUpdateInterceptor,
+			DictionaryPostCreateInterceptor, DictionaryPostUpdateInterceptor,
+			DictionaryPreDeleteInterceptor, DictionaryPreUpdateInterceptor,
 		},
-		dictionary_def::{
-			DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor,
-			DictionaryDefPreDeleteInterceptor, DictionaryDefPreUpdateInterceptor,
+		dictionary_row::{
+			DictionaryRowPostDeleteInterceptor, DictionaryRowPostInsertInterceptor,
+			DictionaryRowPostUpdateInterceptor, DictionaryRowPreDeleteInterceptor,
+			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
 		},
-		identity_def::{
-			IdentityDefPostCreateInterceptor, IdentityDefPostUpdateInterceptor,
-			IdentityDefPreDeleteInterceptor, IdentityDefPreUpdateInterceptor,
+		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
+		identity::{
+			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
+			IdentityPreUpdateInterceptor,
 		},
-		identity_role_def::{IdentityRoleDefPostCreateInterceptor, IdentityRoleDefPreDeleteInterceptor},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 			NamespacePreUpdateInterceptor,
 		},
 		ringbuffer::{
-			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
-			RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
-			RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+			RingBufferPostCreateInterceptor, RingBufferPostUpdateInterceptor,
+			RingBufferPreDeleteInterceptor, RingBufferPreUpdateInterceptor,
 		},
-		ringbuffer_def::{
-			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
-			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		ringbuffer_row::{
+			RingBufferRowPostDeleteInterceptor, RingBufferRowPostInsertInterceptor,
+			RingBufferRowPostUpdateInterceptor, RingBufferRowPreDeleteInterceptor,
+			RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 		},
-		role_def::{
-			RoleDefPostCreateInterceptor, RoleDefPostUpdateInterceptor, RoleDefPreDeleteInterceptor,
-			RoleDefPreUpdateInterceptor,
+		role::{
+			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
+			RolePreUpdateInterceptor,
 		},
 		series::{
-			SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
-			SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
+			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
+			SeriesPreUpdateInterceptor,
 		},
-		series_def::{
-			SeriesDefPostCreateInterceptor, SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteInterceptor,
-			SeriesDefPreUpdateInterceptor,
+		series_row::{
+			SeriesRowPostDeleteInterceptor, SeriesRowPostInsertInterceptor, SeriesRowPostUpdateInterceptor,
+			SeriesRowPreDeleteInterceptor, SeriesRowPreInsertInterceptor, SeriesRowPreUpdateInterceptor,
 		},
 		table::{
-			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
-			TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+			TablePostCreateInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+			TablePreUpdateInterceptor,
 		},
-		table_def::{
-			TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
-			TableDefPreUpdateInterceptor,
+		table_row::{
+			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
+			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
 		transaction::{PostCommitInterceptor, PreCommitInterceptor},
 		view::{
-			ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor,
-			ViewPreDeleteInterceptor, ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
+			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
+			ViewPreUpdateInterceptor,
 		},
-		view_def::{
-			ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-			ViewDefPreUpdateInterceptor,
+		view_row::{
+			ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
+			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
 		},
 	},
 	multi::transaction::read::MultiReadTransaction,
@@ -326,30 +326,42 @@ macro_rules! interceptor_method {
 }
 
 impl WithInterceptors for FlowTransaction {
-	interceptor_method!(table_pre_insert_interceptors, table_pre_insert, TablePreInsertInterceptor);
-	interceptor_method!(table_post_insert_interceptors, table_post_insert, TablePostInsertInterceptor);
-	interceptor_method!(table_pre_update_interceptors, table_pre_update, TablePreUpdateInterceptor);
-	interceptor_method!(table_post_update_interceptors, table_post_update, TablePostUpdateInterceptor);
-	interceptor_method!(table_pre_delete_interceptors, table_pre_delete, TablePreDeleteInterceptor);
-	interceptor_method!(table_post_delete_interceptors, table_post_delete, TablePostDeleteInterceptor);
+	interceptor_method!(table_row_pre_insert_interceptors, table_row_pre_insert, TableRowPreInsertInterceptor);
+	interceptor_method!(table_row_post_insert_interceptors, table_row_post_insert, TableRowPostInsertInterceptor);
+	interceptor_method!(table_row_pre_update_interceptors, table_row_pre_update, TableRowPreUpdateInterceptor);
+	interceptor_method!(table_row_post_update_interceptors, table_row_post_update, TableRowPostUpdateInterceptor);
+	interceptor_method!(table_row_pre_delete_interceptors, table_row_pre_delete, TableRowPreDeleteInterceptor);
+	interceptor_method!(table_row_post_delete_interceptors, table_row_post_delete, TableRowPostDeleteInterceptor);
 
-	interceptor_method!(ringbuffer_pre_insert_interceptors, ringbuffer_pre_insert, RingBufferPreInsertInterceptor);
 	interceptor_method!(
-		ringbuffer_post_insert_interceptors,
-		ringbuffer_post_insert,
-		RingBufferPostInsertInterceptor
+		ringbuffer_row_pre_insert_interceptors,
+		ringbuffer_row_pre_insert,
+		RingBufferRowPreInsertInterceptor
 	);
-	interceptor_method!(ringbuffer_pre_update_interceptors, ringbuffer_pre_update, RingBufferPreUpdateInterceptor);
 	interceptor_method!(
-		ringbuffer_post_update_interceptors,
-		ringbuffer_post_update,
-		RingBufferPostUpdateInterceptor
+		ringbuffer_row_post_insert_interceptors,
+		ringbuffer_row_post_insert,
+		RingBufferRowPostInsertInterceptor
 	);
-	interceptor_method!(ringbuffer_pre_delete_interceptors, ringbuffer_pre_delete, RingBufferPreDeleteInterceptor);
 	interceptor_method!(
-		ringbuffer_post_delete_interceptors,
-		ringbuffer_post_delete,
-		RingBufferPostDeleteInterceptor
+		ringbuffer_row_pre_update_interceptors,
+		ringbuffer_row_pre_update,
+		RingBufferRowPreUpdateInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_row_post_update_interceptors,
+		ringbuffer_row_post_update,
+		RingBufferRowPostUpdateInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_row_pre_delete_interceptors,
+		ringbuffer_row_pre_delete,
+		RingBufferRowPreDeleteInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_row_post_delete_interceptors,
+		ringbuffer_row_post_delete,
+		RingBufferRowPostDeleteInterceptor
 	);
 
 	interceptor_method!(pre_commit_interceptors, pre_commit, PreCommitInterceptor);
@@ -360,49 +372,71 @@ impl WithInterceptors for FlowTransaction {
 	interceptor_method!(namespace_post_update_interceptors, namespace_post_update, NamespacePostUpdateInterceptor);
 	interceptor_method!(namespace_pre_delete_interceptors, namespace_pre_delete, NamespacePreDeleteInterceptor);
 
-	interceptor_method!(table_def_post_create_interceptors, table_def_post_create, TableDefPostCreateInterceptor);
-	interceptor_method!(table_def_pre_update_interceptors, table_def_pre_update, TableDefPreUpdateInterceptor);
-	interceptor_method!(table_def_post_update_interceptors, table_def_post_update, TableDefPostUpdateInterceptor);
-	interceptor_method!(table_def_pre_delete_interceptors, table_def_pre_delete, TableDefPreDeleteInterceptor);
+	interceptor_method!(table_post_create_interceptors, table_post_create, TablePostCreateInterceptor);
+	interceptor_method!(table_pre_update_interceptors, table_pre_update, TablePreUpdateInterceptor);
+	interceptor_method!(table_post_update_interceptors, table_post_update, TablePostUpdateInterceptor);
+	interceptor_method!(table_pre_delete_interceptors, table_pre_delete, TablePreDeleteInterceptor);
 
-	interceptor_method!(view_pre_insert_interceptors, view_pre_insert, ViewPreInsertInterceptor);
-	interceptor_method!(view_post_insert_interceptors, view_post_insert, ViewPostInsertInterceptor);
+	interceptor_method!(view_row_pre_insert_interceptors, view_row_pre_insert, ViewRowPreInsertInterceptor);
+	interceptor_method!(view_row_post_insert_interceptors, view_row_post_insert, ViewRowPostInsertInterceptor);
+	interceptor_method!(view_row_pre_update_interceptors, view_row_pre_update, ViewRowPreUpdateInterceptor);
+	interceptor_method!(view_row_post_update_interceptors, view_row_post_update, ViewRowPostUpdateInterceptor);
+	interceptor_method!(view_row_pre_delete_interceptors, view_row_pre_delete, ViewRowPreDeleteInterceptor);
+	interceptor_method!(view_row_post_delete_interceptors, view_row_post_delete, ViewRowPostDeleteInterceptor);
+
+	interceptor_method!(view_post_create_interceptors, view_post_create, ViewPostCreateInterceptor);
 	interceptor_method!(view_pre_update_interceptors, view_pre_update, ViewPreUpdateInterceptor);
 	interceptor_method!(view_post_update_interceptors, view_post_update, ViewPostUpdateInterceptor);
 	interceptor_method!(view_pre_delete_interceptors, view_pre_delete, ViewPreDeleteInterceptor);
-	interceptor_method!(view_post_delete_interceptors, view_post_delete, ViewPostDeleteInterceptor);
-
-	interceptor_method!(view_def_post_create_interceptors, view_def_post_create, ViewDefPostCreateInterceptor);
-	interceptor_method!(view_def_pre_update_interceptors, view_def_pre_update, ViewDefPreUpdateInterceptor);
-	interceptor_method!(view_def_post_update_interceptors, view_def_post_update, ViewDefPostUpdateInterceptor);
-	interceptor_method!(view_def_pre_delete_interceptors, view_def_pre_delete, ViewDefPreDeleteInterceptor);
 
 	interceptor_method!(
-		ringbuffer_def_post_create_interceptors,
-		ringbuffer_def_post_create,
-		RingBufferDefPostCreateInterceptor
+		ringbuffer_post_create_interceptors,
+		ringbuffer_post_create,
+		RingBufferPostCreateInterceptor
+	);
+	interceptor_method!(ringbuffer_pre_update_interceptors, ringbuffer_pre_update, RingBufferPreUpdateInterceptor);
+	interceptor_method!(
+		ringbuffer_post_update_interceptors,
+		ringbuffer_post_update,
+		RingBufferPostUpdateInterceptor
+	);
+	interceptor_method!(ringbuffer_pre_delete_interceptors, ringbuffer_pre_delete, RingBufferPreDeleteInterceptor);
+
+	interceptor_method!(
+		dictionary_row_pre_insert_interceptors,
+		dictionary_row_pre_insert,
+		DictionaryRowPreInsertInterceptor
 	);
 	interceptor_method!(
-		ringbuffer_def_pre_update_interceptors,
-		ringbuffer_def_pre_update,
-		RingBufferDefPreUpdateInterceptor
+		dictionary_row_post_insert_interceptors,
+		dictionary_row_post_insert,
+		DictionaryRowPostInsertInterceptor
 	);
 	interceptor_method!(
-		ringbuffer_def_post_update_interceptors,
-		ringbuffer_def_post_update,
-		RingBufferDefPostUpdateInterceptor
+		dictionary_row_pre_update_interceptors,
+		dictionary_row_pre_update,
+		DictionaryRowPreUpdateInterceptor
 	);
 	interceptor_method!(
-		ringbuffer_def_pre_delete_interceptors,
-		ringbuffer_def_pre_delete,
-		RingBufferDefPreDeleteInterceptor
+		dictionary_row_post_update_interceptors,
+		dictionary_row_post_update,
+		DictionaryRowPostUpdateInterceptor
+	);
+	interceptor_method!(
+		dictionary_row_pre_delete_interceptors,
+		dictionary_row_pre_delete,
+		DictionaryRowPreDeleteInterceptor
+	);
+	interceptor_method!(
+		dictionary_row_post_delete_interceptors,
+		dictionary_row_post_delete,
+		DictionaryRowPostDeleteInterceptor
 	);
 
-	interceptor_method!(dictionary_pre_insert_interceptors, dictionary_pre_insert, DictionaryPreInsertInterceptor);
 	interceptor_method!(
-		dictionary_post_insert_interceptors,
-		dictionary_post_insert,
-		DictionaryPostInsertInterceptor
+		dictionary_post_create_interceptors,
+		dictionary_post_create,
+		DictionaryPostCreateInterceptor
 	);
 	interceptor_method!(dictionary_pre_update_interceptors, dictionary_pre_update, DictionaryPreUpdateInterceptor);
 	interceptor_method!(
@@ -411,94 +445,56 @@ impl WithInterceptors for FlowTransaction {
 		DictionaryPostUpdateInterceptor
 	);
 	interceptor_method!(dictionary_pre_delete_interceptors, dictionary_pre_delete, DictionaryPreDeleteInterceptor);
+
+	interceptor_method!(series_row_pre_insert_interceptors, series_row_pre_insert, SeriesRowPreInsertInterceptor);
 	interceptor_method!(
-		dictionary_post_delete_interceptors,
-		dictionary_post_delete,
-		DictionaryPostDeleteInterceptor
+		series_row_post_insert_interceptors,
+		series_row_post_insert,
+		SeriesRowPostInsertInterceptor
+	);
+	interceptor_method!(series_row_pre_update_interceptors, series_row_pre_update, SeriesRowPreUpdateInterceptor);
+	interceptor_method!(
+		series_row_post_update_interceptors,
+		series_row_post_update,
+		SeriesRowPostUpdateInterceptor
+	);
+	interceptor_method!(series_row_pre_delete_interceptors, series_row_pre_delete, SeriesRowPreDeleteInterceptor);
+	interceptor_method!(
+		series_row_post_delete_interceptors,
+		series_row_post_delete,
+		SeriesRowPostDeleteInterceptor
 	);
 
-	interceptor_method!(
-		dictionary_def_post_create_interceptors,
-		dictionary_def_post_create,
-		DictionaryDefPostCreateInterceptor
-	);
-	interceptor_method!(
-		dictionary_def_pre_update_interceptors,
-		dictionary_def_pre_update,
-		DictionaryDefPreUpdateInterceptor
-	);
-	interceptor_method!(
-		dictionary_def_post_update_interceptors,
-		dictionary_def_post_update,
-		DictionaryDefPostUpdateInterceptor
-	);
-	interceptor_method!(
-		dictionary_def_pre_delete_interceptors,
-		dictionary_def_pre_delete,
-		DictionaryDefPreDeleteInterceptor
-	);
-
-	interceptor_method!(series_pre_insert_interceptors, series_pre_insert, SeriesPreInsertInterceptor);
-	interceptor_method!(series_post_insert_interceptors, series_post_insert, SeriesPostInsertInterceptor);
+	interceptor_method!(series_post_create_interceptors, series_post_create, SeriesPostCreateInterceptor);
 	interceptor_method!(series_pre_update_interceptors, series_pre_update, SeriesPreUpdateInterceptor);
 	interceptor_method!(series_post_update_interceptors, series_post_update, SeriesPostUpdateInterceptor);
 	interceptor_method!(series_pre_delete_interceptors, series_pre_delete, SeriesPreDeleteInterceptor);
-	interceptor_method!(series_post_delete_interceptors, series_post_delete, SeriesPostDeleteInterceptor);
-
+	interceptor_method!(identity_post_create_interceptors, identity_post_create, IdentityPostCreateInterceptor);
+	interceptor_method!(identity_pre_update_interceptors, identity_pre_update, IdentityPreUpdateInterceptor);
+	interceptor_method!(identity_post_update_interceptors, identity_post_update, IdentityPostUpdateInterceptor);
+	interceptor_method!(identity_pre_delete_interceptors, identity_pre_delete, IdentityPreDeleteInterceptor);
+	interceptor_method!(role_post_create_interceptors, role_post_create, RolePostCreateInterceptor);
+	interceptor_method!(role_pre_update_interceptors, role_pre_update, RolePreUpdateInterceptor);
+	interceptor_method!(role_post_update_interceptors, role_post_update, RolePostUpdateInterceptor);
+	interceptor_method!(role_pre_delete_interceptors, role_pre_delete, RolePreDeleteInterceptor);
 	interceptor_method!(
-		series_def_post_create_interceptors,
-		series_def_post_create,
-		SeriesDefPostCreateInterceptor
-	);
-	interceptor_method!(series_def_pre_update_interceptors, series_def_pre_update, SeriesDefPreUpdateInterceptor);
-	interceptor_method!(
-		series_def_post_update_interceptors,
-		series_def_post_update,
-		SeriesDefPostUpdateInterceptor
-	);
-	interceptor_method!(series_def_pre_delete_interceptors, series_def_pre_delete, SeriesDefPreDeleteInterceptor);
-	interceptor_method!(
-		identity_def_post_create_interceptors,
-		identity_def_post_create,
-		IdentityDefPostCreateInterceptor
+		granted_role_post_create_interceptors,
+		granted_role_post_create,
+		GrantedRolePostCreateInterceptor
 	);
 	interceptor_method!(
-		identity_def_pre_update_interceptors,
-		identity_def_pre_update,
-		IdentityDefPreUpdateInterceptor
+		granted_role_pre_delete_interceptors,
+		granted_role_pre_delete,
+		GrantedRolePreDeleteInterceptor
 	);
 	interceptor_method!(
-		identity_def_post_update_interceptors,
-		identity_def_post_update,
-		IdentityDefPostUpdateInterceptor
+		authentication_post_create_interceptors,
+		authentication_post_create,
+		AuthenticationPostCreateInterceptor
 	);
 	interceptor_method!(
-		identity_def_pre_delete_interceptors,
-		identity_def_pre_delete,
-		IdentityDefPreDeleteInterceptor
-	);
-	interceptor_method!(role_def_post_create_interceptors, role_def_post_create, RoleDefPostCreateInterceptor);
-	interceptor_method!(role_def_pre_update_interceptors, role_def_pre_update, RoleDefPreUpdateInterceptor);
-	interceptor_method!(role_def_post_update_interceptors, role_def_post_update, RoleDefPostUpdateInterceptor);
-	interceptor_method!(role_def_pre_delete_interceptors, role_def_pre_delete, RoleDefPreDeleteInterceptor);
-	interceptor_method!(
-		identity_role_def_post_create_interceptors,
-		identity_role_def_post_create,
-		IdentityRoleDefPostCreateInterceptor
-	);
-	interceptor_method!(
-		identity_role_def_pre_delete_interceptors,
-		identity_role_def_pre_delete,
-		IdentityRoleDefPreDeleteInterceptor
-	);
-	interceptor_method!(
-		authentication_def_post_create_interceptors,
-		authentication_def_post_create,
-		AuthenticationDefPostCreateInterceptor
-	);
-	interceptor_method!(
-		authentication_def_pre_delete_interceptors,
-		authentication_def_pre_delete,
-		AuthenticationDefPreDeleteInterceptor
+		authentication_pre_delete_interceptors,
+		authentication_pre_delete,
+		AuthenticationPreDeleteInterceptor
 	);
 }

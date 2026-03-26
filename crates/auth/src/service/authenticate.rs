@@ -120,11 +120,11 @@ impl AuthService {
 		};
 
 		match self.validate_token(token_value) {
-			Some(token_def) => {
+			Some(token) => {
 				let session_token = generate_session_token(&self.rng);
-				self.persist_token(&session_token, token_def.identity)?;
+				self.persist_token(&session_token, token.identity)?;
 				Ok(AuthResponse::Authenticated {
-					identity: token_def.identity,
+					identity: token.identity,
 					token: session_token,
 				})
 			}

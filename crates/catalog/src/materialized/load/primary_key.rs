@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
+	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::primary_key::PrimaryKeyKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -40,24 +40,24 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = CatalogStore::get_column(rx, column_id)?;
-			columns.push(ColumnDef {
-				id: column_def.id,
-				name: column_def.name,
-				constraint: column_def.constraint,
-				properties: column_def.properties,
-				index: column_def.index,
-				auto_increment: column_def.auto_increment,
+			let column = CatalogStore::get_column(rx, column_id)?;
+			columns.push(Column {
+				id: column.id,
+				name: column.name,
+				constraint: column.constraint,
+				properties: column.properties,
+				index: column.index,
+				auto_increment: column.auto_increment,
 				dictionary_id: None,
 			});
 		}
 
-		let primary_key_def = PrimaryKeyDef {
+		let primary_key = PrimaryKey {
 			id: pk_id,
 			columns,
 		};
 
-		catalog.set_primary_key(pk_id, version, Some(primary_key_def));
+		catalog.set_primary_key(pk_id, version, Some(primary_key));
 	}
 
 	Ok(())

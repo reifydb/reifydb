@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		flow::{FlowDef, FlowId, FlowStatus},
+		flow::{Flow, FlowId, FlowStatus},
 		id::NamespaceId,
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
@@ -29,7 +29,7 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<FlowDef> {
+	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<Flow> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
@@ -61,7 +61,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
-	) -> Result<FlowDef> {
+	) -> Result<Flow> {
 		let namespace_id = to_create.namespace;
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;

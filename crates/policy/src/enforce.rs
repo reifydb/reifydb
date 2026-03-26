@@ -39,7 +39,7 @@ pub fn enforce_write_policies(
 	let policies = resolve_write_policies(catalog, tx, target_namespace, target_object, operation, target_type)?;
 
 	if policies.is_empty() {
-		return Err(PolicyError::NoPolicyDefined {
+		return Err(PolicyError::NoPolicyined {
 			operation: operation.to_string(),
 			target: format!("{}::{}", target_namespace, target_object),
 			target_type: target_type_str,
@@ -191,7 +191,7 @@ pub fn enforce_identity_policy(
 	let policies = resolve_write_policies(catalog, tx, target_namespace, target_object, operation, target_type)?;
 
 	if policies.is_empty() {
-		return Err(PolicyError::NoPolicyDefined {
+		return Err(PolicyError::NoPolicyined {
 			operation: operation.to_string(),
 			target: format!("{}::{}", target_namespace, target_object),
 			target_type: target_type_str,

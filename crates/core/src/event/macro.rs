@@ -132,7 +132,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_define_event_cheap_clone() {
+	fn testine_event_cheap_clone() {
 		let large_vec = vec![0; 10_000];
 		let event = DefineTestEvent::new(large_vec, "test".to_string());
 
@@ -151,7 +151,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_define_event_field_access() {
+	fn testine_event_field_access() {
 		let event = DefineTestEvent::new(vec![1, 2, 3], "my_event".to_string());
 
 		assert_eq!(event.data(), &vec![1, 2, 3]);
@@ -163,7 +163,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_define_event_empty_struct() {
+	fn testine_event_empty_struct() {
 		let event = EmptyDefineEvent::new();
 		let clone = event.clone();
 
@@ -173,7 +173,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_define_event_implements_event_trait() {
+	fn testine_event_implements_event_trait() {
 		let event = DefineTestEvent::new(vec![42], "test".to_string());
 
 		// Test Event trait methods
@@ -186,7 +186,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_define_event_send_sync() {
+	fn testine_event_send_sync() {
 		// This test verifies that events are Send + Sync
 		fn assert_send<T: Send>() {}
 		fn assert_sync<T: Sync>() {}
@@ -203,7 +203,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_define_event_with_event_bus() {
+	fn testine_event_with_event_bus() {
 		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let event_bus = EventBus::new(&actor_system);
 

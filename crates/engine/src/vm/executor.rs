@@ -4,7 +4,7 @@
 use std::{ops::Deref, sync::Arc};
 
 use bumpalo::Bump;
-use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::FlowOperatorStore};
+use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
 use reifydb_core::{error::diagnostic::subscription, util::ioc::IocContainer, value::column::columns::Columns};
 use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
@@ -67,7 +67,7 @@ impl Executor {
 		functions: Functions,
 		procedures: Procedures,
 		transforms: Transforms,
-		flow_operator_store: FlowOperatorStore,
+		flow_operator_store: SystemFlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
 		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,

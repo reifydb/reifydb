@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackRoleChangeOperations,
-	identity::{RoleDef, RoleId},
+	identity::{Role, RoleId},
 };
 use reifydb_type::Result;
 
@@ -13,51 +13,49 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalRoleChanges,
 	},
-	interceptor::role_def::{
-		RoleDefPostCreateContext, RoleDefPostUpdateContext, RoleDefPreDeleteContext, RoleDefPreUpdateContext,
-	},
+	interceptor::role::{RolePostCreateContext, RolePostUpdateContext, RolePreDeleteContext, RolePreUpdateContext},
 	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
 };
 
 impl CatalogTrackRoleChangeOperations for AdminTransaction {
-	fn track_role_def_created(&mut self, role: RoleDef) -> Result<()> {
-		self.interceptors.role_def_post_create.execute(RoleDefPostCreateContext::new(&role))?;
+	fn track_role_created(&mut self, role: Role) -> Result<()> {
+		self.interceptors.role_post_create.execute(RolePostCreateContext::new(&role))?;
 		let change = Change {
 			pre: None,
 			post: Some(role),
 			op: Create,
 		};
-		self.changes.add_role_def_change(change);
+		self.changes.add_role_change(change);
 		Ok(())
 	}
 
-	fn track_role_def_updated(&mut self, pre: RoleDef, post: RoleDef) -> Result<()> {
-		self.interceptors.role_def_pre_update.execute(RoleDefPreUpdateContext::new(&pre))?;
-		self.interceptors.role_def_post_update.execute(RoleDefPostUpdateContext::new(&pre, &post))?;
+	fn track_role_updated(&mut self, pre: Role, post: Role) -> Result<()> {
+		self.interceptors.role_pre_update.execute(RolePreUpdateContext::new(&pre))?;
+		self.interceptors.role_post_update.execute(RolePostUpdateContext::new(&pre, &post))?;
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
 			op: Update,
 		};
-		self.changes.add_role_def_change(change);
+		self.changes.add_role_change(change);
 		Ok(())
 	}
 
-	fn track_role_def_deleted(&mut self, role: RoleDef) -> Result<()> {
-		self.interceptors.role_def_pre_delete.execute(RoleDefPreDeleteContext::new(&role))?;
+	fn track_role_deleted(&mut self, role: Role) -> Result<()> {
+		self.interceptors.role_pre_delete.execute(RolePreDeleteContext::new(&role))?;
 		let change = Change {
 			pre: Some(role),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_role_def_change(change);
+		self.changes.add_role_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalRoleChanges for AdminTransaction {
-	fn find_role(&self, id: RoleId) -> Option<&RoleDef> {
-		for change in self.changes.role_def.iter().rev() {
+	fn find_role(&self, id: RoleId) -> Option<&Role> {
+		for change in self.changes.role.iter().rev() {
 			if let Some(role) = &change.post {
 				if role.id == id {
 					return Some(role);
@@ -71,45 +69,45 @@ impl TransactionalRoleChanges for AdminTransaction {
 		None
 	}
 
-	fn find_role_by_name(&self, name: &str) -> Option<&RoleDef> {
-		self.changes.role_def.iter().rev().find_map(|change| change.post.as_ref().filter(|r| r.name == name))
+	fn find_role_by_name(&self, name: &str) -> Option<&Role> {
+		self.changes.role.iter().rev().find_map(|change| change.post.as_ref().filter(|r| r.name == name))
 	}
 
 	fn is_role_deleted(&self, id: RoleId) -> bool {
 		self.changes
-			.role_def
+			.role
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|r| r.id) == Some(id))
 	}
 
 	fn is_role_deleted_by_name(&self, name: &str) -> bool {
-		self.changes.role_def.iter().rev().any(|change| {
+		self.changes.role.iter().rev().any(|change| {
 			change.op == Delete && change.pre.as_ref().map(|r| r.name == name).unwrap_or(false)
 		})
 	}
 }
 
 impl CatalogTrackRoleChangeOperations for SubscriptionTransaction {
-	fn track_role_def_created(&mut self, role: RoleDef) -> Result<()> {
-		self.inner.track_role_def_created(role)
+	fn track_role_created(&mut self, role: Role) -> Result<()> {
+		self.inner.track_role_created(role)
 	}
 
-	fn track_role_def_updated(&mut self, pre: RoleDef, post: RoleDef) -> Result<()> {
-		self.inner.track_role_def_updated(pre, post)
+	fn track_role_updated(&mut self, pre: Role, post: Role) -> Result<()> {
+		self.inner.track_role_updated(pre, post)
 	}
 
-	fn track_role_def_deleted(&mut self, role: RoleDef) -> Result<()> {
-		self.inner.track_role_def_deleted(role)
+	fn track_role_deleted(&mut self, role: Role) -> Result<()> {
+		self.inner.track_role_deleted(role)
 	}
 }
 
 impl TransactionalRoleChanges for SubscriptionTransaction {
-	fn find_role(&self, id: RoleId) -> Option<&RoleDef> {
+	fn find_role(&self, id: RoleId) -> Option<&Role> {
 		self.inner.find_role(id)
 	}
 
-	fn find_role_by_name(&self, name: &str) -> Option<&RoleDef> {
+	fn find_role_by_name(&self, name: &str) -> Option<&Role> {
 		self.inner.find_role_by_name(name)
 	}
 

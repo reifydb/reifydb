@@ -18,10 +18,10 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::{
-			column::{ColumnDef, ColumnIndex},
+			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
-			table::TableDef,
+			table::Table,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
@@ -1803,7 +1803,7 @@ impl<'bump> Compiler<'bump> {
 							},
 						);
 
-						let table_def = TableDef {
+						let table_def = Table {
 							id: TableId(1),
 							namespace: NamespaceId::SYSTEM,
 							name: "_context".to_string(),
@@ -1819,7 +1819,7 @@ impl<'bump> Compiler<'bump> {
 
 						let resolved_source = ResolvedPrimitive::Table(resolved_table);
 
-						let column_def = ColumnDef {
+						let column_def = Column {
 							id: ColumnId(1),
 							name: col.name.text().to_string(),
 							constraint: TypeConstraint::unconstrained(Type::Utf8),

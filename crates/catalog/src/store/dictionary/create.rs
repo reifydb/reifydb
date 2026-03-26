@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	encoded::row::EncodedRow,
-	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
+	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{
 		dictionary::{DictionaryKey, DictionarySequenceKey},
 		namespace_dictionary::NamespaceDictionaryKey,
@@ -37,7 +37,7 @@ impl CatalogStore {
 	pub(crate) fn create_dictionary(
 		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
-	) -> Result<DictionaryDef> {
+	) -> Result<Dictionary> {
 		let namespace_id = to_create.namespace;
 
 		// Check if dictionary already exists

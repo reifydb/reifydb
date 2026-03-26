@@ -32,9 +32,9 @@ impl CatalogStore {
 
 	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> Result<()> {
 		// Get the flow to find namespace for index deletion
-		let flow_def = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
+		let flow = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
-		if let Some(flow) = flow_def {
+		if let Some(flow) = flow {
 			// Step 1: Drop all nodes for this flow
 			let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 			for node in nodes {

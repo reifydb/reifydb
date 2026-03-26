@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_type::value::Value;
 
-use crate::{error::Result, operator::column::OperatorColumnDef};
+use crate::{error::Result, operator::column::OperatorColumn};
 
 /// The type of change operation for a sink record
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +37,7 @@ pub trait FFISinkMetadata {
 	/// Human-readable description
 	const DESCRIPTION: &'static str;
 	/// Schema of records this sink accepts
-	const INPUT_COLUMNS: &'static [OperatorColumnDef];
+	const INPUT_COLUMNS: &'static [OperatorColumn];
 }
 
 /// Runtime behavior of a sink connector

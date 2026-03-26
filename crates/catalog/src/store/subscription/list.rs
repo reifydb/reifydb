@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::subscription::SubscriptionDef,
+	interface::catalog::subscription::Subscription,
 	key::{Key, subscription::SubscriptionKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::subscription::schema::subscription};
 
 impl CatalogStore {
-	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> Result<Vec<SubscriptionDef>> {
+	pub(crate) fn list_subscriptions_all(rx: &mut Transaction<'_>) -> Result<Vec<Subscription>> {
 		// First, collect all subscription IDs and metadata
 		let mut subscription_data = Vec::new();
 		{
@@ -41,7 +41,7 @@ impl CatalogStore {
 			// Load columns (works for all transaction types)
 			let columns = Self::list_subscription_columns(rx, subscription_id)?;
 
-			let subscription_def = SubscriptionDef {
+			let subscription = Subscription {
 				id: subscription_id,
 				columns,
 				// Subscriptions don't have primary keys (they use UUID v7 as their
@@ -50,7 +50,7 @@ impl CatalogStore {
 				acknowledged_version,
 			};
 
-			result.push(subscription_def);
+			result.push(subscription);
 		}
 
 		Ok(result)

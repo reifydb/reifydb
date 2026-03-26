@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
+	interface::catalog::{id::SubscriptionId, subscription::Subscription},
 	key::subscription::SubscriptionKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,10 +11,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::subscription::schema::subscription};
 
 impl CatalogStore {
-	pub(crate) fn find_subscription(
-		rx: &mut Transaction<'_>,
-		id: SubscriptionId,
-	) -> Result<Option<SubscriptionDef>> {
+	pub(crate) fn find_subscription(rx: &mut Transaction<'_>, id: SubscriptionId) -> Result<Option<Subscription>> {
 		let Some(multi) = rx.get(&SubscriptionKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -26,7 +23,7 @@ impl CatalogStore {
 
 		let columns = Self::list_subscription_columns(rx, id)?;
 
-		Ok(Some(SubscriptionDef {
+		Ok(Some(Subscription {
 			id,
 			columns,
 			primary_key: None,

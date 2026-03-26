@@ -179,12 +179,12 @@ pub struct TransactionalFlowPostCommitInterceptor {
 
 impl PostCommitInterceptor for TransactionalFlowPostCommitInterceptor {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> Result<()> {
-		for flow_change in &ctx.changes.flow_def {
+		for flow_change in &ctx.changes.flow {
 			if flow_change.op == OperationType::Create {
-				if let Some(flow_def) = &flow_change.post {
-					if let Err(e) = self.registrar.try_register_by_id(flow_def.id) {
+				if let Some(flow) = &flow_change.post {
+					if let Err(e) = self.registrar.try_register_by_id(flow.id) {
 						warn!(
-							flow_id = flow_def.id.0,
+							flow_id = flow.id.0,
 							error = %e,
 							"failed to register transactional flow on commit"
 						);

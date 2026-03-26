@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ViewId, view::ViewDef},
+	interface::catalog::{id::ViewId, view::View},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> Result<ViewDef> {
+	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> Result<View> {
 		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
 			Error(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

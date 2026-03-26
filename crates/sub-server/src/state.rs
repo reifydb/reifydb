@@ -209,7 +209,7 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_query_config_defaults() {
+	fn test_query_configaults() {
 		let config = StateConfig::default();
 		assert_eq!(config.query_timeout, Duration::from_secs(30));
 		assert_eq!(config.request_timeout, Duration::from_secs(60));

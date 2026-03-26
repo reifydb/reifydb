@@ -401,7 +401,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_default() {
+	fn testault() {
 		let container = Utf8Container::default();
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());

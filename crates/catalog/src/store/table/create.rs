@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{NamespaceId, TableId},
 		primitive::PrimitiveId,
 		property::ColumnPropertyKind,
-		table::TableDef,
+		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
@@ -48,7 +48,7 @@ pub struct TableToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<TableDef> {
+	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_table_by_name(

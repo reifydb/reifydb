@@ -9,7 +9,7 @@
 use std::{mem, ptr, slice::from_raw_parts, str::from_utf8};
 
 use reifydb_abi::{
-	catalog::{column::ColumnDefFFI, namespace::NamespaceFFI, primary_key::PrimaryKeyFFI, table::TableFFI},
+	catalog::{column::ColumnFFI, namespace::NamespaceFFI, primary_key::PrimaryKeyFFI, table::TableFFI},
 	constants::{FFI_ERROR_INVALID_UTF8, FFI_ERROR_MARSHAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
 	context::context::ContextFFI,
 	data::buffer::BufferFFI,
@@ -17,11 +17,11 @@ use reifydb_abi::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		column::ColumnDef,
+		column::Column,
 		id::{NamespaceId, TableId},
-		key::PrimaryKeyDef,
+		key::PrimaryKey,
 		namespace::Namespace,
-		table::TableDef,
+		table::Table,
 	},
 };
 use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
@@ -226,7 +226,7 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 				}
 			}
 			// Free columns array itself
-			host_free(tbl.columns as *mut u8, tbl.column_count * mem::size_of::<ColumnDefFFI>());
+			host_free(tbl.columns as *mut u8, tbl.column_count * mem::size_of::<ColumnFFI>());
 		}
 
 		// Free primary key
@@ -264,8 +264,8 @@ fn marshal_namespace(namespace: &Namespace) -> NamespaceFFI {
 	}
 }
 
-/// Marshal a TableDef to FFI
-fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
+/// Marshal a Table to FFI
+fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 	// Allocate and copy table name
 	let name_bytes = table.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -279,8 +279,8 @@ fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
 	// Allocate columns array
 	let columns_count = table.columns.len();
 	let columns_ptr = if columns_count > 0 {
-		let size = columns_count * mem::size_of::<ColumnDefFFI>();
-		let ptr = host_alloc(size) as *mut ColumnDefFFI;
+		let size = columns_count * mem::size_of::<ColumnFFI>();
+		let ptr = host_alloc(size) as *mut ColumnFFI;
 		if ptr.is_null() {
 			// Clean up name before returning error
 			host_free(name_ptr, name_bytes.len());
@@ -306,7 +306,7 @@ fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
 			// Clean up before returning error
 			host_free(name_ptr, name_bytes.len());
 			if !columns_ptr.is_null() {
-				host_free(columns_ptr as *mut u8, columns_count * mem::size_of::<ColumnDefFFI>());
+				host_free(columns_ptr as *mut u8, columns_count * mem::size_of::<ColumnFFI>());
 			}
 			return Err("Failed to allocate primary key");
 		}
@@ -335,8 +335,8 @@ fn marshal_table(table: &TableDef) -> Result<TableFFI, &'static str> {
 	})
 }
 
-/// Marshal a ColumnDef to FFI
-fn marshal_column(column: &ColumnDef) -> Result<ColumnDefFFI, &'static str> {
+/// Marshal a Column to FFI
+fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
 	// Allocate and copy column name
 	let name_bytes = column.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
@@ -350,7 +350,7 @@ fn marshal_column(column: &ColumnDef) -> Result<ColumnDefFFI, &'static str> {
 	// Encode type constraint
 	let (base_type, constraint_type, param1, param2) = encode_type_constraint(&column.constraint);
 
-	Ok(ColumnDefFFI {
+	Ok(ColumnFFI {
 		id: column.id.0,
 		name: BufferFFI {
 			ptr: name_ptr,
@@ -370,8 +370,8 @@ fn marshal_column(column: &ColumnDef) -> Result<ColumnDefFFI, &'static str> {
 	})
 }
 
-/// Marshal a PrimaryKeyDef to FFI
-fn marshal_primary_key(pk: &PrimaryKeyDef) -> Result<PrimaryKeyFFI, &'static str> {
+/// Marshal a PrimaryKey to FFI
+fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
 	// Allocate column IDs array
 	let column_count = pk.columns.len();
 	let column_ids_ptr = if column_count > 0 {

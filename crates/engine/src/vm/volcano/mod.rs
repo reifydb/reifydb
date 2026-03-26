@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::dictionary::DictionaryDef,
+	interface::catalog::dictionary::Dictionary,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -12,7 +12,7 @@ use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
 
 pub(crate) fn decode_dictionary_columns(
 	columns: &mut Columns,
-	dictionaries: &[Option<DictionaryDef>],
+	dictionaries: &[Option<Dictionary>],
 	rx: &mut Transaction,
 ) -> Result<()> {
 	for (col_idx, dict_opt) in dictionaries.iter().enumerate() {

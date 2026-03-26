@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::columns::*, vtable::COLUMNS};
 
 /// Returns the static definition for the system.columns virtual table
 /// This table exposes information about all columns across all tables and views
-pub fn columns() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn columns() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: COLUMNS,
 			namespace: NamespaceId::SYSTEM,
 			name: "columns".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ID,
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: SOURCE_ID,
 					name: "source_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -41,7 +41,7 @@ pub fn columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: SOURCE_TYPE,
 					name: "source_type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -50,7 +50,7 @@ pub fn columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: NAME,
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -59,7 +59,7 @@ pub fn columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: TYPE,
 					name: "type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -68,7 +68,7 @@ pub fn columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: POSITION,
 					name: "position".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -77,7 +77,7 @@ pub fn columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: AUTO_INCREMENT,
 					name: "auto_increment".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
@@ -86,7 +86,7 @@ pub fn columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: DICTIONARY_ID,
 					name: "dictionary_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),

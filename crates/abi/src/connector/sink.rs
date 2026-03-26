@@ -7,7 +7,7 @@ use core::ffi::c_void;
 
 use crate::{
 	data::{buffer::BufferFFI, column::ColumnsFFI},
-	operator::column::OperatorColumnDefsFFI,
+	operator::column::OperatorColumnsFFI,
 };
 
 /// Function signature for the sink magic number export
@@ -28,7 +28,7 @@ pub struct SinkDescriptorFFI {
 	/// Description (UTF-8)
 	pub description: BufferFFI,
 	/// Schema of records this sink accepts
-	pub input_columns: OperatorColumnDefsFFI,
+	pub input_columns: OperatorColumnsFFI,
 	/// Virtual function table
 	pub vtable: SinkVTableFFI,
 }

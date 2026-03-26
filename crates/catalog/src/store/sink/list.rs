@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
 		id::{NamespaceId, SinkId},
-		sink::SinkDef,
+		sink::Sink,
 	},
 	key::sink::SinkKey,
 };
@@ -15,7 +15,7 @@ use serde_json::from_str;
 use crate::{CatalogStore, Result, store::sink::schema::sink};
 
 impl CatalogStore {
-	pub(crate) fn list_sinks_all(rx: &mut Transaction<'_>) -> Result<Vec<SinkDef>> {
+	pub(crate) fn list_sinks_all(rx: &mut Transaction<'_>) -> Result<Vec<Sink>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(SinkKey::full_scan(), 1024)?;
@@ -35,7 +35,7 @@ impl CatalogStore {
 			let status_u8 = sink::SCHEMA.get_u8(row, sink::STATUS);
 			let status = FlowStatus::from_u8(status_u8);
 
-			result.push(SinkDef {
+			result.push(Sink {
 				id,
 				name,
 				namespace,

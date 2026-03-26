@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-pub(crate) mod identity_role {
+pub(crate) mod granted_role {
 	use once_cell::sync::Lazy;
 	use reifydb_core::encoded::schema::{Schema, SchemaField};
 	use reifydb_type::value::r#type::Type;

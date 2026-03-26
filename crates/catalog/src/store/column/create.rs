@@ -43,7 +43,7 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 	}
 }
 
-use reifydb_core::interface::catalog::column::{ColumnDef, ColumnIndex};
+use reifydb_core::interface::catalog::column::{Column, ColumnIndex};
 
 use crate::{
 	CatalogStore, Result,
@@ -75,7 +75,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		source: impl Into<PrimitiveId>,
 		column_to_create: ColumnToCreate,
-	) -> Result<ColumnDef> {
+	) -> Result<Column> {
 		let source = source.into();
 
 		// FIXME policies
@@ -144,7 +144,7 @@ impl CatalogStore {
 			Self::create_column_property(txn, id, policy)?;
 		}
 
-		Ok(ColumnDef {
+		Ok(Column {
 			id,
 			name: column_to_create.column,
 			constraint: column_to_create.constraint,

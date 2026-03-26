@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::interface::catalog::id::NamespaceId;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DictionaryDef {
+pub struct Dictionary {
 	pub id: DictionaryId,
 	pub namespace: NamespaceId,
 	pub name: String,
@@ -15,7 +15,7 @@ pub struct DictionaryDef {
 	pub id_type: Type,
 }
 
-impl DictionaryDef {
+impl Dictionary {
 	pub fn name(&self) -> &str {
 		&self.name
 	}

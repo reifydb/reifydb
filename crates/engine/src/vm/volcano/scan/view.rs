@@ -116,14 +116,14 @@ impl QueryNode for ViewScanNode {
 			self.exhausted = true;
 			if self.last_key.is_none() {
 				// Empty view: return empty columns with correct types to preserve schema
-				return Ok(Some(Columns::from_view(&self.view)));
+				return Ok(Some(Columns::from_resolved_view(&self.view)));
 			}
 			return Ok(None);
 		}
 
 		self.last_key = new_last_key;
 
-		let mut columns = Columns::from_view(&self.view);
+		let mut columns = Columns::from_resolved_view(&self.view);
 		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
 		columns.append_rows(&schema, batch_rows.into_iter(), row_numbers)?;
 

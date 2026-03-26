@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{catalog::authentication::AuthenticationDef, store::MultiVersionRow};
+use reifydb_core::interface::{catalog::authentication::Authentication, store::MultiVersionRow};
 use serde_json::from_str;
 
 use crate::store::authentication::schema::authentication;
@@ -14,7 +14,7 @@ pub mod find;
 pub mod list;
 pub mod schema;
 
-pub(crate) fn convert_authentication(multi: MultiVersionRow) -> AuthenticationDef {
+pub(crate) fn convert_authentication(multi: MultiVersionRow) -> Authentication {
 	let row = multi.row;
 	let id = authentication::SCHEMA.get_u64(&row, authentication::ID);
 	let identity = authentication::SCHEMA.get_identity_id(&row, authentication::IDENTITY);
@@ -23,7 +23,7 @@ pub(crate) fn convert_authentication(multi: MultiVersionRow) -> AuthenticationDe
 
 	let properties: HashMap<String, String> = from_str(&properties_json).unwrap_or_default();
 
-	AuthenticationDef {
+	Authentication {
 		id,
 		identity,
 		method,

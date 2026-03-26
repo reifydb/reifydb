@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
 		id::{NamespaceId, SinkId},
-		sink::SinkDef,
+		sink::Sink,
 	},
 	key::{namespace_sink::NamespaceSinkKey, sink::SinkKey},
 };
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_sink(rx: &mut Transaction<'_>, id: SinkId) -> Result<Option<SinkDef>> {
+	pub(crate) fn find_sink(rx: &mut Transaction<'_>, id: SinkId) -> Result<Option<Sink>> {
 		let Some(multi) = rx.get(&SinkKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -35,7 +35,7 @@ impl CatalogStore {
 		let status_u8 = sink::SCHEMA.get_u8(&row, sink::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
-		Ok(Some(SinkDef {
+		Ok(Some(Sink {
 			id,
 			name,
 			namespace,
@@ -51,7 +51,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<SinkDef>> {
+	) -> Result<Option<Sink>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSinkKey::full_scan(namespace), 1024)?;
 

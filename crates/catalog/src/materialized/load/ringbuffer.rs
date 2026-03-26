@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::{NamespaceId, PrimaryKeyId, RingBufferId},
-			key::PrimaryKeyDef,
-			ringbuffer::RingBufferDef,
+			key::PrimaryKey,
+			ringbuffer::RingBuffer,
 		},
 		store::MultiVersionRow,
 	},
@@ -33,15 +33,15 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &MaterializedC
 
 		let pk_id = get_ringbuffer_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let ringbuffer_def = convert_ringbuffer(multi, primary_key);
+		let ringbuffer = convert_ringbuffer(multi, primary_key);
 
-		catalog.set_ringbuffer(ringbuffer_def.id, version, Some(ringbuffer_def));
+		catalog.set_ringbuffer(ringbuffer.id, version, Some(ringbuffer));
 	}
 
 	Ok(())
 }
 
-fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> RingBufferDef {
+fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> RingBuffer {
 	let row = multi.row;
 	let id = RingBufferId(ringbuffer::SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(ringbuffer::SCHEMA.get_u64(&row, NAMESPACE));
@@ -55,7 +55,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	RingBufferDef {
+	RingBuffer {
 		id,
 		name,
 		namespace,

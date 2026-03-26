@@ -4,17 +4,17 @@
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		handler::HandlerDef,
+		handler::Handler,
 		id::{HandlerId, NamespaceId},
 	},
 };
 use reifydb_type::value::sumtype::SumTypeId;
 
-use crate::materialized::{MaterializedCatalog, MultiVersionHandlerDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionHandler};
 
 impl MaterializedCatalog {
 	/// Find a handler by ID at a specific version
-	pub fn find_handler_at(&self, handler: HandlerId, version: CommitVersion) -> Option<HandlerDef> {
+	pub fn find_handler_at(&self, handler: HandlerId, version: CommitVersion) -> Option<Handler> {
 		self.handlers.get(&handler).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -27,7 +27,7 @@ impl MaterializedCatalog {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Option<HandlerDef> {
+	) -> Option<Handler> {
 		self.handlers_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let handler_id = *entry.value();
 			self.find_handler_at(handler_id, version)
@@ -40,7 +40,7 @@ impl MaterializedCatalog {
 		sumtype_id: SumTypeId,
 		variant_tag: u8,
 		version: CommitVersion,
-	) -> Vec<HandlerDef> {
+	) -> Vec<Handler> {
 		let key = (sumtype_id, variant_tag);
 		if let Some(entry) = self.handlers_by_variant.get(&key) {
 			entry.value().iter().filter_map(|id| self.find_handler_at(*id, version)).collect()
@@ -49,7 +49,7 @@ impl MaterializedCatalog {
 		}
 	}
 
-	pub fn set_handler(&self, id: HandlerId, version: CommitVersion, handler: Option<HandlerDef>) {
+	pub fn set_handler(&self, id: HandlerId, version: CommitVersion, handler: Option<Handler>) {
 		if let Some(entry) = self.handlers.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				// Remove old name from index
@@ -66,7 +66,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.handlers.get_or_insert_with(id, MultiVersionHandlerDef::new);
+		let multi = self.handlers.get_or_insert_with(id, MultiVersionHandler::new);
 		if let Some(new) = handler {
 			self.handlers_by_name.insert((new.namespace, new.name.clone()), id);
 

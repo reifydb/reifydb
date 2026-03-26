@@ -34,9 +34,9 @@ impl CatalogStore {
 			}
 			PrimitiveId::TableVirtual(vtable_id) => {
 				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
-					// Convert Arc<VTableDef> to VTableDef
-					let vtable_def = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
-					Ok(Some(PrimitiveDef::TableVirtual(vtable_def)))
+					// Convert Arc<VTable> to VTable
+					let vtable = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
+					Ok(Some(PrimitiveDef::TableVirtual(vtable)))
 				} else {
 					Ok(None)
 				}

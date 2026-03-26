@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		flow::{FlowDef, FlowId, FlowStatus},
+		flow::{Flow, FlowId, FlowStatus},
 		id::NamespaceId,
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<FlowDef>> {
+	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>> {
 		let Some(multi) = rx.get(&FlowKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -36,7 +36,7 @@ impl CatalogStore {
 			None
 		};
 
-		Ok(Some(FlowDef {
+		Ok(Some(Flow {
 			id,
 			name,
 			namespace,
@@ -49,7 +49,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<FlowDef>> {
+	) -> Result<Option<Flow>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
 

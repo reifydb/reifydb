@@ -11,9 +11,9 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_sink(txn: &mut AdminTransaction, sink_id: SinkId) -> Result<()> {
-		let sink_def = CatalogStore::find_sink(&mut Transaction::Admin(&mut *txn), sink_id)?;
+		let sink = CatalogStore::find_sink(&mut Transaction::Admin(&mut *txn), sink_id)?;
 
-		if let Some(sink) = sink_def {
+		if let Some(sink) = sink {
 			// Delete from namespace index
 			txn.remove(&NamespaceSinkKey::encoded(sink.namespace, sink_id))?;
 

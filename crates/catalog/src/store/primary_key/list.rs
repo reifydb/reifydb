@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_core::{
 	encoded::key::EncodedKeyRange,
-	interface::catalog::{column::ColumnDef, id::PrimaryKeyId, key::PrimaryKeyDef},
+	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::{Key, primary_key::PrimaryKeyKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub struct PrimaryKeyInfo {
-	pub def: PrimaryKeyDef,
+	pub def: PrimaryKey,
 	pub source_id: u64,
 }
 
@@ -56,23 +56,23 @@ impl CatalogStore {
 						primary_key::SCHEMA.get_blob(&entry.row, primary_key::COLUMN_IDS);
 					let column_ids = deserialize_column_ids(&column_ids_blob);
 
-					// Fetch full ColumnDef for each column
+					// Fetch full Column for each column
 					// ID
 					let mut columns = Vec::new();
 					for column_id in column_ids {
-						let column_def = Self::get_column(rx, column_id)?;
-						columns.push(ColumnDef {
-							id: column_def.id,
-							name: column_def.name,
-							constraint: column_def.constraint,
-							properties: column_def.properties,
-							index: column_def.index,
-							auto_increment: column_def.auto_increment,
+						let column = Self::get_column(rx, column_id)?;
+						columns.push(Column {
+							id: column.id,
+							name: column.name,
+							constraint: column.constraint,
+							properties: column.properties,
+							index: column.index,
+							auto_increment: column.auto_increment,
 							dictionary_id: None,
 						});
 					}
 
-					let pk_def = PrimaryKeyDef {
+					let pk_def = PrimaryKey {
 						id: pk_key.primary_key,
 						columns,
 					};

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackFlowChangeOperations,
-		flow::{FlowDef, FlowEdgeId, FlowId, FlowNodeId, FlowStatus},
+		flow::{Flow, FlowEdgeId, FlowId, FlowNodeId, FlowStatus},
 		id::NamespaceId,
 	},
 	internal,
@@ -43,7 +43,7 @@ impl From<FlowToCreate> for StoreFlowToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::flow::find", level = "trace", skip(self, txn))]
-	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<FlowDef>> {
+	pub fn find_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -157,7 +157,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<FlowDef>> {
+	) -> Result<Option<Flow>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -311,7 +311,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::get", level = "trace", skip(self, txn))]
-	pub fn get_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<FlowDef> {
+	pub fn get_flow(&self, txn: &mut Transaction<'_>, id: FlowId) -> Result<Flow> {
 		self.find_flow(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -321,9 +321,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_flow(&self, txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<FlowDef> {
+	pub fn create_flow(&self, txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<Flow> {
 		let flow = CatalogStore::create_flow(txn, to_create.into())?;
-		txn.track_flow_def_created(flow.clone())?;
+		txn.track_flow_created(flow.clone())?;
 		Ok(flow)
 	}
 
@@ -335,21 +335,21 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
-	) -> Result<FlowDef> {
+	) -> Result<Flow> {
 		let flow = CatalogStore::create_flow_with_id(txn, flow_id, to_create.into())?;
-		txn.track_flow_def_created(flow.clone())?;
+		txn.track_flow_created(flow.clone())?;
 		Ok(flow)
 	}
 
 	#[instrument(name = "catalog::flow::drop", level = "debug", skip(self, txn))]
-	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: FlowDef) -> Result<()> {
+	pub fn drop_flow(&self, txn: &mut AdminTransaction, flow: Flow) -> Result<()> {
 		CatalogStore::drop_flow(txn, flow.id)?;
-		txn.track_flow_def_deleted(flow)?;
+		txn.track_flow_deleted(flow)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::flow::list_all", level = "debug", skip(self, txn))]
-	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<FlowDef>> {
+	pub fn list_flows_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Flow>> {
 		CatalogStore::list_flows_all(txn)
 	}
 

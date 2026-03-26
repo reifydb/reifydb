@@ -32,7 +32,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_namespace(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.table_def {
+		for change in &ctx.changes.table {
 			let id = change
 				.post
 				.as_ref()
@@ -42,7 +42,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_table(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.view_def {
+		for change in &ctx.changes.view {
 			let id = change
 				.post
 				.as_ref()
@@ -52,7 +52,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_view(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.ringbuffer_def {
+		for change in &ctx.changes.ringbuffer {
 			let id = change
 				.post
 				.as_ref()
@@ -62,7 +62,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_ringbuffer(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.dictionary_def {
+		for change in &ctx.changes.dictionary {
 			let id = change
 				.post
 				.as_ref()
@@ -72,7 +72,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_dictionary(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.procedure_def {
+		for change in &ctx.changes.procedure {
 			let id = change
 				.post
 				.as_ref()
@@ -82,7 +82,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_procedure(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.test_def {
+		for change in &ctx.changes.test {
 			let id = change
 				.post
 				.as_ref()
@@ -92,7 +92,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_test(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.handler_def {
+		for change in &ctx.changes.handler {
 			let id = change
 				.post
 				.as_ref()
@@ -102,7 +102,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_handler(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.identity_def {
+		for change in &ctx.changes.identity {
 			let id = change
 				.post
 				.as_ref()
@@ -112,7 +112,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_identity(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.role_def {
+		for change in &ctx.changes.role {
 			let id = change
 				.post
 				.as_ref()
@@ -122,16 +122,16 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_role(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.identity_role_def {
+		for change in &ctx.changes.granted_role {
 			let ur = change
 				.post
 				.as_ref()
 				.or(change.pre.as_ref())
 				.expect("Change must have either pre or post state");
-			self.catalog.set_identity_role(ur.identity, ur.role_id, version, change.post.clone());
+			self.catalog.set_granted_role(ur.identity, ur.role_id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.policy_def {
+		for change in &ctx.changes.policy {
 			let id = change
 				.post
 				.as_ref()
@@ -141,7 +141,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_policy(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.migration_def {
+		for change in &ctx.changes.migration {
 			let id = change
 				.post
 				.as_ref()
@@ -161,7 +161,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_migration_event(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.sumtype_def {
+		for change in &ctx.changes.sumtype {
 			let id = change
 				.post
 				.as_ref()
@@ -171,7 +171,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_sumtype(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.subscription_def {
+		for change in &ctx.changes.subscription {
 			let id = change
 				.post
 				.as_ref()
@@ -181,7 +181,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_subscription(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.flow_def {
+		for change in &ctx.changes.flow {
 			let id = change
 				.post
 				.as_ref()
@@ -191,7 +191,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_flow(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.source_def {
+		for change in &ctx.changes.source {
 			let id = change
 				.post
 				.as_ref()
@@ -201,7 +201,7 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_source(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.sink_def {
+		for change in &ctx.changes.sink {
 			let id = change
 				.post
 				.as_ref()

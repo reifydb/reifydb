@@ -3,31 +3,22 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::SubscriptionId, subscription::SubscriptionDef},
+	interface::catalog::{id::SubscriptionId, subscription::Subscription},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionSubscriptionDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionSubscription};
 
 impl MaterializedCatalog {
 	/// Find a subscription by ID at a specific version
-	pub fn find_subscription(
-		&self,
-		subscription: SubscriptionId,
-		version: CommitVersion,
-	) -> Option<SubscriptionDef> {
+	pub fn find_subscription(&self, subscription: SubscriptionId, version: CommitVersion) -> Option<Subscription> {
 		self.subscriptions.get(&subscription).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
 		})
 	}
 
-	pub fn set_subscription(
-		&self,
-		id: SubscriptionId,
-		version: CommitVersion,
-		subscription: Option<SubscriptionDef>,
-	) {
-		let multi = self.subscriptions.get_or_insert_with(id, MultiVersionSubscriptionDef::new);
+	pub fn set_subscription(&self, id: SubscriptionId, version: CommitVersion, subscription: Option<Subscription>) {
+		let multi = self.subscriptions.get_or_insert_with(id, MultiVersionSubscription::new);
 		if let Some(new) = subscription {
 			multi.value().insert(version, new);
 		} else {
@@ -41,22 +32,22 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		config::SystemConfig,
-		interface::catalog::{id::SubscriptionColumnId, subscription::SubscriptionColumnDef},
+		interface::catalog::{id::SubscriptionColumnId, subscription::SubscriptionColumn},
 	};
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
 
-	fn create_test_subscription(id: SubscriptionId) -> SubscriptionDef {
-		SubscriptionDef {
+	fn create_test_subscription(id: SubscriptionId) -> Subscription {
+		Subscription {
 			id,
 			columns: vec![
-				SubscriptionColumnDef {
+				SubscriptionColumn {
 					id: SubscriptionColumnId(0),
 					name: "id".to_string(),
 					ty: Type::Int1,
 				},
-				SubscriptionColumnDef {
+				SubscriptionColumn {
 					id: SubscriptionColumnId(1),
 					name: "name".to_string(),
 					ty: Type::Utf8,
@@ -140,9 +131,9 @@ pub mod tests {
 		let subscription_id = SubscriptionId(20);
 
 		// Create subscription v1 with one column
-		let subscription_v1 = SubscriptionDef {
+		let subscription_v1 = Subscription {
 			id: subscription_id,
-			columns: vec![SubscriptionColumnDef {
+			columns: vec![SubscriptionColumn {
 				id: SubscriptionColumnId(0),
 				name: "id".to_string(),
 				ty: Type::Int1,
@@ -153,15 +144,15 @@ pub mod tests {
 		catalog.set_subscription(subscription_id, CommitVersion(1), Some(subscription_v1.clone()));
 
 		// Create subscription v2 with two columns
-		let subscription_v2 = SubscriptionDef {
+		let subscription_v2 = Subscription {
 			id: subscription_id,
 			columns: vec![
-				SubscriptionColumnDef {
+				SubscriptionColumn {
 					id: SubscriptionColumnId(0),
 					name: "id".to_string(),
 					ty: Type::Int1,
 				},
-				SubscriptionColumnDef {
+				SubscriptionColumn {
 					id: SubscriptionColumnId(1),
 					name: "value".to_string(),
 					ty: Type::Utf8,

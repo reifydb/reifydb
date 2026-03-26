@@ -14,8 +14,8 @@ pub(crate) fn load_roles(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
-		let role_def = convert_role(multi);
-		catalog.set_role(role_def.id, version, Some(role_def));
+		let role = convert_role(multi);
+		catalog.set_role(role.id, version, Some(role));
 	}
 
 	Ok(())

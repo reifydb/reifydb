@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{primitive::PrimitiveId, vtable::VTableDef},
+	interface::catalog::{primitive::PrimitiveId, vtable::VTable},
 	retention::{CleanupMode, RetentionPolicy},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -14,25 +14,25 @@ use reifydb_type::{fragment::Fragment, value::Value};
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes primitive retention policy information
-pub struct PrimitiveRetentionPolicies {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemPrimitiveRetentionPolicies {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl PrimitiveRetentionPolicies {
+impl SystemPrimitiveRetentionPolicies {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_primitive_retention_policies_table_def().clone(),
+			definition: SystemCatalog::get_system_primitive_retention_policies_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for PrimitiveRetentionPolicies {
+impl BaseVTable for SystemPrimitiveRetentionPolicies {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -115,7 +115,7 @@ impl VTable for PrimitiveRetentionPolicies {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

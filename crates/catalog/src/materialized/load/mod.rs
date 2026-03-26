@@ -4,8 +4,8 @@
 pub mod config;
 pub mod dictionary;
 pub mod flow;
+pub mod granted_role;
 pub mod identity;
-pub mod identity_role;
 pub mod namespace;
 pub mod operator_retention_policy;
 pub mod policy;
@@ -23,8 +23,8 @@ pub mod view;
 use config::load_configs;
 use dictionary::load_dictionaries;
 use flow::load_flows;
+use granted_role::load_granted_roles;
 use identity::load_identities;
-use identity_role::load_identity_roles;
 use namespace::load_namespaces;
 use operator_retention_policy::load_operator_retention_policies;
 use policy::load_policies;
@@ -51,13 +51,13 @@ impl MaterializedCatalogLoader {
 	///
 	/// This is a no-op on subsequent starts (idempotent).
 	pub fn bootstrap_missing_defaults(txn: &mut AdminTransaction, catalog: &MaterializedCatalog) -> Result<()> {
-		for config_def in catalog.system_config().list_all() {
+		for config in catalog.system_config().list_all() {
 			let existing = {
 				let mut tx = Transaction::Admin(txn);
-				CatalogStore::get_config(&mut tx, &config_def.key)?
+				CatalogStore::get_config(&mut tx, &config.key)?
 			};
 			if existing.is_none() {
-				CatalogStore::set_config(txn, &config_def.key, &config_def.default_value)?;
+				CatalogStore::set_config(txn, &config.key, &config.default_value)?;
 			}
 		}
 		Ok(())
@@ -87,7 +87,7 @@ impl MaterializedCatalogLoader {
 
 		load_identities(rx, catalog)?;
 		load_roles(rx, catalog)?;
-		load_identity_roles(rx, catalog)?;
+		load_granted_roles(rx, catalog)?;
 		load_policies(rx, catalog)?;
 
 		Ok(())

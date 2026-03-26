@@ -87,12 +87,12 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		let batch_size = stored_ctx.batch_size;
-		let series_def = self.series.def();
-		let has_tag = series_def.tag.is_some();
+		let series = self.series.def();
+		let has_tag = series.tag.is_some();
 
 		// Create scan range
 		let range = SeriesRowKeyRange::scan_range(
-			series_def.id,
+			series.id,
 			self.variant_tag,
 			self.key_range_start,
 			self.key_range_end,
@@ -123,8 +123,8 @@ impl QueryNode for SeriesScanNode {
 				}
 
 				// Decode data columns from value using schema
-				let mut values = Vec::with_capacity(series_def.data_columns().count());
-				for (i, _) in series_def.data_columns().enumerate() {
+				let mut values = Vec::with_capacity(series.data_columns().count());
+				for (i, _) in series.data_columns().enumerate() {
 					values.push(read_schema.get_value(&entry.row, i + 1));
 				}
 				data_rows.push(values);
@@ -143,15 +143,15 @@ impl QueryNode for SeriesScanNode {
 			self.exhausted = true;
 			if self.last_key.is_none() {
 				// Empty series: return empty columns with correct types to preserve schema
-				let key_type = series_def
+				let key_type = series
 					.columns
 					.iter()
-					.find(|c| c.name == series_def.key.column())
+					.find(|c| c.name == series.key.column())
 					.map(|c| c.constraint.get_type())
 					.unwrap_or(Type::Int8);
 				let mut result_columns = Vec::new();
 				result_columns.push(Column {
-					name: Fragment::internal(series_def.key.column()),
+					name: Fragment::internal(series.key.column()),
 					data: ColumnData::none_typed(key_type, 0),
 				});
 				if has_tag {
@@ -160,7 +160,7 @@ impl QueryNode for SeriesScanNode {
 						data: ColumnData::none_typed(Type::Uint1, 0),
 					});
 				}
-				for col_def in series_def.data_columns() {
+				for col_def in series.data_columns() {
 					result_columns.push(Column {
 						name: Fragment::internal(&col_def.name),
 						data: ColumnData::none_typed(col_def.constraint.get_type(), 0),
@@ -178,8 +178,8 @@ impl QueryNode for SeriesScanNode {
 
 		// Key column
 		result_columns.push(Column {
-			name: Fragment::internal(series_def.key.column()),
-			data: series_def.key_column_data(key_values),
+			name: Fragment::internal(series.key.column()),
+			data: series.key_column_data(key_values),
 		});
 
 		// Tag column (Uint1) if present
@@ -191,7 +191,7 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		// Data columns
-		for (col_idx, col_def) in series_def.data_columns().enumerate() {
+		for (col_idx, col_def) in series.data_columns().enumerate() {
 			let col_type = col_def.constraint.get_type();
 			let col_values: Vec<Value> = data_rows
 				.iter()

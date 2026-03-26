@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::{change::CatalogTrackSinkChangeOperations, id::NamespaceId, sink::SinkDef};
+use reifydb_core::interface::catalog::{change::CatalogTrackSinkChangeOperations, id::NamespaceId, sink::Sink};
 use reifydb_transaction::{
 	change::TransactionalSinkChanges,
 	transaction::{Transaction, admin::AdminTransaction},
@@ -41,7 +41,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<SinkDef>> {
+	) -> Result<Option<Sink>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(sink) =
@@ -163,21 +163,21 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::sink::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_sink(&self, txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<SinkDef> {
+	pub fn create_sink(&self, txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink> {
 		let sink = CatalogStore::create_sink(txn, to_create.into())?;
-		txn.track_sink_def_created(sink.clone())?;
+		txn.track_sink_created(sink.clone())?;
 		Ok(sink)
 	}
 
 	#[instrument(name = "catalog::sink::drop", level = "debug", skip(self, txn))]
-	pub fn drop_sink(&self, txn: &mut AdminTransaction, sink: SinkDef) -> Result<()> {
+	pub fn drop_sink(&self, txn: &mut AdminTransaction, sink: Sink) -> Result<()> {
 		CatalogStore::drop_sink(txn, sink.id)?;
-		txn.track_sink_def_deleted(sink)?;
+		txn.track_sink_deleted(sink)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::sink::list_all", level = "debug", skip(self, txn))]
-	pub fn list_sinks_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<SinkDef>> {
+	pub fn list_sinks_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Sink>> {
 		CatalogStore::list_sinks_all(txn)
 	}
 }

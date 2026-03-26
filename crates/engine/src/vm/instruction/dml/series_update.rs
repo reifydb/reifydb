@@ -16,7 +16,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::UpdateSeriesNode;
-use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
+use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -55,17 +55,17 @@ pub(crate) fn update_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
+	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	let has_tag = series_def.tag.is_some();
+	let has_tag = series.tag.is_some();
 
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-	let series_ident = Fragment::internal(series_def.name.clone());
-	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
+	let series_ident = Fragment::internal(series.name.clone());
+	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
 	let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
 
 	let context = QueryContext {
@@ -108,8 +108,8 @@ pub(crate) fn update_series<'a>(
 
 			let key_value = columns
 				.iter()
-				.find(|c| c.name().text() == series_def.key.column())
-				.and_then(|c| series_def.key_to_u64(c.data().get_value(row_idx)))
+				.find(|c| c.name().text() == series.key.column())
+				.and_then(|c| series.key_to_u64(c.data().get_value(row_idx)))
 				.unwrap_or(0);
 
 			let variant_tag = if has_tag {
@@ -125,24 +125,24 @@ pub(crate) fn update_series<'a>(
 			};
 
 			let key = SeriesRowKey {
-				series: series_def.id,
+				series: series.id,
 				variant_tag,
 				key: key_value,
 				sequence,
 			};
 			let encoded_key = key.encode();
 
-			let schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+			let schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
 			let mut row = schema.allocate();
 
 			let key_col_value = columns
 				.iter()
-				.find(|c| c.name().text() == series_def.key.column())
+				.find(|c| c.name().text() == series.key.column())
 				.map(|c| c.data().get_value(row_idx))
 				.unwrap_or(Value::Int8(0));
 			schema.set_value(&mut row, 0, &key_col_value);
 
-			for (i, col_def) in series_def.data_columns().enumerate() {
+			for (i, col_def) in series.data_columns().enumerate() {
 				let value = columns
 					.iter()
 					.find(|c| c.name().text() == col_def.name)
@@ -160,20 +160,20 @@ pub(crate) fn update_series<'a>(
 
 			let key_value = columns
 				.iter()
-				.find(|c| c.name().text() == series_def.key.column())
-				.and_then(|c| series_def.key_to_u64(c.data().get_value(*row_idx)))
+				.find(|c| c.name().text() == series.key.column())
+				.and_then(|c| series.key_to_u64(c.data().get_value(*row_idx)))
 				.unwrap_or(0);
 
 			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
 
 			if let Some(ref old_vals) = old_values {
-				let read_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
-				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+				let read_schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
+				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 				pre_col_vec.push(Column {
-					name: Fragment::internal(series_def.key.column()),
-					data: series_def.key_column_data(vec![key_value]),
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![key_value]),
 				});
-				for (i, col_def) in series_def.data_columns().enumerate() {
+				for (i, col_def) in series.data_columns().enumerate() {
 					let val = read_schema.get_value(old_vals, i + 1);
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(val);
@@ -183,13 +183,13 @@ pub(crate) fn update_series<'a>(
 					});
 				}
 
-				let mut post_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+				let mut post_col_vec = Vec::with_capacity(1 + series.columns.len());
 				post_col_vec.push(Column {
-					name: Fragment::internal(series_def.key.column()),
-					data: series_def.key_column_data(vec![key_value]),
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![key_value]),
 				});
 				for col in columns.iter() {
-					if col.name().text() != series_def.key.column() && col.name().text() != "tag" {
+					if col.name().text() != series.key.column() && col.name().text() != "tag" {
 						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
 						data.push_value(col.data().get_value(*row_idx));
 						post_col_vec.push(Column {
@@ -208,7 +208,7 @@ pub(crate) fn update_series<'a>(
 					columns: CowVec::new(post_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					origin: ChangeOrigin::Primitive(PrimitiveId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Update {
 						pre,
@@ -218,9 +218,9 @@ pub(crate) fn update_series<'a>(
 			}
 
 			let old_row_for_interceptor = old_values.clone().unwrap_or_else(|| row.clone());
-			let row = SeriesInterceptor::pre_update(txn, &series_def, row.clone())?;
+			let row = SeriesRowInterceptor::pre_update(txn, &series, row.clone())?;
 			txn.set(encoded_key, row.clone())?;
-			SeriesInterceptor::post_update(txn, &series_def, &row, &old_row_for_interceptor)?;
+			SeriesRowInterceptor::post_update(txn, &series, &row, &old_row_for_interceptor)?;
 			updated_count += 1;
 		}
 
@@ -260,7 +260,7 @@ pub(crate) fn update_series<'a>(
 
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(namespace.name().to_string())),
-		("series", Value::Utf8(series_def.name)),
+		("series", Value::Utf8(series.name)),
 		("updated", Value::Uint8(updated_count)),
 	]))
 }

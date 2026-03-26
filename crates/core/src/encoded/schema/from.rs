@@ -5,16 +5,16 @@ use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::{
 	encoded::schema::{Schema, SchemaField},
-	interface::catalog::{column::ColumnDef, subscription::SubscriptionColumnDef},
+	interface::catalog::{column::Column, subscription::SubscriptionColumn},
 };
 
-impl From<&Vec<ColumnDef>> for Schema {
-	fn from(value: &Vec<ColumnDef>) -> Self {
+impl From<&Vec<Column>> for Schema {
+	fn from(value: &Vec<Column>) -> Self {
 		Schema::from(value.as_slice())
 	}
 }
-impl From<&[ColumnDef]> for Schema {
-	fn from(value: &[ColumnDef]) -> Self {
+impl From<&[Column]> for Schema {
+	fn from(value: &[Column]) -> Self {
 		let fields = value
 			.iter()
 			.map(|col| {
@@ -34,13 +34,13 @@ impl From<&[ColumnDef]> for Schema {
 	}
 }
 
-impl From<&Vec<SubscriptionColumnDef>> for Schema {
-	fn from(value: &Vec<SubscriptionColumnDef>) -> Self {
+impl From<&Vec<SubscriptionColumn>> for Schema {
+	fn from(value: &Vec<SubscriptionColumn>) -> Self {
 		Schema::from(value.as_slice())
 	}
 }
-impl From<&[SubscriptionColumnDef]> for Schema {
-	fn from(value: &[SubscriptionColumnDef]) -> Self {
+impl From<&[SubscriptionColumn]> for Schema {
+	fn from(value: &[SubscriptionColumn]) -> Self {
 		let fields = value
 			.iter()
 			.map(|col| SchemaField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty.clone())))
@@ -56,19 +56,19 @@ mod tests {
 		// Schema is now the canonical layout descriptor
 	}
 
-	mod from_column_def {
+	mod from_column {
 		use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 		use crate::{
 			encoded::schema::{Schema, SchemaField},
 			interface::catalog::{
-				column::{ColumnDef, ColumnIndex},
+				column::{Column, ColumnIndex},
 				id::ColumnId,
 			},
 		};
 
-		fn make_column_def(id: u64, name: &str, ty: Type, index: u8) -> ColumnDef {
-			ColumnDef {
+		fn make_column(id: u64, name: &str, ty: Type, index: u8) -> Column {
+			Column {
 				id: ColumnId(id),
 				name: name.to_string(),
 				constraint: TypeConstraint::unconstrained(ty),
@@ -80,8 +80,8 @@ mod tests {
 		}
 
 		#[test]
-		fn test_from_column_def_single_field() {
-			let columns = vec![make_column_def(1, "id", Type::Int8, 0)];
+		fn test_from_column_single_field() {
+			let columns = vec![make_column(1, "id", Type::Int8, 0)];
 
 			let schema = Schema::from(columns.as_slice());
 
@@ -91,11 +91,11 @@ mod tests {
 		}
 
 		#[test]
-		fn test_from_column_def_multiple_fields() {
+		fn test_from_column_multiple_fields() {
 			let columns = vec![
-				make_column_def(1, "a", Type::Int1, 0),
-				make_column_def(2, "b", Type::Int2, 1),
-				make_column_def(3, "c", Type::Int4, 2),
+				make_column(1, "a", Type::Int1, 0),
+				make_column(2, "b", Type::Int2, 1),
+				make_column(3, "c", Type::Int4, 2),
 			];
 
 			let schema = Schema::from(columns.as_slice());
@@ -110,11 +110,11 @@ mod tests {
 		}
 
 		#[test]
-		fn test_from_column_def_preserves_field_order() {
+		fn test_from_column_preserves_field_order() {
 			let columns = vec![
-				make_column_def(1, "first", Type::Utf8, 0),
-				make_column_def(2, "second", Type::Int4, 1),
-				make_column_def(3, "third", Type::Boolean, 2),
+				make_column(1, "first", Type::Utf8, 0),
+				make_column(2, "second", Type::Int4, 1),
+				make_column(3, "third", Type::Boolean, 2),
 			];
 
 			let schema = Schema::from(columns.as_slice());
@@ -128,13 +128,13 @@ mod tests {
 		}
 
 		#[test]
-		fn test_from_column_def_equivalence_with_direct_construction() {
+		fn test_from_column_equivalence_with_direct_construction() {
 			let columns = vec![
-				make_column_def(1, "f0", Type::Uint1, 0),
-				make_column_def(2, "f1", Type::Uint2, 1),
-				make_column_def(3, "f2", Type::Uint4, 2),
-				make_column_def(4, "f3", Type::Uint8, 3),
-				make_column_def(5, "f4", Type::Uint16, 4),
+				make_column(1, "f0", Type::Uint1, 0),
+				make_column(2, "f1", Type::Uint2, 1),
+				make_column(3, "f2", Type::Uint4, 2),
+				make_column(4, "f3", Type::Uint8, 3),
+				make_column(5, "f4", Type::Uint16, 4),
 			];
 
 			let schema_from_columns = Schema::from(columns.as_slice());
@@ -166,8 +166,8 @@ mod tests {
 		}
 
 		#[test]
-		fn test_from_column_def_empty() {
-			let columns: Vec<ColumnDef> = vec![];
+		fn test_from_column_empty() {
+			let columns: Vec<Column> = vec![];
 
 			let schema = Schema::from(columns.as_slice());
 
@@ -175,17 +175,17 @@ mod tests {
 		}
 
 		#[test]
-		fn test_from_column_def_nine_fields() {
+		fn test_from_column_nine_fields() {
 			let columns = vec![
-				make_column_def(1, "f0", Type::Boolean, 0),
-				make_column_def(2, "f1", Type::Int1, 1),
-				make_column_def(3, "f2", Type::Int2, 2),
-				make_column_def(4, "f3", Type::Int4, 3),
-				make_column_def(5, "f4", Type::Int8, 4),
-				make_column_def(6, "f5", Type::Uint1, 5),
-				make_column_def(7, "f6", Type::Uint2, 6),
-				make_column_def(8, "f7", Type::Uint4, 7),
-				make_column_def(9, "f8", Type::Uint8, 8),
+				make_column(1, "f0", Type::Boolean, 0),
+				make_column(2, "f1", Type::Int1, 1),
+				make_column(3, "f2", Type::Int2, 2),
+				make_column(4, "f3", Type::Int4, 3),
+				make_column(5, "f4", Type::Int8, 4),
+				make_column(6, "f5", Type::Uint1, 5),
+				make_column(7, "f6", Type::Uint2, 6),
+				make_column(8, "f7", Type::Uint4, 7),
+				make_column(9, "f8", Type::Uint8, 8),
 			];
 
 			let schema = Schema::from(columns.as_slice());

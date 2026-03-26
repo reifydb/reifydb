@@ -4,24 +4,24 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::{columns::authentications::*, vtable::AUTHENTICATIONS};
 
-pub fn authentications() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn authentications() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: AUTHENTICATIONS,
 			namespace: NamespaceId::SYSTEM,
 			name: "authentications".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ID,
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -30,7 +30,7 @@ pub fn authentications() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: USER_ID,
 					name: "user_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -39,7 +39,7 @@ pub fn authentications() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: METHOD,
 					name: "method".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),

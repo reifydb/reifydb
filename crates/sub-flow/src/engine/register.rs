@@ -177,12 +177,12 @@ impl FlowEngine {
 			SourceFlow {
 				flow: source_flow,
 			} => {
-				let source_flow_def = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
+				let source_flow = self.catalog.get_flow(&mut txn.reborrow(), source_flow)?;
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SourceFlow(PrimitiveFlowOperator::new(
 						node.id,
-						source_flow_def,
+						source_flow,
 					))),
 				);
 			}

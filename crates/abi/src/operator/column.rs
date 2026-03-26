@@ -11,7 +11,7 @@ use crate::data::buffer::BufferFFI;
 /// including name, type constraint, and description for documentation purposes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct OperatorColumnDefFFI {
+pub struct OperatorColumnFFI {
 	/// Column name (UTF-8 encoded)
 	pub name: BufferFFI,
 	/// Base type code (use reifydb_type::value::r#type::Type::to_u8/from_u8)
@@ -32,14 +32,14 @@ pub struct OperatorColumnDefFFI {
 /// and discovery purposes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct OperatorColumnDefsFFI {
+pub struct OperatorColumnsFFI {
 	/// Pointer to array of column definitions
-	pub columns: *const OperatorColumnDefFFI,
+	pub columns: *const OperatorColumnFFI,
 	/// Number of columns
 	pub column_count: usize,
 }
 
-impl OperatorColumnDefsFFI {
+impl OperatorColumnsFFI {
 	/// Create empty column definitions (no columns)
 	pub const fn empty() -> Self {
 		Self {

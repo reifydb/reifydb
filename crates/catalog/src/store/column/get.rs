@@ -53,7 +53,7 @@ fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 }
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::ColumnId,
 };
 
@@ -63,7 +63,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> Result<ColumnDef> {
+	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> Result<Column> {
 		let multi = rx.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
 			Error(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -119,7 +119,7 @@ impl CatalogStore {
 
 		let properties = Self::list_column_properties(rx, id)?;
 
-		Ok(ColumnDef {
+		Ok(Column {
 			id,
 			name,
 			constraint,

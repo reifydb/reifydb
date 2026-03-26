@@ -2,360 +2,245 @@
 // Copyright (c) 2025 ReifyDB
 
 // Submodule declarations
-pub mod authentication_def;
+pub mod authentication;
 pub mod builder;
 pub mod chain;
 pub mod dictionary;
-pub mod dictionary_def;
+pub mod dictionary_row;
 pub mod factory;
 pub mod filter;
 pub mod filtered;
-pub mod identity_def;
-pub mod identity_role_def;
+pub mod granted_role;
+pub mod identity;
 pub mod interceptors;
 pub mod namespace;
 pub mod ringbuffer;
-pub mod ringbuffer_def;
-pub mod role_def;
+pub mod ringbuffer_row;
+pub mod role;
 pub mod series;
-pub mod series_def;
+pub mod series_row;
 pub mod table;
-pub mod table_def;
+pub mod table_row;
 pub mod transaction;
 pub mod view;
-pub mod view_def;
+pub mod view_row;
 
 // Re-import types for use in WithInterceptors trait
-use authentication_def::{AuthenticationDefPostCreateInterceptor, AuthenticationDefPreDeleteInterceptor};
+use authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor};
 use chain::InterceptorChain;
 use dictionary::{
-	DictionaryPostDeleteInterceptor, DictionaryPostInsertInterceptor, DictionaryPostUpdateInterceptor,
-	DictionaryPreDeleteInterceptor, DictionaryPreInsertInterceptor, DictionaryPreUpdateInterceptor,
+	DictionaryPostCreateInterceptor, DictionaryPostUpdateInterceptor, DictionaryPreDeleteInterceptor,
+	DictionaryPreUpdateInterceptor,
 };
-use dictionary_def::{
-	DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateInterceptor, DictionaryDefPreDeleteInterceptor,
-	DictionaryDefPreUpdateInterceptor,
+use dictionary_row::{
+	DictionaryRowPostDeleteInterceptor, DictionaryRowPostInsertInterceptor, DictionaryRowPostUpdateInterceptor,
+	DictionaryRowPreDeleteInterceptor, DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
 };
-use identity_def::{
-	IdentityDefPostCreateInterceptor, IdentityDefPostUpdateInterceptor, IdentityDefPreDeleteInterceptor,
-	IdentityDefPreUpdateInterceptor,
+use granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor};
+use identity::{
+	IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
+	IdentityPreUpdateInterceptor,
 };
-use identity_role_def::{IdentityRoleDefPostCreateInterceptor, IdentityRoleDefPreDeleteInterceptor};
 use namespace::{
 	NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 	NamespacePreUpdateInterceptor,
 };
 use ringbuffer::{
-	RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor,
-	RingBufferPreDeleteInterceptor, RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+	RingBufferPostCreateInterceptor, RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
+	RingBufferPreUpdateInterceptor,
 };
-use ringbuffer_def::{
-	RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteInterceptor,
-	RingBufferDefPreUpdateInterceptor,
+use ringbuffer_row::{
+	RingBufferRowPostDeleteInterceptor, RingBufferRowPostInsertInterceptor, RingBufferRowPostUpdateInterceptor,
+	RingBufferRowPreDeleteInterceptor, RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 };
-use role_def::{
-	RoleDefPostCreateInterceptor, RoleDefPostUpdateInterceptor, RoleDefPreDeleteInterceptor,
-	RoleDefPreUpdateInterceptor,
-};
+use role::{RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor, RolePreUpdateInterceptor};
 use series::{
-	SeriesPostDeleteInterceptor, SeriesPostInsertInterceptor, SeriesPostUpdateInterceptor,
-	SeriesPreDeleteInterceptor, SeriesPreInsertInterceptor, SeriesPreUpdateInterceptor,
+	SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
+	SeriesPreUpdateInterceptor,
 };
-use series_def::{
-	SeriesDefPostCreateInterceptor, SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteInterceptor,
-	SeriesDefPreUpdateInterceptor,
+use series_row::{
+	SeriesRowPostDeleteInterceptor, SeriesRowPostInsertInterceptor, SeriesRowPostUpdateInterceptor,
+	SeriesRowPreDeleteInterceptor, SeriesRowPreInsertInterceptor, SeriesRowPreUpdateInterceptor,
 };
 use table::{
-	TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
-	TablePreInsertInterceptor, TablePreUpdateInterceptor,
+	TablePostCreateInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor, TablePreUpdateInterceptor,
 };
-use table_def::{
-	TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
-	TableDefPreUpdateInterceptor,
+use table_row::{
+	TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
+	TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 };
 use transaction::{PostCommitInterceptor, PreCommitInterceptor};
-use view::{
-	ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
-	ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
-};
-use view_def::{
-	ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-	ViewDefPreUpdateInterceptor,
+use view::{ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor, ViewPreUpdateInterceptor};
+use view_row::{
+	ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
+	ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
 };
 
 pub type Chain<I> = InterceptorChain<I>;
 
 /// Trait for accessing interceptor chains from transaction types
 pub trait WithInterceptors {
-	/// Access table pre-insert interceptor chain
-	fn table_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TablePreInsertInterceptor + Send + Sync>;
+	// Table row (DML) interceptors
+	fn table_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TableRowPreInsertInterceptor + Send + Sync>;
+	fn table_row_post_insert_interceptors(&mut self)
+	-> &mut Chain<dyn TableRowPostInsertInterceptor + Send + Sync>;
+	fn table_row_pre_update_interceptors(&mut self) -> &mut Chain<dyn TableRowPreUpdateInterceptor + Send + Sync>;
+	fn table_row_post_update_interceptors(&mut self)
+	-> &mut Chain<dyn TableRowPostUpdateInterceptor + Send + Sync>;
+	fn table_row_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableRowPreDeleteInterceptor + Send + Sync>;
+	fn table_row_post_delete_interceptors(&mut self)
+	-> &mut Chain<dyn TableRowPostDeleteInterceptor + Send + Sync>;
 
-	/// Access table post-insert interceptor chain
-	fn table_post_insert_interceptors(&mut self) -> &mut Chain<dyn TablePostInsertInterceptor + Send + Sync>;
+	// Ring buffer row (DML) interceptors
+	fn ringbuffer_row_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPreInsertInterceptor + Send + Sync>;
+	fn ringbuffer_row_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPostInsertInterceptor + Send + Sync>;
+	fn ringbuffer_row_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPreUpdateInterceptor + Send + Sync>;
+	fn ringbuffer_row_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPostUpdateInterceptor + Send + Sync>;
+	fn ringbuffer_row_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPreDeleteInterceptor + Send + Sync>;
+	fn ringbuffer_row_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync>;
 
-	/// Access table pre-update interceptor chain
+	// Transaction interceptors
+	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync>;
+	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync>;
+
+	// Namespace (DDL) interceptors
+	fn namespace_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn NamespacePostCreateInterceptor + Send + Sync>;
+	fn namespace_pre_update_interceptors(&mut self) -> &mut Chain<dyn NamespacePreUpdateInterceptor + Send + Sync>;
+	fn namespace_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn NamespacePostUpdateInterceptor + Send + Sync>;
+	fn namespace_pre_delete_interceptors(&mut self) -> &mut Chain<dyn NamespacePreDeleteInterceptor + Send + Sync>;
+
+	// Table (DDL) interceptors
+	fn table_post_create_interceptors(&mut self) -> &mut Chain<dyn TablePostCreateInterceptor + Send + Sync>;
 	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync>;
-
-	/// Access table post-update interceptor chain
 	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync>;
-
-	/// Access table pre-delete interceptor chain
 	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync>;
 
-	/// Access table post-delete interceptor chain
-	fn table_post_delete_interceptors(&mut self) -> &mut Chain<dyn TablePostDeleteInterceptor + Send + Sync>;
+	// View row (DML) interceptors
+	fn view_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreInsertInterceptor + Send + Sync>;
+	fn view_row_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostInsertInterceptor + Send + Sync>;
+	fn view_row_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreUpdateInterceptor + Send + Sync>;
+	fn view_row_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostUpdateInterceptor + Send + Sync>;
+	fn view_row_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreDeleteInterceptor + Send + Sync>;
+	fn view_row_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostDeleteInterceptor + Send + Sync>;
 
-	/// Access ring buffer pre-insert interceptor chain
-	fn ringbuffer_pre_insert_interceptors(
+	// View (DDL) interceptors
+	fn view_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewPostCreateInterceptor + Send + Sync>;
+	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync>;
+	fn view_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync>;
+	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync>;
+
+	// Ring buffer (DDL) interceptors
+	fn ringbuffer_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferPreInsertInterceptor + Send + Sync>;
-
-	/// Access ring buffer post-insert interceptor chain
-	fn ringbuffer_post_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPostInsertInterceptor + Send + Sync>;
-
-	/// Access ring buffer pre-update interceptor chain
+	) -> &mut Chain<dyn RingBufferPostCreateInterceptor + Send + Sync>;
 	fn ringbuffer_pre_update_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync>;
-
-	/// Access ring buffer post-update interceptor chain
 	fn ringbuffer_post_update_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync>;
-
-	/// Access ring buffer pre-delete interceptor chain
 	fn ringbuffer_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync>;
 
-	/// Access ring buffer post-delete interceptor chain
-	fn ringbuffer_post_delete_interceptors(
+	// Dictionary row (DML) interceptors
+	fn dictionary_row_pre_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferPostDeleteInterceptor + Send + Sync>;
-
-	/// Access pre-commit interceptor chain
-	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync>;
-
-	/// Access post-commit interceptor chain
-	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync>;
-
-	/// Access namespace post-create interceptor chain
-	fn namespace_post_create_interceptors(
+	) -> &mut Chain<dyn DictionaryRowPreInsertInterceptor + Send + Sync>;
+	fn dictionary_row_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn NamespacePostCreateInterceptor + Send + Sync>;
-
-	/// Access namespace pre-update interceptor chain
-	fn namespace_pre_update_interceptors(&mut self) -> &mut Chain<dyn NamespacePreUpdateInterceptor + Send + Sync>;
-
-	/// Access namespace post-update interceptor chain
-	fn namespace_post_update_interceptors(
+	) -> &mut Chain<dyn DictionaryRowPostInsertInterceptor + Send + Sync>;
+	fn dictionary_row_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn NamespacePostUpdateInterceptor + Send + Sync>;
-
-	/// Access namespace pre-delete interceptor chain
-	fn namespace_pre_delete_interceptors(&mut self) -> &mut Chain<dyn NamespacePreDeleteInterceptor + Send + Sync>;
-
-	/// Access table definition post-create interceptor chain
-	fn table_def_post_create_interceptors(&mut self)
-	-> &mut Chain<dyn TableDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access table definition pre-update interceptor chain
-	fn table_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn TableDefPreUpdateInterceptor + Send + Sync>;
-
-	/// Access table definition post-update interceptor chain
-	fn table_def_post_update_interceptors(&mut self)
-	-> &mut Chain<dyn TableDefPostUpdateInterceptor + Send + Sync>;
-
-	/// Access table definition pre-delete interceptor chain
-	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access view pre-insert interceptor chain
-	fn view_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPreInsertInterceptor + Send + Sync>;
-
-	/// Access view post-insert interceptor chain
-	fn view_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPostInsertInterceptor + Send + Sync>;
-
-	/// Access view pre-update interceptor chain
-	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync>;
-
-	/// Access view post-update interceptor chain
-	fn view_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewPostUpdateInterceptor + Send + Sync>;
-
-	/// Access view pre-delete interceptor chain
-	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPreDeleteInterceptor + Send + Sync>;
-
-	/// Access view post-delete interceptor chain
-	fn view_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPostDeleteInterceptor + Send + Sync>;
-
-	/// Access view post-create interceptor chain
-	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access view pre-update interceptor chain
-	fn view_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreUpdateInterceptor + Send + Sync>;
-
-	/// Access view post-update interceptor chain
-	fn view_def_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostUpdateInterceptor + Send + Sync>;
-
-	/// Access view pre-delete interceptor chain
-	fn view_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access ring buffer definition post-create interceptor chain
-	fn ringbuffer_def_post_create_interceptors(
+	) -> &mut Chain<dyn DictionaryRowPreUpdateInterceptor + Send + Sync>;
+	fn dictionary_row_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access ring buffer definition pre-update interceptor chain
-	fn ringbuffer_def_pre_update_interceptors(
+	) -> &mut Chain<dyn DictionaryRowPostUpdateInterceptor + Send + Sync>;
+	fn dictionary_row_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPreUpdateInterceptor + Send + Sync>;
-
-	/// Access ring buffer definition post-update interceptor chain
-	fn ringbuffer_def_post_update_interceptors(
+	) -> &mut Chain<dyn DictionaryRowPreDeleteInterceptor + Send + Sync>;
+	fn dictionary_row_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPostUpdateInterceptor + Send + Sync>;
+	) -> &mut Chain<dyn DictionaryRowPostDeleteInterceptor + Send + Sync>;
 
-	/// Access ring buffer definition pre-delete interceptor chain
-	fn ringbuffer_def_pre_delete_interceptors(
+	// Dictionary (DDL) interceptors
+	fn dictionary_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access dictionary pre-insert interceptor chain
-	fn dictionary_pre_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn DictionaryPreInsertInterceptor + Send + Sync>;
-
-	/// Access dictionary post-insert interceptor chain
-	fn dictionary_post_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn DictionaryPostInsertInterceptor + Send + Sync>;
-
-	/// Access dictionary pre-update interceptor chain
+	) -> &mut Chain<dyn DictionaryPostCreateInterceptor + Send + Sync>;
 	fn dictionary_pre_update_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn DictionaryPreUpdateInterceptor + Send + Sync>;
-
-	/// Access dictionary post-update interceptor chain
 	fn dictionary_post_update_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn DictionaryPostUpdateInterceptor + Send + Sync>;
-
-	/// Access dictionary pre-delete interceptor chain
 	fn dictionary_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync>;
 
-	/// Access dictionary post-delete interceptor chain
-	fn dictionary_post_delete_interceptors(
+	// Series row (DML) interceptors
+	fn series_row_pre_insert_interceptors(&mut self)
+	-> &mut Chain<dyn SeriesRowPreInsertInterceptor + Send + Sync>;
+	fn series_row_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn DictionaryPostDeleteInterceptor + Send + Sync>;
-
-	/// Access dictionary definition post-create interceptor chain
-	fn dictionary_def_post_create_interceptors(
+	) -> &mut Chain<dyn SeriesRowPostInsertInterceptor + Send + Sync>;
+	fn series_row_pre_update_interceptors(&mut self)
+	-> &mut Chain<dyn SeriesRowPreUpdateInterceptor + Send + Sync>;
+	fn series_row_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn DictionaryDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access dictionary definition pre-update interceptor chain
-	fn dictionary_def_pre_update_interceptors(
+	) -> &mut Chain<dyn SeriesRowPostUpdateInterceptor + Send + Sync>;
+	fn series_row_pre_delete_interceptors(&mut self)
+	-> &mut Chain<dyn SeriesRowPreDeleteInterceptor + Send + Sync>;
+	fn series_row_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn DictionaryDefPreUpdateInterceptor + Send + Sync>;
+	) -> &mut Chain<dyn SeriesRowPostDeleteInterceptor + Send + Sync>;
 
-	/// Access dictionary definition post-update interceptor chain
-	fn dictionary_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn DictionaryDefPostUpdateInterceptor + Send + Sync>;
-
-	/// Access dictionary definition pre-delete interceptor chain
-	fn dictionary_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn DictionaryDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access series pre-insert interceptor chain
-	fn series_pre_insert_interceptors(&mut self) -> &mut Chain<dyn SeriesPreInsertInterceptor + Send + Sync>;
-
-	/// Access series post-insert interceptor chain
-	fn series_post_insert_interceptors(&mut self) -> &mut Chain<dyn SeriesPostInsertInterceptor + Send + Sync>;
-
-	/// Access series pre-update interceptor chain
+	// Series (DDL) interceptors
+	fn series_post_create_interceptors(&mut self) -> &mut Chain<dyn SeriesPostCreateInterceptor + Send + Sync>;
 	fn series_pre_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPreUpdateInterceptor + Send + Sync>;
-
-	/// Access series post-update interceptor chain
 	fn series_post_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPostUpdateInterceptor + Send + Sync>;
-
-	/// Access series pre-delete interceptor chain
 	fn series_pre_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPreDeleteInterceptor + Send + Sync>;
 
-	/// Access series post-delete interceptor chain
-	fn series_post_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPostDeleteInterceptor + Send + Sync>;
+	// Identity (DDL) interceptors
+	fn identity_post_create_interceptors(&mut self) -> &mut Chain<dyn IdentityPostCreateInterceptor + Send + Sync>;
+	fn identity_pre_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPreUpdateInterceptor + Send + Sync>;
+	fn identity_post_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPostUpdateInterceptor + Send + Sync>;
+	fn identity_pre_delete_interceptors(&mut self) -> &mut Chain<dyn IdentityPreDeleteInterceptor + Send + Sync>;
 
-	/// Access series definition post-create interceptor chain
-	fn series_def_post_create_interceptors(
+	// Role (DDL) interceptors
+	fn role_post_create_interceptors(&mut self) -> &mut Chain<dyn RolePostCreateInterceptor + Send + Sync>;
+	fn role_pre_update_interceptors(&mut self) -> &mut Chain<dyn RolePreUpdateInterceptor + Send + Sync>;
+	fn role_post_update_interceptors(&mut self) -> &mut Chain<dyn RolePostUpdateInterceptor + Send + Sync>;
+	fn role_pre_delete_interceptors(&mut self) -> &mut Chain<dyn RolePreDeleteInterceptor + Send + Sync>;
+
+	// Granted role (DDL) interceptors
+	fn granted_role_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn SeriesDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access series definition pre-update interceptor chain
-	fn series_def_pre_update_interceptors(&mut self)
-	-> &mut Chain<dyn SeriesDefPreUpdateInterceptor + Send + Sync>;
-
-	/// Access series definition post-update interceptor chain
-	fn series_def_post_update_interceptors(
+	) -> &mut Chain<dyn GrantedRolePostCreateInterceptor + Send + Sync>;
+	fn granted_role_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn SeriesDefPostUpdateInterceptor + Send + Sync>;
+	) -> &mut Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync>;
 
-	/// Access series definition pre-delete interceptor chain
-	fn series_def_pre_delete_interceptors(&mut self)
-	-> &mut Chain<dyn SeriesDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access identity definition post-create interceptor chain
-	fn identity_def_post_create_interceptors(
+	// Authentication (DDL) interceptors
+	fn authentication_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn IdentityDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access identity definition pre-update interceptor chain
-	fn identity_def_pre_update_interceptors(
+	) -> &mut Chain<dyn AuthenticationPostCreateInterceptor + Send + Sync>;
+	fn authentication_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn IdentityDefPreUpdateInterceptor + Send + Sync>;
-
-	/// Access identity definition post-update interceptor chain
-	fn identity_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn IdentityDefPostUpdateInterceptor + Send + Sync>;
-
-	/// Access identity definition pre-delete interceptor chain
-	fn identity_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn IdentityDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access role definition post-create interceptor chain
-	fn role_def_post_create_interceptors(&mut self) -> &mut Chain<dyn RoleDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access role definition pre-update interceptor chain
-	fn role_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn RoleDefPreUpdateInterceptor + Send + Sync>;
-
-	/// Access role definition post-update interceptor chain
-	fn role_def_post_update_interceptors(&mut self) -> &mut Chain<dyn RoleDefPostUpdateInterceptor + Send + Sync>;
-
-	/// Access role definition pre-delete interceptor chain
-	fn role_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn RoleDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access identity-role definition post-create interceptor chain
-	fn identity_role_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn IdentityRoleDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access identity-role definition pre-delete interceptor chain
-	fn identity_role_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn IdentityRoleDefPreDeleteInterceptor + Send + Sync>;
-
-	/// Access authentication definition post-create interceptor chain
-	fn authentication_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn AuthenticationDefPostCreateInterceptor + Send + Sync>;
-
-	/// Access authentication definition pre-delete interceptor chain
-	fn authentication_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn AuthenticationDefPreDeleteInterceptor + Send + Sync>;
+	) -> &mut Chain<dyn AuthenticationPreDeleteInterceptor + Send + Sync>;
 }

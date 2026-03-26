@@ -54,7 +54,7 @@ pub(crate) fn create_deferred_view(
 			storage,
 		},
 	)?;
-	txn.track_view_def_created(result.clone())?;
+	txn.track_view_created(result.clone())?;
 
 	create_deferred_view_flow(&services.catalog, txn, &result, *plan.as_clause, plan.tick)?;
 

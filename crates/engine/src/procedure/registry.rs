@@ -156,14 +156,14 @@ fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<(SumT
 		.find_namespace_by_name(namespace_name)
 		.ok_or_else(|| format!("Namespace '{}' not found", namespace_name))?;
 
-	let sumtype_def = catalog
+	let sumtype = catalog
 		.find_sumtype_by_name(namespace.id(), event_name)
 		.ok_or_else(|| format!("SumType '{}' not found in namespace '{}'", event_name, namespace_name))?;
 
 	let variant_name_lower = variant_name.to_lowercase();
-	let variant = sumtype_def.variants.iter().find(|v| v.name == variant_name_lower).ok_or_else(|| {
+	let variant = sumtype.variants.iter().find(|v| v.name == variant_name_lower).ok_or_else(|| {
 		format!("Variant '{}' not found in sumtype '{}::{}'", variant_name, namespace_name, event_name)
 	})?;
 
-	Ok((sumtype_def.id, variant.tag))
+	Ok((sumtype.id, variant.tag))
 }

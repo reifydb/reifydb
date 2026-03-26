@@ -5,28 +5,28 @@ use OperationType::Delete;
 use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
-		authentication::{AuthenticationDef, AuthenticationId},
-		dictionary::DictionaryDef,
-		flow::{FlowDef, FlowId},
-		handler::HandlerDef,
+		authentication::{Authentication, AuthenticationId},
+		dictionary::Dictionary,
+		flow::{Flow, FlowId},
+		handler::Handler,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
 			SinkId, SourceId, SubscriptionId, TableId, TestId, ViewId,
 		},
-		identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
-		migration::{MigrationDef, MigrationEvent},
+		identity::{GrantedRole, Identity, Role, RoleId},
+		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
-		policy::{PolicyDef, PolicyId},
-		procedure::ProcedureDef,
-		ringbuffer::RingBufferDef,
-		series::SeriesDef,
-		sink::SinkDef,
-		source::SourceDef,
-		subscription::SubscriptionDef,
-		sumtype::SumTypeDef,
-		table::TableDef,
-		test::TestDef,
-		view::ViewDef,
+		policy::{Policy, PolicyId},
+		procedure::Procedure,
+		ringbuffer::RingBuffer,
+		series::Series,
+		sink::Sink,
+		source::Source,
+		subscription::Subscription,
+		sumtype::SumType,
+		table::Table,
+		test::Test,
+		view::View,
 	},
 };
 use reifydb_type::value::{
@@ -54,15 +54,15 @@ pub trait TransactionalChanges:
 	+ TransactionalTestChanges
 	+ TransactionalAuthenticationChanges
 	+ TransactionalIdentityChanges
-	+ TransactionalIdentityRoleChanges
+	+ TransactionalGrantedRoleChanges
 	+ TransactionalViewChanges
 {
 }
 
 pub trait TransactionalDictionaryChanges {
-	fn find_dictionary(&self, id: DictionaryId) -> Option<&DictionaryDef>;
+	fn find_dictionary(&self, id: DictionaryId) -> Option<&Dictionary>;
 
-	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&DictionaryDef>;
+	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Dictionary>;
 
 	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool;
 
@@ -80,9 +80,9 @@ pub trait TransactionalNamespaceChanges {
 }
 
 pub trait TransactionalFlowChanges {
-	fn find_flow(&self, id: FlowId) -> Option<&FlowDef>;
+	fn find_flow(&self, id: FlowId) -> Option<&Flow>;
 
-	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&FlowDef>;
+	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Flow>;
 
 	fn is_flow_deleted(&self, id: FlowId) -> bool;
 
@@ -90,9 +90,9 @@ pub trait TransactionalFlowChanges {
 }
 
 pub trait TransactionalTableChanges {
-	fn find_table(&self, id: TableId) -> Option<&TableDef>;
+	fn find_table(&self, id: TableId) -> Option<&Table>;
 
-	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TableDef>;
+	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Table>;
 
 	fn is_table_deleted(&self, id: TableId) -> bool;
 
@@ -100,9 +100,9 @@ pub trait TransactionalTableChanges {
 }
 
 pub trait TransactionalProcedureChanges {
-	fn find_procedure(&self, id: ProcedureId) -> Option<&ProcedureDef>;
+	fn find_procedure(&self, id: ProcedureId) -> Option<&Procedure>;
 
-	fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&ProcedureDef>;
+	fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Procedure>;
 
 	fn is_procedure_deleted(&self, id: ProcedureId) -> bool;
 
@@ -110,9 +110,9 @@ pub trait TransactionalProcedureChanges {
 }
 
 pub trait TransactionalTestChanges {
-	fn find_test(&self, id: TestId) -> Option<&TestDef>;
+	fn find_test(&self, id: TestId) -> Option<&Test>;
 
-	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TestDef>;
+	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Test>;
 
 	fn is_test_deleted(&self, id: TestId) -> bool;
 
@@ -120,9 +120,9 @@ pub trait TransactionalTestChanges {
 }
 
 pub trait TransactionalRingBufferChanges {
-	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef>;
+	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBuffer>;
 
-	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBufferDef>;
+	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBuffer>;
 
 	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool;
 
@@ -130,9 +130,9 @@ pub trait TransactionalRingBufferChanges {
 }
 
 pub trait TransactionalSeriesChanges {
-	fn find_series(&self, id: SeriesId) -> Option<&SeriesDef>;
+	fn find_series(&self, id: SeriesId) -> Option<&Series>;
 
-	fn find_series_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SeriesDef>;
+	fn find_series_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Series>;
 
 	fn is_series_deleted(&self, id: SeriesId) -> bool;
 
@@ -140,9 +140,9 @@ pub trait TransactionalSeriesChanges {
 }
 
 pub trait TransactionalViewChanges {
-	fn find_view(&self, id: ViewId) -> Option<&ViewDef>;
+	fn find_view(&self, id: ViewId) -> Option<&View>;
 
-	fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&ViewDef>;
+	fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&View>;
 
 	fn is_view_deleted(&self, id: ViewId) -> bool;
 
@@ -152,9 +152,9 @@ pub trait TransactionalViewChanges {
 /// Trait for querying subscription changes within a transaction.
 /// Note: Subscriptions do NOT have names - they are identified only by ID.
 pub trait TransactionalSumTypeChanges {
-	fn find_sumtype(&self, id: SumTypeId) -> Option<&SumTypeDef>;
+	fn find_sumtype(&self, id: SumTypeId) -> Option<&SumType>;
 
-	fn find_sumtype_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SumTypeDef>;
+	fn find_sumtype_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SumType>;
 
 	fn is_sumtype_deleted(&self, id: SumTypeId) -> bool;
 
@@ -162,23 +162,23 @@ pub trait TransactionalSumTypeChanges {
 }
 
 pub trait TransactionalSubscriptionChanges {
-	fn find_subscription(&self, id: SubscriptionId) -> Option<&SubscriptionDef>;
+	fn find_subscription(&self, id: SubscriptionId) -> Option<&Subscription>;
 
 	fn is_subscription_deleted(&self, id: SubscriptionId) -> bool;
 }
 
 pub trait TransactionalHandlerChanges {
-	fn find_handler_by_id(&self, id: HandlerId) -> Option<&HandlerDef>;
+	fn find_handler_by_id(&self, id: HandlerId) -> Option<&Handler>;
 
-	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&HandlerDef>;
+	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Handler>;
 
 	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
 pub trait TransactionalIdentityChanges {
-	fn find_identity(&self, id: IdentityId) -> Option<&IdentityDef>;
+	fn find_identity(&self, id: IdentityId) -> Option<&Identity>;
 
-	fn find_identity_by_name(&self, name: &str) -> Option<&IdentityDef>;
+	fn find_identity_by_name(&self, name: &str) -> Option<&Identity>;
 
 	fn is_identity_deleted(&self, id: IdentityId) -> bool;
 
@@ -186,9 +186,9 @@ pub trait TransactionalIdentityChanges {
 }
 
 pub trait TransactionalRoleChanges {
-	fn find_role(&self, id: RoleId) -> Option<&RoleDef>;
+	fn find_role(&self, id: RoleId) -> Option<&Role>;
 
-	fn find_role_by_name(&self, name: &str) -> Option<&RoleDef>;
+	fn find_role_by_name(&self, name: &str) -> Option<&Role>;
 
 	fn is_role_deleted(&self, id: RoleId) -> bool;
 
@@ -196,29 +196,29 @@ pub trait TransactionalRoleChanges {
 }
 
 pub trait TransactionalAuthenticationChanges {
-	fn find_authentication(&self, id: AuthenticationId) -> Option<&AuthenticationDef>;
+	fn find_authentication(&self, id: AuthenticationId) -> Option<&Authentication>;
 
 	fn find_authentication_by_identity_and_method(
 		&self,
 		identity: IdentityId,
 		method: &str,
-	) -> Option<&AuthenticationDef>;
+	) -> Option<&Authentication>;
 
 	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool;
 }
 
-pub trait TransactionalIdentityRoleChanges {
-	fn find_identity_role(&self, identity: IdentityId, role: RoleId) -> Option<&IdentityRoleDef>;
+pub trait TransactionalGrantedRoleChanges {
+	fn find_granted_role(&self, identity: IdentityId, role: RoleId) -> Option<&GrantedRole>;
 
-	fn find_identity_roles_for_identity(&self, identity: IdentityId) -> Vec<&IdentityRoleDef>;
+	fn find_granted_roles_for_identity(&self, identity: IdentityId) -> Vec<&GrantedRole>;
 
-	fn is_identity_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool;
+	fn is_granted_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool;
 }
 
 pub trait TransactionalPolicyChanges {
-	fn find_policy(&self, id: PolicyId) -> Option<&PolicyDef>;
+	fn find_policy(&self, id: PolicyId) -> Option<&Policy>;
 
-	fn find_policy_by_name(&self, name: &str) -> Option<&PolicyDef>;
+	fn find_policy_by_name(&self, name: &str) -> Option<&Policy>;
 
 	fn is_policy_deleted(&self, id: PolicyId) -> bool;
 
@@ -226,9 +226,9 @@ pub trait TransactionalPolicyChanges {
 }
 
 pub trait TransactionalSourceChanges {
-	fn find_source(&self, id: SourceId) -> Option<&SourceDef>;
+	fn find_source(&self, id: SourceId) -> Option<&Source>;
 
-	fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SourceDef>;
+	fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Source>;
 
 	fn is_source_deleted(&self, id: SourceId) -> bool;
 
@@ -236,9 +236,9 @@ pub trait TransactionalSourceChanges {
 }
 
 pub trait TransactionalSinkChanges {
-	fn find_sink(&self, id: SinkId) -> Option<&SinkDef>;
+	fn find_sink(&self, id: SinkId) -> Option<&Sink>;
 
-	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SinkDef>;
+	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Sink>;
 
 	fn is_sink_deleted(&self, id: SinkId) -> bool;
 
@@ -246,9 +246,9 @@ pub trait TransactionalSinkChanges {
 }
 
 pub trait TransactionalMigrationChanges {
-	fn find_migration(&self, id: MigrationId) -> Option<&MigrationDef>;
+	fn find_migration(&self, id: MigrationId) -> Option<&Migration>;
 
-	fn find_migration_by_name(&self, name: &str) -> Option<&MigrationDef>;
+	fn find_migration_by_name(&self, name: &str) -> Option<&Migration>;
 
 	fn is_migration_deleted(&self, id: MigrationId) -> bool;
 
@@ -262,46 +262,46 @@ pub struct TransactionalDefChanges {
 	/// Config key/value changes to be applied post-commit with the commit version
 	pub config_changes: Vec<(String, Value)>,
 	/// All dictionary definition changes in order (no coalescing)
-	pub dictionary_def: Vec<Change<DictionaryDef>>,
+	pub dictionary: Vec<Change<Dictionary>>,
 	/// All flow definition changes in order (no coalescing)
-	pub flow_def: Vec<Change<FlowDef>>,
+	pub flow: Vec<Change<Flow>>,
 	/// All handler definition changes in order (no coalescing)
-	pub handler_def: Vec<Change<HandlerDef>>,
+	pub handler: Vec<Change<Handler>>,
 	/// All migration definition changes in order (no coalescing)
-	pub migration_def: Vec<Change<MigrationDef>>,
+	pub migration: Vec<Change<Migration>>,
 	/// All migration event changes in order (no coalescing)
 	pub migration_event: Vec<Change<MigrationEvent>>,
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace: Vec<Change<Namespace>>,
 	/// All procedure definition changes in order (no coalescing)
-	pub procedure_def: Vec<Change<ProcedureDef>>,
+	pub procedure: Vec<Change<Procedure>>,
 	/// All ring buffer definition changes in order (no coalescing)
-	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
+	pub ringbuffer: Vec<Change<RingBuffer>>,
 	/// All series definition changes in order (no coalescing)
-	pub series_def: Vec<Change<SeriesDef>>,
+	pub series: Vec<Change<Series>>,
 	/// All sink definition changes in order (no coalescing)
-	pub sink_def: Vec<Change<SinkDef>>,
+	pub sink: Vec<Change<Sink>>,
 	/// All source definition changes in order (no coalescing)
-	pub source_def: Vec<Change<SourceDef>>,
+	pub source: Vec<Change<Source>>,
 	/// All subscription definition changes in order (no coalescing)
-	pub sumtype_def: Vec<Change<SumTypeDef>>,
-	pub subscription_def: Vec<Change<SubscriptionDef>>,
+	pub sumtype: Vec<Change<SumType>>,
+	pub subscription: Vec<Change<Subscription>>,
 	/// All test definition changes in order (no coalescing)
-	pub test_def: Vec<Change<TestDef>>,
+	pub test: Vec<Change<Test>>,
 	/// All table definition changes in order (no coalescing)
-	pub table_def: Vec<Change<TableDef>>,
+	pub table: Vec<Change<Table>>,
 	/// All identity definition changes in order (no coalescing)
-	pub identity_def: Vec<Change<IdentityDef>>,
+	pub identity: Vec<Change<Identity>>,
 	/// All authentication definition changes in order (no coalescing)
-	pub authentication_def: Vec<Change<AuthenticationDef>>,
+	pub authentication: Vec<Change<Authentication>>,
 	/// All role definition changes in order (no coalescing)
-	pub role_def: Vec<Change<RoleDef>>,
+	pub role: Vec<Change<Role>>,
 	/// All identity-role definition changes in order (no coalescing)
-	pub identity_role_def: Vec<Change<IdentityRoleDef>>,
+	pub granted_role: Vec<Change<GrantedRole>>,
 	/// All policy definition changes in order (no coalescing)
-	pub policy_def: Vec<Change<PolicyDef>>,
+	pub policy: Vec<Change<Policy>>,
 	/// All view definition changes in order (no coalescing)
-	pub view_def: Vec<Change<ViewDef>>,
+	pub view: Vec<Change<View>>,
 	/// Order of operations for replay/rollback
 	pub log: Vec<Operation>,
 }
@@ -311,7 +311,7 @@ impl TransactionalDefChanges {
 		self.config_changes.push((key, value));
 	}
 
-	pub fn add_dictionary_def_change(&mut self, change: Change<DictionaryDef>) {
+	pub fn add_dictionary_change(&mut self, change: Change<Dictionary>) {
 		let id = change
 			.post
 			.as_ref()
@@ -319,14 +319,14 @@ impl TransactionalDefChanges {
 			.map(|d| d.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.dictionary_def.push(change);
+		self.dictionary.push(change);
 		self.log.push(Operation::Dictionary {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_flow_def_change(&mut self, change: Change<FlowDef>) {
+	pub fn add_flow_change(&mut self, change: Change<Flow>) {
 		let id = change
 			.post
 			.as_ref()
@@ -334,7 +334,7 @@ impl TransactionalDefChanges {
 			.map(|f| f.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.flow_def.push(change);
+		self.flow.push(change);
 		self.log.push(Operation::Flow {
 			id,
 			op,
@@ -356,7 +356,7 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_handler_def_change(&mut self, change: Change<HandlerDef>) {
+	pub fn add_handler_change(&mut self, change: Change<Handler>) {
 		let id = change
 			.post
 			.as_ref()
@@ -364,14 +364,14 @@ impl TransactionalDefChanges {
 			.map(|h| h.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.handler_def.push(change);
+		self.handler.push(change);
 		self.log.push(Operation::Handler {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_migration_def_change(&mut self, change: Change<MigrationDef>) {
+	pub fn add_migration_change(&mut self, change: Change<Migration>) {
 		let id = change
 			.post
 			.as_ref()
@@ -379,7 +379,7 @@ impl TransactionalDefChanges {
 			.map(|m| m.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.migration_def.push(change);
+		self.migration.push(change);
 		self.log.push(Operation::Migration {
 			id,
 			op,
@@ -401,7 +401,7 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_procedure_def_change(&mut self, change: Change<ProcedureDef>) {
+	pub fn add_procedure_change(&mut self, change: Change<Procedure>) {
 		let id = change
 			.post
 			.as_ref()
@@ -409,14 +409,14 @@ impl TransactionalDefChanges {
 			.map(|p| p.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.procedure_def.push(change);
+		self.procedure.push(change);
 		self.log.push(Operation::Procedure {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_test_def_change(&mut self, change: Change<TestDef>) {
+	pub fn add_test_change(&mut self, change: Change<Test>) {
 		let id = change
 			.post
 			.as_ref()
@@ -424,14 +424,14 @@ impl TransactionalDefChanges {
 			.map(|t| t.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.test_def.push(change);
+		self.test.push(change);
 		self.log.push(Operation::Test {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_ringbuffer_def_change(&mut self, change: Change<RingBufferDef>) {
+	pub fn add_ringbuffer_change(&mut self, change: Change<RingBuffer>) {
 		let id = change
 			.post
 			.as_ref()
@@ -439,14 +439,14 @@ impl TransactionalDefChanges {
 			.map(|rb| rb.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.ringbuffer_def.push(change);
+		self.ringbuffer.push(change);
 		self.log.push(Operation::RingBuffer {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_series_def_change(&mut self, change: Change<SeriesDef>) {
+	pub fn add_series_change(&mut self, change: Change<Series>) {
 		let id = change
 			.post
 			.as_ref()
@@ -454,14 +454,14 @@ impl TransactionalDefChanges {
 			.map(|s| s.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.series_def.push(change);
+		self.series.push(change);
 		self.log.push(Operation::Series {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_sink_def_change(&mut self, change: Change<SinkDef>) {
+	pub fn add_sink_change(&mut self, change: Change<Sink>) {
 		let id = change
 			.post
 			.as_ref()
@@ -469,14 +469,14 @@ impl TransactionalDefChanges {
 			.map(|s| s.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.sink_def.push(change);
+		self.sink.push(change);
 		self.log.push(Operation::Sink {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_source_def_change(&mut self, change: Change<SourceDef>) {
+	pub fn add_source_change(&mut self, change: Change<Source>) {
 		let id = change
 			.post
 			.as_ref()
@@ -484,14 +484,14 @@ impl TransactionalDefChanges {
 			.map(|s| s.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.source_def.push(change);
+		self.source.push(change);
 		self.log.push(Operation::Source {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_table_def_change(&mut self, change: Change<TableDef>) {
+	pub fn add_table_change(&mut self, change: Change<Table>) {
 		let id = change
 			.post
 			.as_ref()
@@ -499,14 +499,14 @@ impl TransactionalDefChanges {
 			.map(|t| t.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.table_def.push(change);
+		self.table.push(change);
 		self.log.push(Operation::Table {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_view_def_change(&mut self, change: Change<ViewDef>) {
+	pub fn add_view_change(&mut self, change: Change<View>) {
 		let id = change
 			.post
 			.as_ref()
@@ -514,14 +514,14 @@ impl TransactionalDefChanges {
 			.map(|v| v.id())
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.view_def.push(change);
+		self.view.push(change);
 		self.log.push(Operation::View {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_sumtype_def_change(&mut self, change: Change<SumTypeDef>) {
+	pub fn add_sumtype_change(&mut self, change: Change<SumType>) {
 		let id = change
 			.post
 			.as_ref()
@@ -529,14 +529,14 @@ impl TransactionalDefChanges {
 			.map(|s| s.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.sumtype_def.push(change);
+		self.sumtype.push(change);
 		self.log.push(Operation::SumType {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_subscription_def_change(&mut self, change: Change<SubscriptionDef>) {
+	pub fn add_subscription_change(&mut self, change: Change<Subscription>) {
 		let id = change
 			.post
 			.as_ref()
@@ -544,14 +544,14 @@ impl TransactionalDefChanges {
 			.map(|s| s.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.subscription_def.push(change);
+		self.subscription.push(change);
 		self.log.push(Operation::Subscription {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_identity_def_change(&mut self, change: Change<IdentityDef>) {
+	pub fn add_identity_change(&mut self, change: Change<Identity>) {
 		let id = change
 			.post
 			.as_ref()
@@ -559,14 +559,14 @@ impl TransactionalDefChanges {
 			.map(|u| u.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.identity_def.push(change);
+		self.identity.push(change);
 		self.log.push(Operation::Identity {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_role_def_change(&mut self, change: Change<RoleDef>) {
+	pub fn add_role_change(&mut self, change: Change<Role>) {
 		let id = change
 			.post
 			.as_ref()
@@ -574,14 +574,14 @@ impl TransactionalDefChanges {
 			.map(|r| r.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.role_def.push(change);
+		self.role.push(change);
 		self.log.push(Operation::Role {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_identity_role_def_change(&mut self, change: Change<IdentityRoleDef>) {
+	pub fn add_granted_role_change(&mut self, change: Change<GrantedRole>) {
 		let identity = change
 			.post
 			.as_ref()
@@ -595,15 +595,15 @@ impl TransactionalDefChanges {
 			.map(|ur| ur.role_id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.identity_role_def.push(change);
-		self.log.push(Operation::IdentityRole {
+		self.granted_role.push(change);
+		self.log.push(Operation::GrantedRole {
 			identity,
 			role,
 			op,
 		});
 	}
 
-	pub fn add_authentication_def_change(&mut self, change: Change<AuthenticationDef>) {
+	pub fn add_authentication_change(&mut self, change: Change<Authentication>) {
 		let id = change
 			.post
 			.as_ref()
@@ -611,14 +611,14 @@ impl TransactionalDefChanges {
 			.map(|a| a.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.authentication_def.push(change);
+		self.authentication.push(change);
 		self.log.push(Operation::Authentication {
 			id,
 			op,
 		});
 	}
 
-	pub fn add_policy_def_change(&mut self, change: Change<PolicyDef>) {
+	pub fn add_policy_change(&mut self, change: Change<Policy>) {
 		let id = change
 			.post
 			.as_ref()
@@ -626,7 +626,7 @@ impl TransactionalDefChanges {
 			.map(|p| p.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.policy_def.push(change);
+		self.policy.push(change);
 		self.log.push(Operation::Policy {
 			id,
 			op,
@@ -729,7 +729,7 @@ pub enum Operation {
 		id: RoleId,
 		op: OperationType,
 	},
-	IdentityRole {
+	GrantedRole {
 		identity: IdentityId,
 		role: RoleId,
 		op: OperationType,
@@ -749,40 +749,40 @@ impl TransactionalDefChanges {
 		Self {
 			txn_id,
 			config_changes: Vec::new(),
-			dictionary_def: Vec::new(),
-			flow_def: Vec::new(),
-			handler_def: Vec::new(),
-			migration_def: Vec::new(),
+			dictionary: Vec::new(),
+			flow: Vec::new(),
+			handler: Vec::new(),
+			migration: Vec::new(),
 			migration_event: Vec::new(),
 			namespace: Vec::new(),
-			procedure_def: Vec::new(),
-			ringbuffer_def: Vec::new(),
-			series_def: Vec::new(),
-			sink_def: Vec::new(),
-			source_def: Vec::new(),
-			sumtype_def: Vec::new(),
-			subscription_def: Vec::new(),
-			test_def: Vec::new(),
-			table_def: Vec::new(),
-			identity_def: Vec::new(),
-			authentication_def: Vec::new(),
-			role_def: Vec::new(),
-			identity_role_def: Vec::new(),
-			policy_def: Vec::new(),
-			view_def: Vec::new(),
+			procedure: Vec::new(),
+			ringbuffer: Vec::new(),
+			series: Vec::new(),
+			sink: Vec::new(),
+			source: Vec::new(),
+			sumtype: Vec::new(),
+			subscription: Vec::new(),
+			test: Vec::new(),
+			table: Vec::new(),
+			identity: Vec::new(),
+			authentication: Vec::new(),
+			role: Vec::new(),
+			granted_role: Vec::new(),
+			policy: Vec::new(),
+			view: Vec::new(),
 			log: Vec::new(),
 		}
 	}
 
 	/// Check if a table exists in this transaction's view
-	pub fn table_def_exists(&self, id: TableId) -> bool {
-		self.get_table_def(id).is_some()
+	pub fn table_exists(&self, id: TableId) -> bool {
+		self.get_table(id).is_some()
 	}
 
 	/// Get current state of a table within this transaction
-	pub fn get_table_def(&self, id: TableId) -> Option<&TableDef> {
+	pub fn get_table(&self, id: TableId) -> Option<&Table> {
 		// Find the last change for this table ID
-		for change in self.table_def.iter().rev() {
+		for change in self.table.iter().rev() {
 			if let Some(table) = &change.post {
 				if table.id == id {
 					return Some(table);
@@ -798,14 +798,14 @@ impl TransactionalDefChanges {
 	}
 
 	/// Check if a view exists in this transaction's view
-	pub fn view_def_exists(&self, id: ViewId) -> bool {
-		self.get_view_def(id).is_some()
+	pub fn view_exists(&self, id: ViewId) -> bool {
+		self.get_view(id).is_some()
 	}
 
 	/// Get current state of a view within this transaction
-	pub fn get_view_def(&self, id: ViewId) -> Option<&ViewDef> {
+	pub fn get_view(&self, id: ViewId) -> Option<&View> {
 		// Find the last change for this view ID
-		for change in self.view_def.iter().rev() {
+		for change in self.view.iter().rev() {
 			if let Some(view) = &change.post {
 				if view.id() == id {
 					return Some(view);
@@ -836,39 +836,39 @@ impl TransactionalDefChanges {
 	}
 
 	/// Get table definition changes
-	pub fn table_def(&self) -> &[Change<TableDef>] {
-		&self.table_def
+	pub fn table(&self) -> &[Change<Table>] {
+		&self.table
 	}
 
 	/// Get view definition changes
-	pub fn view_def(&self) -> &[Change<ViewDef>] {
-		&self.view_def
+	pub fn view(&self) -> &[Change<View>] {
+		&self.view
 	}
 
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
 		self.config_changes.clear();
-		self.dictionary_def.clear();
-		self.flow_def.clear();
-		self.handler_def.clear();
-		self.migration_def.clear();
+		self.dictionary.clear();
+		self.flow.clear();
+		self.handler.clear();
+		self.migration.clear();
 		self.migration_event.clear();
 		self.namespace.clear();
-		self.procedure_def.clear();
-		self.ringbuffer_def.clear();
-		self.series_def.clear();
-		self.sink_def.clear();
-		self.source_def.clear();
-		self.sumtype_def.clear();
-		self.subscription_def.clear();
-		self.test_def.clear();
-		self.table_def.clear();
-		self.identity_def.clear();
-		self.authentication_def.clear();
-		self.role_def.clear();
-		self.identity_role_def.clear();
-		self.policy_def.clear();
-		self.view_def.clear();
+		self.procedure.clear();
+		self.ringbuffer.clear();
+		self.series.clear();
+		self.sink.clear();
+		self.source.clear();
+		self.sumtype.clear();
+		self.subscription.clear();
+		self.test.clear();
+		self.table.clear();
+		self.identity.clear();
+		self.authentication.clear();
+		self.role.clear();
+		self.granted_role.clear();
+		self.policy.clear();
+		self.view.clear();
 		self.log.clear();
 	}
 }

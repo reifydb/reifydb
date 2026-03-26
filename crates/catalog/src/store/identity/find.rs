@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::identity::IdentityDef, key::identity::IdentityKey};
+use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::identity::IdentityId;
 
@@ -12,11 +12,11 @@ use crate::{
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub(crate) fn find_identity(rx: &mut Transaction<'_>, id: IdentityId) -> Result<Option<IdentityDef>> {
+	pub(crate) fn find_identity(rx: &mut Transaction<'_>, id: IdentityId) -> Result<Option<Identity>> {
 		Ok(rx.get(&IdentityKey::encoded(id))?.map(convert_identity))
 	}
 
-	pub(crate) fn find_identity_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<IdentityDef>> {
+	pub(crate) fn find_identity_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
 		let mut stream = rx.range(IdentityKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

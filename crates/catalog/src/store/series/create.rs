@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{SeriesDef, SeriesKey},
+		series::{Series, SeriesKey},
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
@@ -49,7 +49,7 @@ pub struct SeriesToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<SeriesDef> {
+	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(series) = CatalogStore::find_series_by_name(

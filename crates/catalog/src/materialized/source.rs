@@ -5,15 +5,15 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, SourceId},
-		source::SourceDef,
+		source::Source,
 	},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionSourceDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionSource};
 
 impl MaterializedCatalog {
 	/// Find a source by ID at a specific version
-	pub fn find_source_at(&self, source: SourceId, version: CommitVersion) -> Option<SourceDef> {
+	pub fn find_source_at(&self, source: SourceId, version: CommitVersion) -> Option<Source> {
 		self.sources.get(&source).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -26,7 +26,7 @@ impl MaterializedCatalog {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Option<SourceDef> {
+	) -> Option<Source> {
 		self.sources_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let source_id = *entry.value();
 			self.find_source_at(source_id, version)
@@ -34,7 +34,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a source by ID (returns latest version)
-	pub fn find_source(&self, source: SourceId) -> Option<SourceDef> {
+	pub fn find_source(&self, source: SourceId) -> Option<Source> {
 		self.sources.get(&source).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -42,14 +42,14 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a source by name in a namespace (returns latest version)
-	pub fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<SourceDef> {
+	pub fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Source> {
 		self.sources_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let source_id = *entry.value();
 			self.find_source(source_id)
 		})
 	}
 
-	pub fn set_source(&self, id: SourceId, version: CommitVersion, source: Option<SourceDef>) {
+	pub fn set_source(&self, id: SourceId, version: CommitVersion, source: Option<Source>) {
 		// Look up the current source to update the index
 		if let Some(entry) = self.sources.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
@@ -57,7 +57,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.sources.get_or_insert_with(id, MultiVersionSourceDef::new);
+		let multi = self.sources.get_or_insert_with(id, MultiVersionSource::new);
 		if let Some(new) = source {
 			self.sources_by_name.insert((new.namespace, new.name.clone()), id);
 			multi.value().insert(version, new);
@@ -73,8 +73,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_source(id: SourceId, namespace: NamespaceId, name: &str) -> SourceDef {
-		SourceDef {
+	fn create_test_source(id: SourceId, namespace: NamespaceId, name: &str) -> Source {
+		Source {
 			id,
 			namespace,
 			name: name.to_string(),

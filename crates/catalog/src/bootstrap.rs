@@ -5,7 +5,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		id::NamespaceId,
-		procedure::{ProcedureParamDef, ProcedureTrigger},
+		procedure::{ProcedureParam, ProcedureTrigger},
 	},
 };
 use reifydb_transaction::{
@@ -41,7 +41,7 @@ pub fn load_materialized_catalog(
 }
 
 /// Write registered config defaults to storage for keys not yet stored.
-pub fn bootstrap_config_defaults(
+pub fn bootstrap_configaults(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
@@ -108,11 +108,11 @@ pub fn bootstrap_system_procedures(
 			name: Fragment::internal("set"),
 			namespace: ns_id,
 			params: vec![
-				ProcedureParamDef {
+				ProcedureParam {
 					name: "key".to_string(),
 					param_type: TypeConstraint::unconstrained(Type::Utf8),
 				},
-				ProcedureParamDef {
+				ProcedureParam {
 					name: "value".to_string(),
 					param_type: TypeConstraint::unconstrained(Type::Utf8),
 				},

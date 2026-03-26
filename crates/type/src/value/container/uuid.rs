@@ -303,7 +303,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_default() {
+	fn testault() {
 		let container: UuidContainer<Uuid4> = UuidContainer::default();
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());

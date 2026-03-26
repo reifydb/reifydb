@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	interface::catalog::{
 		series::{SeriesKey, TimestampPrecision},
-		vtable::VTableDef,
+		vtable::VTable,
 	},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -19,25 +19,25 @@ use reifydb_type::{
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system series (time-series) information
-pub struct Series {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemSeries {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Series {
+impl SystemSeries {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_series_table_def().clone(),
+			definition: SystemCatalog::get_system_series_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Series {
+impl BaseVTable for SystemSeries {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -112,7 +112,7 @@ impl VTable for Series {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

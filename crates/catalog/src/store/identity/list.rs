@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::identity::IdentityDef, key::identity::IdentityKey};
+use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, store::identity::convert_identity};
 
 impl CatalogStore {
-	pub(crate) fn list_all_identities(rx: &mut Transaction<'_>) -> Result<Vec<IdentityDef>> {
+	pub(crate) fn list_all_identities(rx: &mut Transaction<'_>) -> Result<Vec<Identity>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(IdentityKey::full_scan(), 1024)?;
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::token::TokenDef, key::token::TokenKey};
+use reifydb_core::{interface::catalog::token::Token, key::token::TokenKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 
@@ -20,7 +20,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		expires_at: Option<DateTime>,
 		created_at: DateTime,
-	) -> Result<TokenDef> {
+	) -> Result<Token> {
 		let id = SystemSequence::next_token_id(txn)?;
 
 		let mut row = SCHEMA.allocate();
@@ -36,7 +36,7 @@ impl CatalogStore {
 
 		txn.set(&TokenKey::encoded(id), row)?;
 
-		Ok(TokenDef {
+		Ok(Token {
 			id,
 			token: token.to_string(),
 			identity,

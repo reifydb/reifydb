@@ -2,15 +2,15 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::identity::{IdentityRoleDef, RoleId},
-	key::identity_role::IdentityRoleKey,
+	interface::catalog::identity::{GrantedRole, RoleId},
+	key::granted_role::GrantedRoleKey,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore, Result,
-	store::identity_role::schema::identity_role::{IDENTITY, ROLE_ID, SCHEMA},
+	store::granted_role::schema::granted_role::{IDENTITY, ROLE_ID, SCHEMA},
 };
 
 impl CatalogStore {
@@ -18,14 +18,14 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		role: RoleId,
-	) -> Result<IdentityRoleDef> {
+	) -> Result<GrantedRole> {
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_identity_id(&mut row, IDENTITY, identity);
 		SCHEMA.set_u64(&mut row, ROLE_ID, role);
 
-		txn.set(&IdentityRoleKey::encoded(identity, role), row)?;
+		txn.set(&GrantedRoleKey::encoded(identity, role), row)?;
 
-		Ok(IdentityRoleDef {
+		Ok(GrantedRole {
 			identity,
 			role_id: role,
 		})

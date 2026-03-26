@@ -10,21 +10,21 @@ use reifydb_type::Result;
 
 use super::{
 	dictionary::{
-		DictionaryPostDeleteContext, DictionaryPostDeleteInterceptor, DictionaryPostInsertContext,
-		DictionaryPostInsertInterceptor, DictionaryPostUpdateContext, DictionaryPostUpdateInterceptor,
-		DictionaryPreDeleteContext, DictionaryPreDeleteInterceptor, DictionaryPreInsertContext,
-		DictionaryPreInsertInterceptor, DictionaryPreUpdateContext, DictionaryPreUpdateInterceptor,
+		DictionaryPostCreateContext, DictionaryPostCreateInterceptor, DictionaryPostUpdateContext,
+		DictionaryPostUpdateInterceptor, DictionaryPreDeleteContext, DictionaryPreDeleteInterceptor,
+		DictionaryPreUpdateContext, DictionaryPreUpdateInterceptor,
 	},
-	dictionary_def::{
-		DictionaryDefPostCreateContext, DictionaryDefPostCreateInterceptor, DictionaryDefPostUpdateContext,
-		DictionaryDefPostUpdateInterceptor, DictionaryDefPreDeleteContext, DictionaryDefPreDeleteInterceptor,
-		DictionaryDefPreUpdateContext, DictionaryDefPreUpdateInterceptor,
+	dictionary_row::{
+		DictionaryRowPostDeleteContext, DictionaryRowPostDeleteInterceptor, DictionaryRowPostInsertContext,
+		DictionaryRowPostInsertInterceptor, DictionaryRowPostUpdateContext, DictionaryRowPostUpdateInterceptor,
+		DictionaryRowPreDeleteContext, DictionaryRowPreDeleteInterceptor, DictionaryRowPreInsertContext,
+		DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateContext, DictionaryRowPreUpdateInterceptor,
 	},
 	filter::InterceptFilter,
-	identity_def::{
-		IdentityDefPostCreateContext, IdentityDefPostCreateInterceptor, IdentityDefPostUpdateContext,
-		IdentityDefPostUpdateInterceptor, IdentityDefPreDeleteContext, IdentityDefPreDeleteInterceptor,
-		IdentityDefPreUpdateContext, IdentityDefPreUpdateInterceptor,
+	identity::{
+		IdentityPostCreateContext, IdentityPostCreateInterceptor, IdentityPostUpdateContext,
+		IdentityPostUpdateInterceptor, IdentityPreDeleteContext, IdentityPreDeleteInterceptor,
+		IdentityPreUpdateContext, IdentityPreUpdateInterceptor,
 	},
 	namespace::{
 		NamespacePostCreateContext, NamespacePostCreateInterceptor, NamespacePostUpdateContext,
@@ -32,51 +32,50 @@ use super::{
 		NamespacePreUpdateContext, NamespacePreUpdateInterceptor,
 	},
 	ringbuffer::{
-		RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor, RingBufferPostInsertContext,
-		RingBufferPostInsertInterceptor, RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor,
-		RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor, RingBufferPreInsertContext,
-		RingBufferPreInsertInterceptor, RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor,
+		RingBufferPostCreateContext, RingBufferPostCreateInterceptor, RingBufferPostUpdateContext,
+		RingBufferPostUpdateInterceptor, RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor,
+		RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor,
 	},
-	ringbuffer_def::{
-		RingBufferDefPostCreateContext, RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateContext,
-		RingBufferDefPostUpdateInterceptor, RingBufferDefPreDeleteContext, RingBufferDefPreDeleteInterceptor,
-		RingBufferDefPreUpdateContext, RingBufferDefPreUpdateInterceptor,
+	ringbuffer_row::{
+		RingBufferRowPostDeleteContext, RingBufferRowPostDeleteInterceptor, RingBufferRowPostInsertContext,
+		RingBufferRowPostInsertInterceptor, RingBufferRowPostUpdateContext, RingBufferRowPostUpdateInterceptor,
+		RingBufferRowPreDeleteContext, RingBufferRowPreDeleteInterceptor, RingBufferRowPreInsertContext,
+		RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateContext, RingBufferRowPreUpdateInterceptor,
 	},
-	role_def::{
-		RoleDefPostCreateContext, RoleDefPostCreateInterceptor, RoleDefPostUpdateContext,
-		RoleDefPostUpdateInterceptor, RoleDefPreDeleteContext, RoleDefPreDeleteInterceptor,
-		RoleDefPreUpdateContext, RoleDefPreUpdateInterceptor,
+	role::{
+		RolePostCreateContext, RolePostCreateInterceptor, RolePostUpdateContext, RolePostUpdateInterceptor,
+		RolePreDeleteContext, RolePreDeleteInterceptor, RolePreUpdateContext, RolePreUpdateInterceptor,
 	},
 	series::{
-		SeriesPostDeleteContext, SeriesPostDeleteInterceptor, SeriesPostInsertContext,
-		SeriesPostInsertInterceptor, SeriesPostUpdateContext, SeriesPostUpdateInterceptor,
-		SeriesPreDeleteContext, SeriesPreDeleteInterceptor, SeriesPreInsertContext, SeriesPreInsertInterceptor,
+		SeriesPostCreateContext, SeriesPostCreateInterceptor, SeriesPostUpdateContext,
+		SeriesPostUpdateInterceptor, SeriesPreDeleteContext, SeriesPreDeleteInterceptor,
 		SeriesPreUpdateContext, SeriesPreUpdateInterceptor,
 	},
-	series_def::{
-		SeriesDefPostCreateContext, SeriesDefPostCreateInterceptor, SeriesDefPostUpdateContext,
-		SeriesDefPostUpdateInterceptor, SeriesDefPreDeleteContext, SeriesDefPreDeleteInterceptor,
-		SeriesDefPreUpdateContext, SeriesDefPreUpdateInterceptor,
+	series_row::{
+		SeriesRowPostDeleteContext, SeriesRowPostDeleteInterceptor, SeriesRowPostInsertContext,
+		SeriesRowPostInsertInterceptor, SeriesRowPostUpdateContext, SeriesRowPostUpdateInterceptor,
+		SeriesRowPreDeleteContext, SeriesRowPreDeleteInterceptor, SeriesRowPreInsertContext,
+		SeriesRowPreInsertInterceptor, SeriesRowPreUpdateContext, SeriesRowPreUpdateInterceptor,
 	},
 	table::{
-		TablePostDeleteContext, TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor,
-		TablePostUpdateContext, TablePostUpdateInterceptor, TablePreDeleteContext, TablePreDeleteInterceptor,
-		TablePreInsertContext, TablePreInsertInterceptor, TablePreUpdateContext, TablePreUpdateInterceptor,
+		TablePostCreateContext, TablePostCreateInterceptor, TablePostUpdateContext, TablePostUpdateInterceptor,
+		TablePreDeleteContext, TablePreDeleteInterceptor, TablePreUpdateContext, TablePreUpdateInterceptor,
 	},
-	table_def::{
-		TableDefPostCreateContext, TableDefPostCreateInterceptor, TableDefPostUpdateContext,
-		TableDefPostUpdateInterceptor, TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
-		TableDefPreUpdateContext, TableDefPreUpdateInterceptor,
+	table_row::{
+		TableRowPostDeleteContext, TableRowPostDeleteInterceptor, TableRowPostInsertContext,
+		TableRowPostInsertInterceptor, TableRowPostUpdateContext, TableRowPostUpdateInterceptor,
+		TableRowPreDeleteContext, TableRowPreDeleteInterceptor, TableRowPreInsertContext,
+		TableRowPreInsertInterceptor, TableRowPreUpdateContext, TableRowPreUpdateInterceptor,
 	},
 	view::{
-		ViewPostDeleteContext, ViewPostDeleteInterceptor, ViewPostInsertContext, ViewPostInsertInterceptor,
-		ViewPostUpdateContext, ViewPostUpdateInterceptor, ViewPreDeleteContext, ViewPreDeleteInterceptor,
-		ViewPreInsertContext, ViewPreInsertInterceptor, ViewPreUpdateContext, ViewPreUpdateInterceptor,
+		ViewPostCreateContext, ViewPostCreateInterceptor, ViewPostUpdateContext, ViewPostUpdateInterceptor,
+		ViewPreDeleteContext, ViewPreDeleteInterceptor, ViewPreUpdateContext, ViewPreUpdateInterceptor,
 	},
-	view_def::{
-		ViewDefPostCreateContext, ViewDefPostCreateInterceptor, ViewDefPostUpdateContext,
-		ViewDefPostUpdateInterceptor, ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor,
-		ViewDefPreUpdateContext, ViewDefPreUpdateInterceptor,
+	view_row::{
+		ViewRowPostDeleteContext, ViewRowPostDeleteInterceptor, ViewRowPostInsertContext,
+		ViewRowPostInsertInterceptor, ViewRowPostUpdateContext, ViewRowPostUpdateInterceptor,
+		ViewRowPreDeleteContext, ViewRowPreDeleteInterceptor, ViewRowPreInsertContext,
+		ViewRowPreInsertInterceptor, ViewRowPreUpdateContext, ViewRowPreUpdateInterceptor,
 	},
 };
 
@@ -200,331 +199,331 @@ macro_rules! define_filtered_interceptor {
 
 // Table filtered interceptors
 define_filtered_interceptor!(
-	FilteredTablePreInsertInterceptor,
-	TablePreInsertInterceptor,
-	TablePreInsertContext,
+	FilteredTableRowPreInsertInterceptor,
+	TableRowPreInsertInterceptor,
+	TableRowPreInsertContext,
 	table
 );
 
 define_filtered_interceptor!(
-	FilteredTablePostInsertInterceptor,
-	TablePostInsertInterceptor,
-	TablePostInsertContext,
+	FilteredTableRowPostInsertInterceptor,
+	TableRowPostInsertInterceptor,
+	TableRowPostInsertContext,
 	table
 );
 
 define_filtered_interceptor!(
-	FilteredTablePreUpdateInterceptor,
-	TablePreUpdateInterceptor,
-	TablePreUpdateContext,
+	FilteredTableRowPreUpdateInterceptor,
+	TableRowPreUpdateInterceptor,
+	TableRowPreUpdateContext,
 	table
 );
 
 define_filtered_interceptor!(
-	FilteredTablePostUpdateInterceptor,
-	TablePostUpdateInterceptor,
-	TablePostUpdateContext,
+	FilteredTableRowPostUpdateInterceptor,
+	TableRowPostUpdateInterceptor,
+	TableRowPostUpdateContext,
 	table
 );
 
 define_filtered_interceptor!(
-	FilteredTablePreDeleteInterceptor,
-	TablePreDeleteInterceptor,
-	TablePreDeleteContext,
+	FilteredTableRowPreDeleteInterceptor,
+	TableRowPreDeleteInterceptor,
+	TableRowPreDeleteContext,
 	table
 );
 
 define_filtered_interceptor!(
-	FilteredTablePostDeleteInterceptor,
-	TablePostDeleteInterceptor,
-	TablePostDeleteContext,
+	FilteredTableRowPostDeleteInterceptor,
+	TableRowPostDeleteInterceptor,
+	TableRowPostDeleteContext,
 	table
 );
 
 // Ring buffer filtered interceptors
 define_filtered_interceptor!(
-	FilteredRingBufferPreInsertInterceptor,
-	RingBufferPreInsertInterceptor,
-	RingBufferPreInsertContext,
+	FilteredRingBufferRowPreInsertInterceptor,
+	RingBufferRowPreInsertInterceptor,
+	RingBufferRowPreInsertContext,
 	ringbuffer
 );
 
 define_filtered_interceptor!(
-	FilteredRingBufferPostInsertInterceptor,
-	RingBufferPostInsertInterceptor,
-	RingBufferPostInsertContext,
+	FilteredRingBufferRowPostInsertInterceptor,
+	RingBufferRowPostInsertInterceptor,
+	RingBufferRowPostInsertContext,
 	ringbuffer
+);
+
+define_filtered_interceptor!(
+	FilteredRingBufferRowPreUpdateInterceptor,
+	RingBufferRowPreUpdateInterceptor,
+	RingBufferRowPreUpdateContext,
+	ringbuffer
+);
+
+define_filtered_interceptor!(
+	FilteredRingBufferRowPostUpdateInterceptor,
+	RingBufferRowPostUpdateInterceptor,
+	RingBufferRowPostUpdateContext,
+	ringbuffer
+);
+
+define_filtered_interceptor!(
+	FilteredRingBufferRowPreDeleteInterceptor,
+	RingBufferRowPreDeleteInterceptor,
+	RingBufferRowPreDeleteContext,
+	ringbuffer
+);
+
+define_filtered_interceptor!(
+	FilteredRingBufferRowPostDeleteInterceptor,
+	RingBufferRowPostDeleteInterceptor,
+	RingBufferRowPostDeleteContext,
+	ringbuffer
+);
+
+// View data filtered interceptors
+define_filtered_interceptor!(
+	FilteredViewRowPreInsertInterceptor,
+	ViewRowPreInsertInterceptor,
+	ViewRowPreInsertContext,
+	view
+);
+
+define_filtered_interceptor!(
+	FilteredViewRowPostInsertInterceptor,
+	ViewRowPostInsertInterceptor,
+	ViewRowPostInsertContext,
+	view
+);
+
+define_filtered_interceptor!(
+	FilteredViewRowPreUpdateInterceptor,
+	ViewRowPreUpdateInterceptor,
+	ViewRowPreUpdateContext,
+	view
+);
+
+define_filtered_interceptor!(
+	FilteredViewRowPostUpdateInterceptor,
+	ViewRowPostUpdateInterceptor,
+	ViewRowPostUpdateContext,
+	view
+);
+
+define_filtered_interceptor!(
+	FilteredViewRowPreDeleteInterceptor,
+	ViewRowPreDeleteInterceptor,
+	ViewRowPreDeleteContext,
+	view
+);
+
+define_filtered_interceptor!(
+	FilteredViewRowPostDeleteInterceptor,
+	ViewRowPostDeleteInterceptor,
+	ViewRowPostDeleteContext,
+	view
+);
+
+// View definition filtered interceptors
+define_filtered_interceptor!(FilteredViewPostCreateInterceptor, ViewPostCreateInterceptor, ViewPostCreateContext, post);
+
+define_filtered_interceptor!(FilteredViewPreUpdateInterceptor, ViewPreUpdateInterceptor, ViewPreUpdateContext, pre);
+
+define_filtered_interceptor!(FilteredViewPostUpdateInterceptor, ViewPostUpdateInterceptor, ViewPostUpdateContext, pre);
+
+define_filtered_interceptor!(FilteredViewPreDeleteInterceptor, ViewPreDeleteInterceptor, ViewPreDeleteContext, pre);
+
+// Table definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredTablePostCreateInterceptor,
+	TablePostCreateInterceptor,
+	TablePostCreateContext,
+	post
+);
+
+define_filtered_interceptor!(FilteredTablePreUpdateInterceptor, TablePreUpdateInterceptor, TablePreUpdateContext, pre);
+
+define_filtered_interceptor!(
+	FilteredTablePostUpdateInterceptor,
+	TablePostUpdateInterceptor,
+	TablePostUpdateContext,
+	pre
+);
+
+define_filtered_interceptor!(FilteredTablePreDeleteInterceptor, TablePreDeleteInterceptor, TablePreDeleteContext, pre);
+
+// Ring buffer definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredRingBufferPostCreateInterceptor,
+	RingBufferPostCreateInterceptor,
+	RingBufferPostCreateContext,
+	post
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPreUpdateInterceptor,
 	RingBufferPreUpdateInterceptor,
 	RingBufferPreUpdateContext,
-	ringbuffer
+	pre
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPostUpdateInterceptor,
 	RingBufferPostUpdateInterceptor,
 	RingBufferPostUpdateContext,
-	ringbuffer
+	pre
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPreDeleteInterceptor,
 	RingBufferPreDeleteInterceptor,
 	RingBufferPreDeleteContext,
-	ringbuffer
-);
-
-define_filtered_interceptor!(
-	FilteredRingBufferPostDeleteInterceptor,
-	RingBufferPostDeleteInterceptor,
-	RingBufferPostDeleteContext,
-	ringbuffer
-);
-
-// View data filtered interceptors
-define_filtered_interceptor!(FilteredViewPreInsertInterceptor, ViewPreInsertInterceptor, ViewPreInsertContext, view);
-
-define_filtered_interceptor!(FilteredViewPostInsertInterceptor, ViewPostInsertInterceptor, ViewPostInsertContext, view);
-
-define_filtered_interceptor!(FilteredViewPreUpdateInterceptor, ViewPreUpdateInterceptor, ViewPreUpdateContext, view);
-
-define_filtered_interceptor!(FilteredViewPostUpdateInterceptor, ViewPostUpdateInterceptor, ViewPostUpdateContext, view);
-
-define_filtered_interceptor!(FilteredViewPreDeleteInterceptor, ViewPreDeleteInterceptor, ViewPreDeleteContext, view);
-
-define_filtered_interceptor!(FilteredViewPostDeleteInterceptor, ViewPostDeleteInterceptor, ViewPostDeleteContext, view);
-
-// View definition filtered interceptors
-define_filtered_interceptor!(
-	FilteredViewDefPostCreateInterceptor,
-	ViewDefPostCreateInterceptor,
-	ViewDefPostCreateContext,
-	post
-);
-
-define_filtered_interceptor!(
-	FilteredViewDefPreUpdateInterceptor,
-	ViewDefPreUpdateInterceptor,
-	ViewDefPreUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredViewDefPostUpdateInterceptor,
-	ViewDefPostUpdateInterceptor,
-	ViewDefPostUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredViewDefPreDeleteInterceptor,
-	ViewDefPreDeleteInterceptor,
-	ViewDefPreDeleteContext,
-	pre
-);
-
-// Table definition filtered interceptors
-define_filtered_interceptor!(
-	FilteredTableDefPostCreateInterceptor,
-	TableDefPostCreateInterceptor,
-	TableDefPostCreateContext,
-	post
-);
-
-define_filtered_interceptor!(
-	FilteredTableDefPreUpdateInterceptor,
-	TableDefPreUpdateInterceptor,
-	TableDefPreUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredTableDefPostUpdateInterceptor,
-	TableDefPostUpdateInterceptor,
-	TableDefPostUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredTableDefPreDeleteInterceptor,
-	TableDefPreDeleteInterceptor,
-	TableDefPreDeleteContext,
-	pre
-);
-
-// Ring buffer definition filtered interceptors
-define_filtered_interceptor!(
-	FilteredRingBufferDefPostCreateInterceptor,
-	RingBufferDefPostCreateInterceptor,
-	RingBufferDefPostCreateContext,
-	post
-);
-
-define_filtered_interceptor!(
-	FilteredRingBufferDefPreUpdateInterceptor,
-	RingBufferDefPreUpdateInterceptor,
-	RingBufferDefPreUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredRingBufferDefPostUpdateInterceptor,
-	RingBufferDefPostUpdateInterceptor,
-	RingBufferDefPostUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredRingBufferDefPreDeleteInterceptor,
-	RingBufferDefPreDeleteInterceptor,
-	RingBufferDefPreDeleteContext,
 	pre
 );
 
 // Series data filtered interceptors
 define_filtered_interceptor!(
-	FilteredSeriesPreInsertInterceptor,
-	SeriesPreInsertInterceptor,
-	SeriesPreInsertContext,
+	FilteredSeriesRowPreInsertInterceptor,
+	SeriesRowPreInsertInterceptor,
+	SeriesRowPreInsertContext,
 	series
 );
 
 define_filtered_interceptor!(
-	FilteredSeriesPostInsertInterceptor,
-	SeriesPostInsertInterceptor,
-	SeriesPostInsertContext,
+	FilteredSeriesRowPostInsertInterceptor,
+	SeriesRowPostInsertInterceptor,
+	SeriesRowPostInsertContext,
 	series
+);
+
+define_filtered_interceptor!(
+	FilteredSeriesRowPreUpdateInterceptor,
+	SeriesRowPreUpdateInterceptor,
+	SeriesRowPreUpdateContext,
+	series
+);
+
+define_filtered_interceptor!(
+	FilteredSeriesRowPostUpdateInterceptor,
+	SeriesRowPostUpdateInterceptor,
+	SeriesRowPostUpdateContext,
+	series
+);
+
+define_filtered_interceptor!(
+	FilteredSeriesRowPreDeleteInterceptor,
+	SeriesRowPreDeleteInterceptor,
+	SeriesRowPreDeleteContext,
+	series
+);
+
+define_filtered_interceptor!(
+	FilteredSeriesRowPostDeleteInterceptor,
+	SeriesRowPostDeleteInterceptor,
+	SeriesRowPostDeleteContext,
+	series
+);
+
+// Series definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredSeriesPostCreateInterceptor,
+	SeriesPostCreateInterceptor,
+	SeriesPostCreateContext,
+	post
 );
 
 define_filtered_interceptor!(
 	FilteredSeriesPreUpdateInterceptor,
 	SeriesPreUpdateInterceptor,
 	SeriesPreUpdateContext,
-	series
+	pre
 );
 
 define_filtered_interceptor!(
 	FilteredSeriesPostUpdateInterceptor,
 	SeriesPostUpdateInterceptor,
 	SeriesPostUpdateContext,
-	series
+	pre
 );
 
 define_filtered_interceptor!(
 	FilteredSeriesPreDeleteInterceptor,
 	SeriesPreDeleteInterceptor,
 	SeriesPreDeleteContext,
-	series
-);
-
-define_filtered_interceptor!(
-	FilteredSeriesPostDeleteInterceptor,
-	SeriesPostDeleteInterceptor,
-	SeriesPostDeleteContext,
-	series
-);
-
-// Series definition filtered interceptors
-define_filtered_interceptor!(
-	FilteredSeriesDefPostCreateInterceptor,
-	SeriesDefPostCreateInterceptor,
-	SeriesDefPostCreateContext,
-	post
-);
-
-define_filtered_interceptor!(
-	FilteredSeriesDefPreUpdateInterceptor,
-	SeriesDefPreUpdateInterceptor,
-	SeriesDefPreUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredSeriesDefPostUpdateInterceptor,
-	SeriesDefPostUpdateInterceptor,
-	SeriesDefPostUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredSeriesDefPreDeleteInterceptor,
-	SeriesDefPreDeleteInterceptor,
-	SeriesDefPreDeleteContext,
 	pre
 );
 
 // Dictionary data filtered interceptors
 define_filtered_interceptor!(
-	FilteredDictionaryPreInsertInterceptor,
-	DictionaryPreInsertInterceptor,
-	DictionaryPreInsertContext,
+	FilteredDictionaryRowPreInsertInterceptor,
+	DictionaryRowPreInsertInterceptor,
+	DictionaryRowPreInsertContext,
 	dictionary
 );
 
 define_filtered_interceptor!(
-	FilteredDictionaryPostInsertInterceptor,
-	DictionaryPostInsertInterceptor,
-	DictionaryPostInsertContext,
+	FilteredDictionaryRowPostInsertInterceptor,
+	DictionaryRowPostInsertInterceptor,
+	DictionaryRowPostInsertContext,
 	dictionary
+);
+
+define_filtered_interceptor!(
+	FilteredDictionaryRowPreUpdateInterceptor,
+	DictionaryRowPreUpdateInterceptor,
+	DictionaryRowPreUpdateContext,
+	dictionary
+);
+
+define_filtered_interceptor!(
+	FilteredDictionaryRowPostUpdateInterceptor,
+	DictionaryRowPostUpdateInterceptor,
+	DictionaryRowPostUpdateContext,
+	dictionary
+);
+
+define_filtered_interceptor!(
+	FilteredDictionaryRowPreDeleteInterceptor,
+	DictionaryRowPreDeleteInterceptor,
+	DictionaryRowPreDeleteContext,
+	dictionary
+);
+
+define_filtered_interceptor!(
+	FilteredDictionaryRowPostDeleteInterceptor,
+	DictionaryRowPostDeleteInterceptor,
+	DictionaryRowPostDeleteContext,
+	dictionary
+);
+
+// Dictionary definition filtered interceptors
+define_filtered_interceptor!(
+	FilteredDictionaryPostCreateInterceptor,
+	DictionaryPostCreateInterceptor,
+	DictionaryPostCreateContext,
+	post
 );
 
 define_filtered_interceptor!(
 	FilteredDictionaryPreUpdateInterceptor,
 	DictionaryPreUpdateInterceptor,
 	DictionaryPreUpdateContext,
-	dictionary
+	pre
 );
 
 define_filtered_interceptor!(
 	FilteredDictionaryPostUpdateInterceptor,
 	DictionaryPostUpdateInterceptor,
 	DictionaryPostUpdateContext,
-	dictionary
+	pre
 );
 
 define_filtered_interceptor!(
 	FilteredDictionaryPreDeleteInterceptor,
 	DictionaryPreDeleteInterceptor,
 	DictionaryPreDeleteContext,
-	dictionary
-);
-
-define_filtered_interceptor!(
-	FilteredDictionaryPostDeleteInterceptor,
-	DictionaryPostDeleteInterceptor,
-	DictionaryPostDeleteContext,
-	dictionary
-);
-
-// Dictionary definition filtered interceptors
-define_filtered_interceptor!(
-	FilteredDictionaryDefPostCreateInterceptor,
-	DictionaryDefPostCreateInterceptor,
-	DictionaryDefPostCreateContext,
-	post
-);
-
-define_filtered_interceptor!(
-	FilteredDictionaryDefPreUpdateInterceptor,
-	DictionaryDefPreUpdateInterceptor,
-	DictionaryDefPreUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredDictionaryDefPostUpdateInterceptor,
-	DictionaryDefPostUpdateInterceptor,
-	DictionaryDefPostUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredDictionaryDefPreDeleteInterceptor,
-	DictionaryDefPreDeleteInterceptor,
-	DictionaryDefPreDeleteContext,
 	pre
 );
 
@@ -563,58 +562,38 @@ define_filtered_interceptor!(
 
 // Identity definition filtered interceptors
 define_filtered_interceptor!(
-	FilteredIdentityDefPostCreateInterceptor,
-	IdentityDefPostCreateInterceptor,
-	IdentityDefPostCreateContext,
+	FilteredIdentityPostCreateInterceptor,
+	IdentityPostCreateInterceptor,
+	IdentityPostCreateContext,
 	post
 );
 
 define_filtered_interceptor!(
-	FilteredIdentityDefPreUpdateInterceptor,
-	IdentityDefPreUpdateInterceptor,
-	IdentityDefPreUpdateContext,
+	FilteredIdentityPreUpdateInterceptor,
+	IdentityPreUpdateInterceptor,
+	IdentityPreUpdateContext,
 	pre
 );
 
 define_filtered_interceptor!(
-	FilteredIdentityDefPostUpdateInterceptor,
-	IdentityDefPostUpdateInterceptor,
-	IdentityDefPostUpdateContext,
+	FilteredIdentityPostUpdateInterceptor,
+	IdentityPostUpdateInterceptor,
+	IdentityPostUpdateContext,
 	pre
 );
 
 define_filtered_interceptor!(
-	FilteredIdentityDefPreDeleteInterceptor,
-	IdentityDefPreDeleteInterceptor,
-	IdentityDefPreDeleteContext,
+	FilteredIdentityPreDeleteInterceptor,
+	IdentityPreDeleteInterceptor,
+	IdentityPreDeleteContext,
 	pre
 );
 
 // Role definition filtered interceptors
-define_filtered_interceptor!(
-	FilteredRoleDefPostCreateInterceptor,
-	RoleDefPostCreateInterceptor,
-	RoleDefPostCreateContext,
-	post
-);
+define_filtered_interceptor!(FilteredRolePostCreateInterceptor, RolePostCreateInterceptor, RolePostCreateContext, post);
 
-define_filtered_interceptor!(
-	FilteredRoleDefPreUpdateInterceptor,
-	RoleDefPreUpdateInterceptor,
-	RoleDefPreUpdateContext,
-	pre
-);
+define_filtered_interceptor!(FilteredRolePreUpdateInterceptor, RolePreUpdateInterceptor, RolePreUpdateContext, pre);
 
-define_filtered_interceptor!(
-	FilteredRoleDefPostUpdateInterceptor,
-	RoleDefPostUpdateInterceptor,
-	RoleDefPostUpdateContext,
-	pre
-);
+define_filtered_interceptor!(FilteredRolePostUpdateInterceptor, RolePostUpdateInterceptor, RolePostUpdateContext, pre);
 
-define_filtered_interceptor!(
-	FilteredRoleDefPreDeleteInterceptor,
-	RoleDefPreDeleteInterceptor,
-	RoleDefPreDeleteContext,
-	pre
-);
+define_filtered_interceptor!(FilteredRolePreDeleteInterceptor, RolePreDeleteInterceptor, RolePreDeleteContext, pre);

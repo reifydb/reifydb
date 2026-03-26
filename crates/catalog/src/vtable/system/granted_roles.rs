@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,25 +13,25 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system identity-role assignment information
-pub struct GrantedRoles {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemGrantedRoles {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl GrantedRoles {
+impl SystemGrantedRoles {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_granted_roles_table_def().clone(),
+			definition: SystemCatalog::get_system_granted_roles_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for GrantedRoles {
+impl BaseVTable for SystemGrantedRoles {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -42,12 +42,12 @@ impl VTable for GrantedRoles {
 			return Ok(None);
 		}
 
-		let identity_roles = CatalogStore::list_all_identity_roles(txn)?;
+		let granted_roles = CatalogStore::list_all_granted_roles(txn)?;
 
-		let mut identities = ColumnData::identity_id_with_capacity(identity_roles.len());
-		let mut role_ids = ColumnData::uint8_with_capacity(identity_roles.len());
+		let mut identities = ColumnData::identity_id_with_capacity(granted_roles.len());
+		let mut role_ids = ColumnData::uint8_with_capacity(granted_roles.len());
 
-		for ir in identity_roles {
+		for ir in granted_roles {
 			identities.push(ir.identity);
 			role_ids.push(ir.role_id);
 		}
@@ -69,7 +69,7 @@ impl VTable for GrantedRoles {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

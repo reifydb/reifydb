@@ -4,7 +4,7 @@
 use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
-		handler::HandlerDef,
+		handler::Handler,
 		id::{HandlerId, NamespaceId},
 	},
 };
@@ -16,7 +16,7 @@ pub mod find;
 pub mod get;
 pub(crate) mod schema;
 
-pub(crate) fn handler_def_from_row(row: &EncodedRow) -> HandlerDef {
+pub(crate) fn handler_from_row(row: &EncodedRow) -> Handler {
 	let id = HandlerId(handler::SCHEMA.get_u64(row, handler::ID));
 	let namespace = NamespaceId(handler::SCHEMA.get_u64(row, handler::NAMESPACE));
 	let name = handler::SCHEMA.get_utf8(row, handler::NAME).to_string();
@@ -24,7 +24,7 @@ pub(crate) fn handler_def_from_row(row: &EncodedRow) -> HandlerDef {
 	let on_variant_tag = handler::SCHEMA.get_u8(row, handler::ON_VARIANT_TAG);
 	let body_source = handler::SCHEMA.get_utf8(row, handler::BODY_SOURCE).to_string();
 
-	HandlerDef {
+	Handler {
 		id,
 		namespace,
 		name,

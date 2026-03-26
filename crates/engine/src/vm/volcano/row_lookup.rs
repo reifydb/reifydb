@@ -341,8 +341,8 @@ fn get_primitive_id(source: &ResolvedPrimitive) -> Result<PrimitiveId> {
 
 fn columns_from_primitive<'a>(source: &ResolvedPrimitive) -> Columns {
 	match source {
-		ResolvedPrimitive::Table(table) => Columns::from_table(table),
-		ResolvedPrimitive::View(view) => Columns::from_view(view),
+		ResolvedPrimitive::Table(table) => Columns::from_resolved_table(table),
+		ResolvedPrimitive::View(view) => Columns::from_resolved_view(view),
 		ResolvedPrimitive::RingBuffer(rb) => Columns::from_ringbuffer(rb),
 		_ => Columns::empty(),
 	}

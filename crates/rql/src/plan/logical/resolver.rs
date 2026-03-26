@@ -6,7 +6,7 @@ use reifydb_core::interface::{
 	catalog::{
 		id::NamespaceId,
 		view::ViewKind,
-		vtable::{VTableDef, VTableId},
+		vtable::{VTable, VTableId},
 	},
 	resolved::{
 		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
@@ -83,7 +83,7 @@ pub fn resolve_unresolved_source(
 	// Check if it's a system table (namespace = "system")
 	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
-		let def = VTableDef {
+		let def = VTable {
 			id: VTableId(0), // Placeholder ID - compile.rs handles actual lookup
 			namespace: NamespaceId::SYSTEM,
 			name: name_str.to_string(),

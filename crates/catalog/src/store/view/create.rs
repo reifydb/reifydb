@@ -7,7 +7,7 @@ use reifydb_core::{
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 		series::SeriesKey,
 		view::{
-			ViewDef, ViewKind,
+			View, ViewKind,
 			ViewKind::{Deferred, Transactional},
 			ViewStorageKind,
 		},
@@ -71,18 +71,15 @@ pub struct ViewToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_deferred_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<ViewDef> {
+	pub(crate) fn create_deferred_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		Self::create_view(txn, to_create, Deferred)
 	}
 
-	pub(crate) fn create_transactional_view(
-		txn: &mut AdminTransaction,
-		to_create: ViewToCreate,
-	) -> Result<ViewDef> {
+	pub(crate) fn create_transactional_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		Self::create_view(txn, to_create, Transactional)
 	}
 
-	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<ViewDef> {
+	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<View> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(view) = CatalogStore::find_view_by_name(

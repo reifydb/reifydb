@@ -17,8 +17,8 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &MaterializedCata
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
-		let policy_def = convert_policy(multi);
-		catalog.set_policy(policy_def.id, version, Some(policy_def));
+		let policy = convert_policy(multi);
+		catalog.set_policy(policy.id, version, Some(policy));
 	}
 	drop(stream);
 

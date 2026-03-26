@@ -20,7 +20,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
-use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
+use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -61,26 +61,26 @@ pub(crate) fn insert_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
+	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
 	// Get current metadata
-	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series_def.id)? else {
+	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	let has_tag = series_def.tag.is_some();
-	let key = &series_def.key;
-	let key_column_name = series_def.key.column();
+	let has_tag = series.tag.is_some();
+	let key = &series.key;
+	let key_column_name = series.key.column();
 
 	// Create resolved source for the series
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-	let series_ident = Fragment::internal(series_def.name.clone());
-	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
+	let series_ident = Fragment::internal(series.name.clone());
+	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
 	let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
 
 	let execution_context = Arc::new(QueryContext {
@@ -105,7 +105,7 @@ pub(crate) fn insert_series<'a>(
 	input_node.initialize(txn, &execution_context)?;
 
 	// Create schema for series encoding
-	let schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+	let schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
 
 	// Process all input batches
 	let mut mutable_context = (*execution_context).clone();
@@ -127,7 +127,7 @@ pub(crate) fn insert_series<'a>(
 			let key_value: u64 = if let Some(key_col) =
 				columns.iter().find(|col| col.name().text() == key_column_name)
 			{
-				match series_def.key_to_u64(key_col.data().get_value(row_idx)) {
+				match series.key_to_u64(key_col.data().get_value(row_idx)) {
 					Some(v) => v,
 					None => match key {
 						SeriesKey::DateTime {
@@ -172,7 +172,7 @@ pub(crate) fn insert_series<'a>(
 
 			// Build key
 			let row_key = SeriesRowKey {
-				series: series_def.id,
+				series: series.id,
 				variant_tag,
 				key: key_value,
 				sequence,
@@ -180,7 +180,7 @@ pub(crate) fn insert_series<'a>(
 			let encoded_key = row_key.encode();
 
 			// Collect data column values (excluding key column)
-			let data_columns: Vec<_> = series_def.data_columns().collect();
+			let data_columns: Vec<_> = series.data_columns().collect();
 			let mut data_values = Vec::with_capacity(data_columns.len());
 			for col_def in &data_columns {
 				let value = if let Some(input_col) =
@@ -194,16 +194,16 @@ pub(crate) fn insert_series<'a>(
 			}
 
 			// Encode using schema (key at index 0, data columns at index 1+)
-			let key_value_encoded = series_def.key_from_u64(key_value);
+			let key_value_encoded = series.key_from_u64(key_value);
 			let mut row = schema.allocate();
 			schema.set_value(&mut row, 0, &key_value_encoded);
 			for (i, value) in data_values.iter().enumerate() {
 				schema.set_value(&mut row, i + 1, value);
 			}
 
-			let row = SeriesInterceptor::pre_insert(txn, &series_def, row)?;
+			let row = SeriesRowInterceptor::pre_insert(txn, &series, row)?;
 			txn.set(&encoded_key, row.clone())?;
-			SeriesInterceptor::post_insert(txn, &series_def, &row)?;
+			SeriesRowInterceptor::post_insert(txn, &series, &row)?;
 
 			if plan.returning.is_some() {
 				returned_rows.push((RowNumber::from(sequence as u64), row.clone()));
@@ -215,7 +215,7 @@ pub(crate) fn insert_series<'a>(
 				let mut cols = Vec::with_capacity(1 + data_columns.len());
 				cols.push(Column {
 					name: Fragment::internal(key_column_name),
-					data: series_def.key_column_data(vec![key_value]),
+					data: series.key_column_data(vec![key_value]),
 				});
 				for (i, col_def) in data_columns.iter().enumerate() {
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
@@ -230,7 +230,7 @@ pub(crate) fn insert_series<'a>(
 					columns: CowVec::new(cols),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					origin: ChangeOrigin::Primitive(PrimitiveId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Insert {
 						post,
@@ -267,7 +267,7 @@ pub(crate) fn insert_series<'a>(
 	// Return summary
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(namespace.name().to_string())),
-		("series", Value::Utf8(series_def.name)),
+		("series", Value::Utf8(series.name)),
 		("inserted", Value::Uint8(inserted_count)),
 	]))
 }

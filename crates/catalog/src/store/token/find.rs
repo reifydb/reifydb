@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::token::TokenDef, key::token::TokenKey};
+use reifydb_core::{interface::catalog::token::Token, key::token::TokenKey};
 use reifydb_transaction::transaction::Transaction;
 use subtle::ConstantTimeEq;
 
@@ -12,7 +12,7 @@ use crate::{
 
 impl CatalogStore {
 	/// Find a token by its value using constant-time comparison.
-	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<TokenDef>> {
+	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
 		let mut stream = rx.range(TokenKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

@@ -41,7 +41,7 @@ pub(crate) fn create_dictionary(
 		},
 	)?;
 	let id = result.id;
-	txn.track_dictionary_def_created(result)?;
+	txn.track_dictionary_created(result)?;
 
 	Ok(Columns::single_row([
 		("id", Value::Uint8(id.0)),

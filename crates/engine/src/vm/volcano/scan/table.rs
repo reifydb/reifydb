@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
 	error::diagnostic,
-	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedTable},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable},
 	key::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
@@ -33,7 +33,7 @@ pub(crate) struct TableScanNode {
 	/// Storage types for each column (dictionary ID types for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
-	dictionaries: Vec<Option<DictionaryDef>>,
+	dictionaries: Vec<Option<Dictionary>>,
 	/// Cached schema loaded from the first batch
 	schema: Option<Schema>,
 	last_key: Option<EncodedKey>,

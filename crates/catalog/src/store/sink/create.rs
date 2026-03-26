@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
 		id::{NamespaceId, SinkId},
-		sink::SinkDef,
+		sink::Sink,
 	},
 	key::{namespace_sink::NamespaceSinkKey, sink::SinkKey},
 };
@@ -33,7 +33,7 @@ pub struct SinkToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_sink(txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<SinkDef> {
+	pub(crate) fn create_sink(txn: &mut AdminTransaction, to_create: SinkToCreate) -> Result<Sink> {
 		let namespace_id = to_create.namespace;
 
 		// Check if sink already exists

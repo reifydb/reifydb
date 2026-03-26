@@ -18,8 +18,8 @@ use crate::{
 			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
 			AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries,
 			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
-			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKeyDef,
-			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariantDef,
+			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
+			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariant,
 			AstViewStorageKind,
 		},
 		identifier::{
@@ -1218,7 +1218,7 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse primary key definition: {col1: DESC, col2: ASC}
 	/// Defaults to DESC when sort order is not specified
-	fn parse_primary_key_definition(&mut self) -> Result<AstPrimaryKeyDef<'bump>> {
+	fn parse_primary_keyinition(&mut self) -> Result<AstPrimaryKey<'bump>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -1284,7 +1284,7 @@ impl<'bump> Parser<'bump> {
 			}));
 		}
 
-		Ok(AstPrimaryKeyDef {
+		Ok(AstPrimaryKey {
 			columns,
 		})
 	}
@@ -1298,7 +1298,7 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
-		let pk_def = self.parse_primary_key_definition()?;
+		let pk_def = self.parse_primary_keyinition()?;
 
 		Ok(AstCreate::PrimaryKey(AstCreatePrimaryKey {
 			token,
@@ -1442,7 +1442,7 @@ impl<'bump> Parser<'bump> {
 				Vec::new()
 			};
 
-			variants.push(AstVariantDef {
+			variants.push(AstVariant {
 				name: variant_name,
 				columns,
 			});
@@ -1714,7 +1714,7 @@ impl<'bump> Parser<'bump> {
 				Vec::new()
 			};
 
-			variants.push(AstVariantDef {
+			variants.push(AstVariant {
 				name: variant_name,
 				columns,
 			});
@@ -1763,7 +1763,7 @@ impl<'bump> Parser<'bump> {
 				Vec::new()
 			};
 
-			variants.push(AstVariantDef {
+			variants.push(AstVariant {
 				name: variant_name,
 				columns,
 			});

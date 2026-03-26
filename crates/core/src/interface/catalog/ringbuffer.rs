@@ -5,23 +5,23 @@ use reifydb_type::value::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{
-	column::ColumnDef,
+	column::Column,
 	id::{NamespaceId, RingBufferId},
-	key::PrimaryKeyDef,
+	key::PrimaryKey,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RingBufferDef {
+pub struct RingBuffer {
 	pub id: RingBufferId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub columns: Vec<ColumnDef>,
+	pub columns: Vec<Column>,
 	pub capacity: u64,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
 }
 
-impl RingBufferDef {
+impl RingBuffer {
 	pub fn name(&self) -> &str {
 		&self.name
 	}

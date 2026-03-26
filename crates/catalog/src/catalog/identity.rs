@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::collections::HashSet;
+
 use reifydb_core::interface::catalog::{
 	change::{
-		CatalogTrackIdentityChangeOperations, CatalogTrackIdentityRoleChangeOperations,
+		CatalogTrackGrantedRoleChangeOperations, CatalogTrackIdentityChangeOperations,
 		CatalogTrackRoleChangeOperations,
 	},
-	identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
+	identity::{GrantedRole, Identity, Role, RoleId},
 };
 use reifydb_transaction::{
-	change::{TransactionalIdentityChanges, TransactionalIdentityRoleChanges, TransactionalRoleChanges},
+	change::{TransactionalGrantedRoleChanges, TransactionalIdentityChanges, TransactionalRoleChanges},
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
-use std::collections::HashSet;
 use tracing::{instrument, warn};
 
 use crate::{
@@ -24,7 +25,7 @@ use crate::{
 
 impl Catalog {
 	#[instrument(name = "catalog::identity::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<IdentityDef>> {
+	pub fn find_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				// 1. Check transactional changes first
@@ -140,7 +141,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::find", level = "trace", skip(self, txn))]
-	pub fn find_identity(&self, txn: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<IdentityDef>> {
+	pub fn find_identity(&self, txn: &mut Transaction<'_>, identity: IdentityId) -> Result<Option<Identity>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				// 1. Check transactional changes first
@@ -256,9 +257,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::identity::create", level = "debug", skip(self, txn))]
-	pub fn create_identity(&self, txn: &mut AdminTransaction, name: &str) -> Result<IdentityDef> {
+	pub fn create_identity(&self, txn: &mut AdminTransaction, name: &str) -> Result<Identity> {
 		let ident = CatalogStore::create_identity(txn, name)?;
-		txn.track_identity_def_created(ident.clone())?;
+		txn.track_identity_created(ident.clone())?;
 		Ok(ident)
 	}
 
@@ -267,7 +268,7 @@ impl Catalog {
 		// Get the identity def before dropping for change tracking
 		if let Some(ident) = CatalogStore::find_identity(&mut Transaction::Admin(&mut *txn), identity)? {
 			CatalogStore::drop_identity(txn, identity)?;
-			txn.track_identity_def_deleted(ident)?;
+			txn.track_identity_deleted(ident)?;
 		} else {
 			CatalogStore::drop_identity(txn, identity)?;
 		}
@@ -275,7 +276,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<RoleDef>> {
+	pub fn find_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				if let Some(role) = TransactionalRoleChanges::find_role_by_name(admin, name) {
@@ -376,7 +377,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::find", level = "trace", skip(self, txn))]
-	pub fn find_role(&self, txn: &mut Transaction<'_>, role_id: RoleId) -> Result<Option<RoleDef>> {
+	pub fn find_role(&self, txn: &mut Transaction<'_>, role_id: RoleId) -> Result<Option<Role>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				// 1. Check transactional changes first
@@ -488,9 +489,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::role::create", level = "debug", skip(self, txn))]
-	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> Result<RoleDef> {
+	pub fn create_role(&self, txn: &mut AdminTransaction, name: &str) -> Result<Role> {
 		let role = CatalogStore::create_role(txn, name)?;
-		txn.track_role_def_created(role.clone())?;
+		txn.track_role_created(role.clone())?;
 		Ok(role)
 	}
 
@@ -498,7 +499,7 @@ impl Catalog {
 	pub fn drop_role(&self, txn: &mut AdminTransaction, role_id: RoleId) -> Result<()> {
 		if let Some(role) = CatalogStore::find_role(&mut Transaction::Admin(&mut *txn), role_id)? {
 			CatalogStore::drop_role(txn, role_id)?;
-			txn.track_role_def_deleted(role)?;
+			txn.track_role_deleted(role)?;
 		} else {
 			CatalogStore::drop_role(txn, role_id)?;
 		}
@@ -511,20 +512,20 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		role_id: RoleId,
-	) -> Result<IdentityRoleDef> {
+	) -> Result<GrantedRole> {
 		let ir = CatalogStore::grant_role(txn, identity, role_id)?;
-		txn.track_identity_role_def_created(ir.clone())?;
+		txn.track_granted_role_created(ir.clone())?;
 		Ok(ir)
 	}
 
 	#[instrument(name = "catalog::identity::revoke_role", level = "debug", skip(self, txn))]
 	pub fn revoke_role(&self, txn: &mut AdminTransaction, identity: IdentityId, role_id: RoleId) -> Result<()> {
-		let ir = IdentityRoleDef {
+		let ir = GrantedRole {
 			identity,
 			role_id,
 		};
 		CatalogStore::revoke_role(txn, identity, role_id)?;
-		txn.track_identity_role_def_deleted(ir)?;
+		txn.track_granted_role_deleted(ir)?;
 		Ok(())
 	}
 
@@ -541,7 +542,7 @@ impl Catalog {
 				let mut seen_roles = HashSet::new();
 
 				// 1. Check transactional identity-role changes first
-				for ir in TransactionalIdentityRoleChanges::find_identity_roles_for_identity(
+				for ir in TransactionalGrantedRoleChanges::find_granted_roles_for_identity(
 					admin, identity,
 				) {
 					if !TransactionalRoleChanges::is_role_deleted(admin, ir.role_id) {
@@ -560,9 +561,9 @@ impl Catalog {
 				}
 
 				// 2. Check materialized identity-roles
-				for ir in self.materialized.find_identity_roles_at(identity, version) {
+				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
-						&& !TransactionalIdentityRoleChanges::is_identity_role_deleted(
+						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
 							admin, identity, ir.role_id,
 						) {
 						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
@@ -580,9 +581,9 @@ impl Catalog {
 				let mut seen_roles = HashSet::new();
 
 				// 1. Check transactional identity-role changes first
-				for ir in TransactionalIdentityRoleChanges::find_identity_roles_for_identity(
-					sub, identity,
-				) {
+				for ir in
+					TransactionalGrantedRoleChanges::find_granted_roles_for_identity(sub, identity)
+				{
 					if !TransactionalRoleChanges::is_role_deleted(sub, ir.role_id) {
 						if let Some(role) = TransactionalRoleChanges::find_role(sub, ir.role_id)
 						{
@@ -598,9 +599,9 @@ impl Catalog {
 				}
 
 				// 2. Check materialized identity-roles
-				for ir in self.materialized.find_identity_roles_at(identity, version) {
+				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
-						&& !TransactionalIdentityRoleChanges::is_identity_role_deleted(
+						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
 							sub, identity, ir.role_id,
 						) {
 						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
@@ -618,7 +619,7 @@ impl Catalog {
 				let mut seen_roles = HashSet::new();
 
 				// 1. Check transactional identity-role changes first
-				for ir in TransactionalIdentityRoleChanges::find_identity_roles_for_identity(
+				for ir in TransactionalGrantedRoleChanges::find_granted_roles_for_identity(
 					t.inner, identity,
 				) {
 					if !TransactionalRoleChanges::is_role_deleted(t.inner, ir.role_id) {
@@ -637,9 +638,9 @@ impl Catalog {
 				}
 
 				// 2. Check materialized identity-roles
-				for ir in self.materialized.find_identity_roles_at(identity, version) {
+				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
-						&& !TransactionalIdentityRoleChanges::is_identity_role_deleted(
+						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
 							t.inner, identity, ir.role_id,
 						) {
 						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
@@ -658,9 +659,9 @@ impl Catalog {
 					_ => unreachable!(),
 				};
 
-				let identity_roles = self.materialized.find_identity_roles_at(identity, version);
-				let mut names = Vec::with_capacity(identity_roles.len());
-				for ir in identity_roles {
+				let granted_roles = self.materialized.find_granted_roles_at(identity, version);
+				let mut names = Vec::with_capacity(granted_roles.len());
+				for ir in granted_roles {
 					if let Some(role) = self.materialized.find_role_at(ir.role_id, version) {
 						names.push(role.name);
 					}
@@ -670,7 +671,7 @@ impl Catalog {
 		}
 	}
 
-	pub fn get_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<IdentityDef> {
+	pub fn get_identity_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Identity> {
 		self.find_identity_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Identity,
@@ -682,7 +683,7 @@ impl Catalog {
 		})
 	}
 
-	pub fn get_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<RoleDef> {
+	pub fn get_role_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Role> {
 		self.find_role_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Role,

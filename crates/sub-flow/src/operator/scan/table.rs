@@ -4,7 +4,7 @@
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
-		catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::TableDef},
+		catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::Table},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -16,11 +16,11 @@ use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::Fl
 
 pub struct PrimitiveTableOperator {
 	node: FlowNodeId,
-	table: TableDef,
+	table: Table,
 }
 
 impl PrimitiveTableOperator {
-	pub fn new(node: FlowNodeId, table: TableDef) -> Self {
+	pub fn new(node: FlowNodeId, table: Table) -> Self {
 		Self {
 			node,
 			table,
@@ -75,7 +75,7 @@ impl Operator for PrimitiveTableOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		if rows.is_empty() {
-			return Ok(Columns::from_table_def(&self.table));
+			return Ok(Columns::from_table(&self.table));
 		}
 
 		let schema: Schema = (&self.table.columns).into();
@@ -104,7 +104,7 @@ impl Operator for PrimitiveTableOperator {
 		}
 
 		if row_numbers.is_empty() {
-			Ok(Columns::from_table_def(&self.table))
+			Ok(Columns::from_table(&self.table))
 		} else {
 			Ok(Columns {
 				row_numbers: CowVec::new(row_numbers),

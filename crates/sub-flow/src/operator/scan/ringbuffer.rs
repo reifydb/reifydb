@@ -4,7 +4,7 @@
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
-		catalog::{flow::FlowNodeId, primitive::PrimitiveId, ringbuffer::RingBufferDef},
+		catalog::{flow::FlowNodeId, primitive::PrimitiveId, ringbuffer::RingBuffer},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -16,11 +16,11 @@ use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::Fl
 
 pub struct PrimitiveRingBufferOperator {
 	node: FlowNodeId,
-	ringbuffer: RingBufferDef,
+	ringbuffer: RingBuffer,
 }
 
 impl PrimitiveRingBufferOperator {
-	pub fn new(node: FlowNodeId, ringbuffer: RingBufferDef) -> Self {
+	pub fn new(node: FlowNodeId, ringbuffer: RingBuffer) -> Self {
 		Self {
 			node,
 			ringbuffer,

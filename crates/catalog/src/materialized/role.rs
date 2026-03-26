@@ -3,14 +3,14 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::identity::{RoleDef, RoleId},
+	interface::catalog::identity::{Role, RoleId},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionRoleDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionRole};
 
 impl MaterializedCatalog {
 	/// Find a role by ID at a specific version
-	pub fn find_role_at(&self, id: RoleId, version: CommitVersion) -> Option<RoleDef> {
+	pub fn find_role_at(&self, id: RoleId, version: CommitVersion) -> Option<Role> {
 		self.roles.get(&id).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -18,7 +18,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a role by name at a specific version
-	pub fn find_role_by_name_at(&self, name: &str, version: CommitVersion) -> Option<RoleDef> {
+	pub fn find_role_by_name_at(&self, name: &str, version: CommitVersion) -> Option<Role> {
 		self.roles_by_name.get(name).and_then(|entry| {
 			let role_id = *entry.value();
 			self.find_role_at(role_id, version)
@@ -26,21 +26,21 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a role by ID (returns latest version)
-	pub fn find_role(&self, id: RoleId) -> Option<RoleDef> {
+	pub fn find_role(&self, id: RoleId) -> Option<Role> {
 		self.roles.get(&id).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
 		})
 	}
 
-	pub fn set_role(&self, id: RoleId, version: CommitVersion, role: Option<RoleDef>) {
+	pub fn set_role(&self, id: RoleId, version: CommitVersion, role: Option<Role>) {
 		if let Some(entry) = self.roles.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				self.roles_by_name.remove(&pre.name);
 			}
 		}
 
-		let multi = self.roles.get_or_insert_with(id, MultiVersionRoleDef::new);
+		let multi = self.roles.get_or_insert_with(id, MultiVersionRole::new);
 		if let Some(new) = role {
 			self.roles_by_name.insert(new.name.clone(), id);
 			multi.value().insert(version, new);

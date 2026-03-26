@@ -244,7 +244,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_default_config() {
+	fn testault_config() {
 		let config = SqliteConfig::default();
 		assert_eq!(config.path, DbPath::File(PathBuf::from("reify.reifydb")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);

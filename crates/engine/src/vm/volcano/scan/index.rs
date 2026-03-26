@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, schema::Schema},
-	interface::catalog::{id::IndexId, table::TableDef},
+	interface::catalog::{id::IndexId, table::Table},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -17,7 +17,7 @@ use crate::{
 };
 
 pub(crate) struct IndexScanNode {
-	_table: TableDef, // FIXME needs to work with different sources
+	_table: Table, // FIXME needs to work with different sources
 	_index_id: IndexId,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
@@ -28,7 +28,7 @@ pub(crate) struct IndexScanNode {
 }
 
 impl IndexScanNode {
-	pub fn new(table: TableDef, index_id: IndexId, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(table: Table, index_id: IndexId, context: Arc<QueryContext>) -> Result<Self> {
 		let storage_types = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 
 		let headers = ColumnHeaders {
@@ -120,12 +120,12 @@ impl QueryNode for IndexScanNode {
 		//
 		// self.last_key = new_last_key;
 		//
-		// let mut columns = Columns::from_table_def(&self.table);
+		// let mut columns = Columns::from_table(&self.table);
 		// columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 		//
 		// // Add the RowNumber column to the columns if requested
 		// if ctx.preserve_row_numbers {
-		// 	// TODO: Update IndexScanNode to use ResolvedTable instead of TableDef
+		// 	// TODO: Update IndexScanNode to use ResolvedTable instead of Table
 		// 	let row_number_column = Column::( {
 		// 		source: Fragment::internal(&self.table.name),
 		// 		name: Fragment::internal(ROW_NUMBER_COLUMN_NAME),

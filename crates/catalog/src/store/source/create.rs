@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
 		id::{NamespaceId, SourceId},
-		source::SourceDef,
+		source::Source,
 	},
 	key::{namespace_source::NamespaceSourceKey, source::SourceKey},
 };
@@ -33,7 +33,7 @@ pub struct SourceToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_source(txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<SourceDef> {
+	pub(crate) fn create_source(txn: &mut AdminTransaction, to_create: SourceToCreate) -> Result<Source> {
 		let namespace_id = to_create.namespace;
 
 		// Check if source already exists

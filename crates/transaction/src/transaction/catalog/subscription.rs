@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId, subscription::SubscriptionDef,
+	change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId, subscription::Subscription,
 };
 use reifydb_type::Result;
 
@@ -16,40 +16,40 @@ use crate::{
 };
 
 impl CatalogTrackSubscriptionChangeOperations for AdminTransaction {
-	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> Result<()> {
+	fn track_subscription_created(&mut self, subscription: Subscription) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(subscription),
 			op: Create,
 		};
-		self.changes.add_subscription_def_change(change);
+		self.changes.add_subscription_change(change);
 		Ok(())
 	}
 
-	fn track_subscription_def_updated(&mut self, pre: SubscriptionDef, post: SubscriptionDef) -> Result<()> {
+	fn track_subscription_updated(&mut self, pre: Subscription, post: Subscription) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
 			op: Update,
 		};
-		self.changes.add_subscription_def_change(change);
+		self.changes.add_subscription_change(change);
 		Ok(())
 	}
 
-	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> Result<()> {
+	fn track_subscription_deleted(&mut self, subscription: Subscription) -> Result<()> {
 		let change = Change {
 			pre: Some(subscription),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_subscription_def_change(change);
+		self.changes.add_subscription_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalSubscriptionChanges for AdminTransaction {
-	fn find_subscription(&self, id: SubscriptionId) -> Option<&SubscriptionDef> {
-		for change in self.changes.subscription_def.iter().rev() {
+	fn find_subscription(&self, id: SubscriptionId) -> Option<&Subscription> {
+		for change in self.changes.subscription.iter().rev() {
 			if let Some(subscription) = &change.post {
 				if subscription.id == id {
 					return Some(subscription);
@@ -65,7 +65,7 @@ impl TransactionalSubscriptionChanges for AdminTransaction {
 
 	fn is_subscription_deleted(&self, id: SubscriptionId) -> bool {
 		self.changes
-			.subscription_def
+			.subscription
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id) == Some(id))
@@ -73,21 +73,21 @@ impl TransactionalSubscriptionChanges for AdminTransaction {
 }
 
 impl CatalogTrackSubscriptionChangeOperations for SubscriptionTransaction {
-	fn track_subscription_def_created(&mut self, subscription: SubscriptionDef) -> Result<()> {
-		self.inner.track_subscription_def_created(subscription)
+	fn track_subscription_created(&mut self, subscription: Subscription) -> Result<()> {
+		self.inner.track_subscription_created(subscription)
 	}
 
-	fn track_subscription_def_updated(&mut self, pre: SubscriptionDef, post: SubscriptionDef) -> Result<()> {
-		self.inner.track_subscription_def_updated(pre, post)
+	fn track_subscription_updated(&mut self, pre: Subscription, post: Subscription) -> Result<()> {
+		self.inner.track_subscription_updated(pre, post)
 	}
 
-	fn track_subscription_def_deleted(&mut self, subscription: SubscriptionDef) -> Result<()> {
-		self.inner.track_subscription_def_deleted(subscription)
+	fn track_subscription_deleted(&mut self, subscription: Subscription) -> Result<()> {
+		self.inner.track_subscription_deleted(subscription)
 	}
 }
 
 impl TransactionalSubscriptionChanges for SubscriptionTransaction {
-	fn find_subscription(&self, id: SubscriptionId) -> Option<&SubscriptionDef> {
+	fn find_subscription(&self, id: SubscriptionId) -> Option<&Subscription> {
 		self.inner.find_subscription(id)
 	}
 

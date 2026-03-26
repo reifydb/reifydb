@@ -7,7 +7,7 @@ use crate::interface::catalog::id::{MigrationEventId, MigrationId};
 
 /// A migration definition stored in the catalog.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct MigrationDef {
+pub struct Migration {
 	pub id: MigrationId,
 	pub name: String,
 	/// RQL source text for the migration body

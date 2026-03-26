@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::{CatalogTrackMigrationChangeOperations, CatalogTrackMigrationEventChangeOperations},
 	id::MigrationId,
-	migration::{MigrationDef, MigrationEvent},
+	migration::{Migration, MigrationEvent},
 };
 use reifydb_type::Result;
 
@@ -18,23 +18,23 @@ use crate::{
 };
 
 impl CatalogTrackMigrationChangeOperations for AdminTransaction {
-	fn track_migration_def_created(&mut self, migration: MigrationDef) -> Result<()> {
+	fn track_migration_created(&mut self, migration: Migration) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(migration),
 			op: Create,
 		};
-		self.changes.add_migration_def_change(change);
+		self.changes.add_migration_change(change);
 		Ok(())
 	}
 
-	fn track_migration_def_deleted(&mut self, migration: MigrationDef) -> Result<()> {
+	fn track_migration_deleted(&mut self, migration: Migration) -> Result<()> {
 		let change = Change {
 			pre: Some(migration),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_migration_def_change(change);
+		self.changes.add_migration_change(change);
 		Ok(())
 	}
 }
@@ -52,8 +52,8 @@ impl CatalogTrackMigrationEventChangeOperations for AdminTransaction {
 }
 
 impl TransactionalMigrationChanges for AdminTransaction {
-	fn find_migration(&self, id: MigrationId) -> Option<&MigrationDef> {
-		for change in self.changes.migration_def.iter().rev() {
+	fn find_migration(&self, id: MigrationId) -> Option<&Migration> {
+		for change in self.changes.migration.iter().rev() {
 			if let Some(migration) = &change.post {
 				if migration.id == id {
 					return Some(migration);
@@ -67,36 +67,32 @@ impl TransactionalMigrationChanges for AdminTransaction {
 		None
 	}
 
-	fn find_migration_by_name(&self, name: &str) -> Option<&MigrationDef> {
-		self.changes
-			.migration_def
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|m| m.name == name))
+	fn find_migration_by_name(&self, name: &str) -> Option<&Migration> {
+		self.changes.migration.iter().rev().find_map(|change| change.post.as_ref().filter(|m| m.name == name))
 	}
 
 	fn is_migration_deleted(&self, id: MigrationId) -> bool {
 		self.changes
-			.migration_def
+			.migration
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|m| m.id == id).unwrap_or(false))
 	}
 
 	fn is_migration_deleted_by_name(&self, name: &str) -> bool {
-		self.changes.migration_def.iter().rev().any(|change| {
+		self.changes.migration.iter().rev().any(|change| {
 			change.op == Delete && change.pre.as_ref().map(|m| m.name == name).unwrap_or(false)
 		})
 	}
 }
 
 impl CatalogTrackMigrationChangeOperations for SubscriptionTransaction {
-	fn track_migration_def_created(&mut self, migration: MigrationDef) -> Result<()> {
-		self.inner.track_migration_def_created(migration)
+	fn track_migration_created(&mut self, migration: Migration) -> Result<()> {
+		self.inner.track_migration_created(migration)
 	}
 
-	fn track_migration_def_deleted(&mut self, migration: MigrationDef) -> Result<()> {
-		self.inner.track_migration_def_deleted(migration)
+	fn track_migration_deleted(&mut self, migration: Migration) -> Result<()> {
+		self.inner.track_migration_deleted(migration)
 	}
 }
 
@@ -107,11 +103,11 @@ impl CatalogTrackMigrationEventChangeOperations for SubscriptionTransaction {
 }
 
 impl TransactionalMigrationChanges for SubscriptionTransaction {
-	fn find_migration(&self, id: MigrationId) -> Option<&MigrationDef> {
+	fn find_migration(&self, id: MigrationId) -> Option<&Migration> {
 		self.inner.find_migration(id)
 	}
 
-	fn find_migration_by_name(&self, name: &str) -> Option<&MigrationDef> {
+	fn find_migration_by_name(&self, name: &str) -> Option<&Migration> {
 		self.inner.find_migration_by_name(name)
 	}
 

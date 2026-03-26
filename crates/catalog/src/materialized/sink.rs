@@ -5,15 +5,15 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, SinkId},
-		sink::SinkDef,
+		sink::Sink,
 	},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionSinkDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionSink};
 
 impl MaterializedCatalog {
 	/// Find a sink by ID at a specific version
-	pub fn find_sink_at(&self, sink: SinkId, version: CommitVersion) -> Option<SinkDef> {
+	pub fn find_sink_at(&self, sink: SinkId, version: CommitVersion) -> Option<Sink> {
 		self.sinks.get(&sink).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -21,12 +21,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a sink by name in a namespace at a specific version
-	pub fn find_sink_by_name_at(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Option<SinkDef> {
+	pub fn find_sink_by_name_at(&self, namespace: NamespaceId, name: &str, version: CommitVersion) -> Option<Sink> {
 		self.sinks_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let sink_id = *entry.value();
 			self.find_sink_at(sink_id, version)
@@ -34,7 +29,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a sink by ID (returns latest version)
-	pub fn find_sink(&self, sink: SinkId) -> Option<SinkDef> {
+	pub fn find_sink(&self, sink: SinkId) -> Option<Sink> {
 		self.sinks.get(&sink).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -42,14 +37,14 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a sink by name in a namespace (returns latest version)
-	pub fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<SinkDef> {
+	pub fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Sink> {
 		self.sinks_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let sink_id = *entry.value();
 			self.find_sink(sink_id)
 		})
 	}
 
-	pub fn set_sink(&self, id: SinkId, version: CommitVersion, sink: Option<SinkDef>) {
+	pub fn set_sink(&self, id: SinkId, version: CommitVersion, sink: Option<Sink>) {
 		// Look up the current sink to update the index
 		if let Some(entry) = self.sinks.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
@@ -57,7 +52,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.sinks.get_or_insert_with(id, MultiVersionSinkDef::new);
+		let multi = self.sinks.get_or_insert_with(id, MultiVersionSink::new);
 		if let Some(new) = sink {
 			self.sinks_by_name.insert((new.namespace, new.name.clone()), id);
 			multi.value().insert(version, new);
@@ -73,8 +68,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_sink(id: SinkId, namespace: NamespaceId, name: &str) -> SinkDef {
-		SinkDef {
+	fn create_test_sink(id: SinkId, namespace: NamespaceId, name: &str) -> Sink {
+		Sink {
 			id,
 			namespace,
 			name: name.to_string(),

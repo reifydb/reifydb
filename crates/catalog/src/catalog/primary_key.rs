@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	id::{ColumnId, PrimaryKeyId},
-	key::PrimaryKeyDef,
+	key::PrimaryKey,
 	primitive::PrimitiveId,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -44,12 +44,12 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
-	) -> Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKey>> {
 		CatalogStore::find_primary_key(txn, source)
 	}
 
 	#[instrument(name = "catalog::primary_key::list", level = "debug", skip(self, txn))]
-	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> Result<Vec<PrimaryKeyDef>> {
+	pub fn list_primary_keys(&self, txn: &mut Transaction<'_>) -> Result<Vec<PrimaryKey>> {
 		Ok(CatalogStore::list_primary_keys(txn)?.into_iter().map(|info| info.def).collect())
 	}
 

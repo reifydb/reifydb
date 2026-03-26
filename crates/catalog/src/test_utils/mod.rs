@@ -3,17 +3,17 @@
 
 use reifydb_core::interface::catalog::{
 	column::ColumnIndex,
-	flow::{FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus},
-	handler::HandlerDef,
+	flow::{Flow, FlowEdge, FlowId, FlowNode, FlowNodeId, FlowStatus},
+	handler::Handler,
 	id::{RingBufferId, TableId},
 	namespace::Namespace,
 	property::ColumnPropertyKind,
-	ringbuffer::RingBufferDef,
-	sink::SinkDef,
-	source::SourceDef,
-	sumtype::{SumTypeDef, SumTypeKind, VariantDef},
-	table::TableDef,
-	view::ViewDef,
+	ringbuffer::RingBuffer,
+	sink::Sink,
+	source::Source,
+	sumtype::{SumType, SumTypeKind, Variant},
+	table::Table,
+	view::View,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
@@ -61,7 +61,7 @@ pub fn ensure_test_namespace(txn: &mut AdminTransaction) -> Namespace {
 	create_namespace(txn, "test_namespace")
 }
 
-pub fn ensure_test_table(txn: &mut AdminTransaction) -> TableDef {
+pub fn ensure_test_table(txn: &mut AdminTransaction) -> Table {
 	let namespace = ensure_test_namespace(txn);
 
 	if let Some(result) =
@@ -78,7 +78,7 @@ pub fn create_table(
 	namespace: &str,
 	table: &str,
 	columns: &[TableColumnToCreate],
-) -> TableDef {
+) -> Table {
 	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
@@ -124,7 +124,7 @@ pub fn create_test_column(
 	.unwrap();
 }
 
-pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, columns: &[ViewColumnToCreate]) -> ViewDef {
+pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, columns: &[ViewColumnToCreate]) -> View {
 	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
@@ -142,7 +142,7 @@ pub fn create_view(txn: &mut AdminTransaction, namespace: &str, view: &str, colu
 	.unwrap()
 }
 
-pub fn ensure_test_ringbuffer(txn: &mut AdminTransaction) -> RingBufferDef {
+pub fn ensure_test_ringbuffer(txn: &mut AdminTransaction) -> RingBuffer {
 	let namespace = ensure_test_namespace(txn);
 
 	if let Some(result) = CatalogStore::find_ringbuffer_by_name(
@@ -163,7 +163,7 @@ pub fn create_ringbuffer(
 	ringbuffer: &str,
 	capacity: u64,
 	columns: &[RingBufferColumnToCreate],
-) -> RingBufferDef {
+) -> RingBuffer {
 	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
@@ -209,7 +209,7 @@ pub fn create_test_ringbuffer_column(
 	.unwrap();
 }
 
-pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> FlowDef {
+pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> Flow {
 	// First look up the namespace to get its ID
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
@@ -227,7 +227,7 @@ pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> F
 	.unwrap()
 }
 
-pub fn ensure_test_flow(txn: &mut AdminTransaction) -> FlowDef {
+pub fn ensure_test_flow(txn: &mut AdminTransaction) -> Flow {
 	let namespace = ensure_test_namespace(txn);
 
 	if let Some(result) =
@@ -239,11 +239,11 @@ pub fn ensure_test_flow(txn: &mut AdminTransaction) -> FlowDef {
 	create_flow(txn, "test_namespace", "test_flow")
 }
 
-pub fn create_flow_node(txn: &mut AdminTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNodeDef {
+pub fn create_flow_node(txn: &mut AdminTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNode {
 	use crate::store::sequence::flow::next_flow_node_id;
 
 	let node_id = next_flow_node_id(txn).unwrap();
-	let node_def = FlowNodeDef {
+	let node_def = FlowNode {
 		id: node_id,
 		flow: flow_id,
 		node_type,
@@ -259,11 +259,11 @@ pub fn create_flow_edge(
 	flow_id: FlowId,
 	source: FlowNodeId,
 	target: FlowNodeId,
-) -> FlowEdgeDef {
+) -> FlowEdge {
 	use crate::store::sequence::flow::next_flow_edge_id;
 
 	let edge_id = next_flow_edge_id(txn).unwrap();
-	let edge_def = FlowEdgeDef {
+	let edge_def = FlowEdge {
 		id: edge_id,
 		flow: flow_id,
 		source,
@@ -274,12 +274,7 @@ pub fn create_flow_edge(
 	edge_def
 }
 
-pub fn create_sumtype(
-	txn: &mut AdminTransaction,
-	namespace: &str,
-	name: &str,
-	variants: Vec<VariantDef>,
-) -> SumTypeDef {
+pub fn create_sumtype(txn: &mut AdminTransaction, namespace: &str, name: &str, variants: Vec<Variant>) -> SumType {
 	use crate::store::sumtype::create::SumTypeToCreate;
 
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
@@ -291,7 +286,7 @@ pub fn create_sumtype(
 		SumTypeToCreate {
 			name: Fragment::internal(name),
 			namespace: namespace.id(),
-			def: SumTypeDef {
+			def: SumType {
 				id: SumTypeId(0),
 				namespace: namespace.id(),
 				name: name.to_string(),
@@ -303,7 +298,7 @@ pub fn create_sumtype(
 	.unwrap()
 }
 
-pub fn create_event(txn: &mut AdminTransaction, namespace: &str, name: &str, variants: Vec<VariantDef>) -> SumTypeDef {
+pub fn create_event(txn: &mut AdminTransaction, namespace: &str, name: &str, variants: Vec<Variant>) -> SumType {
 	use crate::store::sumtype::create::SumTypeToCreate;
 
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
@@ -315,7 +310,7 @@ pub fn create_event(txn: &mut AdminTransaction, namespace: &str, name: &str, var
 		SumTypeToCreate {
 			name: Fragment::internal(name),
 			namespace: namespace.id(),
-			def: SumTypeDef {
+			def: SumType {
 				id: SumTypeId(0),
 				namespace: namespace.id(),
 				name: name.to_string(),
@@ -334,7 +329,7 @@ pub fn create_handler(
 	on_sumtype_id: SumTypeId,
 	on_variant_tag: u8,
 	body_source: &str,
-) -> HandlerDef {
+) -> Handler {
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");
@@ -352,7 +347,7 @@ pub fn create_handler(
 	.unwrap()
 }
 
-pub fn ensure_test_sumtype(txn: &mut AdminTransaction) -> SumTypeDef {
+pub fn ensure_test_sumtype(txn: &mut AdminTransaction) -> SumType {
 	let namespace = ensure_test_namespace(txn);
 
 	if let Some(result) =
@@ -364,7 +359,7 @@ pub fn ensure_test_sumtype(txn: &mut AdminTransaction) -> SumTypeDef {
 	create_sumtype(txn, "test_namespace", "test_sumtype", vec![])
 }
 
-pub fn create_source(txn: &mut AdminTransaction, namespace: &str, name: &str, connector: &str) -> SourceDef {
+pub fn create_source(txn: &mut AdminTransaction, namespace: &str, name: &str, connector: &str) -> Source {
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");
@@ -382,7 +377,7 @@ pub fn create_source(txn: &mut AdminTransaction, namespace: &str, name: &str, co
 	.unwrap()
 }
 
-pub fn create_sink(txn: &mut AdminTransaction, namespace: &str, name: &str, connector: &str) -> SinkDef {
+pub fn create_sink(txn: &mut AdminTransaction, namespace: &str, name: &str, connector: &str) -> Sink {
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");

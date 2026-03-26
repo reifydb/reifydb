@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::SeriesId, series::SeriesDef},
+	interface::catalog::{id::SeriesId, series::Series},
 	key::{Key, series::SeriesKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn list_series_all(rx: &mut Transaction<'_>) -> Result<Vec<SeriesDef>> {
+	pub(crate) fn list_series_all(rx: &mut Transaction<'_>) -> Result<Vec<Series>> {
 		let mut result = Vec::new();
 
 		let mut series_data: Vec<SeriesId> = Vec::new();

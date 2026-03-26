@@ -24,7 +24,7 @@ pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: Flow
 	let node_defs = catalog.list_flow_nodes_by_flow(txn, flow_id)?;
 	let edge_defs = catalog.list_flow_edges_by_flow(txn, flow_id)?;
 
-	// Look up tick duration from FlowDef
+	// Look up tick duration from Flow
 	let tick = catalog
 		.find_flow(txn, flow_id)?
 		.and_then(|def| def.tick)

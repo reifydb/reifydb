@@ -76,7 +76,7 @@ impl Operator for SinkSubscriptionOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let subscription_def = self.subscription.def().clone();
+		let subscription = self.subscription.def().clone();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -101,7 +101,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_number,
 						);
 
-						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
 					}
 				}
@@ -127,7 +127,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_number,
 						);
 
-						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
 					}
 				}
@@ -152,7 +152,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_number,
 						);
 
-						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
 					}
 				}

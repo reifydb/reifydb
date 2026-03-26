@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		column::ColumnDef,
+		column::Column,
 		id::{TableId, ViewId},
-		key::PrimaryKeyDef,
+		key::PrimaryKey,
 		primitive::PrimitiveId,
 	},
 	key::primary_key::PrimaryKeyKey,
@@ -22,7 +22,7 @@ impl CatalogStore {
 	pub(crate) fn find_primary_key(
 		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
-	) -> Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKey>> {
 		let primitive_id = primitive.into();
 
 		let primary_key_id = match primitive_id {
@@ -67,22 +67,22 @@ impl CatalogStore {
 		let column_ids_blob = primary_key::SCHEMA.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
-		// Fetch full ColumnDef for each column ID
+		// Fetch full Column for each column ID
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = Self::get_column(rx, column_id)?;
-			columns.push(ColumnDef {
-				id: column_def.id,
-				name: column_def.name,
-				constraint: column_def.constraint,
-				properties: column_def.properties,
-				index: column_def.index,
-				auto_increment: column_def.auto_increment,
+			let column = Self::get_column(rx, column_id)?;
+			columns.push(Column {
+				id: column.id,
+				name: column.name,
+				constraint: column.constraint,
+				properties: column.properties,
+				index: column.index,
+				auto_increment: column.auto_increment,
 				dictionary_id: None,
 			});
 		}
 
-		Ok(Some(PrimaryKeyDef {
+		Ok(Some(PrimaryKey {
 			id: primary_key_id,
 			columns,
 		}))
@@ -92,15 +92,12 @@ impl CatalogStore {
 	pub(crate) fn find_table_primary_key(
 		rx: &mut Transaction<'_>,
 		table_id: TableId,
-	) -> Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKey>> {
 		Self::find_primary_key(rx, table_id)
 	}
 
 	#[inline]
-	pub(crate) fn find_view_primary_key(
-		rx: &mut Transaction<'_>,
-		view_id: ViewId,
-	) -> Result<Option<PrimaryKeyDef>> {
+	pub(crate) fn find_view_primary_key(rx: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKey>> {
 		Self::find_primary_key(rx, view_id)
 	}
 }

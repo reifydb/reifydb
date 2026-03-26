@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	interface::catalog::{
-		column::ColumnDef,
+		column::Column,
 		id::{NamespaceId, SeriesId},
-		key::PrimaryKeyDef,
+		key::PrimaryKey,
 	},
 	value::column::data::ColumnData,
 };
@@ -78,17 +78,17 @@ impl SeriesKey {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SeriesDef {
+pub struct Series {
 	pub id: SeriesId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub columns: Vec<ColumnDef>,
+	pub columns: Vec<Column>,
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKey>,
 }
 
-impl SeriesDef {
+impl Series {
 	pub fn name(&self) -> &str {
 		&self.name
 	}
@@ -184,7 +184,7 @@ impl SeriesDef {
 	}
 
 	/// Returns columns excluding the key column (data columns only).
-	pub fn data_columns(&self) -> impl Iterator<Item = &ColumnDef> {
+	pub fn data_columns(&self) -> impl Iterator<Item = &Column> {
 		let key_column = self.key.column().to_string();
 		self.columns.iter().filter(move |c| c.name != key_column)
 	}

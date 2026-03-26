@@ -14,8 +14,8 @@ pub(crate) fn load_identities(rx: &mut Transaction<'_>, catalog: &MaterializedCa
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
-		let identity_def = convert_identity(multi);
-		catalog.set_identity(identity_def.id, version, Some(identity_def));
+		let identity = convert_identity(multi);
+		catalog.set_identity(identity.id, version, Some(identity));
 	}
 
 	Ok(())

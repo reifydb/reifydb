@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,25 +13,25 @@ use reifydb_type::{fragment::Fragment, value::r#type::Type};
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes all type information
-pub struct Types {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemTypes {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Types {
+impl SystemTypes {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_types_table_def().clone(),
+			definition: SystemCatalog::get_system_types_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Types {
+impl BaseVTable for SystemTypes {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -70,7 +70,7 @@ impl VTable for Types {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

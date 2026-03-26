@@ -3,7 +3,7 @@
 
 use flow_node::SCHEMA;
 use reifydb_core::{
-	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
+	interface::catalog::flow::{FlowId, FlowNode, FlowNodeId},
 	key::flow_node::FlowNodeKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::flow_node::schema::flow_node};
 
 impl CatalogStore {
-	pub(crate) fn find_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<Option<FlowNodeDef>> {
+	pub(crate) fn find_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<Option<FlowNode>> {
 		let Some(multi) = rx.get(&FlowNodeKey::encoded(node_id))? else {
 			return Ok(None);
 		};
@@ -22,7 +22,7 @@ impl CatalogStore {
 		let node_type = SCHEMA.get_u8(&row, flow_node::TYPE);
 		let data = SCHEMA.get_blob(&row, flow_node::DATA).clone();
 
-		Ok(Some(FlowNodeDef {
+		Ok(Some(FlowNode {
 			id,
 			flow,
 			node_type,

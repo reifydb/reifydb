@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackSinkChangeOperations,
 	id::{NamespaceId, SinkId},
-	sink::SinkDef,
+	sink::Sink,
 };
 use reifydb_type::Result;
 
@@ -18,30 +18,30 @@ use crate::{
 };
 
 impl CatalogTrackSinkChangeOperations for AdminTransaction {
-	fn track_sink_def_created(&mut self, sink: SinkDef) -> Result<()> {
+	fn track_sink_created(&mut self, sink: Sink) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(sink),
 			op: Create,
 		};
-		self.changes.add_sink_def_change(change);
+		self.changes.add_sink_change(change);
 		Ok(())
 	}
 
-	fn track_sink_def_deleted(&mut self, sink: SinkDef) -> Result<()> {
+	fn track_sink_deleted(&mut self, sink: Sink) -> Result<()> {
 		let change = Change {
 			pre: Some(sink),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_sink_def_change(change);
+		self.changes.add_sink_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalSinkChanges for AdminTransaction {
-	fn find_sink(&self, id: SinkId) -> Option<&SinkDef> {
-		for change in self.changes.sink_def.iter().rev() {
+	fn find_sink(&self, id: SinkId) -> Option<&Sink> {
+		for change in self.changes.sink.iter().rev() {
 			if let Some(sink) = &change.post {
 				if sink.id == id {
 					return Some(sink);
@@ -56,8 +56,8 @@ impl TransactionalSinkChanges for AdminTransaction {
 		None
 	}
 
-	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SinkDef> {
-		for change in self.changes.sink_def.iter().rev() {
+	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Sink> {
+		for change in self.changes.sink.iter().rev() {
 			if let Some(sink) = &change.post {
 				if sink.namespace == namespace && sink.name == name {
 					return Some(sink);
@@ -74,13 +74,13 @@ impl TransactionalSinkChanges for AdminTransaction {
 
 	fn is_sink_deleted(&self, id: SinkId) -> bool {
 		self.changes
-			.sink_def
+			.sink
 			.iter()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id == id).unwrap_or(false))
 	}
 
 	fn is_sink_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.changes.sink_def.iter().any(|change| {
+		self.changes.sink.iter().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
@@ -92,21 +92,21 @@ impl TransactionalSinkChanges for AdminTransaction {
 }
 
 impl CatalogTrackSinkChangeOperations for SubscriptionTransaction {
-	fn track_sink_def_created(&mut self, sink: SinkDef) -> Result<()> {
-		self.inner.track_sink_def_created(sink)
+	fn track_sink_created(&mut self, sink: Sink) -> Result<()> {
+		self.inner.track_sink_created(sink)
 	}
 
-	fn track_sink_def_deleted(&mut self, sink: SinkDef) -> Result<()> {
-		self.inner.track_sink_def_deleted(sink)
+	fn track_sink_deleted(&mut self, sink: Sink) -> Result<()> {
+		self.inner.track_sink_deleted(sink)
 	}
 }
 
 impl TransactionalSinkChanges for SubscriptionTransaction {
-	fn find_sink(&self, id: SinkId) -> Option<&SinkDef> {
+	fn find_sink(&self, id: SinkId) -> Option<&Sink> {
 		self.inner.find_sink(id)
 	}
 
-	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SinkDef> {
+	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Sink> {
 		self.inner.find_sink_by_name(namespace, name)
 	}
 

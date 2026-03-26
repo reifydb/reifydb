@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
 		id::{NamespaceId, SourceId},
-		source::SourceDef,
+		source::Source,
 	},
 	key::source::SourceKey,
 };
@@ -15,7 +15,7 @@ use serde_json::from_str;
 use crate::{CatalogStore, Result, store::source::schema::source};
 
 impl CatalogStore {
-	pub(crate) fn list_sources_all(rx: &mut Transaction<'_>) -> Result<Vec<SourceDef>> {
+	pub(crate) fn list_sources_all(rx: &mut Transaction<'_>) -> Result<Vec<Source>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(SourceKey::full_scan(), 1024)?;
@@ -35,7 +35,7 @@ impl CatalogStore {
 			let status_u8 = source::SCHEMA.get_u8(row, source::STATUS);
 			let status = FlowStatus::from_u8(status_u8);
 
-			result.push(SourceDef {
+			result.push(Source {
 				id,
 				name,
 				namespace,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use super::{column::OperatorColumnDefsFFI, vtable::OperatorVTableFFI};
+use super::{column::OperatorColumnsFFI, vtable::OperatorVTableFFI};
 use crate::data::buffer::BufferFFI;
 
 /// Descriptor for an FFI operator
@@ -23,10 +23,10 @@ pub struct OperatorDescriptorFFI {
 	pub description: BufferFFI,
 
 	/// Input columns describing expected input row format (for documentation)
-	pub input_columns: OperatorColumnDefsFFI,
+	pub input_columns: OperatorColumnsFFI,
 
 	/// Output columns describing output row format (for documentation)
-	pub output_columns: OperatorColumnDefsFFI,
+	pub output_columns: OperatorColumnsFFI,
 
 	/// Capabilities bitflags (CAPABILITY_* constants)
 	pub capabilities: u32,

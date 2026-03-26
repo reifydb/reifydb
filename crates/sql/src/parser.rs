@@ -682,7 +682,7 @@ impl Parser {
 			if !self.is_eof() && matches!(self.tokens.get(self.pos), Some(Token::Keyword(Keyword::Set))) {
 				// "DEFAULT" would be an ident, not a keyword - skip
 			}
-			columns.push(ColumnDef {
+			columns.push(Column {
 				name,
 				data_type,
 				nullable,

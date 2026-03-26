@@ -10,7 +10,7 @@ use reifydb_type::value::Value;
 
 use crate::{
 	error::{FFIError, Result},
-	operator::column::OperatorColumnDef,
+	operator::column::OperatorColumn,
 };
 
 /// Whether a source connector operates in pull or push mode
@@ -55,7 +55,7 @@ pub trait FFISourceMetadata {
 	/// Pull or Push mode
 	const MODE: SourceMode;
 	/// Schema of records this source produces
-	const OUTPUT_COLUMNS: &'static [OperatorColumnDef];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn];
 }
 
 /// Runtime behavior of a source connector

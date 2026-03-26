@@ -9,7 +9,7 @@ use crate::interface::catalog::{
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SourceDef {
+pub struct Source {
 	pub id: SourceId,
 	pub namespace: NamespaceId,
 	pub name: String,

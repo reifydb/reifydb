@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, TableId},
-		table::TableDef,
+		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<TableDef>> {
+	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<Table>> {
 		let Some(multi) = rx.get(&TableKey::encoded(table))? else {
 			return Ok(None);
 		};
@@ -26,7 +26,7 @@ impl CatalogStore {
 		let namespace = NamespaceId(table::SCHEMA.get_u64(&row, table::NAMESPACE));
 		let name = table::SCHEMA.get_utf8(&row, table::NAME).to_string();
 
-		Ok(Some(TableDef {
+		Ok(Some(Table {
 			id,
 			name,
 			namespace,
@@ -39,7 +39,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<TableDef>> {
+	) -> Result<Option<Table>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), 1024)?;
 

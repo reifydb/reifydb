@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	column::ColumnDef,
+	column::Column,
 	id::ColumnId,
 	primitive::PrimitiveId,
 	property::{ColumnProperty, ColumnPropertyKind},
@@ -19,12 +19,12 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
 		name: &str,
-	) -> Result<Option<ColumnDef>> {
+	) -> Result<Option<Column>> {
 		CatalogStore::find_column_by_name(txn, source, name)
 	}
 
 	#[instrument(name = "catalog::column::get", level = "trace", skip(self, txn))]
-	pub fn get_column(&self, txn: &mut Transaction<'_>, column_id: ColumnId) -> Result<ColumnDef> {
+	pub fn get_column(&self, txn: &mut Transaction<'_>, column_id: ColumnId) -> Result<Column> {
 		CatalogStore::get_column(txn, column_id)
 	}
 

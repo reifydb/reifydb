@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::interface::catalog::{id::ColumnId, property::ColumnProperty};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ColumnDef {
+pub struct Column {
 	pub id: ColumnId,
 	pub name: String,
 	pub constraint: TypeConstraint,

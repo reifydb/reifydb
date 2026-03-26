@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,19 +13,19 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes all FlowNodeType variants
-pub struct FlowNodeTypes {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemFlowNodeTypes {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl FlowNodeTypes {
+impl SystemFlowNodeTypes {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_node_types_table_def().clone(),
+			definition: SystemCatalog::get_system_flow_node_types_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -51,7 +51,7 @@ const FLOW_NODE_TYPE_NAMES: [&str; 16] = [
 	"window",
 ];
 
-impl VTable for FlowNodeTypes {
+impl BaseVTable for SystemFlowNodeTypes {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -87,7 +87,7 @@ impl VTable for FlowNodeTypes {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

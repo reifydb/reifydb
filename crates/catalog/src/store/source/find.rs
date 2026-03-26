@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
 		id::{NamespaceId, SourceId},
-		source::SourceDef,
+		source::Source,
 	},
 	key::{namespace_source::NamespaceSourceKey, source::SourceKey},
 };
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_source(rx: &mut Transaction<'_>, id: SourceId) -> Result<Option<SourceDef>> {
+	pub(crate) fn find_source(rx: &mut Transaction<'_>, id: SourceId) -> Result<Option<Source>> {
 		let Some(multi) = rx.get(&SourceKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -35,7 +35,7 @@ impl CatalogStore {
 		let status_u8 = source::SCHEMA.get_u8(&row, source::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
-		Ok(Some(SourceDef {
+		Ok(Some(Source {
 			id,
 			name,
 			namespace,
@@ -51,7 +51,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<SourceDef>> {
+	) -> Result<Option<Source>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSourceKey::full_scan(namespace), 1024)?;
 

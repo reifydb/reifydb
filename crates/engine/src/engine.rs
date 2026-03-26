@@ -9,9 +9,9 @@ use reifydb_catalog::{
 	materialized::MaterializedCatalog,
 	schema::SchemaRegistry,
 	vtable::{
-		system::flow_operator_store::{FlowOperatorEventListener, FlowOperatorStore},
+		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
-		user::{UserVTable, UserVTableColumnDef, registry::UserVTableEntry},
+		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
 use reifydb_cdc::{consume::host::CdcHost, storage::CdcStore};
@@ -22,9 +22,9 @@ use reifydb_core::{
 	interface::{
 		WithEventBus,
 		catalog::{
-			column::{ColumnDef, ColumnIndex},
+			column::{Column, ColumnIndex},
 			id::ColumnId,
-			vtable::{VTableDef, VTableId},
+			vtable::{VTable, VTableId},
 		},
 	},
 	util::ioc::IocContainer,
@@ -238,7 +238,7 @@ impl StandardEngine {
 	/// # Example
 	///
 	/// ```ignore
-	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumnDef};
+	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumn};
 	/// use reifydb_type::value::r#type::Type;
 	/// use reifydb_core::value::Columns;
 	///
@@ -246,8 +246,8 @@ impl StandardEngine {
 	/// struct MyTable;
 	///
 	/// impl UserVTable for MyTable {
-	///     fn definition(&self) -> Vec<UserVTableColumnDef> {
-	///         vec![UserVTableColumnDef::new("id", Type::Uint8)]
+	///     fn definition(&self) -> Vec<UserVTableColumn> {
+	///         vec![UserVTableColumn::new("id", Type::Uint8)]
 	///     }
 	///     fn get(&self) -> Columns {
 	///         // Return column-oriented data
@@ -269,10 +269,10 @@ impl StandardEngine {
 		let table_id = self.executor.virtual_table_registry.allocate_id();
 		// Convert user column definitions to internal column definitions
 		let table_columns = table.definition();
-		let columns = convert_vtable_user_columns_to_column_defs(&table_columns);
+		let columns = convert_vtable_user_columns_to_columns(&table_columns);
 
 		// Create the table definition
-		let def = Arc::new(VTableDef {
+		let def = Arc::new(VTable {
 			id: table_id,
 			namespace: ns_def.id(),
 			name: name.to_string(),
@@ -340,7 +340,7 @@ pub struct Inner {
 	executor: Executor,
 	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
-	flow_operator_store: FlowOperatorStore,
+	flow_operator_store: SystemFlowOperatorStore,
 }
 
 impl StandardEngine {
@@ -357,8 +357,8 @@ impl StandardEngine {
 		ioc: IocContainer,
 		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
-		let flow_operator_store = FlowOperatorStore::new();
-		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
+		let flow_operator_store = SystemFlowOperatorStore::new();
+		let listener = SystemFlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);
 
 		// Get the metrics store from IoC to create the stats reader
@@ -473,7 +473,7 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn flow_operator_store(&self) -> &FlowOperatorStore {
+	pub fn flow_operator_store(&self) -> &SystemFlowOperatorStore {
 		&self.flow_operator_store
 	}
 
@@ -552,15 +552,15 @@ impl StandardEngine {
 	}
 }
 
-/// Convert user column definitions to internal ColumnDef format.
-fn convert_vtable_user_columns_to_column_defs(columns: &[UserVTableColumnDef]) -> Vec<ColumnDef> {
+/// Convert user column definitions to internal Column format.
+fn convert_vtable_user_columns_to_columns(columns: &[UserVTableColumn]) -> Vec<Column> {
 	columns.iter()
 		.enumerate()
 		.map(|(idx, col)| {
 			// Note: For virtual tables, we use unconstrained for all types.
 			// The nullable field is still available for documentation purposes.
 			let constraint = TypeConstraint::unconstrained(col.data_type.clone());
-			ColumnDef {
+			Column {
 				id: ColumnId(idx as u64),
 				name: col.name.clone(),
 				constraint,

@@ -807,11 +807,11 @@ pub struct AstCreateSumType<'bump> {
 	pub token: Token<'bump>,
 	pub if_not_exists: bool,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct AstVariantDef<'bump> {
+pub struct AstVariant<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 }
@@ -910,7 +910,7 @@ pub struct AstIndexColumn<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstPrimaryKeyDef<'bump> {
+pub struct AstPrimaryKey<'bump> {
 	pub columns: Vec<AstIndexColumn<'bump>>,
 }
 
@@ -1844,7 +1844,7 @@ pub struct AstClosure<'bump> {
 pub struct AstCreateEvent<'bump> {
 	pub token: Token<'bump>,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 /// CREATE TAG — declares a tag type (a sum type with SumTypeKind::Tag)
@@ -1852,7 +1852,7 @@ pub struct AstCreateEvent<'bump> {
 pub struct AstCreateTag<'bump> {
 	pub token: Token<'bump>,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 /// CREATE HANDLER — registers a computation handler for a specific event variant

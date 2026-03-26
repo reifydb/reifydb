@@ -3,7 +3,7 @@
 
 use flow_edge_by_flow::SCHEMA;
 use reifydb_core::{
-	interface::catalog::flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeId},
+	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, FlowNodeId},
 	key::{
 		EncodableKey,
 		flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_flow_edges_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowEdgeDef>> {
+	pub(crate) fn list_flow_edges_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowEdge>> {
 		// Collect edge IDs first to avoid holding stream borrow
 		let mut edge_ids = Vec::new();
 		{
@@ -42,7 +42,7 @@ impl CatalogStore {
 		Ok(edges)
 	}
 
-	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowEdgeDef>> {
+	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowEdge>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(FlowEdgeKey::full_scan(), 1024)?;
@@ -55,7 +55,7 @@ impl CatalogStore {
 				let source = FlowNodeId(flow_edge::SCHEMA.get_u64(&entry.row, flow_edge::SOURCE));
 				let target = FlowNodeId(flow_edge::SCHEMA.get_u64(&entry.row, flow_edge::TARGET));
 
-				let edge_def = FlowEdgeDef {
+				let edge_def = FlowEdge {
 					id: edge_id,
 					flow: flow_id,
 					source,

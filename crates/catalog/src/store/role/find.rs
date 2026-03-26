@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::identity::{RoleDef, RoleId},
+	interface::catalog::identity::{Role, RoleId},
 	key::role::RoleKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,11 +14,11 @@ use crate::{
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<RoleDef>> {
+	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<Role>> {
 		Ok(rx.get(&RoleKey::encoded(id))?.map(convert_role))
 	}
 
-	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<RoleDef>> {
+	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
 		let mut stream = rx.range(RoleKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

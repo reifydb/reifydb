@@ -6,8 +6,8 @@
 use reifydb_core::interface::{
 	catalog::{
 		id::{NamespaceId, SubscriptionId},
-		subscription::SubscriptionDef,
-		token::{TokenDef, TokenId},
+		subscription::Subscription,
+		token::{Token, TokenId},
 	},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
@@ -31,7 +31,7 @@ pub(crate) struct CatalogStore;
 ///
 /// This is a low-level function that bypasses the MaterializedCatalog cache.
 /// For most use cases, prefer using `Catalog::find_subscription` instead.
-pub fn find_subscription(txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<Option<SubscriptionDef>> {
+pub fn find_subscription(txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<Option<Subscription>> {
 	CatalogStore::find_subscription(txn, id)
 }
 
@@ -58,12 +58,12 @@ pub fn create_token(
 	identity: IdentityId,
 	expires_at: Option<DateTime>,
 	created_at: DateTime,
-) -> Result<TokenDef> {
+) -> Result<Token> {
 	CatalogStore::create_token(txn, token, identity, expires_at, created_at)
 }
 
 /// Find a token by its value (constant-time comparison).
-pub fn find_token_by_value(txn: &mut Transaction<'_>, value: &str) -> Result<Option<TokenDef>> {
+pub fn find_token_by_value(txn: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
 	CatalogStore::find_token_by_value(txn, value)
 }
 

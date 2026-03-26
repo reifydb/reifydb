@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedPrimitive},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedPrimitive},
 	value::{
 		batch::lazy::LazyBatch,
 		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
@@ -81,7 +81,7 @@ impl QueryNode for FilterNode {
 				}
 
 				// Save dictionary metadata before consuming the lazy batch
-				let dictionaries: Vec<Option<DictionaryDef>> =
+				let dictionaries: Vec<Option<Dictionary>> =
 					lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
 
 				// Materialize surviving rows
@@ -185,7 +185,7 @@ impl FilterNode {
 	) -> Result<Option<BitVec>> {
 		// Materialize to columns for column-oriented evaluation,
 		// then decode dictionary columns so filters can compare actual values.
-		let dictionaries: Vec<Option<DictionaryDef>> =
+		let dictionaries: Vec<Option<Dictionary>> =
 			lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
 		let mut columns = lazy_batch.clone().into_columns();
 		decode_dictionary_columns(&mut columns, &dictionaries, rx)?;

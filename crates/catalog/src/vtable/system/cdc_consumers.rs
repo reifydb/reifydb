@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,25 +13,25 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes CDC consumer checkpoint information
-pub struct CdcConsumers {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemCdcConsumers {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl CdcConsumers {
+impl SystemCdcConsumers {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_cdc_consumers_table_def().clone(),
+			definition: SystemCatalog::get_system_cdc_consumers_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for CdcConsumers {
+impl BaseVTable for SystemCdcConsumers {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -60,7 +60,7 @@ impl VTable for CdcConsumers {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

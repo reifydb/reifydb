@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::NamespaceId, table::TableDef},
+	interface::catalog::{id::NamespaceId, table::Table},
 	key::{Key, table::TableKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::table::schema::table};
 
 impl CatalogStore {
-	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> Result<Vec<TableDef>> {
+	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> Result<Vec<Table>> {
 		let mut result = Vec::new();
 
 		// Collect table IDs first, then fetch details (to avoid holding stream borrow)
@@ -37,7 +37,7 @@ impl CatalogStore {
 			let primary_key = Self::find_primary_key(rx, table_id)?;
 			let columns = Self::list_columns(rx, table_id)?;
 
-			let table_def = TableDef {
+			let table = Table {
 				id: table_id,
 				namespace: namespace_id,
 				name,
@@ -45,7 +45,7 @@ impl CatalogStore {
 				primary_key,
 			};
 
-			result.push(table_def);
+			result.push(table);
 		}
 
 		Ok(result)

@@ -6,7 +6,7 @@ use crate::data::buffer::BufferFFI;
 /// FFI-safe column definition
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct ColumnDefFFI {
+pub struct ColumnFFI {
 	/// Column ID (u64)
 	pub id: u64,
 	/// Column name (UTF-8 encoded)

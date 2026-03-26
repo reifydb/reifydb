@@ -10,7 +10,7 @@ use reifydb_type::value::{Value, row_number::RowNumber};
 pub mod column;
 pub mod context;
 
-use column::OperatorColumnDef;
+use column::OperatorColumn;
 use context::OperatorContext;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
@@ -32,9 +32,9 @@ pub trait FFIOperatorMetadata {
 	/// Human-readable description of the operator
 	const DESCRIPTION: &'static str;
 	/// Input columns describing expected input row format
-	const INPUT_COLUMNS: &'static [OperatorColumnDef];
+	const INPUT_COLUMNS: &'static [OperatorColumn];
 	/// Output columns describing output row format
-	const OUTPUT_COLUMNS: &'static [OperatorColumnDef];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn];
 	/// Capabilities bitflags describing supported operations
 	/// Use CAPABILITY_* constants from reifydb_abi
 	const CAPABILITIES: u32;

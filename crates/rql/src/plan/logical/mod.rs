@@ -43,7 +43,7 @@ use crate::{
 		ast::{
 			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstConfigPair, AstInfix,
 			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests,
-			AstStatement, AstType, AstVariantDef, AstViewStorageKind, InfixOperator,
+			AstStatement, AstType, AstVariant, AstViewStorageKind, InfixOperator,
 		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
@@ -583,7 +583,7 @@ pub struct ForNode<'bump> {
 }
 
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyDef<'bump> {
+pub struct PrimaryKey<'bump> {
 	pub columns: Vec<PrimaryKeyColumn<'bump>>,
 }
 
@@ -667,7 +667,7 @@ pub struct CreateDictionaryNode<'bump> {
 pub struct CreateSumTypeNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub if_not_exists: bool,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 #[derive(Debug)]
@@ -1103,13 +1103,13 @@ pub struct CreateSeriesNode<'bump> {
 #[derive(Debug)]
 pub struct CreateEventNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 #[derive(Debug)]
 pub struct CreateTagNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 #[derive(Debug)]

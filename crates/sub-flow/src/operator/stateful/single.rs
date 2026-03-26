@@ -71,7 +71,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_default_key() {
+	fn testault_key() {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = operator.key();
 

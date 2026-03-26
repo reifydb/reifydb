@@ -43,7 +43,7 @@ impl PolicyTargetType {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PolicyDef {
+pub struct Policy {
 	pub id: PolicyId,
 	pub name: Option<String>,
 	pub target_type: PolicyTargetType,
@@ -53,7 +53,7 @@ pub struct PolicyDef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PolicyOperationDef {
+pub struct PolicyOperation {
 	pub policy_id: PolicyId,
 	pub operation: String,
 	pub body_source: String,

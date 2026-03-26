@@ -3,10 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{column::ColumnDef, id::PrimaryKeyId};
+use crate::interface::catalog::{column::Column, id::PrimaryKeyId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PrimaryKeyDef {
+pub struct PrimaryKey {
 	pub id: PrimaryKeyId,
-	pub columns: Vec<ColumnDef>,
+	pub columns: Vec<Column>,
 }

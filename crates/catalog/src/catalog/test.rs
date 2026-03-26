@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackTestChangeOperations,
 	id::{NamespaceId, TestId},
-	test::TestDef,
+	test::Test,
 };
 use reifydb_transaction::{
 	change::TransactionalTestChanges,
@@ -26,7 +26,7 @@ pub struct TestToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::test::find", level = "trace", skip(self, txn))]
-	pub fn find_test(&self, txn: &mut Transaction<'_>, id: TestId) -> Result<Option<TestDef>> {
+	pub fn find_test(&self, txn: &mut Transaction<'_>, id: TestId) -> Result<Option<Test>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(test) = self.materialized.find_test_at(id, cmd.version()) {
@@ -85,7 +85,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<TestDef>> {
+	) -> Result<Option<Test>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(test) =
@@ -150,11 +150,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::test::list_in_namespace", level = "trace", skip(self, txn))]
-	pub fn list_tests_in_namespace(
-		&self,
-		txn: &mut Transaction<'_>,
-		namespace: NamespaceId,
-	) -> Result<Vec<TestDef>> {
+	pub fn list_tests_in_namespace(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Test>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				Ok(self.materialized.list_tests_in_namespace_at(namespace, cmd.version()))
@@ -163,7 +159,7 @@ impl Catalog {
 				let mut tests =
 					self.materialized.list_tests_in_namespace_at(namespace, admin.version());
 				// Add transactional additions
-				for change in &admin.changes.test_def {
+				for change in &admin.changes.test {
 					if let Some(t) = &change.post {
 						if t.namespace == namespace
 							&& !tests.iter().any(|existing| existing.id == t.id)
@@ -180,7 +176,7 @@ impl Catalog {
 			Transaction::Subscription(sub) => {
 				let mut tests = self.materialized.list_tests_in_namespace_at(namespace, sub.version());
 				// Add transactional additions
-				for change in &sub.as_admin_mut().changes.test_def {
+				for change in &sub.as_admin_mut().changes.test {
 					if let Some(t) = &change.post {
 						if t.namespace == namespace
 							&& !tests.iter().any(|existing| existing.id == t.id)
@@ -195,7 +191,7 @@ impl Catalog {
 				let mut tests =
 					self.materialized.list_tests_in_namespace_at(namespace, t.inner.version());
 				// Add transactional additions
-				for change in &t.inner.changes.test_def {
+				for change in &t.inner.changes.test {
 					if let Some(t) = &change.post {
 						if t.namespace == namespace
 							&& !tests.iter().any(|existing| existing.id == t.id)
@@ -210,12 +206,12 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::test::list_all", level = "trace", skip(self, txn))]
-	pub fn list_all_tests(&self, txn: &mut Transaction<'_>) -> Result<Vec<TestDef>> {
+	pub fn list_all_tests(&self, txn: &mut Transaction<'_>) -> Result<Vec<Test>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.materialized.list_all_tests_at(cmd.version())),
 			Transaction::Admin(admin) => {
 				let mut tests = self.materialized.list_all_tests_at(admin.version());
-				for change in &admin.changes.test_def {
+				for change in &admin.changes.test {
 					if let Some(t) = &change.post {
 						if !tests.iter().any(|existing| existing.id == t.id) {
 							tests.push(t.clone());
@@ -227,7 +223,7 @@ impl Catalog {
 			Transaction::Query(qry) => Ok(self.materialized.list_all_tests_at(qry.version())),
 			Transaction::Subscription(sub) => {
 				let mut tests = self.materialized.list_all_tests_at(sub.version());
-				for change in &sub.as_admin_mut().changes.test_def {
+				for change in &sub.as_admin_mut().changes.test {
 					if let Some(t) = &change.post {
 						if !tests.iter().any(|existing| existing.id == t.id) {
 							tests.push(t.clone());
@@ -238,7 +234,7 @@ impl Catalog {
 			}
 			Transaction::Test(t) => {
 				let mut tests = self.materialized.list_all_tests_at(t.inner.version());
-				for change in &t.inner.changes.test_def {
+				for change in &t.inner.changes.test {
 					if let Some(t) = &change.post {
 						if !tests.iter().any(|existing| existing.id == t.id) {
 							tests.push(t.clone());
@@ -251,10 +247,10 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::test::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_test(&self, txn: &mut AdminTransaction, to_create: TestToCreate) -> Result<TestDef> {
+	pub fn create_test(&self, txn: &mut AdminTransaction, to_create: TestToCreate) -> Result<Test> {
 		let id = SystemSequence::next_test_id(txn)?;
 
-		let test = TestDef {
+		let test = Test {
 			id,
 			namespace: to_create.namespace,
 			name: to_create.name.text().to_string(),
@@ -262,7 +258,7 @@ impl Catalog {
 			body: to_create.body,
 		};
 
-		txn.track_test_def_created(test.clone())?;
+		txn.track_test_created(test.clone())?;
 
 		Ok(test)
 	}

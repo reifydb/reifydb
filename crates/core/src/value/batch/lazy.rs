@@ -9,7 +9,7 @@ use reifydb_type::{
 
 use crate::{
 	encoded::{row::EncodedRow, schema::Schema},
-	interface::catalog::dictionary::DictionaryDef,
+	interface::catalog::dictionary::Dictionary,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 
@@ -23,7 +23,7 @@ pub struct LazyColumnMeta {
 	/// Type after decoding (e.g., Utf8 for dictionary value)
 	pub output_type: Type,
 	/// Dictionary definition if this column uses dictionary encoding
-	pub dictionary: Option<DictionaryDef>,
+	pub dictionary: Option<Dictionary>,
 }
 
 /// A batch of rows that defers column materialization until needed.

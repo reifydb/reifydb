@@ -120,7 +120,7 @@ pub mod tests {
 			KeyKind::SeriesMetadata => {}
 			KeyKind::Identity => {}
 			KeyKind::Role => {}
-			KeyKind::IdentityRole => {}
+			KeyKind::GrantedRole => {}
 			KeyKind::Policy => {}
 			KeyKind::PolicyOp => {}
 			KeyKind::Migration => {}
@@ -411,8 +411,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_identity_role() {
-		assert!(!should_exclude_from_cdc(KeyKind::IdentityRole));
+	fn test_include_granted_role() {
+		assert!(!should_exclude_from_cdc(KeyKind::GrantedRole));
 	}
 
 	#[test]

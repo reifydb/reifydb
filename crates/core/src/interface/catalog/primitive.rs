@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	interface::catalog::{
 		id::{RingBufferId, SeriesId, TableId, ViewId},
-		table::TableDef,
-		view::ViewDef,
-		vtable::{VTableDef, VTableId},
+		table::Table,
+		view::View,
+		vtable::{VTable, VTableId},
 	},
 	return_internal_error,
 };
@@ -321,9 +321,9 @@ impl PrimitiveId {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PrimitiveDef {
-	Table(TableDef),
-	View(ViewDef),
-	TableVirtual(VTableDef),
+	Table(Table),
+	View(View),
+	TableVirtual(VTable),
 }
 
 impl PrimitiveDef {

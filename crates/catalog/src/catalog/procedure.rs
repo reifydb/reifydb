@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackProcedureChangeOperations,
 	id::{NamespaceId, ProcedureId},
-	procedure::{ProcedureDef, ProcedureParamDef, ProcedureTrigger},
+	procedure::{Procedure, ProcedureParam, ProcedureTrigger},
 };
 use reifydb_transaction::{
 	change::TransactionalProcedureChanges,
@@ -22,13 +22,13 @@ use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
 /// Distinguishes between locally-defined procedures and those in remote namespaces.
 #[derive(Debug, Clone)]
 pub enum ResolvedProcedure {
-	Local(ProcedureDef),
+	Local(Procedure),
 	Remote {
 		address: String,
 		token: Option<String>,
 	},
 	/// Test procedure — always local, only callable from test context
-	Test(ProcedureDef),
+	Test(Procedure),
 }
 
 /// Procedure creation specification for the Catalog API.
@@ -36,7 +36,7 @@ pub enum ResolvedProcedure {
 pub struct ProcedureToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub params: Vec<ProcedureParamDef>,
+	pub params: Vec<ProcedureParam>,
 	pub return_type: Option<TypeConstraint>,
 	pub body: String,
 	pub trigger: ProcedureTrigger,
@@ -45,7 +45,7 @@ pub struct ProcedureToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::procedure::find", level = "trace", skip(self, txn))]
-	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<ProcedureDef>> {
+	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) = self.materialized.find_procedure_at(id, cmd.version()) {
@@ -122,7 +122,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<ProcedureDef>> {
+	) -> Result<Option<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) =
@@ -259,7 +259,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		sumtype_id: SumTypeId,
 		variant_tag: u8,
-	) -> Result<Vec<ProcedureDef>> {
+	) -> Result<Vec<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.materialized.list_procedures_for_variant_at(
 				sumtype_id,
@@ -275,7 +275,7 @@ impl Catalog {
 				);
 
 				// Also check transactional changes for newly created procedures with event binding
-				for change in &admin.changes.procedure_def {
+				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
 							sumtype_id: sid,
@@ -309,7 +309,7 @@ impl Catalog {
 				);
 
 				// Also check transactional changes for newly created procedures with event binding
-				for change in &sub.as_admin_mut().changes.procedure_def {
+				for change in &sub.as_admin_mut().changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
 							sumtype_id: sid,
@@ -338,7 +338,7 @@ impl Catalog {
 				);
 
 				// Also check transactional changes for newly created procedures with event binding
-				for change in &t.inner.changes.procedure_def {
+				for change in &t.inner.changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
 							sumtype_id: sid,
@@ -362,14 +362,10 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::procedure::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_procedure(
-		&self,
-		txn: &mut AdminTransaction,
-		to_create: ProcedureToCreate,
-	) -> Result<ProcedureDef> {
+	pub fn create_procedure(&self, txn: &mut AdminTransaction, to_create: ProcedureToCreate) -> Result<Procedure> {
 		let id = SystemSequence::next_procedure_id(txn)?;
 
-		let procedure = ProcedureDef {
+		let procedure = Procedure {
 			id,
 			namespace: to_create.namespace,
 			name: to_create.name.text().to_string(),
@@ -380,7 +376,7 @@ impl Catalog {
 			is_test: to_create.is_test,
 		};
 
-		txn.track_procedure_def_created(procedure.clone())?;
+		txn.track_procedure_created(procedure.clone())?;
 
 		Ok(procedure)
 	}

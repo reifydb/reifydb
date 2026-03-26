@@ -47,7 +47,7 @@ impl GeneratorFunction for InspectSubscription {
 		let subscription_id = SubscriptionId(subscription_id_value);
 
 		// Use catalog function to get subscription definition
-		let subscription_def = find_subscription(txn, subscription_id)?
+		let subscription = find_subscription(txn, subscription_id)?
 			.unwrap_or_else(|| panic!("Subscription {} not found", subscription_id));
 
 		// Scan subscription rows
@@ -55,7 +55,7 @@ impl GeneratorFunction for InspectSubscription {
 		let mut stream = txn.range(range, 1024)?;
 
 		// Build columns structure
-		let all_columns = subscription_def.all_columns();
+		let all_columns = subscription.all_columns();
 		let mut column_data_builders: Vec<_> = all_columns
 			.iter()
 			.map(|col| (col.name.clone(), ColumnData::with_capacity(col.ty.clone(), 0)))

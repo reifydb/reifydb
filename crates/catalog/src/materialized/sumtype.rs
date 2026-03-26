@@ -3,14 +3,14 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::NamespaceId, sumtype::SumTypeDef},
+	interface::catalog::{id::NamespaceId, sumtype::SumType},
 };
 use reifydb_type::value::sumtype::SumTypeId;
 
-use crate::materialized::{MaterializedCatalog, MultiVersionSumTypeDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionSumType};
 
 impl MaterializedCatalog {
-	pub fn find_sumtype_at(&self, id: SumTypeId, version: CommitVersion) -> Option<SumTypeDef> {
+	pub fn find_sumtype_at(&self, id: SumTypeId, version: CommitVersion) -> Option<SumType> {
 		self.sumtypes.get(&id).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -22,35 +22,35 @@ impl MaterializedCatalog {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Option<SumTypeDef> {
+	) -> Option<SumType> {
 		self.sumtypes_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let id = *entry.value();
 			self.find_sumtype_at(id, version)
 		})
 	}
 
-	pub fn find_sumtype(&self, id: SumTypeId) -> Option<SumTypeDef> {
+	pub fn find_sumtype(&self, id: SumTypeId) -> Option<SumType> {
 		self.sumtypes.get(&id).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
 		})
 	}
 
-	pub fn find_sumtype_by_name(&self, namespace: NamespaceId, name: &str) -> Option<SumTypeDef> {
+	pub fn find_sumtype_by_name(&self, namespace: NamespaceId, name: &str) -> Option<SumType> {
 		self.sumtypes_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let id = *entry.value();
 			self.find_sumtype(id)
 		})
 	}
 
-	pub fn set_sumtype(&self, id: SumTypeId, version: CommitVersion, def: Option<SumTypeDef>) {
+	pub fn set_sumtype(&self, id: SumTypeId, version: CommitVersion, def: Option<SumType>) {
 		if let Some(entry) = self.sumtypes.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				self.sumtypes_by_name.remove(&(pre.namespace, pre.name.clone()));
 			}
 		}
 
-		let multi = self.sumtypes.get_or_insert_with(id, MultiVersionSumTypeDef::new);
+		let multi = self.sumtypes.get_or_insert_with(id, MultiVersionSumType::new);
 		if let Some(new) = def {
 			self.sumtypes_by_name.insert((new.namespace, new.name.clone()), id);
 			multi.value().insert(version, new);
@@ -66,8 +66,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_sumtype(id: SumTypeId, namespace: NamespaceId, name: &str) -> SumTypeDef {
-		SumTypeDef {
+	fn create_test_sumtype(id: SumTypeId, namespace: NamespaceId, name: &str) -> SumType {
+		SumType {
 			id,
 			namespace,
 			name: name.to_string(),

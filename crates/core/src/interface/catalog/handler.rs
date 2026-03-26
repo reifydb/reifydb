@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::interface::catalog::id::{HandlerId, NamespaceId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct HandlerDef {
+pub struct Handler {
 	pub id: HandlerId,
 	pub namespace: NamespaceId,
 	pub name: String,

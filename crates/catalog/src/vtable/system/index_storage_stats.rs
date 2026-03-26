@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_metric::metric::MetricReader;
@@ -15,7 +15,7 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes storage statistics for indexes
@@ -23,24 +23,24 @@ use crate::{
 /// Note: Index storage is tracked at the KeyKind level, not per-individual-index.
 /// This table currently returns empty results. Per-index tracking may be added
 /// in a future enhancement.
-pub struct IndexStorageStats {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemIndexStorageStats {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 	#[allow(dead_code)]
 	stats_reader: MetricReader<SingleStore>,
 }
 
-impl IndexStorageStats {
+impl SystemIndexStorageStats {
 	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_index_storage_stats_table_def().clone(),
+			definition: SystemCatalog::get_system_index_storage_stats_table().clone(),
 			exhausted: false,
 			stats_reader,
 		}
 	}
 }
 
-impl VTable for IndexStorageStats {
+impl BaseVTable for SystemIndexStorageStats {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -131,7 +131,7 @@ impl VTable for IndexStorageStats {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

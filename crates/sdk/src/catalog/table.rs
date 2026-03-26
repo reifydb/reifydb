@@ -13,7 +13,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, TableId},
-		table::TableDef,
+		table::Table,
 	},
 };
 
@@ -25,7 +25,7 @@ pub(super) fn raw_catalog_find_table(
 	ctx: &OperatorContext,
 	table_id: TableId,
 	version: CommitVersion,
-) -> Result<Option<TableDef>, FFIError> {
+) -> Result<Option<Table>, FFIError> {
 	unsafe {
 		// Get callback function
 		let callback = (*ctx.ctx).callbacks.catalog.find_table;
@@ -60,7 +60,7 @@ pub(super) fn raw_catalog_find_table_by_name(
 	namespace_id: NamespaceId,
 	name: &str,
 	version: CommitVersion,
-) -> Result<Option<TableDef>, FFIError> {
+) -> Result<Option<Table>, FFIError> {
 	unsafe {
 		// Get callback function
 		let callback = (*ctx.ctx).callbacks.catalog.find_table_by_name;
@@ -99,8 +99,8 @@ pub(super) fn raw_catalog_find_table_by_name(
 	}
 }
 
-/// Unmarshal TableFFI to TableDef
-unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<TableDef, FFIError> {
+/// Unmarshal TableFFI to Table
+unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_table.name.ptr.is_null() && ffi_table.name.len > 0 {
 		unsafe { from_raw_parts(ffi_table.name.ptr, ffi_table.name.len) }
@@ -128,7 +128,7 @@ unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<TableDef, FFIError> {
 		None
 	};
 
-	Ok(TableDef {
+	Ok(Table {
 		id: TableId(ffi_table.id),
 		namespace: NamespaceId(ffi_table.namespace_id),
 		name,

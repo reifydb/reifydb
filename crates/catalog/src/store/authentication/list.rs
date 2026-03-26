@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::authentication::AuthenticationDef, key::authentication::AuthenticationKey};
+use reifydb_core::{interface::catalog::authentication::Authentication, key::authentication::AuthenticationKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::identity::IdentityId;
 
@@ -11,7 +11,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_all_authentications(rx: &mut Transaction<'_>) -> Result<Vec<AuthenticationDef>> {
+	pub(crate) fn list_all_authentications(rx: &mut Transaction<'_>) -> Result<Vec<Authentication>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
 
@@ -27,7 +27,7 @@ impl CatalogStore {
 	pub(crate) fn list_authentications_by_identity(
 		rx: &mut Transaction<'_>,
 		identity: IdentityId,
-	) -> Result<Vec<AuthenticationDef>> {
+	) -> Result<Vec<Authentication>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
 

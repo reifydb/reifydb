@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, SeriesId},
-		series::{SeriesDef, SeriesKey, SeriesMetadata},
+		series::{Series, SeriesKey, SeriesMetadata},
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
@@ -20,7 +20,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<SeriesDef>> {
+	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<Series>> {
 		let Some(multi) = rx.get(&SeriesStorageKey::encoded(series_id))? else {
 			return Ok(None);
 		};
@@ -40,7 +40,7 @@ impl CatalogStore {
 		let precision_raw = series::SCHEMA.get_u8(&row, series::PRECISION);
 		let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
 
-		Ok(Some(SeriesDef {
+		Ok(Some(Series {
 			id,
 			namespace,
 			name,
@@ -79,7 +79,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<SeriesDef>> {
+	) -> Result<Option<Series>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSeriesKey::full_scan(namespace), 1024)?;
 

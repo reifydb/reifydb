@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::{drop_expired_tokens, drop_token, drop_tokens_by_identity, find_token_by_value};
-use reifydb_core::interface::{auth::AuthStep, catalog::token::TokenDef};
+use reifydb_core::interface::{auth::AuthStep, catalog::token::Token};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 
@@ -16,7 +16,7 @@ impl AuthService {
 	/// Checks in order:
 	/// 1. Persisted session tokens (from login)
 	/// 2. Catalog tokens (from `CREATE AUTHENTICATION ... { method: token }`)
-	pub fn validate_token(&self, token: &str) -> Option<TokenDef> {
+	pub fn validate_token(&self, token: &str) -> Option<Token> {
 		// 1. Check persisted session tokens
 		let mut txn = self.engine.begin_query().ok()?;
 
@@ -35,7 +35,7 @@ impl AuthService {
 	}
 
 	/// Check if a token matches any catalog-stored token authentication.
-	fn validate_catalog_token(&self, token: &str) -> Option<TokenDef> {
+	fn validate_catalog_token(&self, token: &str) -> Option<Token> {
 		let provider = self.auth_registry.get("token")?;
 
 		let mut txn = self.engine.begin_query().ok()?;
@@ -50,7 +50,7 @@ impl AuthService {
 				// Look up the identity via materialized catalog (no transaction needed)
 				if let Some(ident) = catalog.materialized.find_identity(auth.identity) {
 					if ident.enabled {
-						return Some(TokenDef {
+						return Some(Token {
 							id: 0,
 							token: token.to_string(),
 							identity: ident.id,

@@ -37,20 +37,20 @@ pub(crate) fn dispatch(
 	}
 
 	// Find the variant in the sumtype to get the tag
-	let sumtype_def = {
+	let sumtype = {
 		let mut tx_tmp = tx.reborrow();
 		services.catalog.get_sumtype(&mut tx_tmp, plan.on_sumtype_id)?
 	};
 
 	let variant_name_lower = plan.variant_name.to_lowercase();
-	let Some(variant_def) = sumtype_def.variants.iter().find(|v| v.name == variant_name_lower) else {
+	let Some(variant) = sumtype.variants.iter().find(|v| v.name == variant_name_lower) else {
 		return Err(internal_error!(
 			"Variant '{}' not found in event type '{}'",
 			plan.variant_name,
-			sumtype_def.name
+			sumtype.name
 		));
 	};
-	let variant_tag = variant_def.tag;
+	let variant_tag = variant.tag;
 
 	// List all procedures with event binding for this variant
 	let procedures = {
@@ -80,7 +80,7 @@ pub(crate) fn dispatch(
 
 	tx.record_test_event(
 		plan.namespace.name().to_string(),
-		sumtype_def.name.clone(),
+		sumtype.name.clone(),
 		plan.variant_name.clone(),
 		dispatch_depth,
 		event_payload.clone(),
@@ -116,7 +116,7 @@ pub(crate) fn dispatch(
 						tx.record_test_handler(
 							plan.namespace.name().to_string(),
 							procedure.name.clone(),
-							sumtype_def.name.clone(),
+							sumtype.name.clone(),
 							plan.variant_name.clone(),
 							handler_start.elapsed().as_nanos() as u64,
 							"error".to_string(),
@@ -132,7 +132,7 @@ pub(crate) fn dispatch(
 				tx.record_test_handler(
 					plan.namespace.name().to_string(),
 					procedure.name.clone(),
-					sumtype_def.name.clone(),
+					sumtype.name.clone(),
 					plan.variant_name.clone(),
 					handler_start.elapsed().as_nanos() as u64,
 					"success".to_string(),

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::error::CatalogError;
 use reifydb_core::{
-	interface::catalog::migration::{MigrationAction, MigrationDef},
+	interface::catalog::migration::{Migration, MigrationAction},
 	internal_error,
 	value::column::columns::Columns,
 };
@@ -40,7 +40,7 @@ pub(crate) fn execute_rollback_migration(
 	let events = services.catalog.list_migration_events(&mut Transaction::Admin(&mut *txn))?;
 
 	// Determine applied migrations (latest event is "Applied"), in reverse name order
-	let applied: Vec<MigrationDef> = migrations
+	let applied: Vec<Migration> = migrations
 		.into_iter()
 		.filter(|m| {
 			let latest = events.iter().filter(|e| e.migration_id == m.id).last();
@@ -49,7 +49,7 @@ pub(crate) fn execute_rollback_migration(
 		.collect();
 
 	// Determine which to rollback
-	let to_rollback: Vec<MigrationDef> = if let Some(ref target) = plan.target {
+	let to_rollback: Vec<Migration> = if let Some(ref target) = plan.target {
 		// Rollback until we reach the target (exclusive — the target stays applied)
 		let mut result = Vec::new();
 		for m in applied {

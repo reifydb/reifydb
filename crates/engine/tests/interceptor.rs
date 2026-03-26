@@ -6,22 +6,22 @@ use std::sync::Arc;
 use reifydb_core::encoded::schema::{Schema, SchemaField};
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::interceptor::{
-	dictionary::dictionary_pre_insert,
+	dictionary_row::dictionary_row_pre_insert,
 	interceptors::Interceptors,
-	ringbuffer::{ringbuffer_pre_insert, ringbuffer_pre_update},
-	series::{series_pre_insert, series_pre_update},
-	table::{table_pre_insert, table_pre_update},
+	ringbuffer_row::{ringbuffer_row_pre_insert, ringbuffer_row_pre_update},
+	series_row::{series_row_pre_insert, series_row_pre_update},
+	table_row::{table_row_pre_insert, table_row_pre_update},
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 const MUTATED_VALUE: i64 = 999;
 
 #[test]
-fn test_table_pre_insert_mutates_row() {
+fn test_table_row_pre_insert_mutates_row() {
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
-		interceptors.table_pre_insert.add(Arc::new(table_pre_insert(|ctx| {
+		interceptors.table_row_pre_insert.add(Arc::new(table_row_pre_insert(|ctx| {
 			let schema = Schema::from(&ctx.table.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
@@ -38,11 +38,11 @@ fn test_table_pre_insert_mutates_row() {
 }
 
 #[test]
-fn test_table_pre_update_mutates_row() {
+fn test_table_row_pre_update_mutates_row() {
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
-		interceptors.table_pre_update.add(Arc::new(table_pre_update(|ctx| {
+		interceptors.table_row_pre_update.add(Arc::new(table_row_pre_update(|ctx| {
 			let schema = Schema::from(&ctx.table.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
@@ -60,11 +60,11 @@ fn test_table_pre_update_mutates_row() {
 }
 
 #[test]
-fn test_ringbuffer_pre_insert_mutates_row() {
+fn test_ringbuffer_row_pre_insert_mutates_row() {
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
-		interceptors.ringbuffer_pre_insert.add(Arc::new(ringbuffer_pre_insert(|ctx| {
+		interceptors.ringbuffer_row_pre_insert.add(Arc::new(ringbuffer_row_pre_insert(|ctx| {
 			let schema = Schema::from(&ctx.ringbuffer.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
@@ -81,11 +81,11 @@ fn test_ringbuffer_pre_insert_mutates_row() {
 }
 
 #[test]
-fn test_ringbuffer_pre_update_mutates_row() {
+fn test_ringbuffer_row_pre_update_mutates_row() {
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
-		interceptors.ringbuffer_pre_update.add(Arc::new(ringbuffer_pre_update(|ctx| {
+		interceptors.ringbuffer_row_pre_update.add(Arc::new(ringbuffer_row_pre_update(|ctx| {
 			let schema = Schema::from(&ctx.ringbuffer.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
@@ -103,11 +103,11 @@ fn test_ringbuffer_pre_update_mutates_row() {
 }
 
 #[test]
-fn test_dictionary_pre_insert_mutates_value() {
+fn test_dictionary_row_pre_insert_mutates_value() {
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
-		interceptors.dictionary_pre_insert.add(Arc::new(dictionary_pre_insert(|ctx| {
+		interceptors.dictionary_row_pre_insert.add(Arc::new(dictionary_row_pre_insert(|ctx| {
 			ctx.value = Value::Utf8("MUTATED".into());
 			Ok(())
 		})));
@@ -130,11 +130,11 @@ fn series_schema() -> Schema {
 }
 
 #[test]
-fn test_series_pre_insert_mutates_row() {
+fn test_series_row_pre_insert_mutates_row() {
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
-		interceptors.series_pre_insert.add(Arc::new(series_pre_insert(|ctx| {
+		interceptors.series_row_pre_insert.add(Arc::new(series_row_pre_insert(|ctx| {
 			let schema = series_schema();
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
@@ -151,11 +151,11 @@ fn test_series_pre_insert_mutates_row() {
 }
 
 #[test]
-fn test_series_pre_update_mutates_row() {
+fn test_series_row_pre_update_mutates_row() {
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
-		interceptors.series_pre_update.add(Arc::new(series_pre_update(|ctx| {
+		interceptors.series_row_pre_update.add(Arc::new(series_row_pre_update(|ctx| {
 			let schema = series_schema();
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())

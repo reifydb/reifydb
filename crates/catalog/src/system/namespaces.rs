@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::namespaces::*, vtable::NAMESPACES};
 
 /// Returns the static definition for the system.namespaces virtual table
 /// This table exposes information about all namespaces in the database
-pub fn namespaces() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn namespaces() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: NAMESPACES,
 			namespace: NamespaceId::SYSTEM,
 			name: "namespaces".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ID,
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn namespaces() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: NAME,
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -41,7 +41,7 @@ pub fn namespaces() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: LOCAL_NAME,
 					name: "local_name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -50,7 +50,7 @@ pub fn namespaces() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: PARENT_ID,
 					name: "parent_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),

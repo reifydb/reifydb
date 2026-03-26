@@ -5,16 +5,16 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
-		procedure::{ProcedureDef, ProcedureTrigger},
+		procedure::{Procedure, ProcedureTrigger},
 	},
 };
 use reifydb_type::value::sumtype::SumTypeId;
 
-use crate::materialized::{MaterializedCatalog, MultiVersionProcedureDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionProcedure};
 
 impl MaterializedCatalog {
 	/// Find a procedure by ID at a specific version
-	pub fn find_procedure_at(&self, procedure: ProcedureId, version: CommitVersion) -> Option<ProcedureDef> {
+	pub fn find_procedure_at(&self, procedure: ProcedureId, version: CommitVersion) -> Option<Procedure> {
 		self.procedures.get(&procedure).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -27,7 +27,7 @@ impl MaterializedCatalog {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Option<ProcedureDef> {
+	) -> Option<Procedure> {
 		self.procedures_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let procedure_id = *entry.value();
 			self.find_procedure_at(procedure_id, version)
@@ -35,7 +35,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a procedure by ID (returns latest version)
-	pub fn find_procedure(&self, procedure: ProcedureId) -> Option<ProcedureDef> {
+	pub fn find_procedure(&self, procedure: ProcedureId) -> Option<Procedure> {
 		self.procedures.get(&procedure).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -43,7 +43,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a procedure by name in a namespace (returns latest version)
-	pub fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<ProcedureDef> {
+	pub fn find_procedure_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Procedure> {
 		self.procedures_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let procedure_id = *entry.value();
 			self.find_procedure(procedure_id)
@@ -56,7 +56,7 @@ impl MaterializedCatalog {
 		sumtype_id: SumTypeId,
 		variant_tag: u8,
 		version: CommitVersion,
-	) -> Vec<ProcedureDef> {
+	) -> Vec<Procedure> {
 		let key = (sumtype_id, variant_tag);
 		if let Some(entry) = self.procedures_by_variant.get(&key) {
 			entry.value().iter().filter_map(|id| self.find_procedure_at(*id, version)).collect()
@@ -65,7 +65,7 @@ impl MaterializedCatalog {
 		}
 	}
 
-	pub fn set_procedure(&self, id: ProcedureId, version: CommitVersion, procedure: Option<ProcedureDef>) {
+	pub fn set_procedure(&self, id: ProcedureId, version: CommitVersion, procedure: Option<Procedure>) {
 		if let Some(entry) = self.procedures.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				// Remove old name from index
@@ -88,7 +88,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.procedures.get_or_insert_with(id, MultiVersionProcedureDef::new);
+		let multi = self.procedures.get_or_insert_with(id, MultiVersionProcedure::new);
 		if let Some(new) = procedure {
 			self.procedures_by_name.insert((new.namespace, new.name.clone()), id);
 

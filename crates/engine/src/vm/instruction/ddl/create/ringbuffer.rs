@@ -45,7 +45,7 @@ pub(crate) fn create_ringbuffer(
 		},
 	)?;
 	let id = result.id;
-	txn.track_ringbuffer_def_created(result)?;
+	txn.track_ringbuffer_created(result)?;
 
 	Ok(Columns::single_row([
 		("id", Value::Uint8(id.0)),

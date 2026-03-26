@@ -103,7 +103,7 @@ mod tests {
 			source::{SourceBatch, SourceEmitter, SourceMode},
 		},
 		error::Result,
-		operator::column::OperatorColumnDef,
+		operator::column::OperatorColumn,
 	};
 
 	use super::*;
@@ -117,7 +117,7 @@ mod tests {
 		const VERSION: &'static str = "0.1.0";
 		const DESCRIPTION: &'static str = "Mock source for testing";
 		const MODE: SourceMode = SourceMode::Pull;
-		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	}
 
 	impl FFISource for MockSource {
@@ -146,7 +146,7 @@ mod tests {
 		const NAME: &'static str = "mock";
 		const VERSION: &'static str = "0.1.0";
 		const DESCRIPTION: &'static str = "Mock sink for testing";
-		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	}
 
 	impl FFISink for MockSink {

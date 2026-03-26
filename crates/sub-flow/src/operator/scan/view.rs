@@ -4,7 +4,7 @@
 use reifydb_core::{
 	encoded::schema::Schema,
 	interface::{
-		catalog::{flow::FlowNodeId, view::ViewDef},
+		catalog::{flow::FlowNodeId, view::View},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -16,11 +16,11 @@ use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::Fl
 
 pub struct PrimitiveViewOperator {
 	node: FlowNodeId,
-	view: ViewDef,
+	view: View,
 }
 
 impl PrimitiveViewOperator {
-	pub fn new(node: FlowNodeId, view: ViewDef) -> Self {
+	pub fn new(node: FlowNodeId, view: View) -> Self {
 		Self {
 			node,
 			view,
@@ -75,7 +75,7 @@ impl Operator for PrimitiveViewOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		if rows.is_empty() {
-			return Ok(Columns::from_view_def(&self.view));
+			return Ok(Columns::from_view(&self.view));
 		}
 
 		let schema: Schema = self.view.columns().into();
@@ -104,7 +104,7 @@ impl Operator for PrimitiveViewOperator {
 		}
 
 		if row_numbers.is_empty() {
-			Ok(Columns::from_view_def(&self.view))
+			Ok(Columns::from_view(&self.view))
 		} else {
 			Ok(Columns {
 				row_numbers: CowVec::new(row_numbers),

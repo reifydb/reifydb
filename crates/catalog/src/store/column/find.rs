@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId},
+	interface::catalog::{column::Column, id::ColumnId, primitive::PrimitiveId},
 	key::column::ColumnKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,7 +14,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		source: impl Into<PrimitiveId>,
 		column_name: &str,
-	) -> Result<Option<ColumnDef>> {
+	) -> Result<Option<Column>> {
 		let mut stream = rx.range(ColumnKey::full_scan(source), 1024)?;
 
 		let mut found_id = None;

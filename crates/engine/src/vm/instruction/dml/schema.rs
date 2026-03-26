@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::schema::{Schema, SchemaField},
-	interface::catalog::{ringbuffer::RingBufferDef, series::SeriesDef, table::TableDef},
+	interface::catalog::{ringbuffer::RingBuffer, series::Series, table::Table},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
@@ -17,7 +17,7 @@ use crate::Result;
 /// - Dictionary-encoded columns use the dictionary ID type (not the original type)
 /// - The schema is registered in the schema registry for later retrieval
 /// - Field names match the table column names
-pub fn get_or_create_table_schema(catalog: &Catalog, table: &TableDef, txn: &mut Transaction<'_>) -> Result<Schema> {
+pub fn get_or_create_table_schema(catalog: &Catalog, table: &Table, txn: &mut Transaction<'_>) -> Result<Schema> {
 	let mut fields = Vec::with_capacity(table.columns.len());
 
 	for col in &table.columns {
@@ -47,7 +47,7 @@ pub fn get_or_create_table_schema(catalog: &Catalog, table: &TableDef, txn: &mut
 /// - Field names match the ring buffer column names
 pub fn get_or_create_ringbuffer_schema(
 	catalog: &Catalog,
-	ringbuffer: &RingBufferDef,
+	ringbuffer: &RingBuffer,
 	txn: &mut Transaction<'_>,
 ) -> Result<Schema> {
 	let mut fields = Vec::with_capacity(ringbuffer.columns.len());
@@ -76,7 +76,7 @@ pub fn get_or_create_ringbuffer_schema(
 /// The schema includes a leading key column field followed by the series data columns.
 /// This ensures series rows are encoded with a fingerprint header, enabling the CDC pipeline
 /// to decode them via SchemaRegistry lookup.
-pub fn get_or_create_series_schema(catalog: &Catalog, series: &SeriesDef, txn: &mut Transaction<'_>) -> Result<Schema> {
+pub fn get_or_create_series_schema(catalog: &Catalog, series: &Series, txn: &mut Transaction<'_>) -> Result<Schema> {
 	let mut fields = Vec::with_capacity(1 + series.columns.len());
 	// Find the key column's type from the declared columns
 	let key_column = series.key.column();

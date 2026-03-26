@@ -1,112 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{encoded::row::EncodedRow, interface::catalog::view::ViewDef};
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_core::interface::catalog::view::View;
+use reifydb_type::Result;
 
-use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
-// PRE INSERT
-/// Context for view pre-insert interceptors
-pub struct ViewPreInsertContext<'a> {
-	pub view: &'a ViewDef,
-	pub rn: RowNumber,
-	pub row: EncodedRow,
+// VIEW DEF POST CREATE
+/// Context for view def post-create interceptors
+pub struct ViewPostCreateContext<'a> {
+	pub post: &'a View,
 }
 
-impl<'a> ViewPreInsertContext<'a> {
-	pub fn new(view: &'a ViewDef, rn: RowNumber, row: EncodedRow) -> Self {
+impl<'a> ViewPostCreateContext<'a> {
+	pub fn new(post: &'a View) -> Self {
 		Self {
-			view,
-			rn,
-			row,
+			post,
 		}
 	}
 }
 
-pub trait ViewPreInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewPreInsertContext<'a>) -> Result<()>;
+pub trait ViewPostCreateInterceptor: Send + Sync {
+	fn intercept<'a>(&self, ctx: &mut ViewPostCreateContext<'a>) -> Result<()>;
 }
 
-impl InterceptorChain<dyn ViewPreInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreInsertContext) -> Result<EncodedRow> {
-		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx)?;
-		}
-		Ok(ctx.row)
-	}
-}
-
-pub struct ClosureViewPreInsertInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPreInsertContext<'a>) -> Result<()> + Send + Sync,
-{
-	closure: F,
-}
-
-impl<F> ClosureViewPreInsertInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPreInsertContext<'a>) -> Result<()> + Send + Sync,
-{
-	pub fn new(closure: F) -> Self {
-		Self {
-			closure,
-		}
-	}
-}
-
-impl<F> Clone for ClosureViewPreInsertInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
-{
-	fn clone(&self) -> Self {
-		Self {
-			closure: self.closure.clone(),
-		}
-	}
-}
-
-impl<F> ViewPreInsertInterceptor for ClosureViewPreInsertInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPreInsertContext<'a>) -> Result<()> + Send + Sync,
-{
-	fn intercept<'a>(&self, ctx: &mut ViewPreInsertContext<'a>) -> Result<()> {
-		(self.closure)(ctx)
-	}
-}
-
-pub fn view_pre_insert<F>(f: F) -> ClosureViewPreInsertInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPreInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
-{
-	ClosureViewPreInsertInterceptor::new(f)
-}
-
-// POST INSERT
-/// Context for view post-insert interceptors
-pub struct ViewPostInsertContext<'a> {
-	pub view: &'a ViewDef,
-	pub id: RowNumber,
-	pub row: &'a EncodedRow,
-}
-
-impl<'a> ViewPostInsertContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, row: &'a EncodedRow) -> Self {
-		Self {
-			view,
-			id,
-			row,
-		}
-	}
-}
-
-pub trait ViewPostInsertInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewPostInsertContext<'a>) -> Result<()>;
-}
-
-impl InterceptorChain<dyn ViewPostInsertInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPostInsertContext) -> Result<()> {
+impl InterceptorChain<dyn ViewPostCreateInterceptor + Send + Sync> {
+	pub fn execute(&self, mut ctx: ViewPostCreateContext) -> Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
@@ -114,16 +33,16 @@ impl InterceptorChain<dyn ViewPostInsertInterceptor + Send + Sync> {
 	}
 }
 
-pub struct ClosureViewPostInsertInterceptor<F>
+pub struct ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync,
 {
 	closure: F,
 }
 
-impl<F> ClosureViewPostInsertInterceptor<F>
+impl<F> ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync,
 {
 	pub fn new(closure: F) -> Self {
 		Self {
@@ -132,9 +51,9 @@ where
 	}
 }
 
-impl<F> Clone for ClosureViewPostInsertInterceptor<F>
+impl<F> Clone for ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone,
 {
 	fn clone(&self) -> Self {
 		Self {
@@ -143,36 +62,32 @@ where
 	}
 }
 
-impl<F> ViewPostInsertInterceptor for ClosureViewPostInsertInterceptor<F>
+impl<F> ViewPostCreateInterceptor for ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostInsertContext<'a>) -> Result<()> + Send + Sync,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync,
 {
-	fn intercept<'a>(&self, ctx: &mut ViewPostInsertContext<'a>) -> Result<()> {
+	fn intercept<'a>(&self, ctx: &mut ViewPostCreateContext<'a>) -> Result<()> {
 		(self.closure)(ctx)
 	}
 }
 
-pub fn view_post_insert<F>(f: F) -> ClosureViewPostInsertInterceptor<F>
+pub fn view_post_create<F>(f: F) -> ClosureViewPostCreateInterceptor<F>
 where
-	F: for<'a> Fn(&mut ViewPostInsertContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
+	F: for<'a> Fn(&mut ViewPostCreateContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
 {
-	ClosureViewPostInsertInterceptor::new(f)
+	ClosureViewPostCreateInterceptor::new(f)
 }
 
-// PRE UPDATE
-/// Context for view pre-update interceptors
+// VIEW DEF PRE UPDATE
+/// Context for view def pre-update interceptors
 pub struct ViewPreUpdateContext<'a> {
-	pub view: &'a ViewDef,
-	pub id: RowNumber,
-	pub row: EncodedRow,
+	pub pre: &'a View,
 }
 
 impl<'a> ViewPreUpdateContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, row: EncodedRow) -> Self {
+	pub fn new(pre: &'a View) -> Self {
 		Self {
-			view,
-			id,
-			row,
+			pre,
 		}
 	}
 }
@@ -182,11 +97,11 @@ pub trait ViewPreUpdateInterceptor: Send + Sync {
 }
 
 impl InterceptorChain<dyn ViewPreUpdateInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<EncodedRow> {
+	pub fn execute(&self, mut ctx: ViewPreUpdateContext) -> Result<()> {
 		for interceptor in &self.interceptors {
 			interceptor.intercept(&mut ctx)?;
 		}
-		Ok(ctx.row)
+		Ok(())
 	}
 }
 
@@ -235,22 +150,18 @@ where
 	ClosureViewPreUpdateInterceptor::new(f)
 }
 
-// POST UPDATE
-/// Context for view post-update interceptors
+// VIEW DEF POST UPDATE
+/// Context for view def post-update interceptors
 pub struct ViewPostUpdateContext<'a> {
-	pub view: &'a ViewDef,
-	pub id: RowNumber,
-	pub row: &'a EncodedRow,
-	pub old_row: &'a EncodedRow,
+	pub pre: &'a View,
+	pub post: &'a View,
 }
 
 impl<'a> ViewPostUpdateContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
+	pub fn new(pre: &'a View, post: &'a View) -> Self {
 		Self {
-			view,
-			id,
-			row,
-			old_row,
+			pre,
+			post,
 		}
 	}
 }
@@ -313,18 +224,16 @@ where
 	ClosureViewPostUpdateInterceptor::new(f)
 }
 
-// PRE DELETE
-/// Context for view pre-delete interceptors
+// VIEW DEF PRE DELETE
+/// Context for view def pre-delete interceptors
 pub struct ViewPreDeleteContext<'a> {
-	pub view: &'a ViewDef,
-	pub id: RowNumber,
+	pub pre: &'a View,
 }
 
 impl<'a> ViewPreDeleteContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber) -> Self {
+	pub fn new(pre: &'a View) -> Self {
 		Self {
-			view,
-			id,
+			pre,
 		}
 	}
 }
@@ -385,141 +294,4 @@ where
 	F: for<'a> Fn(&mut ViewPreDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
 {
 	ClosureViewPreDeleteInterceptor::new(f)
-}
-
-// POST DELETE
-/// Context for view post-delete interceptors
-pub struct ViewPostDeleteContext<'a> {
-	pub view: &'a ViewDef,
-	pub id: RowNumber,
-	pub deleted_row: &'a EncodedRow,
-}
-
-impl<'a> ViewPostDeleteContext<'a> {
-	pub fn new(view: &'a ViewDef, id: RowNumber, deleted_row: &'a EncodedRow) -> Self {
-		Self {
-			view,
-			id,
-			deleted_row,
-		}
-	}
-}
-
-pub trait ViewPostDeleteInterceptor: Send + Sync {
-	fn intercept<'a>(&self, ctx: &mut ViewPostDeleteContext<'a>) -> Result<()>;
-}
-
-impl InterceptorChain<dyn ViewPostDeleteInterceptor + Send + Sync> {
-	pub fn execute(&self, mut ctx: ViewPostDeleteContext) -> Result<()> {
-		for interceptor in &self.interceptors {
-			interceptor.intercept(&mut ctx)?;
-		}
-		Ok(())
-	}
-}
-
-pub struct ClosureViewPostDeleteInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPostDeleteContext<'a>) -> Result<()> + Send + Sync,
-{
-	closure: F,
-}
-
-impl<F> ClosureViewPostDeleteInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPostDeleteContext<'a>) -> Result<()> + Send + Sync,
-{
-	pub fn new(closure: F) -> Self {
-		Self {
-			closure,
-		}
-	}
-}
-
-impl<F> Clone for ClosureViewPostDeleteInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone,
-{
-	fn clone(&self) -> Self {
-		Self {
-			closure: self.closure.clone(),
-		}
-	}
-}
-
-impl<F> ViewPostDeleteInterceptor for ClosureViewPostDeleteInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPostDeleteContext<'a>) -> Result<()> + Send + Sync,
-{
-	fn intercept<'a>(&self, ctx: &mut ViewPostDeleteContext<'a>) -> Result<()> {
-		(self.closure)(ctx)
-	}
-}
-
-pub fn view_post_delete<F>(f: F) -> ClosureViewPostDeleteInterceptor<F>
-where
-	F: for<'a> Fn(&mut ViewPostDeleteContext<'a>) -> Result<()> + Send + Sync + Clone + 'static,
-{
-	ClosureViewPostDeleteInterceptor::new(f)
-}
-
-/// Helper struct for executing view interceptors via static methods.
-pub struct ViewInterceptor;
-
-impl ViewInterceptor {
-	pub fn pre_insert(
-		txn: &mut impl WithInterceptors,
-		view: &ViewDef,
-		rn: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
-		let ctx = ViewPreInsertContext::new(view, rn, row);
-		txn.view_pre_insert_interceptors().execute(ctx)
-	}
-
-	pub fn post_insert(
-		txn: &mut impl WithInterceptors,
-		view: &ViewDef,
-		id: RowNumber,
-		row: &EncodedRow,
-	) -> Result<()> {
-		let ctx = ViewPostInsertContext::new(view, id, row);
-		txn.view_post_insert_interceptors().execute(ctx)
-	}
-
-	pub fn pre_update(
-		txn: &mut impl WithInterceptors,
-		view: &ViewDef,
-		id: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
-		let ctx = ViewPreUpdateContext::new(view, id, row);
-		txn.view_pre_update_interceptors().execute(ctx)
-	}
-
-	pub fn post_update(
-		txn: &mut impl WithInterceptors,
-		view: &ViewDef,
-		id: RowNumber,
-		row: &EncodedRow,
-		old_row: &EncodedRow,
-	) -> Result<()> {
-		let ctx = ViewPostUpdateContext::new(view, id, row, old_row);
-		txn.view_post_update_interceptors().execute(ctx)
-	}
-
-	pub fn pre_delete(txn: &mut impl WithInterceptors, view: &ViewDef, id: RowNumber) -> Result<()> {
-		let ctx = ViewPreDeleteContext::new(view, id);
-		txn.view_pre_delete_interceptors().execute(ctx)
-	}
-
-	pub fn post_delete(
-		txn: &mut impl WithInterceptors,
-		view: &ViewDef,
-		id: RowNumber,
-		deleted_row: &EncodedRow,
-	) -> Result<()> {
-		let ctx = ViewPostDeleteContext::new(view, id, deleted_row);
-		txn.view_post_delete_interceptors().execute(ctx)
-	}
 }

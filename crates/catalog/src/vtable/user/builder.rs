@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::{
-		column::{ColumnDef, ColumnIndex},
+		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId},
-		vtable::{VTableDef, VTableId},
+		vtable::{VTable, VTableId},
 	},
 	value::column::columns::Columns,
 };
@@ -18,7 +18,7 @@ use reifydb_type::{
 	value::{constraint::TypeConstraint, r#type::Type},
 };
 
-use super::UserVTableColumnDef;
+use super::UserVTableColumn;
 use crate::vtable::tables::{UserVTableDataFunction, VTables};
 
 /// Builder for creating user-defined virtual tables.
@@ -41,7 +41,7 @@ use crate::vtable::tables::{UserVTableDataFunction, VTables};
 /// ```
 pub struct UserVTableBuilder {
 	name: String,
-	columns: Vec<UserVTableColumnDef>,
+	columns: Vec<UserVTableColumn>,
 	data_fn: Option<UserVTableDataFunction>,
 }
 
@@ -57,7 +57,7 @@ impl UserVTableBuilder {
 
 	/// Add a column to the virtual table
 	pub fn column(mut self, name: impl Into<String>, data_type: Type) -> Self {
-		self.columns.push(UserVTableColumnDef::new(name, data_type));
+		self.columns.push(UserVTableColumn::new(name, data_type));
 		self
 	}
 
@@ -82,7 +82,7 @@ impl UserVTableBuilder {
 		let data_fn = self.data_fn.expect("UserVTableBuilder requires a data function");
 
 		// Build the table definition
-		let def = VTableDef {
+		let def = VTable {
 			id: table_id,
 			namespace: namespace_id,
 			name: self.name.clone(),
@@ -90,7 +90,7 @@ impl UserVTableBuilder {
 				.columns
 				.iter()
 				.enumerate()
-				.map(|(idx, c)| ColumnDef {
+				.map(|(idx, c)| Column {
 					id: ColumnId(idx as u64),
 					name: c.name.clone(),
 					constraint: TypeConstraint::unconstrained(c.data_type.clone()),

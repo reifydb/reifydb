@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{primitive::PrimitiveId, vtable::VTableDef},
+	interface::catalog::{primitive::PrimitiveId, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_metric::{MetricId, metric::MetricReader, multi::Tier};
@@ -15,20 +15,20 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes storage statistics for ring buffers
-pub struct RingBufferStorageStats {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemRingBufferStorageStats {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 	stats_reader: MetricReader<SingleStore>,
 }
 
-impl RingBufferStorageStats {
+impl SystemRingBufferStorageStats {
 	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_ringbuffer_storage_stats_table_def().clone(),
+			definition: SystemCatalog::get_system_ringbuffer_storage_stats_table().clone(),
 			exhausted: false,
 			stats_reader,
 		}
@@ -43,7 +43,7 @@ fn tier_to_str(tier: Tier) -> &'static str {
 	}
 }
 
-impl VTable for RingBufferStorageStats {
+impl BaseVTable for SystemRingBufferStorageStats {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -65,7 +65,7 @@ impl VTable for RingBufferStorageStats {
 				if let MetricId::Source(PrimitiveId::RingBuffer(ringbuffer_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id = match CatalogStore::find_ringbuffer(txn, ringbuffer_id)? {
-						Some(ringbuffer_def) => ringbuffer_def.namespace.0,
+						Some(ringbuffer) => ringbuffer.namespace.0,
 						None => 0,
 					};
 
@@ -201,7 +201,7 @@ impl VTable for RingBufferStorageStats {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

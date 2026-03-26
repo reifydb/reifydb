@@ -975,8 +975,8 @@ impl CoordinatorActor {
 				if state.states.contains(producer_flow_id) {
 					// Deferred producer writes to the view's underlying primitive.
 					// Resolve it on demand and add to sources so CDC matches.
-					if let Some(view_def) = self.catalog.find_view(view_id) {
-						flow_sources.insert(view_def.underlying_id());
+					if let Some(view) = self.catalog.find_view(view_id) {
+						flow_sources.insert(view.underlying_id());
 					}
 					continue;
 				}

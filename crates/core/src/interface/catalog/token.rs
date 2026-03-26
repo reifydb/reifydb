@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub type TokenId = u64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TokenDef {
+pub struct Token {
 	pub id: TokenId,
 	pub token: String,
 	pub identity: IdentityId,

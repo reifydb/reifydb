@@ -11,15 +11,15 @@ pub mod table;
 
 use std::{slice::from_raw_parts, str};
 
-use reifydb_abi::catalog::{column::ColumnDefFFI, primary_key::PrimaryKeyFFI};
+use reifydb_abi::catalog::{column::ColumnFFI, primary_key::PrimaryKeyFFI};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		column::{ColumnDef, ColumnIndex},
+		column::{Column, ColumnIndex},
 		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
-		key::PrimaryKeyDef,
+		key::PrimaryKey,
 		namespace::Namespace,
-		table::TableDef,
+		table::Table,
 	},
 };
 use reifydb_type::value::{
@@ -97,7 +97,7 @@ impl<'a> Catalog<'a> {
 	/// - `Ok(Some(table))` if found
 	/// - `Ok(None)` if not found
 	/// - `Err(_)` on error
-	pub fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<TableDef>, FFIError> {
+	pub fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<Table>, FFIError> {
 		table::raw_catalog_find_table(self.ctx, table, version)
 	}
 
@@ -119,13 +119,13 @@ impl<'a> Catalog<'a> {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Result<Option<TableDef>, FFIError> {
+	) -> Result<Option<Table>, FFIError> {
 		table::raw_catalog_find_table_by_name(self.ctx, namespace, name, version)
 	}
 }
 
-/// Unmarshal ColumnDefFFI to ColumnDef
-pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnDefFFI) -> Result<ColumnDef, FFIError> {
+/// Unmarshal ColumnFFI to Column
+pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, FFIError> {
 	// Convert name BufferFFI to String
 	let name_bytes = if !ffi_col.name.ptr.is_null() && ffi_col.name.len > 0 {
 		unsafe { from_raw_parts(ffi_col.name.ptr, ffi_col.name.len) }
@@ -145,7 +145,7 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnDefFFI) -> Result<ColumnDe
 		ffi_col.constraint_param2,
 	)?;
 
-	Ok(ColumnDef {
+	Ok(Column {
 		id: ColumnId(ffi_col.id),
 		name,
 		constraint,
@@ -156,8 +156,8 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnDefFFI) -> Result<ColumnDe
 	})
 }
 
-/// Unmarshal PrimaryKeyFFI to PrimaryKeyDef
-pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKeyDef, FFIError> {
+/// Unmarshal PrimaryKeyFFI to PrimaryKey
+pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKey, FFIError> {
 	// Get column IDs
 	let column_ids = if !ffi_pk.column_ids.is_null() && ffi_pk.column_count > 0 {
 		unsafe { from_raw_parts(ffi_pk.column_ids, ffi_pk.column_count).to_vec() }
@@ -165,13 +165,13 @@ pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<Pri
 		Vec::new()
 	};
 
-	// Note: We can't fully reconstruct PrimaryKeyDef because it contains Vec<ColumnDef>,
+	// Note: We can't fully reconstruct PrimaryKey because it contains Vec<Column>,
 	// but we only have column IDs. This is a limitation of the simplified FFI.
-	// For now, we'll create placeholder ColumnDef entries.
+	// For now, we'll create placeholder Column entries.
 	let columns = column_ids
 		.into_iter()
 		.enumerate()
-		.map(|(idx, col_id)| ColumnDef {
+		.map(|(idx, col_id)| Column {
 			id: ColumnId(col_id),
 			name: format!("col_{}", col_id),
 			constraint: TypeConstraint::unconstrained(Type::Int4),
@@ -182,7 +182,7 @@ pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<Pri
 		})
 		.collect();
 
-	Ok(PrimaryKeyDef {
+	Ok(PrimaryKey {
 		id: PrimaryKeyId(ffi_pk.id),
 		columns,
 	})

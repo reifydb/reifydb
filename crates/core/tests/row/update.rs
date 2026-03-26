@@ -817,7 +817,7 @@ fn test_set_values_overwrite_entire_row() {
 }
 
 #[test]
-fn test_defined_undefined_defined_cycle() {
+fn testined_undefined_defined_cycle() {
 	let schema = Schema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 

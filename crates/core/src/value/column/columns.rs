@@ -19,7 +19,7 @@ use reifydb_type::{
 use crate::{
 	encoded::schema::{Schema, SchemaField},
 	interface::{
-		catalog::{table::TableDef, view::ViewDef},
+		catalog::{table::Table, view::View},
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	},
 	row::Row,
@@ -321,29 +321,12 @@ impl Columns {
 		}
 	}
 
-	pub fn from_table(table: &ResolvedTable) -> Self {
-		let _source = table.clone();
-
-		let columns: Vec<Column> = table
-			.columns()
-			.iter()
-			.map(|col| {
-				let column_ident = Fragment::internal(&col.name);
-				Column {
-					name: column_ident,
-					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
-				}
-			})
-			.collect();
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
+	pub fn from_resolved_table(table: &ResolvedTable) -> Self {
+		Self::from_table(table.def())
 	}
 
-	/// Create empty Columns (0 rows) with schema from a TableDef
-	pub fn from_table_def(table: &TableDef) -> Self {
+	/// Create empty Columns (0 rows) with schema from a Table
+	pub fn from_table(table: &Table) -> Self {
 		let columns: Vec<Column> = table
 			.columns
 			.iter()
@@ -359,8 +342,8 @@ impl Columns {
 		}
 	}
 
-	/// Create empty Columns (0 rows) with schema from a ViewDef
-	pub fn from_view_def(view: &ViewDef) -> Self {
+	/// Create empty Columns (0 rows) with schema from a View
+	pub fn from_view(view: &View) -> Self {
 		let columns: Vec<Column> = view
 			.columns()
 			.iter()
@@ -397,25 +380,8 @@ impl Columns {
 		}
 	}
 
-	pub fn from_view(view: &ResolvedView) -> Self {
-		let _source = view.clone();
-
-		let columns: Vec<Column> = view
-			.columns()
-			.iter()
-			.map(|col| {
-				let column_ident = Fragment::internal(&col.name);
-				Column {
-					name: column_ident,
-					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
-				}
-			})
-			.collect();
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
+	pub fn from_resolved_view(view: &ResolvedView) -> Self {
+		Self::from_view(view.def())
 	}
 }
 

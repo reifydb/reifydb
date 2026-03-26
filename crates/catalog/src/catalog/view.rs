@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackViewChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, ViewId},
-		view::ViewDef,
+		view::View,
 	},
 	internal,
 };
@@ -63,7 +63,7 @@ impl From<ViewToCreate> for StoreViewToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self, txn))]
-	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<Option<ViewDef>> {
+	pub fn find_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -177,7 +177,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<ViewDef>> {
+	) -> Result<Option<View>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -331,7 +331,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::get", level = "trace", skip(self, txn))]
-	pub fn get_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<ViewDef> {
+	pub fn get_view(&self, txn: &mut Transaction<'_>, id: ViewId) -> Result<View> {
 		self.find_view(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -341,9 +341,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::create_deferred", level = "debug", skip(self, txn, to_create))]
-	pub fn create_deferred_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<ViewDef> {
+	pub fn create_deferred_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
-		txn.track_view_def_created(view.clone())?;
+		txn.track_view_created(view.clone())?;
 
 		let schema = Schema::from(view.columns());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
@@ -352,13 +352,9 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::create_transactional", level = "debug", skip(self, txn, to_create))]
-	pub fn create_transactional_view(
-		&self,
-		txn: &mut AdminTransaction,
-		to_create: ViewToCreate,
-	) -> Result<ViewDef> {
+	pub fn create_transactional_view(&self, txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
-		txn.track_view_def_created(view.clone())?;
+		txn.track_view_created(view.clone())?;
 
 		let schema = Schema::from(view.columns());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
@@ -367,14 +363,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::view::drop", level = "debug", skip(self, txn))]
-	pub fn drop_view(&self, txn: &mut AdminTransaction, view: ViewDef) -> Result<()> {
+	pub fn drop_view(&self, txn: &mut AdminTransaction, view: View) -> Result<()> {
 		CatalogStore::drop_view(txn, view.id())?;
-		txn.track_view_def_deleted(view)?;
+		txn.track_view_deleted(view)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::view::list_all", level = "debug", skip(self, txn))]
-	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<ViewDef>> {
+	pub fn list_views_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<View>> {
 		CatalogStore::list_views_all(txn)
 	}
 

@@ -172,16 +172,16 @@ pub(crate) fn run_tests(
 
 	let mut result_columns = Columns::empty();
 
-	for test_def in &tests {
+	for test in &tests {
 		let ns_name = services
 			.catalog
-			.find_namespace(&mut Transaction::Admin(&mut *txn), test_def.namespace)
+			.find_namespace(&mut Transaction::Admin(&mut *txn), test.namespace)
 			.ok()
 			.flatten()
 			.map(|ns| ns.name().to_string())
-			.unwrap_or_else(|| format!("{}", test_def.namespace.0));
+			.unwrap_or_else(|| format!("{}", test.namespace.0));
 
-		match &test_def.cases {
+		match &test.cases {
 			None => {
 				// Non-parameterized: single run
 				events.clear();
@@ -203,7 +203,7 @@ pub(crate) fn run_tests(
 						event_seq: &mut event_seq,
 						handler_seq: &mut handler_seq,
 					}),
-					&test_def.body,
+					&test.body,
 					params,
 					None,
 				);
@@ -212,7 +212,7 @@ pub(crate) fn run_tests(
 				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 
 				let row = Columns::single_row([
-					("name", Value::Utf8(test_def.name.clone())),
+					("name", Value::Utf8(test.name.clone())),
 					("namespace", Value::Utf8(ns_name.clone())),
 					("outcome", Value::Utf8(outcome)),
 					("duration", Value::Duration(duration)),
@@ -265,7 +265,7 @@ pub(crate) fn run_tests(
 							event_seq: &mut event_seq,
 							handler_seq: &mut handler_seq,
 						}),
-						&test_def.body,
+						&test.body,
 						params,
 						Some(&named_vars),
 					);
@@ -273,7 +273,7 @@ pub(crate) fn run_tests(
 					let elapsed = start.elapsed();
 					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 
-					let display_name = format!("{} {}", test_def.name, row_label);
+					let display_name = format!("{} {}", test.name, row_label);
 
 					let row = Columns::single_row([
 						("name", Value::Utf8(display_name)),

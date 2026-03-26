@@ -111,7 +111,7 @@ impl InlineDataNode {
 							unreachable!()
 						};
 
-						let sumtype_def = if is_unresolved {
+						let sumtype = if is_unresolved {
 							// Resolve from column constraint in table schema
 							let tag_col_name = format!("{}_tag", col_name);
 							let source = ctx
@@ -131,7 +131,7 @@ impl InlineDataNode {
 								};
 								ctx.services.catalog.get_sumtype(txn, *id)?
 							} else if let ResolvedPrimitive::Series(series) = source {
-								// For series, the tag is stored as SeriesDef.tag, not
+								// For series, the tag is stored as Series.tag, not
 								// as a column
 								let tag_id =
 									series.def().tag.expect("series tag expected");
@@ -155,7 +155,7 @@ impl InlineDataNode {
 						};
 
 						let variant_name_lower = ctor.variant_name.text().to_lowercase();
-						let variant = sumtype_def
+						let variant = sumtype
 							.variants
 							.iter()
 							.find(|v| v.name == variant_name_lower)
@@ -204,13 +204,13 @@ impl InlineDataNode {
 								if let Some(Constraint::SumType(id)) =
 									tag_col.constraint.constraint()
 								{
-									let sumtype_def = ctx
+									let sumtype = ctx
 										.services
 										.catalog
 										.get_sumtype(txn, *id)?;
 									let variant_name_lower =
 										col.0.name.text().to_lowercase();
-									let maybe_tag = sumtype_def
+									let maybe_tag = sumtype
 										.variants
 										.iter()
 										.find(|v| {
@@ -219,7 +219,7 @@ impl InlineDataNode {
 										})
 										.map(|v| v.tag);
 									if let Some(tag) = maybe_tag {
-										Some((sumtype_def, tag))
+										Some((sumtype, tag))
 									} else {
 										None
 									}
@@ -227,15 +227,15 @@ impl InlineDataNode {
 									None
 								}
 							} else if let ResolvedPrimitive::Series(series) = source {
-								// For series, the tag is stored as SeriesDef.tag
+								// For series, the tag is stored as Series.tag
 								if let Some(tag_id) = series.def().tag {
-									let sumtype_def = ctx
+									let sumtype = ctx
 										.services
 										.catalog
 										.get_sumtype(txn, tag_id)?;
 									let variant_name_lower =
 										col.0.name.text().to_lowercase();
-									let maybe_tag = sumtype_def
+									let maybe_tag = sumtype
 										.variants
 										.iter()
 										.find(|v| {
@@ -244,7 +244,7 @@ impl InlineDataNode {
 										})
 										.map(|v| v.tag);
 									if let Some(tag) = maybe_tag {
-										Some((sumtype_def, tag))
+										Some((sumtype, tag))
 									} else {
 										None
 									}
@@ -258,7 +258,7 @@ impl InlineDataNode {
 							None
 						};
 
-						if let Some((sumtype_def, tag)) = resolved {
+						if let Some((sumtype, tag)) = resolved {
 							let fragment = alias_expr.fragment.clone();
 							// Expand unit variant: tag column
 							expanded.push(AliasExpression {
@@ -277,7 +277,7 @@ impl InlineDataNode {
 							});
 							// None for all variant fields (INSERT fills missing columns
 							// with None)
-							for v in &sumtype_def.variants {
+							for v in &sumtype.variants {
 								for field in &v.fields {
 									let phys_col_name = format!(
 										"{}_{}_{}",

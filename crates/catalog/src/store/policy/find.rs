@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::policy::{PolicyDef, PolicyId},
+	interface::catalog::policy::{Policy, PolicyId},
 	key::policy::PolicyKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,11 +13,11 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<PolicyDef>> {
+	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<Policy>> {
 		Ok(rx.get(&PolicyKey::encoded(id))?.map(convert_policy))
 	}
 
-	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<PolicyDef>> {
+	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
 		let mut stream = rx.range(PolicyKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {

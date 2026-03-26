@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,25 +13,25 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system dictionary information
-pub struct Dictionaries {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemDictionaries {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Dictionaries {
+impl SystemDictionaries {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_dictionaries_table_def().clone(),
+			definition: SystemCatalog::get_system_dictionaries_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Dictionaries {
+impl BaseVTable for SystemDictionaries {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -86,7 +86,7 @@ impl VTable for Dictionaries {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::{FlowNodeDef, FlowNodeId},
+	interface::catalog::flow::{FlowNode, FlowNodeId},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<FlowNodeDef> {
+	pub(crate) fn get_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<FlowNode> {
 		CatalogStore::find_flow_node(rx, node_id)?.ok_or_else(|| {
 			Error(internal!(
 				"Flow node with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

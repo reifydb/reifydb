@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
 		id::RingBufferId,
-		ringbuffer::{RingBufferDef, RingBufferMetadata},
+		ringbuffer::{RingBuffer, RingBufferMetadata},
 	},
 	key::ringbuffer::RingBufferMetadataKey,
 };
@@ -77,7 +77,7 @@ impl CatalogStore {
 	/// Save metadata for a specific partition. Global uses empty key → RingBufferMetadataKey.
 	pub(crate) fn save_partition_metadata(
 		txn: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 		partition_key: &[Value],
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {

@@ -9,7 +9,7 @@ use crate::define_event;
 
 /// Information about a single column definition in an operator
 #[derive(Debug, Clone)]
-pub struct OperatorColumnDef {
+pub struct OperatorColumn {
 	/// Column name
 	pub name: String,
 	/// Column type constraint
@@ -32,9 +32,9 @@ define_event! {
 		/// Human-readable description of the operator
 		pub description: String,
 		/// Input column definitions
-		pub input: Vec<OperatorColumnDef>,
+		pub input: Vec<OperatorColumn>,
 		/// Output column definitions
-		pub output: Vec<OperatorColumnDef>,
+		pub output: Vec<OperatorColumn>,
 		/// Capabilities bitflags
 		pub capabilities: u32,
 	}

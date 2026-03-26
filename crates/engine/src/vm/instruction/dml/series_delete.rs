@@ -19,7 +19,7 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::DeleteSeriesNode;
-use reifydb_transaction::{interceptor::series::SeriesInterceptor, transaction::Transaction};
+use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -58,25 +58,25 @@ pub(crate) fn delete_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
+	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series_def.id)? else {
+	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	let has_tag = series_def.tag.is_some();
+	let has_tag = series.tag.is_some();
 	let mut deleted_count = 0u64;
 	let mut returning_columns: Option<Columns> = None;
 
 	if let Some(input_plan) = plan.input {
 		let namespace_ident = Fragment::internal(namespace.name());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-		let series_ident = Fragment::internal(series_def.name.clone());
-		let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
+		let series_ident = Fragment::internal(series.name.clone());
+		let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
 		let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
 
 		let context = QueryContext {
@@ -114,8 +114,8 @@ pub(crate) fn delete_series<'a>(
 
 				let key_value = columns
 					.iter()
-					.find(|c| c.name().text() == series_def.key.column())
-					.and_then(|c| series_def.key_to_u64(c.data().get_value(row_idx)))
+					.find(|c| c.name().text() == series.key.column())
+					.and_then(|c| series.key_to_u64(c.data().get_value(row_idx)))
 					.unwrap_or(0);
 
 				let variant_tag = if has_tag {
@@ -131,7 +131,7 @@ pub(crate) fn delete_series<'a>(
 				};
 
 				let key = SeriesRowKey {
-					series: series_def.id,
+					series: series.id,
 					variant_tag,
 					key: key_value,
 					sequence,
@@ -144,13 +144,13 @@ pub(crate) fn delete_series<'a>(
 				let encoded_row = old_entry.row;
 
 				let row_number = RowNumber::from(sequence);
-				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 				pre_col_vec.push(Column {
-					name: Fragment::internal(series_def.key.column()),
-					data: series_def.key_column_data(vec![key_value]),
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![key_value]),
 				});
 				for col in columns.iter() {
-					if col.name().text() != series_def.key.column() && col.name().text() != "tag" {
+					if col.name().text() != series.key.column() && col.name().text() != "tag" {
 						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
 						data.push_value(col.data().get_value(row_idx));
 						pre_col_vec.push(Column {
@@ -164,16 +164,16 @@ pub(crate) fn delete_series<'a>(
 					columns: CowVec::new(pre_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					origin: ChangeOrigin::Primitive(PrimitiveId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Remove {
 						pre,
 					}],
 				});
 
-				SeriesInterceptor::pre_delete(txn, &series_def)?;
+				SeriesRowInterceptor::pre_delete(txn, &series)?;
 				txn.unset(&encoded_key, encoded_row.clone())?;
-				SeriesInterceptor::post_delete(txn, &series_def, &encoded_row)?;
+				SeriesRowInterceptor::post_delete(txn, &series, &encoded_row)?;
 				deleted_count += 1;
 			}
 
@@ -213,7 +213,7 @@ pub(crate) fn delete_series<'a>(
 		}
 	} else {
 		// Delete all rows - scan the full range and delete
-		let range = SeriesRowKeyRange::full_scan(series_def.id, None);
+		let range = SeriesRowKeyRange::full_scan(series.id, None);
 		let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
 		let mut stream = txn.range(range, 4096)?;
@@ -223,22 +223,22 @@ pub(crate) fn delete_series<'a>(
 		}
 		drop(stream);
 
-		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
 
 		for (key, encoded_row) in entries_to_delete.iter() {
 			if let Some(decoded_key) = SeriesRowKey::decode(key) {
 				let row_number = RowNumber::from(decoded_key.sequence);
-				let data_values: Vec<Value> = series_def
+				let data_values: Vec<Value> = series
 					.data_columns()
 					.enumerate()
 					.map(|(i, _)| delete_all_schema.get_value(encoded_row, i + 1))
 					.collect();
-				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 				pre_col_vec.push(Column {
-					name: Fragment::internal(series_def.key.column()),
-					data: series_def.key_column_data(vec![decoded_key.key]),
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![decoded_key.key]),
 				});
-				for (col_idx, col_def) in series_def.data_columns().enumerate() {
+				for (col_idx, col_def) in series.data_columns().enumerate() {
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(data_values.get(col_idx).cloned().unwrap_or(Value::none()));
 					pre_col_vec.push(Column {
@@ -251,7 +251,7 @@ pub(crate) fn delete_series<'a>(
 					columns: CowVec::new(pre_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					origin: ChangeOrigin::Primitive(PrimitiveId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Remove {
 						pre,
@@ -259,9 +259,9 @@ pub(crate) fn delete_series<'a>(
 				});
 			}
 
-			SeriesInterceptor::pre_delete(txn, &series_def)?;
+			SeriesRowInterceptor::pre_delete(txn, &series)?;
 			txn.unset(key, encoded_row.clone())?;
-			SeriesInterceptor::post_delete(txn, &series_def, encoded_row)?;
+			SeriesRowInterceptor::post_delete(txn, &series, encoded_row)?;
 			deleted_count += 1;
 		}
 
@@ -292,7 +292,7 @@ pub(crate) fn delete_series<'a>(
 
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(namespace.name().to_string())),
-		("series", Value::Utf8(series_def.name)),
+		("series", Value::Utf8(series.name)),
 		("deleted", Value::Uint8(deleted_count)),
 	]))
 }

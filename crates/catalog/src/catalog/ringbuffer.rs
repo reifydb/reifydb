@@ -7,7 +7,7 @@ use reifydb_core::{
 		change::CatalogTrackRingBufferChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
-		ringbuffer::{PartitionedMetadata, RingBufferDef, RingBufferMetadata},
+		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
 	},
 	internal,
 };
@@ -74,7 +74,7 @@ impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self, txn))]
-	pub fn find_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<Option<RingBufferDef>> {
+	pub fn find_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<Option<RingBuffer>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				CatalogStore::find_ringbuffer(&mut Transaction::Command(&mut *cmd), id)
@@ -100,7 +100,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<RingBufferDef>> {
+	) -> Result<Option<RingBuffer>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => CatalogStore::find_ringbuffer_by_name(
 				&mut Transaction::Command(&mut *cmd),
@@ -131,7 +131,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::ringbuffer::get", level = "trace", skip(self, txn))]
-	pub fn get_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<RingBufferDef> {
+	pub fn get_ringbuffer(&self, txn: &mut Transaction<'_>, id: RingBufferId) -> Result<RingBuffer> {
 		self.find_ringbuffer(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"RingBuffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -145,9 +145,9 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
-	) -> Result<RingBufferDef> {
+	) -> Result<RingBuffer> {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
-		txn.track_ringbuffer_def_created(ringbuffer.clone())?;
+		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
 		let schema = Schema::from(ringbuffer.columns.as_slice());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
@@ -156,14 +156,14 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::ringbuffer::drop", level = "debug", skip(self, txn))]
-	pub fn drop_ringbuffer(&self, txn: &mut AdminTransaction, ringbuffer: RingBufferDef) -> Result<()> {
+	pub fn drop_ringbuffer(&self, txn: &mut AdminTransaction, ringbuffer: RingBuffer) -> Result<()> {
 		CatalogStore::drop_ringbuffer(txn, ringbuffer.id)?;
-		txn.track_ringbuffer_def_deleted(ringbuffer)?;
+		txn.track_ringbuffer_deleted(ringbuffer)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::ringbuffer::list_all", level = "debug", skip(self, txn))]
-	pub fn list_ringbuffers_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<RingBufferDef>> {
+	pub fn list_ringbuffers_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
 		CatalogStore::list_ringbuffers_all(txn)
 	}
 
@@ -226,7 +226,7 @@ impl Catalog {
 	pub fn list_ringbuffer_partition_metadata(
 		&self,
 		txn: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
 		CatalogStore::list_ringbuffer_partition_metadata(txn, ringbuffer)
 	}
@@ -257,7 +257,7 @@ impl Catalog {
 	pub fn list_ringbuffer_partitions(
 		&self,
 		txn: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
 		CatalogStore::list_ringbuffer_partitions(txn, ringbuffer)
 	}
@@ -266,7 +266,7 @@ impl Catalog {
 	pub fn find_partition_metadata(
 		&self,
 		txn: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 		partition_key: &[Value],
 	) -> Result<Option<RingBufferMetadata>> {
 		CatalogStore::find_partition_metadata(txn, ringbuffer, partition_key)
@@ -276,7 +276,7 @@ impl Catalog {
 	pub fn save_partition_metadata(
 		&self,
 		txn: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 		partition_key: &[Value],
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {

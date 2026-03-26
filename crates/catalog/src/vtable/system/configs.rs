@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	util::ioc::IocContainer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -15,26 +15,26 @@ use crate::{
 	Result,
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct Configs {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemConfigs {
+	pub(crate) definition: Arc<VTable>,
 	ioc: IocContainer,
 	exhausted: bool,
 }
 
-impl Configs {
+impl SystemConfigs {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_configs_table_def().clone(),
+			definition: SystemCatalog::get_system_configs_table().clone(),
 			ioc,
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Configs {
+impl BaseVTable for SystemConfigs {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -94,7 +94,7 @@ impl VTable for Configs {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

@@ -6,7 +6,7 @@ use reifydb_core::{
 		catalog::{
 			flow::FlowStatus,
 			id::{NamespaceId, SourceId},
-			source::SourceDef,
+			source::Source,
 		},
 		store::MultiVersionRow,
 	},
@@ -31,14 +31,14 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &MaterializedCatal
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
-		let source_def = convert_source(multi);
-		catalog.set_source(source_def.id, version, Some(source_def));
+		let source = convert_source(multi);
+		catalog.set_source(source.id, version, Some(source));
 	}
 
 	Ok(())
 }
 
-fn convert_source(multi: MultiVersionRow) -> SourceDef {
+fn convert_source(multi: MultiVersionRow) -> Source {
 	let row = multi.row;
 	let id = SourceId(source::SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(source::SCHEMA.get_u64(&row, NAMESPACE));
@@ -50,7 +50,7 @@ fn convert_source(multi: MultiVersionRow) -> SourceDef {
 	let target_name = source::SCHEMA.get_utf8(&row, TARGET_NAME).to_string();
 	let status = FlowStatus::from_u8(source::SCHEMA.get_u8(&row, STATUS));
 
-	SourceDef {
+	Source {
 		id,
 		namespace,
 		name,

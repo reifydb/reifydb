@@ -65,7 +65,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Look up the event sumtype by name
 		let event_name = on_event.name.text();
-		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, event_ns_def.id(), event_name)? else {
+		let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, event_ns_def.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
 				namespace: event_ns_segments.join("::"),
@@ -76,7 +76,7 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		// Verify it's an event type
-		if sumtype_def.kind != SumTypeKind::Event {
+		if sumtype.kind != SumTypeKind::Event {
 			return Err(internal_error!(
 				"'{}' is not an EVENT type. Use CREATE EVENT to declare event types.",
 				event_name
@@ -85,7 +85,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Find variant by name → get tag
 		let variant_name = on_variant.text().to_lowercase();
-		let Some(variant_def) = sumtype_def.variants.iter().find(|v| v.name == variant_name) else {
+		let Some(variant) = sumtype.variants.iter().find(|v| v.name == variant_name) else {
 			return Err(internal_error!(
 				"Variant '{}' not found in event type '{}'",
 				on_variant.text(),
@@ -93,7 +93,7 @@ impl<'bump> Compiler<'bump> {
 			));
 		};
 
-		let on_variant_tag = variant_def.tag;
+		let on_variant_tag = variant.tag;
 
 		Ok(PhysicalPlan::CreateProcedure(CreateProcedureNode {
 			namespace,
@@ -101,7 +101,7 @@ impl<'bump> Compiler<'bump> {
 			params: vec![],
 			body_source: create.body_source,
 			trigger: ProcedureTrigger::Event {
-				sumtype_id: sumtype_def.id,
+				sumtype_id: sumtype.id,
 				variant_tag: on_variant_tag,
 			},
 			is_test: false,

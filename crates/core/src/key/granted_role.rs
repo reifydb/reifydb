@@ -13,12 +13,12 @@ use crate::{
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct IdentityRoleKey {
+pub struct GrantedRoleKey {
 	pub identity: IdentityId,
 	pub role: RoleId,
 }
 
-impl IdentityRoleKey {
+impl GrantedRoleKey {
 	pub fn new(identity: IdentityId, role: RoleId) -> Self {
 		Self {
 			identity,
@@ -51,8 +51,8 @@ impl IdentityRoleKey {
 	}
 }
 
-impl EncodableKey for IdentityRoleKey {
-	const KIND: KeyKind = KeyKind::IdentityRole;
+impl EncodableKey for GrantedRoleKey {
+	const KIND: KeyKind = KeyKind::GrantedRole;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(26);

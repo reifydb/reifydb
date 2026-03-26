@@ -294,7 +294,7 @@ pub mod tests {
 
 	use super::{super::helpers::encode_key, *};
 	use crate::{
-		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
 		testing::builders::TestChangeBuilder,
 	};
 
@@ -309,8 +309,8 @@ pub mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Simple pass-through test operator";
-		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 
@@ -340,8 +340,8 @@ pub mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
-		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 

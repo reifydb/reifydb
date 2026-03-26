@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::schema_fields::*, vtable::SCHEMA_FIELDS};
 
 /// Returns the static definition for the system.schema_fields virtual table
 /// This table exposes information about all fields across all schemas in the database
-pub fn schema_fields() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn schema_fields() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: SCHEMA_FIELDS,
 			namespace: NamespaceId::SYSTEM,
 			name: "schema_fields".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: SCHEMA_FINGERPRINT,
 					name: "fingerprint".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: FIELD_INDEX,
 					name: "field_index".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint2),
@@ -41,7 +41,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: NAME,
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -50,7 +50,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: TYPE,
 					name: "type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -59,7 +59,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CONSTRAINT_TYPE,
 					name: "constraint_type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -68,7 +68,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CONSTRAINT_P1,
 					name: "constraint_p1".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint4),
@@ -77,7 +77,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CONSTRAINT_P2,
 					name: "constraint_p2".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint4),
@@ -86,7 +86,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: OFFSET,
 					name: "offset".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint4),
@@ -95,7 +95,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: SIZE,
 					name: "size".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint4),
@@ -104,7 +104,7 @@ pub fn schema_fields() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ALIGN,
 					name: "align".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),

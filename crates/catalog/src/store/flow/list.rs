@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		flow::{FlowDef, FlowStatus},
+		flow::{Flow, FlowStatus},
 		id::NamespaceId,
 	},
 	key::{Key, flow::FlowKey},
@@ -14,7 +14,7 @@ use reifydb_type::value::duration::Duration;
 use crate::{CatalogStore, Result, store::flow::schema::flow};
 
 impl CatalogStore {
-	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowDef>> {
+	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(FlowKey::full_scan(), 1024)?;
@@ -38,7 +38,7 @@ impl CatalogStore {
 						None
 					};
 
-					let flow_def = FlowDef {
+					let flow = Flow {
 						id: flow_id,
 						namespace: namespace_id,
 						name,
@@ -46,7 +46,7 @@ impl CatalogStore {
 						tick,
 					};
 
-					result.push(flow_def);
+					result.push(flow);
 				}
 			}
 		}

@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumnDef};
+//! use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
 //! use reifydb_type::value::r#type::Type;
 //! use reifydb_core::value::column::columns::Columns;
 //!
@@ -21,10 +21,10 @@
 //! }
 //!
 //! impl UserVTable for MyApiTable {
-//!     fn definition(&self) -> Vec<UserVTableColumnDef> {
+//!     fn definition(&self) -> Vec<UserVTableColumn> {
 //!         vec![
-//!             UserVTableColumnDef::new("id", Type::Uint8),
-//!             UserVTableColumnDef::new("name", Type::Utf8),
+//!             UserVTableColumn::new("id", Type::Uint8),
+//!             UserVTableColumn::new("name", Type::Utf8),
 //!         ]
 //!     }
 //!
@@ -45,7 +45,7 @@ use crate::Result;
 
 /// Column definition for user virtual tables.
 #[derive(Debug, Clone)]
-pub struct UserVTableColumnDef {
+pub struct UserVTableColumn {
 	/// Column name
 	pub name: String,
 	/// Column data type
@@ -54,7 +54,7 @@ pub struct UserVTableColumnDef {
 	pub undefined: bool,
 }
 
-impl UserVTableColumnDef {
+impl UserVTableColumn {
 	/// Create a new non-nullable column definition.
 	pub fn new(name: impl Into<String>, data_type: Type) -> Self {
 		Self {
@@ -76,7 +76,7 @@ impl UserVTableColumnDef {
 /// may be queried concurrently from multiple transactions.
 pub trait UserVTable: Clone + Send + Sync + 'static {
 	/// Return the column definitions for this table.
-	fn definition(&self) -> Vec<UserVTableColumnDef>;
+	fn definition(&self) -> Vec<UserVTableColumn>;
 
 	/// Get all data for the table in columnar format.
 	///
@@ -108,7 +108,7 @@ pub struct UserVTablePushdownContext {
 /// fresh for each query. The factory creates a new instance per query execution.
 pub trait UserVTableIterator: Send + Sync + 'static {
 	/// Return the column definitions for this table.
-	fn columns(&self) -> Vec<UserVTableColumnDef>;
+	fn columns(&self) -> Vec<UserVTableColumn>;
 
 	/// Initialize the iterator with optional pushdown context.
 	///

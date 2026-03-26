@@ -10,7 +10,7 @@ pub mod evaluate;
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
-	catalog::policy::{PolicyDef, PolicyOperationDef, PolicyTargetType},
+	catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
 	resolved::ResolvedPrimitive,
 };
 use reifydb_rql::{
@@ -160,7 +160,7 @@ fn inject_pipeline<'a>(
 }
 
 /// Check if a policy's scope matches a given target namespace and object.
-fn scope_matches(policy: &PolicyDef, target_ns: &str, target_obj: &str) -> bool {
+fn scope_matches(policy: &Policy, target_ns: &str, target_obj: &str) -> bool {
 	match (&policy.target_namespace, &policy.target_object) {
 		(None, None) => true, // Global
 		(Some(ns), None) => {
@@ -185,7 +185,7 @@ pub fn resolve_write_policies(
 	target_object: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
-) -> Result<Vec<(PolicyDef, PolicyOperationDef)>> {
+) -> Result<Vec<(Policy, PolicyOperation)>> {
 	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(vec![]);

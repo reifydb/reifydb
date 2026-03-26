@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{NamespaceId, RingBufferId},
 		property::ColumnPropertyKind,
-		ringbuffer::RingBufferDef,
+		ringbuffer::RingBuffer,
 	},
 	key::{
 		namespace_ringbuffer::NamespaceRingBufferKey,
@@ -52,7 +52,7 @@ impl CatalogStore {
 	pub(crate) fn create_ringbuffer(
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
-	) -> Result<RingBufferDef> {
+	) -> Result<RingBuffer> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(

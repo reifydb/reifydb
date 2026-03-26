@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
+	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -15,10 +15,7 @@ use crate::{
 
 impl CatalogStore {
 	/// List all dictionaries in a namespace
-	pub(crate) fn list_dictionaries(
-		rx: &mut Transaction<'_>,
-		namespace: NamespaceId,
-	) -> Result<Vec<DictionaryDef>> {
+	pub(crate) fn list_dictionaries(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
 		// Collect dictionary IDs first to avoid borrow conflict
 		let mut dictionary_ids = Vec::new();
 		{
@@ -43,7 +40,7 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<DictionaryDef>> {
+	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		let mut dictionaries = Vec::new();
 
 		let mut stream = rx.range(DictionaryKey::full_scan(), 1024)?;
@@ -56,7 +53,7 @@ impl CatalogStore {
 			let value_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::VALUE_TYPE);
 			let id_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::ID_TYPE);
 
-			dictionaries.push(DictionaryDef {
+			dictionaries.push(Dictionary {
 				id,
 				namespace,
 				name,

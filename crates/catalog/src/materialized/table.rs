@@ -5,15 +5,15 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, TableId},
-		table::TableDef,
+		table::Table,
 	},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionTableDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionTable};
 
 impl MaterializedCatalog {
 	/// Find a table by ID at a specific version
-	pub fn find_table_at(&self, table: TableId, version: CommitVersion) -> Option<TableDef> {
+	pub fn find_table_at(&self, table: TableId, version: CommitVersion) -> Option<Table> {
 		self.tables.get(&table).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -26,7 +26,7 @@ impl MaterializedCatalog {
 		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
-	) -> Option<TableDef> {
+	) -> Option<Table> {
 		self.tables_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let table_id = *entry.value();
 			self.find_table_at(table_id, version)
@@ -34,7 +34,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a table by ID (returns latest version)
-	pub fn find_table(&self, table: TableId) -> Option<TableDef> {
+	pub fn find_table(&self, table: TableId) -> Option<Table> {
 		self.tables.get(&table).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -42,14 +42,14 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a table by name in a namespace (returns latest version)
-	pub fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<TableDef> {
+	pub fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Table> {
 		self.tables_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let table_id = *entry.value();
 			self.find_table(table_id)
 		})
 	}
 
-	pub fn set_table(&self, id: TableId, version: CommitVersion, table: Option<TableDef>) {
+	pub fn set_table(&self, id: TableId, version: CommitVersion, table: Option<Table>) {
 		if let Some(entry) = self.tables.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				// Remove old name from index
@@ -57,7 +57,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.tables.get_or_insert_with(id, MultiVersionTableDef::new);
+		let multi = self.tables.get_or_insert_with(id, MultiVersionTable::new);
 		if let Some(new) = table {
 			self.tables_by_name.insert((new.namespace, new.name.clone()), id);
 			multi.value().insert(version, new);
@@ -72,7 +72,7 @@ pub mod tests {
 	use reifydb_core::{
 		config::SystemConfig,
 		interface::catalog::{
-			column::{ColumnDef, ColumnIndex},
+			column::{Column, ColumnIndex},
 			id::ColumnId,
 		},
 	};
@@ -80,13 +80,13 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_table(id: TableId, namespace: NamespaceId, name: &str) -> TableDef {
-		TableDef {
+	fn create_test_table(id: TableId, namespace: NamespaceId, name: &str) -> Table {
+		Table {
 			id,
 			namespace,
 			name: name.to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Int4),
@@ -95,7 +95,7 @@ pub mod tests {
 					auto_increment: true,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(2),
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),

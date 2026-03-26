@@ -180,7 +180,7 @@ pub mod tests {
 
 	use crate::{
 		error::Result,
-		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
 		state::{FFIRawStatefulOperator, row::RowNumberProvider},
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
 	};
@@ -193,8 +193,8 @@ pub mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Test operator for row number provider";
-		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 

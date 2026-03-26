@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackHandlerChangeOperations,
-	handler::HandlerDef,
+	handler::Handler,
 	id::{HandlerId, NamespaceId},
 };
 use reifydb_transaction::{
@@ -27,7 +27,7 @@ pub struct HandlerToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::handler::find_by_id", level = "trace", skip(self, txn))]
-	pub fn find_handler_by_id(&self, txn: &mut Transaction<'_>, id: HandlerId) -> Result<Option<HandlerDef>> {
+	pub fn find_handler_by_id(&self, txn: &mut Transaction<'_>, id: HandlerId) -> Result<Option<Handler>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) = self.materialized.find_handler_at(id, cmd.version()) {
@@ -89,7 +89,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<HandlerDef>> {
+	) -> Result<Option<Handler>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) =
@@ -182,7 +182,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		sumtype_id: SumTypeId,
 		variant_tag: u8,
-	) -> Result<Vec<HandlerDef>> {
+	) -> Result<Vec<Handler>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => Ok(self.materialized.list_handlers_for_variant_at(
 				sumtype_id,
@@ -198,7 +198,7 @@ impl Catalog {
 				);
 
 				// Also check transactional changes for newly created handlers
-				for change in &admin.changes.handler_def {
+				for change in &admin.changes.handler {
 					if let Some(h) = &change.post {
 						if h.on_sumtype_id == sumtype_id
 							&& h.on_variant_tag == variant_tag && !handlers
@@ -226,7 +226,7 @@ impl Catalog {
 				);
 
 				// Also check transactional changes for newly created handlers
-				for change in &sub.as_admin_mut().changes.handler_def {
+				for change in &sub.as_admin_mut().changes.handler {
 					if let Some(h) = &change.post {
 						if h.on_sumtype_id == sumtype_id
 							&& h.on_variant_tag == variant_tag && !handlers
@@ -249,7 +249,7 @@ impl Catalog {
 				);
 
 				// Also check transactional changes for newly created handlers
-				for change in &t.inner.changes.handler_def {
+				for change in &t.inner.changes.handler {
 					if let Some(h) = &change.post {
 						if h.on_sumtype_id == sumtype_id
 							&& h.on_variant_tag == variant_tag && !handlers
@@ -267,7 +267,7 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::handler::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_handler(&self, txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<HandlerDef> {
+	pub fn create_handler(&self, txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<Handler> {
 		let store_to_create = StoreHandlerToCreate {
 			name: to_create.name.clone(),
 			namespace: to_create.namespace,
@@ -278,7 +278,7 @@ impl Catalog {
 
 		let handler = CatalogStore::create_handler(txn, store_to_create)?;
 
-		txn.track_handler_def_created(handler.clone())?;
+		txn.track_handler_created(handler.clone())?;
 
 		Ok(handler)
 	}

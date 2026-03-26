@@ -14,7 +14,7 @@ mod token;
 use std::{collections::HashMap, ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_catalog::{catalog::Catalog, create_token};
-use reifydb_core::interface::catalog::token::TokenDef;
+use reifydb_core::interface::catalog::token::Token;
 use reifydb_runtime::context::{clock::Clock, rng::Rng as SystemRng};
 use reifydb_transaction::transaction::{admin::AdminTransaction, query::QueryTransaction};
 use reifydb_type::{
@@ -149,7 +149,7 @@ impl AuthService {
 	}
 
 	/// Persist a token to the database.
-	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<TokenDef, Error> {
+	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<Token, Error> {
 		let mut admin = self.engine.begin_admin()?;
 
 		let def = create_token(&mut admin, token, identity, self.expires_at(), self.now())?;

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
+	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -17,7 +17,7 @@ impl CatalogStore {
 	pub(crate) fn find_dictionary(
 		rx: &mut Transaction<'_>,
 		dictionary_id: DictionaryId,
-	) -> Result<Option<DictionaryDef>> {
+	) -> Result<Option<Dictionary>> {
 		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
 			return Ok(None);
 		};
@@ -29,7 +29,7 @@ impl CatalogStore {
 		let value_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::VALUE_TYPE);
 		let id_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::ID_TYPE);
 
-		Ok(Some(DictionaryDef {
+		Ok(Some(Dictionary {
 			id,
 			namespace,
 			name,
@@ -42,7 +42,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<DictionaryDef>> {
+	) -> Result<Option<Dictionary>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 

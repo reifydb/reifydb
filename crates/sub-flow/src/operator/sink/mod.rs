@@ -13,10 +13,10 @@ use reifydb_core::{
 	encoded::{row::EncodedRow, schema::Schema},
 	interface::{
 		catalog::{
-			column::ColumnDef,
-			dictionary::DictionaryDef,
+			column::Column as CatalogColumn,
+			dictionary::Dictionary,
 			property::{ColumnPropertyKind, ColumnSaturationPolicy},
-			subscription::SubscriptionColumnDef,
+			subscription::SubscriptionColumn,
 		},
 		evaluate::TargetColumn,
 	},
@@ -47,7 +47,7 @@ static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
 static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(RuntimeContext::default);
 
 /// Coerce columns to match target schema types
-pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> Result<Columns> {
+pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
@@ -109,11 +109,8 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 	Ok(Columns::with_row_numbers(result_columns, row_numbers))
 }
 
-/// Coerce columns to match subscription schema types (simpler than ColumnDef)
-pub(crate) fn coerce_subscription_columns(
-	columns: &Columns,
-	target_columns: &[SubscriptionColumnDef],
-) -> Result<Columns> {
+/// Coerce columns to match subscription schema types (simpler than Column)
+pub(crate) fn coerce_subscription_columns(columns: &Columns, target_columns: &[SubscriptionColumn]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
@@ -208,11 +205,11 @@ pub(crate) fn encode_row_at_index(
 /// Decode dictionary columns in-place using FlowTransaction for lookups.
 ///
 /// For columns that store `DictionaryId` values, reads the embedded `dictionary_id`
-/// from the container metadata, looks up the `DictionaryDef` in the catalog,
+/// from the container metadata, looks up the `Dictionary` in the catalog,
 /// then resolves each dictionary entry ID to its actual value.
 pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> Result<()> {
-	// Collect (col_pos, DictionaryDef) for every DictionaryId column that carries a dictionary_id
-	let dict_columns: Vec<(usize, DictionaryDef)> = {
+	// Collect (col_pos, Dictionary) for every DictionaryId column that carries a dictionary_id
+	let dict_columns: Vec<(usize, Dictionary)> = {
 		let catalog = txn.catalog();
 		columns.iter()
 			.enumerate()

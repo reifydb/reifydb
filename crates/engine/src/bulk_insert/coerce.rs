@@ -4,7 +4,7 @@
 //! Column coercion for bulk inserts.
 
 use reifydb_core::{
-	interface::catalog::column::ColumnDef,
+	interface::catalog::column::Column,
 	value::column::{columns::Columns, data::ColumnData},
 };
 use reifydb_function::registry::Functions;
@@ -20,7 +20,7 @@ use crate::{
 /// Coerce each column's data to the target type in batch.
 pub(super) fn coerce_columns(
 	column_data: &[ColumnData],
-	columns: &[ColumnDef],
+	columns: &[Column],
 	num_rows: usize,
 ) -> Result<Vec<ColumnData>> {
 	let session = EvalSession {

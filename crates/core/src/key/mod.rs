@@ -10,9 +10,9 @@ use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, Dic
 use flow::FlowKey;
 use flow_node_internal_state::FlowNodeInternalStateKey;
 use flow_node_state::FlowNodeStateKey;
+use granted_role::GrantedRoleKey;
 use handler::HandlerKey;
 use identity::IdentityKey;
-use identity_role::IdentityRoleKey;
 use index::IndexKey;
 use index_entry::IndexEntryKey;
 use kind::KeyKind;
@@ -69,9 +69,9 @@ pub mod flow_node;
 pub mod flow_node_internal_state;
 pub mod flow_node_state;
 pub mod flow_version;
+pub mod granted_role;
 pub mod handler;
 pub mod identity;
-pub mod identity_role;
 pub mod index;
 pub mod index_entry;
 pub mod kind;
@@ -160,7 +160,7 @@ pub enum Key {
 	Identity(IdentityKey),
 	Authentication(AuthenticationKey),
 	Role(RoleKey),
-	IdentityRole(IdentityRoleKey),
+	GrantedRole(GrantedRoleKey),
 	Policy(PolicyKey),
 	PolicyOp(PolicyOpKey),
 	Token(TokenKey),
@@ -218,7 +218,7 @@ impl Key {
 			Key::Identity(key) => key.encode(),
 			Key::Authentication(key) => key.encode(),
 			Key::Role(key) => key.encode(),
-			Key::IdentityRole(key) => key.encode(),
+			Key::GrantedRole(key) => key.encode(),
 			Key::Policy(key) => key.encode(),
 			Key::PolicyOp(key) => key.encode(),
 			Key::Token(key) => key.encode(),
@@ -354,7 +354,7 @@ impl Key {
 			KeyKind::Identity => IdentityKey::decode(&key).map(Self::Identity),
 			KeyKind::Authentication => AuthenticationKey::decode(&key).map(Self::Authentication),
 			KeyKind::Role => RoleKey::decode(&key).map(Self::Role),
-			KeyKind::IdentityRole => IdentityRoleKey::decode(&key).map(Self::IdentityRole),
+			KeyKind::GrantedRole => GrantedRoleKey::decode(&key).map(Self::GrantedRole),
 			KeyKind::Policy => PolicyKey::decode(&key).map(Self::Policy),
 			KeyKind::PolicyOp => PolicyOpKey::decode(&key).map(Self::PolicyOp),
 			KeyKind::Migration | KeyKind::MigrationEvent => {

@@ -140,13 +140,13 @@ pub mod tests {
 	use super::*;
 
 	#[derive(Debug, Clone, PartialEq)]
-	struct TestDef {
+	struct Test {
 		name: String,
 	}
 
 	#[test]
 	fn test_basic_operations() {
-		let multi = MultiVersionContainer::<TestDef>::new();
+		let multi = MultiVersionContainer::<Test>::new();
 
 		// Test empty state
 		assert!(multi.is_empty());
@@ -154,7 +154,7 @@ pub mod tests {
 		assert!(multi.get_latest().is_none());
 
 		// Test insert
-		let def1 = TestDef {
+		let def1 = Test {
 			name: "v1".to_string(),
 		};
 		multi.insert(1, def1.clone());
@@ -167,7 +167,7 @@ pub mod tests {
 		assert_eq!(multi.get_latest(), Some(def1.clone()));
 
 		// Test multiple versions
-		let def2 = TestDef {
+		let def2 = Test {
 			name: "v2".to_string(),
 		};
 		multi.insert(5, def2.clone());

@@ -6,7 +6,7 @@ use reifydb_core::{
 		catalog::{
 			flow::FlowStatus,
 			id::{NamespaceId, SinkId},
-			sink::SinkDef,
+			sink::Sink,
 		},
 		store::MultiVersionRow,
 	},
@@ -31,14 +31,14 @@ pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
-		let sink_def = convert_sink(multi);
-		catalog.set_sink(sink_def.id, version, Some(sink_def));
+		let sink = convert_sink(multi);
+		catalog.set_sink(sink.id, version, Some(sink));
 	}
 
 	Ok(())
 }
 
-fn convert_sink(multi: MultiVersionRow) -> SinkDef {
+fn convert_sink(multi: MultiVersionRow) -> Sink {
 	let row = multi.row;
 	let id = SinkId(sink::SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(sink::SCHEMA.get_u64(&row, NAMESPACE));
@@ -50,7 +50,7 @@ fn convert_sink(multi: MultiVersionRow) -> SinkDef {
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
 	let status = FlowStatus::from_u8(sink::SCHEMA.get_u8(&row, STATUS));
 
-	SinkDef {
+	Sink {
 		id,
 		namespace,
 		name,

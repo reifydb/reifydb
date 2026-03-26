@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
+	interface::catalog::flow::{FlowId, FlowNode, FlowNodeId},
 	key::{
 		EncodableKey,
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNodeDef>> {
+	pub(crate) fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
 		// First collect all node IDs to avoid holding stream borrow
 		let mut node_ids = Vec::new();
 		{
@@ -40,7 +40,7 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowNodeDef>> {
+	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowNode>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(FlowNodeKey::full_scan(), 1024)?;
@@ -53,7 +53,7 @@ impl CatalogStore {
 				let node_type = flow_node::SCHEMA.get_u8(&entry.row, flow_node::TYPE);
 				let data = flow_node::SCHEMA.get_blob(&entry.row, flow_node::DATA).clone();
 
-				let node_def = FlowNodeDef {
+				let node_def = FlowNode {
 					id: node_id,
 					flow: flow_id,
 					node_type,

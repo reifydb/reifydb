@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::schemas::*, vtable::SCHEMAS};
 
 /// Returns the static definition for the system.schemas virtual table
 /// This table exposes information about all registered schemas in the database
-pub fn schemas() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn schemas() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: SCHEMAS,
 			namespace: NamespaceId::SYSTEM,
 			name: "schemas".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: FINGERPRINT,
 					name: "fingerprint".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn schemas() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: FIELD_COUNT,
 					name: "field_count".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint2),

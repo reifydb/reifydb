@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{interface::catalog::view::ViewDef, value::column::columns::Columns};
+use reifydb_core::{interface::catalog::view::View, value::column::columns::Columns};
 use reifydb_rql::{flow::node::FlowNodeType, nodes::DropViewNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::Value;
@@ -66,21 +66,21 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 	]))
 }
 
-fn drop_underlying_primitive(services: &Services, txn: &mut AdminTransaction, view: &ViewDef) -> Result<()> {
+fn drop_underlying_primitive(services: &Services, txn: &mut AdminTransaction, view: &View) -> Result<()> {
 	match view {
-		ViewDef::Table(t) => {
+		View::Table(t) => {
 			if let Some(table) = services.catalog.find_table(&mut Transaction::Admin(txn), t.underlying)? {
 				services.catalog.drop_table(txn, table)?;
 			}
 		}
-		ViewDef::RingBuffer(rb) => {
+		View::RingBuffer(rb) => {
 			if let Some(ringbuffer) =
 				services.catalog.find_ringbuffer(&mut Transaction::Admin(txn), rb.underlying)?
 			{
 				services.catalog.drop_ringbuffer(txn, ringbuffer)?;
 			}
 		}
-		ViewDef::Series(s) => {
+		View::Series(s) => {
 			if let Some(series) =
 				services.catalog.find_series(&mut Transaction::Admin(txn), s.underlying)?
 			{

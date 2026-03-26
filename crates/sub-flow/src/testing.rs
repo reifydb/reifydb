@@ -54,8 +54,8 @@ impl StandardTestFlowProcessor {
 
 		let flows = self.catalog.list_flows_all(&mut Transaction::Admin(&mut *txn))?;
 
-		for flow_def in flows {
-			let flow = load_flow_dag(&self.catalog, &mut Transaction::Admin(&mut *txn), flow_def.id)?;
+		for flow in flows {
+			let flow = load_flow_dag(&self.catalog, &mut Transaction::Admin(&mut *txn), flow.id)?;
 			flow_engine.register_with_transaction(&mut Transaction::Admin(&mut *txn), flow)?;
 		}
 

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::view::ViewDef,
+	interface::catalog::view::View,
 	key::{Key, view::ViewKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> Result<Vec<ViewDef>> {
+	pub(crate) fn list_views_all(rx: &mut Transaction<'_>) -> Result<Vec<View>> {
 		let mut result = Vec::new();
 
 		// Collect view IDs first to avoid holding stream borrow
@@ -29,8 +29,8 @@ impl CatalogStore {
 
 		// Now fetch each view using the find_view method which handles all storage kinds
 		for view_id in view_ids {
-			if let Some(view_def) = Self::find_view(rx, view_id)? {
-				result.push(view_def);
+			if let Some(view) = Self::find_view(rx, view_id)? {
+				result.push(view);
 			}
 		}
 

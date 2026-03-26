@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	catalog::Catalog,
-	vtable::{system::flow_operator_store::FlowOperatorStore, user::registry::UserVTableRegistry},
+	vtable::{system::flow_operator_store::SystemFlowOperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_function::registry::Functions;
@@ -34,7 +34,7 @@ pub struct Services {
 	pub functions: Functions,
 	pub procedures: Procedures,
 	pub transforms: Transforms,
-	pub flow_operator_store: FlowOperatorStore,
+	pub flow_operator_store: SystemFlowOperatorStore,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub stats_reader: MetricReader<SingleStore>,
 	pub ioc: IocContainer,
@@ -50,7 +50,7 @@ impl Services {
 		functions: Functions,
 		procedures: Procedures,
 		transforms: Transforms,
-		flow_operator_store: FlowOperatorStore,
+		flow_operator_store: SystemFlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
 		ioc: IocContainer,
 		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
@@ -90,7 +90,7 @@ impl Services {
 			Functions::defaults().build(),
 			Procedures::empty(),
 			Transforms::empty(),
-			FlowOperatorStore::new(),
+			SystemFlowOperatorStore::new(),
 			MetricReader::new(store),
 			IocContainer::new(),
 			#[cfg(not(target_arch = "wasm32"))]

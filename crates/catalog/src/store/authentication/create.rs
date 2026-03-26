@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::{interface::catalog::authentication::AuthenticationDef, key::authentication::AuthenticationKey};
+use reifydb_core::{interface::catalog::authentication::Authentication, key::authentication::AuthenticationKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{
 	error::{Diagnostic, Error},
@@ -26,7 +26,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		method: &str,
 		properties: HashMap<String, String>,
-	) -> Result<AuthenticationDef> {
+	) -> Result<Authentication> {
 		let id = SystemSequence::next_authentication_id(txn)?;
 
 		// Serialize properties as JSON
@@ -53,7 +53,7 @@ impl CatalogStore {
 
 		txn.set(&AuthenticationKey::encoded(id), row)?;
 
-		Ok(AuthenticationDef {
+		Ok(Authentication {
 			id,
 			identity,
 			method: method.to_string(),

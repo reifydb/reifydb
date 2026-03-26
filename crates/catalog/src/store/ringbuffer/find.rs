@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
-		ringbuffer::{PartitionedMetadata, RingBufferDef, RingBufferMetadata},
+		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
 	},
 	key::{
 		namespace_ringbuffer::NamespaceRingBufferKey,
@@ -27,7 +27,7 @@ impl CatalogStore {
 	pub(crate) fn find_ringbuffer(
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
-	) -> Result<Option<RingBufferDef>> {
+	) -> Result<Option<RingBuffer>> {
 		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
@@ -45,7 +45,7 @@ impl CatalogStore {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
 
-		Ok(Some(RingBufferDef {
+		Ok(Some(RingBuffer {
 			id,
 			namespace,
 			name,
@@ -95,7 +95,7 @@ impl CatalogStore {
 
 	pub(crate) fn list_ringbuffer_partition_metadata(
 		rx: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
 		let range = RingBufferMetadataKey::full_scan_for_ringbuffer(ringbuffer.id);
 		let mut stream = rx.range(range, 4096)?;
@@ -127,7 +127,7 @@ impl CatalogStore {
 	/// Returns all partitions for a ringbuffer. Global = 1-element vec, partitioned = N-element vec.
 	pub(crate) fn list_ringbuffer_partitions(
 		rx: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
 		if ringbuffer.partition_by.is_empty() {
 			Ok(Self::find_ringbuffer_metadata(rx, ringbuffer.id)?
@@ -145,7 +145,7 @@ impl CatalogStore {
 	/// Find metadata for a specific partition. Global uses empty key → RingBufferMetadataKey.
 	pub(crate) fn find_partition_metadata(
 		rx: &mut Transaction<'_>,
-		ringbuffer: &RingBufferDef,
+		ringbuffer: &RingBuffer,
 		partition_key: &[Value],
 	) -> Result<Option<RingBufferMetadata>> {
 		if ringbuffer.partition_by.is_empty() {
@@ -159,7 +159,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<RingBufferDef>> {
+	) -> Result<Option<RingBuffer>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::identity::IdentityDef, key::identity::IdentityKey};
+use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		name: &str,
 		id: IdentityId,
-	) -> Result<IdentityDef> {
+	) -> Result<Identity> {
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_identity_id(&mut row, IDENTITY, id);
 		SCHEMA.set_utf8(&mut row, NAME, name);
@@ -26,14 +26,14 @@ impl CatalogStore {
 
 		txn.set(&IdentityKey::encoded(id), row)?;
 
-		Ok(IdentityDef {
+		Ok(Identity {
 			id,
 			name: name.to_string(),
 			enabled: true,
 		})
 	}
 
-	pub(crate) fn create_identity(txn: &mut AdminTransaction, name: &str) -> Result<IdentityDef> {
+	pub(crate) fn create_identity(txn: &mut AdminTransaction, name: &str) -> Result<Identity> {
 		if let Some(_) = Self::find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)? {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Identity,
@@ -53,7 +53,7 @@ impl CatalogStore {
 
 		txn.set(&IdentityKey::encoded(id), row)?;
 
-		Ok(IdentityDef {
+		Ok(Identity {
 			id,
 			name: name.to_string(),
 			enabled: true,

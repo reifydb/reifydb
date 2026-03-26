@@ -10,16 +10,16 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	error::diagnostic::flow::{flow_remote_source_unsupported, flow_source_required},
 	interface::catalog::{
-		flow::{FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId},
-		subscription::SubscriptionDef,
-		view::ViewDef,
+		flow::{FlowEdge, FlowEdgeId, FlowId, FlowNode, FlowNodeId},
+		subscription::Subscription,
+		view::View,
 	},
 	internal,
 };
 use reifydb_rql::{
 	flow::{
 		flow::{FlowBuilder, FlowDag},
-		node::{FlowEdge, FlowNode, FlowNodeType},
+		node::{self, FlowNodeType},
 	},
 	query::QueryPlan,
 };
@@ -48,7 +48,7 @@ pub fn compile_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
 	plan: QueryPlan,
-	sink: Option<&ViewDef>,
+	sink: Option<&View>,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
 	let compiler = FlowCompiler::new(catalog.clone(), flow_id);
@@ -59,7 +59,7 @@ pub fn compile_subscription_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
 	plan: QueryPlan,
-	subscription: &SubscriptionDef,
+	subscription: &Subscription,
 	flow_id: FlowId,
 ) -> Result<FlowDag> {
 	let compiler = FlowCompiler::new(catalog.clone(), flow_id);
@@ -73,7 +73,7 @@ pub(crate) struct FlowCompiler {
 	/// The flow builder being used for construction
 	builder: FlowBuilder,
 	/// The sink view schema (for terminal nodes)
-	pub(crate) sink: Option<ViewDef>,
+	pub(crate) sink: Option<View>,
 }
 
 impl FlowCompiler {
@@ -107,7 +107,7 @@ impl FlowCompiler {
 		let flow_id = self.builder.id();
 
 		// Create the catalog entry
-		let edge_def = FlowEdgeDef {
+		let edge_def = FlowEdge {
 			id: edge_id,
 			flow: flow_id,
 			source: *from,
@@ -118,7 +118,7 @@ impl FlowCompiler {
 		self.catalog.create_flow_edge(txn, &edge_def)?;
 
 		// Add to in-memory builder
-		self.builder.add_edge(FlowEdge::new(edge_id, *from, *to))?;
+		self.builder.add_edge(node::FlowEdge::new(edge_id, *from, *to))?;
 		Ok(())
 	}
 
@@ -132,7 +132,7 @@ impl FlowCompiler {
 			.map_err(|e| Error(internal!("Failed to serialize FlowNodeType: {}", e)))?;
 
 		// Create the catalog entry
-		let node_def = FlowNodeDef {
+		let node_def = FlowNode {
 			id: node_id,
 			flow: flow_id,
 			node_type: node_type.discriminator(),
@@ -143,7 +143,7 @@ impl FlowCompiler {
 		self.catalog.create_flow_node(txn, &node_def)?;
 
 		// Add to in-memory builder
-		self.builder.add_node(FlowNode::new(node_id, node_type));
+		self.builder.add_node(node::FlowNode::new(node_id, node_type));
 		Ok(node_id)
 	}
 
@@ -152,7 +152,7 @@ impl FlowCompiler {
 		mut self,
 		txn: &mut AdminTransaction,
 		plan: QueryPlan,
-		sink: Option<&ViewDef>,
+		sink: Option<&View>,
 	) -> Result<FlowDag> {
 		// Store sink view for terminal nodes (if provided)
 		self.sink = sink.cloned();
@@ -160,17 +160,17 @@ impl FlowCompiler {
 
 		if let Some(sink_view) = sink {
 			let node_type = match sink_view {
-				ViewDef::Table(t) => FlowNodeType::SinkTableView {
+				View::Table(t) => FlowNodeType::SinkTableView {
 					view: sink_view.id(),
 					table: t.underlying,
 				},
-				ViewDef::RingBuffer(rb) => FlowNodeType::SinkRingBufferView {
+				View::RingBuffer(rb) => FlowNodeType::SinkRingBufferView {
 					view: sink_view.id(),
 					ringbuffer: rb.underlying,
 					capacity: rb.capacity,
 					propagate_evictions: rb.propagate_evictions,
 				},
-				ViewDef::Series(s) => FlowNodeType::SinkSeriesView {
+				View::Series(s) => FlowNodeType::SinkSeriesView {
 					view: sink_view.id(),
 					series: s.underlying,
 					key: s.key.clone(),
@@ -194,7 +194,7 @@ impl FlowCompiler {
 		mut self,
 		txn: &mut AdminTransaction,
 		plan: QueryPlan,
-		subscription: &SubscriptionDef,
+		subscription: &Subscription,
 	) -> Result<FlowDag> {
 		let root_node_id = self.compile_plan(txn, plan)?;
 

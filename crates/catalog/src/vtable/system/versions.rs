@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	util::ioc::IocContainer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -14,27 +14,27 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system version information
-pub struct Versions {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemVersions {
+	pub(crate) definition: Arc<VTable>,
 	ioc: IocContainer,
 	exhausted: bool,
 }
 
-impl Versions {
+impl SystemVersions {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_versions_table_def().clone(),
+			definition: SystemCatalog::get_system_versions_table().clone(),
 			ioc,
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Versions {
+impl BaseVTable for SystemVersions {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -90,7 +90,7 @@ impl VTable for Versions {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

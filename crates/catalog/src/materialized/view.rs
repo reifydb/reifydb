@@ -5,15 +5,15 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{NamespaceId, ViewId},
-		view::ViewDef,
+		view::View,
 	},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionViewDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionView};
 
 impl MaterializedCatalog {
 	/// Find a view by ID at a specific version
-	pub fn find_view_at(&self, view: ViewId, version: CommitVersion) -> Option<ViewDef> {
+	pub fn find_view_at(&self, view: ViewId, version: CommitVersion) -> Option<View> {
 		self.views.get(&view).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -21,12 +21,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a view by name in a namespace at a specific version
-	pub fn find_view_by_name_at(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Option<ViewDef> {
+	pub fn find_view_by_name_at(&self, namespace: NamespaceId, name: &str, version: CommitVersion) -> Option<View> {
 		self.views_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let view_id = *entry.value();
 			self.find_view_at(view_id, version)
@@ -34,7 +29,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a view by ID (returns latest version)
-	pub fn find_view(&self, view: ViewId) -> Option<ViewDef> {
+	pub fn find_view(&self, view: ViewId) -> Option<View> {
 		self.views.get(&view).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -42,14 +37,14 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a view by name in a namespace (returns latest version)
-	pub fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<ViewDef> {
+	pub fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<View> {
 		self.views_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let view_id = *entry.value();
 			self.find_view(view_id)
 		})
 	}
 
-	pub fn set_view(&self, id: ViewId, version: CommitVersion, view: Option<ViewDef>) {
+	pub fn set_view(&self, id: ViewId, version: CommitVersion, view: Option<View>) {
 		// Look up the current view to update the index
 		if let Some(entry) = self.views.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
@@ -57,7 +52,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.views.get_or_insert_with(id, MultiVersionViewDef::new);
+		let multi = self.views.get_or_insert_with(id, MultiVersionView::new);
 		if let Some(new) = view {
 			self.views_by_name.insert((new.namespace(), new.name().to_string()), id);
 			multi.value().insert(version, new);
@@ -72,23 +67,23 @@ pub mod tests {
 	use reifydb_core::{
 		config::SystemConfig,
 		interface::catalog::{
-			column::{ColumnDef, ColumnIndex},
+			column::{Column, ColumnIndex},
 			id::{ColumnId, TableId},
-			view::{TableViewDef, ViewKind},
+			view::{TableView, ViewKind},
 		},
 	};
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 	use super::*;
 
-	fn create_test_view(id: ViewId, namespace: NamespaceId, name: &str) -> ViewDef {
-		ViewDef::Table(TableViewDef {
+	fn create_test_view(id: ViewId, namespace: NamespaceId, name: &str) -> View {
+		View::Table(TableView {
 			id,
 			namespace,
 			name: name.to_string(),
 			kind: ViewKind::Deferred,
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Int1),
@@ -97,7 +92,7 @@ pub mod tests {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(2),
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),

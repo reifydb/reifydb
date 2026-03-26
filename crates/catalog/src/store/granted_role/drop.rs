@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::identity::RoleId, key::identity_role::IdentityRoleKey};
+use reifydb_core::{interface::catalog::identity::RoleId, key::granted_role::GrantedRoleKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::identity::IdentityId;
 
@@ -9,7 +9,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn revoke_role(txn: &mut AdminTransaction, identity: IdentityId, role: RoleId) -> Result<()> {
-		txn.remove(&IdentityRoleKey::encoded(identity, role))?;
+		txn.remove(&GrantedRoleKey::encoded(identity, role))?;
 		Ok(())
 	}
 }

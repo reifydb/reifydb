@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{handler::HandlerDef, id::NamespaceId},
+	interface::catalog::{handler::Handler, id::NamespaceId},
 	key::{handler::HandlerKey, namespace_handler::NamespaceHandlerKey, variant_handler::VariantHandlerKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -27,7 +27,7 @@ pub struct HandlerToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_handler(txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<HandlerDef> {
+	pub(crate) fn create_handler(txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<Handler> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(_existing) = CatalogStore::find_handler_by_name(
@@ -80,7 +80,7 @@ impl CatalogStore {
 			var_row,
 		)?;
 
-		Ok(HandlerDef {
+		Ok(Handler {
 			id: handler_id,
 			namespace: namespace_id,
 			name: to_create.name.text().to_string(),

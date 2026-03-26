@@ -333,7 +333,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_define_event_macro() {
+	fn testine_event_macro() {
 		let event = MacroTestEvent::new(42);
 		let any_ref = event.as_any();
 		assert!(any_ref.downcast_ref::<MacroTestEvent>().is_some());

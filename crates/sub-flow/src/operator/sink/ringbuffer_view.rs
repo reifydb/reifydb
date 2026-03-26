@@ -16,7 +16,7 @@ use reifydb_core::{
 	key::{ringbuffer::RingBufferMetadataKey, row::RowKey},
 	value::column::columns::Columns,
 };
-use reifydb_transaction::interceptor::view::ViewInterceptor;
+use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
 use reifydb_type::{
 	Result,
 	error::Error,
@@ -127,8 +127,8 @@ impl Operator for SinkRingBufferViewOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let view_def = self.view.def().clone();
-		let schema: Schema = view_def.columns().into();
+		let view = self.view.def().clone();
+		let schema: Schema = view.columns().into();
 		let primitive_id = PrimitiveId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = self.read_metadata(txn)?;
 		let mut state = self.load(txn)?;
@@ -138,7 +138,7 @@ impl Operator for SinkRingBufferViewOperator {
 				Diff::Insert {
 					post,
 				} => {
-					let coerced = coerce_columns(post, view_def.columns())?;
+					let coerced = coerce_columns(post, view.columns())?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						// Evict oldest if full
@@ -172,15 +172,15 @@ impl Operator for SinkRingBufferViewOperator {
 							state.reverse.insert(assigned_rn, source_rn);
 						}
 
-						let encoded = ViewInterceptor::pre_insert(
+						let encoded = ViewRowInterceptor::pre_insert(
 							txn,
-							&view_def,
+							&view,
 							assigned_rn,
 							encoded,
 						)?;
 						let key = RowKey::encoded(primitive_id, assigned_rn);
 						txn.set(&key, encoded.clone())?;
-						ViewInterceptor::post_insert(txn, &view_def, assigned_rn, &encoded)?;
+						ViewRowInterceptor::post_insert(txn, &view, assigned_rn, &encoded)?;
 
 						if metadata.is_empty() {
 							metadata.head = assigned_rn.0;
@@ -190,7 +190,7 @@ impl Operator for SinkRingBufferViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
@@ -202,8 +202,8 @@ impl Operator for SinkRingBufferViewOperator {
 					post,
 				} => {
 					// Ringbuffer views support update (same as table view)
-					let coerced_pre = coerce_columns(pre, view_def.columns())?;
-					let coerced_post = coerce_columns(post, view_def.columns())?;
+					let coerced_pre = coerce_columns(pre, view.columns())?;
+					let coerced_post = coerce_columns(post, view.columns())?;
 					let row_count = coerced_post.row_count();
 					for row_idx in 0..row_count {
 						let pre_source_rn = coerced_pre.row_numbers[row_idx];
@@ -232,9 +232,9 @@ impl Operator for SinkRingBufferViewOperator {
 							post_storage_rn,
 						);
 
-						let post_encoded = ViewInterceptor::pre_update(
+						let post_encoded = ViewRowInterceptor::pre_update(
 							txn,
-							&view_def,
+							&view,
 							post_storage_rn,
 							post_encoded,
 						)?;
@@ -242,9 +242,9 @@ impl Operator for SinkRingBufferViewOperator {
 						let new_key = RowKey::encoded(primitive_id, post_storage_rn);
 						txn.remove(&old_key)?;
 						txn.set(&new_key, post_encoded.clone())?;
-						ViewInterceptor::post_update(
+						ViewRowInterceptor::post_update(
 							txn,
-							&view_def,
+							&view,
 							post_storage_rn,
 							&post_encoded,
 							&pre_encoded,
@@ -252,7 +252,7 @@ impl Operator for SinkRingBufferViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
 						version,
 						diffs: vec![Diff::Update {
 							pre: coerced_pre,
@@ -263,7 +263,7 @@ impl Operator for SinkRingBufferViewOperator {
 				Diff::Remove {
 					pre,
 				} => {
-					let coerced = coerce_columns(pre, view_def.columns())?;
+					let coerced = coerce_columns(pre, view.columns())?;
 					let row_count = coerced.row_count();
 					for row_idx in 0..row_count {
 						let source_rn = coerced.row_numbers[row_idx];
@@ -272,14 +272,14 @@ impl Operator for SinkRingBufferViewOperator {
 						state.reverse.remove(&storage_rn);
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, storage_rn);
-						ViewInterceptor::pre_delete(txn, &view_def, storage_rn)?;
+						ViewRowInterceptor::pre_delete(txn, &view, storage_rn)?;
 						let key = RowKey::encoded(primitive_id, storage_rn);
 						txn.remove(&key)?;
-						ViewInterceptor::post_delete(txn, &view_def, storage_rn, &encoded)?;
+						ViewRowInterceptor::post_delete(txn, &view, storage_rn, &encoded)?;
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
+						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,

@@ -10,7 +10,7 @@ use reifydb_abi::{
 	constants::CURRENT_API,
 	data::buffer::BufferFFI,
 	operator::{
-		column::{OperatorColumnDefFFI, OperatorColumnDefsFFI},
+		column::{OperatorColumnFFI, OperatorColumnsFFI},
 		descriptor::OperatorDescriptorFFI,
 		types::OPERATOR_MAGIC,
 	},
@@ -20,7 +20,7 @@ use reifydb_type::value::Value;
 
 use crate::{
 	ffi::wrapper::{OperatorWrapper, create_vtable},
-	operator::{FFIOperatorWithMetadata, column::OperatorColumnDef},
+	operator::{FFIOperatorWithMetadata, column::OperatorColumn},
 };
 
 /// Convert a static string to a BufferFFI
@@ -33,16 +33,16 @@ fn str_to_buffer(s: &'static str) -> BufferFFI {
 }
 
 /// Convert operator column definitions to FFI representation
-fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> OperatorColumnDefsFFI {
+fn columns_to_ffi(columns: &'static [OperatorColumn]) -> OperatorColumnsFFI {
 	if columns.is_empty() {
-		return OperatorColumnDefsFFI::empty();
+		return OperatorColumnsFFI::empty();
 	}
 
-	let ffi_columns: Vec<OperatorColumnDefFFI> = columns
+	let ffi_columns: Vec<OperatorColumnFFI> = columns
 		.iter()
 		.map(|c| {
 			let ffi_type = c.field_type.to_ffi();
-			OperatorColumnDefFFI {
+			OperatorColumnFFI {
 				name: str_to_buffer(c.name),
 				base_type: ffi_type.base_type,
 				constraint_type: ffi_type.constraint_type,
@@ -56,7 +56,7 @@ fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> OperatorColumnDefsFF
 	let column_count = ffi_columns.len();
 	let columns_ptr = Box::leak(ffi_columns.into_boxed_slice()).as_ptr();
 
-	OperatorColumnDefsFFI {
+	OperatorColumnsFFI {
 		columns: columns_ptr,
 		column_count,
 	}

@@ -28,11 +28,11 @@ impl Default for ProcedureTrigger {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProcedureDef {
+pub struct Procedure {
 	pub id: ProcedureId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub params: Vec<ProcedureParamDef>,
+	pub params: Vec<ProcedureParam>,
 	pub return_type: Option<TypeConstraint>,
 	/// RQL source text, compiled on load
 	pub body: String,
@@ -42,7 +42,7 @@ pub struct ProcedureDef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProcedureParamDef {
+pub struct ProcedureParam {
 	pub name: String,
 	pub param_type: TypeConstraint,
 }

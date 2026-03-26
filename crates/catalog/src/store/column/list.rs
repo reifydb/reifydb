@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		column::ColumnDef,
+		column::Column,
 		id::{ColumnId, NamespaceId},
 		primitive::PrimitiveId,
 	},
@@ -15,7 +15,7 @@ use crate::{CatalogStore, Result, store::column::schema::primitive_column};
 
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
-	pub column: ColumnDef,
+	pub column: Column,
 	pub source_id: PrimitiveId,
 	pub is_view: bool,
 	pub entity_kind: &'static str,
@@ -24,7 +24,7 @@ pub struct ColumnInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_columns(rx: &mut Transaction<'_>, source: impl Into<PrimitiveId>) -> Result<Vec<ColumnDef>> {
+	pub(crate) fn list_columns(rx: &mut Transaction<'_>, source: impl Into<PrimitiveId>) -> Result<Vec<Column>> {
 		let source = source.into();
 		let mut result = vec![];
 

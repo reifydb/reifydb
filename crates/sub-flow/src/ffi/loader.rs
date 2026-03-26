@@ -19,7 +19,7 @@ use reifydb_abi::{
 	constants::{CURRENT_API, OPERATOR_MAGIC},
 	data::buffer::BufferFFI,
 	operator::{
-		column::OperatorColumnDefsFFI,
+		column::OperatorColumnsFFI,
 		descriptor::OperatorDescriptorFFI,
 		types::{OperatorCreateFnFFI, OperatorMagicFnFFI},
 	},
@@ -318,24 +318,24 @@ pub struct LoadedOperatorInfo {
 	pub api: u32,
 	pub version: String,
 	pub description: String,
-	pub input_columns: Vec<ColumnDefInfo>,
-	pub output_columns: Vec<ColumnDefInfo>,
+	pub input_columns: Vec<ColumnInfo>,
+	pub output_columns: Vec<ColumnInfo>,
 	pub capabilities: u32,
 }
 
 /// Information about a single column definition in an operator
 #[derive(Debug, Clone)]
-pub struct ColumnDefInfo {
+pub struct ColumnInfo {
 	pub name: String,
 	pub field_type: TypeConstraint,
 	pub description: String,
 }
 
-/// Extract column definitions from an OperatorColumnDefsFFI
+/// Extract column definitions from an OperatorColumnsFFI
 ///
 /// # Safety
 /// The column_defs must have valid columns pointer for column_count elements
-unsafe fn extract_column_defs(column_defs: &OperatorColumnDefsFFI) -> Vec<ColumnDefInfo> {
+unsafe fn extract_column_defs(column_defs: &OperatorColumnsFFI) -> Vec<ColumnInfo> {
 	if column_defs.columns.is_null() || column_defs.column_count == 0 {
 		return Vec::new();
 	}
@@ -353,7 +353,7 @@ unsafe fn extract_column_defs(column_defs: &OperatorColumnDefsFFI) -> Vec<Column
 			constraint_param2: col.constraint_param2,
 		});
 
-		columns.push(ColumnDefInfo {
+		columns.push(ColumnInfo {
 			// SAFETY: column buffers are valid UTF-8 strings from the operator
 			name: unsafe { buffer_to_string(&col.name) },
 			field_type,

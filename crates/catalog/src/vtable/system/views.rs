@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -16,25 +16,25 @@ use reifydb_type::{
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system view information
-pub struct Views {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemViews {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Views {
+impl SystemViews {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_views_table_def().clone(),
+			definition: SystemCatalog::get_system_views_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Views {
+impl BaseVTable for SystemViews {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -89,7 +89,7 @@ impl VTable for Views {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

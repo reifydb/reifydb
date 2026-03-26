@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::policy::{PolicyDef, PolicyOperationDef, PolicyToCreate},
+	interface::catalog::policy::{Policy, PolicyOperation, PolicyToCreate},
 	key::{policy::PolicyKey, policy_op::PolicyOpKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -24,7 +24,7 @@ impl CatalogStore {
 	pub(crate) fn create_policy(
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
-	) -> Result<(PolicyDef, Vec<PolicyOperationDef>)> {
+	) -> Result<(Policy, Vec<PolicyOperation>)> {
 		// Check duplicate by name if named
 		if let Some(ref name) = to_create.name {
 			if let Some(_) = Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)? {
@@ -60,14 +60,14 @@ impl CatalogStore {
 
 			txn.set(&PolicyOpKey::encoded(policy_id, i as u64), op_row)?;
 
-			ops.push(PolicyOperationDef {
+			ops.push(PolicyOperation {
 				policy_id,
 				operation: op.operation.clone(),
 				body_source: op.body_source.clone(),
 			});
 		}
 
-		let def = PolicyDef {
+		let def = Policy {
 			id: policy_id,
 			name: to_create.name,
 			target_type: to_create.target_type,

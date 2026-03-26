@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
 		id::NamespaceId,
-		sumtype::{SumTypeDef, SumTypeKind, VariantDef},
+		sumtype::{SumType, SumTypeKind, Variant},
 	},
 };
 use reifydb_type::value::sumtype::SumTypeId;
@@ -21,12 +21,12 @@ pub mod get;
 pub mod list;
 pub(crate) mod schema;
 
-pub(crate) fn sumtype_def_from_row(row: &EncodedRow) -> SumTypeDef {
+pub(crate) fn sumtype_from_row(row: &EncodedRow) -> SumType {
 	let id = SumTypeId(sumtype::SCHEMA.get_u64(row, sumtype::ID));
 	let namespace = NamespaceId(sumtype::SCHEMA.get_u64(row, sumtype::NAMESPACE));
 	let name = sumtype::SCHEMA.get_utf8(row, sumtype::NAME).to_string();
 	let variants_json = sumtype::SCHEMA.get_utf8(row, sumtype::VARIANTS_JSON);
-	let variants: Vec<VariantDef> = from_str(variants_json).unwrap_or_else(|e| {
+	let variants: Vec<Variant> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
@@ -40,7 +40,7 @@ pub(crate) fn sumtype_def_from_row(row: &EncodedRow) -> SumTypeDef {
 		}
 	};
 
-	SumTypeDef {
+	SumType {
 		id,
 		namespace,
 		name,

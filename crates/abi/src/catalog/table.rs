@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use super::{column::ColumnDefFFI, primary_key::PrimaryKeyFFI};
+use super::{column::ColumnFFI, primary_key::PrimaryKeyFFI};
 use crate::data::buffer::BufferFFI;
 
 /// FFI-safe table definition
@@ -15,7 +15,7 @@ pub struct TableFFI {
 	/// Table name (UTF-8 encoded)
 	pub name: BufferFFI,
 	/// Array of column definitions
-	pub columns: *const ColumnDefFFI,
+	pub columns: *const ColumnFFI,
 	/// Number of columns in the array
 	pub column_count: usize,
 	/// Whether table has a primary key (0=no, 1=yes)

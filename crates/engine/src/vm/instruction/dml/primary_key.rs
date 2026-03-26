@@ -4,7 +4,7 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{row::EncodedRow, schema::Schema},
-	interface::catalog::{key::PrimaryKeyDef, table::TableDef},
+	interface::catalog::{key::PrimaryKey, table::Table},
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, schema::IndexSchema},
 };
@@ -15,9 +15,9 @@ use crate::Result;
 
 /// Extract primary key values from a encoded and encode them as an index key
 pub fn encode_primary_key(
-	pk_def: &PrimaryKeyDef,
+	pk_def: &PrimaryKey,
 	row: &EncodedRow,
-	table: &TableDef,
+	table: &Table,
 	schema: &Schema,
 ) -> Result<EncodedIndexKey> {
 	// Create index layout for PK columns
@@ -178,11 +178,7 @@ pub fn encode_primary_key(
 }
 
 /// Helper to load the primary key definition if the table has one
-pub fn get_primary_key(
-	catalog: &Catalog,
-	txn: &mut Transaction<'_>,
-	table: &TableDef,
-) -> Result<Option<PrimaryKeyDef>> {
+pub fn get_primary_key(catalog: &Catalog, txn: &mut Transaction<'_>, table: &Table) -> Result<Option<PrimaryKey>> {
 	if let Some(_pk_id) = catalog.get_table_pk_id(txn, table.id)? {
 		catalog.find_primary_key(txn, table.id)
 	} else {

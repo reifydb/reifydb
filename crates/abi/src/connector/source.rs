@@ -7,7 +7,7 @@ use core::ffi::c_void;
 
 use crate::{
 	data::{buffer::BufferFFI, column::ColumnsFFI},
-	operator::column::OperatorColumnDefsFFI,
+	operator::column::OperatorColumnsFFI,
 };
 
 /// Function signature for the source magic number export
@@ -30,7 +30,7 @@ pub struct SourceDescriptorFFI {
 	/// 0 = Pull, 1 = Push
 	pub mode: u8,
 	/// Schema of records this source produces
-	pub output_columns: OperatorColumnDefsFFI,
+	pub output_columns: OperatorColumnsFFI,
 	/// Virtual function table
 	pub vtable: SourceVTableFFI,
 }

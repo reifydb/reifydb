@@ -13,7 +13,7 @@ use reifydb_core::{
 		catalog::{
 			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 			namespace::Namespace,
-			procedure::{ProcedureParamDef, ProcedureTrigger},
+			procedure::{ProcedureParam, ProcedureTrigger},
 			property::ColumnPropertyKind,
 			series::SeriesKey,
 		},
@@ -39,7 +39,7 @@ use crate::{
 
 /// Owned primary key definition for physical plan nodes (materialized from bump-allocated logical plan)
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyDef {
+pub struct PrimaryKey {
 	pub columns: Vec<PrimaryKeyColumn>,
 }
 
@@ -302,7 +302,7 @@ pub struct CreatePrimaryKeyNode {
 pub struct CreateProcedureNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
-	pub params: Vec<ProcedureParamDef>,
+	pub params: Vec<ProcedureParam>,
 	pub body_source: String,
 	pub trigger: ProcedureTrigger,
 	pub is_test: bool,

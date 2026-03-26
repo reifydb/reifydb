@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::identity::RoleId,
-	key::{EncodableKey, identity_role::IdentityRoleKey, role::RoleKey},
+	key::{EncodableKey, granted_role::GrantedRoleKey, role::RoleKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
@@ -13,12 +13,12 @@ impl CatalogStore {
 	pub(crate) fn drop_role(txn: &mut AdminTransaction, role: RoleId) -> Result<()> {
 		// Remove associated identity-role entries that reference this role
 		{
-			let range = IdentityRoleKey::full_scan();
+			let range = GrantedRoleKey::full_scan();
 			let mut stream = txn.range(range, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			while let Some(entry) = stream.next() {
 				let entry = entry?;
-				if let Some(key) = IdentityRoleKey::decode(&entry.key) {
+				if let Some(key) = GrantedRoleKey::decode(&entry.key) {
 					if key.role == role {
 						keys_to_remove.push(key);
 					}
@@ -26,7 +26,7 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&IdentityRoleKey::encoded(key.identity, key.role))?;
+				txn.remove(&GrantedRoleKey::encoded(key.identity, key.role))?;
 			}
 		}
 

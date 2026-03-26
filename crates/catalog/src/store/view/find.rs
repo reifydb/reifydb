@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 		series::SeriesKey,
-		view::{RingBufferViewDef, SeriesViewDef, TableViewDef, ViewDef, ViewKind, ViewStorageKind},
+		view::{RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
@@ -18,7 +18,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<ViewDef>> {
+	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
 		let Some(multi) = rx.get(&ViewKey::encoded(id))? else {
 			return Ok(None);
 		};
@@ -26,16 +26,16 @@ impl CatalogStore {
 		let row = multi.row;
 		let columns = Self::list_columns(rx, id)?;
 		let primary_key = Self::find_view_primary_key(rx, id)?;
-		let view_def = decode_view_def(&row, columns, primary_key)?;
+		let view = decode_view(&row, columns, primary_key)?;
 
-		Ok(Some(view_def))
+		Ok(Some(view))
 	}
 
 	pub(crate) fn find_view_by_name(
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<ViewDef>> {
+	) -> Result<Option<View>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace), 1024)?;
 
@@ -62,18 +62,14 @@ impl CatalogStore {
 
 use reifydb_core::{
 	encoded::row::EncodedRow,
-	interface::catalog::{column::ColumnDef, key::PrimaryKeyDef},
+	interface::catalog::{column::Column, key::PrimaryKey},
 };
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
 };
 
-pub(crate) fn decode_view_def(
-	row: &EncodedRow,
-	columns: Vec<ColumnDef>,
-	primary_key: Option<PrimaryKeyDef>,
-) -> Result<ViewDef> {
+pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
 	let id = ViewId(view::SCHEMA.get_u64(row, view::ID));
 	let namespace = NamespaceId(view::SCHEMA.get_u64(row, view::NAMESPACE));
 	let name = view::SCHEMA.get_utf8(row, view::NAME).to_string();
@@ -102,7 +98,7 @@ pub(crate) fn decode_view_def(
 	let underlying_primitive_id = view::SCHEMA.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
 
 	Ok(match storage_kind {
-		x if x == ViewStorageKind::Table as u8 => ViewDef::Table(TableViewDef {
+		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
 			id,
 			name,
 			namespace,
@@ -114,7 +110,7 @@ pub(crate) fn decode_view_def(
 		x if x == ViewStorageKind::RingBuffer as u8 => {
 			let capacity = view::SCHEMA.get_u64(row, view::CAPACITY);
 			let propagate_evictions = view::SCHEMA.get_u8(row, view::PROPAGATE_EVICTIONS) != 0;
-			ViewDef::RingBuffer(RingBufferViewDef {
+			View::RingBuffer(RingBufferView {
 				id,
 				name,
 				namespace,
@@ -137,7 +133,7 @@ pub(crate) fn decode_view_def(
 			} else {
 				Some(SumTypeId(tag_raw))
 			};
-			ViewDef::Series(SeriesViewDef {
+			View::Series(SeriesView {
 				id,
 				name,
 				namespace,
@@ -150,7 +146,7 @@ pub(crate) fn decode_view_def(
 			})
 		}
 		// Default to table for backwards compat during transition (storage_kind=0 from old data)
-		_ => ViewDef::Table(TableViewDef {
+		_ => View::Table(TableView {
 			id,
 			name,
 			namespace,

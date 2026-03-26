@@ -7,12 +7,12 @@ use std::{fs::read_dir, path::PathBuf};
 
 use reifydb_core::event::{
 	EventBus,
-	flow::{FlowOperatorLoadedEvent, OperatorColumnDef},
+	flow::{FlowOperatorLoadedEvent, OperatorColumn},
 };
 use reifydb_type::Result;
 use tracing::{debug, instrument};
 
-use crate::ffi::loader::{ColumnDefInfo, ffi_operator_loader};
+use crate::ffi::loader::{ColumnInfo, ffi_operator_loader};
 
 /// Load FFI operators from a directory into the global loader.
 ///
@@ -51,9 +51,9 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 		debug!("Registered FFI operator: {} from {:?}", info.operator, path);
 
 		// Convert column definitions to event format
-		fn convert_column_defs(columns: &[ColumnDefInfo]) -> Vec<OperatorColumnDef> {
+		fn convert_columns(columns: &[ColumnInfo]) -> Vec<OperatorColumn> {
 			columns.iter()
-				.map(|c| OperatorColumnDef {
+				.map(|c| OperatorColumn {
 					name: c.name.clone(),
 					field_type: c.field_type.clone(),
 					description: c.description.clone(),
@@ -69,8 +69,8 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 			info.api,
 			info.version,
 			info.description,
-			convert_column_defs(&info.input_columns),
-			convert_column_defs(&info.output_columns),
+			convert_columns(&info.input_columns),
+			convert_columns(&info.output_columns),
 			info.capabilities,
 		);
 

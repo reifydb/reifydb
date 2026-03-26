@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 pub type AuthenticationId = u64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AuthenticationDef {
+pub struct Authentication {
 	pub id: AuthenticationId,
 	pub identity: IdentityId,
 	pub method: String,

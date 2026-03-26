@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{sumtype::SumTypeKind, vtable::VTableDef},
+	interface::catalog::{sumtype::SumTypeKind, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,25 +13,25 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system enum (sumtype) information
-pub struct Enums {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemEnums {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Enums {
+impl SystemEnums {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_enums_table_def().clone(),
+			definition: SystemCatalog::get_system_enums_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Enums {
+impl BaseVTable for SystemEnums {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -78,7 +78,7 @@ impl VTable for Enums {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }
