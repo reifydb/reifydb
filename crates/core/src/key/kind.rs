@@ -69,6 +69,11 @@ pub enum KeyKind {
 	Authentication = 0x3B,
 	Config = 0x3C,
 	Token = 0x3D,
+	Source = 0x3E,
+	NamespaceSource = 0x3F,
+	Sink = 0x40,
+	NamespaceSink = 0x41,
+	SourceCheckpoint = 0x42,
 }
 
 impl From<KeyKind> for u8 {
@@ -142,6 +147,11 @@ impl TryFrom<u8> for KeyKind {
 			0x3B => Ok(Self::Authentication),
 			0x3C => Ok(Self::Config),
 			0x3D => Ok(Self::Token),
+			0x3E => Ok(Self::Source),
+			0x3F => Ok(Self::NamespaceSource),
+			0x40 => Ok(Self::Sink),
+			0x41 => Ok(Self::NamespaceSink),
+			0x42 => Ok(Self::SourceCheckpoint),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

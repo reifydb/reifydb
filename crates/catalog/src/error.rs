@@ -31,6 +31,8 @@ pub enum CatalogObjectKind {
 	Policy,
 	Migration,
 	Column,
+	Source,
+	Sink,
 }
 
 impl Display for CatalogObjectKind {
@@ -53,6 +55,8 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Policy => f.write_str("policy"),
 			CatalogObjectKind::Migration => f.write_str("migration"),
 			CatalogObjectKind::Column => f.write_str("column"),
+			CatalogObjectKind::Source => f.write_str("source"),
+			CatalogObjectKind::Sink => f.write_str("sink"),
 		}
 	}
 }
@@ -284,6 +288,16 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Column => {
 						("CA_003", "column", "ensure the column exists in the definition")
 					}
+					CatalogObjectKind::Source => (
+						"CA_060",
+						"source",
+						"choose a different name, drop the existing source or create source in a different namespace",
+					),
+					CatalogObjectKind::Sink => (
+						"CA_061",
+						"sink",
+						"choose a different name, drop the existing sink or create sink in a different namespace",
+					),
 				};
 				let message = if matches!(
 					kind,
@@ -398,6 +412,16 @@ impl IntoDiagnostic for CatalogError {
 						"CA_004",
 						"column",
 						"ensure the column exists in the definition".to_string(),
+					),
+					CatalogObjectKind::Source => (
+						"CA_062",
+						"source",
+						"ensure the source exists or create it first using `CREATE SOURCE`".to_string(),
+					),
+					CatalogObjectKind::Sink => (
+						"CA_063",
+						"sink",
+						"ensure the sink exists or create it first using `CREATE SINK`".to_string(),
 					),
 				};
 				let message = match kind {

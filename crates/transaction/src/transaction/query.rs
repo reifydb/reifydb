@@ -13,8 +13,8 @@ use reifydb_core::{
 			flow::{FlowDef, FlowId},
 			handler::HandlerDef,
 			id::{
-				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-				SubscriptionId, TableId, TestId, ViewId,
+				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SinkId,
+				SourceId, SubscriptionId, TableId, TestId, ViewId,
 			},
 			identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
 			migration::MigrationDef,
@@ -23,6 +23,8 @@ use reifydb_core::{
 			procedure::ProcedureDef,
 			ringbuffer::RingBufferDef,
 			series::SeriesDef,
+			sink::SinkDef,
+			source::SourceDef,
 			subscription::SubscriptionDef,
 			sumtype::SumTypeDef,
 			table::TableDef,
@@ -46,9 +48,9 @@ use crate::{
 		TransactionalFlowChanges, TransactionalHandlerChanges, TransactionalIdentityChanges,
 		TransactionalIdentityRoleChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalViewChanges,
+		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalSourceChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
+		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -490,6 +492,42 @@ impl TransactionalAuthenticationChanges for QueryTransaction {
 	}
 
 	fn is_authentication_deleted(&self, _id: AuthenticationId) -> bool {
+		false
+	}
+}
+
+impl TransactionalSourceChanges for QueryTransaction {
+	fn find_source(&self, _id: SourceId) -> Option<&SourceDef> {
+		None
+	}
+
+	fn find_source_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SourceDef> {
+		None
+	}
+
+	fn is_source_deleted(&self, _id: SourceId) -> bool {
+		false
+	}
+
+	fn is_source_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalSinkChanges for QueryTransaction {
+	fn find_sink(&self, _id: SinkId) -> Option<&SinkDef> {
+		None
+	}
+
+	fn find_sink_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SinkDef> {
+		None
+	}
+
+	fn is_sink_deleted(&self, _id: SinkId) -> bool {
+		false
+	}
+
+	fn is_sink_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

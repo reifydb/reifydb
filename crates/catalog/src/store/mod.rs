@@ -25,6 +25,8 @@ pub(crate) mod role;
 pub(crate) mod schema;
 pub(crate) mod sequence;
 pub(crate) mod series;
+pub(crate) mod sink;
+pub(crate) mod source;
 pub(crate) mod subscription;
 pub(crate) mod sumtype;
 pub(crate) mod table;

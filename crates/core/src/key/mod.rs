@@ -22,6 +22,8 @@ use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
 use namespace_series::NamespaceSeriesKey;
+use namespace_sink::NamespaceSinkKey;
+use namespace_source::NamespaceSourceKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
@@ -35,6 +37,8 @@ use role::RoleKey;
 use row::RowKey;
 use row_sequence::RowSequenceKey;
 use series::{SeriesKey, SeriesMetadataKey};
+use sink::SinkKey;
+use source::SourceKey;
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
 use subscription_row::SubscriptionRowKey;
@@ -79,6 +83,8 @@ pub mod namespace_flow;
 pub mod namespace_handler;
 pub mod namespace_ringbuffer;
 pub mod namespace_series;
+pub mod namespace_sink;
+pub mod namespace_source;
 pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
@@ -94,6 +100,8 @@ pub mod row_sequence;
 pub mod schema;
 pub mod series;
 pub mod series_row;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod subscription_column;
 pub mod subscription_row;
@@ -156,6 +164,10 @@ pub enum Key {
 	Policy(PolicyKey),
 	PolicyOp(PolicyOpKey),
 	Token(TokenKey),
+	Source(SourceKey),
+	NamespaceSource(NamespaceSourceKey),
+	Sink(SinkKey),
+	NamespaceSink(NamespaceSinkKey),
 }
 
 impl Key {
@@ -210,6 +222,10 @@ impl Key {
 			Key::Policy(key) => key.encode(),
 			Key::PolicyOp(key) => key.encode(),
 			Key::Token(key) => key.encode(),
+			Key::Source(key) => key.encode(),
+			Key::NamespaceSource(key) => key.encode(),
+			Key::Sink(key) => key.encode(),
+			Key::NamespaceSink(key) => key.encode(),
 		}
 	}
 }
@@ -348,6 +364,14 @@ impl Key {
 			KeyKind::Token => TokenKey::decode(&key).map(Self::Token),
 			KeyKind::Config => {
 				// Config keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
+			KeyKind::Source
+			| KeyKind::NamespaceSource
+			| KeyKind::Sink
+			| KeyKind::NamespaceSink
+			| KeyKind::SourceCheckpoint => {
+				// Source/Sink keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 		}

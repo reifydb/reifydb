@@ -11,7 +11,7 @@ use reifydb_core::{
 		handler::HandlerDef,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-			SubscriptionId, TableId, TestId, ViewId,
+			SinkId, SourceId, SubscriptionId, TableId, TestId, ViewId,
 		},
 		identity::{IdentityDef, IdentityRoleDef, RoleDef, RoleId},
 		migration::{MigrationDef, MigrationEvent},
@@ -20,6 +20,8 @@ use reifydb_core::{
 		procedure::ProcedureDef,
 		ringbuffer::RingBufferDef,
 		series::SeriesDef,
+		sink::SinkDef,
+		source::SourceDef,
 		subscription::SubscriptionDef,
 		sumtype::SumTypeDef,
 		table::TableDef,
@@ -44,6 +46,8 @@ pub trait TransactionalChanges:
 	+ TransactionalRoleChanges
 	+ TransactionalPolicyChanges
 	+ TransactionalSeriesChanges
+	+ TransactionalSinkChanges
+	+ TransactionalSourceChanges
 	+ TransactionalSubscriptionChanges
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
@@ -219,6 +223,26 @@ pub trait TransactionalPolicyChanges {
 	fn is_policy_deleted_by_name(&self, name: &str) -> bool;
 }
 
+pub trait TransactionalSourceChanges {
+	fn find_source(&self, id: SourceId) -> Option<&SourceDef>;
+
+	fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SourceDef>;
+
+	fn is_source_deleted(&self, id: SourceId) -> bool;
+
+	fn is_source_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
+pub trait TransactionalSinkChanges {
+	fn find_sink(&self, id: SinkId) -> Option<&SinkDef>;
+
+	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SinkDef>;
+
+	fn is_sink_deleted(&self, id: SinkId) -> bool;
+
+	fn is_sink_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
+}
+
 pub trait TransactionalMigrationChanges {
 	fn find_migration(&self, id: MigrationId) -> Option<&MigrationDef>;
 
@@ -253,6 +277,10 @@ pub struct TransactionalDefChanges {
 	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
 	/// All series definition changes in order (no coalescing)
 	pub series_def: Vec<Change<SeriesDef>>,
+	/// All sink definition changes in order (no coalescing)
+	pub sink_def: Vec<Change<SinkDef>>,
+	/// All source definition changes in order (no coalescing)
+	pub source_def: Vec<Change<SourceDef>>,
 	/// All subscription definition changes in order (no coalescing)
 	pub sumtype_def: Vec<Change<SumTypeDef>>,
 	pub subscription_def: Vec<Change<SubscriptionDef>>,
@@ -426,6 +454,36 @@ impl TransactionalDefChanges {
 		let op = change.op;
 		self.series_def.push(change);
 		self.log.push(Operation::Series {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_sink_def_change(&mut self, change: Change<SinkDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.sink_def.push(change);
+		self.log.push(Operation::Sink {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_source_def_change(&mut self, change: Change<SourceDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|s| s.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.source_def.push(change);
+		self.log.push(Operation::Source {
 			id,
 			op,
 		});
@@ -633,6 +691,14 @@ pub enum Operation {
 		id: SeriesId,
 		op: OperationType,
 	},
+	Sink {
+		id: SinkId,
+		op: OperationType,
+	},
+	Source {
+		id: SourceId,
+		op: OperationType,
+	},
 	SumType {
 		id: SumTypeId,
 		op: OperationType,
@@ -690,6 +756,8 @@ impl TransactionalDefChanges {
 			procedure_def: Vec::new(),
 			ringbuffer_def: Vec::new(),
 			series_def: Vec::new(),
+			sink_def: Vec::new(),
+			source_def: Vec::new(),
 			sumtype_def: Vec::new(),
 			subscription_def: Vec::new(),
 			test_def: Vec::new(),
@@ -787,6 +855,8 @@ impl TransactionalDefChanges {
 		self.procedure_def.clear();
 		self.ringbuffer_def.clear();
 		self.series_def.clear();
+		self.sink_def.clear();
+		self.source_def.clear();
 		self.sumtype_def.clear();
 		self.subscription_def.clear();
 		self.test_def.clear();

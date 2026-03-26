@@ -642,8 +642,10 @@ pub mod ids {
 		pub const AUTHENTICATION: SequenceId = SequenceId(16);
 		pub const TEST: SequenceId = SequenceId(17);
 		pub const TOKEN: SequenceId = SequenceId(18);
+		pub const SOURCE_CONNECTOR: SequenceId = SequenceId(19);
+		pub const SINK_CONNECTOR: SequenceId = SequenceId(20);
 
-		pub const ALL: [SequenceId; 18] = [
+		pub const ALL: [SequenceId; 20] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -662,6 +664,8 @@ pub mod ids {
 			AUTHENTICATION,
 			TEST,
 			TOKEN,
+			SOURCE_CONNECTOR,
+			SINK_CONNECTOR,
 		];
 	}
 
