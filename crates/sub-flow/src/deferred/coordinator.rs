@@ -48,7 +48,7 @@ use super::{
 };
 use crate::{
 	catalog::FlowCatalog,
-	transaction::pending::{Pending, PendingWrite, ViewChangeCollector},
+	transaction::pending::{Pending, PendingWrite},
 };
 
 pub(crate) struct FlowConsumeRef {
@@ -100,7 +100,6 @@ struct ConsumeContext {
 	state_version: CommitVersion,
 	current_version: CommitVersion,
 	combined: Pending,
-	collector: ViewChangeCollector,
 	checkpoints: Vec<(FlowId, CommitVersion)>,
 	consumer_key: EncodedKey,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
@@ -113,6 +112,8 @@ struct ConsumeContext {
 	/// These flows will have new CDC events in the next cycle from view changes,
 	/// so their checkpoints should NOT be advanced yet.
 	downstream_flows: collections::HashSet<FlowId>,
+	/// View changes accumulated from flow workers for cascading to transactional flows.
+	view_changes: Vec<Change>,
 }
 
 enum Phase {
@@ -276,7 +277,6 @@ impl CoordinatorActor {
 			state_version,
 			current_version,
 			combined: Pending::new(),
-			collector: ViewChangeCollector::new(),
 			checkpoints: Vec::new(),
 			consumer_key,
 			original_reply: reply,
@@ -284,6 +284,7 @@ impl CoordinatorActor {
 			all_changes,
 			latest_version,
 			downstream_flows: collections::HashSet::new(),
+			view_changes: Vec::new(),
 		};
 
 		// Discover and load new flows from CDC events using engine.begin_query()
@@ -446,10 +447,10 @@ impl CoordinatorActor {
 				match response {
 					PoolResponse::Success {
 						pending,
-						collector,
+						view_changes,
 					} => {
 						consume_ctx.combined = pending;
-						consume_ctx.collector = collector;
+						consume_ctx.view_changes.extend(view_changes);
 					}
 					PoolResponse::RegisterSuccess => {
 						// unexpected but not an error
@@ -481,9 +482,9 @@ impl CoordinatorActor {
 				match response {
 					PoolResponse::Success {
 						pending,
-						mut collector,
+						view_changes,
 					} => {
-						consume_ctx.collector.extend(collector.take());
+						consume_ctx.view_changes.extend(view_changes);
 						for (key, value) in pending.iter_sorted() {
 							match value {
 								PendingWrite::Set(v) => {
@@ -801,7 +802,7 @@ impl CoordinatorActor {
 	}
 
 	/// Complete the consume operation: commit writes and checkpoints directly.
-	fn finish_consume(&self, state: &mut CoordinatorState, mut consume_ctx: ConsumeContext) {
+	fn finish_consume(&self, state: &mut CoordinatorState, consume_ctx: ConsumeContext) {
 		Span::current().record("elapsed_us", consume_ctx.consume_start.elapsed().as_micros() as u64);
 
 		state.phase = Phase::Idle;
@@ -844,6 +845,11 @@ impl CoordinatorActor {
 			}
 		}
 
+		// Feed view changes to cascading transactional flows
+		for change in consume_ctx.view_changes {
+			transaction.track_flow_change(change);
+		}
+
 		// Persist per-flow checkpoints
 		for (flow_id, version) in &consume_ctx.checkpoints {
 			if let Err(e) = CdcCheckpoint::persist(&mut transaction, flow_id, *version) {
@@ -862,12 +868,6 @@ impl CoordinatorActor {
 				(consume_ctx.original_reply)(coordinator_error(e));
 				return;
 			}
-		}
-
-		// Track view changes so that transactional flows sourcing those views
-		// are triggered by the TransactionalFlowPreCommitInterceptor in the same commit.
-		for change in consume_ctx.collector.take() {
-			transaction.track_flow_change(change);
 		}
 
 		// Commit the transaction

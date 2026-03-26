@@ -10,10 +10,7 @@ use reifydb_core::{
 };
 use reifydb_type::{Result, value::row_number::RowNumber};
 
-use crate::{
-	Operator,
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
-};
+use crate::{Operator, transaction::FlowTransaction};
 
 pub struct PrimitiveFlowOperator {
 	node: FlowNodeId,
@@ -35,12 +32,7 @@ impl Operator for PrimitiveFlowOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		_txn: &mut FlowTransaction,
-		change: Change,
-		_collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		Ok(change)
 	}
 

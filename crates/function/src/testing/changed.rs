@@ -1,45 +1,149 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
+use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	testing::{MutationRecord, TestingChanged, TestingContext},
+	interface::{catalog::primitive::PrimitiveId, change::Diff},
+	internal_error,
+	testing::TestingChanged,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_transaction::{testing::TestFlowProcessor, transaction::Transaction};
 use reifydb_type::{Result, value::Value};
 
-use super::{column_for_values, extract_optional_string_arg, testing_context_from_ioc};
+use super::{column_for_values, extract_optional_string_arg};
 use crate::{GeneratorContext, GeneratorFunction, error::GeneratorFunctionResult};
 
 impl GeneratorFunction for TestingChanged {
 	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
-		let testing = testing_context_from_ioc(ctx.ioc)?;
-		let guard = testing.lock();
+		let t = match ctx.txn {
+			Transaction::Test(t) => t,
+			_ => {
+				return Err(internal_error!("testing::*::changed() requires a test transaction").into());
+			}
+		};
+
 		let filter_arg = extract_optional_string_arg(&ctx.params);
-		Ok(build_mutations(&guard, filter_arg.as_deref(), self.primitive_type)?)
+
+		// For views: materialize flow writes if there are non-view source changes pending.
+		// View entries in the accumulator (from a previous process) must not trigger
+		// another process — only source-table/series/ringbuffer changes should.
+		if self.primitive_type == "views" {
+			if let Ok(processor) = ctx.ioc.resolve::<Arc<dyn TestFlowProcessor>>() {
+				let _ = processor.process(t);
+			}
+		}
+
+		let txn = &mut *t.inner;
+		let baseline = t.baseline;
+
+		// Read individual mutations from the accumulator
+		let entries: Vec<_> = txn
+			.accumulator_entries_from(baseline)
+			.iter()
+			.map(|(id, diff)| (id.clone(), diff.clone()))
+			.collect();
+
+		let mut mutations: Vec<MutationEntry> = Vec::new();
+
+		for (primitive_id, diff) in &entries {
+			let type_matches = match (&primitive_id, self.primitive_type) {
+				(PrimitiveId::Table(_), "tables") => true,
+				(PrimitiveId::View(_), "views") => true,
+				(PrimitiveId::RingBuffer(_), "ringbuffers") => true,
+				(PrimitiveId::Series(_), "series") => true,
+				(PrimitiveId::Dictionary(_), "dictionaries") => true,
+				_ => false,
+			};
+			if !type_matches {
+				continue;
+			}
+
+			let name = match resolve_primitive_name(
+				ctx.catalog,
+				&mut Transaction::Admin(&mut *txn),
+				primitive_id,
+			) {
+				Ok(n) => n,
+				Err(_) => continue,
+			};
+
+			if let Some(filter) = filter_arg.as_deref() {
+				if name != filter {
+					continue;
+				}
+			}
+
+			mutations.push(MutationEntry {
+				target: name,
+				diff: diff.clone(),
+			});
+		}
+
+		mutations.sort_by(|a, b| a.target.cmp(&b.target));
+		Ok(build_output_columns(&mutations)?)
 	}
 }
 
-fn build_mutations(ctx: &TestingContext, filter_name: Option<&str>, primitive_type: &str) -> Result<Columns> {
-	let entries: Vec<(&str, &MutationRecord)> = if let Some(s) = filter_name {
-		let full_key = format!("{}::{}", primitive_type, s);
-		match ctx.mutations.get(&full_key) {
-			Some(records) => records.iter().map(|r| (s, r)).collect(),
-			None => return Ok(Columns::empty()),
-		}
-	} else {
-		let prefix = format!("{}::", primitive_type);
-		let mut all: Vec<(&str, &MutationRecord)> = Vec::new();
-		for (key, records) in &ctx.mutations {
-			if let Some(target) = key.strip_prefix(&prefix) {
-				for rec in records {
-					all.push((target, rec));
-				}
-			}
-		}
-		all.sort_by_key(|(target, _)| target.to_string());
-		all
-	};
+struct MutationEntry {
+	target: String,
+	diff: Diff,
+}
 
+fn resolve_primitive_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &PrimitiveId) -> Result<String> {
+	match id {
+		PrimitiveId::Table(table_id) => {
+			let table = catalog
+				.find_table(txn, *table_id)?
+				.ok_or_else(|| internal_error!("table not found for id {:?}", table_id))?;
+			let ns = catalog
+				.find_namespace(txn, table.namespace)?
+				.ok_or_else(|| internal_error!("namespace not found"))?;
+			Ok(format!("{}::{}", ns.name(), table.name))
+		}
+		PrimitiveId::View(view_id) => {
+			let view = catalog
+				.find_view(txn, *view_id)?
+				.ok_or_else(|| internal_error!("view not found for id {:?}", view_id))?;
+			let ns = catalog
+				.find_namespace(txn, view.namespace())?
+				.ok_or_else(|| internal_error!("namespace not found"))?;
+			Ok(format!("{}::{}", ns.name(), view.name()))
+		}
+		PrimitiveId::RingBuffer(rb_id) => {
+			let rb = catalog
+				.find_ringbuffer(txn, *rb_id)?
+				.ok_or_else(|| internal_error!("ringbuffer not found for id {:?}", rb_id))?;
+			let ns = catalog
+				.find_namespace(txn, rb.namespace)?
+				.ok_or_else(|| internal_error!("namespace not found"))?;
+			Ok(format!("{}::{}", ns.name(), rb.name))
+		}
+		PrimitiveId::Series(series_id) => {
+			let series = catalog
+				.find_series(txn, *series_id)?
+				.ok_or_else(|| internal_error!("series not found for id {:?}", series_id))?;
+			let ns = catalog
+				.find_namespace(txn, series.namespace)?
+				.ok_or_else(|| internal_error!("namespace not found"))?;
+			Ok(format!("{}::{}", ns.name(), series.name))
+		}
+		PrimitiveId::Dictionary(dict_id) => {
+			let dict = catalog
+				.find_dictionary(txn, *dict_id)?
+				.ok_or_else(|| internal_error!("dictionary not found for id {:?}", dict_id))?;
+			let ns = catalog
+				.find_namespace(txn, dict.namespace)?
+				.ok_or_else(|| internal_error!("namespace not found"))?;
+			Ok(format!("{}::{}", ns.name(), dict.name))
+		}
+		_ => Err(internal_error!("unsupported primitive type {:?}", id)),
+	}
+}
+
+fn build_output_columns(entries: &[MutationEntry]) -> Result<Columns> {
 	if entries.is_empty() {
 		return Ok(Columns::empty());
 	}
@@ -48,17 +152,37 @@ fn build_mutations(ctx: &TestingContext, filter_name: Option<&str>, primitive_ty
 	let mut target_data = ColumnData::utf8_with_capacity(entries.len());
 
 	let mut field_names: Vec<String> = Vec::new();
-	for (_, rec) in &entries {
-		for col in rec.old.iter() {
-			let name = col.name().text().to_string();
-			if !field_names.contains(&name) {
-				field_names.push(name);
+	for entry in entries {
+		match &entry.diff {
+			Diff::Insert {
+				post,
 			}
-		}
-		for col in rec.new.iter() {
-			let name = col.name().text().to_string();
-			if !field_names.contains(&name) {
-				field_names.push(name);
+			| Diff::Remove {
+				pre: post,
+			} => {
+				for col in post.iter() {
+					let name = col.name().text().to_string();
+					if !field_names.contains(&name) {
+						field_names.push(name);
+					}
+				}
+			}
+			Diff::Update {
+				pre,
+				post,
+			} => {
+				for col in pre.iter() {
+					let name = col.name().text().to_string();
+					if !field_names.contains(&name) {
+						field_names.push(name);
+					}
+				}
+				for col in post.iter() {
+					let name = col.name().text().to_string();
+					if !field_names.contains(&name) {
+						field_names.push(name);
+					}
+				}
 			}
 		}
 	}
@@ -66,17 +190,30 @@ fn build_mutations(ctx: &TestingContext, filter_name: Option<&str>, primitive_ty
 	let mut old_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
 	let mut new_columns: Vec<Vec<Value>> = vec![Vec::with_capacity(entries.len()); field_names.len()];
 
-	for (target, rec) in &entries {
-		op_data.push(rec.op.as_str());
-		target_data.push(*target);
+	for entry in entries {
+		let (op, old_cols, new_cols) = match &entry.diff {
+			Diff::Insert {
+				post,
+			} => ("insert", &Columns::empty(), post),
+			Diff::Update {
+				pre,
+				post,
+			} => ("update", pre, post),
+			Diff::Remove {
+				pre,
+			} => ("delete", pre, &Columns::empty()),
+		};
+
+		op_data.push(op);
+		target_data.push(entry.target.as_str());
 
 		for (i, field_name) in field_names.iter().enumerate() {
 			let old_val =
-				rec.old.column(field_name).map(|col| col.data().get_value(0)).unwrap_or(Value::none());
+				old_cols.column(field_name).map(|col| col.data().get_value(0)).unwrap_or(Value::none());
 			old_columns[i].push(old_val);
 
 			let new_val =
-				rec.new.column(field_name).map(|col| col.data().get_value(0)).unwrap_or(Value::none());
+				new_cols.column(field_name).map(|col| col.data().get_value(0)).unwrap_or(Value::none());
 			new_columns[i].push(new_val);
 		}
 	}

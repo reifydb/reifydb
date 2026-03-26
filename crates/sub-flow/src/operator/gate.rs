@@ -30,7 +30,7 @@ use reifydb_type::{
 
 use crate::{
 	operator::{Operator, Operators, stateful::raw::RawStatefulOperator},
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
+	transaction::FlowTransaction,
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -135,12 +135,7 @@ impl Operator for GateOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {

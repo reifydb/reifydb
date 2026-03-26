@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
-
-use crate::{
-	encoded::{row::EncodedRow, schema::Schema},
-	interface::catalog::column::ColumnDef,
-	value::column::columns::Columns,
-};
+use crate::value::column::columns::Columns;
 
 /// A captured event dispatch during test execution.
 #[derive(Clone, Debug)]
@@ -33,102 +27,6 @@ pub struct HandlerInvocation {
 	pub message: String,
 }
 
-/// A captured mutation (insert/update/delete) during test execution.
-#[derive(Clone, Debug)]
-pub struct MutationRecord {
-	pub op: String,
-	pub old: Columns,
-	pub new: Columns,
-}
-
-/// Audit log that captures events, handler invocations, and mutations during test execution.
-///
-/// Registered in the IoC container by `RUN TESTS`. Zero cost in production.
-#[derive(Clone, Debug)]
-pub struct TestingContext {
-	pub events: Vec<CapturedEvent>,
-	pub handler_invocations: Vec<HandlerInvocation>,
-	/// Keyed by "namespace::primitive_name"
-	pub mutations: HashMap<String, Vec<MutationRecord>>,
-	event_seq: u64,
-	handler_seq: u64,
-}
-
-impl TestingContext {
-	pub fn new() -> Self {
-		Self {
-			events: Vec::new(),
-			handler_invocations: Vec::new(),
-			mutations: HashMap::new(),
-			event_seq: 0,
-			handler_seq: 0,
-		}
-	}
-
-	pub fn clear(&mut self) {
-		self.events.clear();
-		self.handler_invocations.clear();
-		self.mutations.clear();
-		self.event_seq = 0;
-		self.handler_seq = 0;
-	}
-
-	pub fn record_event(&mut self, namespace: String, event: String, variant: String, depth: u8, columns: Columns) {
-		self.event_seq += 1;
-		self.events.push(CapturedEvent {
-			sequence: self.event_seq,
-			namespace,
-			event,
-			variant,
-			depth,
-			columns,
-		});
-	}
-
-	pub fn record_handler_invocation(
-		&mut self,
-		namespace: String,
-		handler: String,
-		event: String,
-		variant: String,
-		duration_ns: u64,
-		outcome: String,
-		message: String,
-	) {
-		self.handler_seq += 1;
-		self.handler_invocations.push(HandlerInvocation {
-			sequence: self.handler_seq,
-			namespace,
-			handler,
-			event,
-			variant,
-			duration_ns,
-			outcome,
-			message,
-		});
-	}
-
-	pub fn record_mutation(&mut self, primitive_key: String, op: String, old: Columns, new: Columns) {
-		self.mutations.entry(primitive_key).or_default().push(MutationRecord {
-			op,
-			old,
-			new,
-		});
-	}
-
-	pub fn record_insert(&mut self, key: String, new: Columns) {
-		self.record_mutation(key, "insert".to_string(), Columns::empty(), new);
-	}
-
-	pub fn record_delete(&mut self, key: String, old: Columns) {
-		self.record_mutation(key, "delete".to_string(), old, Columns::empty());
-	}
-
-	pub fn record_update(&mut self, key: String, old: Columns, new: Columns) {
-		self.record_mutation(key, "update".to_string(), old, new);
-	}
-}
-
 /// Identifies the primitive type category for a `testing::*::changed()` generator.
 pub struct TestingChanged {
 	pub primitive_type: &'static str,
@@ -140,10 +38,4 @@ impl TestingChanged {
 			primitive_type,
 		}
 	}
-}
-
-pub fn columns_from_encoded(columns: &[ColumnDef], schema: &Schema, encoded: &EncodedRow) -> Columns {
-	Columns::single_row(
-		columns.iter().enumerate().map(|(i, col)| (col.name.as_str(), schema.get_value(encoded, i))),
-	)
 }

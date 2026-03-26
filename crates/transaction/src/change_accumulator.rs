@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, mem};
 
 use reifydb_core::{
 	common::CommitVersion,
@@ -56,7 +56,7 @@ impl ChangeAccumulator {
 	/// Each `PrimitiveId` produces a single `Change` with all its diffs collected
 	/// in order. The version is stamped at this point.
 	pub fn take_changes(&mut self, version: CommitVersion) -> Vec<Change> {
-		let entries = std::mem::take(&mut self.entries);
+		let entries = mem::take(&mut self.entries);
 		let mut grouped: BTreeMap<PrimitiveId, Vec<Diff>> = BTreeMap::new();
 
 		for (id, diff) in entries {
@@ -74,5 +74,35 @@ impl ChangeAccumulator {
 
 	pub fn is_empty(&self) -> bool {
 		self.entries.is_empty()
+	}
+
+	/// Drain entries from `offset` onwards and produce batched `Change` objects.
+	/// Entries before `offset` are preserved.
+	pub fn take_changes_from(&mut self, offset: usize, version: CommitVersion) -> Vec<Change> {
+		if offset >= self.entries.len() {
+			return Vec::new();
+		}
+		let tail = self.entries.split_off(offset);
+		let mut grouped: BTreeMap<PrimitiveId, Vec<Diff>> = BTreeMap::new();
+		for (id, diff) in tail {
+			grouped.entry(id).or_default().push(diff);
+		}
+		grouped.into_iter()
+			.map(|(id, diffs)| Change {
+				origin: ChangeOrigin::Primitive(id),
+				diffs,
+				version,
+			})
+			.collect()
+	}
+
+	/// Read entries from a given offset without draining.
+	/// Used by testing::*::changed() to read mutations since the baseline.
+	pub fn entries_from(&self, offset: usize) -> &[(PrimitiveId, Diff)] {
+		if offset >= self.entries.len() {
+			&[]
+		} else {
+			&self.entries[offset..]
+		}
 	}
 }

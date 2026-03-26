@@ -2,12 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	testing::TestingContext,
+	internal_error,
+	testing::HandlerInvocation,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 
-use super::{extract_optional_string_arg, testing_context_from_ioc};
+use super::extract_optional_string_arg;
 use crate::{GeneratorContext, GeneratorFunction, error::GeneratorFunctionResult};
 
 pub(crate) struct TestingHandlersInvoked;
@@ -20,14 +22,18 @@ impl TestingHandlersInvoked {
 
 impl GeneratorFunction for TestingHandlersInvoked {
 	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
-		let testing = testing_context_from_ioc(ctx.ioc)?;
-		let guard = testing.lock();
+		let invocations = match ctx.txn {
+			Transaction::Test(t) => &**t.handler_invocations,
+			_ => {
+				return Err(internal_error!("testing::handlers::invoked() requires a test transaction").into());
+			}
+		};
 		let filter_arg = extract_optional_string_arg(&ctx.params);
-		Ok(build_handler_invocations(&guard, filter_arg.as_deref())?)
+		Ok(build_handler_invocations(invocations, filter_arg.as_deref())?)
 	}
 }
 
-fn build_handler_invocations(ctx: &TestingContext, filter_name: Option<&str>) -> Result<Columns> {
+fn build_handler_invocations(invocations: &[HandlerInvocation], filter_name: Option<&str>) -> Result<Columns> {
 	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {
@@ -37,8 +43,7 @@ fn build_handler_invocations(ctx: &TestingContext, filter_name: Option<&str>) ->
 		}
 	});
 
-	let invocations: Vec<_> = ctx
-		.handler_invocations
+	let invocations: Vec<_> = invocations
 		.iter()
 		.filter(|inv| {
 			if let Some((ns, name)) = filter {

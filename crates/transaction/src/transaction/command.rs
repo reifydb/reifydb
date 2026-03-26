@@ -225,6 +225,7 @@ impl CommandTransaction {
 			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
 			pending_writes: Vec::new(),
 			transaction_writes,
+			view_entries: Vec::new(),
 		};
 		self.interceptors.pre_commit.execute(&mut ctx)?;
 

@@ -10,7 +10,7 @@
 
 use std::{collections::BTreeMap, mem::replace};
 
-use reifydb_core::internal;
+use reifydb_core::{interface::change::Change, internal};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -28,7 +28,7 @@ use super::{
 	instruction::WorkerBatch,
 	worker::{FlowMsg, FlowResponse},
 };
-use crate::transaction::pending::{Pending, PendingWrite, ViewChangeCollector};
+use crate::transaction::pending::{Pending, PendingWrite};
 
 /// Messages for the pool actor
 pub enum PoolMsg {
@@ -57,10 +57,10 @@ pub enum PoolMsg {
 
 /// Response from the pool actor
 pub enum PoolResponse {
-	/// Operation succeeded with pending writes and view changes
+	/// Operation succeeded with pending writes and view changes for cascading
 	Success {
 		pending: Pending,
-		collector: ViewChangeCollector,
+		view_changes: Vec<Change>,
 	},
 	/// Registration succeeded
 	RegisterSuccess,
@@ -75,7 +75,8 @@ enum Phase {
 	/// Waiting for multiple workers to reply
 	WaitingForWorkers {
 		pending_count: usize,
-		results: Vec<(Pending, ViewChangeCollector)>,
+		results: Vec<Pending>,
+		view_changes: Vec<Change>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		started_at: Instant,
 	},
@@ -270,6 +271,7 @@ impl PoolActor {
 		state.phase = Phase::WaitingForWorkers {
 			pending_count: batch_count,
 			results: Vec::with_capacity(batch_count),
+			view_changes: Vec::new(),
 			reply,
 			started_at: start,
 		};
@@ -287,14 +289,14 @@ impl PoolActor {
 				let resp = match response {
 					FlowResponse::Success {
 						pending,
-						collector,
+						view_changes,
 					} => {
 						if is_register {
 							PoolResponse::RegisterSuccess
 						} else {
 							PoolResponse::Success {
 								pending,
-								collector,
+								view_changes,
 							}
 						}
 					}
@@ -306,28 +308,30 @@ impl PoolActor {
 			Phase::WaitingForWorkers {
 				mut pending_count,
 				mut results,
+				mut view_changes,
 				reply: original_reply,
 				started_at: start,
 			} => {
 				match response {
 					FlowResponse::Success {
 						pending,
-						collector,
+						view_changes: worker_view_changes,
 					} => {
-						results.push((pending, collector));
+						results.push(pending);
+						view_changes.extend(worker_view_changes);
 						pending_count -= 1;
 
 						if pending_count == 0 {
 							// All workers done — aggregate and reply
 							match self.aggregate_pending_writes(results) {
-								Ok((combined, combined_collector)) => {
+								Ok(combined) => {
 									Span::current().record(
 										"elapsed_us",
 										start.elapsed().as_micros() as u64,
 									);
 									(original_reply)(PoolResponse::Success {
 										pending: combined,
-										collector: combined_collector,
+										view_changes,
 									});
 								}
 								Err(e) => {
@@ -340,6 +344,7 @@ impl PoolActor {
 							state.phase = Phase::WaitingForWorkers {
 								pending_count,
 								results,
+								view_changes,
 								reply: original_reply,
 								started_at: start,
 							};
@@ -363,15 +368,10 @@ impl PoolActor {
 	}
 
 	/// Aggregate Pending from multiple workers with keyspace overlap detection.
-	fn aggregate_pending_writes(
-		&self,
-		writes: Vec<(Pending, ViewChangeCollector)>,
-	) -> Result<(Pending, ViewChangeCollector), String> {
+	fn aggregate_pending_writes(&self, writes: Vec<Pending>) -> Result<Pending, String> {
 		let mut combined = Pending::new();
-		let mut combined_collector = ViewChangeCollector::new();
 
-		for (pending, mut collector) in writes {
-			combined_collector.extend(collector.take());
+		for pending in writes {
 			for (key, value) in pending.iter_sorted() {
 				// Validate no keyspace overlap between workers
 				if combined.contains_key(&key) {
@@ -394,6 +394,6 @@ impl PoolActor {
 			}
 		}
 
-		Ok((combined, combined_collector))
+		Ok(combined)
 	}
 }

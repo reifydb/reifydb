@@ -10,11 +10,7 @@ use reifydb_core::{
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Result, value::row_number::RowNumber};
 
-use crate::{
-	Operator,
-	operator::Operators,
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
-};
+use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 pub struct ExtendOperator {
 	parent: Arc<Operators>,
@@ -38,12 +34,7 @@ impl Operator for ExtendOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		_txn: &mut FlowTransaction,
-		change: Change,
-		_collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded extend processing
 		// For now, just pass through all changes with updated from
 		Ok(Change::from_flow(self.node, change.version, change.diffs))

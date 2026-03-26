@@ -106,6 +106,35 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(ident) = TransactionalIdentityChanges::find_identity_by_name(t.inner, name)
+				{
+					return Ok(Some(ident.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalIdentityChanges::is_identity_deleted_by_name(t.inner, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(ident) = self.materialized.find_identity_by_name_at(name, t.inner.version())
+				{
+					return Ok(Some(ident));
+				}
+
+				// 4. Fall back to storage
+				if let Some(ident) = CatalogStore::find_identity_by_name(
+					&mut Transaction::Admin(&mut *t.inner),
+					name,
+				)? {
+					warn!("Identity '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(ident));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -172,6 +201,23 @@ impl Catalog {
 					&mut Transaction::Subscription(&mut *sub),
 					identity,
 				)? {
+					warn!(
+						"Identity '{}' found in storage but not in MaterializedCatalog",
+						identity
+					);
+					return Ok(Some(ident));
+				}
+
+				Ok(None)
+			}
+			Transaction::Test(t) => {
+				if let Some(ident) = self.materialized.find_identity_at(identity, t.inner.version()) {
+					return Ok(Some(ident));
+				}
+
+				if let Some(ident) =
+					CatalogStore::find_identity(&mut Transaction::Admin(&mut *t.inner), identity)?
+				{
 					warn!(
 						"Identity '{}' found in storage but not in MaterializedCatalog",
 						identity
@@ -279,6 +325,28 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				if let Some(role) = TransactionalRoleChanges::find_role_by_name(t.inner, name) {
+					return Ok(Some(role.clone()));
+				}
+
+				if TransactionalRoleChanges::is_role_deleted_by_name(t.inner, name) {
+					return Ok(None);
+				}
+
+				if let Some(role) = self.materialized.find_role_by_name_at(name, t.inner.version()) {
+					return Ok(Some(role));
+				}
+
+				if let Some(role) =
+					CatalogStore::find_role_by_name(&mut Transaction::Admin(&mut *t.inner), name)?
+				{
+					warn!("Role '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(role));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -334,6 +402,7 @@ impl Catalog {
 			Transaction::Command(cmd) => cmd.version(),
 			Transaction::Query(qry) => qry.version(),
 			Transaction::Subscription(sub) => sub.version(),
+			Transaction::Test(t) => t.inner.version(),
 		};
 
 		let identity_roles = self.materialized.find_identity_roles_at(identity, version);

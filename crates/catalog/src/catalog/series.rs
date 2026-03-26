@@ -85,6 +85,7 @@ impl Catalog {
 			Transaction::Subscription(sub) => {
 				CatalogStore::find_series(&mut Transaction::Subscription(&mut *sub), id)
 			}
+			Transaction::Test(t) => CatalogStore::find_series(&mut Transaction::Admin(&mut *t.inner), id),
 		}
 	}
 
@@ -107,6 +108,11 @@ impl Catalog {
 			}
 			Transaction::Subscription(sub) => CatalogStore::find_series_by_name(
 				&mut Transaction::Subscription(&mut *sub),
+				namespace,
+				name,
+			),
+			Transaction::Test(t) => CatalogStore::find_series_by_name(
+				&mut Transaction::Admin(&mut *t.inner),
 				namespace,
 				name,
 			),

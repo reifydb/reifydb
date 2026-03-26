@@ -1,31 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb_core::{
-	encoded::schema::Schema,
-	interface::catalog::id::NamespaceId,
 	internal_error,
-	testing::{TestingContext, columns_from_encoded},
+	testing::{CapturedEvent, HandlerInvocation},
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{RunTestsNode, RunTestsScope},
 };
-use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_transaction::{
-	interceptor::{
-		dictionary::dictionary_post_insert,
-		interceptors::Interceptors,
-		ringbuffer::{ringbuffer_post_delete, ringbuffer_post_insert, ringbuffer_post_update},
-		series::{series_post_delete, series_post_insert, series_post_update},
-		table::{table_post_delete, table_post_insert, table_post_update},
-		view::{view_post_delete, view_post_insert, view_post_update},
-	},
-	transaction::Transaction,
-};
+use reifydb_transaction::transaction::{TestTransaction, Transaction};
 use reifydb_type::{
 	params::Params,
 	value::{Value, duration::Duration as RqlDuration, frame::frame::Frame},
@@ -33,7 +20,6 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	engine::StandardEngine,
 	run_tests::result::{TestOutcome, classify_outcome},
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
@@ -145,37 +131,17 @@ pub(crate) fn run_tests(
 ) -> Result<Columns> {
 	let txn = match tx {
 		Transaction::Admin(txn) => txn,
+		Transaction::Test(t) => &mut *t.inner,
 		_ => {
 			return Err(internal_error!("RUN TESTS requires an admin transaction"));
 		}
 	};
 
-	// Store TestingContext in IoC so testing::* generators can access it from any execution path
-	let testing_ctx = Arc::new(Mutex::new(TestingContext::new()));
-	services.ioc.register_service::<Arc<Mutex<TestingContext>>>(testing_ctx.clone());
-
-	// Build namespace cache from current transaction state (includes uncommitted namespaces)
-	let ns_cache = {
-		let mut cache = HashMap::new();
-		if let Ok(namespaces) = services.catalog.list_namespaces_all(&mut Transaction::Admin(&mut *txn)) {
-			for ns in namespaces {
-				cache.insert(ns.id(), ns.name().to_string());
-			}
-		}
-		Arc::new(cache)
-	};
-
-	// Register testing interceptors on the current transaction (for direct DML)
-	register_testing_interceptors(&mut txn.interceptors, testing_ctx.clone(), ns_cache.clone());
-
-	// Also register on the engine's interceptor factory (for flow/view transactions)
-	if let Ok(engine) = services.ioc.resolve::<StandardEngine>() {
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		engine.add_interceptor_factory(Arc::new(move |interceptors: &mut Interceptors| {
-			register_testing_interceptors(interceptors, ctx.clone(), ns.clone());
-		}));
-	}
+	// Stack-allocated test state — passed into Transaction::Test by reference
+	let mut events: Vec<CapturedEvent> = Vec::new();
+	let mut handler_invocations: Vec<HandlerInvocation> = Vec::new();
+	let mut event_seq: u64 = 0;
+	let mut handler_seq: u64 = 0;
 
 	let tests = match &plan.scope {
 		RunTestsScope::All => services.catalog.list_all_tests(&mut Transaction::Admin(&mut *txn))?,
@@ -218,14 +184,25 @@ pub(crate) fn run_tests(
 		match &test_def.cases {
 			None => {
 				// Non-parameterized: single run
-				testing_ctx.lock().clear();
-				txn.clear_test_flow_state();
+				events.clear();
+				handler_invocations.clear();
+				_ = mem::replace(&mut event_seq, 0);
+				_ = mem::replace(&mut handler_seq, 0);
+
 				let start = services.runtime_context.clock.instant();
 				let savepoint = txn.savepoint();
+				let baseline = txn.accumulator_len();
 				let (outcome, message) = run_single(
 					vm,
 					services,
-					&mut Transaction::Admin(&mut *txn),
+					&mut Transaction::Test(TestTransaction {
+						inner: &mut *txn,
+						baseline,
+						events: &mut events,
+						handler_invocations: &mut handler_invocations,
+						event_seq: &mut event_seq,
+						handler_seq: &mut handler_seq,
+					}),
 					&test_def.body,
 					params,
 					None,
@@ -269,14 +246,25 @@ pub(crate) fn run_tests(
 						named_vars.insert(name.clone(), value);
 					}
 
-					testing_ctx.lock().clear();
-					txn.clear_test_flow_state();
+					events.clear();
+					handler_invocations.clear();
+					event_seq = 0;
+					handler_seq = 0;
+
 					let start = services.runtime_context.clock.instant();
 					let savepoint = txn.savepoint();
+					let baseline = txn.accumulator_len();
 					let (outcome, message) = run_single(
 						vm,
 						services,
-						&mut Transaction::Admin(&mut *txn),
+						&mut Transaction::Test(TestTransaction {
+							inner: &mut *txn,
+							baseline,
+							events: &mut events,
+							handler_invocations: &mut handler_invocations,
+							event_seq: &mut event_seq,
+							handler_seq: &mut handler_seq,
+						}),
 						&test_def.body,
 						params,
 						Some(&named_vars),
@@ -306,216 +294,4 @@ pub(crate) fn run_tests(
 	}
 
 	Ok(result_columns)
-}
-
-fn resolve_namespace_name(ns_cache: &HashMap<NamespaceId, String>, ns_id: NamespaceId) -> String {
-	ns_cache.get(&ns_id).cloned().unwrap_or_else(|| format!("{}", ns_id.0))
-}
-
-fn register_testing_interceptors(
-	interceptors: &mut Interceptors,
-	testing_ctx: Arc<Mutex<TestingContext>>,
-	ns_cache: Arc<HashMap<NamespaceId, String>>,
-) {
-	// Tables
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.table_post_insert.add(Arc::new(table_post_insert(move |ic| {
-			let schema = Schema::from(ic.table.columns.as_slice());
-			let new = columns_from_encoded(&ic.table.columns, &schema, ic.row);
-			let key = format!(
-				"tables::{}::{}",
-				resolve_namespace_name(&ns, ic.table.namespace),
-				ic.table.name
-			);
-			ctx.lock().record_insert(key, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.table_post_update.add(Arc::new(table_post_update(move |ic| {
-			let schema = Schema::from(ic.table.columns.as_slice());
-			let old = columns_from_encoded(&ic.table.columns, &schema, ic.old_row);
-			let new = columns_from_encoded(&ic.table.columns, &schema, ic.row);
-			let key = format!(
-				"tables::{}::{}",
-				resolve_namespace_name(&ns, ic.table.namespace),
-				ic.table.name
-			);
-			ctx.lock().record_update(key, old, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.table_post_delete.add(Arc::new(table_post_delete(move |ic| {
-			let schema = Schema::from(ic.table.columns.as_slice());
-			let old = columns_from_encoded(&ic.table.columns, &schema, ic.deleted_row);
-			let key = format!(
-				"tables::{}::{}",
-				resolve_namespace_name(&ns, ic.table.namespace),
-				ic.table.name
-			);
-			ctx.lock().record_delete(key, old);
-			Ok(())
-		})));
-	}
-
-	// Ringbuffers
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.ringbuffer_post_insert.add(Arc::new(ringbuffer_post_insert(move |ic| {
-			let schema = Schema::from(ic.ringbuffer.columns.as_slice());
-			let new = columns_from_encoded(&ic.ringbuffer.columns, &schema, ic.row);
-			let key = format!(
-				"ringbuffers::{}::{}",
-				resolve_namespace_name(&ns, ic.ringbuffer.namespace),
-				ic.ringbuffer.name
-			);
-			ctx.lock().record_insert(key, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.ringbuffer_post_update.add(Arc::new(ringbuffer_post_update(move |ic| {
-			let schema = Schema::from(ic.ringbuffer.columns.as_slice());
-			let old = columns_from_encoded(&ic.ringbuffer.columns, &schema, ic.old_row);
-			let new = columns_from_encoded(&ic.ringbuffer.columns, &schema, ic.row);
-			let key = format!(
-				"ringbuffers::{}::{}",
-				resolve_namespace_name(&ns, ic.ringbuffer.namespace),
-				ic.ringbuffer.name
-			);
-			ctx.lock().record_update(key, old, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.ringbuffer_post_delete.add(Arc::new(ringbuffer_post_delete(move |ic| {
-			let schema = Schema::from(ic.ringbuffer.columns.as_slice());
-			let old = columns_from_encoded(&ic.ringbuffer.columns, &schema, ic.deleted_row);
-			let key = format!(
-				"ringbuffers::{}::{}",
-				resolve_namespace_name(&ns, ic.ringbuffer.namespace),
-				ic.ringbuffer.name
-			);
-			ctx.lock().record_delete(key, old);
-			Ok(())
-		})));
-	}
-
-	// Series
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.series_post_insert.add(Arc::new(series_post_insert(move |ic| {
-			let schema = Schema::from(ic.series.columns.as_slice());
-			let new = columns_from_encoded(&ic.series.columns, &schema, ic.row);
-			let key = format!(
-				"series::{}::{}",
-				resolve_namespace_name(&ns, ic.series.namespace),
-				ic.series.name
-			);
-			ctx.lock().record_insert(key, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.series_post_update.add(Arc::new(series_post_update(move |ic| {
-			let schema = Schema::from(ic.series.columns.as_slice());
-			let old = columns_from_encoded(&ic.series.columns, &schema, ic.old_row);
-			let new = columns_from_encoded(&ic.series.columns, &schema, ic.row);
-			let key = format!(
-				"series::{}::{}",
-				resolve_namespace_name(&ns, ic.series.namespace),
-				ic.series.name
-			);
-			ctx.lock().record_update(key, old, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.series_post_delete.add(Arc::new(series_post_delete(move |ic| {
-			let schema = Schema::from(ic.series.columns.as_slice());
-			let old = columns_from_encoded(&ic.series.columns, &schema, ic.deleted_row);
-			let key = format!(
-				"series::{}::{}",
-				resolve_namespace_name(&ns, ic.series.namespace),
-				ic.series.name
-			);
-			ctx.lock().record_delete(key, old);
-			Ok(())
-		})));
-	}
-
-	// Dictionaries (insert only — no update/delete)
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.dictionary_post_insert.add(Arc::new(dictionary_post_insert(move |ic| {
-			let new = Columns::single_row([("value", ic.value.clone())]);
-			let key = format!(
-				"dictionaries::{}::{}",
-				resolve_namespace_name(&ns, ic.dictionary.namespace),
-				ic.dictionary.name
-			);
-			ctx.lock().record_insert(key, new);
-			Ok(())
-		})));
-	}
-
-	// Views (tracked on the view's backing primitive name)
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.view_post_insert.add(Arc::new(view_post_insert(move |ic| {
-			let columns = ic.view.columns();
-			let schema = Schema::from(columns);
-			let new = columns_from_encoded(columns, &schema, ic.row);
-			let ns = resolve_namespace_name(&ns, ic.view.namespace());
-			let key = format!("views::{}::{}", ns, ic.view.name());
-			ctx.lock().record_insert(key, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.view_post_update.add(Arc::new(view_post_update(move |ic| {
-			let columns = ic.view.columns();
-			let schema = Schema::from(columns);
-			let old = columns_from_encoded(columns, &schema, ic.old_row);
-			let new = columns_from_encoded(columns, &schema, ic.row);
-			let ns = resolve_namespace_name(&ns, ic.view.namespace());
-			let key = format!("views::{}::{}", ns, ic.view.name());
-			ctx.lock().record_update(key, old, new);
-			Ok(())
-		})));
-	}
-	{
-		let ctx = testing_ctx.clone();
-		let ns = ns_cache.clone();
-		interceptors.view_post_delete.add(Arc::new(view_post_delete(move |ic| {
-			let columns = ic.view.columns();
-			let schema = Schema::from(columns);
-			let old = columns_from_encoded(columns, &schema, ic.deleted_row);
-			let ns = resolve_namespace_name(&ns, ic.view.namespace());
-			let key = format!("views::{}::{}", ns, ic.view.name());
-			ctx.lock().record_delete(key, old);
-			Ok(())
-		})));
-	}
 }

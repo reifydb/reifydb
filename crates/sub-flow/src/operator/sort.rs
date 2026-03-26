@@ -12,7 +12,7 @@ use reifydb_type::{Result, value::row_number::RowNumber};
 
 use crate::{
 	operator::{Operator, Operators},
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
+	transaction::FlowTransaction,
 };
 
 pub struct SortOperator {
@@ -36,12 +36,7 @@ impl Operator for SortOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		_txn: &mut FlowTransaction,
-		change: Change,
-		_collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded sort processing
 		// For now, just pass through all changes with updated from
 		Ok(Change::from_flow(self.node, change.version, change.diffs))

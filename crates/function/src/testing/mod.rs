@@ -1,26 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_core::{
-	internal_error,
-	testing::{TestingChanged, TestingContext},
-	util::ioc::IocContainer,
+	testing::TestingChanged,
 	value::column::{columns::Columns, data::ColumnData},
 };
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::value::{Value, r#type::Type};
 
-use crate::{error::GeneratorFunctionResult, registry::FunctionsBuilder};
+use crate::registry::FunctionsBuilder;
 
 mod changed;
 mod event;
 mod handler;
 
-use changed::*;
-use event::*;
-use handler::*;
+use event::TestingEventsDispatched;
+use handler::TestingHandlersInvoked;
 
 pub fn register_testing_functions(builder: FunctionsBuilder) -> FunctionsBuilder {
 	builder.register_generator("testing::events::dispatched", TestingEventsDispatched::new)
@@ -30,11 +24,6 @@ pub fn register_testing_functions(builder: FunctionsBuilder) -> FunctionsBuilder
 		.register_generator("testing::series::changed", || TestingChanged::new("series"))
 		.register_generator("testing::ringbuffers::changed", || TestingChanged::new("ringbuffers"))
 		.register_generator("testing::dictionaries::changed", || TestingChanged::new("dictionaries"))
-}
-
-pub(crate) fn testing_context_from_ioc(ioc: &IocContainer) -> GeneratorFunctionResult<Arc<Mutex<TestingContext>>> {
-	ioc.resolve::<Arc<Mutex<TestingContext>>>()
-		.map_err(|_| internal_error!("testing::* functions require an active test context").into())
 }
 
 pub(crate) fn extract_optional_string_arg(params: &Columns) -> Option<String> {

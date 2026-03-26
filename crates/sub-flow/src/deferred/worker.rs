@@ -11,6 +11,7 @@
 use std::sync::Mutex;
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_core::interface::change::{Change, ChangeOrigin};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::actor::{
@@ -24,10 +25,7 @@ use tracing::{Span, error, field, instrument};
 use super::instruction::WorkerBatch;
 use crate::{
 	engine::FlowEngine,
-	transaction::{
-		FlowTransaction,
-		pending::{Pending, ViewChangeCollector},
-	},
+	transaction::{FlowTransaction, pending::Pending},
 };
 
 /// Messages for the flow actor
@@ -46,10 +44,10 @@ pub enum FlowMsg {
 
 /// Response from the flow actor
 pub enum FlowResponse {
-	/// Operation succeeded with pending writes and view changes
+	/// Operation succeeded with pending writes and view changes for cascading
 	Success {
 		pending: Pending,
-		collector: ViewChangeCollector,
+		view_changes: Vec<Change>,
 	},
 	/// Operation failed with error message
 	Error(String),
@@ -100,9 +98,9 @@ impl Actor for FlowWorkerActor {
 			} => {
 				let result = self.process_request(&mut state.flow_engine, batch);
 				let resp = match result {
-					Ok((pending, collector)) => FlowResponse::Success {
+					Ok((pending, view_changes)) => FlowResponse::Success {
 						pending,
-						collector,
+						view_changes,
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
@@ -120,7 +118,7 @@ impl Actor for FlowWorkerActor {
 				let resp = match result {
 					Ok(_) => FlowResponse::Success {
 						pending: Pending::new(),
-						collector: ViewChangeCollector::new(),
+						view_changes: Vec::new(),
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
 				};
@@ -140,16 +138,12 @@ impl FlowWorkerActor {
 		instructions = batch.instructions.len(),
 		total_changes = field::Empty
 	))]
-	fn process_request(
-		&self,
-		flow_engine: &mut FlowEngine,
-		batch: WorkerBatch,
-	) -> Result<(Pending, ViewChangeCollector)> {
+	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> Result<(Pending, Vec<Change>)> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 
 		let mut pending = Pending::new();
-		let mut collector = ViewChangeCollector::new();
+		let mut all_view_changes: Vec<Change> = Vec::new();
 		let interceptors = self.engine.create_interceptors();
 
 		for instruction in batch.instructions {
@@ -174,14 +168,23 @@ impl FlowWorkerActor {
 			);
 
 			for change in &instruction.changes {
-				if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id, &mut collector) {
+				if let Err(e) = flow_engine.process(&mut txn, change.clone(), flow_id) {
 					error!(flow_id = flow_id.0, error = %e, "failed to process flow");
 				}
+			}
+
+			let view_entries = txn.take_accumulator_entries();
+			for (id, diff) in view_entries {
+				all_view_changes.push(Change {
+					origin: ChangeOrigin::Primitive(id),
+					version: primitive_version,
+					diffs: vec![diff],
+				});
 			}
 
 			pending = txn.take_pending();
 		}
 
-		Ok((pending, collector))
+		Ok((pending, all_view_changes))
 	}
 }

@@ -42,7 +42,7 @@ use crate::{
 		Operator, Operators,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful},
 	},
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
+	transaction::FlowTransaction,
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -474,12 +474,7 @@ impl Operator for DistinctOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut state = self.load_distinct_state(txn)?;
 		let mut result = Vec::new();
 

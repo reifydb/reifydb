@@ -48,7 +48,7 @@ use crate::{
 		Operator, Operators,
 		stateful::{raw::RawStatefulOperator, row::RowNumberProvider, single::SingleStateful},
 	},
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
+	transaction::FlowTransaction,
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -468,12 +468,7 @@ impl Operator for JoinOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// Check for self-referential calls (should never happen)
 		if let ChangeOrigin::Flow(from_node) = &change.origin {
 			if *from_node == self.node {

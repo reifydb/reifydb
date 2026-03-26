@@ -6,54 +6,16 @@ use std::{
 		BTreeMap,
 		btree_map::{Iter, Range},
 	},
-	mem::take,
 	ops::RangeBounds,
 };
 
-use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow},
-	interface::change::Change,
-};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
 	Set(EncodedRow),
 	Remove,
-}
-
-/// Collects view changes emitted by sink operators during flow processing.
-///
-/// Separate from `Pending` (KV write buffer) so that only sink operators
-/// can emit view changes, enforced at the type level through the `Operator::apply`
-/// signature.
-#[derive(Debug, Default)]
-pub struct ViewChangeCollector {
-	changes: Vec<Change>,
-}
-
-impl ViewChangeCollector {
-	pub fn new() -> Self {
-		Self {
-			changes: Vec::new(),
-		}
-	}
-
-	pub fn push(&mut self, change: Change) {
-		self.changes.push(change);
-	}
-
-	pub fn take(&mut self) -> Vec<Change> {
-		take(&mut self.changes)
-	}
-
-	pub fn extend(&mut self, iter: impl IntoIterator<Item = Change>) {
-		self.changes.extend(iter);
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.changes.is_empty()
-	}
 }
 
 /// Manages pending writes and removes with sorted key access

@@ -13,6 +13,8 @@ use reifydb_core::{
 		change::Change,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
+	testing::{CapturedEvent, HandlerInvocation},
+	value::column::columns::Columns,
 };
 use reifydb_type::{
 	Result,
@@ -97,6 +99,15 @@ pub mod command;
 pub mod query;
 pub mod subscription;
 
+pub struct TestTransaction<'a> {
+	pub inner: &'a mut AdminTransaction,
+	pub baseline: usize,
+	pub events: &'a mut Vec<CapturedEvent>,
+	pub handler_invocations: &'a mut Vec<HandlerInvocation>,
+	pub event_seq: &'a mut u64,
+	pub handler_seq: &'a mut u64,
+}
+
 /// An enum that can hold either a command, admin, query, or subscription transaction
 /// for flexible execution
 pub enum Transaction<'a> {
@@ -104,6 +115,7 @@ pub enum Transaction<'a> {
 	Admin(&'a mut AdminTransaction),
 	Query(&'a mut QueryTransaction),
 	Subscription(&'a mut SubscriptionTransaction),
+	Test(TestTransaction<'a>),
 }
 
 impl<'a> Transaction<'a> {
@@ -114,6 +126,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.version(),
 			Self::Query(txn) => txn.version(),
 			Self::Subscription(txn) => txn.version(),
+			Self::Test(t) => t.inner.version(),
 		}
 	}
 
@@ -124,6 +137,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.id(),
 			Self::Query(txn) => txn.id(),
 			Self::Subscription(txn) => txn.id(),
+			Self::Test(t) => t.inner.id(),
 		}
 	}
 
@@ -134,6 +148,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.get(key),
 			Self::Query(txn) => txn.get(key),
 			Self::Subscription(txn) => txn.get(key),
+			Self::Test(t) => t.inner.get(key),
 		}
 	}
 
@@ -144,6 +159,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.contains_key(key),
 			Self::Query(txn) => txn.contains_key(key),
 			Self::Subscription(txn) => txn.contains_key(key),
+			Self::Test(t) => t.inner.contains_key(key),
 		}
 	}
 
@@ -154,6 +170,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.prefix(prefix),
 			Self::Query(txn) => txn.prefix(prefix),
 			Self::Subscription(txn) => txn.prefix(prefix),
+			Self::Test(t) => t.inner.prefix(prefix),
 		}
 	}
 
@@ -164,6 +181,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.prefix_rev(prefix),
 			Self::Query(txn) => txn.prefix_rev(prefix),
 			Self::Subscription(txn) => txn.prefix_rev(prefix),
+			Self::Test(t) => t.inner.prefix_rev(prefix),
 		}
 	}
 
@@ -174,6 +192,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Query(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Subscription(txn) => txn.read_as_of_version_exclusive(version),
+			Transaction::Test(t) => t.inner.read_as_of_version_exclusive(version),
 		}
 	}
 
@@ -188,6 +207,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.range(range, batch_size),
 			Transaction::Query(txn) => Ok(txn.range(range, batch_size)),
 			Transaction::Subscription(txn) => txn.range(range, batch_size),
+			Transaction::Test(t) => t.inner.range(range, batch_size),
 		}
 	}
 
@@ -202,6 +222,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.range_rev(range, batch_size),
 			Transaction::Query(txn) => Ok(txn.range_rev(range, batch_size)),
 			Transaction::Subscription(txn) => txn.range_rev(range, batch_size),
+			Transaction::Test(t) => t.inner.range_rev(range, batch_size),
 		}
 	}
 }
@@ -238,6 +259,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.identity,
 			Self::Query(txn) => txn.identity,
 			Self::Subscription(txn) => txn.identity,
+			Self::Test(t) => t.inner.identity,
 		}
 	}
 
@@ -248,6 +270,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.identity = identity,
 			Self::Query(txn) => txn.identity = identity,
 			Self::Subscription(txn) => txn.identity = identity,
+			Self::Test(t) => t.inner.identity = identity,
 		}
 	}
 
@@ -258,6 +281,7 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.executor.clone(),
 			Self::Query(txn) => txn.executor.clone(),
 			Self::Subscription(txn) => txn.executor.clone(),
+			Self::Test(t) => t.inner.executor.clone(),
 		}
 	}
 
@@ -282,6 +306,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.poison(cause),
 			Transaction::Query(_) => {}
 			Transaction::Subscription(txn) => txn.inner.poison(cause),
+			Transaction::Test(t) => t.inner.poison(cause),
 		}
 	}
 
@@ -293,6 +318,14 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(admin) => Transaction::Admin(admin),
 			Transaction::Query(qry) => Transaction::Query(qry),
 			Transaction::Subscription(sub) => Transaction::Subscription(sub),
+			Transaction::Test(t) => Transaction::Test(TestTransaction {
+				inner: t.inner,
+				baseline: t.baseline,
+				events: t.events,
+				handler_invocations: t.handler_invocations,
+				event_seq: t.event_seq,
+				handler_seq: t.handler_seq,
+			}),
 		}
 	}
 
@@ -310,6 +343,7 @@ impl<'a> Transaction<'a> {
 	pub fn admin(self) -> &'a mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
+			Self::Test(t) => t.inner,
 			_ => panic!("Expected Admin transaction"),
 		}
 	}
@@ -346,6 +380,7 @@ impl<'a> Transaction<'a> {
 	pub fn admin_mut(&mut self) -> &mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
+			Self::Test(t) => t.inner,
 			_ => panic!("Expected Admin transaction"),
 		}
 	}
@@ -378,6 +413,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.begin_single_query(keys),
 			Transaction::Query(txn) => txn.begin_single_query(keys),
 			Transaction::Subscription(txn) => txn.begin_single_query(keys),
+			Transaction::Test(t) => t.inner.begin_single_query(keys),
 		}
 	}
 
@@ -392,6 +428,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.begin_single_command(keys),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Subscription(txn) => txn.begin_single_command(keys),
+			Transaction::Test(t) => t.inner.begin_single_command(keys),
 		}
 	}
 
@@ -402,6 +439,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.set(key, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Subscription(txn) => txn.set(key, row),
+			Transaction::Test(t) => t.inner.set(key, row),
 		}
 	}
 
@@ -412,6 +450,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.unset(key, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Subscription(txn) => txn.unset(key, row),
+			Transaction::Test(t) => t.inner.unset(key, row),
 		}
 	}
 
@@ -422,6 +461,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.remove(key),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Subscription(txn) => txn.remove(key),
+			Transaction::Test(t) => t.inner.remove(key),
 		}
 	}
 
@@ -432,6 +472,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.track_row_change(change),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Subscription(txn) => txn.track_row_change(change),
+			Transaction::Test(t) => t.inner.track_row_change(change),
 		}
 	}
 
@@ -442,6 +483,55 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(txn) => txn.track_flow_change(change),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Subscription(txn) => txn.track_flow_change(change),
+			Transaction::Test(t) => t.inner.track_flow_change(change),
+		}
+	}
+
+	/// Record a test event dispatch. No-op for non-Test transactions.
+	pub fn record_test_event(
+		&mut self,
+		namespace: String,
+		event: String,
+		variant: String,
+		depth: u8,
+		columns: Columns,
+	) {
+		if let Transaction::Test(t) = self {
+			*t.event_seq += 1;
+			t.events.push(CapturedEvent {
+				sequence: *t.event_seq,
+				namespace,
+				event,
+				variant,
+				depth,
+				columns,
+			});
+		}
+	}
+
+	/// Record a test handler invocation. No-op for non-Test transactions.
+	pub fn record_test_handler(
+		&mut self,
+		namespace: String,
+		handler: String,
+		event: String,
+		variant: String,
+		duration_ns: u64,
+		outcome: String,
+		message: String,
+	) {
+		if let Transaction::Test(t) = self {
+			*t.handler_seq += 1;
+			t.handler_invocations.push(HandlerInvocation {
+				sequence: *t.handler_seq,
+				namespace,
+				handler,
+				event,
+				variant,
+				duration_ns,
+				outcome,
+				message,
+			});
 		}
 	}
 }
@@ -454,6 +544,7 @@ macro_rules! delegate_interceptor {
 				Transaction::Admin(txn) => txn.$method(),
 				Transaction::Query(_) => panic!("Interceptors not supported on Query transaction"),
 				Transaction::Subscription(txn) => txn.$method(),
+				Transaction::Test(t) => t.inner.$method(),
 			}
 		}
 	};

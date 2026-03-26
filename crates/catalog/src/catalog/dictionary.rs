@@ -138,6 +138,35 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(t.inner, id) {
+					return Ok(Some(dict.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalDictionaryChanges::is_dictionary_deleted(t.inner, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(dict) = self.materialized.find_dictionary_at(id, t.inner.version()) {
+					return Ok(Some(dict));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(dict) =
+					CatalogStore::find_dictionary(&mut Transaction::Admin(&mut *t.inner), id)?
+				{
+					warn!(
+						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(dict));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -254,6 +283,43 @@ impl Catalog {
 				// 4. Fall back to storage as defensive measure
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(
 					&mut Transaction::Subscription(&mut *sub),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(dict));
+				}
+
+				Ok(None)
+			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary_by_name(
+					t.inner, namespace, name,
+				) {
+					return Ok(Some(dict.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(
+					t.inner, namespace, name,
+				) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(dict) =
+					self.materialized.find_dictionary_by_name_at(namespace, name, t.inner.version())
+				{
+					return Ok(Some(dict));
+				}
+
+				// 4. Fall back to storage as defensive measure
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(
+					&mut Transaction::Admin(&mut *t.inner),
 					namespace,
 					name,
 				)? {

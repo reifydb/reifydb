@@ -9,17 +9,16 @@ CREATE TABLE tcmi::items { id: int4, name: text };
 CREATE TEST tcmi::test_a {
     INSERT tcmi::items [{ id: 1, name: "A" }];
     testing::tables::changed("tcmi::items")
-        | AGGREGATE { n: math::count(sequence) }
+        | AGGREGATE { n: math::count(op) }
         | ASSERT { n == 1 }
 };
 
 CREATE TEST tcmi::test_b {
     INSERT tcmi::items [{ id: 2, name: "B" }];
     testing::tables::changed("tcmi::items")
-        | AGGREGATE { n: math::count(sequence) }
+        | AGGREGATE { n: math::count(op) }
         | ASSERT { n == 1 };
     testing::tables::changed("tcmi::items")
-        | ASSERT { sequence == 1 }
         | ASSERT { new_name == "B" }
 };
 

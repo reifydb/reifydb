@@ -2,12 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	testing::TestingContext,
+	internal_error,
+	testing::CapturedEvent,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, value::Value};
 
-use super::{column_for_values, extract_optional_string_arg, testing_context_from_ioc};
+use super::{column_for_values, extract_optional_string_arg};
 use crate::{GeneratorContext, GeneratorFunction, error::GeneratorFunctionResult};
 
 pub(crate) struct TestingEventsDispatched;
@@ -20,14 +22,18 @@ impl TestingEventsDispatched {
 
 impl GeneratorFunction for TestingEventsDispatched {
 	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns> {
-		let testing = testing_context_from_ioc(ctx.ioc)?;
-		let guard = testing.lock();
+		let events = match ctx.txn {
+			Transaction::Test(t) => &**t.events,
+			_ => {
+				return Err(internal_error!("testing::events::dispatched() requires a test transaction").into());
+			}
+		};
 		let filter_arg = extract_optional_string_arg(&ctx.params);
-		Ok(build_dispatched_events(&guard, filter_arg.as_deref())?)
+		Ok(build_dispatched_events(events, filter_arg.as_deref())?)
 	}
 }
 
-fn build_dispatched_events(ctx: &TestingContext, filter_name: Option<&str>) -> Result<Columns> {
+fn build_dispatched_events(events: &[CapturedEvent], filter_name: Option<&str>) -> Result<Columns> {
 	let filter: Option<(&str, &str)> = filter_name.and_then(|s| {
 		let parts: Vec<&str> = s.splitn(2, "::").collect();
 		if parts.len() == 2 {
@@ -37,8 +43,7 @@ fn build_dispatched_events(ctx: &TestingContext, filter_name: Option<&str>) -> R
 		}
 	});
 
-	let events: Vec<_> = ctx
-		.events
+	let events: Vec<_> = events
 		.iter()
 		.filter(|e| {
 			if let Some((ns, name)) = filter {

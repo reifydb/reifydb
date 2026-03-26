@@ -13,7 +13,8 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		WithEventBus,
-		change::{Change, ChangeOrigin},
+		catalog::primitive::PrimitiveId,
+		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
@@ -158,12 +159,6 @@ impl AdminTransaction {
 		self.accumulator.truncate(sp.accumulator_len);
 	}
 
-	/// Reset test-only flow bookkeeping so setup statements do not appear as
-	/// in-test mutations when `RUN TESTS` later performs an inline flush.
-	pub fn clear_test_flow_state(&mut self) {
-		self.accumulator.clear();
-	}
-
 	/// Returns `true` when the accumulator contains flow changes that have not
 	/// yet been processed.  Used by the VM to trigger eager flow processing in
 	/// testing mode.
@@ -171,11 +166,39 @@ impl AdminTransaction {
 		!self.accumulator.is_empty()
 	}
 
+	/// Number of accumulated flow change entries.
+	/// Used as a baseline offset for diff-based mutation tracking.
+	pub fn accumulator_len(&self) -> usize {
+		self.accumulator.len()
+	}
+
+	/// Read accumulator entries from a given offset without draining.
+	/// Used by testing::*::changed() to read mutations since the baseline.
+	pub fn accumulator_entries_from(
+		&self,
+		offset: usize,
+	) -> &[(PrimitiveId, Diff)] {
+		self.accumulator.entries_from(offset)
+	}
+
 	/// Execute test-only pre-commit style processing without committing.
 	///
 	/// This is used by testing helpers that need commit-time flow work
 	/// materialized while still staying inside the test savepoint.
 	pub fn capture_testing_pre_commit<F>(&mut self, f: F) -> Result<()>
+	where
+		F: FnOnce(&mut PreCommitContext) -> Result<()>,
+	{
+		self.capture_testing_pre_commit_from(0, f)
+	}
+
+	/// Like `capture_testing_pre_commit` but only processes accumulator entries
+	/// from `offset` onwards.  Entries before `offset` are preserved.
+	///
+	/// The closure receives a `PreCommitContext` built from the accumulator and
+	/// should call `execute_inline_flow_changes` (or similar) to populate
+	/// `ctx.pending_writes` and `ctx.view_entries`.
+	pub fn capture_testing_pre_commit_from<F>(&mut self, offset: usize, f: F) -> Result<()>
 	where
 		F: FnOnce(&mut PreCommitContext) -> Result<()>,
 	{
@@ -192,9 +215,10 @@ impl AdminTransaction {
 			.collect();
 
 		let mut ctx = PreCommitContext {
-			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
+			flow_changes: self.accumulator.take_changes_from(offset, CommitVersion(0)),
 			pending_writes: Vec::new(),
 			transaction_writes,
+			view_entries: Vec::new(),
 		};
 
 		f(&mut ctx)?;
@@ -204,6 +228,10 @@ impl AdminTransaction {
 				Some(v) => self.cmd.as_mut().unwrap().set(key, v.clone())?,
 				None => self.cmd.as_mut().unwrap().remove(key)?,
 			}
+		}
+
+		for (id, diff) in ctx.view_entries {
+			self.accumulator.track(id, diff);
 		}
 
 		Ok(())
@@ -310,6 +338,7 @@ impl AdminTransaction {
 			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
 			pending_writes: Vec::new(),
 			transaction_writes,
+			view_entries: Vec::new(),
 		};
 		self.interceptors.pre_commit.execute(&mut ctx)?;
 

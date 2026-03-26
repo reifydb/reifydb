@@ -5,11 +5,9 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	internal_error,
-	testing::TestingContext,
 	value::column::{Column, columns::Columns},
 };
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
-use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
@@ -80,16 +78,13 @@ pub(crate) fn dispatch(
 	}
 	let event_payload = Columns::new(event_columns);
 
-	if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-		let mut log = testing.lock();
-		log.record_event(
-			plan.namespace.name().to_string(),
-			sumtype_def.name.clone(),
-			plan.variant_name.clone(),
-			dispatch_depth,
-			event_payload.clone(),
-		);
-	}
+	tx.record_test_event(
+		plan.namespace.name().to_string(),
+		sumtype_def.name.clone(),
+		plan.variant_name.clone(),
+		dispatch_depth,
+		event_payload.clone(),
+	);
 
 	// Fire each catalog (RQL) procedure in declaration order
 	for procedure in &procedures {
@@ -118,20 +113,15 @@ pub(crate) fn dispatch(
 						params,
 						&mut handler_result,
 					) {
-						if let Ok(testing) =
-							services.ioc.resolve::<Arc<Mutex<TestingContext>>>()
-						{
-							let mut log = testing.lock();
-							log.record_handler_invocation(
-								plan.namespace.name().to_string(),
-								procedure.name.clone(),
-								sumtype_def.name.clone(),
-								plan.variant_name.clone(),
-								handler_start.elapsed().as_nanos() as u64,
-								"error".to_string(),
-								format!("{}", e),
-							);
-						}
+						tx.record_test_handler(
+							plan.namespace.name().to_string(),
+							procedure.name.clone(),
+							sumtype_def.name.clone(),
+							plan.variant_name.clone(),
+							handler_start.elapsed().as_nanos() as u64,
+							"error".to_string(),
+							format!("{}", e),
+						);
 						return Err(e);
 					}
 				}
@@ -139,18 +129,15 @@ pub(crate) fn dispatch(
 				vm.ip = saved_ip;
 				let _ = vm.symbols.exit_scope();
 
-				if let Ok(testing) = services.ioc.resolve::<Arc<Mutex<TestingContext>>>() {
-					let mut log = testing.lock();
-					log.record_handler_invocation(
-						plan.namespace.name().to_string(),
-						procedure.name.clone(),
-						sumtype_def.name.clone(),
-						plan.variant_name.clone(),
-						handler_start.elapsed().as_nanos() as u64,
-						"success".to_string(),
-						String::new(),
-					);
-				}
+				tx.record_test_handler(
+					plan.namespace.name().to_string(),
+					procedure.name.clone(),
+					sumtype_def.name.clone(),
+					plan.variant_name.clone(),
+					handler_start.elapsed().as_nanos() as u64,
+					"success".to_string(),
+					String::new(),
+				);
 			}
 			CompilationResult::Incremental(_) => {
 				return Err(internal_error!("Handler body requires more input during dispatch"));

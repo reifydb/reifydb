@@ -36,7 +36,7 @@ use crate::{
 	engine::FlowEngine,
 	transaction::{
 		FlowTransaction,
-		pending::{Pending, PendingWrite, ViewChangeCollector},
+		pending::{Pending, PendingWrite},
 	},
 	transactional::registrar::TransactionalFlowRegistrar,
 };
@@ -126,12 +126,19 @@ pub(crate) fn execute_inline_flow_changes(
 			interceptors,
 		);
 
-		let mut collector = ViewChangeCollector::new();
 		for change in relevant {
-			flow_engine.process(&mut flow_txn, change, flow_id, &mut collector)?;
+			flow_engine.process(&mut flow_txn, change, flow_id)?;
 		}
 
-		available_changes.extend(collector.take());
+		let view_entries = flow_txn.take_accumulator_entries();
+		for (id, diff) in &view_entries {
+			available_changes.push(Change {
+				origin: ChangeOrigin::Primitive(id.clone()),
+				version: read_version,
+				diffs: vec![diff.clone()],
+			});
+		}
+		ctx.view_entries.extend(view_entries);
 
 		let flow_pending = flow_txn.take_pending();
 		for (key, pw) in flow_pending.iter_sorted() {

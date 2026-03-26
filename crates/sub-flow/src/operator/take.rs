@@ -25,7 +25,7 @@ use crate::{
 		Operator, Operators,
 		stateful::{raw::RawStatefulOperator, single::SingleStateful},
 	},
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
+	transaction::FlowTransaction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -148,12 +148,7 @@ impl Operator for TakeOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		_collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
 		let version = change.version;

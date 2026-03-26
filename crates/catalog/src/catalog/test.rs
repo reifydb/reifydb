@@ -64,6 +64,18 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				if let Some(t) = TransactionalTestChanges::find_test(t.inner, id) {
+					return Ok(Some(t.clone()));
+				}
+				if TransactionalTestChanges::is_test_deleted(t.inner, id) {
+					return Ok(None);
+				}
+				if let Some(t) = self.materialized.find_test_at(id, t.inner.version()) {
+					return Ok(Some(t));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -120,6 +132,20 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				if let Some(t) = TransactionalTestChanges::find_test_by_name(t.inner, namespace, name) {
+					return Ok(Some(t.clone()));
+				}
+				if TransactionalTestChanges::is_test_deleted_by_name(t.inner, namespace, name) {
+					return Ok(None);
+				}
+				if let Some(t) =
+					self.materialized.find_test_by_name_at(namespace, name, t.inner.version())
+				{
+					return Ok(Some(t));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -165,6 +191,21 @@ impl Catalog {
 				}
 				Ok(tests)
 			}
+			Transaction::Test(t) => {
+				let mut tests =
+					self.materialized.list_tests_in_namespace_at(namespace, t.inner.version());
+				// Add transactional additions
+				for change in &t.inner.changes.test_def {
+					if let Some(t) = &change.post {
+						if t.namespace == namespace
+							&& !tests.iter().any(|existing| existing.id == t.id)
+						{
+							tests.push(t.clone());
+						}
+					}
+				}
+				Ok(tests)
+			}
 		}
 	}
 
@@ -187,6 +228,17 @@ impl Catalog {
 			Transaction::Subscription(sub) => {
 				let mut tests = self.materialized.list_all_tests_at(sub.version());
 				for change in &sub.as_admin_mut().changes.test_def {
+					if let Some(t) = &change.post {
+						if !tests.iter().any(|existing| existing.id == t.id) {
+							tests.push(t.clone());
+						}
+					}
+				}
+				Ok(tests)
+			}
+			Transaction::Test(t) => {
+				let mut tests = self.materialized.list_all_tests_at(t.inner.version());
+				for change in &t.inner.changes.test_def {
 					if let Some(t) = &change.post {
 						if !tests.iter().any(|existing| existing.id == t.id) {
 							tests.push(t.clone());

@@ -5,8 +5,15 @@ use std::mem;
 
 use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::primitive::PrimitiveId,
+		change::{Change, ChangeOrigin, Diff},
+	},
+};
 use reifydb_transaction::{
+	change_accumulator::ChangeAccumulator,
 	interceptor::{
 		WithInterceptors,
 		chain::InterceptorChain as Chain,
@@ -78,6 +85,7 @@ pub struct FlowTransactionInner {
 	pub state_query: MultiReadTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
+	pub accumulator: ChangeAccumulator,
 }
 
 /// A transaction wrapper for flow processing with dual-version read semantics.
@@ -196,6 +204,7 @@ impl FlowTransaction {
 				state_query,
 				catalog,
 				interceptors,
+				accumulator: ChangeAccumulator::new(),
 			},
 		}
 	}
@@ -219,6 +228,7 @@ impl FlowTransaction {
 				state_query,
 				catalog,
 				interceptors,
+				accumulator: ChangeAccumulator::new(),
 			},
 		}
 	}
@@ -245,6 +255,7 @@ impl FlowTransaction {
 				state_query,
 				catalog,
 				interceptors,
+				accumulator: ChangeAccumulator::new(),
 			},
 			base_pending,
 		}
@@ -258,6 +269,23 @@ impl FlowTransaction {
 	/// Extract pending writes, replacing them with an empty buffer.
 	pub fn take_pending(&mut self) -> Pending {
 		mem::take(&mut self.inner_mut().pending)
+	}
+
+	/// Track a view-level flow change in this transaction's accumulator.
+	pub fn track_flow_change(&mut self, change: Change) {
+		if let ChangeOrigin::Primitive(id) = change.origin {
+			for diff in change.diffs {
+				self.inner_mut().accumulator.track(id, diff);
+			}
+		}
+	}
+
+	/// Drain the accumulator entries collected during flow processing.
+	pub fn take_accumulator_entries(&mut self) -> Vec<(PrimitiveId, Diff)> {
+		let acc = &mut self.inner_mut().accumulator;
+		let entries: Vec<_> = acc.entries_from(0).to_vec();
+		acc.clear();
+		entries
 	}
 
 	/// Get a reference to the pending writes.

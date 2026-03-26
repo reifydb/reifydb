@@ -17,11 +17,7 @@ use reifydb_transaction::interceptor::view::ViewInterceptor;
 use reifydb_type::{Result, value::row_number::RowNumber};
 
 use super::{coerce_columns, encode_row_at_index};
-use crate::{
-	Operator,
-	operator::Operators,
-	transaction::{FlowTransaction, pending::ViewChangeCollector},
-};
+use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
@@ -56,12 +52,7 @@ impl Operator for SinkSeriesViewOperator {
 		self.node
 	}
 
-	fn apply(
-		&self,
-		txn: &mut FlowTransaction,
-		change: Change,
-		collector: &mut ViewChangeCollector,
-	) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view_def = self.view.def().clone();
 		let schema: Schema = view_def.columns().into();
 		let primitive_id = PrimitiveId::series(self.series_id);
@@ -86,7 +77,7 @@ impl Operator for SinkSeriesViewOperator {
 						ViewInterceptor::post_insert(txn, &view_def, row_number, &encoded)?;
 					}
 					let version = txn.version();
-					collector.push(Change {
+					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Insert {
@@ -136,7 +127,7 @@ impl Operator for SinkSeriesViewOperator {
 						)?;
 					}
 					let version = txn.version();
-					collector.push(Change {
+					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Update {
@@ -161,7 +152,7 @@ impl Operator for SinkSeriesViewOperator {
 						ViewInterceptor::post_delete(txn, &view_def, row_number, &encoded)?;
 					}
 					let version = txn.version();
-					collector.push(Change {
+					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Primitive(PrimitiveId::view(view_def.id())),
 						version,
 						diffs: vec![Diff::Remove {
