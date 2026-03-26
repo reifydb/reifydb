@@ -123,7 +123,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Test(t) => {
+			Transaction::Test(mut t) => {
 				if let Some(def) = TransactionalSumTypeChanges::find_sumtype(t.inner, id) {
 					return Ok(Some(def.clone()));
 				}
@@ -132,17 +132,8 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(def) = self.materialized.find_sumtype_at(id, t.inner.version()) {
-					return Ok(Some(def));
-				}
-
-				if let Some(def) =
-					CatalogStore::find_sumtype(&mut Transaction::Admin(&mut *t.inner), id)?
+				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Test(t.reborrow()), id)?
 				{
-					warn!(
-						"SumType with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
 					return Ok(Some(def));
 				}
 
@@ -263,7 +254,7 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Test(t) => {
+			Transaction::Test(mut t) => {
 				if let Some(def) =
 					TransactionalSumTypeChanges::find_sumtype_by_name(t.inner, namespace, name)
 				{
@@ -274,21 +265,11 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(def) =
-					self.materialized.find_sumtype_by_name_at(namespace, name, t.inner.version())
-				{
-					return Ok(Some(def));
-				}
-
 				if let Some(def) = CatalogStore::find_sumtype_by_name(
-					&mut Transaction::Admin(&mut *t.inner),
+					&mut Transaction::Test(t.reborrow()),
 					namespace,
 					name,
 				)? {
-					warn!(
-						"SumType '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
 					return Ok(Some(def));
 				}
 

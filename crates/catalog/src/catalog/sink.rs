@@ -132,7 +132,7 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Test(t) => {
+			Transaction::Test(mut t) => {
 				if let Some(sink) =
 					TransactionalSinkChanges::find_sink_by_name(t.inner, namespace, name)
 				{
@@ -141,20 +141,11 @@ impl Catalog {
 				if TransactionalSinkChanges::is_sink_deleted_by_name(t.inner, namespace, name) {
 					return Ok(None);
 				}
-				if let Some(sink) =
-					self.materialized.find_sink_by_name_at(namespace, name, t.inner.version())
-				{
-					return Ok(Some(sink));
-				}
 				if let Some(sink) = CatalogStore::find_sink_by_name(
-					&mut Transaction::Admin(&mut *t.inner),
+					&mut Transaction::Test(t.reborrow()),
 					namespace,
 					name,
 				)? {
-					warn!(
-						"Sink '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
 					return Ok(Some(sink));
 				}
 				Ok(None)

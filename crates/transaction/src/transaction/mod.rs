@@ -5,15 +5,17 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
+	delta::Delta,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
 	interface::{
-		change::Change,
+		catalog::primitive::PrimitiveId,
+		change::{Change, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	testing::{CapturedEvent, HandlerInvocation},
+	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
 };
 use reifydb_type::{
@@ -25,7 +27,7 @@ use reifydb_type::{
 
 use crate::{
 	TransactionId,
-	change::RowChange,
+	change::{DefChangesSavepoint, RowChange},
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -77,7 +79,7 @@ use crate::{
 			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
-		transaction::{PostCommitInterceptor, PreCommitInterceptor},
+		transaction::{PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
 		view::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
@@ -87,7 +89,9 @@ use crate::{
 			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
 		},
 	},
+	multi::transaction::write::WriteSavepoint,
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
+	testing::TestFlowProcessor,
 	transaction::{
 		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 		subscription::SubscriptionTransaction,
@@ -109,13 +113,139 @@ pub mod command;
 pub mod query;
 pub mod subscription;
 
+/// Opaque savepoint for per-test transaction isolation.
+pub struct Savepoint {
+	write: WriteSavepoint,
+	row_changes_len: usize,
+	accumulator_len: usize,
+	changes: DefChangesSavepoint,
+}
+
 pub struct TestTransaction<'a> {
 	pub inner: &'a mut AdminTransaction,
 	pub baseline: usize,
 	pub events: &'a mut Vec<CapturedEvent>,
-	pub handler_invocations: &'a mut Vec<HandlerInvocation>,
+	pub invocations: &'a mut Vec<CapturedInvocation>,
 	pub event_seq: &'a mut u64,
 	pub handler_seq: &'a mut u64,
+	pub savepoint: Option<Savepoint>,
+	pub flow_processor: Option<Arc<dyn TestFlowProcessor>>,
+	pub session_type: String,
+	pub session_default_deny: bool,
+}
+
+impl<'a> TestTransaction<'a> {
+	pub fn new(
+		inner: &'a mut AdminTransaction,
+		events: &'a mut Vec<CapturedEvent>,
+		invocations: &'a mut Vec<CapturedInvocation>,
+		event_seq: &'a mut u64,
+		handler_seq: &'a mut u64,
+		flow_processor: Option<Arc<dyn TestFlowProcessor>>,
+		session_type: impl Into<String>,
+		session_default_deny: bool,
+	) -> Self {
+		let baseline = inner.accumulator.len();
+		let savepoint = Savepoint {
+			write: inner.cmd.as_ref().unwrap().savepoint(),
+			row_changes_len: inner.row_changes.len(),
+			accumulator_len: inner.accumulator.len(),
+			changes: inner.changes.savepoint(),
+		};
+		Self {
+			inner,
+			baseline,
+			events,
+			invocations,
+			event_seq,
+			handler_seq,
+			savepoint: Some(savepoint),
+			flow_processor,
+			session_type: session_type.into(),
+			session_default_deny,
+		}
+	}
+
+	/// Restore transaction state to the savepoint captured at construction.
+	pub fn restore(&mut self) {
+		if let Some(sp) = self.savepoint.take() {
+			self.inner.cmd.as_mut().unwrap().restore_savepoint(sp.write);
+			self.inner.row_changes.truncate(sp.row_changes_len);
+			self.inner.accumulator.truncate(sp.accumulator_len);
+			self.inner.changes.restore_savepoint(sp.changes);
+			self.inner.unpoison();
+		}
+	}
+
+	/// Re-borrow this test transaction with a shorter lifetime,
+	/// producing a TestTransaction suitable for embedding in a
+	/// `Transaction::Test` variant without consuming `self`.
+	pub fn reborrow(&mut self) -> TestTransaction<'_> {
+		TestTransaction {
+			inner: &mut *self.inner,
+			baseline: self.baseline,
+			events: &mut *self.events,
+			invocations: &mut *self.invocations,
+			event_seq: &mut *self.event_seq,
+			handler_seq: &mut *self.handler_seq,
+			savepoint: None,
+			flow_processor: self.flow_processor.clone(),
+			session_type: self.session_type.clone(),
+			session_default_deny: self.session_default_deny,
+		}
+	}
+
+	/// Read accumulator entries since the baseline.
+	/// Used by testing helpers to inspect mutations within the current test.
+	pub fn accumulator_entries_from(&self) -> &[(PrimitiveId, Diff)] {
+		self.inner.accumulator.entries_from(self.baseline)
+	}
+
+	/// Execute test-only pre-commit style processing without committing.
+	///
+	/// Processes accumulator entries from the baseline onwards. Used by
+	/// testing helpers that need commit-time flow work materialized while
+	/// still staying inside the test savepoint.
+	pub fn capture_testing_pre_commit<F>(&mut self, f: F) -> Result<()>
+	where
+		F: FnOnce(&mut PreCommitContext) -> Result<()>,
+	{
+		let offset = self.baseline;
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
+			.inner
+			.pending_writes()
+			.iter()
+			.map(|(key, pending)| match &pending.delta {
+				Delta::Set {
+					row,
+					..
+				} => (key.clone(), Some(row.clone())),
+				_ => (key.clone(), None),
+			})
+			.collect();
+
+		let mut ctx = PreCommitContext {
+			flow_changes: self.inner.accumulator.take_changes_from(offset, CommitVersion(0)),
+			pending_writes: Vec::new(),
+			transaction_writes,
+			view_entries: Vec::new(),
+		};
+
+		f(&mut ctx)?;
+
+		for (key, value) in &ctx.pending_writes {
+			match value {
+				Some(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
+				None => self.inner.cmd.as_mut().unwrap().remove(key)?,
+			}
+		}
+
+		for (id, diff) in ctx.view_entries {
+			self.inner.accumulator.track(id, diff);
+		}
+
+		Ok(())
+	}
 }
 
 /// An enum that can hold either a command, admin, query, or subscription transaction
@@ -332,9 +462,13 @@ impl<'a> Transaction<'a> {
 				inner: t.inner,
 				baseline: t.baseline,
 				events: t.events,
-				handler_invocations: t.handler_invocations,
+				invocations: t.invocations,
 				event_seq: t.event_seq,
 				handler_seq: t.handler_seq,
+				savepoint: None,
+				flow_processor: t.flow_processor.clone(),
+				session_type: t.session_type.clone(),
+				session_default_deny: t.session_default_deny,
 			}),
 		}
 	}
@@ -532,7 +666,7 @@ impl<'a> Transaction<'a> {
 	) {
 		if let Transaction::Test(t) = self {
 			*t.handler_seq += 1;
-			t.handler_invocations.push(HandlerInvocation {
+			t.invocations.push(CapturedInvocation {
 				sequence: *t.handler_seq,
 				namespace,
 				handler,

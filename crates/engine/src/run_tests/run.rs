@@ -5,14 +5,17 @@ use std::{collections::HashMap, mem, sync::Arc};
 
 use reifydb_core::{
 	internal_error,
-	testing::{CapturedEvent, HandlerInvocation},
+	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
 };
 use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{RunTestsNode, RunTestsScope},
 };
-use reifydb_transaction::transaction::{TestTransaction, Transaction};
+use reifydb_transaction::{
+	testing::TestFlowProcessor,
+	transaction::{TestTransaction, Transaction},
+};
 use reifydb_type::{
 	params::Params,
 	value::{Value, duration::Duration as RqlDuration, frame::frame::Frame},
@@ -137,13 +140,15 @@ pub(crate) fn run_tests(
 		}
 	};
 
+	let flow_processor = services.ioc.resolve::<Arc<dyn TestFlowProcessor>>().ok();
+
 	// Stack-allocated test state — passed into Transaction::Test by reference
 	let mut events: Vec<CapturedEvent> = Vec::new();
-	let mut handler_invocations: Vec<HandlerInvocation> = Vec::new();
+	let mut invocations: Vec<CapturedInvocation> = Vec::new();
 	let mut event_seq: u64 = 0;
 	let mut handler_seq: u64 = 0;
 
-	let tests = match &plan.scope {
+	let mut tests = match &plan.scope {
 		RunTestsScope::All => services.catalog.list_all_tests(&mut Transaction::Admin(&mut *txn))?,
 		RunTestsScope::Namespace(ns) => {
 			services.catalog.list_tests_in_namespace(&mut Transaction::Admin(&mut *txn), ns.def().id())?
@@ -159,6 +164,7 @@ pub(crate) fn run_tests(
 			}
 		}
 	};
+	tests.sort_by(|a, b| a.name.cmp(&b.name));
 
 	if tests.is_empty() {
 		return Ok(Columns::single_row([
@@ -185,29 +191,30 @@ pub(crate) fn run_tests(
 			None => {
 				// Non-parameterized: single run
 				events.clear();
-				handler_invocations.clear();
+				invocations.clear();
 				_ = mem::replace(&mut event_seq, 0);
 				_ = mem::replace(&mut handler_seq, 0);
 
 				let start = services.runtime_context.clock.instant();
-				let savepoint = txn.savepoint();
-				let baseline = txn.accumulator_len();
+				let mut test_txn = TestTransaction::new(
+					&mut *txn,
+					&mut events,
+					&mut invocations,
+					&mut event_seq,
+					&mut handler_seq,
+					flow_processor.clone(),
+					"admin",
+					true,
+				);
 				let (outcome, message) = run_single(
 					vm,
 					services,
-					&mut Transaction::Test(TestTransaction {
-						inner: &mut *txn,
-						baseline,
-						events: &mut events,
-						handler_invocations: &mut handler_invocations,
-						event_seq: &mut event_seq,
-						handler_seq: &mut handler_seq,
-					}),
+					&mut Transaction::Test(test_txn.reborrow()),
 					&test.body,
 					params,
 					None,
 				);
-				txn.restore_savepoint(savepoint);
+				test_txn.restore();
 				let elapsed = start.elapsed();
 				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 
@@ -247,29 +254,30 @@ pub(crate) fn run_tests(
 					}
 
 					events.clear();
-					handler_invocations.clear();
+					invocations.clear();
 					event_seq = 0;
 					handler_seq = 0;
 
 					let start = services.runtime_context.clock.instant();
-					let savepoint = txn.savepoint();
-					let baseline = txn.accumulator_len();
+					let mut test_txn = TestTransaction::new(
+						&mut *txn,
+						&mut events,
+						&mut invocations,
+						&mut event_seq,
+						&mut handler_seq,
+						flow_processor.clone(),
+						"admin",
+						true,
+					);
 					let (outcome, message) = run_single(
 						vm,
 						services,
-						&mut Transaction::Test(TestTransaction {
-							inner: &mut *txn,
-							baseline,
-							events: &mut events,
-							handler_invocations: &mut handler_invocations,
-							event_seq: &mut event_seq,
-							handler_seq: &mut handler_seq,
-						}),
+						&mut Transaction::Test(test_txn.reborrow()),
 						&test.body,
 						params,
 						Some(&named_vars),
 					);
-					txn.restore_savepoint(savepoint);
+					test_txn.restore();
 					let elapsed = start.elapsed();
 					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
 

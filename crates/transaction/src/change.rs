@@ -306,7 +306,87 @@ pub struct TransactionalDefChanges {
 	pub log: Vec<Operation>,
 }
 
+pub struct DefChangesSavepoint {
+	config_changes_len: usize,
+	dictionary_len: usize,
+	flow_len: usize,
+	handler_len: usize,
+	migration_len: usize,
+	migration_event_len: usize,
+	namespace_len: usize,
+	procedure_len: usize,
+	ringbuffer_len: usize,
+	series_len: usize,
+	sink_len: usize,
+	source_len: usize,
+	sumtype_len: usize,
+	subscription_len: usize,
+	test_len: usize,
+	table_len: usize,
+	identity_len: usize,
+	authentication_len: usize,
+	role_len: usize,
+	granted_role_len: usize,
+	policy_len: usize,
+	view_len: usize,
+	log_len: usize,
+}
+
 impl TransactionalDefChanges {
+	pub fn savepoint(&self) -> DefChangesSavepoint {
+		DefChangesSavepoint {
+			config_changes_len: self.config_changes.len(),
+			dictionary_len: self.dictionary.len(),
+			flow_len: self.flow.len(),
+			handler_len: self.handler.len(),
+			migration_len: self.migration.len(),
+			migration_event_len: self.migration_event.len(),
+			namespace_len: self.namespace.len(),
+			procedure_len: self.procedure.len(),
+			ringbuffer_len: self.ringbuffer.len(),
+			series_len: self.series.len(),
+			sink_len: self.sink.len(),
+			source_len: self.source.len(),
+			sumtype_len: self.sumtype.len(),
+			subscription_len: self.subscription.len(),
+			test_len: self.test.len(),
+			table_len: self.table.len(),
+			identity_len: self.identity.len(),
+			authentication_len: self.authentication.len(),
+			role_len: self.role.len(),
+			granted_role_len: self.granted_role.len(),
+			policy_len: self.policy.len(),
+			view_len: self.view.len(),
+			log_len: self.log.len(),
+		}
+	}
+
+	pub fn restore_savepoint(&mut self, sp: DefChangesSavepoint) {
+		self.config_changes.truncate(sp.config_changes_len);
+		self.dictionary.truncate(sp.dictionary_len);
+		self.flow.truncate(sp.flow_len);
+		self.handler.truncate(sp.handler_len);
+		self.migration.truncate(sp.migration_len);
+		self.migration_event.truncate(sp.migration_event_len);
+		self.namespace.truncate(sp.namespace_len);
+		self.procedure.truncate(sp.procedure_len);
+		self.ringbuffer.truncate(sp.ringbuffer_len);
+		self.series.truncate(sp.series_len);
+		self.sink.truncate(sp.sink_len);
+		self.source.truncate(sp.source_len);
+		self.sumtype.truncate(sp.sumtype_len);
+		self.subscription.truncate(sp.subscription_len);
+		self.test.truncate(sp.test_len);
+		self.table.truncate(sp.table_len);
+		self.identity.truncate(sp.identity_len);
+		self.authentication.truncate(sp.authentication_len);
+		self.role.truncate(sp.role_len);
+		self.granted_role.truncate(sp.granted_role_len);
+		self.policy.truncate(sp.policy_len);
+		self.view.truncate(sp.view_len);
+		self.log.truncate(sp.log_len);
+	}
+
 	pub fn add_config_change(&mut self, key: String, value: Value) {
 		self.config_changes.push((key, value));
 	}

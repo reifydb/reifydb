@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::sync::Arc;
-
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::{catalog::primitive::PrimitiveId, change::Diff},
@@ -10,7 +8,7 @@ use reifydb_core::{
 	testing::TestingChanged,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_transaction::{testing::TestFlowProcessor, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, value::Value};
 
 use super::{column_for_values, extract_optional_string_arg};
@@ -27,24 +25,17 @@ impl GeneratorFunction for TestingChanged {
 
 		let filter_arg = extract_optional_string_arg(&ctx.params);
 
-		// For views: materialize flow writes if there are non-view source changes pending.
-		// View entries in the accumulator (from a previous process) must not trigger
-		// another process — only source-table/series/ringbuffer changes should.
+		// Materialize view rows from pending source changes so that
+		// changed() sees transactional view mutations.
 		if self.primitive_type == "views" {
-			if let Ok(processor) = ctx.ioc.resolve::<Arc<dyn TestFlowProcessor>>() {
+			if let Some(processor) = t.flow_processor.clone() {
 				let _ = processor.process(t);
 			}
 		}
 
-		let txn = &mut *t.inner;
-		let baseline = t.baseline;
-
 		// Read individual mutations from the accumulator
-		let entries: Vec<_> = txn
-			.accumulator_entries_from(baseline)
-			.iter()
-			.map(|(id, diff)| (id.clone(), diff.clone()))
-			.collect();
+		let entries: Vec<_> =
+			t.accumulator_entries_from().iter().map(|(id, diff)| (id.clone(), diff.clone())).collect();
 
 		let mut mutations: Vec<MutationEntry> = Vec::new();
 
@@ -63,7 +54,7 @@ impl GeneratorFunction for TestingChanged {
 
 			let name = match resolve_primitive_name(
 				ctx.catalog,
-				&mut Transaction::Admin(&mut *txn),
+				&mut Transaction::Test(t.reborrow()),
 				primitive_id,
 			) {
 				Ok(n) => n,

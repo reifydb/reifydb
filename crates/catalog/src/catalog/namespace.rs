@@ -143,33 +143,18 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Test(t) => {
-				// 1. Check transactional changes first
-				if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(t.inner, id) {
-					return Ok(Some(namespace.clone()));
+			Transaction::Test(mut t) => {
+				if let Some(ns) = TransactionalNamespaceChanges::find_namespace(t.inner, id) {
+					return Ok(Some(ns.clone()));
 				}
-
-				// 2. Check if deleted
 				if TransactionalNamespaceChanges::is_namespace_deleted(t.inner, id) {
 					return Ok(None);
 				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(namespace) = self.materialized.find_namespace_at(id, t.inner.version()) {
-					return Ok(Some(namespace));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(namespace) =
-					CatalogStore::find_namespace(&mut Transaction::Admin(&mut *t.inner), id)?
+				if let Some(ns) =
+					CatalogStore::find_namespace(&mut Transaction::Test(t.reborrow()), id)?
 				{
-					warn!(
-						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
-						id
-					);
-					return Ok(Some(namespace));
+					return Ok(Some(ns));
 				}
-
 				Ok(None)
 			}
 		}
@@ -277,35 +262,19 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Test(t) => {
-				// 1. Check transactional changes first
-				if let Some(namespace) =
-					TransactionalNamespaceChanges::find_namespace_by_name(t.inner, name)
-				{
-					return Ok(Some(namespace.clone()));
+			Transaction::Test(mut t) => {
+				if let Some(ns) = TransactionalNamespaceChanges::find_namespace_by_name(t.inner, name) {
+					return Ok(Some(ns.clone()));
 				}
-
-				// 2. Check if deleted
 				if TransactionalNamespaceChanges::is_namespace_deleted_by_name(t.inner, name) {
 					return Ok(None);
 				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(namespace) =
-					self.materialized.find_namespace_by_name_at(name, t.inner.version())
-				{
-					return Ok(Some(namespace));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(namespace) = CatalogStore::find_namespace_by_name(
-					&mut Transaction::Admin(&mut *t.inner),
+				if let Some(ns) = CatalogStore::find_namespace_by_name(
+					&mut Transaction::Test(t.reborrow()),
 					name,
 				)? {
-					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
-					return Ok(Some(namespace));
+					return Ok(Some(ns));
 				}
-
 				Ok(None)
 			}
 		}

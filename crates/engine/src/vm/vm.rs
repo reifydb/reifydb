@@ -1207,6 +1207,7 @@ impl Vm {
 				Instruction::CreateNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1219,6 +1220,7 @@ impl Vm {
 				Instruction::CreateRemoteNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1231,6 +1233,7 @@ impl Vm {
 				Instruction::CreateTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1243,6 +1246,7 @@ impl Vm {
 				Instruction::CreateRingBuffer(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1255,6 +1259,7 @@ impl Vm {
 				Instruction::CreateDeferredView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1267,6 +1272,7 @@ impl Vm {
 				Instruction::CreateTransactionalView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1279,6 +1285,7 @@ impl Vm {
 				Instruction::CreateDictionary(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1291,6 +1298,7 @@ impl Vm {
 				Instruction::CreateSumType(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1316,6 +1324,7 @@ impl Vm {
 				Instruction::AlterSequence(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1328,6 +1337,7 @@ impl Vm {
 				Instruction::CreatePrimaryKey(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1340,6 +1350,7 @@ impl Vm {
 				Instruction::CreateColumnProperty(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1352,6 +1363,7 @@ impl Vm {
 				Instruction::CreateProcedure(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1364,6 +1376,7 @@ impl Vm {
 				Instruction::CreateSeries(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1376,6 +1389,7 @@ impl Vm {
 				Instruction::CreateEvent(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1388,6 +1402,7 @@ impl Vm {
 				Instruction::CreateTag(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1400,6 +1415,7 @@ impl Vm {
 				Instruction::CreateSource(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1412,6 +1428,7 @@ impl Vm {
 				Instruction::CreateSink(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1424,6 +1441,7 @@ impl Vm {
 				Instruction::DropSource(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1436,6 +1454,7 @@ impl Vm {
 				Instruction::DropSink(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1448,6 +1467,7 @@ impl Vm {
 				Instruction::CreateTest(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1460,6 +1480,7 @@ impl Vm {
 				Instruction::CreateMigration(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1496,6 +1517,7 @@ impl Vm {
 				Instruction::AlterTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1508,6 +1530,7 @@ impl Vm {
 				Instruction::AlterRemoteNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1522,6 +1545,7 @@ impl Vm {
 				Instruction::DropNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1539,6 +1563,7 @@ impl Vm {
 				Instruction::DropTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1556,6 +1581,7 @@ impl Vm {
 				Instruction::DropView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1573,6 +1599,7 @@ impl Vm {
 				Instruction::DropRingBuffer(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1590,6 +1617,7 @@ impl Vm {
 				Instruction::DropSeries(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1607,6 +1635,7 @@ impl Vm {
 				Instruction::DropDictionary(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1624,6 +1653,7 @@ impl Vm {
 				Instruction::DropSumType(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1642,6 +1672,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						Transaction::Subscription(txn) => txn.as_admin_mut(),
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1906,6 +1937,7 @@ impl Vm {
 				Instruction::CreateIdentity(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1918,6 +1950,7 @@ impl Vm {
 				Instruction::CreateRole(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1930,6 +1963,7 @@ impl Vm {
 				Instruction::Grant(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1942,6 +1976,7 @@ impl Vm {
 				Instruction::Revoke(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1954,6 +1989,7 @@ impl Vm {
 				Instruction::DropIdentity(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1966,6 +2002,7 @@ impl Vm {
 				Instruction::DropRole(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1978,6 +2015,7 @@ impl Vm {
 				Instruction::CreatePolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1990,6 +2028,7 @@ impl Vm {
 				Instruction::AlterPolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -2002,6 +2041,7 @@ impl Vm {
 				Instruction::DropPolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -2014,6 +2054,7 @@ impl Vm {
 				Instruction::CreateAuthentication(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -2026,6 +2067,7 @@ impl Vm {
 				Instruction::DropAuthentication(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"

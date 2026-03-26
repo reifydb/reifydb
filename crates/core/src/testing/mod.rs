@@ -16,7 +16,7 @@ pub struct CapturedEvent {
 
 /// A captured handler invocation during test execution.
 #[derive(Clone, Debug)]
-pub struct HandlerInvocation {
+pub struct CapturedInvocation {
 	pub sequence: u64,
 	pub namespace: String,
 	pub handler: String,

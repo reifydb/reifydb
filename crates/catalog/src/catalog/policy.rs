@@ -103,28 +103,18 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Test(t) => {
-				// 1. Check transactional changes first
+			Transaction::Test(mut t) => {
 				if let Some(policy) = TransactionalPolicyChanges::find_policy_by_name(t.inner, name) {
 					return Ok(Some(policy.clone()));
 				}
 
-				// 2. Check if deleted
 				if TransactionalPolicyChanges::is_policy_deleted_by_name(t.inner, name) {
 					return Ok(None);
 				}
 
-				// 3. Check MaterializedCatalog
-				if let Some(policy) = self.materialized.find_policy_by_name_at(name, t.inner.version())
-				{
-					return Ok(Some(policy));
-				}
-
-				// 4. Fall back to storage
 				if let Some(policy) =
-					CatalogStore::find_policy_by_name(&mut Transaction::Admin(&mut *t.inner), name)?
+					CatalogStore::find_policy_by_name(&mut Transaction::Test(t.reborrow()), name)?
 				{
-					warn!("Policy '{}' found in storage but not in MaterializedCatalog", name);
 					return Ok(Some(policy));
 				}
 
@@ -188,6 +178,11 @@ impl Catalog {
 	}
 
 	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<Policy>> {
+		if let Transaction::Test(t) = txn {
+			let mut policies = CatalogStore::list_all_policies(&mut Transaction::Test(t.reborrow()))?;
+			policies.sort_by_key(|p| p.id);
+			return Ok(policies);
+		}
 		let cached = self.materialized.list_all_policies_at(txn.version());
 		if !cached.is_empty() {
 			return Ok(cached);
