@@ -6,7 +6,7 @@ use reifydb_core::{
 	key::{handler::HandlerKey, namespace_handler::NamespaceHandlerKey, variant_handler::VariantHandlerKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
+use reifydb_type::{fragment::Fragment, value::sumtype::VariantRef};
 
 use crate::{
 	CatalogStore, Result,
@@ -21,8 +21,7 @@ use crate::{
 pub struct HandlerToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub on_sumtype_id: SumTypeId,
-	pub on_variant_tag: u8,
+	pub variant: VariantRef,
 	pub body_source: String,
 }
 
@@ -52,8 +51,8 @@ impl CatalogStore {
 		handler_schema::SCHEMA.set_u64(&mut row, handler_schema::ID, handler_id);
 		handler_schema::SCHEMA.set_u64(&mut row, handler_schema::NAMESPACE, namespace_id);
 		handler_schema::SCHEMA.set_utf8(&mut row, handler_schema::NAME, to_create.name.text());
-		handler_schema::SCHEMA.set_u64(&mut row, handler_schema::ON_SUMTYPE_ID, to_create.on_sumtype_id);
-		handler_schema::SCHEMA.set_u8(&mut row, handler_schema::ON_VARIANT_TAG, to_create.on_variant_tag);
+		handler_schema::SCHEMA.set_u64(&mut row, handler_schema::ON_SUMTYPE_ID, to_create.variant.sumtype_id);
+		handler_schema::SCHEMA.set_u8(&mut row, handler_schema::ON_VARIANT_TAG, to_create.variant.variant_tag);
 		handler_schema::SCHEMA.set_utf8(&mut row, handler_schema::BODY_SOURCE, &to_create.body_source);
 
 		txn.set(&HandlerKey::encoded(handler_id), row)?;
@@ -73,8 +72,8 @@ impl CatalogStore {
 		txn.set(
 			&VariantHandlerKey::encoded(
 				namespace_id,
-				to_create.on_sumtype_id,
-				to_create.on_variant_tag,
+				to_create.variant.sumtype_id,
+				to_create.variant.variant_tag,
 				handler_id,
 			),
 			var_row,
@@ -84,8 +83,7 @@ impl CatalogStore {
 			id: handler_id,
 			namespace: namespace_id,
 			name: to_create.name.text().to_string(),
-			on_sumtype_id: to_create.on_sumtype_id,
-			on_variant_tag: to_create.on_variant_tag,
+			variant: to_create.variant,
 			body_source: to_create.body_source,
 		})
 	}
@@ -98,7 +96,10 @@ pub mod tests {
 		key::namespace_handler::NamespaceHandlerKey,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
-	use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
+	use reifydb_type::{
+		fragment::Fragment,
+		value::sumtype::{SumTypeId, VariantRef},
+	};
 
 	use crate::{
 		CatalogStore,
@@ -114,8 +115,10 @@ pub mod tests {
 		let to_create = HandlerToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_handler"),
-			on_sumtype_id: SumTypeId(0),
-			on_variant_tag: 1,
+			variant: VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 1,
+			},
 			body_source: "return 42;".to_string(),
 		};
 
@@ -123,8 +126,8 @@ pub mod tests {
 		assert_eq!(result.id, HandlerId(1));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_handler");
-		assert_eq!(result.on_sumtype_id, SumTypeId(0));
-		assert_eq!(result.on_variant_tag, 1);
+		assert_eq!(result.variant.sumtype_id, SumTypeId(0));
+		assert_eq!(result.variant.variant_tag, 1);
 		assert_eq!(result.body_source, "return 42;");
 
 		let err = CatalogStore::create_handler(&mut txn, to_create).unwrap_err();
@@ -139,8 +142,10 @@ pub mod tests {
 		let to_create = HandlerToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_handler"),
-			on_sumtype_id: SumTypeId(0),
-			on_variant_tag: 0,
+			variant: VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
 			body_source: String::new(),
 		};
 		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(1)
@@ -148,8 +153,10 @@ pub mod tests {
 		let to_create = HandlerToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("another_handler"),
-			on_sumtype_id: SumTypeId(0),
-			on_variant_tag: 0,
+			variant: VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
 			body_source: String::new(),
 		};
 		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(2)

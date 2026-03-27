@@ -18,7 +18,11 @@ use reifydb_core::interface::catalog::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
 	fragment::Fragment,
-	value::{blob::Blob, constraint::TypeConstraint, sumtype::SumTypeId},
+	value::{
+		blob::Blob,
+		constraint::TypeConstraint,
+		sumtype::{SumTypeId, VariantRef},
+	},
 };
 
 use crate::{
@@ -326,8 +330,7 @@ pub fn create_handler(
 	txn: &mut AdminTransaction,
 	namespace: &str,
 	name: &str,
-	on_sumtype_id: SumTypeId,
-	on_variant_tag: u8,
+	variant: VariantRef,
 	body_source: &str,
 ) -> Handler {
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
@@ -339,8 +342,7 @@ pub fn create_handler(
 		HandlerToCreate {
 			name: Fragment::internal(name),
 			namespace: namespace.id(),
-			on_sumtype_id,
-			on_variant_tag,
+			variant,
 			body_source: body_source.to_string(),
 		},
 	)

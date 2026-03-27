@@ -9,7 +9,11 @@ use reifydb_core::{
 };
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{
+	fragment::Fragment,
+	params::Params,
+	value::{Value, sumtype::VariantRef},
+};
 
 use crate::{
 	Result,
@@ -52,10 +56,15 @@ pub(crate) fn dispatch(
 	};
 	let variant_tag = variant.tag;
 
+	let variant_ref = VariantRef {
+		sumtype_id: plan.on_sumtype_id,
+		variant_tag,
+	};
+
 	// List all procedures with event binding for this variant
 	let procedures = {
 		let mut tx_tmp = tx.reborrow();
-		services.catalog.list_procedures_for_variant(&mut tx_tmp, plan.on_sumtype_id, variant_tag)?
+		services.catalog.list_procedures_for_variant(&mut tx_tmp, variant_ref)?
 	};
 
 	let handler_count = procedures.len();
@@ -146,7 +155,7 @@ pub(crate) fn dispatch(
 	}
 
 	// Fire native (runtime-registered) handlers
-	let native_handlers = services.get_handlers(plan.on_sumtype_id, variant_tag);
+	let native_handlers = services.get_handlers(variant_ref);
 	let native_count = native_handlers.len();
 	if !native_handlers.is_empty() {
 		// Build named params from event payload (single-row columns → scalar values)

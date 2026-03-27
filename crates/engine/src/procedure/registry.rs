@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_catalog::materialized::MaterializedCatalog;
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_type::value::sumtype::VariantRef;
 
 use super::{Procedure, identity_inject, system};
 
@@ -49,7 +49,7 @@ impl Deref for Procedures {
 
 struct RegistryState {
 	procedures: HashMap<String, ProcedureFactory>,
-	resolved_handlers: HashMap<(SumTypeId, u8), Vec<ProcedureFactory>>,
+	resolved_handlers: HashMap<VariantRef, Vec<ProcedureFactory>>,
 	deferred_handlers: Vec<(String, ProcedureFactory)>,
 }
 
@@ -74,20 +74,15 @@ impl ProceduresInner {
 		self.state.lock().unwrap().procedures.contains_key(name)
 	}
 
-	pub fn get_handlers(
-		&self,
-		catalog: &MaterializedCatalog,
-		sumtype_id: SumTypeId,
-		variant_tag: u8,
-	) -> Vec<Box<dyn Procedure>> {
+	pub fn get_handlers(&self, catalog: &MaterializedCatalog, variant: VariantRef) -> Vec<Box<dyn Procedure>> {
 		let mut state = self.state.lock().unwrap();
 		if !state.deferred_handlers.is_empty() {
 			let deferred = mem::take(&mut state.deferred_handlers);
 			let mut still_deferred = Vec::new();
 			for (path, factory) in deferred {
 				match resolve_event_path(&path, catalog) {
-					Ok((sid, tag)) => {
-						state.resolved_handlers.entry((sid, tag)).or_default().push(factory);
+					Ok(resolved) => {
+						state.resolved_handlers.entry(resolved).or_default().push(factory);
 					}
 					Err(_) => still_deferred.push((path, factory)),
 				}
@@ -95,7 +90,7 @@ impl ProceduresInner {
 			state.deferred_handlers = still_deferred;
 		}
 		state.resolved_handlers
-			.get(&(sumtype_id, variant_tag))
+			.get(&variant)
 			.map(|factories| factories.iter().map(|f| f()).collect())
 			.unwrap_or_default()
 	}
@@ -142,7 +137,7 @@ impl ProceduresBuilder {
 	}
 }
 
-fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<(SumTypeId, u8), String> {
+fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<VariantRef, String> {
 	let parts: Vec<&str> = path.split("::").collect();
 	if parts.len() != 3 {
 		return Err(format!(
@@ -165,5 +160,8 @@ fn resolve_event_path(path: &str, catalog: &MaterializedCatalog) -> Result<(SumT
 		format!("Variant '{}' not found in sumtype '{}::{}'", variant_name, namespace_name, event_name)
 	})?;
 
-	Ok((sumtype.id, variant.tag))
+	Ok(VariantRef {
+		sumtype_id: sumtype.id,
+		variant_tag: variant.tag,
+	})
 }

@@ -12,7 +12,7 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, sumtype::SumTypeId},
+	value::{constraint::TypeConstraint, sumtype::VariantRef},
 };
 use tracing::instrument;
 
@@ -257,35 +257,28 @@ impl Catalog {
 	pub fn list_procedures_for_variant(
 		&self,
 		txn: &mut Transaction<'_>,
-		sumtype_id: SumTypeId,
-		variant_tag: u8,
+		variant: VariantRef,
 	) -> Result<Vec<Procedure>> {
 		match txn.reborrow() {
-			Transaction::Command(cmd) => Ok(self.materialized.list_procedures_for_variant_at(
-				sumtype_id,
-				variant_tag,
-				cmd.version(),
-			)),
+			Transaction::Command(cmd) => {
+				Ok(self.materialized.list_procedures_for_variant_at(variant, cmd.version()))
+			}
 			Transaction::Admin(admin) => {
 				// Check materialized catalog + transactional additions
-				let mut procedures = self.materialized.list_procedures_for_variant_at(
-					sumtype_id,
-					variant_tag,
-					admin.version(),
-				);
+				let mut procedures =
+					self.materialized.list_procedures_for_variant_at(variant, admin.version());
 
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
-							sumtype_id: sid,
-							variant_tag: vtag,
+							variant: v,
 						} = &p.trigger
 						{
-							if *sid == sumtype_id
-								&& *vtag == variant_tag && !procedures
-								.iter()
-								.any(|existing| existing.id == p.id)
+							if *v == variant
+								&& !procedures
+									.iter()
+									.any(|existing| existing.id == p.id)
 							{
 								procedures.push(p.clone());
 							}
@@ -295,31 +288,25 @@ impl Catalog {
 
 				Ok(procedures)
 			}
-			Transaction::Query(qry) => Ok(self.materialized.list_procedures_for_variant_at(
-				sumtype_id,
-				variant_tag,
-				qry.version(),
-			)),
+			Transaction::Query(qry) => {
+				Ok(self.materialized.list_procedures_for_variant_at(variant, qry.version()))
+			}
 			Transaction::Subscription(sub) => {
 				// Check materialized catalog + transactional additions
-				let mut procedures = self.materialized.list_procedures_for_variant_at(
-					sumtype_id,
-					variant_tag,
-					sub.version(),
-				);
+				let mut procedures =
+					self.materialized.list_procedures_for_variant_at(variant, sub.version());
 
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &sub.as_admin_mut().changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
-							sumtype_id: sid,
-							variant_tag: vtag,
+							variant: v,
 						} = &p.trigger
 						{
-							if *sid == sumtype_id
-								&& *vtag == variant_tag && !procedures
-								.iter()
-								.any(|existing| existing.id == p.id)
+							if *v == variant
+								&& !procedures
+									.iter()
+									.any(|existing| existing.id == p.id)
 							{
 								procedures.push(p.clone());
 							}
@@ -331,24 +318,20 @@ impl Catalog {
 			}
 			Transaction::Test(t) => {
 				// Check materialized catalog + transactional additions
-				let mut procedures = self.materialized.list_procedures_for_variant_at(
-					sumtype_id,
-					variant_tag,
-					t.inner.version(),
-				);
+				let mut procedures =
+					self.materialized.list_procedures_for_variant_at(variant, t.inner.version());
 
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &t.inner.changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
-							sumtype_id: sid,
-							variant_tag: vtag,
+							variant: v,
 						} = &p.trigger
 						{
-							if *sid == sumtype_id
-								&& *vtag == variant_tag && !procedures
-								.iter()
-								.any(|existing| existing.id == p.id)
+							if *v == variant
+								&& !procedures
+									.iter()
+									.any(|existing| existing.id == p.id)
 							{
 								procedures.push(p.clone());
 							}

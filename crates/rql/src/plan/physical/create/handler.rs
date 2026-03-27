@@ -7,7 +7,7 @@ use reifydb_core::{
 	internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, value::sumtype::VariantRef};
 
 use crate::{
 	Result,
@@ -93,16 +93,16 @@ impl<'bump> Compiler<'bump> {
 			));
 		};
 
-		let on_variant_tag = variant.tag;
-
 		Ok(PhysicalPlan::CreateProcedure(CreateProcedureNode {
 			namespace,
 			name: self.interner.intern_fragment(&create.procedure.name),
 			params: vec![],
 			body_source: create.body_source,
 			trigger: ProcedureTrigger::Event {
-				sumtype_id: sumtype.id,
-				variant_tag: on_variant_tag,
+				variant: VariantRef {
+					sumtype_id: sumtype.id,
+					variant_tag: variant.tag,
+				},
 			},
 			is_test: false,
 		}))

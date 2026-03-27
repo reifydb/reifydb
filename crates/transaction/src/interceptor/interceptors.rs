@@ -233,10 +233,7 @@ impl Interceptors {
 	/// This hook is called by [`TestTransaction::capture_testing_pre_commit`] to
 	/// rebuild the shared flow engine from all catalog flows (including uncommitted
 	/// ones) before the pre-commit interceptor chain runs.
-	pub fn set_test_pre_commit(
-		&mut self,
-		hook: Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>,
-	) {
+	pub fn set_test_pre_commit(&mut self, hook: Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>) {
 		self.test_pre_commit = Some(hook);
 	}
 }

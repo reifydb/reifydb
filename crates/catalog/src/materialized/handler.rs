@@ -8,7 +8,7 @@ use reifydb_core::{
 		id::{HandlerId, NamespaceId},
 	},
 };
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_type::value::sumtype::VariantRef;
 
 use crate::materialized::{MaterializedCatalog, MultiVersionHandler};
 
@@ -35,14 +35,8 @@ impl MaterializedCatalog {
 	}
 
 	/// List all handlers for a specific event variant at a specific version
-	pub fn list_handlers_for_variant_at(
-		&self,
-		sumtype_id: SumTypeId,
-		variant_tag: u8,
-		version: CommitVersion,
-	) -> Vec<Handler> {
-		let key = (sumtype_id, variant_tag);
-		if let Some(entry) = self.handlers_by_variant.get(&key) {
+	pub fn list_handlers_for_variant_at(&self, variant: VariantRef, version: CommitVersion) -> Vec<Handler> {
+		if let Some(entry) = self.handlers_by_variant.get(&variant) {
 			entry.value().iter().filter_map(|id| self.find_handler_at(*id, version)).collect()
 		} else {
 			vec![]
@@ -56,12 +50,11 @@ impl MaterializedCatalog {
 				self.handlers_by_name.remove(&(pre.namespace, pre.name.clone()));
 
 				// Remove from variant index
-				let variant_key = (pre.on_sumtype_id, pre.on_variant_tag);
-				if let Some(ids_entry) = self.handlers_by_variant.get(&variant_key) {
+				if let Some(ids_entry) = self.handlers_by_variant.get(&pre.variant) {
 					let mut ids = ids_entry.value().clone();
 					ids.retain(|existing| *existing != id);
 					drop(ids_entry);
-					self.handlers_by_variant.insert(variant_key, ids);
+					self.handlers_by_variant.insert(pre.variant, ids);
 				}
 			}
 		}
@@ -71,16 +64,15 @@ impl MaterializedCatalog {
 			self.handlers_by_name.insert((new.namespace, new.name.clone()), id);
 
 			// Add to variant index
-			let variant_key = (new.on_sumtype_id, new.on_variant_tag);
-			if let Some(entry) = self.handlers_by_variant.get(&variant_key) {
+			if let Some(entry) = self.handlers_by_variant.get(&new.variant) {
 				let mut ids = entry.value().clone();
 				if !ids.contains(&id) {
 					ids.push(id);
 				}
 				drop(entry);
-				self.handlers_by_variant.insert(variant_key, ids);
+				self.handlers_by_variant.insert(new.variant, ids);
 			} else {
-				self.handlers_by_variant.insert(variant_key, vec![id]);
+				self.handlers_by_variant.insert(new.variant, vec![id]);
 			}
 
 			multi.value().insert(version, new);

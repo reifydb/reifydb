@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::{constraint::TypeConstraint, sumtype::SumTypeId};
+use reifydb_type::value::{constraint::TypeConstraint, sumtype::VariantRef};
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::id::{NamespaceId, ProcedureId};
@@ -12,8 +12,7 @@ pub enum ProcedureTrigger {
 	Call,
 	/// Triggered by DISPATCH on an event variant
 	Event {
-		sumtype_id: SumTypeId,
-		variant_tag: u8,
+		variant: VariantRef,
 	},
 	/// Invoked via CALL but dispatched to a registered native (Rust) implementation
 	NativeCall {

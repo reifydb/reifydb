@@ -62,7 +62,12 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{Value, dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
+	value::{
+		Value,
+		dictionary::DictionaryId,
+		identity::IdentityId,
+		sumtype::{SumTypeId, VariantRef},
+	},
 };
 
 use crate::{
@@ -122,8 +127,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedure>,
 	/// Index from (namespace_id, procedure_name) to procedure ID for fast name lookups
 	pub(crate) procedures_by_name: SkipMap<(NamespaceId, String), ProcedureId>,
-	/// Index from (sumtype_id, variant_tag) to Vec<ProcedureId> for procedure dispatch
-	pub(crate) procedures_by_variant: SkipMap<(SumTypeId, u8), Vec<ProcedureId>>,
+	/// Index from variant ref to Vec<ProcedureId> for procedure dispatch
+	pub(crate) procedures_by_variant: SkipMap<VariantRef, Vec<ProcedureId>>,
 	/// MultiVersion test definitions indexed by test ID
 	pub(crate) tests: SkipMap<TestId, MultiVersionTest>,
 	/// Index from (namespace_id, test_name) to test ID for fast name lookups
@@ -153,8 +158,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) handlers: SkipMap<HandlerId, MultiVersionHandler>,
 	/// Index from (namespace_id, handler_name) to handler ID for fast name lookups
 	pub(crate) handlers_by_name: SkipMap<(NamespaceId, String), HandlerId>,
-	/// Index from (sumtype_id, variant_tag) to Vec<HandlerId> for dispatch hot-path
-	pub(crate) handlers_by_variant: SkipMap<(SumTypeId, u8), Vec<HandlerId>>,
+	/// Index from variant ref to Vec<HandlerId> for dispatch hot-path
+	pub(crate) handlers_by_variant: SkipMap<VariantRef, Vec<HandlerId>>,
 	/// MultiVersion identity definitions indexed by IdentityId
 	pub(crate) identities: SkipMap<IdentityId, MultiVersionIdentity>,
 	/// Index from identity name to IdentityId for fast name lookups

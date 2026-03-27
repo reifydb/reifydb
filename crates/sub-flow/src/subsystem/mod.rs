@@ -275,7 +275,8 @@ impl FlowSubsystem {
 				let hook_runtime_context = test_runtime_context.clone();
 				let hook_custom_operators = test_custom_operators.clone();
 
-				interceptors.set_test_pre_commit(Arc::new(move |test_txn: &mut TestTransaction<'_>| {
+				interceptors.set_test_pre_commit(Arc::new(
+					move |test_txn: &mut TestTransaction<'_>| {
 						let mut fresh_engine = FlowEngine::new(
 							hook_catalog.clone(),
 							hook_engine.executor(),
@@ -301,7 +302,8 @@ impl FlowSubsystem {
 
 						*hook_flow_engine.write().unwrap() = fresh_engine;
 						Ok(())
-					}));
+					},
+				));
 			}));
 		}
 

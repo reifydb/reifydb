@@ -14,7 +14,7 @@ use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
-use reifydb_type::value::sumtype::SumTypeId;
+use reifydb_type::value::sumtype::VariantRef;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::remote::RemoteRegistry;
@@ -73,8 +73,8 @@ impl Services {
 		}
 	}
 
-	pub fn get_handlers(&self, sumtype_id: SumTypeId, variant_tag: u8) -> Vec<Box<dyn Procedure>> {
-		self.procedures.get_handlers(&self.catalog.materialized, sumtype_id, variant_tag)
+	pub fn get_handlers(&self, variant: VariantRef) -> Vec<Box<dyn Procedure>> {
+		self.procedures.get_handlers(&self.catalog.materialized, variant)
 	}
 
 	pub fn get_procedure(&self, name: &str) -> Option<Box<dyn Procedure>> {
