@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
 		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
@@ -33,7 +33,7 @@ pub struct RingBufferScan {
 	partitions: Vec<PartitionedMetadata>,
 	current_partition_index: usize,
 	headers: ColumnHeaders,
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	/// Storage types for each column (Type::DictionaryId for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
@@ -101,7 +101,7 @@ impl RingBufferScan {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -111,7 +111,7 @@ impl RingBufferScan {
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
-				"Schema with fingerprint {:?} not found for ringbuffer {}",
+				"RowSchema with fingerprint {:?} not found for ringbuffer {}",
 				fingerprint,
 				self.ringbuffer.def().name
 			)
@@ -299,7 +299,7 @@ impl QueryNode for RingBufferScan {
 }
 
 fn row_matches_partition(
-	schema: &Schema,
+	schema: &RowSchema,
 	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],

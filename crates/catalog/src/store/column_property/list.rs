@@ -81,7 +81,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],

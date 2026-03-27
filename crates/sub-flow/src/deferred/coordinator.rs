@@ -18,7 +18,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
 	interface::{
-		catalog::{flow::FlowId, primitive::PrimitiveId},
+		catalog::{flow::FlowId, schema::SchemaId},
 		cdc::{Cdc, CdcBatch, SystemChange},
 		change::{Change, ChangeOrigin},
 	},
@@ -48,7 +48,7 @@ use super::{
 	instruction::{FlowInstruction, WorkerBatch},
 	pool::{PoolMsg, PoolResponse},
 	state::FlowStates,
-	tracker::PrimitiveVersionTracker,
+	tracker::SchemaVersionTracker,
 };
 use crate::{
 	catalog::FlowCatalog,
@@ -158,7 +158,7 @@ pub struct CoordinatorActor {
 	engine: StandardEngine,
 	catalog: FlowCatalog,
 	pool: ActorRef<PoolMsg>,
-	tracker: Arc<PrimitiveVersionTracker>,
+	tracker: Arc<SchemaVersionTracker>,
 	cdc_store: CdcStore,
 	num_workers: usize,
 	clock: Clock,
@@ -169,7 +169,7 @@ impl CoordinatorActor {
 		engine: StandardEngine,
 		catalog: FlowCatalog,
 		pool_ref: ActorRef<PoolMsg>,
-		tracker: Arc<PrimitiveVersionTracker>,
+		tracker: Arc<SchemaVersionTracker>,
 		cdc_store: CdcStore,
 		num_workers: usize,
 		clock: Clock,
@@ -288,7 +288,7 @@ impl CoordinatorActor {
 
 			// Update tracker for lag calculation
 			for change in &cdc.changes {
-				if let ChangeOrigin::Primitive(source) = &change.origin {
+				if let ChangeOrigin::Schema(source) = &change.origin {
 					self.tracker.update(*source, version);
 				}
 			}
@@ -927,12 +927,12 @@ impl CoordinatorActor {
 		let dependency_graph = state.analyzer.get_dependency_graph();
 
 		// Get all sources this flow depends on
-		let mut flow_sources: collections::HashSet<PrimitiveId> = collections::HashSet::new();
+		let mut flow_sources: collections::HashSet<SchemaId> = collections::HashSet::new();
 
 		// Add table sources
 		for (table_id, flow_ids) in &dependency_graph.source_tables {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::Table(*table_id));
+				flow_sources.insert(SchemaId::Table(*table_id));
 			}
 		}
 
@@ -940,7 +940,7 @@ impl CoordinatorActor {
 		let mut view_sources = Vec::new();
 		for (view_id, flow_ids) in &dependency_graph.source_views {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::View(*view_id));
+				flow_sources.insert(SchemaId::View(*view_id));
 				view_sources.push(*view_id);
 			}
 		}
@@ -948,14 +948,14 @@ impl CoordinatorActor {
 		// Add ringbuffer sources
 		for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::RingBuffer(*rb_id));
+				flow_sources.insert(SchemaId::RingBuffer(*rb_id));
 			}
 		}
 
 		// Add series sources
 		for (series_id, flow_ids) in &dependency_graph.source_series {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::Series(*series_id));
+				flow_sources.insert(SchemaId::Series(*series_id));
 			}
 		}
 
@@ -983,17 +983,17 @@ impl CoordinatorActor {
 
 				for (table_id, flow_ids) in &dependency_graph.source_tables {
 					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(PrimitiveId::Table(*table_id));
+						flow_sources.insert(SchemaId::Table(*table_id));
 					}
 				}
 				for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
 					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(PrimitiveId::RingBuffer(*rb_id));
+						flow_sources.insert(SchemaId::RingBuffer(*rb_id));
 					}
 				}
 				for (series_id, flow_ids) in &dependency_graph.source_series {
 					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(PrimitiveId::Series(*series_id));
+						flow_sources.insert(SchemaId::Series(*series_id));
 					}
 				}
 			}
@@ -1003,7 +1003,7 @@ impl CoordinatorActor {
 		let result: Vec<Change> = changes
 			.iter()
 			.filter(|change| {
-				if let ChangeOrigin::Primitive(source) = change.origin {
+				if let ChangeOrigin::Schema(source) = change.origin {
 					flow_sources.contains(&source)
 				} else {
 					true

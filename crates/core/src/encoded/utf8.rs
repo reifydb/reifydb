@@ -5,9 +5,9 @@ use std::str;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
 		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Utf8);
 		self.replace_dynamic_data(row, index, value.as_ref().as_bytes());
@@ -43,11 +43,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_utf8() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 		let mut row = schema.allocate();
 		schema.set_utf8(&mut row, 0, "reifydb");
 		assert_eq!(schema.get_utf8(&row, 0), "reifydb");
@@ -55,7 +55,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_utf8() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_utf8(&row, 0), None);
@@ -66,7 +66,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_string() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 		let mut row = schema.allocate();
 		schema.set_utf8(&mut row, 0, "");
 		assert_eq!(schema.get_utf8(&row, 0), "");
@@ -75,7 +75,7 @@ pub mod tests {
 
 	#[test]
 	fn test_unicode() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 		let mut row = schema.allocate();
 
 		let unicode_text = "🚀✨🌟 Hello 世界 🎉";
@@ -86,7 +86,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_string() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 		let mut row = schema.allocate();
 
 		let large_string = "A".repeat(1000);
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		schema.set_utf8(&mut row, 0, "first");
@@ -111,7 +111,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_static_fields() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Utf8, Type::Int4, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Utf8, Type::Int4, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -127,7 +127,7 @@ pub mod tests {
 
 	#[test]
 	fn test_different_sizes() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		schema.set_utf8(&mut row, 0, "");
@@ -141,7 +141,7 @@ pub mod tests {
 
 	#[test]
 	fn test_arbitrary_setting_order() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		// Set in reverse order
@@ -158,7 +158,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_characters() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 
 		let special_strings = [
 			"",
@@ -182,7 +182,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		// Set only some fields
@@ -201,7 +201,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_utf8_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -211,7 +211,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_utf8() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 		let mut row = schema.allocate();
 
 		schema.set_utf8(&mut row, 0, "hello");
@@ -235,7 +235,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_utf8_with_other_dynamic_fields() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		schema.set_utf8(&mut row, 0, "first");

@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Schema definitions for schema data storage.
+//! RowSchema definitions for schema data storage.
 
 pub(crate) mod schema_header {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::schema::{Schema, SchemaField};
+	use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 	use reifydb_type::value::r#type::Type;
 
 	/// Field count index
 	pub(crate) const FIELD_COUNT: usize = 0;
 
-	pub(crate) static SCHEMA: Lazy<Schema> =
-		Lazy::new(|| Schema::new(vec![SchemaField::unconstrained("field_count", Type::Uint2)]));
+	pub(crate) static SCHEMA: Lazy<RowSchema> =
+		Lazy::new(|| RowSchema::new(vec![RowSchemaField::unconstrained("field_count", Type::Uint2)]));
 }
 
 pub(crate) mod schema_field {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::schema::{Schema, SchemaField};
+	use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 	use reifydb_type::value::r#type::Type;
 
 	/// Field name index
@@ -37,16 +37,16 @@ pub(crate) mod schema_field {
 	/// Field alignment index
 	pub(crate) const ALIGN: usize = 7;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("name", Type::Utf8),
-			SchemaField::unconstrained("base_type", Type::Uint1),
-			SchemaField::unconstrained("constraint_type", Type::Uint1),
-			SchemaField::unconstrained("constraint_p1", Type::Uint4),
-			SchemaField::unconstrained("constraint_p2", Type::Uint4),
-			SchemaField::unconstrained("offset", Type::Uint4),
-			SchemaField::unconstrained("size", Type::Uint4),
-			SchemaField::unconstrained("align", Type::Uint1),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("name", Type::Utf8),
+			RowSchemaField::unconstrained("base_type", Type::Uint1),
+			RowSchemaField::unconstrained("constraint_type", Type::Uint1),
+			RowSchemaField::unconstrained("constraint_p1", Type::Uint4),
+			RowSchemaField::unconstrained("constraint_p2", Type::Uint4),
+			RowSchemaField::unconstrained("offset", Type::Uint4),
+			RowSchemaField::unconstrained("size", Type::Uint4),
+			RowSchemaField::unconstrained("align", Type::Uint1),
 		])
 	});
 }

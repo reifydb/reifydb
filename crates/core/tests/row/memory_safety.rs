@@ -3,7 +3,7 @@
 
 //! Memory safety edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{blob::Blob, int::Int, r#type::Type};
 
 #[test]
@@ -42,7 +42,7 @@ fn test_unaligned_access_all_types() {
 	for target_type in types_to_test {
 		// Create unaligned layout: Int1 (1 byte) followed by target
 		// type
-		let schema = Schema::testing(&[
+		let schema = RowSchema::testing(&[
 			Type::Int1,          // 1 byte - creates odd alignment
 			target_type.clone(), // At offset 1 (odd)
 			Type::Int1,          // Another 1 byte
@@ -101,7 +101,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// types For dynamic types, test that memory usage is reasonable across
 	// multiple rows
 
-	let schema = Schema::testing(&[
+	let schema = RowSchema::testing(&[
 		Type::Int4,   // Static
 		Type::Float8, // Static
 		Type::Utf8,   // Dynamic
@@ -152,7 +152,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 #[test]
 fn test_minimal_row_handling() {
 	// Test edge case of encoded with minimal fields
-	let schema = Schema::testing(&[Type::Boolean]);
+	let schema = RowSchema::testing(&[Type::Boolean]);
 	let row = schema.allocate();
 	assert!(row.len() > 0, "Row should have validity bits and data");
 }
@@ -170,7 +170,7 @@ fn test_maximum_field_count() {
 		})
 		.collect();
 
-	let schema = Schema::testing(&types);
+	let schema = RowSchema::testing(&types);
 	let mut row = schema.allocate();
 
 	// Set and verify some fields

@@ -100,7 +100,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "namespace".to_string(),
-				primitive_name: "table".to_string(),
+				schema_name: "table".to_string(),
 				column: "col1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				properties: vec![],

@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: impl Into<i128>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,11 +41,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_i128() {
-		let schema = Schema::testing(&[Type::Int16]);
+		let schema = RowSchema::testing(&[Type::Int16]);
 		let mut row = schema.allocate();
 		schema.set_i128(&mut row, 0, 123456789012345678901234567890i128);
 		assert_eq!(schema.get_i128(&row, 0), 123456789012345678901234567890i128);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_i128() {
-		let schema = Schema::testing(&[Type::Int16]);
+		let schema = RowSchema::testing(&[Type::Int16]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_i128(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let schema = Schema::testing(&[Type::Int16]);
+		let schema = RowSchema::testing(&[Type::Int16]);
 		let mut row = schema.allocate();
 
 		schema.set_i128(&mut row, 0, i128::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_very_large_values() {
-		let schema = Schema::testing(&[Type::Int16]);
+		let schema = RowSchema::testing(&[Type::Int16]);
 
 		let test_values = [
 			-170141183460469231731687303715884105728i128, // i128::MIN
@@ -102,7 +102,7 @@ pub mod tests {
 
 	#[test]
 	fn test_powers_of_ten() {
-		let schema = Schema::testing(&[Type::Int16]);
+		let schema = RowSchema::testing(&[Type::Int16]);
 
 		let powers = [
 			1i128,
@@ -132,7 +132,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Int16, Type::Boolean, Type::Int16]);
+		let schema = RowSchema::testing(&[Type::Int16, Type::Boolean, Type::Int16]);
 		let mut row = schema.allocate();
 
 		let large_negative = -12345678901234567890123456789012345i128;
@@ -149,7 +149,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Int16, Type::Int16]);
+		let schema = RowSchema::testing(&[Type::Int16, Type::Int16]);
 		let mut row = schema.allocate();
 
 		let value = 170141183460469231731687303715884105727i128; // Max i128
@@ -164,7 +164,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_i128_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

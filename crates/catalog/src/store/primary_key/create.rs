@@ -7,7 +7,7 @@ use collections::HashSet;
 use reifydb_core::{
 	interface::catalog::{
 		id::{ColumnId, PrimaryKeyId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	},
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
@@ -28,7 +28,7 @@ use crate::{
 };
 
 pub struct PrimaryKeyToCreate {
-	pub primitive: PrimitiveId,
+	pub object: SchemaId,
 	pub column_ids: Vec<ColumnId>,
 }
 
@@ -47,7 +47,7 @@ impl CatalogStore {
 
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
-		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.primitive)?;
+		let source_columns = Self::list_columns(&mut Transaction::Admin(&mut *txn), to_create.object)?;
 		let source_column_ids: HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
 		// Validate that all columns belong to the table/view
@@ -66,36 +66,36 @@ impl CatalogStore {
 		// Create primary key encoded
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_u64(&mut row, primary_key::ID, id.0);
-		SCHEMA.set_u64(&mut row, primary_key::SOURCE, to_create.primitive.as_u64());
+		SCHEMA.set_u64(&mut row, primary_key::SOURCE, to_create.object.as_u64());
 		SCHEMA.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		// Store the primary key
 		txn.set(&PrimaryKeyKey::encoded(id), row)?;
 
 		// Update the table or view to reference this primary key
-		match to_create.primitive {
-			PrimitiveId::Table(table_id) => {
+		match to_create.object {
+			SchemaId::Table(table_id) => {
 				Self::set_table_primary_key(txn, table_id, id)?;
 			}
-			PrimitiveId::View(view_id) => {
+			SchemaId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id)?;
 			}
-			PrimitiveId::TableVirtual(_) => {
+			SchemaId::TableVirtual(_) => {
 				// Virtual tables don't support primary keys
 				return_internal_error!(
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
 				);
 			}
-			PrimitiveId::RingBuffer(ringbuffer_id) => {
+			SchemaId::RingBuffer(ringbuffer_id) => {
 				Self::set_ringbuffer_primary_key(txn, ringbuffer_id, id)?;
 			}
-			PrimitiveId::Dictionary(_) => {
+			SchemaId::Dictionary(_) => {
 				// Dictionaries don't support traditional primary keys
 				return_internal_error!(
 					"Cannot create primary key for dictionary. Dictionaries have their own key structure."
 				);
 			}
-			PrimitiveId::Series(_) => {
+			SchemaId::Series(_) => {
 				// Series don't support traditional primary keys
 				return_internal_error!(
 					"Cannot create primary key for series. Series use timestamp-based key ordering."
@@ -112,7 +112,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, PrimaryKeyId, TableId, ViewId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -144,7 +144,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -161,7 +161,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "tenant_id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -176,7 +176,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::Table(table.id),
+				object: SchemaId::Table(table.id),
 				column_ids: vec![col1.id, col2.id],
 			},
 		)
@@ -234,7 +234,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::View(view.id()),
+				object: SchemaId::View(view.id()),
 				column_ids: vec![columns[0].id],
 			},
 		)
@@ -268,7 +268,7 @@ pub mod tests {
 				ColumnToCreate {
 					fragment: None,
 					namespace_name: "test_namespace".to_string(),
-					primitive_name: "test_table".to_string(),
+					schema_name: "test_table".to_string(),
 					column: format!("col_{}", i),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
@@ -285,7 +285,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::Table(table.id),
+				object: SchemaId::Table(table.id),
 				column_ids: column_ids.clone(),
 			},
 		)
@@ -320,7 +320,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -335,7 +335,7 @@ pub mod tests {
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::Table(table.id),
+				object: SchemaId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)
@@ -359,7 +359,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::Table(TableId(999)),
+				object: SchemaId::Table(TableId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -381,7 +381,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::View(ViewId(999)),
+				object: SchemaId::View(ViewId(999)),
 				column_ids: vec![ColumnId(1)],
 			},
 		);
@@ -402,7 +402,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::Table(table.id),
+				object: SchemaId::Table(table.id),
 				column_ids: vec![],
 			},
 		);
@@ -421,7 +421,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::Table(table.id),
+				object: SchemaId::Table(table.id),
 				column_ids: vec![ColumnId(999)],
 			},
 		);
@@ -443,7 +443,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -475,7 +475,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table2".to_string(),
+				schema_name: "test_table2".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -492,7 +492,7 @@ pub mod tests {
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: PrimitiveId::Table(table1.id),
+				object: SchemaId::Table(table1.id),
 				column_ids: vec![col2.id],
 			},
 		);

@@ -6,7 +6,7 @@
 //! This module provides the `FFISingleStateful` trait for operators that maintain
 //! a single state value, such as counters, accumulators, or running aggregates.
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
 
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
@@ -21,7 +21,7 @@ pub trait FFISingleStateful: FFIRawStatefulOperator {
 	///
 	/// This defines the structure of the state value, including field types
 	/// and default values.
-	fn schema(&self) -> Schema;
+	fn schema(&self) -> RowSchema;
 
 	/// Key for the single state - default is empty
 	///
@@ -81,7 +81,7 @@ pub trait FFISingleStateful: FFIRawStatefulOperator {
 	/// The updated state after applying the function
 	fn update_state<F>(&self, ctx: &mut OperatorContext, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.schema();
 		let mut row = self.load_state(ctx)?;

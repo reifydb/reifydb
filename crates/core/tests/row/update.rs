@@ -8,7 +8,7 @@
 use std::{f64::consts::E, str::FromStr};
 
 use num_bigint::BigInt;
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{
 	Value,
 	blob::Blob,
@@ -28,7 +28,7 @@ use reifydb_type::value::{
 
 #[test]
 fn test_utf8_update_same_size() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 	schema.set_utf8(&mut row, 0, "abcde");
 	let size = row.len();
@@ -44,7 +44,7 @@ fn test_utf8_update_same_size() {
 
 #[test]
 fn test_utf8_update_larger() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 	schema.set_utf8(&mut row, 0, "hi");
 	schema.set_utf8(&mut row, 0, "hello world");
@@ -58,7 +58,7 @@ fn test_utf8_update_larger() {
 
 #[test]
 fn test_utf8_update_smaller() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 	schema.set_utf8(&mut row, 0, "hello world");
 	schema.set_utf8(&mut row, 0, "hi");
@@ -72,7 +72,7 @@ fn test_utf8_update_smaller() {
 
 #[test]
 fn test_utf8_update_to_empty() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 	schema.set_utf8(&mut row, 0, "hello");
 	schema.set_utf8(&mut row, 0, "");
@@ -86,7 +86,7 @@ fn test_utf8_update_to_empty() {
 
 #[test]
 fn test_utf8_update_from_empty() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 	schema.set_utf8(&mut row, 0, "");
 	assert_eq!(row.len(), schema.total_static_size());
@@ -102,7 +102,7 @@ fn test_utf8_update_from_empty() {
 
 #[test]
 fn test_utf8_alternating_sizes() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 
 	let values = ["a", "hello world this is long", "xy", "medium string", "z"];
@@ -119,7 +119,7 @@ fn test_utf8_alternating_sizes() {
 
 #[test]
 fn test_blob_update_same_size() {
-	let schema = Schema::testing(&[Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Blob]);
 	let mut row = schema.allocate();
 	schema.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
 	let size = row.len();
@@ -135,7 +135,7 @@ fn test_blob_update_same_size() {
 
 #[test]
 fn test_blob_update_larger() {
-	let schema = Schema::testing(&[Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Blob]);
 	let mut row = schema.allocate();
 	schema.set_blob(&mut row, 0, &Blob::from_slice(&[1]));
 	schema.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3, 4, 5]));
@@ -149,7 +149,7 @@ fn test_blob_update_larger() {
 
 #[test]
 fn test_blob_update_smaller() {
-	let schema = Schema::testing(&[Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Blob]);
 	let mut row = schema.allocate();
 	schema.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	schema.set_blob(&mut row, 0, &Blob::from_slice(&[9]));
@@ -163,7 +163,7 @@ fn test_blob_update_smaller() {
 
 #[test]
 fn test_blob_update_to_empty() {
-	let schema = Schema::testing(&[Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Blob]);
 	let mut row = schema.allocate();
 	schema.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
 	schema.set_blob(&mut row, 0, &Blob::from_slice(&[]));
@@ -177,7 +177,7 @@ fn test_blob_update_to_empty() {
 
 #[test]
 fn test_blob_alternating_sizes() {
-	let schema = Schema::testing(&[Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Blob]);
 	let mut row = schema.allocate();
 
 	let values: Vec<Vec<u8>> = vec![vec![1], vec![0; 100], vec![2, 3], vec![0; 50], vec![4]];
@@ -195,7 +195,7 @@ fn test_blob_alternating_sizes() {
 
 #[test]
 fn test_update_first_of_three_dynamic_fields() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Utf8]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "aaa");
@@ -219,7 +219,7 @@ fn test_update_first_of_three_dynamic_fields() {
 
 #[test]
 fn test_update_middle_of_four_dynamic_fields() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Blob]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "first");
@@ -246,7 +246,7 @@ fn test_update_middle_of_four_dynamic_fields() {
 
 #[test]
 fn test_update_mixed_dynamic_types_each_in_turn() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Decimal, Type::Any]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Decimal, Type::Any]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "text");
@@ -292,7 +292,7 @@ fn test_update_mixed_dynamic_types_each_in_turn() {
 
 #[test]
 fn test_update_fields_forward_order() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "aaa");
@@ -317,7 +317,7 @@ fn test_update_fields_forward_order() {
 
 #[test]
 fn test_update_fields_reverse_order() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "aaa");
@@ -342,7 +342,7 @@ fn test_update_fields_reverse_order() {
 
 #[test]
 fn test_update_fields_interleaved_order() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "aaa");
@@ -380,7 +380,7 @@ fn huge_uint() -> Uint {
 
 #[test]
 fn test_int_multiple_transitions() {
-	let schema = Schema::testing(&[Type::Int]);
+	let schema = RowSchema::testing(&[Type::Int]);
 	let mut row = schema.allocate();
 
 	// inline
@@ -410,7 +410,7 @@ fn test_int_multiple_transitions() {
 
 #[test]
 fn test_uint_multiple_transitions() {
-	let schema = Schema::testing(&[Type::Uint]);
+	let schema = RowSchema::testing(&[Type::Uint]);
 	let mut row = schema.allocate();
 
 	// inline
@@ -435,7 +435,7 @@ fn test_uint_multiple_transitions() {
 
 #[test]
 fn test_int_transition_with_other_dynamic_fields() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Int, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Int, Type::Blob]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "hello");
@@ -468,7 +468,7 @@ fn test_int_transition_with_other_dynamic_fields() {
 
 #[test]
 fn test_int_dynamic_to_dynamic() {
-	let schema = Schema::testing(&[Type::Int]);
+	let schema = RowSchema::testing(&[Type::Int]);
 	let mut row = schema.allocate();
 
 	schema.set_int(&mut row, 0, &huge_int());
@@ -484,7 +484,7 @@ fn test_int_dynamic_to_dynamic() {
 
 #[test]
 fn test_decimal_update_different_sizes() {
-	let schema = Schema::testing(&[Type::Decimal]);
+	let schema = RowSchema::testing(&[Type::Decimal]);
 	let mut row = schema.allocate();
 
 	// Small decimal
@@ -506,7 +506,7 @@ fn test_decimal_update_different_sizes() {
 
 #[test]
 fn test_decimal_multiple_sequential_updates() {
-	let schema = Schema::testing(&[Type::Decimal]);
+	let schema = RowSchema::testing(&[Type::Decimal]);
 	let mut row = schema.allocate();
 
 	let values = ["1.0", "2.5", "100.001", "0.000001", "9999.99", "3.14159"];
@@ -523,7 +523,7 @@ fn test_decimal_multiple_sequential_updates() {
 
 #[test]
 fn test_decimal_update_with_other_dynamic_fields() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Decimal, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Decimal, Type::Blob]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "price");
@@ -546,7 +546,7 @@ fn test_decimal_update_with_other_dynamic_fields() {
 
 #[test]
 fn test_any_cycle_all_types() {
-	let schema = Schema::testing(&[Type::Any]);
+	let schema = RowSchema::testing(&[Type::Any]);
 	let mut row = schema.allocate();
 
 	let values: Vec<Value> = vec![
@@ -587,7 +587,7 @@ fn test_any_cycle_all_types() {
 
 #[test]
 fn test_any_small_to_large_encoding() {
-	let schema = Schema::testing(&[Type::Any]);
+	let schema = RowSchema::testing(&[Type::Any]);
 	let mut row = schema.allocate();
 
 	// Boolean = 2 bytes encoded
@@ -606,7 +606,7 @@ fn test_any_small_to_large_encoding() {
 
 #[test]
 fn test_any_large_to_small_encoding() {
-	let schema = Schema::testing(&[Type::Any]);
+	let schema = RowSchema::testing(&[Type::Any]);
 	let mut row = schema.allocate();
 
 	let long_str = Value::Utf8("x".repeat(1000));
@@ -625,7 +625,7 @@ fn test_any_large_to_small_encoding() {
 
 #[test]
 fn test_any_same_size_encoding() {
-	let schema = Schema::testing(&[Type::Any]);
+	let schema = RowSchema::testing(&[Type::Any]);
 	let mut row = schema.allocate();
 
 	// Int4 = 5 bytes (1 type + 4 data)
@@ -649,7 +649,7 @@ fn test_any_same_size_encoding() {
 
 #[test]
 fn test_any_update_with_other_dynamic_fields() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Any, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Any, Type::Blob]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "prefix");
@@ -678,7 +678,7 @@ fn test_any_update_with_other_dynamic_fields() {
 
 #[test]
 fn test_update_dynamic_preserves_static() {
-	let schema = Schema::testing(&[Type::Boolean, Type::Int4, Type::Utf8, Type::Float8, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Utf8, Type::Float8, Type::Blob]);
 	let mut row = schema.allocate();
 
 	schema.set_bool(&mut row, 0, true);
@@ -712,7 +712,7 @@ fn test_update_dynamic_preserves_static() {
 
 #[test]
 fn test_all_dynamic_types_in_one_row() {
-	let schema = Schema::testing(&[
+	let schema = RowSchema::testing(&[
 		Type::Utf8,
 		Type::Blob,
 		Type::Decimal,
@@ -766,7 +766,7 @@ fn test_all_dynamic_types_in_one_row() {
 
 #[test]
 fn test_set_value_update_utf8() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Int4]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Int4]);
 	let mut row = schema.allocate();
 
 	schema.set_value(&mut row, 0, &Value::Utf8("first".to_string()));
@@ -786,7 +786,7 @@ fn test_set_value_update_utf8() {
 
 #[test]
 fn test_set_values_overwrite_entire_row() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Int4, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Int4, Type::Blob]);
 	let mut row = schema.allocate();
 
 	let values1 =
@@ -818,7 +818,7 @@ fn test_set_values_overwrite_entire_row() {
 
 #[test]
 fn testined_undefined_defined_cycle() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "hello");
@@ -839,7 +839,7 @@ fn testined_undefined_defined_cycle() {
 
 #[test]
 fn test_set_none_then_set_different_dynamic_field() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "hello");
@@ -859,7 +859,7 @@ fn test_set_none_then_set_different_dynamic_field() {
 
 #[test]
 fn test_interleaved_none_and_set() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "aaa");
@@ -889,7 +889,7 @@ fn test_interleaved_none_and_set() {
 
 #[test]
 fn test_clone_update_clone_original_unchanged() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob]);
 	let mut row = schema.allocate();
 	schema.set_utf8(&mut row, 0, "original");
 	schema.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
@@ -921,7 +921,7 @@ fn test_clone_update_clone_original_unchanged() {
 
 #[test]
 fn test_clone_update_original_clone_unchanged() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 	schema.set_utf8(&mut row, 0, "original");
 
@@ -945,7 +945,7 @@ fn test_clone_update_original_clone_unchanged() {
 
 #[test]
 fn test_no_orphan_data_after_many_updates() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob]);
 	let mut row = schema.allocate();
 
 	for i in 0..100 {
@@ -974,7 +974,7 @@ fn test_no_orphan_data_after_many_updates() {
 
 #[test]
 fn test_no_orphan_data_three_dynamic_fields() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "aaaa");
@@ -1001,7 +1001,7 @@ fn test_no_orphan_data_three_dynamic_fields() {
 
 #[test]
 fn test_no_orphan_data_mixed_types() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Any]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Any]);
 	let mut row = schema.allocate();
 
 	schema.set_utf8(&mut row, 0, "hello"); // 5 bytes
@@ -1033,7 +1033,7 @@ fn test_no_orphan_data_mixed_types() {
 
 #[test]
 fn test_repeated_set_unset_utf8() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 	let mut row = schema.allocate();
 
 	for i in 0..10 {
@@ -1058,7 +1058,7 @@ fn test_repeated_set_unset_utf8() {
 
 #[test]
 fn test_repeated_set_unset_blob() {
-	let schema = Schema::testing(&[Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Blob]);
 	let mut row = schema.allocate();
 
 	for i in 0..10 {
@@ -1085,7 +1085,7 @@ fn test_repeated_set_unset_blob() {
 
 #[test]
 fn test_repeated_set_unset_mixed_dynamic() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Decimal, Type::Any]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Decimal, Type::Any]);
 	let mut row = schema.allocate();
 
 	for i in 0..5 {
@@ -1147,7 +1147,7 @@ fn test_repeated_set_unset_mixed_dynamic() {
 
 #[test]
 fn test_set_unset_all_fields_then_reset() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Any, Type::Int, Type::Decimal]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Any, Type::Int, Type::Decimal]);
 	let mut row = schema.allocate();
 
 	// Set all

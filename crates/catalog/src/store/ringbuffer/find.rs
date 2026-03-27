@@ -400,7 +400,7 @@ pub mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				primitive: created.id.into(),
+				object: created.id.into(),
 				column_ids: vec![columns[0].id],
 			},
 		)

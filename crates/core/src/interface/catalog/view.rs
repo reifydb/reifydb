@@ -8,7 +8,7 @@ use crate::interface::catalog::{
 	column::Column,
 	id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 	key::PrimaryKey,
-	primitive::PrimitiveId,
+	schema::SchemaId,
 	series::SeriesKey,
 };
 
@@ -135,15 +135,15 @@ impl View {
 		}
 	}
 
-	/// Returns the PrimitiveId of the underlying backing primitive.
+	/// Returns the SchemaId of the underlying backing primitive.
 	///
 	/// All view data is stored under the underlying primitive's key space,
-	/// not under `PrimitiveId::View`.
-	pub fn underlying_id(&self) -> PrimitiveId {
+	/// not under `SchemaId::View`.
+	pub fn underlying_id(&self) -> SchemaId {
 		match self {
-			View::Table(t) => PrimitiveId::Table(t.underlying),
-			View::RingBuffer(rb) => PrimitiveId::RingBuffer(rb.underlying),
-			View::Series(s) => PrimitiveId::Series(s.underlying),
+			View::Table(t) => SchemaId::Table(t.underlying),
+			View::RingBuffer(rb) => SchemaId::RingBuffer(rb.underlying),
+			View::Series(s) => SchemaId::Series(s.underlying),
 		}
 	}
 

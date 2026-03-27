@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
-		catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::Table},
+		catalog::{flow::FlowNodeId, schema::SchemaId, table::Table},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -78,7 +78,7 @@ impl Operator for PrimitiveTableOperator {
 			return Ok(Columns::from_table(&self.table));
 		}
 
-		let schema: Schema = (&self.table.columns).into();
+		let schema: RowSchema = (&self.table.columns).into();
 		let fields = schema.fields();
 
 		// Pre-allocate columns with capacity
@@ -92,7 +92,7 @@ impl Operator for PrimitiveTableOperator {
 		let mut row_numbers = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
-			let key = RowKey::encoded(PrimitiveId::table(self.table.id), *row_num);
+			let key = RowKey::encoded(SchemaId::table(self.table.id), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				// Decode each column value directly

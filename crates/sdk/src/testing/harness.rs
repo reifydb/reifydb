@@ -7,7 +7,7 @@ use ptr::null;
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::EncodableKey,
 	value::column::columns::Columns,
@@ -85,7 +85,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	{
 		let encoded_key = key.encode();
 		let store = self.state();
-		let schema = Schema::testing(&[expected.get_type()]);
+		let schema = RowSchema::testing(&[expected.get_type()]);
 
 		store.assert_value(&encoded_key, &[expected], &schema);
 	}
@@ -283,7 +283,7 @@ pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::{key::IntoEncodedKey, schema::Schema},
+		encoded::{key::IntoEncodedKey, schema::RowSchema},
 		interface::{
 			catalog::flow::FlowNodeId,
 			change::{Change, Diff},
@@ -375,7 +375,7 @@ pub mod tests {
 					let first_value = row.schema.get_value(&row.encoded, 0);
 
 					// Encode the value and store in state
-					let schema = Schema::testing(&[Type::Int8]);
+					let schema = RowSchema::testing(&[Type::Int8]);
 					let mut encoded = schema.allocate();
 					schema.set_values(&mut encoded, &[first_value]);
 
@@ -432,7 +432,7 @@ pub mod tests {
 
 		// Verify the operator stored state correctly via FFI callbacks
 		let state = harness.state();
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 		let key = encode_key("row_1");
 
 		// Assert the state was set through the FFI bridge
@@ -462,7 +462,7 @@ pub mod tests {
 
 		// Verify all three values were stored
 		let state = harness.state();
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 
 		state.assert_value(&encode_key("row_1"), &[Value::Int8(10i64)], &schema);
 		state.assert_value(&encode_key("row_2"), &[Value::Int8(20i64)], &schema);

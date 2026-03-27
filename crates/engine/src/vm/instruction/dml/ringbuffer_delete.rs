@@ -4,14 +4,14 @@
 use std::{collections, sync::Arc};
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
 	},
 	interface::{
 		catalog::policy::PolicyTargetType,
-		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
 	},
 	key::row::RowKey,
 	value::column::columns::Columns,
@@ -67,7 +67,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
 
 	// Resolve partition column indices once (empty vec for global)
 	let partition_col_indices: Vec<usize> = ringbuffer
@@ -244,7 +244,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 }
 
 fn row_matches_partition(
-	schema: &Schema,
+	schema: &RowSchema,
 	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],

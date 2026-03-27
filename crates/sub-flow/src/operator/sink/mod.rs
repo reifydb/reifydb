@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 
 use postcard::from_bytes;
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
 		catalog::{
 			column::Column as CatalogColumn,
@@ -175,7 +175,7 @@ pub(crate) fn coerce_subscription_columns(columns: &Columns, target_columns: &[S
 pub(crate) fn encode_row_at_index(
 	columns: &Columns,
 	row_idx: usize,
-	schema: &Schema,
+	schema: &RowSchema,
 	row_number: RowNumber,
 ) -> (RowNumber, EncodedRow) {
 	// Use row_number parameter instead of columns.row_numbers[row_idx]

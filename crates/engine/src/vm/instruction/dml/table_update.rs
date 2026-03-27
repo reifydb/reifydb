@@ -4,14 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
@@ -80,7 +80,7 @@ pub(crate) fn update_table<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
+	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
 
 	let context = QueryContext {
 		services: services.clone(),
@@ -201,7 +201,7 @@ pub(crate) fn update_table<'a>(
 
 					let post_key = primary_key::encode_primary_key(&pk_def, &row, &table, &schema)?;
 
-					let row_number_schema = Schema::testing(&[Type::Uint8]);
+					let row_number_schema = RowSchema::testing(&[Type::Uint8]);
 					let mut row_number_encoded = row_number_schema.allocate();
 					row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 

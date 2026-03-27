@@ -3,7 +3,7 @@
 
 //! Decode row deltas into columnar `Diff` objects.
 //!
-//! Uses fingerprint-based schema lookup from `SchemaRegistry` to convert
+//! Uses fingerprint-based schema lookup from `RowSchemaRegistry` to convert
 //! `EncodedRow` into `Row`s and then into `Columns`.
 
 use reifydb_core::{
@@ -15,11 +15,11 @@ use reifydb_core::{
 use reifydb_type::value::row_number::RowNumber;
 use tracing::warn;
 
-use super::SchemaRegistry;
+use super::RowSchemaRegistry;
 
 /// Try to decode an EncodedRow into a Row using the schema registry.
 /// Returns None if the values are too short or the schema is not in the cache.
-fn decode_row(registry: &SchemaRegistry, row_number: RowNumber, row: EncodedRow) -> Option<Row> {
+fn decode_row(registry: &RowSchemaRegistry, row_number: RowNumber, row: EncodedRow) -> Option<Row> {
 	if row.len() < SCHEMA_HEADER_SIZE {
 		warn!("EncodedRow too short for schema fingerprint ({} < {})", row.len(), SCHEMA_HEADER_SIZE);
 		return None;
@@ -33,14 +33,14 @@ fn decode_row(registry: &SchemaRegistry, row_number: RowNumber, row: EncodedRow)
 			schema,
 		}),
 		None => {
-			warn!(?fingerprint, "Schema not found in cache for row decode");
+			warn!(?fingerprint, "RowSchema not found in cache for row decode");
 			None
 		}
 	}
 }
 
 /// Build an insert Diff from a row delta.
-pub fn build_insert_diff(registry: &SchemaRegistry, row_number: RowNumber, post: EncodedRow) -> Option<Diff> {
+pub fn build_insert_diff(registry: &RowSchemaRegistry, row_number: RowNumber, post: EncodedRow) -> Option<Diff> {
 	let row = decode_row(registry, row_number, post)?;
 	let columns = Columns::from_row(&row);
 	Some(Diff::Insert {
@@ -50,7 +50,7 @@ pub fn build_insert_diff(registry: &SchemaRegistry, row_number: RowNumber, post:
 
 /// Build an update Diff from a row delta with pre and post values.
 pub fn build_update_diff(
-	registry: &SchemaRegistry,
+	registry: &RowSchemaRegistry,
 	row_number: RowNumber,
 	pre: EncodedRow,
 	post: EncodedRow,
@@ -66,7 +66,7 @@ pub fn build_update_diff(
 }
 
 /// Build a remove Diff from a row delta.
-pub fn build_remove_diff(registry: &SchemaRegistry, row_number: RowNumber, pre: EncodedRow) -> Option<Diff> {
+pub fn build_remove_diff(registry: &RowSchemaRegistry, row_number: RowNumber, pre: EncodedRow) -> Option<Diff> {
 	let row = decode_row(registry, row_number, pre)?;
 	let columns = Columns::from_row(&row);
 	Some(Diff::Remove {

@@ -4,16 +4,16 @@
 use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::{
-	encoded::schema::{Schema, SchemaField},
+	encoded::schema::{RowSchema, RowSchemaField},
 	interface::catalog::{column::Column, subscription::SubscriptionColumn},
 };
 
-impl From<&Vec<Column>> for Schema {
+impl From<&Vec<Column>> for RowSchema {
 	fn from(value: &Vec<Column>) -> Self {
-		Schema::from(value.as_slice())
+		RowSchema::from(value.as_slice())
 	}
 }
-impl From<&[Column]> for Schema {
+impl From<&[Column]> for RowSchema {
 	fn from(value: &[Column]) -> Self {
 		let fields = value
 			.iter()
@@ -27,40 +27,40 @@ impl From<&[Column]> for Schema {
 					}
 					_ => col.constraint.clone(),
 				};
-				SchemaField::new(col.name.clone(), constraint)
+				RowSchemaField::new(col.name.clone(), constraint)
 			})
 			.collect();
-		Schema::new(fields)
+		RowSchema::new(fields)
 	}
 }
 
-impl From<&Vec<SubscriptionColumn>> for Schema {
+impl From<&Vec<SubscriptionColumn>> for RowSchema {
 	fn from(value: &Vec<SubscriptionColumn>) -> Self {
-		Schema::from(value.as_slice())
+		RowSchema::from(value.as_slice())
 	}
 }
-impl From<&[SubscriptionColumn]> for Schema {
+impl From<&[SubscriptionColumn]> for RowSchema {
 	fn from(value: &[SubscriptionColumn]) -> Self {
 		let fields = value
 			.iter()
-			.map(|col| SchemaField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty.clone())))
+			.map(|col| RowSchemaField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty.clone())))
 			.collect();
-		Schema::new(fields)
+		RowSchema::new(fields)
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	mod from_schema {
-		// Tests removed as From<&Schema> for the old layout type has been removed
-		// Schema is now the canonical layout descriptor
+		// Tests removed as From<&RowSchema> for the old layout type has been removed
+		// RowSchema is now the canonical layout descriptor
 	}
 
 	mod from_column {
 		use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 		use crate::{
-			encoded::schema::{Schema, SchemaField},
+			encoded::schema::{RowSchema, RowSchemaField},
 			interface::catalog::{
 				column::{Column, ColumnIndex},
 				id::ColumnId,
@@ -83,7 +83,7 @@ mod tests {
 		fn test_from_column_single_field() {
 			let columns = vec![make_column(1, "id", Type::Int8, 0)];
 
-			let schema = Schema::from(columns.as_slice());
+			let schema = RowSchema::from(columns.as_slice());
 
 			assert_eq!(schema.fields().len(), 1);
 			assert_eq!(schema.fields()[0].name, "id");
@@ -98,7 +98,7 @@ mod tests {
 				make_column(3, "c", Type::Int4, 2),
 			];
 
-			let schema = Schema::from(columns.as_slice());
+			let schema = RowSchema::from(columns.as_slice());
 
 			assert_eq!(schema.fields().len(), 3);
 			assert_eq!(schema.fields()[0].name, "a");
@@ -117,7 +117,7 @@ mod tests {
 				make_column(3, "third", Type::Boolean, 2),
 			];
 
-			let schema = Schema::from(columns.as_slice());
+			let schema = RowSchema::from(columns.as_slice());
 
 			assert_eq!(schema.fields()[0].name, "first");
 			assert_eq!(schema.fields()[0].constraint.get_type(), Type::Utf8);
@@ -137,13 +137,13 @@ mod tests {
 				make_column(5, "f4", Type::Uint16, 4),
 			];
 
-			let schema_from_columns = Schema::from(columns.as_slice());
-			let schema_direct = Schema::new(vec![
-				SchemaField::unconstrained("f0", Type::Uint1),
-				SchemaField::unconstrained("f1", Type::Uint2),
-				SchemaField::unconstrained("f2", Type::Uint4),
-				SchemaField::unconstrained("f3", Type::Uint8),
-				SchemaField::unconstrained("f4", Type::Uint16),
+			let schema_from_columns = RowSchema::from(columns.as_slice());
+			let schema_direct = RowSchema::new(vec![
+				RowSchemaField::unconstrained("f0", Type::Uint1),
+				RowSchemaField::unconstrained("f1", Type::Uint2),
+				RowSchemaField::unconstrained("f2", Type::Uint4),
+				RowSchemaField::unconstrained("f3", Type::Uint8),
+				RowSchemaField::unconstrained("f4", Type::Uint16),
 			]);
 
 			// Full equivalence check
@@ -169,7 +169,7 @@ mod tests {
 		fn test_from_column_empty() {
 			let columns: Vec<Column> = vec![];
 
-			let schema = Schema::from(columns.as_slice());
+			let schema = RowSchema::from(columns.as_slice());
 
 			assert_eq!(schema.fields().len(), 0);
 		}
@@ -188,7 +188,7 @@ mod tests {
 				make_column(9, "f8", Type::Uint8, 8),
 			];
 
-			let schema = Schema::from(columns.as_slice());
+			let schema = RowSchema::from(columns.as_slice());
 
 			assert_eq!(schema.fields().len(), 9);
 			for (i, field) in schema.fields().iter().enumerate() {

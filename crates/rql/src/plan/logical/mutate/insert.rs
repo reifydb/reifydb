@@ -12,7 +12,7 @@ use crate::{
 		ast::{Ast, AstFrom, AstInsert},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedTableIdentifier, UnresolvedPrimitiveIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedTableIdentifier, UnresolvedSchemaIdentifier,
 		},
 	},
 	bump::BumpBox,
@@ -65,7 +65,7 @@ impl<'bump> Compiler<'bump> {
 
 	fn build_insert_node(
 		&self,
-		unresolved_target: UnresolvedPrimitiveIdentifier<'bump>,
+		unresolved_target: UnresolvedSchemaIdentifier<'bump>,
 		source: LogicalPlan<'bump>,
 		returning: Option<Vec<Expression>>,
 		tx: &mut Transaction<'_>,
@@ -149,7 +149,7 @@ impl<'bump> Compiler<'bump> {
 
 	fn compile_positional_tuples(
 		&self,
-		target: &UnresolvedPrimitiveIdentifier<'bump>,
+		target: &UnresolvedSchemaIdentifier<'bump>,
 		nodes: Vec<Ast<'bump>>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {

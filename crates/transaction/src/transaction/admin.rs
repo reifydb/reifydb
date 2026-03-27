@@ -400,7 +400,7 @@ impl AdminTransaction {
 
 	/// Track a flow change for transactional view pre-commit processing.
 	pub fn track_flow_change(&mut self, change: Change) {
-		if let ChangeOrigin::Primitive(id) = change.origin {
+		if let ChangeOrigin::Schema(id) = change.origin {
 			for diff in change.diffs {
 				self.accumulator.track(id, diff);
 			}

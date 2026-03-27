@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
 use reifydb_type::Result;
 
 use super::utils;
@@ -10,7 +10,7 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait SingleStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> Schema;
+	fn layout(&self) -> RowSchema;
 
 	/// Key for the single state - default is empty
 	fn key(&self) -> EncodedKey {
@@ -38,7 +38,7 @@ pub trait SingleStateful: RawStatefulOperator {
 	/// Update state with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.layout();
 		let mut row = self.load_state(txn)?;
@@ -65,7 +65,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful for TestOperator {
-		fn layout(&self) -> Schema {
+		fn layout(&self) -> RowSchema {
 			self.layout.clone()
 		}
 	}

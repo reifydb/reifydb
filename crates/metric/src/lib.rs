@@ -34,7 +34,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId};
+use reifydb_core::interface::catalog::{flow::FlowNodeId, schema::SchemaId};
 
 pub mod cdc;
 pub mod encoding;
@@ -47,7 +47,7 @@ pub mod worker;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetricId {
 	/// Table, view, or flow source
-	Source(PrimitiveId),
+	Source(SchemaId),
 	/// Flow operator node
 	FlowNode(FlowNodeId),
 	/// System metadata (sequences, versions, etc.)

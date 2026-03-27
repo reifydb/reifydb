@@ -5,8 +5,8 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, TableId},
-		primitive::PrimitiveId,
 		property::ColumnPropertyKind,
+		schema::SchemaId,
 		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
@@ -23,7 +23,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		retention_policy::create::create_primitive_retention_policy,
+		retention_policy::create::create_schema_retention_policy,
 		sequence::system::SystemSequence,
 		table::schema::{table, table_namespace},
 	},
@@ -71,7 +71,7 @@ impl CatalogStore {
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
 		if let Some(retention_policy) = &to_create.retention_policy {
-			create_primitive_retention_policy(txn, PrimitiveId::Table(table_id), retention_policy)?;
+			create_schema_retention_policy(txn, SchemaId::Table(table_id), retention_policy)?;
 		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
@@ -124,7 +124,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace_name.clone(),
-					primitive_name: to_create.name.text().to_string(),
+					schema_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: column_to_create.properties.clone(),

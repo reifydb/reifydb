@@ -4,12 +4,12 @@
 //! Variable type edge case tests for the encoded encoding system
 
 use num_bigint::BigInt;
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{int::Int, r#type::Type};
 
 #[test]
 fn test_int_storage_modes() {
-	let schema = Schema::testing(&[Type::Int]);
+	let schema = RowSchema::testing(&[Type::Int]);
 
 	// Test inline storage (fits in 127 bits)
 	let mut row1 = schema.allocate();

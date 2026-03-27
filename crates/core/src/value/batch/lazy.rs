@@ -8,7 +8,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::catalog::dictionary::Dictionary,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -36,8 +36,8 @@ pub struct LazyBatch {
 	rows: Vec<EncodedRow>,
 	/// Row numbers from storage
 	row_numbers: Vec<RowNumber>,
-	/// Schema for interpreting encoded rows
-	schema: Schema,
+	/// RowSchema for interpreting encoded rows
+	schema: RowSchema,
 	/// Column metadata (names, types, dictionary defs)
 	column_metas: Vec<LazyColumnMeta>,
 	/// Validity bitmap - rows that passed filters (true = valid)
@@ -48,7 +48,7 @@ impl LazyBatch {
 	pub fn new(
 		rows: Vec<EncodedRow>,
 		row_numbers: Vec<RowNumber>,
-		schema: &Schema,
+		schema: &RowSchema,
 		column_metas: Vec<LazyColumnMeta>,
 	) -> Self {
 		debug_assert_eq!(rows.len(), row_numbers.len());
@@ -159,12 +159,12 @@ impl LazyBatch {
 	}
 
 	/// Get the schema
-	pub fn schema(&self) -> &Schema {
+	pub fn schema(&self) -> &RowSchema {
 		&self.schema
 	}
 
 	#[deprecated(since = "0.1.0", note = "Use schema() instead")]
-	pub fn layout(&self) -> &Schema {
+	pub fn layout(&self) -> &RowSchema {
 		&self.schema
 	}
 
@@ -195,8 +195,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_schema() -> Schema {
-		Schema::testing(&[Type::Int4, Type::Utf8, Type::Boolean])
+	fn create_test_schema() -> RowSchema {
+		RowSchema::testing(&[Type::Int4, Type::Utf8, Type::Boolean])
 	}
 
 	fn create_test_metas() -> Vec<LazyColumnMeta> {

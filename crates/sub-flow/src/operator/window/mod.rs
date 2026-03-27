@@ -36,7 +36,7 @@ use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		schema::{Schema, SchemaField},
+		schema::{RowSchema, RowSchemaField},
 	},
 	interface::change::{Change, Diff},
 	row::Row,
@@ -72,7 +72,7 @@ use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider
 
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
-/// Schema layout shared across all events in a window (stored once, not per event)
+/// RowSchema layout shared across all events in a window (stored once, not per event)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowLayout {
 	pub names: Vec<String>,
@@ -87,14 +87,14 @@ impl WindowLayout {
 		}
 	}
 
-	pub fn to_schema(&self) -> Schema {
-		let fields: Vec<SchemaField> = self
+	pub fn to_schema(&self) -> RowSchema {
+		let fields: Vec<RowSchemaField> = self
 			.names
 			.iter()
 			.zip(self.types.iter())
-			.map(|(name, ty)| SchemaField::unconstrained(name.clone(), ty.clone()))
+			.map(|(name, ty)| RowSchemaField::unconstrained(name.clone(), ty.clone()))
 			.collect();
-		Schema::new(fields)
+		RowSchema::new(fields)
 	}
 }
 
@@ -132,7 +132,7 @@ impl WindowEvent {
 pub struct WindowState {
 	/// All events in this window (stored in insertion order)
 	pub events: Vec<WindowEvent>,
-	/// Schema layout shared by all events (set on first event)
+	/// RowSchema layout shared by all events (set on first event)
 	pub window_layout: Option<WindowLayout>,
 	/// Window creation timestamp
 	pub window_start: u64,
@@ -171,7 +171,7 @@ pub struct WindowOperator {
 	pub ts: Option<String>,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub compiled_aggregations: Vec<CompiledExpr>,
-	pub layout: Schema,
+	pub layout: RowSchema,
 	pub functions: Functions,
 	pub row_number_provider: RowNumberProvider,
 	pub runtime_context: RuntimeContext,
@@ -223,7 +223,7 @@ impl WindowOperator {
 			ts,
 			compiled_group_by,
 			compiled_aggregations,
-			layout: Schema::testing(&[Type::Blob]),
+			layout: RowSchema::testing(&[Type::Blob]),
 			functions,
 			row_number_provider: RowNumberProvider::new(node),
 			runtime_context,
@@ -676,12 +676,12 @@ impl WindowOperator {
 			result_types.push(value.get_type());
 		}
 
-		let fields: Vec<SchemaField> = result_names
+		let fields: Vec<RowSchemaField> = result_names
 			.iter()
 			.zip(result_types.iter())
-			.map(|(name, ty)| SchemaField::unconstrained(name.clone(), ty.clone()))
+			.map(|(name, ty)| RowSchemaField::unconstrained(name.clone(), ty.clone()))
 			.collect();
-		let layout = Schema::new(fields);
+		let layout = RowSchema::new(fields);
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
@@ -1018,7 +1018,7 @@ impl WindowOperator {
 impl RawStatefulOperator for WindowOperator {}
 
 impl WindowStateful for WindowOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.layout.clone()
 	}
 }

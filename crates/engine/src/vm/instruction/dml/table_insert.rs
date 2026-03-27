@@ -4,14 +4,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		index::primary_key_violation,
 	},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
@@ -75,7 +75,7 @@ pub(crate) fn insert_table<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
+	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
 
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -200,7 +200,7 @@ pub(crate) fn insert_table<'a>(
 	// Hoist loop-invariant computations out of PASS 2
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
 	let row_number_schema = if pk_def.is_some() {
-		Some(Schema::testing(&[Type::Uint8]))
+		Some(RowSchema::testing(&[Type::Uint8]))
 	} else {
 		None
 	};

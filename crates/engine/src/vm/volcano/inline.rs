@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
+	interface::{evaluate::TargetColumn, resolved::ResolvedSchema},
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
@@ -39,7 +39,7 @@ impl InlineDataNode {
 			let mut layout = Self::create_columns_layout_from_source(source);
 			// For series, include extra columns from input (e.g., timestamp, tag)
 			// that aren't part of the schema but are needed by the insert executor.
-			if matches!(source, ResolvedPrimitive::Series(_)) {
+			if matches!(source, ResolvedSchema::Series(_)) {
 				let existing: HashSet<String> =
 					layout.columns.iter().map(|c| c.text().to_string()).collect();
 				for row in &rows {
@@ -62,7 +62,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn create_columns_layout_from_source(source: &ResolvedPrimitive) -> ColumnHeaders {
+	fn create_columns_layout_from_source(source: &ResolvedSchema) -> ColumnHeaders {
 		ColumnHeaders {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		}
@@ -130,7 +130,7 @@ impl InlineDataNode {
 									)
 								};
 								ctx.services.catalog.get_sumtype(txn, *id)?
-							} else if let ResolvedPrimitive::Series(series) = source {
+							} else if let ResolvedSchema::Series(series) = source {
 								// For series, the tag is stored as Series.tag, not
 								// as a column
 								let tag_id =
@@ -226,7 +226,7 @@ impl InlineDataNode {
 								} else {
 									None
 								}
-							} else if let ResolvedPrimitive::Series(series) = source {
+							} else if let ResolvedSchema::Series(series) = source {
 								// For series, the tag is stored as Series.tag
 								if let Some(tag_id) = series.def().tag {
 									let sumtype = ctx

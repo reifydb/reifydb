@@ -3,12 +3,12 @@
 
 //! String and binary data edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{blob::Blob, int::Int, r#type::Type};
 
 #[test]
 fn test_utf8_special_sequences() {
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 
 	let test_strings = [
 		"",                 // Empty string
@@ -35,7 +35,7 @@ fn test_utf8_special_sequences() {
 
 #[test]
 fn test_blob_all_byte_values() {
-	let schema = Schema::testing(&[Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Blob]);
 
 	// Test all possible byte values
 	let mut row = schema.allocate();
@@ -63,7 +63,7 @@ fn test_blob_all_byte_values() {
 #[test]
 fn test_dynamic_field_interleaving() {
 	// Tests multiple dynamic fields to ensure they don't corrupt each other
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
 
 	// Test initial setting with various sizes
 	let mut row = schema.allocate();

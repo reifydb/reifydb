@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Schema consolidation utilities - STUB
+//! RowSchema consolidation utilities - STUB
 //!
 //! This module will eventually provide functionality to:
 //! - Consolidate multiple schemas into a single unified schema
@@ -13,7 +13,7 @@
 use reifydb_runtime::hash::Hash64;
 use reifydb_type::value::r#type::Type;
 
-use super::Schema;
+use super::RowSchema;
 
 /// Type widening rules - STUB
 ///
@@ -33,7 +33,7 @@ pub fn widen_type(a: Type, b: Type) -> Type {
 /// 2. For each field, finding the widest compatible type
 /// 3. Producing a new schema that can represent all input schemas
 #[allow(unused_variables)]
-pub fn consolidate_schemas(fingerprints: &[Hash64], lookup: impl Fn(Hash64) -> Option<Schema>) -> Schema {
+pub fn consolidate_schemas(fingerprints: &[Hash64], lookup: impl Fn(Hash64) -> Option<RowSchema>) -> RowSchema {
 	unimplemented!("schema consolidation not yet supported")
 }
 

@@ -217,7 +217,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace.name().to_string(),
-					primitive_name: to_create.name.text().to_string(),
+					schema_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: vec![],

@@ -11,7 +11,7 @@ use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
 	catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
-	resolved::ResolvedPrimitive,
+	resolved::ResolvedSchema,
 };
 use reifydb_rql::{
 	ast::parse_str,
@@ -86,15 +86,15 @@ fn inject_pipeline<'a>(
 			LogicalPlan::PrimitiveScan(scan) => {
 				// Determine target type, namespace, and object name
 				let target_type = match &scan.source {
-					ResolvedPrimitive::Table(_) | ResolvedPrimitive::TableVirtual(_) => {
+					ResolvedSchema::Table(_) | ResolvedSchema::TableVirtual(_) => {
 						PolicyTargetType::Table
 					}
-					ResolvedPrimitive::View(_)
-					| ResolvedPrimitive::DeferredView(_)
-					| ResolvedPrimitive::TransactionalView(_) => PolicyTargetType::View,
-					ResolvedPrimitive::RingBuffer(_) => PolicyTargetType::RingBuffer,
-					ResolvedPrimitive::Series(_) => PolicyTargetType::Series,
-					ResolvedPrimitive::Dictionary(_) => PolicyTargetType::Dictionary,
+					ResolvedSchema::View(_)
+					| ResolvedSchema::DeferredView(_)
+					| ResolvedSchema::TransactionalView(_) => PolicyTargetType::View,
+					ResolvedSchema::RingBuffer(_) => PolicyTargetType::RingBuffer,
+					ResolvedSchema::Series(_) => PolicyTargetType::Series,
+					ResolvedSchema::Dictionary(_) => PolicyTargetType::Dictionary,
 				};
 				let target_ns = scan.source.namespace().unwrap().name().to_string();
 				let target_obj = scan.source.name().to_string();
@@ -102,7 +102,7 @@ fn inject_pipeline<'a>(
 				// Push the scan node first
 				result.push(step);
 
-				// Look up policies for this primitive
+				// Look up policies for this schema
 				let policies = catalog.list_all_policies(tx)?;
 				let mut found_policy = false;
 

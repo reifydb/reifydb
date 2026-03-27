@@ -6,7 +6,7 @@ use std::ops::Deref;
 use reifydb_type::util::cowvec::CowVec;
 use serde::{Deserialize, Serialize};
 
-use crate::encoded::schema::fingerprint::SchemaFingerprint;
+use crate::encoded::schema::fingerprint::RowSchemaFingerprint;
 
 /// Size of schema header (fingerprint) in bytes
 pub const SCHEMA_HEADER_SIZE: usize = 8;
@@ -55,13 +55,13 @@ impl EncodedRow {
 
 	/// Read the schema fingerprint from the header
 	#[inline]
-	pub fn fingerprint(&self) -> SchemaFingerprint {
+	pub fn fingerprint(&self) -> RowSchemaFingerprint {
 		let bytes: [u8; 8] = self.0[0..8].try_into().unwrap();
-		SchemaFingerprint::from_le_bytes(bytes)
+		RowSchemaFingerprint::from_le_bytes(bytes)
 	}
 
 	/// Write the schema fingerprint to the header
-	pub fn set_fingerprint(&mut self, fingerprint: SchemaFingerprint) {
+	pub fn set_fingerprint(&mut self, fingerprint: RowSchemaFingerprint) {
 		self.0.make_mut()[0..8].copy_from_slice(&fingerprint.to_le_bytes());
 	}
 }

@@ -19,11 +19,11 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_bool() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		// Set a value
@@ -39,7 +39,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_integer() {
-		let schema = Schema::testing(&[Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Int4]);
 		let mut row = schema.allocate();
 
 		// Set a value
@@ -55,7 +55,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_dynamic_type() {
-		let schema = Schema::testing(&[Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8]);
 		let mut row = schema.allocate();
 
 		// Set a string value
@@ -71,7 +71,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_multiple_fields() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Int4, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		// Set all fields
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_all_fields() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
 		let mut row = schema.allocate();
 
 		// Set all fields
@@ -122,7 +122,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_reuse_field() {
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 		let mut row = schema.allocate();
 
 		// Set, unset, then set again
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_temporal_types() {
-		let schema = Schema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = schema.allocate();
 
 		// Set temporal values
@@ -176,7 +176,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_uuid_types() {
-		let schema = Schema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		// Set UUID values
@@ -208,7 +208,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_decimal_int_uint() {
-		let schema = Schema::testing(&[Type::Decimal, Type::Int, Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Decimal, Type::Int, Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Set values
@@ -241,7 +241,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_blob() {
-		let schema = Schema::testing(&[Type::Blob]);
+		let schema = RowSchema::testing(&[Type::Blob]);
 		let mut row = schema.allocate();
 
 		// Set a blob value
@@ -264,8 +264,13 @@ pub mod tests {
 
 	#[test]
 	fn test_set_pattern() {
-		let schema =
-			Schema::testing(&[Type::Boolean, Type::Boolean, Type::Boolean, Type::Boolean, Type::Boolean]);
+		let schema = RowSchema::testing(&[
+			Type::Boolean,
+			Type::Boolean,
+			Type::Boolean,
+			Type::Boolean,
+			Type::Boolean,
+		]);
 		let mut row = schema.allocate();
 
 		// Set all as true

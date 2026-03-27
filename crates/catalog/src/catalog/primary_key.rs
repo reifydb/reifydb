@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	id::{ColumnId, PrimaryKeyId},
 	key::PrimaryKey,
-	primitive::PrimitiveId,
+	schema::SchemaId,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use tracing::instrument;
@@ -16,14 +16,14 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct PrimaryKeyToCreate {
-	pub source: PrimitiveId,
+	pub schema: SchemaId,
 	pub column_ids: Vec<ColumnId>,
 }
 
 impl From<PrimaryKeyToCreate> for StorePrimaryKeyToCreate {
 	fn from(to_create: PrimaryKeyToCreate) -> Self {
 		StorePrimaryKeyToCreate {
-			primitive: to_create.source,
+			object: to_create.schema,
 			column_ids: to_create.column_ids,
 		}
 	}
@@ -39,13 +39,13 @@ impl Catalog {
 		CatalogStore::create_primary_key(txn, to_create.into())
 	}
 
-	#[instrument(name = "catalog::primary_key::find", level = "trace", skip(self, txn, source))]
+	#[instrument(name = "catalog::primary_key::find", level = "trace", skip(self, txn, schema))]
 	pub fn find_primary_key(
 		&self,
 		txn: &mut Transaction<'_>,
-		source: impl Into<PrimitiveId>,
+		schema: impl Into<SchemaId>,
 	) -> Result<Option<PrimaryKey>> {
-		CatalogStore::find_primary_key(txn, source)
+		CatalogStore::find_primary_key(txn, schema)
 	}
 
 	#[instrument(name = "catalog::primary_key::list", level = "debug", skip(self, txn))]

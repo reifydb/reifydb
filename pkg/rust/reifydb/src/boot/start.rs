@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	key::{
 		EncodableKey,
 		system_version::{SystemVersion, SystemVersionKey},
@@ -16,7 +16,7 @@ const CURRENT_STORAGE_VERSION: u8 = 0x01;
 /// Ensures the storage version key exists and matches the expected version.
 /// On first boot, creates the version entry.
 pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> crate::Result<()> {
-	let schema = Schema::testing(&[Type::Uint1]);
+	let schema = RowSchema::testing(&[Type::Uint1]);
 	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
 	}

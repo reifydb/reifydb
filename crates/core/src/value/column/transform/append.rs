@@ -24,7 +24,7 @@ use reifydb_type::{
 use uuid::Uuid;
 
 use crate::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::CoreError,
 	value::column::{ColumnData, columns::Columns},
 };
@@ -65,7 +65,7 @@ impl Columns {
 impl Columns {
 	pub fn append_rows(
 		&mut self,
-		schema: &Schema,
+		schema: &RowSchema,
 		rows: impl IntoIterator<Item = EncodedRow>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
@@ -254,7 +254,7 @@ impl Columns {
 			}
 		}
 
-		// Append rows using Schema methods
+		// Append rows using RowSchema methods
 		for row in &rows {
 			// Check if all fields are defined
 			let all_defined = (0..schema.field_count()).all(|i| row.is_defined(i));
@@ -269,7 +269,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_all_defined_from_schema(&mut self, schema: &Schema, row: &EncodedRow) -> Result<()> {
+	fn append_all_defined_from_schema(&mut self, schema: &RowSchema, row: &EncodedRow) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = schema.get_field(index).unwrap();
@@ -420,7 +420,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback_from_schema(&mut self, schema: &Schema, row: &EncodedRow) -> Result<()> {
+	fn append_fallback_from_schema(&mut self, schema: &RowSchema, row: &EncodedRow) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = schema.get_field(index).unwrap();
@@ -893,7 +893,7 @@ pub mod tests {
 		};
 
 		use crate::{
-			encoded::schema::{Schema, SchemaField},
+			encoded::schema::{RowSchema, RowSchemaField},
 			value::column::{Column, ColumnData, columns::Columns},
 		};
 
@@ -902,7 +902,7 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
 
-			let schema = Schema::testing(&[Type::Boolean]);
+			let schema = RowSchema::testing(&[Type::Boolean]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Boolean(true)]);
 
@@ -921,7 +921,7 @@ pub mod tests {
 		fn test_before_undefined_float4() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Float4]);
+			let schema = RowSchema::testing(&[Type::Float4]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -939,7 +939,7 @@ pub mod tests {
 		fn test_before_undefined_float8() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Float8]);
+			let schema = RowSchema::testing(&[Type::Float8]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -957,7 +957,7 @@ pub mod tests {
 		fn test_before_undefined_int1() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Int1]);
+			let schema = RowSchema::testing(&[Type::Int1]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Int1(42)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -972,7 +972,7 @@ pub mod tests {
 		fn test_before_undefined_int2() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Int2]);
+			let schema = RowSchema::testing(&[Type::Int2]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Int2(-1234)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -987,7 +987,7 @@ pub mod tests {
 		fn test_before_undefined_int4() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Int4]);
+			let schema = RowSchema::testing(&[Type::Int4]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Int4(56789)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1002,7 +1002,7 @@ pub mod tests {
 		fn test_before_undefined_int8() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Int8]);
+			let schema = RowSchema::testing(&[Type::Int8]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Int8(-987654321)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1020,7 +1020,7 @@ pub mod tests {
 		fn test_before_undefined_int16() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Int16]);
+			let schema = RowSchema::testing(&[Type::Int16]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1038,7 +1038,7 @@ pub mod tests {
 		fn test_before_undefined_string() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Utf8]);
+			let schema = RowSchema::testing(&[Type::Utf8]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1056,7 +1056,7 @@ pub mod tests {
 		fn test_before_undefined_uint1() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Uint1]);
+			let schema = RowSchema::testing(&[Type::Uint1]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Uint1(255)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1071,7 +1071,7 @@ pub mod tests {
 		fn test_before_undefined_uint2() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Uint2]);
+			let schema = RowSchema::testing(&[Type::Uint2]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Uint2(65535)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1086,7 +1086,7 @@ pub mod tests {
 		fn test_before_undefined_uint4() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Uint4]);
+			let schema = RowSchema::testing(&[Type::Uint4]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Uint4(4294967295)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1104,7 +1104,7 @@ pub mod tests {
 		fn test_before_undefined_uint8() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Uint8]);
+			let schema = RowSchema::testing(&[Type::Uint8]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1122,7 +1122,7 @@ pub mod tests {
 		fn test_before_undefined_uint16() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = Schema::testing(&[Type::Uint16]);
+			let schema = RowSchema::testing(&[Type::Uint16]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
 			test_instance.append_rows(&schema, [row], vec![]).unwrap();
@@ -1140,7 +1140,7 @@ pub mod tests {
 		fn test_mismatched_columns() {
 			let mut test_instance = Columns::new(vec![]);
 
-			let schema = Schema::testing(&[Type::Int2]);
+			let schema = RowSchema::testing(&[Type::Int2]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Int2(2)]);
 
@@ -1152,7 +1152,7 @@ pub mod tests {
 		fn test_ok() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = Schema::testing(&[Type::Int2, Type::Boolean]);
+			let schema = RowSchema::testing(&[Type::Int2, Type::Boolean]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
 			let mut row_two = schema.allocate();
@@ -1168,7 +1168,7 @@ pub mod tests {
 		fn test_all_defined_bool() {
 			let mut test_instance = Columns::new(vec![Column::bool("test_col", Vec::<bool>::new())]);
 
-			let schema = Schema::testing(&[Type::Boolean]);
+			let schema = RowSchema::testing(&[Type::Boolean]);
 			let mut row_one = schema.allocate();
 			schema.set_bool(&mut row_one, 0, true);
 			let mut row_two = schema.allocate();
@@ -1183,7 +1183,7 @@ pub mod tests {
 		fn test_all_defined_float4() {
 			let mut test_instance = Columns::new(vec![Column::float4("test_col", Vec::<f32>::new())]);
 
-			let schema = Schema::testing(&[Type::Float4]);
+			let schema = RowSchema::testing(&[Type::Float4]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
 			let mut row_two = schema.allocate();
@@ -1198,7 +1198,7 @@ pub mod tests {
 		fn test_all_defined_float8() {
 			let mut test_instance = Columns::new(vec![Column::float8("test_col", Vec::<f64>::new())]);
 
-			let schema = Schema::testing(&[Type::Float8]);
+			let schema = RowSchema::testing(&[Type::Float8]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
 			let mut row_two = schema.allocate();
@@ -1213,7 +1213,7 @@ pub mod tests {
 		fn test_all_defined_int1() {
 			let mut test_instance = Columns::new(vec![Column::int1("test_col", Vec::<i8>::new())]);
 
-			let schema = Schema::testing(&[Type::Int1]);
+			let schema = RowSchema::testing(&[Type::Int1]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Int1(1)]);
 			let mut row_two = schema.allocate();
@@ -1228,7 +1228,7 @@ pub mod tests {
 		fn test_all_defined_int2() {
 			let mut test_instance = Columns::new(vec![Column::int2("test_col", Vec::<i16>::new())]);
 
-			let schema = Schema::testing(&[Type::Int2]);
+			let schema = RowSchema::testing(&[Type::Int2]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Int2(100)]);
 			let mut row_two = schema.allocate();
@@ -1243,7 +1243,7 @@ pub mod tests {
 		fn test_all_defined_int4() {
 			let mut test_instance = Columns::new(vec![Column::int4("test_col", Vec::<i32>::new())]);
 
-			let schema = Schema::testing(&[Type::Int4]);
+			let schema = RowSchema::testing(&[Type::Int4]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Int4(1000)]);
 			let mut row_two = schema.allocate();
@@ -1258,7 +1258,7 @@ pub mod tests {
 		fn test_all_defined_int8() {
 			let mut test_instance = Columns::new(vec![Column::int8("test_col", Vec::<i64>::new())]);
 
-			let schema = Schema::testing(&[Type::Int8]);
+			let schema = RowSchema::testing(&[Type::Int8]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Int8(10000)]);
 			let mut row_two = schema.allocate();
@@ -1273,7 +1273,7 @@ pub mod tests {
 		fn test_all_defined_int16() {
 			let mut test_instance = Columns::new(vec![Column::int16("test_col", Vec::<i128>::new())]);
 
-			let schema = Schema::testing(&[Type::Int16]);
+			let schema = RowSchema::testing(&[Type::Int16]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Int16(1000)]);
 			let mut row_two = schema.allocate();
@@ -1288,7 +1288,7 @@ pub mod tests {
 		fn test_all_defined_string() {
 			let mut test_instance = Columns::new(vec![Column::utf8("test_col", Vec::<String>::new())]);
 
-			let schema = Schema::testing(&[Type::Utf8]);
+			let schema = RowSchema::testing(&[Type::Utf8]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Utf8("a".into())]);
 			let mut row_two = schema.allocate();
@@ -1303,7 +1303,7 @@ pub mod tests {
 		fn test_all_defined_uint1() {
 			let mut test_instance = Columns::new(vec![Column::uint1("test_col", Vec::<u8>::new())]);
 
-			let schema = Schema::testing(&[Type::Uint1]);
+			let schema = RowSchema::testing(&[Type::Uint1]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Uint1(1)]);
 			let mut row_two = schema.allocate();
@@ -1318,7 +1318,7 @@ pub mod tests {
 		fn test_all_defined_uint2() {
 			let mut test_instance = Columns::new(vec![Column::uint2("test_col", Vec::<u16>::new())]);
 
-			let schema = Schema::testing(&[Type::Uint2]);
+			let schema = RowSchema::testing(&[Type::Uint2]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Uint2(100)]);
 			let mut row_two = schema.allocate();
@@ -1333,7 +1333,7 @@ pub mod tests {
 		fn test_all_defined_uint4() {
 			let mut test_instance = Columns::new(vec![Column::uint4("test_col", Vec::<u32>::new())]);
 
-			let schema = Schema::testing(&[Type::Uint4]);
+			let schema = RowSchema::testing(&[Type::Uint4]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Uint4(1000)]);
 			let mut row_two = schema.allocate();
@@ -1348,7 +1348,7 @@ pub mod tests {
 		fn test_all_defined_uint8() {
 			let mut test_instance = Columns::new(vec![Column::uint8("test_col", Vec::<u64>::new())]);
 
-			let schema = Schema::testing(&[Type::Uint8]);
+			let schema = RowSchema::testing(&[Type::Uint8]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Uint8(10000)]);
 			let mut row_two = schema.allocate();
@@ -1363,7 +1363,7 @@ pub mod tests {
 		fn test_all_defined_uint16() {
 			let mut test_instance = Columns::new(vec![Column::uint16("test_col", Vec::<u128>::new())]);
 
-			let schema = Schema::testing(&[Type::Uint16]);
+			let schema = RowSchema::testing(&[Type::Uint16]);
 			let mut row_one = schema.allocate();
 			schema.set_values(&mut row_one, &[Value::Uint16(1000)]);
 			let mut row_two = schema.allocate();
@@ -1378,7 +1378,7 @@ pub mod tests {
 		fn test_row_with_undefined() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = Schema::testing(&[Type::Int2, Type::Boolean]);
+			let schema = RowSchema::testing(&[Type::Int2, Type::Boolean]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
 
@@ -1395,7 +1395,7 @@ pub mod tests {
 		fn test_row_with_type_mismatch_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = Schema::testing(&[Type::Boolean, Type::Boolean]);
+			let schema = RowSchema::testing(&[Type::Boolean, Type::Boolean]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
 
@@ -1408,7 +1408,7 @@ pub mod tests {
 		fn test_row_wrong_length_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = Schema::testing(&[Type::Int2]);
+			let schema = RowSchema::testing(&[Type::Int2]);
 			let mut row = schema.allocate();
 			schema.set_values(&mut row, &[Value::Int2(2)]);
 
@@ -1424,7 +1424,7 @@ pub mod tests {
 				Column::bool("none", Vec::<bool>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Boolean, Type::Boolean]);
+			let schema = RowSchema::testing(&[Type::Boolean, Type::Boolean]);
 			let mut row_one = schema.allocate();
 			schema.set_bool(&mut row_one, 0, true);
 			schema.set_none(&mut row_one, 1);
@@ -1443,7 +1443,7 @@ pub mod tests {
 				Column::float4("none", Vec::<f32>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Float4, Type::Float4]);
+			let schema = RowSchema::testing(&[Type::Float4, Type::Float4]);
 			let mut row = schema.allocate();
 			schema.set_f32(&mut row, 0, 1.5);
 			schema.set_none(&mut row, 1);
@@ -1461,7 +1461,7 @@ pub mod tests {
 				Column::float8("none", Vec::<f64>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Float8, Type::Float8]);
+			let schema = RowSchema::testing(&[Type::Float8, Type::Float8]);
 			let mut row = schema.allocate();
 			schema.set_f64(&mut row, 0, 2.5);
 			schema.set_none(&mut row, 1);
@@ -1479,7 +1479,7 @@ pub mod tests {
 				Column::int1("none", Vec::<i8>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Int1, Type::Int1]);
+			let schema = RowSchema::testing(&[Type::Int1, Type::Int1]);
 			let mut row = schema.allocate();
 			schema.set_i8(&mut row, 0, 42);
 			schema.set_none(&mut row, 1);
@@ -1497,7 +1497,7 @@ pub mod tests {
 				Column::int2("none", Vec::<i16>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Int2, Type::Int2]);
+			let schema = RowSchema::testing(&[Type::Int2, Type::Int2]);
 			let mut row = schema.allocate();
 			schema.set_i16(&mut row, 0, -1234i16);
 			schema.set_none(&mut row, 1);
@@ -1515,7 +1515,7 @@ pub mod tests {
 				Column::int4("none", Vec::<i32>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Int4, Type::Int4]);
+			let schema = RowSchema::testing(&[Type::Int4, Type::Int4]);
 			let mut row = schema.allocate();
 			schema.set_i32(&mut row, 0, 56789);
 			schema.set_none(&mut row, 1);
@@ -1533,7 +1533,7 @@ pub mod tests {
 				Column::int8("none", Vec::<i64>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Int8, Type::Int8]);
+			let schema = RowSchema::testing(&[Type::Int8, Type::Int8]);
 			let mut row = schema.allocate();
 			schema.set_i64(&mut row, 0, -987654321);
 			schema.set_none(&mut row, 1);
@@ -1551,7 +1551,7 @@ pub mod tests {
 				Column::int16("none", Vec::<i128>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Int16, Type::Int16]);
+			let schema = RowSchema::testing(&[Type::Int16, Type::Int16]);
 			let mut row = schema.allocate();
 			schema.set_i128(&mut row, 0, 123456789012345678901234567890i128);
 			schema.set_none(&mut row, 1);
@@ -1572,7 +1572,7 @@ pub mod tests {
 				Column::utf8("none", Vec::<String>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Utf8, Type::Utf8]);
+			let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8]);
 			let mut row = schema.allocate();
 			schema.set_utf8(&mut row, 0, "reifydb");
 			schema.set_none(&mut row, 1);
@@ -1593,7 +1593,7 @@ pub mod tests {
 				Column::uint1("none", Vec::<u8>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Uint1, Type::Uint1]);
+			let schema = RowSchema::testing(&[Type::Uint1, Type::Uint1]);
 			let mut row = schema.allocate();
 			schema.set_u8(&mut row, 0, 255);
 			schema.set_none(&mut row, 1);
@@ -1611,7 +1611,7 @@ pub mod tests {
 				Column::uint2("none", Vec::<u16>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Uint2, Type::Uint2]);
+			let schema = RowSchema::testing(&[Type::Uint2, Type::Uint2]);
 			let mut row = schema.allocate();
 			schema.set_u16(&mut row, 0, 65535u16);
 			schema.set_none(&mut row, 1);
@@ -1629,7 +1629,7 @@ pub mod tests {
 				Column::uint4("none", Vec::<u32>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Uint4, Type::Uint4]);
+			let schema = RowSchema::testing(&[Type::Uint4, Type::Uint4]);
 			let mut row = schema.allocate();
 			schema.set_u32(&mut row, 0, 4294967295u32);
 			schema.set_none(&mut row, 1);
@@ -1647,7 +1647,7 @@ pub mod tests {
 				Column::uint8("none", Vec::<u64>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Uint8, Type::Uint8]);
+			let schema = RowSchema::testing(&[Type::Uint8, Type::Uint8]);
 			let mut row = schema.allocate();
 			schema.set_u64(&mut row, 0, 18446744073709551615u64);
 			schema.set_none(&mut row, 1);
@@ -1668,7 +1668,7 @@ pub mod tests {
 				Column::uint16("none", Vec::<u128>::new()),
 			]);
 
-			let schema = Schema::testing(&[Type::Uint16, Type::Uint16]);
+			let schema = RowSchema::testing(&[Type::Uint16, Type::Uint16]);
 			let mut row = schema.allocate();
 			schema.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
 			schema.set_none(&mut row, 1);
@@ -1685,7 +1685,7 @@ pub mod tests {
 		#[test]
 		fn test_all_defined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
-			let schema = Schema::new(vec![SchemaField::new("status", constraint)]);
+			let schema = RowSchema::new(vec![RowSchemaField::new("status", constraint)]);
 
 			let mut test_instance =
 				Columns::new(vec![Column::dictionary_id("status", Vec::<DictionaryEntryId>::new())]);
@@ -1710,9 +1710,9 @@ pub mod tests {
 		#[test]
 		fn test_fallback_dictionary_id() {
 			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
-			let schema = Schema::new(vec![
-				SchemaField::new("dict_col", dict_constraint),
-				SchemaField::unconstrained("bool_col", Type::Boolean),
+			let schema = RowSchema::new(vec![
+				RowSchemaField::new("dict_col", dict_constraint),
+				RowSchemaField::unconstrained("bool_col", Type::Boolean),
 			]);
 
 			let mut test_instance = Columns::new(vec![
@@ -1734,7 +1734,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), Type::Uint4);
-			let schema = Schema::new(vec![SchemaField::new("tag", constraint)]);
+			let schema = RowSchema::new(vec![RowSchemaField::new("tag", constraint)]);
 
 			let mut test_instance = Columns::new(vec![Column::undefined_typed("tag", Type::Boolean, 2)]);
 

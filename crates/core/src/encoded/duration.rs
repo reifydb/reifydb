@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::{duration::Duration, r#type::Type};
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_duration(&self, row: &mut EncodedRow, index: usize, value: Duration) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -64,11 +64,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{duration::Duration, r#type::Type};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_duration() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 		let mut row = schema.allocate();
 
 		let value = Duration::from_seconds(-7200).unwrap();
@@ -78,7 +78,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_duration() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_duration(&row, 0), None);
@@ -90,7 +90,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 		let mut row = schema.allocate();
 
 		let zero = Duration::default(); // Zero duration
@@ -100,7 +100,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_durations() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 
 		let test_durations = [
 			Duration::from_seconds(0).unwrap(),     // Zero
@@ -121,7 +121,7 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_durations() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 
 		let negative_durations = [
 			Duration::from_seconds(-60).unwrap(),    // -1 minute
@@ -140,7 +140,7 @@ pub mod tests {
 
 	#[test]
 	fn test_complex_parts() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 		let mut row = schema.allocate();
 
 		// Create a duration with all components
@@ -156,7 +156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Duration, Type::Boolean, Type::Duration, Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Duration, Type::Boolean, Type::Duration, Type::Int8]);
 		let mut row = schema.allocate();
 
 		let duration1 = Duration::from_hours(24).unwrap();
@@ -175,7 +175,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Duration, Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration, Type::Duration]);
 		let mut row = schema.allocate();
 
 		let duration = Duration::from_days(100).unwrap();
@@ -190,7 +190,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 		let mut row = schema.allocate();
 
 		// Test with large values
@@ -206,7 +206,7 @@ pub mod tests {
 
 	#[test]
 	fn test_precision_preservation() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 		let mut row = schema.allocate();
 
 		// Test that all components are preserved exactly
@@ -234,7 +234,7 @@ pub mod tests {
 
 	#[test]
 	fn test_common_durations() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 
 		// Test common durations used in applications
 		let common_durations = [
@@ -258,7 +258,7 @@ pub mod tests {
 
 	#[test]
 	fn test_boundary_values() {
-		let schema = Schema::testing(&[Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Duration]);
 
 		// Test boundary values for each component
 		let boundary_durations = [
@@ -279,7 +279,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_duration_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

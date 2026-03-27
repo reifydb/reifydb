@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
-		catalog::primitive::PrimitiveId,
+		catalog::schema::SchemaId,
 		change::{Change, Diff},
 	},
 };
@@ -32,7 +32,7 @@ pub struct PreCommitContext {
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
 	/// View-level accumulator entries produced by flow interceptors.
 	/// Used by test infrastructure to feed view diffs back into the change accumulator.
-	pub view_entries: Vec<(PrimitiveId, Diff)>,
+	pub view_entries: Vec<(SchemaId, Diff)>,
 }
 
 impl PreCommitContext {

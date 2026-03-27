@@ -10,7 +10,7 @@ use crate::{
 	interface::catalog::{
 		flow::FlowNodeId,
 		id::{RingBufferId, SeriesId, TableId, ViewId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 		vtable::VTableId,
 	},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
@@ -18,46 +18,46 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing retention policy for a data primitive (table, view, ringbuffer)
+/// Key for storing retention policy for a data object (table, view, ringbuffer)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PrimitiveRetentionPolicyKey {
-	pub primitive: PrimitiveId,
+pub struct SchemaRetentionPolicyKey {
+	pub object: SchemaId,
 }
 
-impl PrimitiveRetentionPolicyKey {
-	pub fn encoded(primitive: impl Into<PrimitiveId>) -> EncodedKey {
+impl SchemaRetentionPolicyKey {
+	pub fn encoded(object: impl Into<SchemaId>) -> EncodedKey {
 		Self {
-			primitive: primitive.into(),
+			object: object.into(),
 		}
 		.encode()
 	}
 }
 
-impl EncodableKey for PrimitiveRetentionPolicyKey {
-	const KIND: KeyKind = KeyKind::PrimitiveRetentionPolicy;
+impl EncodableKey for SchemaRetentionPolicyKey {
+	const KIND: KeyKind = KeyKind::SchemaRetentionPolicy;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
 
-		// Encode primitive_id with discriminator
-		match &self.primitive {
-			PrimitiveId::Table(id) => {
+		// Encode object_id with discriminator
+		match &self.object {
+			SchemaId::Table(id) => {
 				serializer.extend_u8(0x01).extend_u64(id.0);
 			}
-			PrimitiveId::View(id) => {
+			SchemaId::View(id) => {
 				serializer.extend_u8(0x02).extend_u64(id.0);
 			}
-			PrimitiveId::TableVirtual(id) => {
+			SchemaId::TableVirtual(id) => {
 				serializer.extend_u8(0x03).extend_u64(id.0);
 			}
-			PrimitiveId::RingBuffer(id) => {
+			SchemaId::RingBuffer(id) => {
 				serializer.extend_u8(0x04).extend_u64(id.0);
 			}
-			PrimitiveId::Dictionary(id) => {
+			SchemaId::Dictionary(id) => {
 				serializer.extend_u8(0x06).extend_u64(id.0);
 			}
-			PrimitiveId::Series(id) => {
+			SchemaId::Series(id) => {
 				serializer.extend_u8(0x07).extend_u64(id.0);
 			}
 		}
@@ -81,18 +81,18 @@ impl EncodableKey for PrimitiveRetentionPolicyKey {
 		let discriminator = de.read_u8().ok()?;
 		let id = de.read_u64().ok()?;
 
-		let primitive_id = match discriminator {
-			0x01 => PrimitiveId::Table(TableId(id)),
-			0x02 => PrimitiveId::View(ViewId(id)),
-			0x03 => PrimitiveId::TableVirtual(VTableId(id)),
-			0x04 => PrimitiveId::RingBuffer(RingBufferId(id)),
-			0x06 => PrimitiveId::Dictionary(DictionaryId(id)),
-			0x07 => PrimitiveId::Series(SeriesId(id)),
+		let object_id = match discriminator {
+			0x01 => SchemaId::Table(TableId(id)),
+			0x02 => SchemaId::View(ViewId(id)),
+			0x03 => SchemaId::TableVirtual(VTableId(id)),
+			0x04 => SchemaId::RingBuffer(RingBufferId(id)),
+			0x06 => SchemaId::Dictionary(DictionaryId(id)),
+			0x07 => SchemaId::Series(SeriesId(id)),
 			_ => return None,
 		};
 
 		Some(Self {
-			primitive: primitive_id,
+			object: object_id,
 		})
 	}
 }
@@ -140,23 +140,23 @@ impl EncodableKey for OperatorRetentionPolicyKey {
 	}
 }
 
-/// Range for scanning all primitive retention policies
-pub struct PrimitiveRetentionPolicyKeyRange;
+/// Range for scanning all object retention policies
+pub struct SchemaRetentionPolicyKeyRange;
 
-impl PrimitiveRetentionPolicyKeyRange {
+impl SchemaRetentionPolicyKeyRange {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
 	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(PrimitiveRetentionPolicyKey::KIND as u8);
+		serializer.extend_u8(VERSION).extend_u8(SchemaRetentionPolicyKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(PrimitiveRetentionPolicyKey::KIND as u8 - 1);
+		serializer.extend_u8(VERSION).extend_u8(SchemaRetentionPolicyKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -187,9 +187,9 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_primitive_retention_policy_key_encoding() {
-		let key = PrimitiveRetentionPolicyKey {
-			primitive: PrimitiveId::Table(TableId(42)),
+	fn test_schema_retention_policy_key_encoding() {
+		let key = SchemaRetentionPolicyKey {
+			object: SchemaId::Table(TableId(42)),
 		};
 
 		let encoded = key.encode();
@@ -197,7 +197,7 @@ pub mod tests {
 		assert_eq!(encoded[1], 0xE8); // kind (0x17 encoded as !0x17)
 		assert_eq!(&encoded[3..11], &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xD5]);
 
-		let decoded = PrimitiveRetentionPolicyKey::decode(&encoded).unwrap();
+		let decoded = SchemaRetentionPolicyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 

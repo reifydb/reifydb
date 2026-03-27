@@ -5,9 +5,9 @@ use std::{f32, ptr};
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -44,11 +44,11 @@ pub mod tests {
 
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_f32() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 		schema.set_f32(&mut row, 0, 1.25f32);
 		assert_eq!(schema.get_f32(&row, 0), 1.25f32);
@@ -56,7 +56,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_f32() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_f32(&row, 0), None);
@@ -67,7 +67,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_values() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 
 		// Test zero
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extreme_values() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 
 		schema.set_f32(&mut row, 0, f32::MAX);
@@ -114,7 +114,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Float4, Type::Int4, Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4, Type::Int4, Type::Float4]);
 		let mut row = schema.allocate();
 
 		schema.set_f32(&mut row, 0, 3.14f32);
@@ -128,7 +128,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Float4, Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4, Type::Float4]);
 		let mut row = schema.allocate();
 
 		schema.set_f32(&mut row, 0, 3.14f32);
@@ -142,7 +142,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_f32_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -152,7 +152,7 @@ pub mod tests {
 
 	#[test]
 	fn test_subnormal_values() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 
 		// Test smallest positive subnormal
@@ -173,7 +173,7 @@ pub mod tests {
 
 	#[test]
 	fn test_nan_payload_preservation() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 
 		// Test different NaN representations
@@ -194,7 +194,7 @@ pub mod tests {
 
 	#[test]
 	fn test_repeated_operations() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 		let initial_len = row.len();
 
@@ -229,7 +229,7 @@ pub mod tests {
 
 	#[test]
 	fn test_denormalized_transitions() {
-		let schema = Schema::testing(&[Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Float4]);
 		let mut row = schema.allocate();
 
 		// Test transition from normal to subnormal
@@ -254,9 +254,9 @@ pub mod tests {
 	}
 
 	/// Creates a layout with odd alignment to test unaligned access
-	pub fn create_unaligned_layout(target_type: Type) -> Schema {
+	pub fn create_unaligned_layout(target_type: Type) -> RowSchema {
 		// Use Int1 (1 byte) to create odd alignment
-		Schema::testing(&[
+		RowSchema::testing(&[
 			Type::Int1,          // 1 byte offset
 			target_type.clone(), // Now at odd offset
 			Type::Int1,          // Another odd-sized field

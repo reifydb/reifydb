@@ -242,7 +242,7 @@ impl FlowWorkerActor {
 			let view_entries = txn.take_accumulator_entries();
 			for (id, diff) in view_entries {
 				all_view_changes.push(Change {
-					origin: ChangeOrigin::Primitive(id),
+					origin: ChangeOrigin::Schema(id),
 					version: primitive_version,
 					diffs: vec![diff],
 				});

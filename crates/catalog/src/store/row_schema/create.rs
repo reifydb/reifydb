@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Schema creation/persistence.
+//! RowSchema creation/persistence.
 
 use reifydb_core::{
-	encoded::schema::Schema,
-	key::schema::{SchemaFieldKey, SchemaKey},
+	encoded::schema::RowSchema,
+	key::schema::{RowSchemaFieldKey, RowSchemaKey},
 };
 use reifydb_transaction::single::write::SingleWriteTransaction;
 use tracing::instrument;
@@ -19,12 +19,12 @@ use crate::Result;
 	skip(cmd, schema),
 	fields(fingerprint = ?schema.fingerprint(), field_count = schema.field_count())
 )]
-pub(crate) fn create_schema(cmd: &mut SingleWriteTransaction, schema: &Schema) -> Result<()> {
+pub(crate) fn create_row_schema(cmd: &mut SingleWriteTransaction, schema: &RowSchema) -> Result<()> {
 	let fingerprint = schema.fingerprint();
 
 	let mut header_row = schema_header::SCHEMA.allocate();
 	schema_header::SCHEMA.set_u16(&mut header_row, schema_header::FIELD_COUNT, schema.field_count() as u16);
-	cmd.set(&SchemaKey::encoded(fingerprint), header_row)?;
+	cmd.set(&RowSchemaKey::encoded(fingerprint), header_row)?;
 
 	for (idx, field) in schema.fields().iter().enumerate() {
 		let ffi = field.constraint.to_ffi();
@@ -39,7 +39,7 @@ pub(crate) fn create_schema(cmd: &mut SingleWriteTransaction, schema: &Schema) -
 		schema_field::SCHEMA.set_u32(&mut field_row, schema_field::SIZE, field.size);
 		schema_field::SCHEMA.set_u8(&mut field_row, schema_field::ALIGN, field.align);
 
-		cmd.set(&SchemaFieldKey::encoded(fingerprint, idx as u16), field_row)?;
+		cmd.set(&RowSchemaFieldKey::encoded(fingerprint, idx as u16), field_row)?;
 	}
 
 	Ok(())

@@ -5,7 +5,7 @@
 
 use std::{collections::HashSet, thread::sleep, time::Duration};
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{
 	identity::IdentityId,
 	r#type::Type,
@@ -14,7 +14,7 @@ use reifydb_type::value::{
 
 #[test]
 fn test_uuid_uniqueness() {
-	let schema = Schema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+	let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 
 	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
@@ -46,7 +46,7 @@ fn test_uuid_uniqueness() {
 
 #[test]
 fn test_uuid7_timestamp_ordering() {
-	let schema = Schema::testing(&[Type::Uuid7]);
+	let schema = RowSchema::testing(&[Type::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {

@@ -10,7 +10,7 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 };
 use reifydb_cdc::{
 	produce::producer::{CdcProduceMsg, CdcProducerEventListener, spawn_cdc_producer},
@@ -182,8 +182,8 @@ impl TestEngineBuilder {
 		let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
 		ioc = ioc.register(materialized_catalog.clone());
 
-		let schema_registry = SchemaRegistry::new(single.clone());
-		ioc = ioc.register(schema_registry.clone());
+		let row_schema_registry = RowSchemaRegistry::new(single.clone());
+		ioc = ioc.register(row_schema_registry.clone());
 
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
@@ -215,7 +215,7 @@ impl TestEngineBuilder {
 			single,
 			eventbus.clone(),
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog, schema_registry),
+			Catalog::new(materialized_catalog, row_schema_registry),
 			RuntimeContext::with_clock(runtime.clock().clone()),
 			Functions::defaults().build(),
 			Procedures::empty(),
@@ -299,8 +299,8 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 	.unwrap();
 
 	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
-	let schema_registry = SchemaRegistry::new(single);
-	let catalog = Catalog::new(materialized_catalog, schema_registry);
+	let row_schema_registry = RowSchemaRegistry::new(single);
+	let catalog = Catalog::new(materialized_catalog, row_schema_registry);
 
 	let namespace = catalog
 		.create_namespace(

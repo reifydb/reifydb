@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
 use reifydb_type::value::Value;
 
 use super::helpers::get_values;
@@ -68,12 +68,12 @@ impl TestStateStore {
 	}
 
 	/// Decode a value using a schema
-	pub fn decode_value(&self, key: &EncodedKey, schema: &Schema) -> Option<Vec<Value>> {
+	pub fn decode_value(&self, key: &EncodedKey, schema: &RowSchema) -> Option<Vec<Value>> {
 		self.get(key).map(|encoded| get_values(schema, encoded))
 	}
 
 	/// Decode a value using a schema with field names
-	pub fn decode_named_value(&self, key: &EncodedKey, schema: &Schema) -> Option<HashMap<String, Value>> {
+	pub fn decode_named_value(&self, key: &EncodedKey, schema: &RowSchema) -> Option<HashMap<String, Value>> {
 		self.get(key).map(|encoded| {
 			let values = get_values(schema, encoded);
 			schema.field_names().map(|n| n.to_string()).zip(values).collect()
@@ -81,14 +81,14 @@ impl TestStateStore {
 	}
 
 	/// Set a value using a schema
-	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], schema: &Schema) {
+	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], schema: &RowSchema) {
 		let mut encoded = schema.allocate();
 		schema.set_values(&mut encoded, values);
 		self.set(key, encoded);
 	}
 
 	/// Set a value using a schema with field names
-	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, schema: &Schema) {
+	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, schema: &RowSchema) {
 		let mut encoded = schema.allocate();
 
 		// Convert HashMap to ordered values based on schema field names
@@ -110,7 +110,7 @@ impl TestStateStore {
 	}
 
 	/// Assert that a key has a specific value
-	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], schema: &Schema) {
+	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], schema: &RowSchema) {
 		let actual = self.decode_value(key, schema).expect(&format!("Key {:?} not found in state", key));
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
 	}
@@ -135,7 +135,7 @@ impl TestStateStore {
 pub mod tests {
 	use reifydb_core::encoded::{
 		row::EncodedRow,
-		schema::{Schema, SchemaField},
+		schema::{RowSchema, RowSchemaField},
 	};
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
@@ -163,7 +163,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_with_schema() {
 		let mut store = TestStateStore::new();
-		let schema = Schema::testing(&[Type::Int8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Int8, Type::Utf8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(42i64), Value::Utf8("hello".into())];
 
@@ -176,9 +176,9 @@ pub mod tests {
 	#[test]
 	fn test_state_store_with_named_schema() {
 		let mut store = TestStateStore::new();
-		let schema = Schema::new(vec![
-			SchemaField::unconstrained("count", Type::Int8),
-			SchemaField::unconstrained("name", Type::Utf8),
+		let schema = RowSchema::new(vec![
+			RowSchemaField::unconstrained("count", Type::Int8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
 		]);
 		let key = encode_key("test_key");
 
@@ -216,7 +216,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_assertions() {
 		let mut store = TestStateStore::new();
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(100i64)];
 

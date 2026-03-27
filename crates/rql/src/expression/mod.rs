@@ -41,7 +41,7 @@ use std::{
 };
 
 use ast::ast::AstMatchArm;
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnPrimitive};
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSchema};
 use reifydb_type::{
 	err,
 	error::Diagnostic,
@@ -67,7 +67,7 @@ impl Display for AliasExpression {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expression {
-	AccessSource(AccessPrimitiveExpression),
+	AccessSource(AccessSchemaExpression),
 
 	Alias(AliasExpression),
 
@@ -133,19 +133,19 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AccessPrimitiveExpression {
+pub struct AccessSchemaExpression {
 	pub column: ColumnIdentifier,
 }
 
-impl AccessPrimitiveExpression {
+impl AccessSchemaExpression {
 	pub fn full_fragment_owned(&self) -> Fragment {
-		// For backward compatibility, merge primitive and column fragments
-		match &self.column.primitive {
-			ColumnPrimitive::Primitive {
-				primitive,
+		// For backward compatibility, merge schema and column fragments
+		match &self.column.schema {
+			ColumnSchema::Qualified {
+				name,
 				..
-			} => Fragment::merge_all([primitive.clone(), self.column.name.clone()]),
-			ColumnPrimitive::Alias(alias) => Fragment::merge_all([alias.clone(), self.column.name.clone()]),
+			} => Fragment::merge_all([name.clone(), self.column.name.clone()]),
+			ColumnSchema::Alias(alias) => Fragment::merge_all([alias.clone(), self.column.name.clone()]),
 		}
 	}
 }
@@ -521,16 +521,16 @@ impl ColumnExpression {
 impl Display for Expression {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		match self {
-			Expression::AccessSource(AccessPrimitiveExpression {
+			Expression::AccessSource(AccessSchemaExpression {
 				column,
-			}) => match &column.primitive {
-				ColumnPrimitive::Primitive {
-					primitive,
+			}) => match &column.schema {
+				ColumnSchema::Qualified {
+					name,
 					..
 				} => {
-					write!(f, "{}.{}", primitive.text(), column.name.text())
+					write!(f, "{}.{}", name.text(), column.name.text())
 				}
-				ColumnPrimitive::Alias(alias) => {
+				ColumnSchema::Alias(alias) => {
 					write!(f, "{}.{}", alias.text(), column.name.text())
 				}
 			},
@@ -969,11 +969,11 @@ impl ExpressionCompiler {
 				// Create an unqualified column identifier
 
 				let column = ColumnIdentifier {
-					primitive: ColumnPrimitive::Primitive {
+					schema: ColumnSchema::Qualified {
 						namespace: Fragment::Internal {
 							text: Arc::from("_context"),
 						},
-						primitive: Fragment::Internal {
+						name: Fragment::Internal {
 							text: Arc::from("_context"),
 						},
 					},
@@ -1094,11 +1094,11 @@ impl ExpressionCompiler {
 				// Compile rownum to a column reference for rownum
 
 				let column = ColumnIdentifier {
-					primitive: ColumnPrimitive::Primitive {
+					schema: ColumnSchema::Qualified {
 						namespace: Fragment::Internal {
 							text: Arc::from("_context"),
 						},
-						primitive: Fragment::Internal {
+						name: Fragment::Internal {
 							text: Arc::from("_context"),
 						},
 					},
@@ -1952,11 +1952,11 @@ impl ExpressionCompiler {
 				if let Some(name) = identifier_or_keyword_name(&other) {
 					let full_name = format!("{}::{}", namespace, name);
 					Ok(Expression::Column(ColumnExpression(ColumnIdentifier {
-						primitive: ColumnPrimitive::Primitive {
+						schema: ColumnSchema::Qualified {
 							namespace: Fragment::Internal {
 								text: Arc::from("_context"),
 							},
-							primitive: Fragment::Internal {
+							name: Fragment::Internal {
 								text: Arc::from("_context"),
 							},
 						},
@@ -1968,7 +1968,7 @@ impl ExpressionCompiler {
 						Expression::Column(ColumnExpression(col)) => {
 							let full_name = format!("{}::{}", namespace, col.name.text());
 							Ok(Expression::Column(ColumnExpression(ColumnIdentifier {
-								primitive: col.primitive,
+								schema: col.schema,
 								name: Fragment::testing(&full_name),
 							})))
 						}

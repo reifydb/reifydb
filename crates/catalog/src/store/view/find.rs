@@ -95,7 +95,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 	};
 
 	let storage_kind = view::SCHEMA.get_u8(row, view::STORAGE_KIND);
-	let underlying_primitive_id = view::SCHEMA.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
+	let underlying_object_id = view::SCHEMA.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
 
 	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
@@ -105,7 +105,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			kind,
 			columns,
 			primary_key,
-			underlying: TableId(underlying_primitive_id),
+			underlying: TableId(underlying_object_id),
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
 			let capacity = view::SCHEMA.get_u64(row, view::CAPACITY);
@@ -117,7 +117,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				kind,
 				columns,
 				primary_key,
-				underlying: RingBufferId(underlying_primitive_id),
+				underlying: RingBufferId(underlying_object_id),
 				capacity,
 				propagate_evictions,
 			})
@@ -140,7 +140,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				kind,
 				columns,
 				primary_key,
-				underlying: SeriesId(underlying_primitive_id),
+				underlying: SeriesId(underlying_object_id),
 				key,
 				tag,
 			})
@@ -153,7 +153,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			kind,
 			columns,
 			primary_key,
-			underlying: TableId(underlying_primitive_id),
+			underlying: TableId(underlying_object_id),
 		}),
 	})
 }

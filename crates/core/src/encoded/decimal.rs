@@ -5,7 +5,7 @@ use bigdecimal::BigDecimal as StdBigDecimal;
 use num_bigint::BigInt as StdBigInt;
 use reifydb_type::value::{decimal::Decimal, r#type::Type};
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
 /// Decimal storage using dynamic section
 /// All decimals are stored in dynamic section with MSB=1 to store both mantissa
@@ -17,7 +17,7 @@ const MODE_MASK: u128 = 0x80000000000000000000000000000000;
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
 
-impl Schema {
+impl RowSchema {
 	/// Set a Decimal value with 2-tier storage optimization
 	/// - Values that fit in i128: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
@@ -84,11 +84,11 @@ pub mod tests {
 	use num_traits::Zero;
 	use reifydb_type::value::{decimal::Decimal, r#type::Type};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_compact_inline() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let mut row = schema.allocate();
 
 		// Test simple decimal
@@ -109,7 +109,7 @@ pub mod tests {
 	#[test]
 	fn test_compact_boundaries() {
 		// Test high precision decimal
-		let schema1 = Schema::testing(&[Type::Decimal]);
+		let schema1 = RowSchema::testing(&[Type::Decimal]);
 		let mut row1 = schema1.allocate();
 		let high_precision = Decimal::from_str("1.0000000000000000000000000000001").unwrap();
 		schema1.set_decimal(&mut row1, 0, &high_precision);
@@ -117,7 +117,7 @@ pub mod tests {
 		assert_eq!(retrieved.to_string(), "1.0000000000000000000000000000001");
 
 		// Test large integer (scale 0)
-		let schema2 = Schema::testing(&[Type::Decimal]);
+		let schema2 = RowSchema::testing(&[Type::Decimal]);
 		let mut row2 = schema2.allocate();
 		let large_int = Decimal::from_str("100000000000000000000000000000000").unwrap();
 		schema2.set_decimal(&mut row2, 0, &large_int);
@@ -126,7 +126,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extended_i128() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let mut row = schema.allocate();
 
 		// Value that needs i128 mantissa
@@ -142,7 +142,7 @@ pub mod tests {
 	fn test_dynamic_storage() {
 		// Use a smaller test that will still trigger dynamic storage
 		// due to large mantissa
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let mut row = schema.allocate();
 
 		// Create a value with large precision that will exceed i128
@@ -158,7 +158,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let mut row = schema.allocate();
 
 		let zero = Decimal::from_str("0.0").unwrap();
@@ -171,7 +171,7 @@ pub mod tests {
 
 	#[test]
 	fn test_currency_values() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 
 		// Test typical currency value (2 decimal places)
 		let mut row1 = schema.allocate();
@@ -194,7 +194,7 @@ pub mod tests {
 
 	#[test]
 	fn test_scientific_notation() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let mut row = schema.allocate();
 
 		let scientific = Decimal::from_str("1.23456e10").unwrap();
@@ -206,7 +206,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let mut row = schema.allocate();
 
 		// Undefined initially
@@ -223,7 +223,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_on_write() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let row1 = schema.allocate();
 		let mut row2 = row1.clone();
 
@@ -238,7 +238,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Decimal, Type::Utf8, Type::Decimal, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Decimal, Type::Utf8, Type::Decimal, Type::Int4]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -263,7 +263,7 @@ pub mod tests {
 	#[test]
 	fn test_negative_values() {
 		// Small negative (compact inline) - needs scale 2
-		let schema1 = Schema::testing(&[Type::Decimal]);
+		let schema1 = RowSchema::testing(&[Type::Decimal]);
 
 		let mut row1 = schema1.allocate();
 		let small_neg = Decimal::from_str("-0.01").unwrap();
@@ -271,14 +271,14 @@ pub mod tests {
 		assert_eq!(schema1.get_decimal(&row1, 0).to_string(), "-0.01");
 
 		// Large negative (extended i128) - needs scale 3
-		let schema2 = Schema::testing(&[Type::Decimal]);
+		let schema2 = RowSchema::testing(&[Type::Decimal]);
 		let mut row2 = schema2.allocate();
 		let large_neg = Decimal::from_str("-999999999999999999.999").unwrap();
 		schema2.set_decimal(&mut row2, 0, &large_neg);
 		assert_eq!(schema2.get_decimal(&row2, 0).to_string(), "-999999999999999999.999");
 
 		// Huge negative (dynamic) - needs scale 9
-		let schema3 = Schema::testing(&[Type::Decimal]);
+		let schema3 = RowSchema::testing(&[Type::Decimal]);
 		let mut row3 = schema3.allocate();
 		let huge_neg = Decimal::from_str("-99999999999999999999999999999.999999999").unwrap();
 		schema3.set_decimal(&mut row3, 0, &huge_neg);
@@ -287,7 +287,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_decimal_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -297,7 +297,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_decimal() {
-		let schema = Schema::testing(&[Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal]);
 		let mut row = schema.allocate();
 
 		let d1 = Decimal::from_str("123.45").unwrap();
@@ -317,7 +317,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_decimal_with_other_dynamic_fields() {
-		let schema = Schema::testing(&[Type::Decimal, Type::Utf8, Type::Decimal]);
+		let schema = RowSchema::testing(&[Type::Decimal, Type::Utf8, Type::Decimal]);
 		let mut row = schema.allocate();
 
 		schema.set_decimal(&mut row, 0, &Decimal::from_str("1.0").unwrap());

@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::{constraint::Constraint, dictionary::DictionaryEntryId, r#type::Type};
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_dictionary_id(&self, row: &mut EncodedRow, index: usize, entry: &DictionaryEntryId) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());

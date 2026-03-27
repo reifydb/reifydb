@@ -48,7 +48,7 @@ use crate::{
 		coordinator::{CoordinatorActor, CoordinatorMsg, FlowConsumeRef, extract_new_flow_ids},
 		lag::FlowLags,
 		pool::{PoolActor, PoolMsg},
-		tracker::PrimitiveVersionTracker,
+		tracker::SchemaVersionTracker,
 		worker::{FlowMsg, FlowWorkerActor},
 	},
 	engine::FlowEngine,
@@ -164,7 +164,7 @@ impl FlowSubsystem {
 			move || FlowEngine::new(cat, exec, bus, rc, co)
 		};
 
-		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
+		let primitive_tracker = Arc::new(SchemaVersionTracker::new());
 
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 

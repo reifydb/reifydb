@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -47,7 +47,7 @@ pub struct TakeOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	limit: usize,
-	schema: Schema,
+	schema: RowSchema,
 }
 
 impl TakeOperator {
@@ -56,7 +56,7 @@ impl TakeOperator {
 			parent,
 			node,
 			limit,
-			schema: Schema::testing(&[Type::Blob]),
+			schema: RowSchema::testing(&[Type::Blob]),
 		}
 	}
 
@@ -138,7 +138,7 @@ impl TakeOperator {
 impl RawStatefulOperator for TakeOperator {}
 
 impl SingleStateful for TakeOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.schema.clone()
 	}
 }

@@ -24,7 +24,7 @@ use reifydb_core::{
 			table::Table,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema,
 			ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
@@ -1024,13 +1024,13 @@ impl<'bump> Compiler<'bump> {
 						// Check if input is a scan node we can optimize
 						let source = match &input {
 							PhysicalPlan::TableScan(scan) => {
-								Some(ResolvedPrimitive::Table(scan.source.clone()))
+								Some(ResolvedSchema::Table(scan.source.clone()))
 							}
 							PhysicalPlan::ViewScan(scan) => {
-								Some(ResolvedPrimitive::View(scan.source.clone()))
+								Some(ResolvedSchema::View(scan.source.clone()))
 							}
 							PhysicalPlan::RingBufferScan(scan) => {
-								Some(ResolvedPrimitive::RingBuffer(scan.source.clone()))
+								Some(ResolvedSchema::RingBuffer(scan.source.clone()))
 							}
 							_ => None,
 						};
@@ -1817,7 +1817,7 @@ impl<'bump> Compiler<'bump> {
 							table_def,
 						);
 
-						let resolved_source = ResolvedPrimitive::Table(resolved_table);
+						let resolved_source = ResolvedSchema::Table(resolved_table);
 
 						let column_def = Column {
 							id: ColumnId(1),
@@ -1944,7 +1944,7 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				LogicalPlan::PrimitiveScan(scan) => match &scan.source {
-					ResolvedPrimitive::Table(resolved_table) => {
+					ResolvedSchema::Table(resolved_table) => {
 						if let Some(index) = &scan.index {
 							stack.push(PhysicalPlan::IndexScan(IndexScanNode {
 								source: resolved_table.clone(),
@@ -1956,7 +1956,7 @@ impl<'bump> Compiler<'bump> {
 							}));
 						}
 					}
-					ResolvedPrimitive::View(resolved_view) => {
+					ResolvedSchema::View(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -1964,7 +1964,7 @@ impl<'bump> Compiler<'bump> {
 							source: resolved_view.clone(),
 						}));
 					}
-					ResolvedPrimitive::DeferredView(resolved_view) => {
+					ResolvedSchema::DeferredView(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -1977,7 +1977,7 @@ impl<'bump> Compiler<'bump> {
 							source: view,
 						}));
 					}
-					ResolvedPrimitive::TransactionalView(resolved_view) => {
+					ResolvedSchema::TransactionalView(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -1991,7 +1991,7 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 
-					ResolvedPrimitive::TableVirtual(resolved_virtual) => {
+					ResolvedSchema::TableVirtual(resolved_virtual) => {
 						if scan.index.is_some() {
 							unimplemented!("virtual tables do not support indexes yet");
 						}
@@ -2000,7 +2000,7 @@ impl<'bump> Compiler<'bump> {
 							pushdown_context: None,
 						}));
 					}
-					ResolvedPrimitive::RingBuffer(resolved_ringbuffer) => {
+					ResolvedSchema::RingBuffer(resolved_ringbuffer) => {
 						if scan.index.is_some() {
 							unimplemented!("ring buffers do not support indexes yet");
 						}
@@ -2009,7 +2009,7 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 
-					ResolvedPrimitive::Dictionary(resolved_dictionary) => {
+					ResolvedSchema::Dictionary(resolved_dictionary) => {
 						if scan.index.is_some() {
 							unimplemented!("dictionaries do not support indexes");
 						}
@@ -2017,7 +2017,7 @@ impl<'bump> Compiler<'bump> {
 							source: resolved_dictionary.clone(),
 						}));
 					}
-					ResolvedPrimitive::Series(resolved_series) => {
+					ResolvedSchema::Series(resolved_series) => {
 						if scan.index.is_some() {
 							unimplemented!("series do not support indexes");
 						}

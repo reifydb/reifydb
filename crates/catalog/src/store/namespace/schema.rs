@@ -3,7 +3,7 @@
 
 pub(crate) mod namespace {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::schema::{Schema, SchemaField};
+	use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
@@ -13,14 +13,14 @@ pub(crate) mod namespace {
 	pub(crate) const LOCAL_NAME: usize = 4;
 	pub(crate) const TOKEN: usize = 5;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("name", Type::Utf8),
-			SchemaField::unconstrained("parent_id", Type::Uint8),
-			SchemaField::unconstrained("grpc", Type::Utf8),
-			SchemaField::unconstrained("local_name", Type::Utf8),
-			SchemaField::unconstrained("token", Type::Utf8),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
+			RowSchemaField::unconstrained("parent_id", Type::Uint8),
+			RowSchemaField::unconstrained("grpc", Type::Utf8),
+			RowSchemaField::unconstrained("local_name", Type::Utf8),
+			RowSchemaField::unconstrained("token", Type::Utf8),
 		])
 	});
 }

@@ -2,13 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
 		column::{Column, ColumnIndex},
 		id::{NamespaceId, PrimaryKeyId, TableId},
-		primitive::PrimitiveId,
 		property::ColumnPropertyKind,
+		schema::SchemaId,
 		table::Table,
 	},
 	internal,
@@ -374,7 +374,7 @@ impl Catalog {
 		let table = CatalogStore::create_table(txn, to_create.into())?;
 		txn.track_table_created(table.clone())?;
 
-		let schema = Schema::from(table.columns.as_slice());
+		let schema = RowSchema::from(table.columns.as_slice());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		if let Some(pk_columns) = pk_columns {
@@ -395,12 +395,12 @@ impl Catalog {
 			let _pk_id = CatalogStore::create_primary_key(
 				txn,
 				PrimaryKeyToCreate {
-					primitive: PrimitiveId::Table(table.id),
+					object: SchemaId::Table(table.id),
 					column_ids,
 				},
 			)?;
 
-			// txn.track_primary_key_created(pk_id, PrimitiveId::Table(table.id))?;
+			// txn.track_primary_key_created(pk_id, SchemaId::Table(table.id))?;
 
 			return Ok(CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id)?);
 		}
@@ -461,7 +461,7 @@ impl Catalog {
 			ColumnToCreate {
 				fragment: Some(column.fragment.clone()),
 				namespace_name: namespace_name.to_string(),
-				primitive_name: pre.name.clone(),
+				schema_name: pre.name.clone(),
 				column: column.name.text().to_string(),
 				constraint: column.constraint,
 				properties: column.properties,
@@ -497,7 +497,7 @@ impl Catalog {
 			}
 		})?;
 
-		CatalogStore::drop_column(txn, PrimitiveId::Table(table_id), column.id)?;
+		CatalogStore::drop_column(txn, SchemaId::Table(table_id), column.id)?;
 
 		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 		txn.track_table_updated(pre, post.clone())?;
@@ -526,7 +526,7 @@ impl Catalog {
 			}
 		})?;
 
-		CatalogStore::rename_column(txn, PrimitiveId::Table(table_id), column.id, new_name)?;
+		CatalogStore::rename_column(txn, SchemaId::Table(table_id), column.id, new_name)?;
 
 		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 		txn.track_table_updated(pre, post.clone())?;

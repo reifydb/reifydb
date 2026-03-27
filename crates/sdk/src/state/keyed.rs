@@ -7,7 +7,7 @@
 //! multiple state values indexed by keys, such as group-by aggregations.
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::value::{Value, r#type::Type};
@@ -26,9 +26,9 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// Get or create the schema for state rows
 	///
 	/// This defines the structure of each state value associated with a key.
-	fn schema(&self) -> Schema;
+	fn schema(&self) -> RowSchema;
 
-	/// Schema for keys - defines the types of the key components
+	/// RowSchema for keys - defines the types of the key components
 	///
 	/// Keys can be composite (multiple values). For example, grouping by
 	/// (customer_id, product_id) would return `&[Type::Int32, Type::Int32]`.
@@ -111,7 +111,7 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// The updated state after applying the function
 	fn update_state<F>(&self, ctx: &mut OperatorContext, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.schema();
 		let mut row = self.load_state(ctx, key_values)?;

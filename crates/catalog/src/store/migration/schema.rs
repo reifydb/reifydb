@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::encoded::schema::{Schema, SchemaField};
+use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 use reifydb_type::value::r#type::Type;
 
 pub(crate) mod migration {
@@ -13,12 +13,12 @@ pub(crate) mod migration {
 	pub(crate) const BODY: usize = 2;
 	pub(crate) const ROLLBACK_BODY: usize = 3;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("name", Type::Utf8),
-			SchemaField::unconstrained("body", Type::Utf8),
-			SchemaField::unconstrained("rollback_body", Type::Utf8),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
+			RowSchemaField::unconstrained("body", Type::Utf8),
+			RowSchemaField::unconstrained("rollback_body", Type::Utf8),
 		])
 	});
 }
@@ -30,11 +30,11 @@ pub(crate) mod migration_event {
 	pub(crate) const MIGRATION_ID: usize = 1;
 	pub(crate) const ACTION: usize = 2;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("migration_id", Type::Uint8),
-			SchemaField::unconstrained("action", Type::Uint1),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("migration_id", Type::Uint8),
+			RowSchemaField::unconstrained("action", Type::Uint1),
 		])
 	});
 }

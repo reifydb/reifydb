@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use reifydb_catalog::schema::SchemaRegistry;
+use reifydb_catalog::schema::RowSchemaRegistry;
 use reifydb_core::common::CommitVersion;
 use reifydb_transaction::transaction::{command::CommandTransaction, query::QueryTransaction};
 use reifydb_type::Result;
@@ -31,5 +31,5 @@ pub trait CdcHost: Clone + Send + Sync + 'static {
 	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool;
 
 	/// Get the schema registry for fingerprint-based schema lookup.
-	fn schema_registry(&self) -> &SchemaRegistry;
+	fn row_schema_registry(&self) -> &RowSchemaRegistry;
 }

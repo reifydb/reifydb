@@ -7,7 +7,7 @@ use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -314,7 +314,7 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn schema_registry(&self) -> &SchemaRegistry {
+	fn row_schema_registry(&self) -> &RowSchemaRegistry {
 		&self.catalog.schema
 	}
 }

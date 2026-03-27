@@ -3,8 +3,8 @@
 
 use reifydb_core::interface::{
 	catalog::flow::FlowNodeId,
-	identifier::{ColumnIdentifier, ColumnPrimitive},
-	resolved::{ResolvedColumn, ResolvedPrimitive},
+	identifier::{ColumnIdentifier, ColumnSchema},
+	resolved::{ResolvedColumn, ResolvedSchema},
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
@@ -33,24 +33,24 @@ impl From<DistinctNode> for DistinctCompiler {
 
 // Helper function to convert ResolvedColumn to ColumnIdentifier for expression system
 fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
-	let primitive = match resolved.primitive() {
-		ResolvedPrimitive::Table(t) => ColumnPrimitive::Primitive {
+	let schema = match resolved.schema() {
+		ResolvedSchema::Table(t) => ColumnSchema::Qualified {
 			namespace: Fragment::internal(t.namespace().name()),
-			primitive: Fragment::internal(t.name()),
+			name: Fragment::internal(t.name()),
 		},
-		ResolvedPrimitive::View(v) => ColumnPrimitive::Primitive {
+		ResolvedSchema::View(v) => ColumnSchema::Qualified {
 			namespace: Fragment::internal(v.namespace().name()),
-			primitive: Fragment::internal(v.name()),
+			name: Fragment::internal(v.name()),
 		},
-		ResolvedPrimitive::RingBuffer(r) => ColumnPrimitive::Primitive {
+		ResolvedSchema::RingBuffer(r) => ColumnSchema::Qualified {
 			namespace: Fragment::internal(r.namespace().name()),
-			primitive: Fragment::internal(r.name()),
+			name: Fragment::internal(r.name()),
 		},
-		_ => ColumnPrimitive::Alias(Fragment::internal("_unknown")),
+		_ => ColumnSchema::Alias(Fragment::internal("_unknown")),
 	};
 
 	ColumnIdentifier {
-		primitive,
+		schema,
 		name: Fragment::internal(resolved.name()),
 	}
 }

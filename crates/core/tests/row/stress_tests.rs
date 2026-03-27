@@ -5,7 +5,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{
 	blob::Blob,
 	date::Date,
@@ -23,7 +23,7 @@ use reifydb_type::value::{
 #[test]
 fn test_mixed_type_stress() {
 	// Comprehensive test with all types interacting
-	let schema = Schema::testing(&[
+	let schema = RowSchema::testing(&[
 		Type::Boolean,
 		Type::Int1,
 		Type::Int2,

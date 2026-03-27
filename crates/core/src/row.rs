@@ -3,11 +3,11 @@
 
 use reifydb_type::value::row_number::RowNumber;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
 #[derive(Debug, Clone)]
 pub struct Row {
 	pub number: RowNumber,
 	pub encoded: EncodedRow,
-	pub schema: Schema,
+	pub schema: RowSchema,
 }

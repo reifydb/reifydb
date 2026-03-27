@@ -4,11 +4,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
 		catalog::{policy::PolicyTargetType, ringbuffer::RingBufferMetadata},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
 	},
 	internal_error,
 	key::row::RowKey,
@@ -71,7 +71,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
 
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -275,7 +275,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 }
 
 fn row_matches_partition(
-	schema: &Schema,
+	schema: &RowSchema,
 	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],

@@ -8,7 +8,7 @@ use reifydb_type::value::row_number::RowNumber;
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::primitive::PrimitiveId,
+	interface::catalog::schema::SchemaId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
@@ -16,7 +16,7 @@ const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowKey {
-	pub primitive: PrimitiveId,
+	pub object: SchemaId,
 	pub row: RowNumber,
 }
 
@@ -28,7 +28,7 @@ impl EncodableKey for RowKey {
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
-			.extend_primitive_id(self.primitive)
+			.extend_schema_id(self.object)
 			.extend_u64(self.row.0);
 		serializer.to_encoded_key()
 	}
@@ -46,11 +46,11 @@ impl EncodableKey for RowKey {
 			return None;
 		}
 
-		let primitive = de.read_primitive_id().ok()?;
+		let object = de.read_schema_id().ok()?;
 		let row = de.read_row_number().ok()?;
 
 		Some(Self {
-			primitive,
+			object,
 			row,
 		})
 	}
@@ -58,7 +58,7 @@ impl EncodableKey for RowKey {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowKeyRange {
-	pub primitive: PrimitiveId,
+	pub object: SchemaId,
 }
 
 impl RowKeyRange {
@@ -75,22 +75,22 @@ impl RowKeyRange {
 			return None;
 		}
 
-		let primitive = de.read_primitive_id().ok()?;
+		let object = de.read_schema_id().ok()?;
 
 		Some(RowKeyRange {
-			primitive,
+			object,
 		})
 	}
 
-	/// Create a range for scanning rows from a primitive
+	/// Create a range for scanning rows from a object
 	///
 	/// If `last_key` is provided, creates a range that continues from after that key.
-	/// Otherwise, creates a range that includes all rows for the primitive.
+	/// Otherwise, creates a range that includes all rows for the object.
 	///
 	/// The caller is responsible for limiting the number of results returned.
-	pub fn scan_range(primitive: PrimitiveId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+	pub fn scan_range(object: SchemaId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
 		let range = RowKeyRange {
-			primitive,
+			object,
 		};
 
 		if let Some(last_key) = last_key {
@@ -109,13 +109,13 @@ impl EncodableKeyRange for RowKeyRange {
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_primitive_id(self.primitive);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_schema_id(self.object);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_primitive_id(self.primitive.prev());
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_schema_id(self.object.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -138,30 +138,30 @@ impl EncodableKeyRange for RowKeyRange {
 }
 
 impl RowKey {
-	pub fn encoded(primitive: impl Into<PrimitiveId>, row: impl Into<RowNumber>) -> EncodedKey {
+	pub fn encoded(object: impl Into<SchemaId>, row: impl Into<RowNumber>) -> EncodedKey {
 		Self {
-			primitive: primitive.into(),
+			object: object.into(),
 			row: row.into(),
 		}
 		.encode()
 	}
 
-	pub fn full_scan(primitive: impl Into<PrimitiveId>) -> EncodedKeyRange {
-		let primitive = primitive.into();
-		EncodedKeyRange::start_end(Some(Self::primitive_start(primitive)), Some(Self::primitive_end(primitive)))
+	pub fn full_scan(object: impl Into<SchemaId>) -> EncodedKeyRange {
+		let object = object.into();
+		EncodedKeyRange::start_end(Some(Self::object_start(object)), Some(Self::object_end(object)))
 	}
 
-	pub fn primitive_start(primitive: impl Into<PrimitiveId>) -> EncodedKey {
-		let primitive = primitive.into();
+	pub fn object_start(object: impl Into<SchemaId>) -> EncodedKey {
+		let object = object.into();
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_primitive_id(primitive);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_schema_id(object);
 		serializer.to_encoded_key()
 	}
 
-	pub fn primitive_end(primitive: impl Into<PrimitiveId>) -> EncodedKey {
-		let primitive = primitive.into();
+	pub fn object_end(object: impl Into<SchemaId>) -> EncodedKey {
+		let object = object.into();
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_primitive_id(primitive.prev());
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_schema_id(object.prev());
 		serializer.to_encoded_key()
 	}
 }
@@ -171,12 +171,12 @@ pub mod tests {
 	use reifydb_type::value::row_number::RowNumber;
 
 	use super::{EncodableKey, RowKey};
-	use crate::interface::catalog::primitive::PrimitiveId;
+	use crate::interface::catalog::schema::SchemaId;
 
 	#[test]
 	fn test_encode_decode() {
 		let key = RowKey {
-			primitive: PrimitiveId::table(0xABCD),
+			object: SchemaId::table(0xABCD),
 			row: RowNumber(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
@@ -184,29 +184,29 @@ pub mod tests {
 		let expected: Vec<u8> = vec![
 			0xFE, // version
 			0xFC, // kind
-			0x01, // PrimitiveId type discriminator (Table)
+			0x01, // SchemaId type discriminator (Table)
 			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
 		];
 
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowKey::decode(&encoded).unwrap();
-		assert_eq!(key.primitive, PrimitiveId::table(0xABCD));
+		assert_eq!(key.object, SchemaId::table(0xABCD));
 		assert_eq!(key.row, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
 		let key1 = RowKey {
-			primitive: PrimitiveId::table(1),
+			object: SchemaId::table(1),
 			row: RowNumber(100),
 		};
 		let key2 = RowKey {
-			primitive: PrimitiveId::table(1),
+			object: SchemaId::table(1),
 			row: RowNumber(200),
 		};
 		let key3 = RowKey {
-			primitive: PrimitiveId::table(2),
+			object: SchemaId::table(2),
 			row: RowNumber(1),
 		};
 

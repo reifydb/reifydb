@@ -3,7 +3,7 @@
 
 pub(crate) mod policy {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::schema::{Schema, SchemaField};
+	use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
@@ -13,32 +13,32 @@ pub(crate) mod policy {
 	pub(crate) const TARGET_OBJECT: usize = 4;
 	pub(crate) const ENABLED: usize = 5;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("name", Type::Utf8),
-			SchemaField::unconstrained("target_type", Type::Utf8),
-			SchemaField::unconstrained("target_namespace", Type::Utf8),
-			SchemaField::unconstrained("target_object", Type::Utf8),
-			SchemaField::unconstrained("enabled", Type::Boolean),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
+			RowSchemaField::unconstrained("target_type", Type::Utf8),
+			RowSchemaField::unconstrained("target_namespace", Type::Utf8),
+			RowSchemaField::unconstrained("target_object", Type::Utf8),
+			RowSchemaField::unconstrained("enabled", Type::Boolean),
 		])
 	});
 }
 
 pub(crate) mod policy_op {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::schema::{Schema, SchemaField};
+	use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const POLICY_ID: usize = 0;
 	pub(crate) const OPERATION: usize = 1;
 	pub(crate) const BODY_SOURCE: usize = 2;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("policy_id", Type::Uint8),
-			SchemaField::unconstrained("operation", Type::Utf8),
-			SchemaField::unconstrained("body_source", Type::Utf8),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("policy_id", Type::Uint8),
+			RowSchemaField::unconstrained("operation", Type::Utf8),
+			RowSchemaField::unconstrained("body_source", Type::Utf8),
 		])
 	});
 }

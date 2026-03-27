@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::catalog::{key::PrimaryKey, table::Table},
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, schema::IndexSchema},
@@ -18,7 +18,7 @@ pub fn encode_primary_key(
 	pk_def: &PrimaryKey,
 	row: &EncodedRow,
 	table: &Table,
-	schema: &Schema,
+	schema: &RowSchema,
 ) -> Result<EncodedIndexKey> {
 	// Create index layout for PK columns
 	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
@@ -37,7 +37,7 @@ pub fn encode_primary_key(
 			.expect("Primary key column not found in table");
 
 		// Check if value is defined
-		// Note: Schema doesn't have is_defined for individual
+		// Note: RowSchema doesn't have is_defined for individual
 		// fields, so we'll check by trying to get the value and
 		// seeing if it's undefined For now, we'll assume all values
 		// are defined

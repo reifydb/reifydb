@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::{time::Time, r#type::Type};
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -46,11 +46,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{time::Time, r#type::Type};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_time() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 		let mut row = schema.allocate();
 
 		let value = Time::new(20, 50, 0, 0).unwrap();
@@ -60,7 +60,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_time() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_time(&row, 0), None);
@@ -72,7 +72,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_midnight() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 		let mut row = schema.allocate();
 
 		let midnight = Time::default(); // 00:00:00
@@ -82,7 +82,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_with_nanoseconds() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 		let mut row = schema.allocate();
 
 		// Test with high precision nanoseconds
@@ -93,7 +93,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_various_times() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 
 		let test_times = [
 			Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -112,7 +112,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_boundary_cases() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 
 		let boundary_times = [
 			Time::new(0, 0, 0, 0).unwrap(), // Start of day
@@ -131,7 +131,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Time, Type::Boolean, Type::Time, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Time, Type::Boolean, Type::Time, Type::Int4]);
 		let mut row = schema.allocate();
 
 		let time1 = Time::new(9, 15, 30, 0).unwrap();
@@ -150,7 +150,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_undefined_handling() {
-		let schema = Schema::testing(&[Type::Time, Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time, Type::Time]);
 		let mut row = schema.allocate();
 
 		let time = Time::new(16, 20, 45, 333000000).unwrap();
@@ -165,7 +165,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_precision_preservation() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 		let mut row = schema.allocate();
 
 		// Test that nanosecond precision is preserved
@@ -179,7 +179,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_microsecond_precision() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 		let mut row = schema.allocate();
 
 		// Test microsecond precision (common in databases)
@@ -190,7 +190,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_millisecond_precision() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 		let mut row = schema.allocate();
 
 		// Test millisecond precision
@@ -201,7 +201,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_common_times() {
-		let schema = Schema::testing(&[Type::Time]);
+		let schema = RowSchema::testing(&[Type::Time]);
 
 		// Test common business/system times
 		let common_times = [
@@ -221,7 +221,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_time_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

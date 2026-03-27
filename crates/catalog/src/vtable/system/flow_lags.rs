@@ -58,7 +58,7 @@ impl BaseVTable for SystemFlowLags {
 
 		for row in rows {
 			flow_ids.push(row.flow_id.0);
-			primitive_ids.push(row.primitive_id.as_u64());
+			primitive_ids.push(row.object_id.as_u64());
 			lags.push(row.lag);
 		}
 
@@ -68,7 +68,7 @@ impl BaseVTable for SystemFlowLags {
 				data: flow_ids,
 			},
 			Column {
-				name: Fragment::internal("primitive_id"),
+				name: Fragment::internal("object_id"),
 				data: primitive_ids,
 			},
 			Column {

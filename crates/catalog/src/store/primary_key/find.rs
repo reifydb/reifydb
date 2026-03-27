@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::Column,
 		id::{TableId, ViewId},
 		key::PrimaryKey,
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	},
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
@@ -21,34 +21,32 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn find_primary_key(
 		rx: &mut Transaction<'_>,
-		primitive: impl Into<PrimitiveId>,
+		object: impl Into<SchemaId>,
 	) -> Result<Option<PrimaryKey>> {
-		let primitive_id = primitive.into();
+		let object_id = object.into();
 
-		let primary_key_id = match primitive_id {
-			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
+		let primary_key_id = match object_id {
+			SchemaId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			PrimitiveId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
+			SchemaId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			PrimitiveId::TableVirtual(_) => {
+			SchemaId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			PrimitiveId::RingBuffer(ringbuffer_id) => {
-				match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
-					Some(pk_id) => pk_id,
-					None => return Ok(None),
-				}
-			}
-			PrimitiveId::Dictionary(_) => {
+			SchemaId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
+				Some(pk_id) => pk_id,
+				None => return Ok(None),
+			},
+			SchemaId::Dictionary(_) => {
 				// Dictionaries don't have traditional primary keys
 				return Ok(None);
 			}
-			PrimitiveId::Series(_) => {
+			SchemaId::Series(_) => {
 				// Series use timestamp-based key ordering, no traditional primary keys
 				return Ok(None);
 			}

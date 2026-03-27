@@ -23,10 +23,10 @@ pub mod migration;
 pub mod namespace;
 pub mod policy;
 pub mod primary_key;
-pub mod primitive;
 pub mod procedure;
 pub mod resolve;
 pub mod ringbuffer;
+pub mod schema;
 pub mod sequence;
 pub mod series;
 pub mod sink;
@@ -40,16 +40,16 @@ pub mod vtable;
 
 use reifydb_core::config::SystemConfig;
 
-use crate::{materialized::MaterializedCatalog, schema::SchemaRegistry};
+use crate::{materialized::MaterializedCatalog, schema::RowSchemaRegistry};
 
 #[derive(Debug, Clone)]
 pub struct Catalog {
 	pub materialized: MaterializedCatalog,
-	pub schema: SchemaRegistry,
+	pub schema: RowSchemaRegistry,
 }
 
 impl Catalog {
-	pub fn new(materialized: MaterializedCatalog, schema: SchemaRegistry) -> Self {
+	pub fn new(materialized: MaterializedCatalog, schema: RowSchemaRegistry) -> Self {
 		Self {
 			materialized,
 			schema,
@@ -57,6 +57,6 @@ impl Catalog {
 	}
 
 	pub fn testing() -> Self {
-		Self::new(MaterializedCatalog::new(SystemConfig::new()), SchemaRegistry::testing())
+		Self::new(MaterializedCatalog::new(SystemConfig::new()), RowSchemaRegistry::testing())
 	}
 }

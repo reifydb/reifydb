@@ -7,39 +7,39 @@ use super::{deserialize, serialize};
 use crate::{
 	interface::catalog::{
 		id::{IndexId, PrimaryKeyId, RingBufferId, SeriesId, TableId, ViewId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 		vtable::VTableId,
 	},
 	return_internal_error,
 };
 
-/// Serialize a PrimitiveId for use in database keys
+/// Serialize a SchemaId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
 /// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x06 for Dictionary, 0x07 for Series
-pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
+pub fn serialize_schema_id(schema: &SchemaId) -> Vec<u8> {
 	let mut result = Vec::with_capacity(9);
-	match primitive {
-		PrimitiveId::Table(TableId(id)) => {
+	match schema {
+		SchemaId::Table(TableId(id)) => {
 			result.push(0x01);
 			result.extend(&serialize(id));
 		}
-		PrimitiveId::View(ViewId(id)) => {
+		SchemaId::View(ViewId(id)) => {
 			result.push(0x02);
 			result.extend(&serialize(id));
 		}
-		PrimitiveId::TableVirtual(VTableId(id)) => {
+		SchemaId::TableVirtual(VTableId(id)) => {
 			result.push(0x03);
 			result.extend(&serialize(id));
 		}
-		PrimitiveId::RingBuffer(RingBufferId(id)) => {
+		SchemaId::RingBuffer(RingBufferId(id)) => {
 			result.push(0x04);
 			result.extend(&serialize(id));
 		}
-		PrimitiveId::Dictionary(DictionaryId(id)) => {
+		SchemaId::Dictionary(DictionaryId(id)) => {
 			result.push(0x06);
 			result.extend(&serialize(id));
 		}
-		PrimitiveId::Series(SeriesId(id)) => {
+		SchemaId::Series(SeriesId(id)) => {
 			result.push(0x07);
 			result.extend(&serialize(id));
 		}
@@ -47,25 +47,25 @@ pub fn serialize_primitive_id(primitive: &PrimitiveId) -> Vec<u8> {
 	result
 }
 
-/// Deserialize a PrimitiveId from database key bytes
+/// Deserialize a SchemaId from database key bytes
 /// Expects [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
 /// View, 0x03 for TableVirtual, 0x04 for RingBuffer, 0x06 for Dictionary, 0x07 for Series
-pub fn deserialize_primitive_id(bytes: &[u8]) -> Result<PrimitiveId> {
+pub fn deserialize_schema_id(bytes: &[u8]) -> Result<SchemaId> {
 	if bytes.len() != 9 {
-		return_internal_error!("Invalid PrimitiveId encoding: expected 9 bytes, got {}", bytes.len());
+		return_internal_error!("Invalid SchemaId encoding: expected 9 bytes, got {}", bytes.len());
 	}
 
 	let type_byte = bytes[0];
 	let id: u64 = deserialize(&bytes[1..9])?;
 
 	match type_byte {
-		0x01 => Ok(PrimitiveId::Table(TableId(id))),
-		0x02 => Ok(PrimitiveId::View(ViewId(id))),
-		0x03 => Ok(PrimitiveId::TableVirtual(VTableId(id))),
-		0x04 => Ok(PrimitiveId::RingBuffer(RingBufferId(id))),
-		0x06 => Ok(PrimitiveId::Dictionary(DictionaryId(id))),
-		0x07 => Ok(PrimitiveId::Series(SeriesId(id))),
-		_ => return_internal_error!("Invalid PrimitiveId type byte: 0x{:02x}.", type_byte),
+		0x01 => Ok(SchemaId::Table(TableId(id))),
+		0x02 => Ok(SchemaId::View(ViewId(id))),
+		0x03 => Ok(SchemaId::TableVirtual(VTableId(id))),
+		0x04 => Ok(SchemaId::RingBuffer(RingBufferId(id))),
+		0x06 => Ok(SchemaId::Dictionary(DictionaryId(id))),
+		0x07 => Ok(SchemaId::Series(SeriesId(id))),
+		_ => return_internal_error!("Invalid SchemaId type byte: 0x{:02x}.", type_byte),
 	}
 }
 
@@ -105,54 +105,54 @@ pub mod tests {
 	use crate::util::encoding::keycode::serialize;
 
 	#[test]
-	fn test_primitive_id_ordering() {
+	fn test_schema_id_ordering() {
 		// Test that larger IDs encode to smaller byte sequences
 		// (descending order)
-		let primitive1 = PrimitiveId::table(1);
-		let primitive2 = PrimitiveId::table(2);
-		let primitive100 = PrimitiveId::table(100);
-		let primitive200 = PrimitiveId::table(200);
+		let primitive1 = SchemaId::table(1);
+		let primitive2 = SchemaId::table(2);
+		let primitive100 = SchemaId::table(100);
+		let primitive200 = SchemaId::table(200);
 
-		let bytes1 = serialize_primitive_id(&primitive1);
-		let bytes2 = serialize_primitive_id(&primitive2);
-		let bytes100 = serialize_primitive_id(&primitive100);
-		let bytes200 = serialize_primitive_id(&primitive200);
+		let bytes1 = serialize_schema_id(&primitive1);
+		let bytes2 = serialize_schema_id(&primitive2);
+		let bytes100 = serialize_schema_id(&primitive100);
+		let bytes200 = serialize_schema_id(&primitive200);
 
 		// In descending order, larger values should have smaller byte
 		// representations
-		assert!(bytes2 < bytes1, "primitive(2) should be < primitive(1) in bytes");
-		assert!(bytes200 < bytes100, "primitive(200) should be < primitive(100) in bytes");
-		assert!(bytes100 < bytes2, "primitive(100) should be < primitive(2) in bytes");
+		assert!(bytes2 < bytes1, "schema(2) should be < schema(1) in bytes");
+		assert!(bytes200 < bytes100, "schema(200) should be < schema(100) in bytes");
+		assert!(bytes100 < bytes2, "schema(100) should be < schema(2) in bytes");
 	}
 
 	#[test]
 	fn test_range_boundaries() {
 		// Test range boundary creation for tables
-		let primitive10 = PrimitiveId::table(10);
+		let primitive10 = SchemaId::table(10);
 		let primitive9 = primitive10.prev();
 
-		let bytes10 = serialize_primitive_id(&primitive10);
-		let bytes9 = serialize_primitive_id(&primitive9);
+		let bytes10 = serialize_schema_id(&primitive10);
+		let bytes9 = serialize_schema_id(&primitive9);
 
-		// In descending order, primitive(9) > primitive(10)
-		assert!(bytes9 > bytes10, "primitive(9) should be > primitive(10) in bytes");
+		// In descending order, schema(9) > schema(10)
+		assert!(bytes9 > bytes10, "schema(9) should be > schema(10) in bytes");
 
 		// Test with views
-		let view10 = PrimitiveId::view(10);
+		let view10 = SchemaId::view(10);
 		let view9 = view10.prev();
 
-		let vbytes10 = serialize_primitive_id(&view10);
-		let vbytes9 = serialize_primitive_id(&view9);
+		let vbytes10 = serialize_schema_id(&view10);
+		let vbytes9 = serialize_schema_id(&view9);
 
 		// In descending order, view(9) > view(10)
 		assert!(vbytes9 > vbytes10, "view(9) should be > view(10) in bytes");
 
 		// Test with virtual tables
-		let virtual10 = PrimitiveId::vtable(10);
+		let virtual10 = SchemaId::vtable(10);
 		let virtual9 = virtual10.prev();
 
-		let tvbytes10 = serialize_primitive_id(&virtual10);
-		let tvbytes9 = serialize_primitive_id(&virtual9);
+		let tvbytes10 = serialize_schema_id(&virtual10);
+		let tvbytes9 = serialize_schema_id(&virtual9);
 
 		// In descending order, vtable(9) > vtable(10)
 		assert!(tvbytes9 > tvbytes10, "vtable(9) should be > vtable(10) in bytes");
@@ -189,9 +189,9 @@ pub mod tests {
 	#[test]
 	fn test_vtable_serialization() {
 		// Test basic serialization/deserialization
-		let virtual_primitive = PrimitiveId::vtable(42);
-		let bytes = serialize_primitive_id(&virtual_primitive);
-		let deserialized = deserialize_primitive_id(&bytes).unwrap();
+		let virtual_primitive = SchemaId::vtable(42);
+		let bytes = serialize_schema_id(&virtual_primitive);
+		let deserialized = deserialize_schema_id(&bytes).unwrap();
 		assert_eq!(virtual_primitive, deserialized);
 
 		// Test that type byte is 0x03
@@ -199,16 +199,16 @@ pub mod tests {
 
 		// Test with VTableId directly
 		let virtual_id = VTableId(123);
-		let primitive_from_id = PrimitiveId::from(virtual_id);
-		let bytes_from_id = serialize_primitive_id(&primitive_from_id);
-		let deserialized_id = deserialize_primitive_id(&bytes_from_id).unwrap();
+		let primitive_from_id = SchemaId::from(virtual_id);
+		let bytes_from_id = serialize_schema_id(&primitive_from_id);
+		let deserialized_id = deserialize_schema_id(&bytes_from_id).unwrap();
 		assert_eq!(primitive_from_id, deserialized_id);
 
 		// Test ordering
-		let virtual1 = PrimitiveId::vtable(1);
-		let virtual2 = PrimitiveId::vtable(2);
-		let bytes1 = serialize_primitive_id(&virtual1);
-		let bytes2 = serialize_primitive_id(&virtual2);
+		let virtual1 = SchemaId::vtable(1);
+		let virtual2 = SchemaId::vtable(2);
+		let bytes1 = serialize_schema_id(&virtual1);
+		let bytes2 = serialize_schema_id(&virtual2);
 		// In descending order, larger values should have smaller byte
 		// representations
 		assert!(bytes2 < bytes1, "vtable(2) should be < vtable(1) in bytes");
@@ -282,21 +282,21 @@ pub mod tests {
 	#[test]
 	fn test_index_entry_key_encoding_with_discriminator() {
 		// Simulate IndexEntryKey encoding with proper discriminators
-		let primitive = PrimitiveId::table(42);
+		let schema = SchemaId::table(42);
 		let index = IndexId::primary(7);
 
-		let primitive_bytes = serialize_primitive_id(&primitive);
+		let primitive_bytes = serialize_schema_id(&schema);
 		let index_bytes = serialize_index_id(&index);
 
 		// Verify sizes
-		assert_eq!(primitive_bytes.len(), 9, "PrimitiveId should be 9 bytes");
+		assert_eq!(primitive_bytes.len(), 9, "SchemaId should be 9 bytes");
 		assert_eq!(index_bytes.len(), 9, "IndexId should be 9 bytes");
 
 		// Verify discriminators
-		assert_eq!(primitive_bytes[0], 0x01, "Table primitive should have type byte 0x01");
+		assert_eq!(primitive_bytes[0], 0x01, "Table schema should have type byte 0x01");
 		assert_eq!(index_bytes[0], 0x01, "Primary index should have type byte 0x01");
 
-		// Total key prefix would be: version(1) + kind(1) + primitive(9) +
+		// Total key prefix would be: version(1) + kind(1) + schema(9) +
 		// index(9) = 20 bytes
 		let total_prefix_size = 1 + 1 + primitive_bytes.len() + index_bytes.len();
 		assert_eq!(total_prefix_size, 20, "Total IndexEntryKey prefix should be 20 bytes");
