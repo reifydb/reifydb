@@ -17,7 +17,7 @@ members = [
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
-    "crates/raft",
+    "crates/sub-raft",
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
@@ -49,6 +49,8 @@ members = [
     "bin/testcontainer",
     "bin/load-test",
     "bin/forge",
+    "pkg/rust/examples/raft",
+    "bin/raft",
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -88,7 +90,7 @@ default-members = [
     "crates/transaction",
     "crates/type",
     "crates/wasm",
-    "crates/raft",
+    "crates/sub-raft",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-server-admin",
@@ -179,6 +181,7 @@ reifydb-testing = { version = "0.4.7", path = "crates/testing" }
 reifydb-transaction = { version = "0.4.7", path = "crates/transaction" }
 reifydb-type = { version = "0.4.7", path = "crates/type" }
 reifydb-wasm = { version = "0.4.7", path = "crates/wasm" }
+reifydb-sub-raft = { version = "0.4.7", path = "crates/sub-raft" }
 reifydb-macro = { version = "0.4.7", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.4.7", path = "crates/macro-impl" }
 

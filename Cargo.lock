@@ -2380,6 +2380,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "raft"
+version = "0.4.7"
+dependencies = [
+ "reifydb-sub-raft",
+ "tokio",
+]
+
+[[package]]
+name = "raft-cluster"
+version = "0.4.7"
+dependencies = [
+ "reifydb-sub-raft",
+ "tokio",
+]
+
+[[package]]
 name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2813,15 +2829,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-raft"
-version = "0.4.7"
-dependencies = [
- "rand 0.10.0",
- "reifydb-core",
- "reifydb-type",
-]
-
-[[package]]
 name = "reifydb-routine"
 version = "0.4.7"
 dependencies = [
@@ -2994,6 +3001,22 @@ dependencies = [
  "serde",
  "serde_bytes",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-raft"
+version = "0.4.7"
+dependencies = [
+ "postcard",
+ "prost",
+ "rand 0.10.0",
+ "reifydb-core",
+ "reifydb-type",
+ "serde",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
 ]
 
 [[package]]

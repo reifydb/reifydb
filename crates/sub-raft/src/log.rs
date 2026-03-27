@@ -8,6 +8,8 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
 	message::Command,
 	node::{NodeId, Term},
@@ -17,7 +19,7 @@ use crate::{
 pub type Index = u64;
 
 /// A log entry containing a state machine command.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
 	/// The entry index.
 	pub index: Index,

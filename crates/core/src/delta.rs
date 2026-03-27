@@ -3,12 +3,14 @@
 
 use std::cmp;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow},
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Delta {
 	Set {
 		key: EncodedKey,

@@ -1,0 +1,12 @@
+syntax = "proto3";
+package reifydb.raft.v1;
+
+service RaftTransport {
+  rpc Send (RaftMessage) returns (RaftAck);
+}
+
+message RaftMessage {
+  bytes payload = 1;
+}
+
+message RaftAck {}

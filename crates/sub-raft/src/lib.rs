@@ -6,19 +6,27 @@
 // Original copyright:
 //   Copyright (c) 2024 Erik Grinaker
 
-//! Implements the Raft distributed consensus protocol.
+//! Raft distributed consensus protocol for ReifyDB.
 //!
-//! Ported from toydb's Raft implementation and adapted for ReifyDB's types.
-//! The Raft node is a pure state machine driven by `step(message)` and
-//! `tick()`, with zero I/O. Outbound messages are collected in an outbox
-//! and drained by the caller after each transition.
+//! The core state machine (node, log, message, state) is a pure, zero-I/O
+//! implementation driven by `step(message)` and `tick()`. The transport and
+//! driver modules connect it to the network and storage layers.
 
+pub mod config;
+pub mod driver;
+pub mod generated;
+pub mod grpc;
 pub mod log;
 pub mod message;
 pub mod node;
+pub mod proposal;
 pub mod state;
+pub mod transport;
 
+pub use driver::RaftHandle;
 pub use log::{Entry, Index, Log};
 pub use message::{Command, Envelope, Message};
 pub use node::{Node, NodeId, Options, Progress, Term, Ticks};
+pub use proposal::ProposalError;
 pub use state::{KVState, State, test_write};
+pub use transport::Transport;

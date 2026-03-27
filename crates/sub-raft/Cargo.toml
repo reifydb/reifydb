@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-raft"
+name = "reifydb-sub-raft"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,13 @@ license.workspace = true
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }
 rand = { workspace = true }
+serde = { workspace = true }
+postcard = { workspace = true }
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
 
 [features]
 default = []

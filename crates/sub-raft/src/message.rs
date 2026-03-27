@@ -7,6 +7,7 @@
 //   Copyright (c) 2024 Erik Grinaker
 
 use reifydb_core::{common::CommitVersion, delta::Delta};
+use serde::{Deserialize, Serialize};
 
 use crate::{
 	log::{Entry, Index},
@@ -14,7 +15,7 @@ use crate::{
 };
 
 /// A command stored in a Raft log entry.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Command {
 	/// A batch of deltas with leader-allocated version.
 	Write {
@@ -26,7 +27,7 @@ pub enum Command {
 }
 
 /// A message envelope specifying sender and receiver.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Envelope {
 	/// The sender.
 	pub from: NodeId,
@@ -40,7 +41,7 @@ pub struct Envelope {
 
 /// A message sent between Raft nodes. Messages are sent asynchronously and may
 /// be dropped or reordered.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Message {
 	/// Candidates campaign for leadership by soliciting votes from peers.
 	Campaign {
