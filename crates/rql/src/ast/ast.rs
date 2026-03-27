@@ -1472,8 +1472,6 @@ pub struct AstRequire<'bump> {
 	pub body: BumpBox<'bump, Ast<'bump>>,
 }
 
-// === Identity/Role/Grant AST nodes ===
-
 #[derive(Debug)]
 pub struct AstCreateIdentity<'bump> {
 	pub token: Token<'bump>,
@@ -1514,8 +1512,6 @@ pub struct AstDropRole<'bump> {
 	pub if_exists: bool,
 }
 
-// === Authentication AST nodes ===
-
 #[derive(Debug)]
 pub struct AstAuthenticationEntry<'bump> {
 	pub key: BumpFragment<'bump>,
@@ -1536,8 +1532,6 @@ pub struct AstDropAuthentication<'bump> {
 	pub if_exists: bool,
 	pub method: BumpFragment<'bump>,
 }
-
-// === Security Policy AST nodes ===
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AstPolicyTargetType {

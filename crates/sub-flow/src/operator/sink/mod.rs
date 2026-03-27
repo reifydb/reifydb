@@ -9,6 +9,7 @@ pub mod view;
 use std::sync::LazyLock;
 
 use postcard::from_bytes;
+use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
@@ -27,7 +28,6 @@ use reifydb_engine::{
 	expression::{cast::cast_column_data, context::EvalSession},
 	vm::stack::SymbolTable,
 };
-use reifydb_function::registry::Functions;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,

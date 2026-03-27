@@ -13,6 +13,7 @@ use std::{
 };
 
 use reifydb_auth::AuthVersion;
+use reifydb_builtin::{procedure::default_procedures, registry::default_functions};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
@@ -36,10 +37,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{
-	EngineVersion, engine::StandardEngine, procedure::registry::Procedures, transform::registry::Transforms,
-};
-use reifydb_function::registry::Functions;
+use reifydb_engine::{EngineVersion, engine::StandardEngine, transform::registry::Transforms};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::RuntimeContext};
 use reifydb_store_multi::{
@@ -120,7 +118,12 @@ impl Bridge {
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &schema_registry, &eventbus)?;
 		load_schema_registry(&multi, &single, &schema_registry)?;
 
-		let procedures = Procedures::defaults().build();
+		let procedures = default_procedures()
+			.with_procedure(
+				"identity::inject",
+				reifydb_engine::procedure::identity_inject::IdentityInject::new,
+			)
+			.build();
 
 		let eventbus_clone = eventbus.clone();
 		let engine = StandardEngine::new(
@@ -130,7 +133,7 @@ impl Bridge {
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, schema_registry),
 			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-			Functions::defaults().build(),
+			default_functions().build(),
 			procedures,
 			Transforms::empty(),
 			ioc,

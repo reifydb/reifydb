@@ -329,8 +329,6 @@ pub mod tests {
 		assert!(!versions.contains(&100)); // Protected
 	}
 
-	// ==================== Edge cases ====================
-
 	#[test]
 	fn test_empty_storage() {
 		let storage = HotStorage::memory();

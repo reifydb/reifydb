@@ -18,7 +18,7 @@ reifydb-build = { workspace = true }
 [dependencies]
 reifydb-auth = { workspace = true }
 reifydb-cdc = { workspace = true }
-reifydb-function = { workspace = true }
+reifydb-builtin = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-abi = { workspace = true }

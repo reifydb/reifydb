@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, LazyLock};
 
+use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	interface::{
 		catalog::flow::FlowNodeId,
@@ -17,7 +18,6 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{

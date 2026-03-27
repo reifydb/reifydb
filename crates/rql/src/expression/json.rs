@@ -884,10 +884,6 @@ pub mod tests {
 		})
 	}
 
-	// =========================================================================
-	// Constant tests
-	// =========================================================================
-
 	#[test]
 	fn test_undefined() {
 		let expr = Expression::Constant(ConstantExpression::None {
@@ -947,10 +943,6 @@ pub mod tests {
 		assert_eq!(to_json(&recovered), json);
 	}
 
-	// =========================================================================
-	// Identifier tests
-	// =========================================================================
-
 	#[test]
 	fn test_column() {
 		let expr = column_expr("age");
@@ -1000,10 +992,6 @@ pub mod tests {
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);
 	}
-
-	// =========================================================================
-	// Comparison tests
-	// =========================================================================
 
 	#[test]
 	fn test_greater_than() {
@@ -1113,10 +1101,6 @@ pub mod tests {
 		assert_eq!(to_json(&recovered), json);
 	}
 
-	// =========================================================================
-	// Logical tests
-	// =========================================================================
-
 	#[test]
 	fn test_and() {
 		let expr = Expression::And(AndExpression {
@@ -1178,10 +1162,6 @@ pub mod tests {
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);
 	}
-
-	// =========================================================================
-	// Arithmetic tests
-	// =========================================================================
 
 	#[test]
 	fn test_add() {
@@ -1272,10 +1252,6 @@ pub mod tests {
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);
 	}
-
-	// =========================================================================
-	// Complex expression tests
-	// =========================================================================
 
 	#[test]
 	fn test_alias() {
@@ -1568,10 +1544,6 @@ pub mod tests {
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);
 	}
-
-	// =========================================================================
-	// Complex nested expression test
-	// =========================================================================
 
 	#[test]
 	fn test_complex_nested_expression() {

@@ -4,12 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_auth::registry::AuthenticationRegistry;
+use reifydb_builtin::registry::default_functions;
 use reifydb_catalog::{
 	catalog::Catalog,
+	function::registry::Functions,
+	procedure::{Procedure, registry::Procedures},
 	vtable::{system::flow_operator_store::SystemFlowOperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
-use reifydb_function::registry::Functions;
 use reifydb_metric::metric::MetricReader;
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
@@ -18,10 +20,7 @@ use reifydb_type::value::sumtype::VariantRef;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::remote::RemoteRegistry;
-use crate::{
-	procedure::{Procedure, registry::Procedures},
-	transform::registry::Transforms,
-};
+use crate::transform::registry::Transforms;
 
 /// Services is a container for shared resources used throughout the execution engine.
 ///
@@ -87,7 +86,7 @@ impl Services {
 		let mut services = Self::new(
 			Catalog::testing(),
 			RuntimeContext::default(),
-			Functions::defaults().build(),
+			default_functions().build(),
 			Procedures::empty(),
 			Transforms::empty(),
 			SystemFlowOperatorStore::new(),

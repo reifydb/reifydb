@@ -3,6 +3,7 @@
 
 use std::sync::LazyLock;
 
+use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	interface::{
 		catalog::property::{ColumnPropertyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
@@ -10,7 +11,6 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_function::registry::Functions;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{params::Params, value::identity::IdentityId};
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_catalog::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -8,8 +9,6 @@ use reifydb_type::{
 	params::Params,
 	value::{Value, r#type::Type},
 };
-
-use super::{Procedure, context::ProcedureContext, error::ProcedureError};
 
 /// Procedure that injects a new identity into the current session.
 ///

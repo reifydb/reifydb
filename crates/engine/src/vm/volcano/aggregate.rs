@@ -6,11 +6,13 @@ use std::{
 	sync::Arc,
 };
 
+use reifydb_catalog::function::{
+	AggregateFunction, AggregateFunctionContext, error::FunctionError, registry::Functions,
+};
 use reifydb_core::{
 	error::CoreError,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_function::{AggregateFunction, AggregateFunctionContext, error::FunctionError, registry::Functions};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{

@@ -3,6 +3,7 @@
 
 use std::{ops::Deref, sync::Arc};
 
+use reifydb_builtin::registry::default_functions;
 use reifydb_catalog::{
 	catalog::{
 		Catalog,
@@ -10,6 +11,7 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 	materialized::MaterializedCatalog,
+	procedure::registry::Procedures,
 	schema::RowSchemaRegistry,
 };
 use reifydb_cdc::{
@@ -26,7 +28,6 @@ use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	util::ioc::IocContainer,
 };
-use reifydb_function::registry::Functions;
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
@@ -49,7 +50,7 @@ use reifydb_type::{
 	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 
-use crate::{engine::StandardEngine, procedure::registry::Procedures, transform::registry::Transforms};
+use crate::{engine::StandardEngine, transform::registry::Transforms};
 
 pub struct TestEngine {
 	engine: StandardEngine,
@@ -217,7 +218,7 @@ impl TestEngineBuilder {
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, row_schema_registry),
 			RuntimeContext::with_clock(runtime.clock().clone()),
-			Functions::defaults().build(),
+			default_functions().build(),
 			Procedures::empty(),
 			Transforms::empty(),
 			ioc,

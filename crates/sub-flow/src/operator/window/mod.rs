@@ -32,6 +32,7 @@ static EMPTY_PARAMS: Params = Params::None;
 use std::{ops, sync::LazyLock, time::Duration};
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
@@ -50,7 +51,6 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_function::registry::Functions;
 use reifydb_rql::expression::{
 	Expression,
 	name::{collect_all_column_names, column_name_from_expression},

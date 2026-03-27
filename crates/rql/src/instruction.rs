@@ -63,13 +63,11 @@ pub enum ScopeType {
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
-	// === Stack ===
 	PushConst(Value),
 	PushNone,
 	Pop,
 	Dup,
 
-	// === Variables ===
 	LoadVar(Fragment),
 	StoreVar(Fragment),
 	DeclareVar(Fragment),
@@ -79,18 +77,15 @@ pub enum Instruction {
 		field: Fragment,
 	},
 
-	// === Arithmetic (pop 2, push 1) ===
 	Add,
 	Sub,
 	Mul,
 	Div,
 	Rem,
 
-	// === Unary ===
 	Negate,
 	LogicNot,
 
-	// === Comparison (pop 2, push Boolean) ===
 	CmpEq,
 	CmpNe,
 	CmpLt,
@@ -98,12 +93,10 @@ pub enum Instruction {
 	CmpGt,
 	CmpGe,
 
-	// === Logic ===
 	LogicAnd,
 	LogicOr,
 	LogicXor,
 
-	// === Compound ===
 	Between,
 	InList {
 		count: u16,
@@ -111,7 +104,6 @@ pub enum Instruction {
 	},
 	Cast(Type),
 
-	// === Control flow ===
 	Jump(Addr),
 	JumpIfFalsePop(Addr),
 	JumpIfTruePop(Addr),
@@ -126,7 +118,6 @@ pub enum Instruction {
 		addr: Addr,
 	},
 
-	// === Loops ===
 	ForInit {
 		variable_name: Fragment,
 	},
@@ -135,7 +126,6 @@ pub enum Instruction {
 		addr: Addr,
 	},
 
-	// === Functions ===
 	DefineFunction(CompiledFunction),
 	Call {
 		name: Fragment,
@@ -145,13 +135,10 @@ pub enum Instruction {
 	ReturnValue,
 	ReturnVoid,
 
-	// === Closures ===
 	DefineClosure(CompiledClosure),
 
-	// === Query (volcano model) ===
 	Query(QueryPlan),
 
-	// === DDL ===
 	CreateNamespace(CreateNamespaceNode),
 	CreateRemoteNamespace(CreateRemoteNamespaceNode),
 	CreateTable(CreateTableNode),
@@ -180,7 +167,6 @@ pub enum Instruction {
 	AlterTable(nodes::AlterTableNode),
 	AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode),
 
-	// === DDL (Drop) ===
 	DropNamespace(nodes::DropNamespaceNode),
 	DropTable(nodes::DropTableNode),
 	DropView(nodes::DropViewNode),
@@ -192,7 +178,6 @@ pub enum Instruction {
 	DropSource(nodes::DropSourceNode),
 	DropSink(nodes::DropSinkNode),
 
-	// === Auth/Permissions ===
 	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
@@ -205,7 +190,6 @@ pub enum Instruction {
 	AlterPolicy(nodes::AlterPolicyNode),
 	DropPolicy(nodes::DropPolicyNode),
 
-	// === DML ===
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
 	DeleteSeries(DeleteSeriesNode),
@@ -217,15 +201,12 @@ pub enum Instruction {
 	UpdateRingBuffer(UpdateRingBufferNode),
 	UpdateSeries(UpdateSeriesNode),
 
-	// === Append ===
 	Append {
 		target: Fragment,
 	},
 
-	// === Output ===
 	Emit,
 
-	// === Control ===
 	Nop,
 	Halt,
 }

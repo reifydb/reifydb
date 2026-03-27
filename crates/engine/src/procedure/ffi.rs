@@ -25,12 +25,12 @@ use reifydb_abi::{
 	data::{buffer::BufferFFI, column::ColumnsFFI},
 	procedure::{descriptor::ProcedureDescriptorFFI, vtable::ProcedureVTableFFI},
 };
+use reifydb_catalog::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::ffi::arena::Arena;
 use reifydb_transaction::transaction::Transaction;
 use tracing::{error, instrument};
 
-use super::{Procedure, context::ProcedureContext, error::ProcedureError};
 use crate::ffi::callbacks::{logging, memory, rql};
 
 /// FFI procedure that wraps an external procedure implementation
@@ -104,8 +104,11 @@ impl Procedure for NativeProcedureFFI {
 		memory::set_current_arena(&mut *arena as *mut Arena);
 
 		// Serialize params to postcard bytes
-		let params_bytes = to_stdvec(ctx.params)
-			.map_err(|e| FFIError::Other(format!("Failed to serialize params: {}", e)))?;
+		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
+			ProcedureError::Wrapped(Box::new(
+				FFIError::Other(format!("Failed to serialize params: {}", e)).into(),
+			))
+		})?;
 
 		// Build ContextFFI with real callbacks
 		let callbacks = create_procedure_host_callbacks();
@@ -146,9 +149,9 @@ impl Procedure for NativeProcedureFFI {
 		if result_code != 0 {
 			memory::clear_current_arena();
 			arena.clear();
-			return Err(
-				FFIError::Other(format!("FFI procedure call failed with code: {}", result_code)).into()
-			);
+			return Err(ProcedureError::Wrapped(Box::new(
+				FFIError::Other(format!("FFI procedure call failed with code: {}", result_code)).into(),
+			)));
 		}
 
 		let columns = arena.unmarshal_columns(&ffi_output);

@@ -5,13 +5,11 @@
 
 use std::{fs, path::Path};
 
+use reifydb_catalog::procedure::registry::{Procedures, ProceduresBuilder};
 use reifydb_sdk::error::FFIError;
 use reifydb_type::Result;
 
-use super::{
-	registry::{Procedures, ProceduresBuilder},
-	wasm::WasmProcedure,
-};
+use super::wasm::WasmProcedure;
 
 /// Scan a directory for `.wasm` files, read each one, and return a `Procedures`
 /// registry with factory functions that create `WasmProcedure` instances.

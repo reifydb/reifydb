@@ -3,12 +3,14 @@
 
 use std::{mem, sync::Arc};
 
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::{
+	catalog::Catalog,
+	function::{GeneratorContext, GeneratorFunction},
+};
 use reifydb_core::{
 	util::ioc::IocContainer,
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
-use reifydb_function::{GeneratorContext, GeneratorFunction};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{error::Error, fragment::Fragment};

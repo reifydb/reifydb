@@ -6,9 +6,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use reifydb_auth::service::AuthServiceConfig;
+use reifydb_catalog::{function::registry::FunctionsBuilder, procedure::registry::ProceduresBuilder};
 use reifydb_core::config::SystemConfig;
-use reifydb_engine::procedure::registry::ProceduresBuilder;
-use reifydb_function::registry::FunctionsBuilder;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]

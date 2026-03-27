@@ -194,10 +194,6 @@ mod tests {
 		assert_ne!(*fp, 0);
 	}
 
-	// ==================== Constraint Tests ====================
-
-	// --- Utf8 with MaxBytes constraint ---
-
 	#[test]
 	fn test_fingerprint_utf8_constrained_vs_unconstrained() {
 		let unconstrained = vec![make_field("text", Type::Utf8)];
@@ -654,8 +650,6 @@ mod tests {
 			"Mixed constrained/unconstrained should differ from all unconstrained"
 		);
 	}
-
-	// --- Edge case constraint values ---
 
 	#[test]
 	fn test_fingerprint_max_bytes_edge_values() {

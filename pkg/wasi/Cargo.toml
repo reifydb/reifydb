@@ -16,7 +16,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-engine = { workspace = true }
-reifydb-function = { workspace = true }
+reifydb-builtin = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-type = { workspace = true }

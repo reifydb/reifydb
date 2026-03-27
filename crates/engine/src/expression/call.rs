@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_catalog::function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, view::group_by::GroupByView};
-use reifydb_function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
 use reifydb_rql::{
 	expression::CallExpression,
 	instruction::{CompiledFunction, Instruction, ScopeType},
@@ -196,7 +196,6 @@ fn execute_function_body_for_scalar(
 			Instruction::Halt => break,
 			Instruction::Nop => {}
 
-			// === Stack ===
 			Instruction::PushConst(v) => stack.push(v.clone()),
 			Instruction::PushNone => stack.push(Value::none()),
 			Instruction::Pop => {
@@ -208,7 +207,6 @@ fn execute_function_body_for_scalar(
 				}
 			}
 
-			// === Variables ===
 			Instruction::LoadVar(name) => {
 				let var_name = strip_dollar_prefix(name.text());
 				let val = symbols
@@ -231,7 +229,6 @@ fn execute_function_body_for_scalar(
 				symbols.set(var_name, Variable::scalar(val), true)?;
 			}
 
-			// === Arithmetic ===
 			Instruction::Add => {
 				let r = stack.pop().unwrap_or(Value::none());
 				let l = stack.pop().unwrap_or(Value::none());
@@ -258,7 +255,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_rem(l, r)?);
 			}
 
-			// === Unary ===
 			Instruction::Negate => {
 				let v = stack.pop().unwrap_or(Value::none());
 				stack.push(scalar::scalar_negate(v)?);
@@ -268,7 +264,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_not(&v));
 			}
 
-			// === Comparison ===
 			Instruction::CmpEq => {
 				let r = stack.pop().unwrap_or(Value::none());
 				let l = stack.pop().unwrap_or(Value::none());
@@ -300,7 +295,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_ge(&l, &r));
 			}
 
-			// === Logic ===
 			Instruction::LogicAnd => {
 				let r = stack.pop().unwrap_or(Value::none());
 				let l = stack.pop().unwrap_or(Value::none());
@@ -317,7 +311,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_xor(&l, &r));
 			}
 
-			// === Compound ===
 			Instruction::Cast(target) => {
 				let v = stack.pop().unwrap_or(Value::none());
 				stack.push(scalar::scalar_cast(v, target.clone())?);
@@ -362,7 +355,6 @@ fn execute_function_body_for_scalar(
 				}
 			}
 
-			// === Control flow ===
 			Instruction::Jump(addr) => {
 				ip = *addr;
 				continue;
@@ -389,7 +381,6 @@ fn execute_function_body_for_scalar(
 				let _ = symbols.exit_scope();
 			}
 
-			// === Return ===
 			Instruction::ReturnValue => {
 				let v = stack.pop().unwrap_or(Value::none());
 				return Ok(v);
@@ -398,7 +389,6 @@ fn execute_function_body_for_scalar(
 				return Ok(Value::none());
 			}
 
-			// === Query ===
 			Instruction::Query(plan) => match plan {
 				QueryPlan::Map(map_node) => {
 					if map_node.input.is_none() && !map_node.map.is_empty() {
@@ -427,7 +417,6 @@ fn execute_function_body_for_scalar(
 				// Emit in function body context - the stack top is the result
 			}
 
-			// === Function calls within function body ===
 			Instruction::Call {
 				name,
 				arity,

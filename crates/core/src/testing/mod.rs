@@ -27,6 +27,7 @@ pub struct CapturedInvocation {
 	pub message: String,
 }
 
+
 /// Identifies the primitive type category for a `testing::*::changed()` generator.
 pub struct TestingChanged {
 	pub schema_type: &'static str,

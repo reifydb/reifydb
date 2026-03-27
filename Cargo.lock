@@ -1077,6 +1077,7 @@ dependencies = [
  "axum",
  "clap",
  "reifydb",
+ "reifydb-catalog",
  "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
@@ -2543,12 +2544,12 @@ dependencies = [
  "rayon",
  "reifydb-auth",
  "reifydb-build",
+ "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-derive",
  "reifydb-engine",
- "reifydb-function",
  "reifydb-metric",
  "reifydb-rql",
  "reifydb-runtime",
@@ -2599,6 +2600,30 @@ name = "reifydb-build"
 version = "0.4.2"
 
 [[package]]
+name = "reifydb-builtin"
+version = "0.4.2"
+dependencies = [
+ "bumpalo",
+ "futures-util",
+ "indexmap",
+ "num-traits",
+ "postcard",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-sdk",
+ "reifydb-transaction",
+ "reifydb-type",
+ "reifydb-wasm",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "reifydb-catalog"
 version = "0.4.2"
 dependencies = [
@@ -2609,6 +2634,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-metric",
+ "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
  "reifydb-transaction",
@@ -2715,11 +2741,11 @@ dependencies = [
  "reifydb-abi",
  "reifydb-auth",
  "reifydb-build",
+ "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-client",
  "reifydb-core",
- "reifydb-function",
  "reifydb-metric",
  "reifydb-policy",
  "reifydb-rql",
@@ -2734,29 +2760,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tracing",
-]
-
-[[package]]
-name = "reifydb-function"
-version = "0.4.2"
-dependencies = [
- "futures-util",
- "indexmap",
- "num-traits",
- "postcard",
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-rql",
- "reifydb-runtime",
- "reifydb-sdk",
- "reifydb-transaction",
- "reifydb-type",
- "reifydb-wasm",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -2932,11 +2935,11 @@ dependencies = [
  "postcard",
  "reifydb-abi",
  "reifydb-build",
+ "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-function",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
@@ -3172,11 +3175,11 @@ version = "0.4.2"
 dependencies = [
  "reifydb-auth",
  "reifydb-build",
+ "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-function",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -3207,11 +3210,11 @@ dependencies = [
  "getrandom 0.4.2",
  "js-sys",
  "reifydb-auth",
+ "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-function",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",

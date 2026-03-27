@@ -4,7 +4,7 @@
 use std::{fs, process::Command};
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_engine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use reifydb_catalog::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,

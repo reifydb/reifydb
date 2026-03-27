@@ -6,7 +6,7 @@ members = [
     # Core crates
     "crates/auth",
     "crates/build",
-    "crates/function",
+    "crates/builtin",
     "crates/catalog",
     "crates/cdc",
     "crates/core",
@@ -63,7 +63,7 @@ members = [
 default-members = [
     # Core crates
     "crates/auth",
-    "crates/function",
+    "crates/builtin",
     "crates/catalog",
     "crates/cdc",
     "crates/core",
@@ -152,7 +152,7 @@ reifydb-client-derive = { version = "0.4.2", path = "pkg/rust/reifydb-client-der
 
 # Internal crates
 reifydb-auth = { version = "0.4.2", path = "crates/auth" }
-reifydb-function = { version = "0.4.2", path = "crates/function" }
+reifydb-builtin = { version = "0.4.2", path = "crates/builtin" }
 reifydb-catalog = { version = "0.4.2", path = "crates/catalog" }
 reifydb-cdc = { version = "0.4.2", path = "crates/cdc" }
 reifydb-core = { version = "0.4.2", path = "crates/core" }

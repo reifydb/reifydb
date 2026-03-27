@@ -78,8 +78,6 @@ where
 	}
 }
 
-// --- Actor-based EventBus ---
-
 struct EventEnvelope {
 	type_id: TypeId,
 	event: Box<dyn Any + Send>,

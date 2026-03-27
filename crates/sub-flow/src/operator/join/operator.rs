@@ -5,6 +5,7 @@ use std::sync::{Arc, LazyLock};
 
 use indexmap::IndexMap;
 use postcard::to_stdvec;
+use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	common::JoinType,
 	encoded::{key::EncodedKey, schema::RowSchema},
@@ -23,7 +24,6 @@ use reifydb_engine::{
 	},
 	vm::{executor::Executor, stack::SymbolTable},
 };
-use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
 	context::RuntimeContext,

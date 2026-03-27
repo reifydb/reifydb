@@ -32,8 +32,12 @@ violations_found=false
 violation_count=0
 
 while IFS= read -r file; do
-    # Match lines that are a comment starting with 4+ dashes: // ----
-    result=$(grep -nE '^\s*//\s*-{4,}' "$file" || true)
+    # Match lines that are section-divider comments:
+    #   // ----...          (4+ dashes)
+    #   // ====...          (4+ equals)
+    #   // -- Section --    (bracketed with 2+ dashes on each side)
+    #   // == Section ==    (bracketed with 2+ equals on each side)
+    result=$(grep -nE '^\s*//\s*(-{4,}|={4,}|--+\s+.*\s+--+\s*$|==+\s+.*\s+==+\s*$)' "$file" || true)
 
     if [ -n "$result" ]; then
         while IFS= read -r violation; do
@@ -63,14 +67,15 @@ if [ "$violations_found" = true ]; then
     echo ""
     echo "Section-divider comments like these are not allowed:"
     echo "  ❌ // ---- Section name ----"
+    echo "  ❌ // -- Section name --"
+    echo "  ❌ // ==== Section name ===="
     echo "  ❌ // ---------------------------------------------------------------------------"
+    echo "  ❌ // ========================================================================="
     echo ""
     echo "Use blank lines or doc-comments to separate sections instead."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     exit 1
 else
     echo "✅ No section-divider comment violations found!"
-    echo ""
-    echo "No comments starting with // ---- detected."
     exit 0
 fi

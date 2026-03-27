@@ -108,8 +108,6 @@ mod tests {
 
 	use super::*;
 
-	// -- Mock source --
-
 	struct MockSource;
 
 	impl FFISourceMetadata for MockSource {
@@ -137,8 +135,6 @@ mod tests {
 			Ok(())
 		}
 	}
-
-	// -- Mock sink --
 
 	struct MockSink;
 

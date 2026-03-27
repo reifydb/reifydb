@@ -3,14 +3,17 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
-use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
+use reifydb_catalog::{
+	catalog::{Catalog, procedure::ResolvedProcedure},
+	function::GeneratorContext,
+	procedure::context::ProcedureContext,
+};
 use reifydb_core::{
 	error::diagnostic::internal::internal_with_context,
 	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_function::GeneratorContext;
 use reifydb_rql::{
 	compiler::CompilationResult,
 	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
@@ -71,7 +74,6 @@ use crate::{
 	error::EngineError,
 	expression::{context::EvalSession, eval::evaluate},
 	policy::PolicyEvaluator,
-	procedure::context::ProcedureContext,
 	vm::instruction::{
 		ddl::{
 			alter::policy::alter_policy,
@@ -1548,7 +1550,6 @@ impl Vm {
 					self.stack.push(Variable::Columns(columns));
 				}
 
-				// === DDL (Drop) ===
 				Instruction::DropNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
@@ -1695,7 +1696,6 @@ impl Vm {
 					self.stack.push(Variable::Columns(columns));
 				}
 
-				// === DML ===
 				Instruction::Delete(node) => {
 					match tx {
 						Transaction::Query(_) => {

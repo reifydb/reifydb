@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use reifydb_catalog::function::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
+
+pub struct DurationNegate;
+
+impl DurationNegate {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl ScalarFunction for DurationNegate {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+		let columns = ctx.columns;
+		let row_count = ctx.row_count;
+
+		if columns.len() != 1 {
+			return Err(ScalarFunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: columns.len(),
+			});
+		}
+
+		let col = columns.get(0).unwrap();
+
+		match col.data() {
+			ColumnData::Duration(container_in) => {
+				let mut container = TemporalContainer::with_capacity(row_count);
+
+				for i in 0..row_count {
+					if let Some(val) = container_in.get(i) {
+						container.push(val.negate());
+					} else {
+						container.push_default();
+					}
+				}
+
+				Ok(ColumnData::Duration(container))
+			}
+			other => Err(ScalarFunctionError::InvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 0,
+				expected: vec![Type::Duration],
+				actual: other.get_type(),
+			}),
+		}
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
+}

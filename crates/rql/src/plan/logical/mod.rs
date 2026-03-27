@@ -963,8 +963,6 @@ pub enum RunTestsNode<'bump> {
 	Single(MaybeQualifiedTestIdentifier<'bump>),
 }
 
-// === Drop nodes ===
-
 #[derive(Debug)]
 pub struct DropNamespaceNode<'bump> {
 	pub segments: Vec<BumpFragment<'bump>>,
@@ -1013,8 +1011,6 @@ pub struct DropSubscriptionNode<'bump> {
 	pub if_exists: bool,
 	pub cascade: bool,
 }
-
-// === Auth/Permissions logical plan nodes ===
 
 #[derive(Debug)]
 pub struct CreateIdentityNode<'bump> {

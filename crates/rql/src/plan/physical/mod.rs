@@ -184,8 +184,6 @@ pub enum PhysicalPlan<'bump> {
 	DropPolicy(nodes::DropPolicyNode),
 }
 
-// --- Nodes with recursive children (bump-allocated) ---
-
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'bump> {
 	pub namespace: Namespace,

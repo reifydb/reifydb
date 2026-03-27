@@ -8,6 +8,7 @@ use reifydb_auth::{
 	registry::AuthenticationRegistry,
 	service::{AuthService, AuthServiceConfig},
 };
+use reifydb_builtin::{procedure::default_procedures, registry::default_functions};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
@@ -15,7 +16,9 @@ use reifydb_catalog::{
 		load_schema_registry,
 	},
 	catalog::Catalog,
+	function::registry::FunctionsBuilder,
 	materialized::MaterializedCatalog,
+	procedure::registry::ProceduresBuilder,
 	schema::RowSchemaRegistry,
 	system::SystemCatalog,
 };
@@ -36,13 +39,8 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{
-	EngineVersion,
-	engine::StandardEngine,
-	procedure::registry::{Procedures, ProceduresBuilder},
-	remote::RemoteRegistry,
-	transform::registry::Transforms,
+	EngineVersion, engine::StandardEngine, remote::RemoteRegistry, transform::registry::Transforms,
 };
-use reifydb_function::registry::{Functions, FunctionsBuilder};
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
@@ -244,7 +242,7 @@ impl DatabaseBuilder {
 	}
 
 	pub fn build(mut self) -> crate::Result<Database> {
-		let default_builder = Functions::defaults();
+		let default_builder = default_functions();
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -313,7 +311,10 @@ impl DatabaseBuilder {
 		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
 
 		let procedures = {
-			let mut procedures_builder = Procedures::defaults();
+			let mut procedures_builder = default_procedures().with_procedure(
+				"identity::inject",
+				reifydb_engine::procedure::identity_inject::IdentityInject::new,
+			);
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {

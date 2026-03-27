@@ -88,8 +88,6 @@ impl From<Columns> for Frame {
 	}
 }
 
-// === Reverse conversions: Frame → Columns ===
-
 impl From<FrameColumnData> for ColumnData {
 	fn from(value: FrameColumnData) -> Self {
 		match value {

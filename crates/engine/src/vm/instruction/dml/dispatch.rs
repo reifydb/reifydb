@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use reifydb_catalog::procedure::context::ProcedureContext;
 use reifydb_core::{
 	internal_error,
 	value::column::{Column, columns::Columns},
@@ -18,7 +19,6 @@ use reifydb_type::{
 use crate::{
 	Result,
 	expression::{context::EvalSession, eval::evaluate},
-	procedure::context::ProcedureContext,
 	vm::{services::Services, stack::Variable, vm::Vm},
 };
 

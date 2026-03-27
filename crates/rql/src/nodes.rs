@@ -827,8 +827,6 @@ pub enum AppendPhysicalSource {
 	Inline(InlineDataNode),
 }
 
-// --- Control flow and function nodes (owned, for PhysicalPlan enum) ---
-
 #[derive(Debug, Clone)]
 pub struct ConditionalNode {
 	pub condition: Expression,
@@ -880,8 +878,6 @@ pub struct CallFunctionNode {
 	pub arguments: Vec<Expression>,
 	pub is_procedure_call: bool,
 }
-
-// === Drop nodes ===
 
 #[derive(Debug, Clone)]
 pub struct DropNamespaceNode {
@@ -951,8 +947,6 @@ pub struct DropSeriesNode {
 	pub if_exists: bool,
 	pub cascade: bool,
 }
-
-// === Auth/Permissions physical plan nodes ===
 
 #[derive(Debug, Clone)]
 pub struct CreateIdentityNode {

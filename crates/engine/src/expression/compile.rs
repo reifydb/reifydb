@@ -819,8 +819,6 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> Result<Vec
 	exprs.iter().map(|e| compile_expression(ctx, e)).collect()
 }
 
-// --- Helper functions ---
-
 fn execute_logical_op(
 	left: &Column,
 	right: &Column,

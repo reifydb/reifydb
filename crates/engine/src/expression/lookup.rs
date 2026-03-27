@@ -147,11 +147,11 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Res
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_catalog::function::registry::Functions;
 	use reifydb_core::{
 		interface::identifier::{ColumnIdentifier, ColumnSchema},
 		value::column::{Column, columns::Columns, data::ColumnData},
 	};
-	use reifydb_function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};

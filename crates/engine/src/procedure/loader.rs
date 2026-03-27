@@ -24,12 +24,10 @@ use reifydb_abi::{
 		types::{PROCEDURE_MAGIC, ProcedureCreateFnFFI, ProcedureMagicFnFFI},
 	},
 };
+use reifydb_catalog::procedure::registry::{Procedures, ProceduresBuilder};
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
-use super::{
-	ffi::NativeProcedureFFI,
-	registry::{Procedures, ProceduresBuilder},
-};
+use super::ffi::NativeProcedureFFI;
 
 /// Extract a UTF-8 string from a BufferFFI
 ///

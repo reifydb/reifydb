@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
+use reifydb_catalog::function::{
+	ScalarFunction, ScalarFunctionContext,
+	error::{ScalarFunctionError, ScalarFunctionResult},
+	propagate_options,
+};
+use reifydb_core::value::column::data::ColumnData;
+use reifydb_type::value::{container::temporal::TemporalContainer, duration::Duration, r#type::Type};
+
+pub struct DateTimeDiff;
+
+impl DateTimeDiff {
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl ScalarFunction for DateTimeDiff {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
+		if let Some(result) = propagate_options(self, &ctx) {
+			return result;
+		}
+		let columns = ctx.columns;
+		let row_count = ctx.row_count;
+
+		if columns.len() != 2 {
+			return Err(ScalarFunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 2,
+				actual: columns.len(),
+			});
+		}
+
+		let col1 = columns.get(0).unwrap();
+		let col2 = columns.get(1).unwrap();
+
+		match (col1.data(), col2.data()) {
+			(ColumnData::DateTime(container1), ColumnData::DateTime(container2)) => {
+				let mut container = TemporalContainer::with_capacity(row_count);
+
+				for i in 0..row_count {
+					match (container1.get(i), container2.get(i)) {
+						(Some(dt1), Some(dt2)) => {
+							let diff_nanos = dt1.to_nanos() as i64 - dt2.to_nanos() as i64;
+							container.push(Duration::from_nanoseconds(diff_nanos)?);
+						}
+						_ => container.push_default(),
+					}
+				}
+
+				Ok(ColumnData::Duration(container))
+			}
+			(ColumnData::DateTime(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 1,
+				expected: vec![Type::DateTime],
+				actual: other.get_type(),
+			}),
+			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 0,
+				expected: vec![Type::DateTime],
+				actual: other.get_type(),
+			}),
+		}
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
+}

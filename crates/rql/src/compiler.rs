@@ -562,9 +562,6 @@ impl InstructionCompiler {
 		self.emit(Instruction::JumpIfFalsePop(0))
 	}
 
-	// ========================================================================
-	// Expression compilation
-	// ========================================================================
 	fn compile_expression(&mut self, expr: &Expression) {
 		match expr {
 			Expression::Constant(c) => {
@@ -823,10 +820,6 @@ impl InstructionCompiler {
 			}
 		}
 	}
-
-	// ========================================================================
-	// Plan compilation (operates on bump-allocated PhysicalPlan directly)
-	// ========================================================================
 
 	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
