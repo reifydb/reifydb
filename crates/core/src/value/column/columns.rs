@@ -17,7 +17,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::schema::{Schema, SchemaField},
+	encoded::schema::{RowSchema, RowSchemaField},
 	interface::{
 		catalog::{table::Table, view::View},
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
@@ -483,7 +483,7 @@ impl Columns {
 				}
 			}
 
-			let name = row.schema.get_field_name(idx).expect("Schema missing name for field");
+			let name = row.schema.get_field_name(idx).expect("RowSchema missing name for field");
 
 			columns.push(Column {
 				name: Fragment::internal(name),
@@ -511,13 +511,13 @@ impl Columns {
 		let row_number = self.row_numbers.first().unwrap().clone();
 
 		// Build schema fields for the layout
-		let fields: Vec<SchemaField> = self
+		let fields: Vec<RowSchemaField> = self
 			.columns
 			.iter()
-			.map(|col| SchemaField::unconstrained(col.name().text().to_string(), col.data().get_type()))
+			.map(|col| RowSchemaField::unconstrained(col.name().text().to_string(), col.data().get_type()))
 			.collect();
 
-		let layout = Schema::new(fields);
+		let layout = RowSchema::new(fields);
 		let mut encoded = layout.allocate();
 
 		// Get values and set them

@@ -133,7 +133,7 @@ pub(crate) fn execute_inline_flow_changes(
 		let view_entries = flow_txn.take_accumulator_entries();
 		for (id, diff) in &view_entries {
 			available_changes.push(Change {
-				origin: ChangeOrigin::Primitive(id.clone()),
+				origin: ChangeOrigin::Schema(id.clone()),
 				version: read_version,
 				diffs: vec![diff.clone()],
 			});
@@ -157,7 +157,7 @@ pub(crate) fn execute_inline_flow_changes(
 /// Uses the flow engine's `sources` map which records which primitives
 /// (tables/views) each flow listens to.
 fn flow_is_interested_in(change: &Change, flow_id: FlowId, engine: &FlowEngine) -> bool {
-	if let ChangeOrigin::Primitive(source) = change.origin {
+	if let ChangeOrigin::Schema(source) = change.origin {
 		engine.sources
 			.get(&source)
 			.map(|registrations| registrations.iter().any(|(fid, _)| *fid == flow_id))

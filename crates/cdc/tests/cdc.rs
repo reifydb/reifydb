@@ -18,7 +18,7 @@ use reifydb_cdc::consume::{
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
-		catalog::{id::TableId, primitive::PrimitiveId},
+		catalog::{id::TableId, schema::SchemaId},
 		cdc::{Cdc, CdcConsumerId, SystemChange},
 	},
 	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
@@ -93,7 +93,7 @@ fn test_event_processing() {
 		} = &cdc.system_changes[0]
 		{
 			if let Some(Row(table_row)) = Key::decode(key) {
-				assert_eq!(table_row.primitive, TableId(1));
+				assert_eq!(table_row.object, TableId(1));
 				assert_eq!(table_row.row, RowNumber((i + 1) as u64));
 			} else {
 				panic!("Expected Row key");
@@ -313,7 +313,7 @@ fn test_non_table_events_filtered() {
 
 	let mut txn = t.begin_command(IdentityId::system()).expect("Failed to begin transaction");
 
-	let table_key = RowKey::encoded(PrimitiveId::table(1), RowNumber(1));
+	let table_key = RowKey::encoded(SchemaId::table(1), RowNumber(1));
 	txn.set(&table_key, EncodedRow(CowVec::new(b"table_value".to_vec()))).expect("Failed to set table encoded");
 
 	let non_table_key = EncodedKey(CowVec::new(b"non_table_key".to_vec()));
@@ -351,7 +351,7 @@ fn test_non_table_events_filtered() {
 	} = table_change
 	{
 		if let Some(Row(table_row)) = Key::decode(key) {
-			assert_eq!(table_row.primitive, TableId(1));
+			assert_eq!(table_row.object, TableId(1));
 			assert_eq!(table_row.row, RowNumber(1));
 		} else {
 			panic!("Expected Row key");
@@ -737,7 +737,7 @@ impl CdcConsume for TestConsumer {
 fn insert_test_events(engine: &StandardEngine, count: usize) {
 	for i in 0..count {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let key = RowKey::encoded(PrimitiveId::table(1), RowNumber((i + 1) as u64));
+		let key = RowKey::encoded(SchemaId::table(1), RowNumber((i + 1) as u64));
 		let value = format!("value_{}", i);
 		txn.set(&key, EncodedRow(CowVec::new(value.into_bytes()))).unwrap();
 		txn.commit().unwrap();

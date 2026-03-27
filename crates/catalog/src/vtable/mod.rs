@@ -77,7 +77,7 @@ impl VTableRegistry {
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
 			PRIMITIVE_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_primitive_retention_policies_table())
+				Some(SystemCatalog::get_system_schema_retention_policies_table())
 			}
 			OPERATOR_RETENTION_POLICIES => {
 				Some(SystemCatalog::get_system_operator_retention_policies_table())
@@ -137,7 +137,7 @@ impl VTableRegistry {
 			SystemCatalog::get_system_primary_keys_table(),
 			SystemCatalog::get_system_primary_key_columns_table(),
 			SystemCatalog::get_system_versions_table(),
-			SystemCatalog::get_system_primitive_retention_policies_table(),
+			SystemCatalog::get_system_schema_retention_policies_table(),
 			SystemCatalog::get_system_operator_retention_policies_table(),
 			SystemCatalog::get_system_cdc_consumers_table(),
 			SystemCatalog::get_system_flows_table(),

@@ -21,7 +21,7 @@ use reifydb_catalog::{
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -112,7 +112,7 @@ impl Bridge {
 
 		let ioc_ref = ioc.clone();
 
-		let schema_registry = SchemaRegistry::new(single.clone());
+		let schema_registry = RowSchemaRegistry::new(single.clone());
 
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
 		bootstrap_root_identity(&multi, &single, &materialized_catalog, &eventbus)?;

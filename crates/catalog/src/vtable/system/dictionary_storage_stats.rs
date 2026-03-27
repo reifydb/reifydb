@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{primitive::PrimitiveId, vtable::VTable},
+	interface::catalog::{schema::SchemaId, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_metric::{MetricId, metric::MetricReader, multi::Tier};
@@ -62,7 +62,7 @@ impl BaseVTable for SystemDictionaryStorageStats {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
 				// Filter for dictionary sources only
-				if let MetricId::Source(PrimitiveId::Dictionary(dictionary_id)) = obj_id {
+				if let MetricId::Source(SchemaId::Dictionary(dictionary_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id = match CatalogStore::find_dictionary(txn, dictionary_id)? {
 						Some(dictionary) => dictionary.namespace.0,

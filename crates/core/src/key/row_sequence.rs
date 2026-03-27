@@ -4,13 +4,13 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::primitive::PrimitiveId,
+	interface::catalog::schema::SchemaId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowSequenceKey {
-	pub primitive: PrimitiveId,
+	pub object: SchemaId,
 }
 
 const VERSION: u8 = 1;
@@ -20,7 +20,7 @@ impl EncodableKey for RowSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_primitive_id(self.primitive);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_schema_id(self.object);
 		serializer.to_encoded_key()
 	}
 
@@ -37,18 +37,18 @@ impl EncodableKey for RowSequenceKey {
 			return None;
 		}
 
-		let primitive = de.read_primitive_id().ok()?;
+		let object = de.read_schema_id().ok()?;
 
 		Some(Self {
-			primitive,
+			object,
 		})
 	}
 }
 
 impl RowSequenceKey {
-	pub fn encoded(primitive: impl Into<PrimitiveId>) -> EncodedKey {
+	pub fn encoded(object: impl Into<SchemaId>) -> EncodedKey {
 		Self {
-			primitive: primitive.into(),
+			object: object.into(),
 		}
 		.encode()
 	}
@@ -73,23 +73,23 @@ impl RowSequenceKey {
 #[cfg(test)]
 pub mod tests {
 	use super::{EncodableKey, RowSequenceKey};
-	use crate::interface::catalog::primitive::PrimitiveId;
+	use crate::interface::catalog::schema::SchemaId;
 
 	#[test]
 	fn test_encode_decode() {
 		let key = RowSequenceKey {
-			primitive: PrimitiveId::table(0xABCD),
+			object: SchemaId::table(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![
 			0xFE, // version
 			0xF7, // kind
-			0x01, // PrimitiveId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // primitive id bytes
+			0x01, // SchemaId type discriminator (Table)
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // object id bytes
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(key.primitive, 0xABCD);
+		assert_eq!(key.object, 0xABCD);
 	}
 }

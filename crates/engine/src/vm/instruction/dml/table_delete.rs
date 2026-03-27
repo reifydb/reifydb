@@ -8,7 +8,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKeyRange, row::EncodedRow},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
+		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedTable},
 	},
 	internal_error,
 	key::{
@@ -88,7 +88,7 @@ pub(crate) fn delete<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
+	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
 
 	let mut deleted_count = 0;
 	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
@@ -193,7 +193,7 @@ pub(crate) fn delete<'a>(
 	} else {
 		// Delete entire table - scan all rows and delete them
 		let range = RowKeyRange {
-			primitive: table.id.into(),
+			object: table.id.into(),
 		};
 
 		// Get primary key info if table has one

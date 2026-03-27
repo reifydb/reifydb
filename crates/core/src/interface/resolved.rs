@@ -687,9 +687,9 @@ impl ResolvedFunction {
 		&self.0.def
 	}
 }
-/// Unified enum for any resolved primitive type
+/// Unified enum for any resolved schema type
 #[derive(Debug, Clone)]
-pub enum ResolvedPrimitive {
+pub enum ResolvedSchema {
 	Table(ResolvedTable),
 	TableVirtual(ResolvedTableVirtual),
 	View(ResolvedView),
@@ -700,7 +700,7 @@ pub enum ResolvedPrimitive {
 	Series(ResolvedSeries),
 }
 
-impl ResolvedPrimitive {
+impl ResolvedSchema {
 	/// Get the identifier fragment
 	pub fn identifier(&self) -> &Fragment {
 		match self {
@@ -715,7 +715,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Get the primitive name
+	/// Get the schema name
 	pub fn name(&self) -> &str {
 		match self {
 			Self::Table(t) => t.name(),
@@ -729,7 +729,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Get the namespace if this primitive has one
+	/// Get the namespace if this schema has one
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		match self {
 			Self::Table(t) => Some(t.namespace()),
@@ -743,17 +743,17 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Check if this primitive supports indexes
+	/// Check if this schema supports indexes
 	pub fn supports_indexes(&self) -> bool {
 		matches!(self, Self::Table(_))
 	}
 
-	/// Check if this primitive supports mutations
+	/// Check if this schema supports mutations
 	pub fn supports_mutations(&self) -> bool {
 		matches!(self, Self::Table(_) | Self::RingBuffer(_) | Self::Series(_))
 	}
 
-	/// Get columns for this primitive
+	/// Get columns for this schema
 	pub fn columns(&self) -> &[Column] {
 		match self {
 			Self::Table(t) => t.columns(),
@@ -772,7 +772,7 @@ impl ResolvedPrimitive {
 		self.columns().iter().find(|c| c.name == name)
 	}
 
-	/// Get the primitive kind name for error messages
+	/// Get the schema kind name for error messages
 	pub fn kind_name(&self) -> &'static str {
 		match self {
 			Self::Table(_) => "table",
@@ -800,7 +800,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a table if this is a table primitive
+	/// Convert to a table if this is a table schema
 	pub fn as_table(&self) -> Option<&ResolvedTable> {
 		match self {
 			Self::Table(t) => Some(t),
@@ -808,7 +808,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a view if this is a view primitive
+	/// Convert to a view if this is a view schema
 	pub fn as_view(&self) -> Option<&ResolvedView> {
 		match self {
 			Self::View(v) => Some(v),
@@ -816,7 +816,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a ring buffer if this is a ring buffer primitive
+	/// Convert to a ring buffer if this is a ring buffer schema
 	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
@@ -824,7 +824,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a dictionary if this is a dictionary primitive
+	/// Convert to a dictionary if this is a dictionary schema
 	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary> {
 		match self {
 			Self::Dictionary(d) => Some(d),
@@ -832,7 +832,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a series if this is a series primitive
+	/// Convert to a series if this is a series schema
 	pub fn as_series(&self) -> Option<&ResolvedSeries> {
 		match self {
 			Self::Series(s) => Some(s),
@@ -841,7 +841,7 @@ impl ResolvedPrimitive {
 	}
 }
 
-/// Column with its resolved primitive
+/// Column with its resolved schema
 #[derive(Debug, Clone)]
 pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 
@@ -849,17 +849,17 @@ pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 struct ResolvedColumnInner {
 	/// Original identifier with fragments
 	pub identifier: Fragment,
-	/// The resolved primitive this column belongs to
-	pub primitive: ResolvedPrimitive,
+	/// The resolved schema this column belongs to
+	pub schema: ResolvedSchema,
 	/// The column definition
 	pub def: Column,
 }
 
 impl ResolvedColumn {
-	pub fn new(identifier: Fragment, primitive: ResolvedPrimitive, def: Column) -> Self {
+	pub fn new(identifier: Fragment, schema: ResolvedSchema, def: Column) -> Self {
 		Self(Arc::new(ResolvedColumnInner {
 			identifier,
-			primitive,
+			schema,
 			def,
 		}))
 	}
@@ -879,9 +879,9 @@ impl ResolvedColumn {
 		&self.0.identifier
 	}
 
-	/// Get the primitive
-	pub fn primitive(&self) -> &ResolvedPrimitive {
-		&self.0.primitive
+	/// Get the schema
+	pub fn schema(&self) -> &ResolvedSchema {
+		&self.0.schema
 	}
 
 	/// Get the type constraint of this column
@@ -906,16 +906,16 @@ impl ResolvedColumn {
 
 	/// Get the namespace this column belongs to
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
-		self.0.primitive.namespace()
+		self.0.schema.namespace()
 	}
 
 	/// Get fully qualified name
 	pub fn qualified_name(&self) -> String {
-		match self.0.primitive.fully_qualified_name() {
-			Some(primitive_name) => {
-				format!("{}.{}", primitive_name, self.name())
+		match self.0.schema.fully_qualified_name() {
+			Some(schema_name) => {
+				format!("{}.{}", schema_name, self.name())
 			}
-			None => format!("{}.{}", self.0.primitive.identifier().text(), self.name()),
+			None => format!("{}.{}", self.0.schema.identifier().text(), self.name()),
 		}
 	}
 
@@ -928,7 +928,7 @@ impl ResolvedColumn {
 	pub fn to_static(&self) -> ResolvedColumn {
 		ResolvedColumn(Arc::new(ResolvedColumnInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
-			primitive: self.0.primitive.clone(),
+			schema: self.0.schema.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -937,29 +937,29 @@ impl ResolvedColumn {
 // Helper function to convert ResolvedColumn to NumberOutOfRangeDescriptor
 // This is used in evaluation context for error reporting
 pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOutOfRangeDescriptor {
-	let (namespace, table) = match column.primitive() {
-		ResolvedPrimitive::Table(table) => {
+	let (namespace, table) = match column.schema() {
+		ResolvedSchema::Table(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedPrimitive::TableVirtual(table) => {
+		ResolvedSchema::TableVirtual(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedPrimitive::RingBuffer(rb) => {
+		ResolvedSchema::RingBuffer(rb) => {
 			(Some(rb.namespace().name().to_string()), Some(rb.name().to_string()))
 		}
-		ResolvedPrimitive::View(view) => {
+		ResolvedSchema::View(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedPrimitive::DeferredView(view) => {
+		ResolvedSchema::DeferredView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedPrimitive::TransactionalView(view) => {
+		ResolvedSchema::TransactionalView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedPrimitive::Dictionary(dict) => {
+		ResolvedSchema::Dictionary(dict) => {
 			(Some(dict.namespace().name().to_string()), Some(dict.name().to_string()))
 		}
-		ResolvedPrimitive::Series(series) => {
+		ResolvedSchema::Series(series) => {
 			(Some(series.namespace().name().to_string()), Some(series.name().to_string()))
 		}
 	};
@@ -1071,20 +1071,20 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_resolved_primitive_enum() {
+	fn test_resolved_schema_enum() {
 		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let primitive = ResolvedPrimitive::Table(table);
+		let schema = ResolvedSchema::Table(table);
 
-		assert!(primitive.supports_indexes());
-		assert!(primitive.supports_mutations());
-		assert_eq!(primitive.kind_name(), "table");
+		assert!(schema.supports_indexes());
+		assert!(schema.supports_mutations());
+		assert_eq!(schema.kind_name(), "table");
 		// effective_name removed - use identifier().text() instead
-		assert_eq!(primitive.fully_qualified_name(), Some("public::users".to_string()));
-		assert!(primitive.as_table().is_some());
-		assert!(primitive.as_view().is_none());
+		assert_eq!(schema.fully_qualified_name(), Some("public::users".to_string()));
+		assert!(schema.as_table().is_some());
+		assert!(schema.as_view().is_none());
 	}
 
 	#[test]
@@ -1093,7 +1093,7 @@ pub mod tests {
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let primitive = ResolvedPrimitive::Table(table);
+		let schema = ResolvedSchema::Table(table);
 
 		let column_ident = Fragment::testing("id");
 
@@ -1107,7 +1107,7 @@ pub mod tests {
 			dictionary_id: None,
 		};
 
-		let column = ResolvedColumn::new(column_ident, primitive, column);
+		let column = ResolvedColumn::new(column_ident, schema, column);
 
 		assert_eq!(column.name(), "id");
 		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));

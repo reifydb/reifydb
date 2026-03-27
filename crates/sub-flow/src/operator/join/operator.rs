@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use postcard::to_stdvec;
 use reifydb_core::{
 	common::JoinType,
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, schema::RowSchema},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
@@ -66,7 +66,7 @@ pub struct JoinOperator {
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
-	schema: Schema,
+	schema: RowSchema,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
 	functions: Functions,
@@ -133,8 +133,8 @@ impl JoinOperator {
 		}
 	}
 
-	fn state_schema() -> Schema {
-		Schema::testing(&[Type::Blob])
+	fn state_schema() -> RowSchema {
+		RowSchema::testing(&[Type::Blob])
 	}
 
 	/// Compute join keys for all rows in Columns
@@ -458,7 +458,7 @@ impl JoinOperator {
 impl RawStatefulOperator for JoinOperator {}
 
 impl SingleStateful for JoinOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.schema.clone()
 	}
 }

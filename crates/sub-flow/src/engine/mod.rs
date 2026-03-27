@@ -21,7 +21,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
 		id::{TableId, ViewId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	},
 };
 use reifydb_engine::vm::executor::Executor;
@@ -45,8 +45,8 @@ pub struct FlowEngine {
 	pub(crate) executor: Executor,
 	pub(crate) operators: BTreeMap<FlowNodeId, Arc<Operators>>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
-	pub(crate) sources: BTreeMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: BTreeMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sources: BTreeMap<SchemaId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sinks: BTreeMap<SchemaId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,

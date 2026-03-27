@@ -881,7 +881,7 @@ impl From<RqlError> for Error {
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
-	SourceNotFound(PrimitiveNotFoundError),
+	SourceNotFound(SchemaNotFoundError),
 	ColumnNotFound {
 		column: String,
 	},
@@ -1005,27 +1005,15 @@ impl From<IdentifierError> for Error {
 	}
 }
 
-/// Namespace not found error
+/// Schema (table/view) not found error
 #[derive(Debug, Clone)]
 pub struct SchemaNotFoundError {
-	pub namespace: String,
-}
-
-impl fmt::Display for SchemaNotFoundError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Namespace '{}' does not exist", self.namespace)
-	}
-}
-
-/// Source (table/view) not found error
-#[derive(Debug, Clone)]
-pub struct PrimitiveNotFoundError {
 	pub namespace: String,
 	pub name: String,
 	pub fragment: Fragment,
 }
 
-impl fmt::Display for PrimitiveNotFoundError {
+impl fmt::Display for SchemaNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if self.namespace == "public" || self.namespace.is_empty() {
 			write!(f, "Table or view '{}' does not exist", self.name)
@@ -1035,7 +1023,7 @@ impl fmt::Display for PrimitiveNotFoundError {
 	}
 }
 
-impl PrimitiveNotFoundError {
+impl SchemaNotFoundError {
 	/// Create error with additional context about what type was expected
 	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
 		// Could extend this to include expected type in the error
@@ -1100,23 +1088,15 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_schema_not_found_display() {
+	fn test_source_not_found_display() {
 		let err = SchemaNotFoundError {
-			namespace: "myschema".to_string(),
-		};
-		assert_eq!(err.to_string(), "Namespace 'myschema' does not exist");
-	}
-
-	#[test]
-	fn test_primitive_not_found_display() {
-		let err = PrimitiveNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
-		let err = PrimitiveNotFoundError {
+		let err = SchemaNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,

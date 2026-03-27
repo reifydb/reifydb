@@ -33,11 +33,11 @@ pub mod policies;
 pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
-pub mod primitive_retention_policies;
 pub mod procedures;
 pub mod ringbuffers;
 pub mod roles;
 pub mod schema_fields;
+pub mod schema_retention_policies;
 pub mod schemas;
 pub mod sequence;
 pub mod series;
@@ -85,10 +85,10 @@ use policies::policies;
 use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
-use primitive_retention_policies::primitive_retention_policies;
 use procedures::procedures;
 use roles::roles;
 use schema_fields::schema_fields;
+use schema_retention_policies::schema_retention_policies;
 use schemas::schemas;
 use sequence::sequences;
 use series::series;
@@ -414,7 +414,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod primitive_retention_policies {
+		pub mod schema_retention_policies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const PRIMITIVE_ID: ColumnId = ColumnId(1);
@@ -857,9 +857,9 @@ impl SystemCatalog {
 		versions()
 	}
 
-	/// Get the primitive_retention_policies virtual table definition
-	pub fn get_system_primitive_retention_policies_table() -> Arc<VTable> {
-		primitive_retention_policies()
+	/// Get the schema_retention_policies virtual table definition
+	pub fn get_system_schema_retention_policies_table() -> Arc<VTable> {
+		schema_retention_policies()
 	}
 
 	/// Get the operator_retention_policies virtual table definition

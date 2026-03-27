@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,11 +41,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_u32() {
-		let schema = Schema::testing(&[Type::Uint4]);
+		let schema = RowSchema::testing(&[Type::Uint4]);
 		let mut row = schema.allocate();
 		schema.set_u32(&mut row, 0, 4294967295u32);
 		assert_eq!(schema.get_u32(&row, 0), 4294967295u32);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u32() {
-		let schema = Schema::testing(&[Type::Uint4]);
+		let schema = RowSchema::testing(&[Type::Uint4]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_u32(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let schema = Schema::testing(&[Type::Uint4]);
+		let schema = RowSchema::testing(&[Type::Uint4]);
 		let mut row = schema.allocate();
 
 		schema.set_u32(&mut row, 0, u32::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let schema = Schema::testing(&[Type::Uint4]);
+		let schema = RowSchema::testing(&[Type::Uint4]);
 
 		let test_values = [
 			0u32,
@@ -104,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_timestamp_values() {
-		let schema = Schema::testing(&[Type::Uint4]);
+		let schema = RowSchema::testing(&[Type::Uint4]);
 
 		// Test Unix timestamp values that fit in u32
 		let timestamps = [
@@ -123,7 +123,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Uint4, Type::Float4, Type::Uint4]);
+		let schema = RowSchema::testing(&[Type::Uint4, Type::Float4, Type::Uint4]);
 		let mut row = schema.allocate();
 
 		schema.set_u32(&mut row, 0, 3_000_000_000u32);
@@ -137,7 +137,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Uint4, Type::Uint4]);
+		let schema = RowSchema::testing(&[Type::Uint4, Type::Uint4]);
 		let mut row = schema.allocate();
 
 		schema.set_u32(&mut row, 0, 123456789u32);
@@ -151,7 +151,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u32_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Schema definitions for encoding row data with consistent field layouts.
+//! RowSchema definitions for encoding row data with consistent field layouts.
 //!
-//! A `Schema` describes the structure of encoded row data, including:
+//! A `RowSchema` describes the structure of encoded row data, including:
 //! - Field names, types, and order
 //! - Memory layout (offsets, sizes, alignment)
 //! - A content-addressable fingerprint for deduplication
@@ -30,7 +30,7 @@ use reifydb_type::{
 use serde::{Deserialize, Serialize};
 
 use super::row::EncodedRow;
-use crate::encoded::schema::fingerprint::{SchemaFingerprint, compute_fingerprint};
+use crate::encoded::schema::fingerprint::{RowSchemaFingerprint, compute_fingerprint};
 
 /// Size of schema header (fingerprint) in bytes
 pub const SCHEMA_HEADER_SIZE: usize = 8;
@@ -43,7 +43,7 @@ const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 /// A field within a schema
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SchemaField {
+pub struct RowSchemaField {
 	/// Field name
 	pub name: String,
 	/// Field type constraint (includes base type and optional constraints like MaxBytes)
@@ -56,9 +56,9 @@ pub struct SchemaField {
 	pub align: u8,
 }
 
-impl SchemaField {
+impl RowSchemaField {
 	/// Create a new schema field with a type constraint.
-	/// Offset, size, and alignment are computed when added to a Schema.
+	/// Offset, size, and alignment are computed when added to a RowSchema.
 	pub fn new(name: impl Into<String>, constraint: TypeConstraint) -> Self {
 		let storage_type = constraint.storage_type();
 		Self {
@@ -78,7 +78,7 @@ impl SchemaField {
 }
 
 /// A schema describing the structure of encoded row data.
-pub struct Schema(Arc<Inner>);
+pub struct RowSchema(Arc<Inner>);
 
 /// Inner data for a schema describing the structure of encoded row data.
 ///
@@ -88,9 +88,9 @@ pub struct Schema(Arc<Inner>);
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Inner {
 	/// Content-addressable fingerprint (hash of canonical field representation)
-	pub fingerprint: SchemaFingerprint,
+	pub fingerprint: RowSchemaFingerprint,
 	/// Fields in definition order
-	pub fields: Vec<SchemaField>,
+	pub fields: Vec<RowSchemaField>,
 	/// Cached layout computation (total_size, max_align) - computed once on first use
 	#[serde(skip)]
 	cached_layout: OnceLock<(usize, usize)>,
@@ -104,7 +104,7 @@ impl PartialEq for Inner {
 
 impl Eq for Inner {}
 
-impl Deref for Schema {
+impl Deref for RowSchema {
 	type Target = Inner;
 
 	fn deref(&self) -> &Self::Target {
@@ -112,31 +112,31 @@ impl Deref for Schema {
 	}
 }
 
-impl Clone for Schema {
+impl Clone for RowSchema {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
-impl Debug for Schema {
+impl Debug for RowSchema {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		self.0.fmt(f)
 	}
 }
 
-impl PartialEq for Schema {
+impl PartialEq for RowSchema {
 	fn eq(&self, other: &Self) -> bool {
 		self.0.as_ref() == other.0.as_ref()
 	}
 }
 
-impl Eq for Schema {}
+impl Eq for RowSchema {}
 
-impl Schema {
+impl RowSchema {
 	/// Create a new schema from a list of fields.
 	///
 	/// This computes the memory layout (offsets, alignment) and fingerprint.
-	pub fn new(fields: Vec<SchemaField>) -> Self {
+	pub fn new(fields: Vec<RowSchemaField>) -> Self {
 		let fields = Self::compute_layout(fields);
 		let fingerprint = compute_fingerprint(&fields);
 
@@ -149,7 +149,7 @@ impl Schema {
 
 	/// Create a schema from pre-computed fields and fingerprint.
 	/// Used when loading from storage.
-	pub fn from_parts(fingerprint: SchemaFingerprint, fields: Vec<SchemaField>) -> Self {
+	pub fn from_parts(fingerprint: RowSchemaFingerprint, fields: Vec<RowSchemaField>) -> Self {
 		Self(Arc::new(Inner {
 			fingerprint,
 			fields,
@@ -158,12 +158,12 @@ impl Schema {
 	}
 
 	/// Get the schema's fingerprint
-	pub fn fingerprint(&self) -> SchemaFingerprint {
+	pub fn fingerprint(&self) -> RowSchemaFingerprint {
 		self.fingerprint
 	}
 
 	/// Get the fields in this schema
-	pub fn fields(&self) -> &[SchemaField] {
+	pub fn fields(&self) -> &[RowSchemaField] {
 		&self.fields
 	}
 
@@ -173,7 +173,7 @@ impl Schema {
 	}
 
 	/// Find a field by name
-	pub fn find_field(&self, name: &str) -> Option<&SchemaField> {
+	pub fn find_field(&self, name: &str) -> Option<&RowSchemaField> {
 		self.fields.iter().find(|f| f.name == name)
 	}
 
@@ -183,7 +183,7 @@ impl Schema {
 	}
 
 	/// Find a field by index
-	pub fn get_field(&self, index: usize) -> Option<&SchemaField> {
+	pub fn get_field(&self, index: usize) -> Option<&RowSchemaField> {
 		self.fields.get(index)
 	}
 
@@ -199,7 +199,7 @@ impl Schema {
 
 	/// Compute memory layout for fields.
 	/// Returns the fields with computed offsets and the total row size.
-	fn compute_layout(mut fields: Vec<SchemaField>) -> Vec<SchemaField> {
+	fn compute_layout(mut fields: Vec<RowSchemaField>) -> Vec<RowSchemaField> {
 		// Start offset calculation from where data section begins (after header + bitvec)
 		let bitvec_size = (fields.len() + 7) / 8;
 		let mut offset: u32 = (SCHEMA_HEADER_SIZE + bitvec_size) as u32;
@@ -441,10 +441,10 @@ impl Schema {
 	/// Fields are named f0, f1, f2, etc. and have unconstrained types.
 	/// Useful for tests and simple state schemas.
 	pub fn testing(types: &[Type]) -> Self {
-		Schema::new(
+		RowSchema::new(
 			types.iter()
 				.enumerate()
-				.map(|(i, t)| SchemaField::unconstrained(format!("f{}", i), t.clone()))
+				.map(|(i, t)| RowSchemaField::unconstrained(format!("f{}", i), t.clone()))
 				.collect(),
 		)
 	}
@@ -457,12 +457,12 @@ mod tests {
 	#[test]
 	fn test_schema_creation() {
 		let fields = vec![
-			SchemaField::unconstrained("id", Type::Int8),
-			SchemaField::unconstrained("name", Type::Utf8),
-			SchemaField::unconstrained("active", Type::Boolean),
+			RowSchemaField::unconstrained("id", Type::Int8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
+			RowSchemaField::unconstrained("active", Type::Boolean),
 		];
 
-		let schema = Schema::new(fields);
+		let schema = RowSchema::new(fields);
 
 		assert_eq!(schema.field_count(), 3);
 		assert_eq!(schema.fields()[0].name, "id");
@@ -472,25 +472,29 @@ mod tests {
 
 	#[test]
 	fn test_schema_fingerprint_deterministic() {
-		let fields1 =
-			vec![SchemaField::unconstrained("a", Type::Int4), SchemaField::unconstrained("b", Type::Utf8)];
+		let fields1 = vec![
+			RowSchemaField::unconstrained("a", Type::Int4),
+			RowSchemaField::unconstrained("b", Type::Utf8),
+		];
 
-		let fields2 =
-			vec![SchemaField::unconstrained("a", Type::Int4), SchemaField::unconstrained("b", Type::Utf8)];
+		let fields2 = vec![
+			RowSchemaField::unconstrained("a", Type::Int4),
+			RowSchemaField::unconstrained("b", Type::Utf8),
+		];
 
-		let schema1 = Schema::new(fields1);
-		let schema2 = Schema::new(fields2);
+		let schema1 = RowSchema::new(fields1);
+		let schema2 = RowSchema::new(fields2);
 
 		assert_eq!(schema1.fingerprint(), schema2.fingerprint());
 	}
 
 	#[test]
 	fn test_schema_fingerprint_different_for_different_schemas() {
-		let fields1 = vec![SchemaField::unconstrained("a", Type::Int4)];
-		let fields2 = vec![SchemaField::unconstrained("a", Type::Int8)];
+		let fields1 = vec![RowSchemaField::unconstrained("a", Type::Int4)];
+		let fields2 = vec![RowSchemaField::unconstrained("a", Type::Int8)];
 
-		let schema1 = Schema::new(fields1);
-		let schema2 = Schema::new(fields2);
+		let schema1 = RowSchema::new(fields1);
+		let schema2 = RowSchema::new(fields2);
 
 		assert_ne!(schema1.fingerprint(), schema2.fingerprint());
 	}
@@ -498,11 +502,11 @@ mod tests {
 	#[test]
 	fn test_find_field() {
 		let fields = vec![
-			SchemaField::unconstrained("id", Type::Int8),
-			SchemaField::unconstrained("name", Type::Utf8),
+			RowSchemaField::unconstrained("id", Type::Int8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
 		];
 
-		let schema = Schema::new(fields);
+		let schema = RowSchema::new(fields);
 
 		assert!(schema.find_field("id").is_some());
 		assert!(schema.find_field("name").is_some());

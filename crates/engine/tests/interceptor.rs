@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::encoded::schema::{Schema, SchemaField};
+use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 use reifydb_engine::test_prelude::*;
 use reifydb_transaction::interceptor::{
 	dictionary_row::dictionary_row_pre_insert,
@@ -22,7 +22,7 @@ fn test_table_row_pre_insert_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_insert.add(Arc::new(table_row_pre_insert(|ctx| {
-			let schema = Schema::from(&ctx.table.columns);
+			let schema = RowSchema::from(&ctx.table.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -43,7 +43,7 @@ fn test_table_row_pre_update_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_update.add(Arc::new(table_row_pre_update(|ctx| {
-			let schema = Schema::from(&ctx.table.columns);
+			let schema = RowSchema::from(&ctx.table.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -65,7 +65,7 @@ fn test_ringbuffer_row_pre_insert_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_insert.add(Arc::new(ringbuffer_row_pre_insert(|ctx| {
-			let schema = Schema::from(&ctx.ringbuffer.columns);
+			let schema = RowSchema::from(&ctx.ringbuffer.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -86,7 +86,7 @@ fn test_ringbuffer_row_pre_update_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_update.add(Arc::new(ringbuffer_row_pre_update(|ctx| {
-			let schema = Schema::from(&ctx.ringbuffer.columns);
+			let schema = RowSchema::from(&ctx.ringbuffer.columns);
 			schema.set_value(&mut ctx.row, 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -122,10 +122,10 @@ fn test_dictionary_row_pre_insert_mutates_value() {
 	assert_eq!(row.get::<String>("value").unwrap().unwrap(), "MUTATED");
 }
 
-fn series_schema() -> Schema {
-	Schema::new(vec![
-		SchemaField::new("ts", TypeConstraint::unconstrained(Type::Int8)),
-		SchemaField::new("val", TypeConstraint::unconstrained(Type::Int8)),
+fn series_schema() -> RowSchema {
+	RowSchema::new(vec![
+		RowSchemaField::new("ts", TypeConstraint::unconstrained(Type::Int8)),
+		RowSchemaField::new("val", TypeConstraint::unconstrained(Type::Int8)),
 	])
 }
 

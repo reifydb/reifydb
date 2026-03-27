@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: impl Into<u16>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,11 +41,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_u16() {
-		let schema = Schema::testing(&[Type::Uint2]);
+		let schema = RowSchema::testing(&[Type::Uint2]);
 		let mut row = schema.allocate();
 		schema.set_u16(&mut row, 0, 65535u16);
 		assert_eq!(schema.get_u16(&row, 0), 65535u16);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u16() {
-		let schema = Schema::testing(&[Type::Uint2]);
+		let schema = RowSchema::testing(&[Type::Uint2]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_u16(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let schema = Schema::testing(&[Type::Uint2]);
+		let schema = RowSchema::testing(&[Type::Uint2]);
 		let mut row = schema.allocate();
 
 		schema.set_u16(&mut row, 0, u16::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_values() {
-		let schema = Schema::testing(&[Type::Uint2]);
+		let schema = RowSchema::testing(&[Type::Uint2]);
 
 		let test_values = [0u16, 1u16, 255u16, 256u16, 32767u16, 32768u16, 65534u16, 65535u16];
 
@@ -94,7 +94,7 @@ pub mod tests {
 
 	#[test]
 	fn test_port_numbers() {
-		let schema = Schema::testing(&[Type::Uint2]);
+		let schema = RowSchema::testing(&[Type::Uint2]);
 
 		// Test common port numbers
 		let ports = [80u16, 443u16, 8080u16, 3000u16, 5432u16, 27017u16];
@@ -108,7 +108,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Uint2, Type::Uint1, Type::Uint2]);
+		let schema = RowSchema::testing(&[Type::Uint2, Type::Uint1, Type::Uint2]);
 		let mut row = schema.allocate();
 
 		schema.set_u16(&mut row, 0, 60000u16);
@@ -122,7 +122,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Uint2, Type::Uint2]);
+		let schema = RowSchema::testing(&[Type::Uint2, Type::Uint2]);
 		let mut row = schema.allocate();
 
 		schema.set_u16(&mut row, 0, 12345u16);
@@ -136,7 +136,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u16_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

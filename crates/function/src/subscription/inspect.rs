@@ -71,7 +71,7 @@ impl GeneratorFunction for InspectSubscription {
 		drop(stream); // Explicitly drop to release the borrow on txn
 
 		let catalog = ctx.catalog;
-		let schema_registry = &catalog.schema;
+		let row_schema_registry = &catalog.schema;
 
 		// Process collected entries
 		for entry in entries {
@@ -79,7 +79,7 @@ impl GeneratorFunction for InspectSubscription {
 				row_numbers.push(sub_row_key.row);
 
 				let fingerprint = entry.row.fingerprint();
-				let schema = schema_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
+				let schema = row_schema_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
 					Error(internal(format!("Schema not found for fingerprint: {:?}", fingerprint)))
 				})?;
 

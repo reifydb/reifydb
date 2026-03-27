@@ -25,7 +25,7 @@ use reifydb_catalog::{
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -216,8 +216,8 @@ impl WasmDB {
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
-		// Create SchemaRegistry for bootstrap
-		let schema_registry = SchemaRegistry::new(single.clone());
+		// Create RowSchemaRegistry for bootstrap
+		let schema_registry = RowSchemaRegistry::new(single.clone());
 
 		// Run shared bootstrap: load catalog, config defaults, system procedures, schemas
 		load_materialized_catalog(&multi, &single, &materialized_catalog)

@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::policy::PolicyTargetType,
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
 	},
 	internal_error,
 	value::column::columns::Columns,
@@ -74,7 +74,7 @@ pub(crate) fn update_ringbuffer<'a>(
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
 
 	// Create execution context
 	let context = QueryContext {

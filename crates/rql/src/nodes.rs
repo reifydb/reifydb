@@ -18,7 +18,7 @@ use reifydb_core::{
 			series::SeriesKey,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema,
 			ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
@@ -782,7 +782,7 @@ pub struct WindowNode {
 #[derive(Debug, Clone)]
 pub struct RowPointLookupNode {
 	/// The source to look up in (table, ring buffer, etc.)
-	pub source: ResolvedPrimitive,
+	pub source: ResolvedSchema,
 	/// The row number to fetch
 	pub row_number: u64,
 }
@@ -791,7 +791,7 @@ pub struct RowPointLookupNode {
 #[derive(Debug, Clone)]
 pub struct RowListLookupNode {
 	/// The source to look up in
-	pub source: ResolvedPrimitive,
+	pub source: ResolvedSchema,
 	/// The row numbers to fetch
 	pub row_numbers: Vec<u64>,
 }
@@ -800,7 +800,7 @@ pub struct RowListLookupNode {
 #[derive(Debug, Clone)]
 pub struct RowRangeScanNode {
 	/// The source to scan
-	pub source: ResolvedPrimitive,
+	pub source: ResolvedSchema,
 	/// Start of the range (inclusive)
 	pub start: u64,
 	/// End of the range (inclusive)

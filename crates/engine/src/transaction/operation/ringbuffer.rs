@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
-		catalog::{primitive::PrimitiveId, ringbuffer::RingBuffer},
+		catalog::{ringbuffer::RingBuffer, schema::SchemaId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
@@ -19,7 +19,7 @@ use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::
 
 use crate::Result;
 
-fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
+fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
 	let fields = schema.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
@@ -42,12 +42,12 @@ fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &Encod
 
 fn build_ringbuffer_insert_change(
 	rb: &RingBuffer,
-	schema: &Schema,
+	schema: &RowSchema,
 	row_number: RowNumber,
 	encoded: &EncodedRow,
 ) -> Change {
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Insert {
 			post: build_encoded_columns(schema, row_number, encoded),
@@ -61,9 +61,9 @@ fn build_ringbuffer_update_change(
 	old: &EncodedRow,
 	new: &EncodedRow,
 ) -> Change {
-	let schema: Schema = (&rb.columns).into();
+	let schema: RowSchema = (&rb.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Update {
 			pre: build_encoded_columns(&schema, row_number, old),
@@ -73,9 +73,9 @@ fn build_ringbuffer_update_change(
 }
 
 fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedRow) -> Change {
-	let schema: Schema = (&rb.columns).into();
+	let schema: RowSchema = (&rb.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Remove {
 			pre: build_encoded_columns(&schema, row_number, encoded),
@@ -89,7 +89,7 @@ pub(crate) trait RingBufferOperations {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &Schema,
+		schema: &RowSchema,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow>;
@@ -112,7 +112,7 @@ impl RingBufferOperations for CommandTransaction {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &Schema,
+		schema: &RowSchema,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
@@ -199,7 +199,7 @@ impl RingBufferOperations for AdminTransaction {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &Schema,
+		schema: &RowSchema,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
@@ -279,7 +279,7 @@ impl RingBufferOperations for Transaction<'_> {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &Schema,
+		schema: &RowSchema,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {

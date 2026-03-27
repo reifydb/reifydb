@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock};
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -173,7 +173,7 @@ pub struct DistinctOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	compiled_expressions: Vec<CompiledExpr>,
-	schema: Schema,
+	schema: RowSchema,
 	functions: Functions,
 	runtime_context: RuntimeContext,
 }
@@ -201,7 +201,7 @@ impl DistinctOperator {
 			parent,
 			node,
 			compiled_expressions,
-			schema: Schema::testing(&[Type::Blob]),
+			schema: RowSchema::testing(&[Type::Blob]),
 			functions,
 			runtime_context,
 		}
@@ -464,7 +464,7 @@ impl DistinctOperator {
 impl RawStatefulOperator for DistinctOperator {}
 
 impl SingleStateful for DistinctOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.schema.clone()
 	}
 }

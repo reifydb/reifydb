@@ -116,7 +116,7 @@ pub fn create_test_column(
 		ColumnToCreate {
 			fragment: None,
 			namespace_name: "test_namespace".to_string(),
-			primitive_name: "test_table".to_string(),
+			schema_name: "test_table".to_string(),
 			column: name.to_string(),
 			constraint,
 			properties,
@@ -201,7 +201,7 @@ pub fn create_test_ringbuffer_column(
 		ColumnToCreate {
 			fragment: None,
 			namespace_name: "test_namespace".to_string(),
-			primitive_name: "test_ringbuffer".to_string(),
+			schema_name: "test_ringbuffer".to_string(),
 			column: name.to_string(),
 			constraint,
 			properties,

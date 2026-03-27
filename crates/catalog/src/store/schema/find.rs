@@ -1,171 +1,210 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Schema retrieval from storage.
+use std::sync::Arc;
 
-use reifydb_core::{
-	encoded::schema::{Schema, SchemaField, fingerprint::SchemaFingerprint},
-	error::diagnostic::internal::internal,
-	key::{
-		EncodableKey,
-		schema::{SchemaFieldKey, SchemaKey},
-	},
-};
-use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
-use reifydb_type::{
-	error::Error,
-	value::constraint::{FFITypeConstraint, TypeConstraint},
-};
-use tracing::{Span, field, instrument};
+use reifydb_core::interface::catalog::schema::{Schema, SchemaId};
+use reifydb_transaction::transaction::Transaction;
 
-use super::schema::{schema_field, schema_header};
-use crate::Result;
+use crate::{CatalogStore, Result, vtable::VTableRegistry};
 
-/// Find a schema by its fingerprint.
-///
-/// Returns None if the schema doesn't exist in storage.
-#[instrument(
-	name = "schema_store::find",
-	level = "trace",
-	skip(txn),
-	fields(
-		fingerprint = ?fingerprint,
-		found = field::Empty,
-		field_count = field::Empty
-	)
-)]
-pub(crate) fn find_schema_by_fingerprint(
-	txn: &mut SingleWriteTransaction,
-	fingerprint: SchemaFingerprint,
-) -> Result<Option<Schema>> {
-	// Read schema header
-	let header_key = SchemaKey::encoded(fingerprint);
-	let header_entry = match txn.get(&header_key)? {
-		Some(entry) => entry,
-		None => {
-			Span::current().record("found", false);
-			Span::current().record("field_count", 0);
-			return Ok(None);
+impl CatalogStore {
+	/// Find a object (table, store::view, or virtual table) by its SchemaId
+	/// Returns None if the object doesn't exist
+	pub(crate) fn find_schema(rx: &mut Transaction<'_>, object: impl Into<SchemaId>) -> Result<Option<Schema>> {
+		let object_id = object.into();
+
+		match object_id {
+			SchemaId::Table(table_id) => {
+				if let Some(table) = Self::find_table(rx, table_id)? {
+					Ok(Some(Schema::Table(table)))
+				} else {
+					Ok(None)
+				}
+			}
+			SchemaId::View(view_id) => {
+				if let Some(view) = Self::find_view(rx, view_id)? {
+					Ok(Some(Schema::View(view)))
+				} else {
+					Ok(None)
+				}
+			}
+			SchemaId::TableVirtual(vtable_id) => {
+				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
+					// Convert Arc<VTable> to VTable
+					let vtable = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
+					Ok(Some(Schema::TableVirtual(vtable)))
+				} else {
+					Ok(None)
+				}
+			}
+			SchemaId::RingBuffer(_ringbuffer_id) => {
+				// TODO: Implement find_ringbuffer when ring
+				// buffer catalog is ready For now, ring
+				// buffers are not yet queryable
+				Ok(None)
+			}
+			SchemaId::Dictionary(_dictionary_id) => {
+				// TODO: Implement find_dictionary when dictionary
+				// catalog is ready For now, dictionaries return
+				// None as they use a different retrieval mechanism
+				Ok(None)
+			}
+			SchemaId::Series(_series_id) => {
+				// TODO: Implement find_series when series
+				// catalog is ready
+				Ok(None)
+			}
 		}
-	};
-
-	let field_count = schema_header::SCHEMA.get_u16(&header_entry.row, schema_header::FIELD_COUNT) as usize;
-
-	let mut fields = Vec::with_capacity(field_count);
-	for i in 0..field_count {
-		let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
-		let field_entry = txn.get(&field_key)?.ok_or_else(|| {
-			Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
-		})?;
-
-		let name = schema_field::SCHEMA.get_utf8(&field_entry.row, schema_field::NAME).to_string();
-		let base_type = schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::TYPE);
-		let constraint_type = schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::CONSTRAINT_TYPE);
-		let constraint_param1 = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::CONSTRAINT_P1);
-		let constraint_param2 = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::CONSTRAINT_P2);
-		let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
-			base_type,
-			constraint_type,
-			constraint_param1,
-			constraint_param2,
-		});
-		let offset = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::OFFSET);
-		let size = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::SIZE);
-		let align = schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::ALIGN);
-
-		fields.push(SchemaField {
-			name,
-			constraint,
-			offset,
-			size,
-			align,
-		});
 	}
-
-	Span::current().record("found", true);
-	Span::current().record("field_count", field_count);
-	Ok(Some(Schema::from_parts(fingerprint, fields)))
 }
 
-/// Load all schemas from storage.
-///
-/// Used during startup to populate the schema registry cache.
-#[instrument(
-	name = "schema_store::load_all",
-	level = "debug",
-	skip(rx),
-	fields(
-		schema_count = field::Empty,
-		total_fields = field::Empty
-	)
-)]
-pub fn load_all_schemas(rx: &mut Transaction<'_>) -> Result<Vec<Schema>> {
-	// First pass: collect all schema headers (fingerprint, field_count)
-	let mut schema_headers: Vec<(SchemaFingerprint, usize)> = Vec::new();
+#[cfg(test)]
+pub mod tests {
+	use reifydb_core::interface::catalog::{
+		id::{TableId, ViewId},
+		schema::{Schema, SchemaId},
+		vtable::VTableId,
+	};
+	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_type::{
+		fragment::Fragment,
+		value::{constraint::TypeConstraint, r#type::Type},
+	};
 
-	{
-		let range = SchemaKey::full_scan();
-		let mut stream = rx.range(range, 1024)?;
+	use crate::{
+		CatalogStore,
+		store::view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
+		system::ids::vtable::SEQUENCES,
+		test_utils::{ensure_test_namespace, ensure_test_table},
+	};
 
-		while let Some(entry) = stream.next() {
-			let entry = entry?;
+	#[test]
+	fn test_find_schema_table() {
+		let mut txn = create_test_admin_transaction();
+		let table = ensure_test_table(&mut txn);
 
-			// Decode the fingerprint from the key
-			let schema_key = SchemaKey::decode(&entry.key)
-				.ok_or_else(|| Error(internal("Failed to decode schema key")))?;
+		// Find object by TableId
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), table.id)
+			.unwrap()
+			.expect("Schema should exist");
 
-			let field_count =
-				schema_header::SCHEMA.get_u16(&entry.row, schema_header::FIELD_COUNT) as usize;
+		match object {
+			Schema::Table(t) => {
+				assert_eq!(t.id, table.id);
+				assert_eq!(t.name, table.name);
+			}
+			_ => panic!("Expected table"),
+		}
 
-			schema_headers.push((schema_key.fingerprint, field_count));
+		// Find object by SchemaId::Table
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), SchemaId::Table(table.id))
+			.unwrap()
+			.expect("Schema should exist");
+
+		match object {
+			Schema::Table(t) => {
+				assert_eq!(t.id, table.id);
+			}
+			_ => panic!("Expected table"),
 		}
 	}
 
-	// Second pass: load fields for each schema
-	let mut schemas = Vec::with_capacity(schema_headers.len());
+	#[test]
+	fn test_find_schema_view() {
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
 
-	for (fingerprint, field_count) in schema_headers {
-		let mut fields = Vec::with_capacity(field_count);
+		let view = CatalogStore::create_deferred_view(
+			&mut txn,
+			ViewToCreate {
+				name: Fragment::internal("test_view"),
+				namespace: namespace.id(),
+				columns: vec![ViewColumnToCreate {
+					name: Fragment::internal("id"),
+					fragment: Fragment::None,
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
+				}],
+				storage: ViewStorageConfig::default(),
+			},
+		)
+		.unwrap();
 
-		for i in 0..field_count {
-			let field_key = SchemaFieldKey::encoded(fingerprint, i as u16);
-			let field_entry = rx.get(&field_key)?.ok_or_else(|| {
-				Error(internal(format!("Schema field {} missing for fingerprint {:?}", i, fingerprint)))
-			})?;
+		// Find object by ViewId
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), view.id())
+			.unwrap()
+			.expect("Schema should exist");
 
-			let name = schema_field::SCHEMA.get_utf8(&field_entry.row, schema_field::NAME).to_string();
-			let base_type = schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::TYPE);
-			let constraint_type =
-				schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::CONSTRAINT_TYPE);
-			let constraint_param1 =
-				schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::CONSTRAINT_P1);
-			let constraint_param2 =
-				schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::CONSTRAINT_P2);
-			let constraint = TypeConstraint::from_ffi(FFITypeConstraint {
-				base_type,
-				constraint_type,
-				constraint_param1,
-				constraint_param2,
-			});
-			let offset = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::OFFSET);
-			let size = schema_field::SCHEMA.get_u32(&field_entry.row, schema_field::SIZE);
-			let align = schema_field::SCHEMA.get_u8(&field_entry.row, schema_field::ALIGN);
-
-			fields.push(SchemaField {
-				name,
-				constraint,
-				offset,
-				size,
-				align,
-			});
+		match object {
+			Schema::View(v) => {
+				assert_eq!(v.id(), view.id());
+				assert_eq!(v.name(), view.name());
+			}
+			_ => panic!("Expected view"),
 		}
 
-		schemas.push(Schema::from_parts(fingerprint, fields));
+		// Find object by SchemaId::View
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), SchemaId::View(view.id()))
+			.unwrap()
+			.expect("Schema should exist");
+
+		match object {
+			Schema::View(v) => {
+				assert_eq!(v.id(), view.id());
+			}
+			_ => panic!("Expected view"),
+		}
 	}
 
-	let total_fields: usize = schemas.iter().map(|s| s.field_count()).sum();
-	Span::current().record("schema_count", schemas.len());
-	Span::current().record("total_fields", total_fields);
+	#[test]
+	fn test_find_schema_not_found() {
+		let mut txn = create_test_admin_transaction();
 
-	Ok(schemas)
+		// Non-existent table
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), TableId(999)).unwrap();
+		assert!(object.is_none());
+
+		// Non-existent view
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), ViewId(999)).unwrap();
+		assert!(object.is_none());
+
+		// Non-existent virtual table
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), VTableId(999)).unwrap();
+		assert!(object.is_none());
+	}
+
+	#[test]
+	fn test_find_schema_vtable() {
+		let mut txn = create_test_admin_transaction();
+
+		// Find the sequences virtual table
+		let sequences_id = SEQUENCES;
+		let object = CatalogStore::find_schema(&mut Transaction::Admin(&mut txn), sequences_id)
+			.unwrap()
+			.expect("Sequences virtual table should exist");
+
+		match object {
+			Schema::TableVirtual(tv) => {
+				assert_eq!(tv.id, sequences_id);
+				assert_eq!(tv.name, "sequences");
+			}
+			_ => panic!("Expected virtual table"),
+		}
+
+		// Find object by SchemaId::TableVirtual
+		let object = CatalogStore::find_schema(
+			&mut Transaction::Admin(&mut txn),
+			SchemaId::TableVirtual(sequences_id),
+		)
+		.unwrap()
+		.expect("Schema should exist");
+
+		match object {
+			Schema::TableVirtual(tv) => {
+				assert_eq!(tv.id, sequences_id);
+			}
+			_ => panic!("Expected virtual table"),
+		}
+	}
 }

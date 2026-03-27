@@ -4,7 +4,7 @@
 use reifydb_core::{
 	error::diagnostic::catalog::table_not_found,
 	interface::resolved::{
-		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, Sequence,
+		ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedSequence, ResolvedTable, Sequence,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -74,7 +74,7 @@ impl<'bump> Compiler<'bump> {
 		let resolved_table = ResolvedTable::new(table_fragment, resolved_namespace, table);
 
 		// Create resolved source and column
-		let resolved_source = ResolvedPrimitive::Table(resolved_table);
+		let resolved_source = ResolvedSchema::Table(resolved_table);
 		let resolved_column =
 			ResolvedColumn::new(self.interner.intern_fragment(&alter.column.name), resolved_source, column);
 

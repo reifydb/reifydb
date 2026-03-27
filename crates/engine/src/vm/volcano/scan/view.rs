@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	interface::resolved::ResolvedView,
 	internal_error,
 	key::{
@@ -26,7 +26,7 @@ pub(crate) struct ViewScanNode {
 	view: ResolvedView,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
@@ -47,7 +47,7 @@ impl ViewScanNode {
 		})
 	}
 
-	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<Schema> {
+	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -57,7 +57,7 @@ impl ViewScanNode {
 		let stored_ctx = self.context.as_ref().expect("ViewScanNode context not set");
 		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
-				"Schema with fingerprint {:?} not found for view {}",
+				"RowSchema with fingerprint {:?} not found for view {}",
 				fingerprint,
 				self.view.def().name()
 			)

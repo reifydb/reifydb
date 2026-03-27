@@ -4,19 +4,19 @@
 use reifydb_type::fragment::Fragment;
 use serde::{Deserialize, Serialize};
 
-/// Column identifier with primitive qualification
+/// Column identifier with schema qualification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnIdentifier {
-	pub primitive: ColumnPrimitive,
+	pub schema: ColumnSchema,
 	pub name: Fragment,
 }
 
 impl ColumnIdentifier {
-	pub fn with_primitive(namespace: Fragment, primitive: Fragment, name: Fragment) -> Self {
+	pub fn with_schema(namespace: Fragment, schema: Fragment, name: Fragment) -> Self {
 		Self {
-			primitive: ColumnPrimitive::Primitive {
+			schema: ColumnSchema::Qualified {
 				namespace,
-				primitive,
+				name: schema,
 			},
 			name,
 		}
@@ -24,21 +24,21 @@ impl ColumnIdentifier {
 
 	pub fn with_alias(alias: Fragment, name: Fragment) -> Self {
 		Self {
-			primitive: ColumnPrimitive::Alias(alias),
+			schema: ColumnSchema::Alias(alias),
 			name,
 		}
 	}
 
 	pub fn into_owned(self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			primitive: self.primitive,
+			schema: self.schema,
 			name: self.name,
 		}
 	}
 
 	pub fn to_static(&self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			primitive: self.primitive.clone(),
+			schema: self.schema.clone(),
 			name: Fragment::internal(self.name.text()),
 		}
 	}
@@ -46,50 +46,50 @@ impl ColumnIdentifier {
 
 /// How a column is qualified in plans (always fully qualified)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ColumnPrimitive {
-	/// Fully qualified by namespace.primitive
-	Primitive {
+pub enum ColumnSchema {
+	/// Fully qualified by namespace.schema
+	Qualified {
 		namespace: Fragment,
-		primitive: Fragment,
+		name: Fragment,
 	},
-	/// Qualified by alias (which maps to a fully qualified primitive)
+	/// Qualified by alias (which maps to a fully qualified schema)
 	Alias(Fragment),
 }
 
-impl ColumnPrimitive {
-	pub fn into_owned(self) -> ColumnPrimitive {
+impl ColumnSchema {
+	pub fn into_owned(self) -> ColumnSchema {
 		match self {
-			ColumnPrimitive::Primitive {
+			ColumnSchema::Qualified {
 				namespace,
-				primitive,
-			} => ColumnPrimitive::Primitive {
+				name,
+			} => ColumnSchema::Qualified {
 				namespace,
-				primitive,
+				name,
 			},
-			ColumnPrimitive::Alias(alias) => ColumnPrimitive::Alias(alias),
+			ColumnSchema::Alias(alias) => ColumnSchema::Alias(alias),
 		}
 	}
 
-	pub fn to_static(&self) -> ColumnPrimitive {
+	pub fn to_static(&self) -> ColumnSchema {
 		match self {
-			ColumnPrimitive::Primitive {
+			ColumnSchema::Qualified {
 				namespace,
-				primitive,
-			} => ColumnPrimitive::Primitive {
+				name,
+			} => ColumnSchema::Qualified {
 				namespace: Fragment::internal(namespace.text()),
-				primitive: Fragment::internal(primitive.text()),
+				name: Fragment::internal(name.text()),
 			},
-			ColumnPrimitive::Alias(alias) => ColumnPrimitive::Alias(Fragment::internal(alias.text())),
+			ColumnSchema::Alias(alias) => ColumnSchema::Alias(Fragment::internal(alias.text())),
 		}
 	}
 
 	pub fn as_fragment(&self) -> &Fragment {
 		match self {
-			ColumnPrimitive::Primitive {
-				primitive,
+			ColumnSchema::Qualified {
+				name,
 				..
-			} => primitive,
-			ColumnPrimitive::Alias(alias) => alias,
+			} => name,
+			ColumnSchema::Alias(alias) => alias,
 		}
 	}
 }

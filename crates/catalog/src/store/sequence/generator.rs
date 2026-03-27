@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, schema::RowSchema},
 	error::CoreError,
 };
 use reifydb_transaction::{
@@ -76,7 +76,7 @@ macro_rules! impl_generator {
 			use super::*;
 			use crate::Result;
 
-			pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| Schema::testing(&[$type_enum]));
+			pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| RowSchema::testing(&[$type_enum]));
 
 			pub(crate) struct $generator {}
 

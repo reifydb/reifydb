@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,11 +41,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_bool() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 		schema.set_bool(&mut row, 0, true);
 		assert!(schema.get_bool(&row, 0));
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_bool() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_bool(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_false() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 		schema.set_bool(&mut row, 0, false);
 		assert!(!schema.get_bool(&row, 0));
@@ -73,7 +73,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Int4, Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -87,7 +87,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -101,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_bool_wrong_type() {
-		let schema = Schema::testing(&[Type::Int1]);
+		let schema = RowSchema::testing(&[Type::Int1]);
 		let mut row = schema.allocate();
 
 		schema.set_i8(&mut row, 0, 42);

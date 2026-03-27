@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, schema::RowSchema},
 	interface::catalog::{id::IndexId, table::Table},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
@@ -22,7 +22,7 @@ pub(crate) struct IndexScanNode {
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 	_storage_types: Vec<Type>,
-	_schema: Option<Schema>,
+	_schema: Option<RowSchema>,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,
 }
@@ -66,7 +66,7 @@ impl QueryNode for IndexScanNode {
 		// let batch_size = ctx.batch_size;
 		//
 		// // Create range for scanning index entries
-		// let source_id: PrimitiveId = self.table.id.into();
+		// let source_id: SchemaId = self.table.id.into();
 		// let base_range = IndexEntryKey::index_range(source_id, self.index_id);
 		//
 		// let range = if let Some(ref last_key) = self.last_key {
@@ -89,11 +89,11 @@ impl QueryNode for IndexScanNode {
 		// let index_entries: Vec<_> = rx.range(range)?.into_iter().collect();
 		//
 		// for entry in index_entries.into_iter() {
-		// 	let row_number_schema = Schema::new(&[Uint8]);
+		// 	let row_number_schema = RowSchema::new(&[Uint8]);
 		//
 		// 	let row_number = row_number_layout.get_u64(&entry.encoded, 0);
 		//
-		// 	let source: PrimitiveId = self.table.id.into();
+		// 	let schema: SchemaId = self.table.id.into();
 		// 	let row_key = RowKey {
 		// 		source,
 		// 		encoded: RowNumber(row_number),

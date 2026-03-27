@@ -6,9 +6,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, encode_ringbuffer_metadata};
 use reifydb_core::{
-	encoded::schema::{Schema, SchemaField},
+	encoded::schema::{RowSchema, RowSchemaField},
 	interface::{
-		catalog::{flow::FlowNodeId, id::RingBufferId, primitive::PrimitiveId, ringbuffer::RingBufferMetadata},
+		catalog::{flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, schema::SchemaId},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -48,7 +48,7 @@ pub struct SinkRingBufferViewOperator {
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
 	propagate_evictions: bool,
-	state_schema: Schema,
+	state_schema: RowSchema,
 }
 
 impl SinkRingBufferViewOperator {
@@ -67,7 +67,7 @@ impl SinkRingBufferViewOperator {
 			ringbuffer_id,
 			capacity,
 			propagate_evictions,
-			state_schema: Schema::new(vec![SchemaField::unconstrained("state", Type::Blob)]),
+			state_schema: RowSchema::new(vec![RowSchemaField::unconstrained("state", Type::Blob)]),
 		}
 	}
 
@@ -116,7 +116,7 @@ impl SinkRingBufferViewOperator {
 impl RawStatefulOperator for SinkRingBufferViewOperator {}
 
 impl SingleStateful for SinkRingBufferViewOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.state_schema.clone()
 	}
 }
@@ -128,8 +128,8 @@ impl Operator for SinkRingBufferViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
-		let schema: Schema = view.columns().into();
-		let primitive_id = PrimitiveId::ringbuffer(self.ringbuffer_id);
+		let schema: RowSchema = view.columns().into();
+		let object_id = SchemaId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = self.read_metadata(txn)?;
 		let mut state = self.load(txn)?;
 
@@ -144,7 +144,7 @@ impl Operator for SinkRingBufferViewOperator {
 						// Evict oldest if full
 						if metadata.is_full() {
 							let oldest_rn = RowNumber(metadata.head);
-							let old_key = RowKey::encoded(primitive_id, oldest_rn);
+							let old_key = RowKey::encoded(object_id, oldest_rn);
 							txn.remove(&old_key)?;
 							metadata.head += 1;
 							metadata.count -= 1;
@@ -178,7 +178,7 @@ impl Operator for SinkRingBufferViewOperator {
 							assigned_rn,
 							encoded,
 						)?;
-						let key = RowKey::encoded(primitive_id, assigned_rn);
+						let key = RowKey::encoded(object_id, assigned_rn);
 						txn.set(&key, encoded.clone())?;
 						ViewRowInterceptor::post_insert(txn, &view, assigned_rn, &encoded)?;
 
@@ -190,7 +190,7 @@ impl Operator for SinkRingBufferViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
+						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
@@ -238,8 +238,8 @@ impl Operator for SinkRingBufferViewOperator {
 							post_storage_rn,
 							post_encoded,
 						)?;
-						let old_key = RowKey::encoded(primitive_id, pre_storage_rn);
-						let new_key = RowKey::encoded(primitive_id, post_storage_rn);
+						let old_key = RowKey::encoded(object_id, pre_storage_rn);
+						let new_key = RowKey::encoded(object_id, post_storage_rn);
 						txn.remove(&old_key)?;
 						txn.set(&new_key, post_encoded.clone())?;
 						ViewRowInterceptor::post_update(
@@ -252,7 +252,7 @@ impl Operator for SinkRingBufferViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
+						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
 						version,
 						diffs: vec![Diff::Update {
 							pre: coerced_pre,
@@ -273,13 +273,13 @@ impl Operator for SinkRingBufferViewOperator {
 						let (_, encoded) =
 							encode_row_at_index(&coerced, row_idx, &schema, storage_rn);
 						ViewRowInterceptor::pre_delete(txn, &view, storage_rn)?;
-						let key = RowKey::encoded(primitive_id, storage_rn);
+						let key = RowKey::encoded(object_id, storage_rn);
 						txn.remove(&key)?;
 						ViewRowInterceptor::post_delete(txn, &view, storage_rn, &encoded)?;
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::view(view.id())),
+						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,

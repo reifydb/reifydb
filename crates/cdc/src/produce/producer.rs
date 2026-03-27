@@ -12,7 +12,7 @@ use reifydb_core::{
 		transaction::PostCommitEvent,
 	},
 	interface::{
-		catalog::primitive::PrimitiveId,
+		catalog::schema::SchemaId,
 		cdc::{Cdc, SystemChange},
 		change::{Change, Diff},
 		store::MultiVersionGetPrevious,
@@ -84,9 +84,9 @@ where
 	}
 
 	fn process(&self, version: CommitVersion, timestamp: u64, deltas: Vec<Delta>) {
-		let mut diffs_by_primitive: BTreeMap<PrimitiveId, Vec<Diff>> = BTreeMap::new();
+		let mut diffs_by_object: BTreeMap<SchemaId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
-		let registry = self.host.schema_registry();
+		let registry = self.host.row_schema_registry();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -103,7 +103,7 @@ where
 				if kind == KeyKind::Row {
 					// Try series key first (more specific encoding)
 					if let Some(series_key) = SeriesRowKey::decode(&key) {
-						let primitive = PrimitiveId::Series(series_key.series);
+						let object = SchemaId::Series(series_key.series);
 						let row_number = RowNumber::from(series_key.sequence);
 						let decoded = match &delta {
 							Delta::Set {
@@ -147,7 +147,7 @@ where
 							_ => None,
 						};
 						if let Some(diff) = decoded {
-							diffs_by_primitive.entry(primitive).or_default().push(diff);
+							diffs_by_object.entry(object).or_default().push(diff);
 							continue;
 						}
 					}
@@ -197,10 +197,7 @@ where
 						};
 
 						if let Some(diff) = decoded {
-							diffs_by_primitive
-								.entry(row_key.primitive)
-								.or_default()
-								.push(diff);
+							diffs_by_object.entry(row_key.object).or_default().push(diff);
 							continue;
 						}
 					}
@@ -260,11 +257,11 @@ where
 			system_changes.push(change);
 		}
 
-		// Merge diffs by (PrimitiveId, DiffKind) into batched Changes
+		// Merge diffs by (SchemaId, DiffKind) into batched Changes
 		let mut changes: Vec<Change> = Vec::new();
-		for (primitive, diffs) in diffs_by_primitive {
+		for (object, diffs) in diffs_by_object {
 			let merged = merge_diffs(diffs);
-			changes.push(Change::from_primitive(primitive, version, merged));
+			changes.push(Change::from_schema(object, version, merged));
 		}
 
 		if !changes.is_empty() || !system_changes.is_empty() {
@@ -508,7 +505,7 @@ where
 pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
-	use reifydb_catalog::schema::SchemaRegistry;
+	use reifydb_catalog::schema::RowSchemaRegistry;
 	use reifydb_core::{
 		config::SystemConfig,
 		encoded::{key::EncodedKey, row::EncodedRow},
@@ -540,7 +537,7 @@ pub mod tests {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		schema_registry: SchemaRegistry,
+		row_schema_registry: RowSchemaRegistry,
 	}
 
 	impl TestCdcHost {
@@ -565,7 +562,7 @@ pub mod tests {
 				multi,
 				single,
 				event_bus,
-				schema_registry: SchemaRegistry::testing(),
+				row_schema_registry: RowSchemaRegistry::testing(),
 			}
 		}
 	}
@@ -597,8 +594,8 @@ pub mod tests {
 			true
 		}
 
-		fn schema_registry(&self) -> &SchemaRegistry {
-			&self.schema_registry
+		fn row_schema_registry(&self) -> &RowSchemaRegistry {
+			&self.row_schema_registry
 		}
 	}
 

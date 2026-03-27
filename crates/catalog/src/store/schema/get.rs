@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::primitive::{Primitive, PrimitiveId},
+	interface::catalog::schema::{Schema, SchemaId},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,25 +11,25 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Get a primitive (table or view) by its PrimitiveId
-	/// Returns an error if the primitive doesn't exist
-	pub(crate) fn get_primitive(rx: &mut Transaction<'_>, primitive: impl Into<PrimitiveId>) -> Result<Primitive> {
-		let primitive_id = primitive.into();
+	/// Get a object (table or view) by its SchemaId
+	/// Returns an error if the object doesn't exist
+	pub(crate) fn get_schema(rx: &mut Transaction<'_>, object: impl Into<SchemaId>) -> Result<Schema> {
+		let object_id = object.into();
 
-		CatalogStore::find_primitive(rx, primitive_id)?.ok_or_else(|| {
-			let primitive_type = match primitive_id {
-				PrimitiveId::Table(_) => "Table",
-				PrimitiveId::View(_) => "View",
-				PrimitiveId::TableVirtual(_) => "TableVirtual",
-				PrimitiveId::RingBuffer(_) => "RingBuffer",
-				PrimitiveId::Dictionary(_) => "Dictionary",
-				PrimitiveId::Series(_) => "Series",
+		CatalogStore::find_schema(rx, object_id)?.ok_or_else(|| {
+			let schema_type = match object_id {
+				SchemaId::Table(_) => "Table",
+				SchemaId::View(_) => "View",
+				SchemaId::TableVirtual(_) => "TableVirtual",
+				SchemaId::RingBuffer(_) => "RingBuffer",
+				SchemaId::Dictionary(_) => "Dictionary",
+				SchemaId::Series(_) => "Series",
 			};
 
 			Error(internal!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-				primitive_type,
-				primitive_id
+				schema_type,
+				object_id
 			))
 		})
 	}
@@ -39,7 +39,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::{TableId, ViewId},
-		primitive::{Primitive, PrimitiveId},
+		schema::{Schema, SchemaId},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -55,28 +55,27 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_get_primitive_table() {
+	fn test_get_schema_table() {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Get primitive by TableId
-		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), table.id).unwrap();
+		// Get object by TableId
+		let object = CatalogStore::get_schema(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
-		match primitive {
-			Primitive::Table(t) => {
+		match object {
+			Schema::Table(t) => {
 				assert_eq!(t.id, table.id);
 				assert_eq!(t.name, table.name);
 			}
 			_ => panic!("Expected table"),
 		}
 
-		// Get primitive by PrimitiveId::Table
-		let primitive =
-			CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::Table(table.id))
-				.unwrap();
+		// Get object by SchemaId::Table
+		let object =
+			CatalogStore::get_schema(&mut Transaction::Admin(&mut txn), SchemaId::Table(table.id)).unwrap();
 
-		match primitive {
-			Primitive::Table(t) => {
+		match object {
+			Schema::Table(t) => {
 				assert_eq!(t.id, table.id);
 			}
 			_ => panic!("Expected table"),
@@ -84,7 +83,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_primitive_view() {
+	fn test_get_schema_view() {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -103,24 +102,23 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get primitive by ViewId
-		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
+		// Get object by ViewId
+		let object = CatalogStore::get_schema(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
-		match primitive {
-			Primitive::View(v) => {
+		match object {
+			Schema::View(v) => {
 				assert_eq!(v.id(), view.id());
 				assert_eq!(v.name(), view.name());
 			}
 			_ => panic!("Expected view"),
 		}
 
-		// Get primitive by PrimitiveId::View
-		let primitive =
-			CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), PrimitiveId::View(view.id()))
-				.unwrap();
+		// Get object by SchemaId::View
+		let object =
+			CatalogStore::get_schema(&mut Transaction::Admin(&mut txn), SchemaId::View(view.id())).unwrap();
 
-		match primitive {
-			Primitive::View(v) => {
+		match object {
+			Schema::View(v) => {
 				assert_eq!(v.id(), view.id());
 			}
 			_ => panic!("Expected view"),
@@ -128,11 +126,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_primitive_not_found_table() {
+	fn test_get_schema_not_found_table() {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent table should error
-		let result = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), TableId(999));
+		let result = CatalogStore::get_schema(&mut Transaction::Admin(&mut txn), TableId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();
@@ -141,11 +139,11 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_primitive_not_found_view() {
+	fn test_get_schema_not_found_view() {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent view should error
-		let result = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), ViewId(999));
+		let result = CatalogStore::get_schema(&mut Transaction::Admin(&mut txn), ViewId(999));
 		assert!(result.is_err());
 
 		let err = result.unwrap_err();

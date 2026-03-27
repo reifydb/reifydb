@@ -3,12 +3,12 @@
 
 //! Temporal data edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
 
 #[test]
 fn test_date_boundaries() {
-	let schema = Schema::testing(&[Type::Date]);
+	let schema = RowSchema::testing(&[Type::Date]);
 	let mut row = schema.allocate();
 
 	let dates = [
@@ -27,7 +27,7 @@ fn test_date_boundaries() {
 
 #[test]
 fn test_datetime_precision_limits() {
-	let schema = Schema::testing(&[Type::DateTime]);
+	let schema = RowSchema::testing(&[Type::DateTime]);
 	let mut row = schema.allocate();
 
 	// Test nanosecond precision preservation
@@ -42,7 +42,7 @@ fn test_datetime_precision_limits() {
 
 #[test]
 fn test_time_edge_values() {
-	let schema = Schema::testing(&[Type::Time]);
+	let schema = RowSchema::testing(&[Type::Time]);
 	let mut row = schema.allocate();
 
 	let times = [
@@ -61,7 +61,7 @@ fn test_time_edge_values() {
 
 #[test]
 fn test_interval_combinations() {
-	let schema = Schema::testing(&[Type::Duration]);
+	let schema = RowSchema::testing(&[Type::Duration]);
 	let mut row = schema.allocate();
 
 	let intervals = [

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{primitive::PrimitiveId, vtable::VTable},
+	interface::catalog::{schema::SchemaId, vtable::VTable},
 	retention::{CleanupMode, RetentionPolicy},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -17,22 +17,22 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes primitive retention policy information
-pub struct SystemPrimitiveRetentionPolicies {
+/// Virtual table that exposes object retention policy information
+pub struct SystemSchemaRetentionPolicies {
 	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl SystemPrimitiveRetentionPolicies {
+impl SystemSchemaRetentionPolicies {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_primitive_retention_policies_table().clone(),
+			definition: SystemCatalog::get_system_schema_retention_policies_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl BaseVTable for SystemPrimitiveRetentionPolicies {
+impl BaseVTable for SystemSchemaRetentionPolicies {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -43,27 +43,27 @@ impl BaseVTable for SystemPrimitiveRetentionPolicies {
 			return Ok(None);
 		}
 
-		let policies = CatalogStore::list_primitive_retention_policies(txn)?;
+		let policies = CatalogStore::list_schema_retention_policies(txn)?;
 
 		let mut primitive_ids = ColumnData::uint8_with_capacity(policies.len());
-		let mut primitive_types = ColumnData::utf8_with_capacity(policies.len());
+		let mut schema_types = ColumnData::utf8_with_capacity(policies.len());
 		let mut policy_types = ColumnData::utf8_with_capacity(policies.len());
 		let mut cleanup_modes = ColumnData::utf8_with_capacity(policies.len());
 		let mut values = ColumnData::uint8_with_capacity(policies.len());
 
 		for entry in policies {
-			// Extract primitive ID and type
-			let (primitive_id, primitive_type) = match entry.primitive {
-				PrimitiveId::Table(id) => (id.0, "table"),
-				PrimitiveId::View(id) => (id.0, "view"),
-				PrimitiveId::TableVirtual(id) => (id.0, "vtable"),
-				PrimitiveId::RingBuffer(id) => (id.0, "ringbuffer"),
-				PrimitiveId::Dictionary(id) => (id.0, "dictionary"),
-				PrimitiveId::Series(id) => (id.0, "series"),
+			// Extract object ID and type
+			let (object_id, schema_type) = match entry.object {
+				SchemaId::Table(id) => (id.0, "table"),
+				SchemaId::View(id) => (id.0, "view"),
+				SchemaId::TableVirtual(id) => (id.0, "vtable"),
+				SchemaId::RingBuffer(id) => (id.0, "ringbuffer"),
+				SchemaId::Dictionary(id) => (id.0, "dictionary"),
+				SchemaId::Series(id) => (id.0, "series"),
 			};
 
-			primitive_ids.push(primitive_id);
-			primitive_types.push(primitive_type);
+			primitive_ids.push(object_id);
+			schema_types.push(schema_type);
 
 			// Encode policy
 			match entry.policy {
@@ -88,12 +88,12 @@ impl BaseVTable for SystemPrimitiveRetentionPolicies {
 
 		let columns = vec![
 			Column {
-				name: Fragment::internal("primitive_id"),
+				name: Fragment::internal("object_id"),
 				data: primitive_ids,
 			},
 			Column {
-				name: Fragment::internal("primitive_type"),
-				data: primitive_types,
+				name: Fragment::internal("schema_type"),
+				data: schema_types,
 			},
 			Column {
 				name: Fragment::internal("policy_type"),

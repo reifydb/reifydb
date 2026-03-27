@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_core::encoded::schema::{Schema, SchemaField};
+use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 use reifydb_type::value::r#type::Type;
 
 pub(crate) mod handler {
@@ -15,14 +15,14 @@ pub(crate) mod handler {
 	pub(crate) const ON_VARIANT_TAG: usize = 4;
 	pub(crate) const BODY_SOURCE: usize = 5;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("namespace", Type::Uint8),
-			SchemaField::unconstrained("name", Type::Utf8),
-			SchemaField::unconstrained("on_sumtype_id", Type::Uint8),
-			SchemaField::unconstrained("on_variant_tag", Type::Uint1),
-			SchemaField::unconstrained("body_source", Type::Utf8),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("namespace", Type::Uint8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
+			RowSchemaField::unconstrained("on_sumtype_id", Type::Uint8),
+			RowSchemaField::unconstrained("on_variant_tag", Type::Uint1),
+			RowSchemaField::unconstrained("body_source", Type::Utf8),
 		])
 	});
 }
@@ -33,10 +33,10 @@ pub(crate) mod handler_namespace {
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("name", Type::Utf8),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
 		])
 	});
 }

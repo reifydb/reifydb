@@ -7,7 +7,7 @@ use num_bigint::BigInt as StdBigInt;
 use num_traits::ToPrimitive;
 use reifydb_type::value::{int::Int, r#type::Type};
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
 /// Int storage modes using MSB of i128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -22,7 +22,7 @@ const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
 
-impl Schema {
+impl RowSchema {
 	/// Set a Int value with 2-tier storage optimization
 	/// - Values fitting in 127 bits: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
@@ -103,11 +103,11 @@ pub mod tests {
 	use num_bigint::BigInt;
 	use reifydb_type::value::{int::Int, r#type::Type};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_i64_inline() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		// Test small positive value
@@ -127,7 +127,7 @@ pub mod tests {
 
 	#[test]
 	fn test_i128_boundary() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		// Value that doesn't fit in 62 bits but fits in i128
@@ -153,7 +153,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dynamic_storage() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		// Create a value larger than i128 can hold
@@ -170,7 +170,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		let zero = Int::from(0);
@@ -183,7 +183,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		// Undefined initially
@@ -197,7 +197,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_on_write() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let row1 = schema.allocate();
 		let mut row2 = row1.clone();
 
@@ -212,7 +212,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = Schema::testing(&[Type::Int4, Type::Int, Type::Utf8, Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int4, Type::Int, Type::Utf8, Type::Int]);
 		let mut row = schema.allocate();
 
 		schema.set_i32(&mut row, 0, 42);
@@ -233,7 +233,7 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_values() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 
 		// Small negative (i64 inline)
 		let mut row1 = schema.allocate();
@@ -258,7 +258,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_int_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -268,7 +268,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_int_inline_to_inline() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		schema.set_int(&mut row, 0, &Int::from(42));
@@ -280,7 +280,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_int_inline_to_dynamic() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		schema.set_int(&mut row, 0, &Int::from(42));
@@ -295,7 +295,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_int_dynamic_to_inline() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		let huge = Int::from(
@@ -313,7 +313,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_int_dynamic_to_dynamic() {
-		let schema = Schema::testing(&[Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int]);
 		let mut row = schema.allocate();
 
 		let huge1 = Int::from(
@@ -331,7 +331,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_int_with_other_dynamic_fields() {
-		let schema = Schema::testing(&[Type::Int, Type::Utf8, Type::Int]);
+		let schema = RowSchema::testing(&[Type::Int, Type::Utf8, Type::Int]);
 		let mut row = schema.allocate();
 
 		let huge1 = Int::from(

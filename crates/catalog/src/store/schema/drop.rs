@@ -4,30 +4,29 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{ColumnId, PrimaryKeyId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
-		property::ColumnPropertyKey, retention_policy::PrimitiveRetentionPolicyKey,
-		row_sequence::RowSequenceKey,
+		property::ColumnPropertyKey, retention_policy::SchemaRetentionPolicyKey, row_sequence::RowSequenceKey,
 	},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{Result, store::column::schema::primitive_column};
 
-/// Remove all metadata associated with a primitive (table, view, or ringbuffer):
+/// Remove all metadata associated with a object (table, view, or ringbuffer):
 /// columns, column policies, column sequences, column definitions, primary key,
 /// row sequence, and retention policy.
 ///
 /// Physical row data (RowKey) is NOT deleted here.
-pub(crate) fn drop_primitive_metadata(
+pub(crate) fn drop_schema_metadata(
 	txn: &mut AdminTransaction,
-	primitive: PrimitiveId,
+	object: SchemaId,
 	pk_id: Option<PrimaryKeyId>,
 ) -> Result<()> {
-	// Step 1: Scan all columns for this primitive
-	let range = ColumnKey::full_scan(primitive);
+	// Step 1: Scan all columns for this object
+	let range = ColumnKey::full_scan(object);
 	let mut stream = txn.range(range, 1024)?;
 	let mut col_entries = Vec::new();
 	while let Some(entry) = stream.next() {
@@ -52,12 +51,12 @@ pub(crate) fn drop_primitive_metadata(
 		}
 
 		// Delete column sequence
-		txn.remove(&ColumnSequenceKey::encoded(primitive, *col_id))?;
+		txn.remove(&ColumnSequenceKey::encoded(object, *col_id))?;
 
 		// Delete column definition
 		txn.remove(&ColumnsKey::encoded(*col_id))?;
 
-		// Delete primitive-column link
+		// Delete object-column link
 		txn.remove(col_key)?;
 	}
 
@@ -67,10 +66,10 @@ pub(crate) fn drop_primitive_metadata(
 	}
 
 	// Step 4: Delete row sequence
-	txn.remove(&RowSequenceKey::encoded(primitive))?;
+	txn.remove(&RowSequenceKey::encoded(object))?;
 
 	// Step 5: Delete retention policy
-	txn.remove(&PrimitiveRetentionPolicyKey::encoded(primitive))?;
+	txn.remove(&SchemaRetentionPolicyKey::encoded(object))?;
 
 	Ok(())
 }

@@ -8,9 +8,9 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
+		catalog::{policy::PolicyTargetType, schema::SchemaId},
 		change::{Change, ChangeOrigin, Diff},
-		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
+		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedSeries},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -66,7 +66,7 @@ pub(crate) fn update_series<'a>(
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 	let series_ident = Fragment::internal(series.name.clone());
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
-	let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
+	let resolved_source = Some(ResolvedSchema::Series(resolved_series));
 
 	let context = QueryContext {
 		services: services.clone(),
@@ -208,7 +208,7 @@ pub(crate) fn update_series<'a>(
 					columns: CowVec::new(post_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Primitive(PrimitiveId::series(series.id)),
+					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Update {
 						pre,

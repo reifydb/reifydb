@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	error::diagnostic::query::unsupported_source_qualification,
-	interface::identifier::{ColumnIdentifier, ColumnPrimitive},
+	interface::identifier::{ColumnIdentifier, ColumnSchema},
 };
 use reifydb_type::{fragment::Fragment, return_error};
 
@@ -12,7 +12,7 @@ use crate::{
 	ast::ast::{Ast, AstInfix, AstPrefixOperator, InfixOperator},
 	bump::BumpBox,
 	expression::{
-		AccessPrimitiveExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
+		AccessSchemaExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
 		ExpressionCompiler, GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression,
 		LessThanExpression, MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator,
 		RemExpression, SubExpression, TupleExpression, XorExpression,
@@ -106,10 +106,10 @@ impl JoinConditionCompiler {
 			if left.token.fragment.text() == alias.text() {
 				// This is a reference to the right side via alias
 				let column = ColumnIdentifier {
-					primitive: ColumnPrimitive::Alias(alias.clone()),
+					schema: ColumnSchema::Alias(alias.clone()),
 					name: right.token.fragment.to_owned(),
 				};
-				return Ok(Expression::AccessSource(AccessPrimitiveExpression {
+				return Ok(Expression::AccessSource(AccessSchemaExpression {
 					column,
 				}));
 			}

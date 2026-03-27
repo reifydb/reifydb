@@ -133,7 +133,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
-					primitive_name: String::new(),
+					schema_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint,
 					properties: col.properties,

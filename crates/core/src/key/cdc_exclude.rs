@@ -89,7 +89,7 @@ pub mod tests {
 			KeyKind::RingBuffer => {}
 			KeyKind::NamespaceRingBuffer => {}
 			KeyKind::RingBufferMetadata => {}
-			KeyKind::PrimitiveRetentionPolicy => {}
+			KeyKind::SchemaRetentionPolicy => {}
 			KeyKind::OperatorRetentionPolicy => {}
 			KeyKind::Flow => {}
 			KeyKind::NamespaceFlow => {}
@@ -111,7 +111,7 @@ pub mod tests {
 			KeyKind::Schema => {}
 			KeyKind::SumType => {}
 			KeyKind::NamespaceSumType => {}
-			KeyKind::SchemaField => {}
+			KeyKind::RowSchemaField => {}
 			KeyKind::Handler => {}
 			KeyKind::NamespaceHandler => {}
 			KeyKind::VariantHandler => {}
@@ -291,8 +291,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_source_retention_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::PrimitiveRetentionPolicy));
+	fn test_include_schema_retention_policy() {
+		assert!(!should_exclude_from_cdc(KeyKind::SchemaRetentionPolicy));
 	}
 
 	#[test]
@@ -382,7 +382,7 @@ pub mod tests {
 
 	#[test]
 	fn test_include_schema_field() {
-		assert!(!should_exclude_from_cdc(KeyKind::SchemaField));
+		assert!(!should_exclude_from_cdc(KeyKind::RowSchemaField));
 	}
 
 	#[test]

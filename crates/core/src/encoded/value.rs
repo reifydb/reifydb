@@ -9,10 +9,10 @@ use reifydb_type::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-use super::schema::Schema;
+use super::schema::RowSchema;
 use crate::encoded::row::EncodedRow;
 
-impl Schema {
+impl RowSchema {
 	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
 		debug_assert!(values.len() == self.fields().len());
 		for (idx, value) in values.iter().enumerate() {
@@ -327,11 +327,11 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::encoded::schema::{Schema, SchemaField};
+	use crate::encoded::schema::{RowSchema, RowSchemaField};
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		let value1 = Value::Utf8("hello".to_string());
@@ -349,7 +349,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_values_with_mixed_dynamic_content() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
 		let mut row = schema.allocate();
 
 		let values = vec![
@@ -371,7 +371,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_with_empty_and_large_utf8() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		let large_string = "X".repeat(2000);
@@ -391,7 +391,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_from_dynamic_content() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Int8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Int8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		schema.set_utf8(&mut row, 0, "test_string");
@@ -420,7 +420,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_none_with_utf8_fields() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Boolean, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Boolean, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		// Set some values
@@ -445,7 +445,7 @@ pub mod tests {
 
 	#[test]
 	fn test_get_all_types_including_utf8() {
-		let schema = Schema::testing(&[
+		let schema = RowSchema::testing(&[
 			Type::Boolean,
 			Type::Int1,
 			Type::Int2,
@@ -492,7 +492,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_values_sparse_with_utf8() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		// Only set some values
@@ -516,7 +516,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_values_unicode_strings() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		let values = vec![
@@ -534,7 +534,7 @@ pub mod tests {
 
 	#[test]
 	fn test_static_fields_only_no_dynamic_with_values() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
 		let mut row = schema.allocate();
 
 		let values =
@@ -553,7 +553,7 @@ pub mod tests {
 
 	#[test]
 	fn test_temporal_types_roundtrip() {
-		let schema = Schema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = schema.allocate();
 
 		let original_values = vec![
@@ -572,7 +572,7 @@ pub mod tests {
 
 	#[test]
 	fn test_temporal_types_with_undefined() {
-		let schema = Schema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let schema = RowSchema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
 		let mut row = schema.allocate();
 
 		let values = vec![
@@ -599,7 +599,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_temporal_and_regular_types() {
-		let schema = Schema::testing(&[
+		let schema = RowSchema::testing(&[
 			Type::Boolean,
 			Type::Date,
 			Type::Utf8,
@@ -629,7 +629,7 @@ pub mod tests {
 
 	#[test]
 	fn test_roundtrip_with_dynamic_content() {
-		let schema = Schema::testing(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
 		let mut row = schema.allocate();
 
 		let original_values = vec![
@@ -650,7 +650,7 @@ pub mod tests {
 
 	#[test]
 	fn test_blob_roundtrip() {
-		let schema = Schema::testing(&[Type::Blob, Type::Int4, Type::Blob]);
+		let schema = RowSchema::testing(&[Type::Blob, Type::Int4, Type::Blob]);
 		let mut row = schema.allocate();
 
 		let blob1 = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
@@ -677,7 +677,7 @@ pub mod tests {
 
 	#[test]
 	fn test_blob_with_undefined() {
-		let schema = Schema::testing(&[Type::Blob, Type::Blob, Type::Blob]);
+		let schema = RowSchema::testing(&[Type::Blob, Type::Blob, Type::Blob]);
 		let mut row = schema.allocate();
 
 		let values = vec![
@@ -701,7 +701,7 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid_roundtrip() {
-		let schema = Schema::testing(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
 		let mut row = schema.allocate();
 
 		let uuid4 = Uuid4::generate();
@@ -717,7 +717,7 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid_with_undefined() {
-		let schema = Schema::testing(&[Type::Uuid4, Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let values = vec![Value::none(), Value::Uuid7(Uuid7::generate())];
@@ -735,8 +735,14 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_blob_row_number_uuid_types() {
-		let schema =
-			Schema::testing(&[Type::Blob, Type::Int16, Type::Uuid4, Type::Utf8, Type::Uuid7, Type::Int4]);
+		let schema = RowSchema::testing(&[
+			Type::Blob,
+			Type::Int16,
+			Type::Uuid4,
+			Type::Utf8,
+			Type::Uuid7,
+			Type::Int4,
+		]);
 		let mut row = schema.allocate();
 
 		let values = vec![
@@ -762,7 +768,7 @@ pub mod tests {
 	fn test_all_types_comprehensive() {
 		// except encoded id
 
-		let schema = Schema::testing(&[
+		let schema = RowSchema::testing(&[
 			Type::Boolean,
 			Type::Int1,
 			Type::Int2,
@@ -829,7 +835,7 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_id_roundtrip_u4() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(42u64), Type::Uint4);
-		let schema = Schema::new(vec![SchemaField::new("status", constraint)]);
+		let schema = RowSchema::new(vec![RowSchemaField::new("status", constraint)]);
 
 		let mut row = schema.allocate();
 		let entry = DictionaryEntryId::U4(7);
@@ -843,7 +849,7 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_id_roundtrip_u2() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(10u64), Type::Uint2);
-		let schema = Schema::new(vec![SchemaField::new("category", constraint)]);
+		let schema = RowSchema::new(vec![RowSchemaField::new("category", constraint)]);
 
 		let mut row = schema.allocate();
 		let entry = DictionaryEntryId::U2(500);
@@ -857,7 +863,7 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_id_roundtrip_u8() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(99u64), Type::Uint8);
-		let schema = Schema::new(vec![SchemaField::new("tag", constraint)]);
+		let schema = RowSchema::new(vec![RowSchemaField::new("tag", constraint)]);
 
 		let mut row = schema.allocate();
 		let entry = DictionaryEntryId::U8(123456789);
@@ -871,9 +877,9 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_id_with_undefined() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
-		let schema = Schema::new(vec![
-			SchemaField::new("dict_col", constraint),
-			SchemaField::unconstrained("int_col", Type::Int4),
+		let schema = RowSchema::new(vec![
+			RowSchemaField::new("dict_col", constraint),
+			RowSchemaField::unconstrained("int_col", Type::Int4),
 		]);
 
 		let mut row = schema.allocate();
@@ -890,10 +896,10 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_id_mixed_with_other_types() {
 		let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(5u64), Type::Uint4);
-		let schema = Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Int4),
-			SchemaField::new("status", dict_constraint),
-			SchemaField::unconstrained("name", Type::Utf8),
+		let schema = RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Int4),
+			RowSchemaField::new("status", dict_constraint),
+			RowSchemaField::unconstrained("name", Type::Utf8),
 		]);
 
 		let mut row = schema.allocate();

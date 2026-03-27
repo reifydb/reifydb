@@ -7,7 +7,7 @@ use num_bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
 use reifydb_type::value::{r#type::Type, uint::Uint};
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
 /// Uint storage modes using MSB of u128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -22,7 +22,7 @@ const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
 
-impl Schema {
+impl RowSchema {
 	/// Set a Uint value with 2-tier storage optimization
 	/// - Values fitting in 127 bits: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
@@ -105,11 +105,11 @@ pub mod tests {
 	use num_traits::Zero;
 	use reifydb_type::value::{r#type::Type, uint::Uint};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_u64_inline() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Test simple unsigned value
@@ -129,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_u128_boundary() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Value that needs u128 storage
@@ -149,7 +149,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dynamic_storage() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Create a value that requires dynamic storage (>127 bits)
@@ -168,7 +168,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		let zero = Uint::from(0);
@@ -181,7 +181,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Undefined initially
@@ -195,7 +195,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_on_write() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let row1 = schema.allocate();
 		let mut row2 = row1.clone();
 
@@ -210,7 +210,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -234,7 +234,7 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_input_handling() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 
 		// Test how negative values are handled (should be converted to
 		// 0 or error)
@@ -249,7 +249,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uint_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -259,7 +259,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_inline_to_inline() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		schema.set_uint(&mut row, 0, &Uint::from(42u64));
@@ -271,7 +271,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_inline_to_dynamic() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		schema.set_uint(&mut row, 0, &Uint::from(42u64));
@@ -285,7 +285,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_dynamic_to_inline() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		let huge = Uint::from(
@@ -300,7 +300,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_uint_with_other_dynamic_fields() {
-		let schema = Schema::testing(&[Type::Uint, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Uint, Type::Utf8]);
 		let mut row = schema.allocate();
 
 		let huge = Uint::from(

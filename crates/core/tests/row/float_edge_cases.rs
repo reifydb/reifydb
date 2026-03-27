@@ -3,12 +3,12 @@
 
 //! Float edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::r#type::Type;
 
 #[test]
 fn test_float_special_values_preservation() {
-	let schema = Schema::testing(&[Type::Float4, Type::Float8]);
+	let schema = RowSchema::testing(&[Type::Float4, Type::Float8]);
 	let mut row = schema.allocate();
 
 	// Test f32 special values
@@ -74,7 +74,7 @@ fn test_float_special_values_preservation() {
 
 #[test]
 fn test_float_precision_boundaries() {
-	let schema = Schema::testing(&[Type::Float4, Type::Float8]);
+	let schema = RowSchema::testing(&[Type::Float4, Type::Float8]);
 	let mut row = schema.allocate();
 
 	// Test f32 precision boundary (about 7 decimal digits)

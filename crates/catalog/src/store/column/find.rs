@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column::Column, id::ColumnId, primitive::PrimitiveId},
+	interface::catalog::{column::Column, id::ColumnId, schema::SchemaId},
 	key::column::ColumnKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -12,10 +12,10 @@ use crate::{CatalogStore, Result, store::column::schema::primitive_column};
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
 		rx: &mut Transaction<'_>,
-		source: impl Into<PrimitiveId>,
+		schema: impl Into<SchemaId>,
 		column_name: &str,
 	) -> Result<Option<Column>> {
-		let mut stream = rx.range(ColumnKey::full_scan(source), 1024)?;
+		let mut stream = rx.range(ColumnKey::full_scan(schema), 1024)?;
 
 		let mut found_id = None;
 		while let Some(entry) = stream.next() {

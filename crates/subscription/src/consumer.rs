@@ -49,7 +49,7 @@ impl SubscriptionConsumer {
 
 		// Get schema registry for resolving per-row schemas
 		let catalog = engine.catalog();
-		let schema_registry = &catalog.schema;
+		let row_schema_registry = &catalog.schema;
 
 		// Create range for scanning rows
 		let range = if let Some(last_key) = last_consumed_key {
@@ -82,8 +82,8 @@ impl SubscriptionConsumer {
 				// Extract schema fingerprint from the encoded row
 				let fingerprint = entry.row.fingerprint();
 
-				// Resolve schema using SchemaRegistry
-				let schema = schema_registry
+				// Resolve schema using RowSchemaRegistry
+				let schema = row_schema_registry
 					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
 					.ok_or_else(|| {
 						Error(internal(format!(

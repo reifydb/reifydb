@@ -8,7 +8,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
-		schema::{Schema, SchemaField},
+		schema::{RowSchema, RowSchemaField},
 	},
 	interface::{
 		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
@@ -168,10 +168,10 @@ impl Operator for SinkSubscriptionOperator {
 }
 
 /// Create and persist a schema from actual column data
-fn create_schema_from_columns(columns: &Columns, catalog: &Catalog) -> Result<Schema> {
-	let fields: Vec<SchemaField> = columns
+fn create_schema_from_columns(columns: &Columns, catalog: &Catalog) -> Result<RowSchema> {
+	let fields: Vec<RowSchemaField> = columns
 		.iter()
-		.map(|col| SchemaField::unconstrained(col.name.to_string(), col.data().get_type()))
+		.map(|col| RowSchemaField::unconstrained(col.name.to_string(), col.data().get_type()))
 		.collect();
 
 	catalog.schema.get_or_create(fields)

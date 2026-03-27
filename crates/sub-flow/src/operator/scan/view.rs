@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
 		catalog::{flow::FlowNodeId, view::View},
 		change::{Change, Diff},
@@ -78,7 +78,7 @@ impl Operator for PrimitiveViewOperator {
 			return Ok(Columns::from_view(&self.view));
 		}
 
-		let schema: Schema = self.view.columns().into();
+		let schema: RowSchema = self.view.columns().into();
 		let fields = schema.fields();
 
 		// Pre-allocate columns with capacity

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	error::diagnostic,
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable},
 	key::{
@@ -35,7 +35,7 @@ pub(crate) struct TableScanNode {
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
 	dictionaries: Vec<Option<Dictionary>>,
 	/// Cached schema loaded from the first batch
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
@@ -78,7 +78,7 @@ impl TableScanNode {
 		})
 	}
 
-	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<Schema> {
+	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -88,7 +88,7 @@ impl TableScanNode {
 		let stored_ctx = self.context.as_ref().expect("TableScanNode context not set");
 		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
 			error!(diagnostic::internal::internal(format!(
-				"Schema with fingerprint {:?} not found for table {}",
+				"RowSchema with fingerprint {:?} not found for table {}",
 				fingerprint,
 				self.table.def().name
 			)))

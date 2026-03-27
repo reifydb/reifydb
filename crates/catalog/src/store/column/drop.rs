@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
+	interface::catalog::{id::ColumnId, schema::SchemaId},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, property::ColumnPropertyKey,
 	},
@@ -12,11 +12,7 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_column(
-		txn: &mut AdminTransaction,
-		primitive: PrimitiveId,
-		column_id: ColumnId,
-	) -> Result<()> {
+	pub(crate) fn drop_column(txn: &mut AdminTransaction, object: SchemaId, column_id: ColumnId) -> Result<()> {
 		// Delete column policies
 		let policy_range = ColumnPropertyKey::full_scan(column_id);
 		let mut policy_stream = txn.range(policy_range, 1024)?;
@@ -30,13 +26,13 @@ impl CatalogStore {
 		}
 
 		// Delete column sequence
-		txn.remove(&ColumnSequenceKey::encoded(primitive, column_id))?;
+		txn.remove(&ColumnSequenceKey::encoded(object, column_id))?;
 
 		// Delete column definition
 		txn.remove(&ColumnsKey::encoded(column_id))?;
 
-		// Delete primitive-column link
-		txn.remove(&ColumnKey::encoded(primitive, column_id))?;
+		// Delete object-column link
+		txn.remove(&ColumnKey::encoded(object, column_id))?;
 
 		Ok(())
 	}

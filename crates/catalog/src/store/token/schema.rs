@@ -3,7 +3,7 @@
 
 pub(crate) mod token {
 	use once_cell::sync::Lazy;
-	use reifydb_core::encoded::schema::{Schema, SchemaField};
+	use reifydb_core::encoded::schema::{RowSchema, RowSchemaField};
 	use reifydb_type::value::r#type::Type;
 
 	pub(crate) const ID: usize = 0;
@@ -12,13 +12,13 @@ pub(crate) mod token {
 	pub(crate) const EXPIRES_AT: usize = 3;
 	pub(crate) const CREATED_AT: usize = 4;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("token", Type::Utf8),
-			SchemaField::unconstrained("identity", Type::IdentityId),
-			SchemaField::unconstrained("expires_at", Type::DateTime),
-			SchemaField::unconstrained("created_at", Type::DateTime),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("token", Type::Utf8),
+			RowSchemaField::unconstrained("identity", Type::IdentityId),
+			RowSchemaField::unconstrained("expires_at", Type::DateTime),
+			RowSchemaField::unconstrained("created_at", Type::DateTime),
 		])
 	});
 }

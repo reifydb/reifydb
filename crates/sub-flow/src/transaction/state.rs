@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		schema::Schema,
+		schema::RowSchema,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
@@ -136,7 +136,12 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		created
 	))]
-	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &EncodedKey, schema: &Schema) -> Result<EncodedRow> {
+	pub fn load_or_create_row(
+		&mut self,
+		id: FlowNodeId,
+		key: &EncodedKey,
+		schema: &RowSchema,
+	) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -169,7 +174,7 @@ pub mod tests {
 		encoded::{
 			key::{EncodedKey, EncodedKeyRange},
 			row::EncodedRow,
-			schema::Schema,
+			schema::RowSchema,
 		},
 		interface::catalog::flow::FlowNodeId,
 	};
@@ -394,7 +399,7 @@ pub mod tests {
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
-		let schema = Schema::testing(&[Type::Int8, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Int8, Type::Float8]);
 
 		// Set existing state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
@@ -412,7 +417,7 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
-		let schema = Schema::testing(&[Type::Int8, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Int8, Type::Float8]);
 
 		// load_or_create should allocate new row
 		let result = txn.load_or_create_row(node_id, &key, &schema).unwrap();

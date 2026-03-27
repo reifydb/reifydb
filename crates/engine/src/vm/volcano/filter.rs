@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedPrimitive},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedSchema},
 	value::{
 		batch::lazy::LazyBatch,
 		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
@@ -239,7 +239,7 @@ impl FilterNode {
 
 pub(crate) fn resolve_is_variant_tags(
 	expr: &mut Expression,
-	source: &ResolvedPrimitive,
+	source: &ResolvedSchema,
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 ) -> Result<()> {

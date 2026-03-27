@@ -7,7 +7,7 @@ use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
 	Result,
-	ast::identifier::MaybeQualifiedColumnPrimitive,
+	ast::identifier::MaybeQualifiedColumnSchema,
 	nodes::CreateColumnPropertyNode,
 	plan::{
 		logical,
@@ -21,20 +21,20 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateColumnPropertyNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let (ns_segments, table_fragment) = match &create.column.primitive {
-			MaybeQualifiedColumnPrimitive::Primitive {
+		let (ns_segments, table_fragment) = match &create.column.schema {
+			MaybeQualifiedColumnSchema::Qualified {
 				namespace,
-				primitive,
+				name,
 			} => (
 				namespace.iter().map(|n| n.text()).collect::<Vec<&str>>(),
-				self.interner.intern_fragment(primitive),
+				self.interner.intern_fragment(name),
 			),
 			_ => (vec![], Fragment::internal("_unknown")),
 		};
 
 		let Some(ns) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
-			let ns_fragment = match &create.column.primitive {
-				MaybeQualifiedColumnPrimitive::Primitive {
+			let ns_fragment = match &create.column.schema {
+				MaybeQualifiedColumnSchema::Qualified {
 					namespace,
 					..
 				} => {
@@ -50,8 +50,8 @@ impl<'bump> Compiler<'bump> {
 			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
-		let namespace_id = match &create.column.primitive {
-			MaybeQualifiedColumnPrimitive::Primitive {
+		let namespace_id = match &create.column.schema {
+			MaybeQualifiedColumnSchema::Qualified {
 				namespace,
 				..
 			} => {

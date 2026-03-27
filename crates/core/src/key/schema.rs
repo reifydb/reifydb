@@ -5,20 +5,20 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
-		schema::fingerprint::SchemaFingerprint,
+		schema::fingerprint::RowSchemaFingerprint,
 	},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 /// Key for storing a schema definition by its fingerprint
 #[derive(Debug, Clone, PartialEq)]
-pub struct SchemaKey {
-	pub fingerprint: SchemaFingerprint,
+pub struct RowSchemaKey {
+	pub fingerprint: RowSchemaFingerprint,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for SchemaKey {
+impl EncodableKey for RowSchemaKey {
 	const KIND: KeyKind = KeyKind::Schema;
 
 	fn encode(&self) -> EncodedKey {
@@ -43,13 +43,13 @@ impl EncodableKey for SchemaKey {
 		let fingerprint = de.read_u64().ok()?;
 
 		Some(Self {
-			fingerprint: SchemaFingerprint::new(fingerprint),
+			fingerprint: RowSchemaFingerprint::new(fingerprint),
 		})
 	}
 }
 
-impl SchemaKey {
-	pub fn encoded(fingerprint: SchemaFingerprint) -> EncodedKey {
+impl RowSchemaKey {
+	pub fn encoded(fingerprint: RowSchemaFingerprint) -> EncodedKey {
 		Self {
 			fingerprint,
 		}
@@ -76,13 +76,13 @@ impl SchemaKey {
 /// Key for storing individual schema fields
 /// Keyed by (schema_fingerprint, field_index) for ordered retrieval
 #[derive(Debug, Clone, PartialEq)]
-pub struct SchemaFieldKey {
-	pub schema_fingerprint: SchemaFingerprint,
+pub struct RowSchemaFieldKey {
+	pub schema_fingerprint: RowSchemaFingerprint,
 	pub field_index: u16,
 }
 
-impl EncodableKey for SchemaFieldKey {
-	const KIND: KeyKind = KeyKind::SchemaField;
+impl EncodableKey for RowSchemaFieldKey {
+	const KIND: KeyKind = KeyKind::RowSchemaField;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
@@ -111,14 +111,14 @@ impl EncodableKey for SchemaFieldKey {
 		let field_index = de.read_u16().ok()?;
 
 		Some(Self {
-			schema_fingerprint: SchemaFingerprint::new(schema_fingerprint),
+			schema_fingerprint: RowSchemaFingerprint::new(schema_fingerprint),
 			field_index,
 		})
 	}
 }
 
-impl SchemaFieldKey {
-	pub fn encoded(schema_fingerprint: SchemaFingerprint, field_index: u16) -> EncodedKey {
+impl RowSchemaFieldKey {
+	pub fn encoded(schema_fingerprint: RowSchemaFingerprint, field_index: u16) -> EncodedKey {
 		Self {
 			schema_fingerprint,
 			field_index,
@@ -127,17 +127,17 @@ impl SchemaFieldKey {
 	}
 
 	/// Scan all fields for a given schema
-	pub fn scan_for_schema(fingerprint: SchemaFingerprint) -> EncodedKeyRange {
+	pub fn scan_for_schema(fingerprint: RowSchemaFingerprint) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::schema_start(fingerprint)), Some(Self::schema_end(fingerprint)))
 	}
 
-	fn schema_start(fingerprint: SchemaFingerprint) -> EncodedKey {
+	fn schema_start(fingerprint: RowSchemaFingerprint) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(fingerprint.as_u64());
 		serializer.to_encoded_key()
 	}
 
-	fn schema_end(fingerprint: SchemaFingerprint) -> EncodedKey {
+	fn schema_end(fingerprint: RowSchemaFingerprint) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
 		serializer
 			.extend_u8(VERSION)
@@ -154,23 +154,23 @@ mod tests {
 
 	#[test]
 	fn test_schema_key_encode_decode() {
-		let key = SchemaKey {
-			fingerprint: SchemaFingerprint::new(0xDEADBEEFCAFEBABE),
+		let key = RowSchemaKey {
+			fingerprint: RowSchemaFingerprint::new(0xDEADBEEFCAFEBABE),
 		};
 		let encoded = key.encode();
-		let decoded = SchemaKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.fingerprint, SchemaFingerprint::new(0xDEADBEEFCAFEBABE));
+		let decoded = RowSchemaKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.fingerprint, RowSchemaFingerprint::new(0xDEADBEEFCAFEBABE));
 	}
 
 	#[test]
 	fn test_schema_field_key_encode_decode() {
-		let key = SchemaFieldKey {
-			schema_fingerprint: SchemaFingerprint::new(0x1234567890ABCDEF),
+		let key = RowSchemaFieldKey {
+			schema_fingerprint: RowSchemaFingerprint::new(0x1234567890ABCDEF),
 			field_index: 42,
 		};
 		let encoded = key.encode();
-		let decoded = SchemaFieldKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.schema_fingerprint, SchemaFingerprint::new(0x1234567890ABCDEF));
+		let decoded = RowSchemaFieldKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.schema_fingerprint, RowSchemaFingerprint::new(0x1234567890ABCDEF));
 		assert_eq!(decoded.field_index, 42);
 	}
 }

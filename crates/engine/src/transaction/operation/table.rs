@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{row::EncodedRow, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
-		catalog::{primitive::PrimitiveId, table::Table},
+		catalog::{schema::SchemaId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
@@ -20,7 +20,7 @@ use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::
 
 use crate::Result;
 
-fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
+fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
 	let fields = schema.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
@@ -41,9 +41,9 @@ fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &Encod
 	}
 }
 
-fn build_table_insert_change(table: &Table, schema: &Schema, row_number: RowNumber, encoded: &EncodedRow) -> Change {
+fn build_table_insert_change(table: &Table, schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Change {
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::Table(table.id)),
+		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Insert {
 			post: build_encoded_columns(schema, row_number, encoded),
@@ -52,9 +52,9 @@ fn build_table_insert_change(table: &Table, schema: &Schema, row_number: RowNumb
 }
 
 fn build_table_update_change(table: &Table, row_number: RowNumber, old: &EncodedRow, new: &EncodedRow) -> Change {
-	let schema: Schema = (&table.columns).into();
+	let schema: RowSchema = (&table.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::Table(table.id)),
+		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Update {
 			pre: build_encoded_columns(&schema, row_number, old),
@@ -64,9 +64,9 @@ fn build_table_update_change(table: &Table, row_number: RowNumber, old: &Encoded
 }
 
 fn build_table_remove_change(table: &Table, row_number: RowNumber, encoded: &EncodedRow) -> Change {
-	let schema: Schema = (&table.columns).into();
+	let schema: RowSchema = (&table.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::Table(table.id)),
+		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Remove {
 			pre: build_encoded_columns(&schema, row_number, encoded),
@@ -78,7 +78,7 @@ pub(crate) trait TableOperations {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &Schema,
+		schema: &RowSchema,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow>;
@@ -92,7 +92,7 @@ impl TableOperations for CommandTransaction {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &Schema,
+		schema: &RowSchema,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow> {
@@ -158,7 +158,7 @@ impl TableOperations for AdminTransaction {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &Schema,
+		schema: &RowSchema,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow> {
@@ -224,7 +224,7 @@ impl TableOperations for Transaction<'_> {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &Schema,
+		schema: &RowSchema,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow> {

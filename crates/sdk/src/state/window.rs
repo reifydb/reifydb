@@ -6,7 +6,7 @@
 //! This module provides the `FFIWindowStateful` trait for operators that use
 //! time-based or count-based windowing with state.
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
 
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
@@ -25,7 +25,7 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	/// Get or create the schema for state rows
 	///
 	/// This defines the structure of each window's state.
-	fn schema(&self) -> Schema;
+	fn schema(&self) -> RowSchema;
 
 	/// Create a new state encoded with default values
 	///
@@ -91,7 +91,7 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	/// The updated state after applying the function
 	fn update_window<F>(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.schema();
 		let mut row = self.load_state(ctx, window_key)?;

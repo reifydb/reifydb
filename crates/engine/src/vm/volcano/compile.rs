@@ -22,9 +22,9 @@ use reifydb_catalog::{
 			namespaces::SystemNamespaces, operator_retention_policies::SystemOperatorRetentionPolicies,
 			policies::SystemPolicies, policy_operations::SystemPolicyOperations,
 			primary_key_columns::SystemPrimaryKeyColumns, primary_keys::SystemPrimaryKeys,
-			primitive_retention_policies::SystemPrimitiveRetentionPolicies, procedures::SystemProcedures,
-			ringbuffer_storage_stats::SystemRingBufferStorageStats, ringbuffers::SystemRingBuffers,
-			roles::SystemRoles, schema_fields::SystemSchemaFields, schemas::SystemSchemas,
+			procedures::SystemProcedures, ringbuffer_storage_stats::SystemRingBufferStorageStats,
+			ringbuffers::SystemRingBuffers, roles::SystemRoles, schema_fields::SystemSchemaFields,
+			schema_retention_policies::SystemSchemaRetentionPolicies, schemas::SystemSchemas,
 			sequences::SystemSequences, series::SystemSeries, table_storage_stats::SystemTableStorageStats,
 			tables::SystemTables, tables_virtual::SystemTablesVirtual, tag_variants::SystemTagVariants,
 			tags::SystemTags, types::SystemTypes, versions::SystemVersions,
@@ -36,7 +36,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::interface::{
 	catalog::id::{IndexId, NamespaceId},
-	resolved::ResolvedPrimitive,
+	resolved::ResolvedSchema,
 };
 use reifydb_rql::{
 	expression::{AliasExpression, ConstantExpression, Expression, IdentExpression},
@@ -107,13 +107,13 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	}
 }
 
-pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPrimitive> {
+pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedSchema> {
 	match plan {
-		RqlQueryPlan::TableScan(node) => Some(ResolvedPrimitive::Table(node.source.clone())),
-		RqlQueryPlan::ViewScan(node) => Some(ResolvedPrimitive::View(node.source.clone())),
-		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedPrimitive::RingBuffer(node.source.clone())),
-		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedPrimitive::Dictionary(node.source.clone())),
-		RqlQueryPlan::SeriesScan(node) => Some(ResolvedPrimitive::Series(node.source.clone())),
+		RqlQueryPlan::TableScan(node) => Some(ResolvedSchema::Table(node.source.clone())),
+		RqlQueryPlan::ViewScan(node) => Some(ResolvedSchema::View(node.source.clone())),
+		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedSchema::RingBuffer(node.source.clone())),
+		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedSchema::Dictionary(node.source.clone())),
+		RqlQueryPlan::SeriesScan(node) => Some(ResolvedSchema::Series(node.source.clone())),
 		RqlQueryPlan::RemoteScan(_) => None,
 		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
@@ -129,7 +129,7 @@ pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPri
 /// only replaces columns that appear in the assignments.
 fn expand_patch_sumtype_assignments(
 	assignments: Vec<Expression>,
-	source: &ResolvedPrimitive,
+	source: &ResolvedSchema,
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 ) -> Vec<Expression> {
@@ -549,9 +549,9 @@ pub(crate) fn compile<'a>(
 					"versions" => {
 						VTables::Versions(SystemVersions::new(context.services.ioc.clone()))
 					}
-					"primitive_retention_policies" => VTables::PrimitiveRetentionPolicies(
-						SystemPrimitiveRetentionPolicies::new(),
-					),
+					"schema_retention_policies" => {
+						VTables::SchemaRetentionPolicies(SystemSchemaRetentionPolicies::new())
+					}
 					"operator_retention_policies" => VTables::OperatorRetentionPolicies(
 						SystemOperatorRetentionPolicies::new(),
 					),
@@ -700,7 +700,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_number,
 		}) => {
-			let resolved_source = ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedSchema::from(source);
 			Box::new(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
@@ -710,7 +710,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_numbers,
 		}) => {
-			let resolved_source = ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedSchema::from(source);
 			Box::new(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
@@ -721,7 +721,7 @@ pub(crate) fn compile<'a>(
 			start,
 			end,
 		}) => {
-			let resolved_source = ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedSchema::from(source);
 			Box::new(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),

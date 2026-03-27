@@ -13,7 +13,7 @@ use crate::{
 		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, Compiler, CreateColumnPropertyNode,
 		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		PatchNode, PrimitiveScanNode, RemoteScanNode, TakeNode, VariableSourceNode,
+		PatchNode, RemoteScanNode, SchemaScanNode, TakeNode, VariableSourceNode,
 	},
 };
 
@@ -567,7 +567,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
 			}
 		}
-		LogicalPlan::PrimitiveScan(PrimitiveScanNode {
+		LogicalPlan::PrimitiveScan(SchemaScanNode {
 			source,
 			columns: _,
 			index,

@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::primitive::PrimitiveId, change::Diff},
+	interface::{catalog::schema::SchemaId, change::Diff},
 	internal_error,
 	testing::TestingChanged,
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -27,7 +27,7 @@ impl GeneratorFunction for TestingChanged {
 
 		// Materialize view rows from pending source changes so that
 		// changed() sees transactional view mutations.
-		if self.primitive_type == "views" {
+		if self.schema_type == "views" {
 			let _ = t.capture_testing_pre_commit();
 		}
 
@@ -37,27 +37,25 @@ impl GeneratorFunction for TestingChanged {
 
 		let mut mutations: Vec<MutationEntry> = Vec::new();
 
-		for (primitive_id, diff) in &entries {
-			let type_matches = match (&primitive_id, self.primitive_type) {
-				(PrimitiveId::Table(_), "tables") => true,
-				(PrimitiveId::View(_), "views") => true,
-				(PrimitiveId::RingBuffer(_), "ringbuffers") => true,
-				(PrimitiveId::Series(_), "series") => true,
-				(PrimitiveId::Dictionary(_), "dictionaries") => true,
+		for (object_id, diff) in &entries {
+			let type_matches = match (&object_id, self.schema_type) {
+				(SchemaId::Table(_), "tables") => true,
+				(SchemaId::View(_), "views") => true,
+				(SchemaId::RingBuffer(_), "ringbuffers") => true,
+				(SchemaId::Series(_), "series") => true,
+				(SchemaId::Dictionary(_), "dictionaries") => true,
 				_ => false,
 			};
 			if !type_matches {
 				continue;
 			}
 
-			let name = match resolve_primitive_name(
-				ctx.catalog,
-				&mut Transaction::Test(t.reborrow()),
-				primitive_id,
-			) {
-				Ok(n) => n,
-				Err(_) => continue,
-			};
+			let name =
+				match resolve_schema_name(ctx.catalog, &mut Transaction::Test(t.reborrow()), object_id)
+				{
+					Ok(n) => n,
+					Err(_) => continue,
+				};
 
 			if let Some(filter) = filter_arg.as_deref() {
 				if name != filter {
@@ -81,9 +79,9 @@ struct MutationEntry {
 	diff: Diff,
 }
 
-fn resolve_primitive_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &PrimitiveId) -> Result<String> {
+fn resolve_schema_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &SchemaId) -> Result<String> {
 	match id {
-		PrimitiveId::Table(table_id) => {
+		SchemaId::Table(table_id) => {
 			let table = catalog
 				.find_table(txn, *table_id)?
 				.ok_or_else(|| internal_error!("table not found for id {:?}", table_id))?;
@@ -92,7 +90,7 @@ fn resolve_primitive_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Pri
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), table.name))
 		}
-		PrimitiveId::View(view_id) => {
+		SchemaId::View(view_id) => {
 			let view = catalog
 				.find_view(txn, *view_id)?
 				.ok_or_else(|| internal_error!("view not found for id {:?}", view_id))?;
@@ -101,7 +99,7 @@ fn resolve_primitive_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Pri
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), view.name()))
 		}
-		PrimitiveId::RingBuffer(rb_id) => {
+		SchemaId::RingBuffer(rb_id) => {
 			let rb = catalog
 				.find_ringbuffer(txn, *rb_id)?
 				.ok_or_else(|| internal_error!("ringbuffer not found for id {:?}", rb_id))?;
@@ -110,7 +108,7 @@ fn resolve_primitive_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Pri
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), rb.name))
 		}
-		PrimitiveId::Series(series_id) => {
+		SchemaId::Series(series_id) => {
 			let series = catalog
 				.find_series(txn, *series_id)?
 				.ok_or_else(|| internal_error!("series not found for id {:?}", series_id))?;
@@ -119,7 +117,7 @@ fn resolve_primitive_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Pri
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), series.name))
 		}
-		PrimitiveId::Dictionary(dict_id) => {
+		SchemaId::Dictionary(dict_id) => {
 			let dict = catalog
 				.find_dictionary(txn, *dict_id)?
 				.ok_or_else(|| internal_error!("dictionary not found for id {:?}", dict_id))?;

@@ -16,7 +16,7 @@ use reifydb_catalog::{
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -103,7 +103,7 @@ impl DatabaseBuilder {
 		let ioc = IocContainer::new()
 			.register(system_config.clone())
 			.register(MaterializedCatalog::new(system_config))
-			.register(SchemaRegistry::new(single.clone()))
+			.register(RowSchemaRegistry::new(single.clone()))
 			.register(eventbus)
 			.register(multi)
 			.register(single);
@@ -267,7 +267,7 @@ impl DatabaseBuilder {
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
-		let schema_registry = self.ioc.resolve::<SchemaRegistry>()?;
+		let schema_registry = self.ioc.resolve::<RowSchemaRegistry>()?;
 		let multi = self.ioc.resolve::<MultiTransaction>()?;
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;

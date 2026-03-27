@@ -26,7 +26,7 @@ use crate::{
 		MaterializedCatalog,
 		load::{MaterializedCatalogLoader, identity::load_identities},
 	},
-	schema::{SchemaRegistry, load::SchemaRegistryLoader},
+	schema::{RowSchemaRegistry, load::RowSchemaRegistryLoader},
 };
 
 /// Load all catalog data from storage into MaterializedCatalog.
@@ -66,10 +66,10 @@ pub fn bootstrap_system_procedures(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
-	schema_registry: &SchemaRegistry,
+	row_schema_registry: &RowSchemaRegistry,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	let catalog_api = Catalog::new(catalog.clone(), schema_registry.clone());
+	let catalog_api = Catalog::new(catalog.clone(), row_schema_registry.clone());
 	let mut admin = AdminTransaction::new(
 		multi.clone(),
 		single.clone(),
@@ -173,13 +173,13 @@ pub fn bootstrap_root_identity(
 	Ok(())
 }
 
-/// Load schemas from storage into SchemaRegistry.
+/// Load schemas from storage into RowSchemaRegistry.
 pub fn load_schema_registry(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	registry: &SchemaRegistry,
+	registry: &RowSchemaRegistry,
 ) -> Result<()> {
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
-	SchemaRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
+	RowSchemaRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
 	Ok(())
 }

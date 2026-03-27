@@ -6,7 +6,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{blob::Blob, decimal::Decimal, int::Int, r#type::Type};
 
 #[test]
@@ -14,7 +14,7 @@ fn test_massive_field_count() {
 	// Test with an extreme number of fields
 	let field_count = 10000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
-	let schema = Schema::testing(&types);
+	let schema = RowSchema::testing(&types);
 	let mut row = schema.allocate();
 
 	// Set and verify a sampling of fields
@@ -40,7 +40,7 @@ fn test_mixed_static_dynamic_stress() {
 		})
 		.collect();
 
-	let schema = Schema::testing(&types);
+	let schema = RowSchema::testing(&types);
 
 	// Create a encoded and set all dynamic fields once, then repeatedly update
 	// static fields
@@ -109,7 +109,7 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
 
 	let mut original = schema.allocate();
 	schema.set_utf8(&mut original, 0, &"x".repeat(1000));
@@ -137,7 +137,7 @@ fn test_validity_bit_stress() {
 	// Test validity bit handling under stress
 	let field_count = 1000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
-	let schema = Schema::testing(&types);
+	let schema = RowSchema::testing(&types);
 	let mut row = schema.allocate();
 
 	// Set every other field as undefined
@@ -184,7 +184,7 @@ fn test_validity_bit_stress() {
 #[test]
 fn test_extreme_string_sizes() {
 	// Test handling of very large strings
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 
 	// Test various string sizes - use separate rows since dynamic fields
 	// can only be set once
@@ -212,7 +212,7 @@ fn test_extreme_string_sizes() {
 fn test_concurrent_field_updates() {
 	// Simulate concurrent-like updates - test rapid field setting across
 	// different rows since dynamic fields can only be set once per encoded
-	let schema = Schema::testing(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
 
 	let iterations = 1000;
 	let mut rows = Vec::with_capacity(iterations);
@@ -265,7 +265,7 @@ fn test_concurrent_field_updates() {
 #[test]
 fn test_row_size_stability() {
 	// Ensure encoded sizes are stable and predictable for dynamic fields
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob]);
 
 	// Test that rows with similar sized content have similar sizes
 	let sizes = [10, 100, 1000];

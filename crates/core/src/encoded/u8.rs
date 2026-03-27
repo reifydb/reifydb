@@ -3,9 +3,9 @@
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -36,11 +36,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_u8() {
-		let schema = Schema::testing(&[Type::Uint1]);
+		let schema = RowSchema::testing(&[Type::Uint1]);
 		let mut row = schema.allocate();
 		schema.set_u8(&mut row, 0, 255u8);
 		assert_eq!(schema.get_u8(&row, 0), 255u8);
@@ -48,7 +48,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u8() {
-		let schema = Schema::testing(&[Type::Uint1]);
+		let schema = RowSchema::testing(&[Type::Uint1]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_u8(&row, 0), None);
@@ -59,7 +59,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let schema = Schema::testing(&[Type::Uint1]);
+		let schema = RowSchema::testing(&[Type::Uint1]);
 		let mut row = schema.allocate();
 
 		schema.set_u8(&mut row, 0, u8::MAX);
@@ -76,7 +76,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_values() {
-		let schema = Schema::testing(&[Type::Uint1]);
+		let schema = RowSchema::testing(&[Type::Uint1]);
 
 		let test_values = [0u8, 1u8, 127u8, 128u8, 254u8, 255u8];
 
@@ -89,7 +89,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Uint1, Type::Boolean, Type::Uint1]);
+		let schema = RowSchema::testing(&[Type::Uint1, Type::Boolean, Type::Uint1]);
 		let mut row = schema.allocate();
 
 		schema.set_u8(&mut row, 0, 200u8);
@@ -103,7 +103,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Uint1, Type::Uint1]);
+		let schema = RowSchema::testing(&[Type::Uint1, Type::Uint1]);
 		let mut row = schema.allocate();
 
 		schema.set_u8(&mut row, 0, 42);
@@ -117,7 +117,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u8_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

@@ -9,7 +9,7 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	error::CoreError,
 	interface::catalog::id::IndexId,
 	internal_error,
@@ -251,7 +251,7 @@ fn execute_table_insert<V: ValidationMode>(
 	// Hoist loop-invariant computations out of the insertion loop
 	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)?;
 	let row_number_schema = if pk_def.is_some() {
-		Some(Schema::testing(&[Type::Uint8]))
+		Some(RowSchema::testing(&[Type::Uint8]))
 	} else {
 		None
 	};

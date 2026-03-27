@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
+impl RowSchema {
 	pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,11 +41,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_u128() {
-		let schema = Schema::testing(&[Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16]);
 		let mut row = schema.allocate();
 		schema.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
 		assert_eq!(schema.get_u128(&row, 0), 340282366920938463463374607431768211455u128);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u128() {
-		let schema = Schema::testing(&[Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_u128(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let schema = Schema::testing(&[Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16]);
 		let mut row = schema.allocate();
 
 		schema.set_u128(&mut row, 0, u128::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_very_large_values() {
-		let schema = Schema::testing(&[Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16]);
 
 		let test_values = [
 			0u128,
@@ -103,7 +103,7 @@ pub mod tests {
 
 	#[test]
 	fn test_powers_of_two() {
-		let schema = Schema::testing(&[Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16]);
 
 		let powers = [
 			1u128, 2u128, 4u128, 8u128, 16u128, 32u128, 64u128, 128u128, 256u128, 512u128, 1024u128,
@@ -119,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ipv6_addresses() {
-		let schema = Schema::testing(&[Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16]);
 
 		// Test values representing IPv6 addresses as u128
 		let ipv6_values = [
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid_values() {
-		let schema = Schema::testing(&[Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16]);
 
 		// Test values that could represent UUIDs as u128
 		let uuid_values = [
@@ -156,7 +156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Uint16, Type::Boolean, Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16, Type::Boolean, Type::Uint16]);
 		let mut row = schema.allocate();
 
 		let large_value1 = 200000000000000000000000000000000000000u128;
@@ -173,7 +173,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Uint16, Type::Uint16]);
+		let schema = RowSchema::testing(&[Type::Uint16, Type::Uint16]);
 		let mut row = schema.allocate();
 
 		let value = 340282366920938463463374607431768211455u128;
@@ -188,7 +188,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u128_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

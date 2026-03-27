@@ -18,7 +18,7 @@ use reifydb_type::value::{
 };
 use uuid::Uuid;
 
-use crate::encoded::{row::EncodedRow, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
 /// Encodes an inner value to a `[type_byte][payload]` byte vector.
 ///
@@ -227,7 +227,7 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 	}
 }
 
-impl Schema {
+impl RowSchema {
 	pub fn set_any(&self, row: &mut EncodedRow, index: usize, value: &Value) {
 		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Any);
 		let encoded = encode_value(value);
@@ -267,11 +267,11 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_any_boolean() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 		let mut row = schema.allocate();
 		schema.set_any(&mut row, 0, &Value::Boolean(true));
 		assert_eq!(schema.get_any(&row, 0), Value::Boolean(true));
@@ -279,7 +279,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_integers() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 
 		let cases: &[Value] = &[
 			Value::Int1(-42),
@@ -303,7 +303,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_floats() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 
 		let f4 = Value::Float4(OrderedF32::try_from(3.14f32).unwrap());
 		let mut row = schema.allocate();
@@ -318,7 +318,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_temporal() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 
 		let date = Value::Date(Date::new(2025, 7, 4).unwrap());
 		let mut row = schema.allocate();
@@ -343,7 +343,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_uuid() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 
 		let u4 = Value::Uuid4(Uuid4::generate());
 		let mut row = schema.allocate();
@@ -358,7 +358,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_utf8() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 		let v = Value::Utf8("hello, world!".to_string());
 		let mut row = schema.allocate();
 		schema.set_any(&mut row, 0, &v);
@@ -367,7 +367,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_blob() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 		let v = Value::Blob(Blob::from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]));
 		let mut row = schema.allocate();
 		schema.set_any(&mut row, 0, &v);
@@ -376,7 +376,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_none_via_set_value() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 		let mut row = schema.allocate();
 		schema.set_value(&mut row, 0, &Value::none());
 		assert!(!row.is_defined(0));
@@ -385,7 +385,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_roundtrip_via_set_get_value() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 
 		let cases: &[Value] = &[
 			Value::Boolean(false),
@@ -405,7 +405,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_multiple_fields() {
-		let schema = Schema::testing(&[Type::Any, Type::Int4, Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any, Type::Int4, Type::Any]);
 		let mut row = schema.allocate();
 
 		schema.set_any(&mut row, 0, &Value::Utf8("first".to_string()));
@@ -419,7 +419,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_any() {
-		let schema = Schema::testing(&[Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any]);
 		let mut row = schema.allocate();
 
 		schema.set_any(&mut row, 0, &Value::Int4(42));
@@ -436,7 +436,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_any_with_other_dynamic_fields() {
-		let schema = Schema::testing(&[Type::Any, Type::Utf8, Type::Any]);
+		let schema = RowSchema::testing(&[Type::Any, Type::Utf8, Type::Any]);
 		let mut row = schema.allocate();
 
 		schema.set_any(&mut row, 0, &Value::Int4(1));

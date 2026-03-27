@@ -5,7 +5,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
+	interface::catalog::{flow::FlowNodeId, id::TableId, schema::SchemaId},
 	util::encoding::{binary::decode_binary, format::raw::Raw},
 };
 use reifydb_store_multi::{
@@ -72,7 +72,7 @@ impl Runner {
 					Ok(EntryKind::Multi)
 				} else if let Some(id_str) = s.strip_prefix("source:") {
 					let id: u64 = id_str.parse()?;
-					Ok(EntryKind::Source(PrimitiveId::Table(TableId(id))))
+					Ok(EntryKind::Source(SchemaId::Table(TableId(id))))
 				} else if let Some(id_str) = s.strip_prefix("operator:") {
 					let id: u64 = id_str.parse()?;
 					Ok(EntryKind::Operator(FlowNodeId(id)))

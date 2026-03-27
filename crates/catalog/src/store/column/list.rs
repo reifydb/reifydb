@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		column::Column,
 		id::{ColumnId, NamespaceId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	},
 	key::column::ColumnKey,
 };
@@ -16,7 +16,7 @@ use crate::{CatalogStore, Result, store::column::schema::primitive_column};
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
 	pub column: Column,
-	pub source_id: PrimitiveId,
+	pub source_id: SchemaId,
 	pub is_view: bool,
 	pub entity_kind: &'static str,
 	pub entity_name: String,
@@ -24,14 +24,14 @@ pub struct ColumnInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_columns(rx: &mut Transaction<'_>, source: impl Into<PrimitiveId>) -> Result<Vec<Column>> {
-		let source = source.into();
+	pub(crate) fn list_columns(rx: &mut Transaction<'_>, schema: impl Into<SchemaId>) -> Result<Vec<Column>> {
+		let schema = schema.into();
 		let mut result = vec![];
 
 		// Collect column IDs first to avoid holding stream borrow
 		let mut ids = Vec::new();
 		{
-			let mut stream = rx.range(ColumnKey::full_scan(source), 1024)?;
+			let mut stream = rx.range(ColumnKey::full_scan(schema), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = multi.row;
@@ -124,7 +124,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "b_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int4),
 				properties: vec![],
@@ -141,7 +141,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "a_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],

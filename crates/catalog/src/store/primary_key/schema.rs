@@ -4,7 +4,7 @@
 pub(crate) mod primary_key {
 	use once_cell::sync::Lazy;
 	use reifydb_core::{
-		encoded::schema::{Schema, SchemaField},
+		encoded::schema::{RowSchema, RowSchemaField},
 		interface::catalog::id::ColumnId,
 	};
 	use reifydb_type::value::{blob::Blob, r#type::Type};
@@ -13,11 +13,11 @@ pub(crate) mod primary_key {
 	pub(crate) const SOURCE: usize = 1;
 	pub(crate) const COLUMN_IDS: usize = 2;
 
-	pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| {
-		Schema::new(vec![
-			SchemaField::unconstrained("id", Type::Uint8),
-			SchemaField::unconstrained("source", Type::Uint8),
-			SchemaField::unconstrained("column_ids", Type::Blob),
+	pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| {
+		RowSchema::new(vec![
+			RowSchemaField::unconstrained("id", Type::Uint8),
+			RowSchemaField::unconstrained("source", Type::Uint8),
+			RowSchemaField::unconstrained("column_ids", Type::Blob),
 		])
 	});
 

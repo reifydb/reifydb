@@ -4,7 +4,7 @@
 use std::fmt::Write;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{common::JoinType, interface::resolved::ResolvedPrimitive};
+use reifydb_core::{common::JoinType, interface::resolved::ResolvedSchema};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -676,9 +676,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowPointLookup(lookup) => {
 			let source_name = match &lookup.source {
-				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
-				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
-				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedSchema::Table(t) => t.identifier().text().to_string(),
+				ResolvedSchema::View(v) => v.identifier().text().to_string(),
+				ResolvedSchema::RingBuffer(rb) => rb.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(
@@ -691,9 +691,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowListLookup(lookup) => {
 			let source_name = match &lookup.source {
-				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
-				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
-				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedSchema::Table(t) => t.identifier().text().to_string(),
+				ResolvedSchema::View(v) => v.identifier().text().to_string(),
+				ResolvedSchema::RingBuffer(rb) => rb.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			let rows_str = lookup.row_numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
@@ -707,9 +707,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowRangeScan(scan) => {
 			let source_name = match &scan.source {
-				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
-				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
-				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedSchema::Table(t) => t.identifier().text().to_string(),
+				ResolvedSchema::View(v) => v.identifier().text().to_string(),
+				ResolvedSchema::RingBuffer(rb) => rb.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(

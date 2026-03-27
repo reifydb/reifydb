@@ -3,12 +3,12 @@
 
 //! Boolean edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::r#type::Type;
 
 #[test]
 fn test_boolean_bit_patterns() {
-	let schema = Schema::testing(&[Type::Boolean]);
+	let schema = RowSchema::testing(&[Type::Boolean]);
 	let mut row = schema.allocate();
 
 	// Test transaction values
@@ -26,7 +26,7 @@ fn test_boolean_bit_patterns() {
 #[test]
 fn test_boolean_field_independence() {
 	// Test that boolean fields don't interfere with each other
-	let schema = Schema::testing(&[
+	let schema = RowSchema::testing(&[
 		Type::Boolean,
 		Type::Boolean,
 		Type::Boolean,

@@ -49,7 +49,7 @@ impl AppendOperator {
 	fn determine_parent_index(&self, change: &Change) -> Option<usize> {
 		match &change.origin {
 			ChangeOrigin::Flow(from_node) => self.input_nodes.iter().position(|n| n == from_node),
-			ChangeOrigin::Primitive(_) => None,
+			ChangeOrigin::Schema(_) => None,
 		}
 	}
 

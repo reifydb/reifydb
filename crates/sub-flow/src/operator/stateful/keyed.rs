@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::{
@@ -17,9 +17,9 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait KeyedStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> Schema;
+	fn layout(&self) -> RowSchema;
 
-	/// Schema for keys - defines the types of the key components
+	/// RowSchema for keys - defines the types of the key components
 	fn key_types(&self) -> &[Type];
 
 	/// Create EncodedKey from Values
@@ -55,7 +55,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 	/// Update state for a key with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.layout();
 		let mut row = self.load_state(txn, key_values)?;
@@ -85,7 +85,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {
-		fn layout(&self) -> Schema {
+		fn layout(&self) -> RowSchema {
 			self.layout.clone()
 		}
 

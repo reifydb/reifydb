@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::catalog::{
 		change::CatalogTrackViewChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, ViewId},
@@ -315,7 +315,7 @@ impl Catalog {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
-		let schema = Schema::from(view.columns());
+		let schema = RowSchema::from(view.columns());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		Ok(view)
@@ -326,7 +326,7 @@ impl Catalog {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
-		let schema = Schema::from(view.columns());
+		let schema = RowSchema::from(view.columns());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		Ok(view)

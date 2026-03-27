@@ -3,7 +3,7 @@
 
 //! Performance and scalability tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{blob::Blob, date::Date, int::Int, r#type::Type, uuid::Uuid4};
 
 #[test]
@@ -27,7 +27,7 @@ fn test_large_row() {
 			})
 			.collect();
 
-		let schema = Schema::testing(&types);
+		let schema = RowSchema::testing(&types);
 		let mut row = schema.allocate();
 
 		// Set all fields
@@ -86,7 +86,7 @@ fn test_large_row() {
 
 #[test]
 fn test_dynamic_field_reallocation() {
-	let schema = Schema::testing(&[Type::Utf8, Type::Blob, Type::Int]);
+	let schema = RowSchema::testing(&[Type::Utf8, Type::Blob, Type::Int]);
 
 	let iterations = 1000;
 
@@ -126,7 +126,7 @@ fn test_memory_efficiency() {
 	// Test that memory usage is reasonable
 
 	// Static types should have predictable size
-	let schema = Schema::testing(&[
+	let schema = RowSchema::testing(&[
 		Type::Boolean, // 1 bit validity + 1 byte
 		Type::Int4,    // 1 bit validity + 4 bytes
 		Type::Float8,  // 1 bit validity + 8 bytes
@@ -140,7 +140,7 @@ fn test_memory_efficiency() {
 
 	// Dynamic types should grow as needed - test with separate rows since
 	// dynamic fields can only be set once
-	let schema = Schema::testing(&[Type::Utf8]);
+	let schema = RowSchema::testing(&[Type::Utf8]);
 
 	let initial_size = schema.allocate().len();
 
