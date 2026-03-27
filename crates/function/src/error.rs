@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_type::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,
 	value::r#type::Type,
 };
@@ -42,6 +42,12 @@ pub enum FunctionError {
 impl From<Error> for FunctionError {
 	fn from(err: Error) -> Self {
 		FunctionError::Wrapped(Box::new(err))
+	}
+}
+
+impl From<TypeError> for FunctionError {
+	fn from(err: TypeError) -> Self {
+		FunctionError::Wrapped(Box::new(Error::from(err)))
 	}
 }
 

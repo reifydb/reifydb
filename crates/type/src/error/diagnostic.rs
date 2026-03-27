@@ -860,6 +860,24 @@ impl IntoDiagnostic for TypeError {
 						Some("use a datetime between 1970-01-01T00:00:00Z and 2554-07-21T23:34:33Z".to_string()),
 						vec!["DateTime is stored as nanoseconds since Unix epoch (u64)".to_string()],
 					),
+					TemporalKind::DurationOverflow { message: msg } => (
+						"TEMPORAL_024",
+						Some(msg.clone()),
+						Some("ensure duration values are within representable range".to_string()),
+						vec![
+							"months and days are stored as i32 (max ±2,147,483,647)".to_string(),
+							"sub-day time is stored as nanoseconds in i64".to_string(),
+						],
+					),
+					TemporalKind::DurationMixedSign { days, nanos } => (
+						"TEMPORAL_025",
+						Some(format!("duration days and nanos have mixed signs: days={}, nanos={}", days, nanos)),
+						Some("days and nanos must share the same sign".to_string()),
+						vec![
+							"days and nanos are commensurable (1 day = 86400s) so they must agree in sign".to_string(),
+							"months may differ in sign from days/nanos (months have variable length)".to_string(),
+						],
+					),
 				};
 
 				Diagnostic {

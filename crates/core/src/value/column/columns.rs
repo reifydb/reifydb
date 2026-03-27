@@ -543,7 +543,7 @@ pub mod tests {
 		let date = Date::from_ymd(2025, 1, 15).unwrap();
 		let datetime = DateTime::from_timestamp(1642694400).unwrap();
 		let time = Time::from_hms(14, 30, 45).unwrap();
-		let duration = Duration::from_days(30);
+		let duration = Duration::from_days(30).unwrap();
 
 		let columns = Columns::single_row([
 			("date_col", Value::Date(date.clone())),

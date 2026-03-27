@@ -566,7 +566,7 @@ fn test_any_cycle_all_types() {
 		Value::Date(Date::new(2025, 12, 31).unwrap()),
 		Value::DateTime(DateTime::new(2025, 7, 15, 14, 30, 45, 0).unwrap()),
 		Value::Time(Time::new(23, 59, 59, 999999999).unwrap()),
-		Value::Duration(Duration::new(12, 30, 1_000_000_000)),
+		Value::Duration(Duration::new(12, 30, 1_000_000_000).unwrap()),
 		Value::Uuid4(Uuid4::generate()),
 		Value::Uuid7(Uuid7::generate()),
 		Value::IdentityId(IdentityId::generate()),

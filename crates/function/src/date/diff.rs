@@ -47,7 +47,7 @@ impl ScalarFunction for DateDiff {
 						(Some(d1), Some(d2)) => {
 							let diff_days = (d1.to_days_since_epoch()
 								- d2.to_days_since_epoch()) as i64;
-							container.push(Duration::from_days(diff_days));
+							container.push(Duration::from_days(diff_days)?);
 						}
 						_ => container.push_default(),
 					}

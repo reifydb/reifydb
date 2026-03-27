@@ -728,8 +728,8 @@ pub mod tests {
 
 	#[test]
 	fn test_duration() {
-		let duration1 = Duration::from_days(30);
-		let duration2 = Duration::from_hours(24);
+		let duration1 = Duration::from_days(30).unwrap();
+		let duration2 = Duration::from_hours(24).unwrap();
 		let mut col = ColumnData::duration(vec![duration1]);
 		col.push_value(Value::Duration(duration2));
 		let ColumnData::Duration(container) = col else {
@@ -740,7 +740,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_duration() {
-		let duration1 = Duration::from_days(30);
+		let duration1 = Duration::from_days(30).unwrap();
 		let mut col = ColumnData::duration(vec![duration1]);
 		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
@@ -750,7 +750,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_duration() {
-		let duration = Duration::from_minutes(90);
+		let duration = Duration::from_minutes(90).unwrap();
 		let mut col = ColumnData::none_typed(Type::Boolean, 1);
 		col.push_value(Value::Duration(duration));
 		assert_eq!(col.len(), 2);

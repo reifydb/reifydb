@@ -303,7 +303,7 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 }
 
 fn compile_tick_duration(std_dur: time::Duration) -> Duration {
-	Duration::from_nanoseconds(std_dur.as_nanos() as i64)
+	Duration::from_nanoseconds(std_dur.as_nanos() as i64).unwrap()
 }
 
 /// Recursively convert a bump-allocated query PhysicalPlan into an owned QueryPlan.

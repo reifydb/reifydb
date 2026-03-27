@@ -145,7 +145,7 @@ pub mod tests {
 		let date = Date::new(2025, 1, 15).unwrap();
 		let datetime = DateTime::from_timestamp(1642694400).unwrap();
 		let time = Time::from_hms(14, 30, 45).unwrap();
-		let duration = Duration::from_days(7);
+		let duration = Duration::from_days(7).unwrap();
 
 		schema.set_date(&mut row, 0, date.clone());
 		schema.set_datetime(&mut row, 1, datetime.clone());

@@ -230,8 +230,10 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_duration(&mut self) -> Result<Duration> {
+		let months = self.read_i32()?;
+		let days = self.read_i32()?;
 		let nanos = self.read_i64()?;
-		Ok(Duration::from_nanoseconds(nanos))
+		Ok(Duration::new(months, days, nanos)?)
 	}
 
 	pub fn read_row_number(&mut self) -> Result<RowNumber> {
@@ -623,13 +625,71 @@ pub mod tests {
 	#[test]
 	fn test_read_duration() {
 		let mut ser = KeySerializer::new();
-		let duration = Duration::from_nanoseconds(1000000);
+		let duration = Duration::from_nanoseconds(1000000).unwrap();
 		ser.extend_duration(&duration);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
 		assert_eq!(de.read_duration().unwrap(), duration);
 		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_keycode_roundtrip_with_months_and_days() {
+		let mut ser = KeySerializer::new();
+		let duration = Duration::new(12, 5, 1_000_000_000).unwrap();
+		ser.extend_duration(&duration);
+		let bytes = ser.finish();
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_duration().unwrap(), duration);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_keycode_different_durations_produce_different_keys() {
+		let d1 = Duration::new(12, 0, 0).unwrap();
+		let d2 = Duration::zero();
+
+		let mut s1 = KeySerializer::new();
+		s1.extend_duration(&d1);
+		let b1 = s1.finish();
+
+		let mut s2 = KeySerializer::new();
+		s2.extend_duration(&d2);
+		let b2 = s2.finish();
+
+		assert_ne!(b1, b2);
+	}
+
+	#[test]
+	fn test_keycode_duration_ordering_preserved() {
+		// Keycode encoding is descending: larger Duration → smaller bytes
+		let durations = vec![
+			Duration::new(0, 0, 0).unwrap(),
+			Duration::new(0, 0, 1_000_000_000).unwrap(),
+			Duration::new(0, 1, 0).unwrap(),
+			Duration::new(1, 0, 0).unwrap(),
+			Duration::new(12, 30, 0).unwrap(),
+		];
+
+		let keys: Vec<Vec<u8>> = durations
+			.iter()
+			.map(|d| {
+				let mut ser = KeySerializer::new();
+				ser.extend_duration(d);
+				ser.finish()
+			})
+			.collect();
+
+		for i in 0..keys.len() - 1 {
+			assert!(
+				keys[i] > keys[i + 1],
+				"Key ordering broken: {:?} key should be > {:?} key (descending encoding)",
+				durations[i],
+				durations[i + 1]
+			);
+		}
 	}
 
 	#[test]

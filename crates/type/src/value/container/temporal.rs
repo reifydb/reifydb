@@ -299,7 +299,7 @@ pub mod tests {
 
 	#[test]
 	fn test_interval_container() {
-		let durations = vec![Duration::from_days(30), Duration::from_hours(24)];
+		let durations = vec![Duration::from_days(30).unwrap(), Duration::from_hours(24).unwrap()];
 		let container = TemporalContainer::from_vec(durations.clone());
 
 		assert_eq!(container.len(), 2);

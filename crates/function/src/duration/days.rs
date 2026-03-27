@@ -90,7 +90,7 @@ impl ScalarFunction for DurationDays {
 
 		for i in 0..row_count {
 			if let Some(val) = extract_i64(col.data(), i) {
-				container.push(Duration::from_days(val));
+				container.push(Duration::from_days(val)?);
 			} else {
 				container.push_default();
 			}

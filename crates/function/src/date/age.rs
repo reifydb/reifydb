@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, duration::Duration, r#type::Type};
+use reifydb_type::{
+	error::TypeError,
+	value::{container::temporal::TemporalContainer, date::Date, duration::Duration, r#type::Type},
+};
 
 use crate::{
 	ScalarFunction, ScalarFunctionContext,
@@ -20,7 +23,7 @@ impl DateAge {
 
 /// Compute calendar-aware age between two dates.
 /// Returns Duration with months + days components.
-pub fn date_age(d1: &Date, d2: &Date) -> Duration {
+pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, TypeError> {
 	let y1 = d1.year();
 	let m1 = d1.month() as i32;
 	let day1 = d1.day() as i32;
@@ -85,7 +88,7 @@ impl ScalarFunction for DateAge {
 				for i in 0..row_count {
 					match (container1.get(i), container2.get(i)) {
 						(Some(d1), Some(d2)) => {
-							container.push(date_age(&d1, &d2));
+							container.push(date_age(&d1, &d2)?);
 						}
 						_ => container.push_default(),
 					}

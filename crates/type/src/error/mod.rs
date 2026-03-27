@@ -280,6 +280,13 @@ pub enum TemporalKind {
 		component: char,
 	},
 	DateTimeOutOfRange,
+	DurationOverflow {
+		message: String,
+	},
+	DurationMixedSign {
+		days: i32,
+		nanos: i64,
+	},
 }
 
 #[derive(Debug, Clone, PartialEq)]

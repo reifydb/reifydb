@@ -97,10 +97,6 @@ where
 	Err(last_err.unwrap())
 }
 
-// ---------------------------------------------------------------------------
-// Raw execution helpers (no interceptors)
-// ---------------------------------------------------------------------------
-
 async fn raw_query(
 	system: ActorSystem,
 	engine: StandardEngine,
@@ -184,10 +180,6 @@ async fn raw_subscription(
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 /// Execute a database operation with interceptor support.
 ///

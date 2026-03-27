@@ -153,7 +153,7 @@ fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
 			let months = i32::from_le_bytes(data[..4].try_into().unwrap());
 			let days = i32::from_le_bytes(data[4..8].try_into().unwrap());
 			let nanos = i64::from_le_bytes(data[8..16].try_into().unwrap());
-			Ok(Value::Duration(Duration::new(months, days, nanos)))
+			Ok(Value::Duration(Duration::new(months, days, nanos).unwrap()))
 		}
 		Type::Blob => Ok(Value::Blob(Blob::new(data.clone()))),
 		Type::IdentityId => {

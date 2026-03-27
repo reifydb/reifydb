@@ -565,7 +565,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 					let months = i32::from_le_bytes(chunk[..4].try_into().unwrap());
 					let days = i32::from_le_bytes(chunk[4..8].try_into().unwrap());
 					let nanos = i64::from_le_bytes(chunk[8..16].try_into().unwrap());
-					Duration::new(months, days, nanos)
+					Duration::new(months, days, nanos).unwrap()
 				})
 				.collect();
 			FrameColumnData::Duration(TemporalContainer::new(values))
@@ -779,7 +779,7 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			let months = i32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
 			let days = i32::from_le_bytes(data[pos + 4..pos + 8].try_into().unwrap());
 			let nanos = i64::from_le_bytes(data[pos + 8..pos + 16].try_into().unwrap());
-			(Value::Duration(Duration::new(months, days, nanos)), pos + 16)
+			(Value::Duration(Duration::new(months, days, nanos).unwrap()), pos + 16)
 		}
 		Type::IdentityId => {
 			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());

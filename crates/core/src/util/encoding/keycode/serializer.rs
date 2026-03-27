@@ -201,7 +201,7 @@ impl KeySerializer {
 
 	/// Extend with Duration value
 	pub fn extend_duration(&mut self, duration: &Duration) -> &mut Self {
-		self.extend_i64(duration.get_nanos())
+		self.extend_i32(duration.get_months()).extend_i32(duration.get_days()).extend_i64(duration.get_nanos())
 	}
 
 	/// Extend with RowNumber value
@@ -959,10 +959,10 @@ pub mod tests {
 	#[test]
 	fn test_interval() {
 		let mut serializer = KeySerializer::new();
-		let duration = Duration::from_nanoseconds(1000000);
+		let duration = Duration::from_nanoseconds(1000000).unwrap();
 		serializer.extend_duration(&duration);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 8); // i64 encoding
+		assert_eq!(result.len(), 16); // i32 + i32 + i64 encoding
 	}
 
 	#[test]
@@ -1301,7 +1301,7 @@ pub mod tests {
 
 	#[test]
 	fn test_roundtrip_duration() {
-		let value = Value::Duration(Duration::from_nanoseconds(1_000_000));
+		let value = Value::Duration(Duration::from_nanoseconds(1_000_000).unwrap());
 		let mut ser = KeySerializer::new();
 		ser.extend_value(&value);
 		let bytes = ser.finish();
@@ -1465,7 +1465,7 @@ pub mod tests {
 			Value::Date(Date::from_ymd(2024, 6, 15).unwrap()),
 			Value::DateTime(DateTime::from_ymd_hms(2024, 6, 15, 12, 30, 45).unwrap()),
 			Value::Time(Time::from_hms(12, 30, 45).unwrap()),
-			Value::Duration(Duration::from_nanoseconds(1_000_000)),
+			Value::Duration(Duration::from_nanoseconds(1_000_000).unwrap()),
 			Value::IdentityId(IdentityId::generate()),
 			Value::Uuid4(Uuid4::generate()),
 			Value::Uuid7(Uuid7::generate()),

@@ -47,7 +47,7 @@ impl Schema {
 			let days = (row.as_ptr().add(field.offset as usize + 4) as *const i32).read_unaligned();
 			// Read nanos (i64) from offset + 8
 			let nanos = (row.as_ptr().add(field.offset as usize + 8) as *const i64).read_unaligned();
-			Duration::new(months, days, nanos)
+			Duration::new(months, days, nanos).expect("stored duration must be valid")
 		}
 	}
 
@@ -71,7 +71,7 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Duration]);
 		let mut row = schema.allocate();
 
-		let value = Duration::from_seconds(-7200);
+		let value = Duration::from_seconds(-7200).unwrap();
 		schema.set_duration(&mut row, 0, value.clone());
 		assert_eq!(schema.get_duration(&row, 0), value);
 	}
@@ -83,7 +83,7 @@ pub mod tests {
 
 		assert_eq!(schema.try_get_duration(&row, 0), None);
 
-		let test_duration = Duration::from_days(30);
+		let test_duration = Duration::from_days(30).unwrap();
 		schema.set_duration(&mut row, 0, test_duration.clone());
 		assert_eq!(schema.try_get_duration(&row, 0), Some(test_duration));
 	}
@@ -103,13 +103,13 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Duration]);
 
 		let test_durations = [
-			Duration::from_seconds(0),     // Zero
-			Duration::from_seconds(60),    // 1 minute
-			Duration::from_seconds(3600),  // 1 hour
-			Duration::from_seconds(86400), // 1 day
-			Duration::from_days(7),        // 1 week
-			Duration::from_days(30),       // ~1 month
-			Duration::from_weeks(52),      // ~1 year
+			Duration::from_seconds(0).unwrap(),     // Zero
+			Duration::from_seconds(60).unwrap(),    // 1 minute
+			Duration::from_seconds(3600).unwrap(),  // 1 hour
+			Duration::from_seconds(86400).unwrap(), // 1 day
+			Duration::from_days(7).unwrap(),        // 1 week
+			Duration::from_days(30).unwrap(),       // ~1 month
+			Duration::from_weeks(52).unwrap(),      // ~1 year
 		];
 
 		for duration in test_durations {
@@ -124,11 +124,11 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Duration]);
 
 		let negative_durations = [
-			Duration::from_seconds(-60),    // -1 minute
-			Duration::from_seconds(-3600),  // -1 hour
-			Duration::from_seconds(-86400), // -1 day
-			Duration::from_days(-7),        // -1 week
-			Duration::from_weeks(-4),       // -1 month
+			Duration::from_seconds(-60).unwrap(),    // -1 minute
+			Duration::from_seconds(-3600).unwrap(),  // -1 hour
+			Duration::from_seconds(-86400).unwrap(), // -1 day
+			Duration::from_days(-7).unwrap(),        // -1 week
+			Duration::from_weeks(-4).unwrap(),       // -1 month
 		];
 
 		for duration in negative_durations {
@@ -148,7 +148,8 @@ pub mod tests {
 			6,         // 6 months
 			15,        // 15 days
 			123456789, // nanoseconds
-		);
+		)
+		.unwrap();
 		schema.set_duration(&mut row, 0, complex_duration.clone());
 		assert_eq!(schema.get_duration(&row, 0), complex_duration);
 	}
@@ -158,8 +159,8 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Duration, Type::Boolean, Type::Duration, Type::Int8]);
 		let mut row = schema.allocate();
 
-		let duration1 = Duration::from_hours(24);
-		let duration2 = Duration::from_minutes(-30);
+		let duration1 = Duration::from_hours(24).unwrap();
+		let duration2 = Duration::from_minutes(-30).unwrap();
 
 		schema.set_duration(&mut row, 0, duration1.clone());
 		schema.set_bool(&mut row, 1, true);
@@ -177,7 +178,7 @@ pub mod tests {
 		let schema = Schema::testing(&[Type::Duration, Type::Duration]);
 		let mut row = schema.allocate();
 
-		let duration = Duration::from_days(100);
+		let duration = Duration::from_days(100).unwrap();
 		schema.set_duration(&mut row, 0, duration.clone());
 
 		assert_eq!(schema.try_get_duration(&row, 0), Some(duration));
@@ -197,7 +198,8 @@ pub mod tests {
 			120,             // 10 years in months
 			3650,            // ~10 years in days
 			123456789012345, // Large nanosecond value
-		);
+		)
+		.unwrap();
 		schema.set_duration(&mut row, 0, large_duration.clone());
 		assert_eq!(schema.get_duration(&row, 0), large_duration);
 	}
@@ -209,10 +211,11 @@ pub mod tests {
 
 		// Test that all components are preserved exactly
 		let precise_duration = Duration::new(
-			-5,        // -5 months
+			5,         // 5 months
 			20,        // 20 days
 			999999999, // 999,999,999 nanoseconds
-		);
+		)
+		.unwrap();
 		schema.set_duration(&mut row, 0, precise_duration.clone());
 
 		let retrieved = schema.get_duration(&row, 0);
@@ -235,15 +238,15 @@ pub mod tests {
 
 		// Test common durations used in applications
 		let common_durations = [
-			Duration::from_seconds(1),  // 1 second
-			Duration::from_seconds(30), // 30 seconds
-			Duration::from_minutes(5),  // 5 minutes
-			Duration::from_minutes(15), // 15 minutes
-			Duration::from_hours(1),    // 1 hour
-			Duration::from_hours(8),    // Work day
-			Duration::from_days(1),     // 1 day
-			Duration::from_weeks(1),    // 1 week
-			Duration::from_weeks(2),    // 2 weeks
+			Duration::from_seconds(1).unwrap(),  // 1 second
+			Duration::from_seconds(30).unwrap(), // 30 seconds
+			Duration::from_minutes(5).unwrap(),  // 5 minutes
+			Duration::from_minutes(15).unwrap(), // 15 minutes
+			Duration::from_hours(1).unwrap(),    // 1 hour
+			Duration::from_hours(8).unwrap(),    // Work day
+			Duration::from_days(1).unwrap(),     // 1 day
+			Duration::from_weeks(1).unwrap(),    // 1 week
+			Duration::from_weeks(2).unwrap(),    // 2 weeks
 		];
 
 		for duration in common_durations {
@@ -259,12 +262,12 @@ pub mod tests {
 
 		// Test boundary values for each component
 		let boundary_durations = [
-			Duration::new(i32::MAX, 0, 0), // Max months
-			Duration::new(i32::MIN, 0, 0), // Min months
-			Duration::new(0, i32::MAX, 0), // Max days
-			Duration::new(0, i32::MIN, 0), // Min days
-			Duration::new(0, 0, i64::MAX), // Max nanoseconds
-			Duration::new(0, 0, i64::MIN), // Min nanoseconds
+			Duration::new(i32::MAX, 0, 0).unwrap(), // Max months
+			Duration::new(i32::MIN, 0, 0).unwrap(), // Min months
+			Duration::new(0, i32::MAX, 0).unwrap(), // Max days
+			Duration::new(0, i32::MIN, 0).unwrap(), // Min days
+			Duration::new(0, 0, i64::MAX).unwrap(), // Max nanoseconds
+			Duration::new(0, 0, i64::MIN).unwrap(), // Min nanoseconds
 		];
 
 		for duration in boundary_durations {

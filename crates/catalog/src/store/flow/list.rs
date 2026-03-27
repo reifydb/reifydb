@@ -33,7 +33,7 @@ impl CatalogStore {
 
 					let tick_nanos = flow::SCHEMA.get_u64(&entry.row, flow::TICK_NANOS);
 					let tick = if tick_nanos > 0 {
-						Some(Duration::from_nanoseconds(tick_nanos as i64))
+						Some(Duration::from_nanoseconds(tick_nanos as i64)?)
 					} else {
 						None
 					};

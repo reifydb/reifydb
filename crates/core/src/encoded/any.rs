@@ -197,7 +197,7 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 			let months = i32::from_le_bytes([p[0], p[1], p[2], p[3]]);
 			let days = i32::from_le_bytes([p[4], p[5], p[6], p[7]]);
 			let nanos = i64::from_le_bytes(p[8..16].try_into().unwrap());
-			Value::Duration(Duration::new(months, days, nanos))
+			Value::Duration(Duration::new(months, days, nanos).unwrap())
 		}
 
 		Type::Uuid4 => {
@@ -335,7 +335,7 @@ pub mod tests {
 		schema.set_any(&mut row3, 0, &t);
 		assert_eq!(schema.get_any(&row3, 0), t);
 
-		let dur = Value::Duration(Duration::from_seconds(3600));
+		let dur = Value::Duration(Duration::from_seconds(3600).unwrap());
 		let mut row4 = schema.allocate();
 		schema.set_any(&mut row4, 0, &dur);
 		assert_eq!(schema.get_any(&row4, 0), dur);

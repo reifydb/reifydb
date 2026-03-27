@@ -560,7 +560,7 @@ pub mod tests {
 			Value::Date(Date::new(2025, 7, 15).unwrap()),
 			Value::DateTime(DateTime::from_ymd_hms(2025, 7, 15, 14, 30, 45).unwrap()),
 			Value::Time(Time::new(14, 30, 45, 123456789).unwrap()),
-			Value::Duration(Duration::from_seconds(3600)),
+			Value::Duration(Duration::from_seconds(3600).unwrap()),
 		];
 
 		schema.set_values(&mut row, &original_values);
@@ -617,7 +617,7 @@ pub mod tests {
 			Value::DateTime(DateTime::new(2015, 10, 21, 16, 29, 0, 0).unwrap()),
 			Value::Int4(88),
 			Value::Time(Time::new(12, 0, 0, 0).unwrap()),
-			Value::Duration(Duration::from_minutes(30)),
+			Value::Duration(Duration::from_minutes(30).unwrap()),
 		];
 
 		schema.set_values(&mut row, &values);
@@ -805,7 +805,7 @@ pub mod tests {
 			Value::Date(Date::new(2025, 12, 31).unwrap()),
 			Value::DateTime(DateTime::new(2025, 1, 1, 0, 0, 0, 0).unwrap()),
 			Value::Time(Time::new(23, 59, 59, 999999999).unwrap()),
-			Value::Duration(Duration::from_hours(24)),
+			Value::Duration(Duration::from_hours(24).unwrap()),
 			Value::Uuid4(Uuid4::generate()),
 			Value::Uuid7(Uuid7::generate()),
 			Value::Blob(Blob::new(vec![

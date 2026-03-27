@@ -389,7 +389,7 @@ impl IndexSchema {
 		let months = i32::from_be_bytes(months_bytes);
 		let days = i32::from_be_bytes(days_bytes);
 		let nanos = i64::from_be_bytes(nanos_bytes);
-		Duration::new(months, days, nanos)
+		Duration::new(months, days, nanos).expect("stored duration must be valid")
 	}
 
 	pub fn get_uuid4(&self, key: &EncodedIndexKey, index: usize) -> Uuid4 {

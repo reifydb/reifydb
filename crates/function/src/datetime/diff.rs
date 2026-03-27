@@ -45,7 +45,7 @@ impl ScalarFunction for DateTimeDiff {
 					match (container1.get(i), container2.get(i)) {
 						(Some(dt1), Some(dt2)) => {
 							let diff_nanos = dt1.to_nanos() as i64 - dt2.to_nanos() as i64;
-							container.push(Duration::from_nanoseconds(diff_nanos));
+							container.push(Duration::from_nanoseconds(diff_nanos)?);
 						}
 						_ => container.push_default(),
 					}

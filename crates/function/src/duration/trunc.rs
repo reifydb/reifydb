@@ -56,29 +56,29 @@ impl ScalarFunction for DurationTrunc {
 							let nanos = dur.get_nanos();
 
 							let truncated = match precision.as_str() {
-								"year" => Duration::new((months / 12) * 12, 0, 0),
-								"month" => Duration::new(months, 0, 0),
-								"day" => Duration::new(months, days, 0),
+								"year" => Duration::new((months / 12) * 12, 0, 0)?,
+								"month" => Duration::new(months, 0, 0)?,
+								"day" => Duration::new(months, days, 0)?,
 								"hour" => Duration::new(
 									months,
 									days,
 									(nanos / 3_600_000_000_000) * 3_600_000_000_000,
-								),
+								)?,
 								"minute" => Duration::new(
 									months,
 									days,
 									(nanos / 60_000_000_000) * 60_000_000_000,
-								),
+								)?,
 								"second" => Duration::new(
 									months,
 									days,
 									(nanos / 1_000_000_000) * 1_000_000_000,
-								),
+								)?,
 								"millis" => Duration::new(
 									months,
 									days,
 									(nanos / 1_000_000) * 1_000_000,
-								),
+								)?,
 								other => {
 									return Err(
 										ScalarFunctionError::ExecutionFailed {

@@ -210,7 +210,7 @@ pub(crate) fn run_tests(
 				);
 				test_txn.restore();
 				let elapsed = start.elapsed();
-				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
+				let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64)?;
 
 				let row = Columns::single_row([
 					("name", Value::Utf8(test.name.clone())),
@@ -272,7 +272,7 @@ pub(crate) fn run_tests(
 					);
 					test_txn.restore();
 					let elapsed = start.elapsed();
-					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64);
+					let duration = RqlDuration::from_nanoseconds(elapsed.as_nanos() as i64)?;
 
 					let display_name = format!("{} {}", test.name, row_label);
 

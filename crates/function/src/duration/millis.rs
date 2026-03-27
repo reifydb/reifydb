@@ -90,7 +90,7 @@ impl ScalarFunction for DurationMillis {
 
 		for i in 0..row_count {
 			if let Some(val) = extract_i64(col.data(), i) {
-				container.push(Duration::from_milliseconds(val));
+				container.push(Duration::from_milliseconds(val)?);
 			} else {
 				container.push_default();
 			}

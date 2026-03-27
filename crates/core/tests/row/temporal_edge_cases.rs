@@ -65,14 +65,14 @@ fn test_interval_combinations() {
 	let mut row = schema.allocate();
 
 	let intervals = [
-		Duration::from_seconds(0),
-		Duration::from_seconds(-1),
-		Duration::from_days(365),
-		Duration::from_weeks(-52),
-		Duration::new(12, 30, 123456789),            // Complex interval
-		Duration::new(-12, -30, -123456789),         // Negative complex
-		Duration::new(i32::MAX, i32::MAX, i64::MAX), // Max values
-		Duration::new(i32::MIN, i32::MIN, i64::MIN), // Min values
+		Duration::from_seconds(0).unwrap(),
+		Duration::from_seconds(-1).unwrap(),
+		Duration::from_days(365).unwrap(),
+		Duration::from_weeks(-52).unwrap(),
+		Duration::new(12, 30, 123456789).unwrap(),    // Complex interval
+		Duration::new(-12, -30, -123456789).unwrap(), // Negative complex
+		Duration::new(i32::MAX, i32::MAX, 86_399_999_999_999).unwrap(), // Large positive (nanos < 1 day)
+		Duration::new(i32::MIN, i32::MIN, -86_399_999_999_999).unwrap(), // Large negative (nanos > -1 day)
 	];
 
 	for interval in intervals {

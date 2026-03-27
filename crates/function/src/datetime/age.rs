@@ -95,7 +95,7 @@ impl ScalarFunction for DateTimeAge {
 							}
 
 							let total_months = years * 12 + months;
-							container.push(Duration::new(total_months, days, nanos_diff));
+							container.push(Duration::new(total_months, days, nanos_diff)?);
 						}
 						_ => container.push_default(),
 					}

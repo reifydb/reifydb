@@ -160,8 +160,6 @@ impl Procedure for NativeProcedureFFI {
 	}
 }
 
-// ---- Stub callbacks for state/store/catalog (not used by procedures) ----
-
 use postcard::to_stdvec;
 use reifydb_abi::{
 	catalog::{namespace::NamespaceFFI, table::TableFFI},

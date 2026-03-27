@@ -120,6 +120,7 @@ check-code-quality:
 	@./scripts/check-toplevel-imports.sh
 	@./scripts/check-inline-qualifications.sh
 	@./scripts/check-license-headers.sh
+	@./scripts/check-section-comments.sh
 
 .PHONY: check
 check:
