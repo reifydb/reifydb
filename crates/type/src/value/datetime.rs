@@ -149,9 +149,8 @@ impl DateTime {
 	}
 
 	/// Convert to nanoseconds since Unix epoch as u128.
-	/// Always succeeds since internal representation is u64.
-	pub fn to_nanos_since_epoch_u128(&self) -> Result<u128, String> {
-		Ok(self.nanos as u128)
+	pub fn to_nanos_since_epoch_u128(&self) -> u128 {
+		self.nanos as u128
 	}
 
 	pub fn year(&self) -> i32 {

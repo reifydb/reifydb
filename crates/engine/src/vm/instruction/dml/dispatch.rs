@@ -175,7 +175,9 @@ pub(crate) fn dispatch(
 				functions: &services.functions,
 				runtime_context: &services.runtime_context,
 			};
-			let _result = native_proc.call(&ctx, tx)?;
+			let handler_fragment =
+				Fragment::internal(format!("handler for {}::{}", sumtype.name, plan.variant_name));
+			let _result = native_proc.call(&ctx, tx).map_err(|e| e.with_context(handler_fragment))?;
 		}
 	}
 

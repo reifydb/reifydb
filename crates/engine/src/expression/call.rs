@@ -74,13 +74,16 @@ pub(crate) fn call_eval_with_args(
 			let all_indices: Vec<usize> = (0..ctx.row_count).collect();
 			group_view.insert(Vec::<Value>::new(), all_indices);
 
-			aggregate_fn.aggregate(AggregateFunctionContext {
-				fragment: call.func.0.clone(),
-				column: &column,
-				groups: &group_view,
-			})?;
+			let agg_fragment = call.func.0.clone();
+			aggregate_fn
+				.aggregate(AggregateFunctionContext {
+					fragment: agg_fragment.clone(),
+					column: &column,
+					groups: &group_view,
+				})
+				.map_err(|e| e.with_context(agg_fragment.clone()))?;
 
-			let (_keys, result_data) = aggregate_fn.finalize()?;
+			let (_keys, result_data) = aggregate_fn.finalize().map_err(|e| e.with_context(agg_fragment))?;
 
 			return Ok(Column {
 				name: call.full_fragment_owned(),
@@ -105,13 +108,16 @@ pub(crate) fn call_eval_with_args(
 
 	let row_count = ctx.row_count;
 
-	let final_data = functor.scalar(ScalarFunctionContext {
-		fragment: call.func.0.clone(),
-		columns: &arguments,
-		row_count,
-		runtime_context: ctx.runtime_context,
-		identity: ctx.identity,
-	})?;
+	let fn_fragment = call.func.0.clone();
+	let final_data = functor
+		.scalar(ScalarFunctionContext {
+			fragment: fn_fragment.clone(),
+			columns: &arguments,
+			row_count,
+			runtime_context: ctx.runtime_context,
+			identity: ctx.identity,
+		})
+		.map_err(|e| e.with_context(fn_fragment))?;
 
 	Ok(Column {
 		name: call.full_fragment_owned(),
@@ -463,13 +469,16 @@ fn execute_function_body_for_scalar(
 						arg_cols.push(Column::new("_", data));
 					}
 					let columns = Columns::new(arg_cols);
-					let result_data = functor.scalar(ScalarFunctionContext {
-						fragment: name.clone(),
-						columns: &columns,
-						row_count: 1,
-						runtime_context,
-						identity,
-					})?;
+					let fn_fragment = name.clone();
+					let result_data = functor
+						.scalar(ScalarFunctionContext {
+							fragment: fn_fragment.clone(),
+							columns: &columns,
+							row_count: 1,
+							runtime_context,
+							identity,
+						})
+						.map_err(|e| e.with_context(fn_fragment))?;
 					if result_data.len() > 0 {
 						stack.push(result_data.get_value(0));
 					} else {

@@ -787,7 +787,10 @@ impl Vm {
 														.runtime_context,
 											};
 											let columns = proc_impl
-												.call(&ctx, tx)?;
+												.call(&ctx, tx)
+												.map_err(|e| {
+													e.with_context(name.clone())
+												})?;
 											self.stack.push(
 												Variable::Columns(
 													columns,
@@ -1073,7 +1076,11 @@ impl Vm {
 										runtime_context: &services
 											.runtime_context,
 									};
-									let columns = proc_impl.call(&ctx, tx)?;
+									let columns = proc_impl
+										.call(&ctx, tx)
+										.map_err(|e| {
+											e.with_context(name.clone())
+										})?;
 
 									// Special handling: identity::inject updates
 									// the transaction's identity

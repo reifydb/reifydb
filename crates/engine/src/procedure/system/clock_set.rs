@@ -47,24 +47,12 @@ impl Procedure for ClockSetProcedure {
 			Clock::Mock(mock) => {
 				match arg {
 					Value::DateTime(dt) => {
-						let nanos = dt.to_nanos_since_epoch_u128().map_err(|reason| {
-							ProcedureError::ExecutionFailed {
-								procedure: Fragment::internal("clock::set"),
-								reason,
-							}
-						})?;
-						mock.set_nanos(nanos);
+						mock.set_nanos(dt.to_nanos_since_epoch_u128());
 					}
 					Value::Duration(dur) => {
 						let epoch = DateTime::default(); // 1970-01-01T00:00:00Z
 						let target = epoch.add_duration(dur)?;
-						let nanos = target.to_nanos_since_epoch_u128().map_err(|reason| {
-							ProcedureError::ExecutionFailed {
-								procedure: Fragment::internal("clock::set"),
-								reason,
-							}
-						})?;
-						mock.set_nanos(nanos);
+						mock.set_nanos(target.to_nanos_since_epoch_u128());
 					}
 					other => {
 						let millis = extract_millis(other).ok_or_else(|| {

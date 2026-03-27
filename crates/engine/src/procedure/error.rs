@@ -53,6 +53,34 @@ impl From<FFIError> for ProcedureError {
 	}
 }
 
+impl ProcedureError {
+	/// Attach procedure name context to Wrapped errors.
+	/// Named variants already carry the procedure name and convert normally.
+	/// Wrapped variants become PROCEDURE_003 with the inner error as `cause`.
+	pub fn with_context(self, procedure: Fragment) -> Error {
+		match self {
+			ProcedureError::Wrapped(inner) => {
+				let name = procedure.text().to_string();
+				let mut cause = inner.0;
+				cause.with_fragment(procedure.clone());
+				Error(Diagnostic {
+					code: "PROCEDURE_003".to_string(),
+					statement: None,
+					message: format!("Procedure {} execution failed", name),
+					column: None,
+					fragment: procedure,
+					label: Some("execution failed".to_string()),
+					help: Some("Check procedure arguments and context".to_string()),
+					notes: vec![],
+					cause: Some(Box::new(cause)),
+					operator_chain: None,
+				})
+			}
+			other => Error(other.into_diagnostic()),
+		}
+	}
+}
+
 impl From<ProcedureError> for Error {
 	fn from(err: ProcedureError) -> Self {
 		Error(err.into_diagnostic())

@@ -71,13 +71,7 @@ impl Procedure for ClockAdvanceProcedure {
 							let current_nanos = mock.now_nanos();
 							let current_dt = DateTime::from_timestamp_nanos(current_nanos)?;
 							let new_dt = current_dt.add_duration(dur)?;
-							let new_nanos = new_dt.to_nanos_since_epoch_u128().map_err(
-								|reason| ProcedureError::ExecutionFailed {
-									procedure: Fragment::internal("clock::advance"),
-									reason,
-								},
-							)?;
-							mock.set_nanos(new_nanos);
+							mock.set_nanos(new_dt.to_nanos_since_epoch_u128());
 						}
 					}
 					other => {

@@ -477,13 +477,29 @@ impl<'bump> Compiler<'bump> {
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name
 		} else {
+			let first_ns = &ast.function.namespaces[0];
 			let mut qualified = String::new();
 			for ns in &ast.function.namespaces {
 				qualified.push_str(ns.text());
 				qualified.push_str("::");
 			}
 			qualified.push_str(ast.function.name.text());
-			BumpFragment::internal(self.bump, &qualified)
+			let qualified_text = self.bump.alloc_str(&qualified);
+			match first_ns {
+				BumpFragment::Statement {
+					offset,
+					line,
+					column,
+					..
+				} => BumpFragment::Statement {
+					text: qualified_text,
+					offset: *offset,
+					source_end: ast.function.name.source_end(),
+					line: *line,
+					column: *column,
+				},
+				_ => BumpFragment::internal(self.bump, &qualified),
+			}
 		};
 
 		// Compile arguments as expressions
@@ -507,13 +523,29 @@ impl<'bump> Compiler<'bump> {
 		let name = if ast.function.namespaces.is_empty() {
 			ast.function.name
 		} else {
+			let first_ns = &ast.function.namespaces[0];
 			let mut qualified = String::new();
 			for ns in &ast.function.namespaces {
 				qualified.push_str(ns.text());
 				qualified.push_str("::");
 			}
 			qualified.push_str(ast.function.name.text());
-			BumpFragment::internal(self.bump, &qualified)
+			let qualified_text = self.bump.alloc_str(&qualified);
+			match first_ns {
+				BumpFragment::Statement {
+					offset,
+					line,
+					column,
+					..
+				} => BumpFragment::Statement {
+					text: qualified_text,
+					offset: *offset,
+					source_end: ast.function.name.source_end(),
+					line: *line,
+					column: *column,
+				},
+				_ => BumpFragment::internal(self.bump, &qualified),
+			}
 		};
 
 		// Compile arguments as expressions

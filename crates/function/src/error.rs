@@ -51,6 +51,34 @@ impl From<TypeError> for FunctionError {
 	}
 }
 
+impl FunctionError {
+	/// Attach function name context to Wrapped errors.
+	/// Named variants already carry the function name and convert normally.
+	/// Wrapped variants become FUNCTION_007 with the inner error as `cause`.
+	pub fn with_context(self, function: Fragment) -> Error {
+		match self {
+			FunctionError::Wrapped(inner) => {
+				let name = function.text().to_string();
+				let mut cause = inner.0;
+				cause.with_fragment(function.clone());
+				Error(Diagnostic {
+					code: "FUNCTION_007".to_string(),
+					statement: None,
+					message: format!("Function {} execution failed", name),
+					column: None,
+					fragment: function,
+					label: Some("execution failed".to_string()),
+					help: Some("Check function arguments and data".to_string()),
+					notes: vec![],
+					cause: Some(Box::new(cause)),
+					operator_chain: None,
+				})
+			}
+			other => Error(other.into_diagnostic()),
+		}
+	}
+}
+
 impl From<FunctionError> for Error {
 	fn from(err: FunctionError) -> Self {
 		Error(err.into_diagnostic())
