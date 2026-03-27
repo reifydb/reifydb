@@ -14,6 +14,8 @@ use crate::{
 	expression::{cast::cast_column_data, context::EvalContext},
 };
 
+// Type conversion
+
 /// Convert a Value to the given target type.
 ///
 /// TODO(perf): This delegates to cast_column_data by wrapping the scalar Value into a
@@ -48,9 +50,34 @@ pub fn convert_to(value: Value, target: ValueType) -> Result<Value> {
 	}
 }
 
-/// Arithmetic: add two scalar values.
-pub fn scalar_add(left: Value, right: Value) -> Result<Value> {
+// Arithmetic helpers
+
+/// If either operand is None, return the None type. Otherwise promote both to a common type.
+fn promote_binary(left: Value, right: Value) -> Result<Option<(Value, Value)>> {
 	match (&left, &right) {
+		(
+			Value::None {
+				..
+			},
+			_,
+		)
+		| (
+			_,
+			Value::None {
+				..
+			},
+		) => return Ok(None),
+		_ => {}
+	}
+	let target = ValueType::promote(left.get_type(), right.get_type());
+	let l = convert_to(left, target.clone())?;
+	let r = convert_to(right, target)?;
+	Ok(Some((l, r)))
+}
+
+/// Return `Value::none()` using the None type from either operand (for arithmetic None propagation).
+fn none_from(left: &Value, right: &Value) -> Value {
+	match (left, right) {
 		(
 			Value::None {
 				inner,
@@ -62,14 +89,22 @@ pub fn scalar_add(left: Value, right: Value) -> Result<Value> {
 			Value::None {
 				inner,
 			},
-		) => return Ok(Value::none_of(inner.clone())),
-		// String concatenation
-		(Utf8(l), Utf8(r)) => return Ok(Utf8(format!("{}{}", l, r))),
-		_ => {}
+		) => Value::none_of(inner.clone()),
+		_ => Value::none(),
 	}
-	let target = ValueType::promote(left.get_type(), right.get_type());
-	let l = convert_to(left, target.clone())?;
-	let r = convert_to(right, target)?;
+}
+
+// Arithmetic operations
+
+pub fn scalar_add(left: Value, right: Value) -> Result<Value> {
+	// String concatenation special case
+	if let (Utf8(l), Utf8(r)) = (&left, &right) {
+		return Ok(Utf8(format!("{}{}", l, r)));
+	}
+	let none_val = none_from(&left, &right);
+	let Some((l, r)) = promote_binary(left, right)? else {
+		return Ok(none_val);
+	};
 	Ok(match (l, r) {
 		(Int1(a), Int1(b)) => Int4(a as i32 + b as i32),
 		(Int2(a), Int2(b)) => Int4(a as i32 + b as i32),
@@ -88,26 +123,11 @@ pub fn scalar_add(left: Value, right: Value) -> Result<Value> {
 	})
 }
 
-/// Arithmetic: subtract two scalar values.
 pub fn scalar_sub(left: Value, right: Value) -> Result<Value> {
-	match (&left, &right) {
-		(
-			Value::None {
-				inner,
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				inner,
-			},
-		) => return Ok(Value::none_of(inner.clone())),
-		_ => {}
-	}
-	let target = ValueType::promote(left.get_type(), right.get_type());
-	let l = convert_to(left, target.clone())?;
-	let r = convert_to(right, target)?;
+	let none_val = none_from(&left, &right);
+	let Some((l, r)) = promote_binary(left, right)? else {
+		return Ok(none_val);
+	};
 	Ok(match (l, r) {
 		(Int1(a), Int1(b)) => Int4(a as i32 - b as i32),
 		(Int2(a), Int2(b)) => Int4(a as i32 - b as i32),
@@ -124,26 +144,11 @@ pub fn scalar_sub(left: Value, right: Value) -> Result<Value> {
 	})
 }
 
-/// Arithmetic: multiply two scalar values.
 pub fn scalar_mul(left: Value, right: Value) -> Result<Value> {
-	match (&left, &right) {
-		(
-			Value::None {
-				inner,
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				inner,
-			},
-		) => return Ok(Value::none_of(inner.clone())),
-		_ => {}
-	}
-	let target = ValueType::promote(left.get_type(), right.get_type());
-	let l = convert_to(left, target.clone())?;
-	let r = convert_to(right, target)?;
+	let none_val = none_from(&left, &right);
+	let Some((l, r)) = promote_binary(left, right)? else {
+		return Ok(none_val);
+	};
 	Ok(match (l, r) {
 		(Int1(a), Int1(b)) => Int4(a as i32 * b as i32),
 		(Int2(a), Int2(b)) => Int4(a as i32 * b as i32),
@@ -161,21 +166,21 @@ pub fn scalar_mul(left: Value, right: Value) -> Result<Value> {
 	})
 }
 
-/// Arithmetic: divide two scalar values.
 pub fn scalar_div(left: Value, right: Value) -> Result<Value> {
+	let none_val = none_from(&left, &right);
 	match (&left, &right) {
 		(
 			Value::None {
-				inner,
+				..
 			},
 			_,
 		)
 		| (
 			_,
 			Value::None {
-				inner,
+				..
 			},
-		) => return Ok(Value::none_of(inner.clone())),
+		) => return Ok(none_val),
 		_ => {}
 	}
 	let lt = left.get_type();
@@ -206,26 +211,11 @@ pub fn scalar_div(left: Value, right: Value) -> Result<Value> {
 	Ok(Value::float8(lf / rf))
 }
 
-/// Arithmetic: remainder of two scalar values.
 pub fn scalar_rem(left: Value, right: Value) -> Result<Value> {
-	match (&left, &right) {
-		(
-			Value::None {
-				inner,
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				inner,
-			},
-		) => return Ok(Value::none_of(inner.clone())),
-		_ => {}
-	}
-	let target = ValueType::promote(left.get_type(), right.get_type());
-	let l = convert_to(left, target.clone())?;
-	let r = convert_to(right, target)?;
+	let none_val = none_from(&left, &right);
+	let Some((l, r)) = promote_binary(left, right)? else {
+		return Ok(none_val);
+	};
 	Ok(match (l, r) {
 		(Int1(a), Int1(b)) if b != 0 => Int1(a % b),
 		(Int2(a), Int2(b)) if b != 0 => Int2(a % b),
@@ -242,7 +232,6 @@ pub fn scalar_rem(left: Value, right: Value) -> Result<Value> {
 	})
 }
 
-/// Unary negate.
 pub fn scalar_negate(value: Value) -> Result<Value> {
 	Ok(match value {
 		Value::None {
@@ -270,8 +259,10 @@ pub fn scalar_negate(value: Value) -> Result<Value> {
 	})
 }
 
-/// Comparison: equality.
-pub fn scalar_eq(left: &Value, right: &Value) -> Value {
+// Comparison operations
+
+/// Generic comparison with None propagation and type promotion.
+fn scalar_cmp(left: &Value, right: &Value, op: fn(&Value, &Value) -> bool) -> Value {
 	match (left, right) {
 		(
 			Value::None {
@@ -289,17 +280,32 @@ pub fn scalar_eq(left: &Value, right: &Value) -> Value {
 			let lt = left.get_type();
 			let rt = right.get_type();
 			if lt == rt {
-				return Value::Boolean(left == right);
+				return Value::Boolean(op(left, right));
 			}
 			let target = ValueType::promote(lt, rt);
 			let l = convert_to(left.clone(), target.clone()).unwrap_or(Value::none());
 			let r = convert_to(right.clone(), target).unwrap_or(Value::none());
-			Value::Boolean(l == r)
+			Value::Boolean(op(&l, &r))
 		}
 	}
 }
 
-/// Comparison: not equal.
+pub fn scalar_eq(left: &Value, right: &Value) -> Value {
+	scalar_cmp(left, right, PartialEq::eq)
+}
+pub fn scalar_lt(left: &Value, right: &Value) -> Value {
+	scalar_cmp(left, right, PartialOrd::lt)
+}
+pub fn scalar_le(left: &Value, right: &Value) -> Value {
+	scalar_cmp(left, right, PartialOrd::le)
+}
+pub fn scalar_gt(left: &Value, right: &Value) -> Value {
+	scalar_cmp(left, right, PartialOrd::gt)
+}
+pub fn scalar_ge(left: &Value, right: &Value) -> Value {
+	scalar_cmp(left, right, PartialOrd::ge)
+}
+
 pub fn scalar_ne(left: &Value, right: &Value) -> Value {
 	match scalar_eq(left, right) {
 		Value::Boolean(b) => Value::Boolean(!b),
@@ -307,123 +313,8 @@ pub fn scalar_ne(left: &Value, right: &Value) -> Value {
 	}
 }
 
-/// Comparison: less than.
-pub fn scalar_lt(left: &Value, right: &Value) -> Value {
-	match (left, right) {
-		(
-			Value::None {
-				..
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				..
-			},
-		) => Value::none_of(ValueType::Boolean),
-		_ => {
-			let lt = left.get_type();
-			let rt = right.get_type();
-			if lt == rt {
-				return Value::Boolean(left < right);
-			}
-			let target = ValueType::promote(lt, rt);
-			let l = convert_to(left.clone(), target.clone()).unwrap_or(Value::none());
-			let r = convert_to(right.clone(), target).unwrap_or(Value::none());
-			Value::Boolean(l < r)
-		}
-	}
-}
+// Truthiness and logic operations
 
-/// Comparison: less than or equal.
-pub fn scalar_le(left: &Value, right: &Value) -> Value {
-	match (left, right) {
-		(
-			Value::None {
-				..
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				..
-			},
-		) => Value::none_of(ValueType::Boolean),
-		_ => {
-			let lt = left.get_type();
-			let rt = right.get_type();
-			if lt == rt {
-				return Value::Boolean(left <= right);
-			}
-			let target = ValueType::promote(lt, rt);
-			let l = convert_to(left.clone(), target.clone()).unwrap_or(Value::none());
-			let r = convert_to(right.clone(), target).unwrap_or(Value::none());
-			Value::Boolean(l <= r)
-		}
-	}
-}
-
-/// Comparison: greater than.
-pub fn scalar_gt(left: &Value, right: &Value) -> Value {
-	match (left, right) {
-		(
-			Value::None {
-				..
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				..
-			},
-		) => Value::none_of(ValueType::Boolean),
-		_ => {
-			let lt = left.get_type();
-			let rt = right.get_type();
-			if lt == rt {
-				return Value::Boolean(left > right);
-			}
-			let target = ValueType::promote(lt, rt);
-			let l = convert_to(left.clone(), target.clone()).unwrap_or(Value::none());
-			let r = convert_to(right.clone(), target).unwrap_or(Value::none());
-			Value::Boolean(l > r)
-		}
-	}
-}
-
-/// Comparison: greater than or equal.
-pub fn scalar_ge(left: &Value, right: &Value) -> Value {
-	match (left, right) {
-		(
-			Value::None {
-				..
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				..
-			},
-		) => Value::none_of(ValueType::Boolean),
-		_ => {
-			let lt = left.get_type();
-			let rt = right.get_type();
-			if lt == rt {
-				return Value::Boolean(left >= right);
-			}
-			let target = ValueType::promote(lt, rt);
-			let l = convert_to(left.clone(), target.clone()).unwrap_or(Value::none());
-			let r = convert_to(right.clone(), target).unwrap_or(Value::none());
-			Value::Boolean(l >= r)
-		}
-	}
-}
-
-/// Truthiness test (extracted from old evaluate_condition logic).
 pub fn value_is_truthy(value: &Value) -> bool {
 	match value {
 		Value::Boolean(true) => true,
@@ -449,7 +340,8 @@ pub fn scalar_not(value: &Value) -> Value {
 	}
 }
 
-pub fn scalar_xor(left: &Value, right: &Value) -> Value {
+/// Generic logic binary operation with None propagation.
+fn logic_binop(left: &Value, right: &Value, op: fn(bool, bool) -> bool) -> Value {
 	match (left, right) {
 		(
 			Value::None {
@@ -463,47 +355,22 @@ pub fn scalar_xor(left: &Value, right: &Value) -> Value {
 				..
 			},
 		) => Value::none_of(ValueType::Boolean),
-		_ => Value::Boolean(value_is_truthy(left) ^ value_is_truthy(right)),
-	}
-}
-
-pub fn scalar_or(left: &Value, right: &Value) -> Value {
-	match (left, right) {
-		(
-			Value::None {
-				..
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				..
-			},
-		) => Value::none_of(ValueType::Boolean),
-		_ => Value::Boolean(value_is_truthy(left) || value_is_truthy(right)),
+		_ => Value::Boolean(op(value_is_truthy(left), value_is_truthy(right))),
 	}
 }
 
 pub fn scalar_and(left: &Value, right: &Value) -> Value {
-	match (left, right) {
-		(
-			Value::None {
-				..
-			},
-			_,
-		)
-		| (
-			_,
-			Value::None {
-				..
-			},
-		) => Value::none_of(ValueType::Boolean),
-		_ => Value::Boolean(value_is_truthy(left) && value_is_truthy(right)),
-	}
+	logic_binop(left, right, |a, b| a && b)
+}
+pub fn scalar_or(left: &Value, right: &Value) -> Value {
+	logic_binop(left, right, |a, b| a || b)
+}
+pub fn scalar_xor(left: &Value, right: &Value) -> Value {
+	logic_binop(left, right, |a, b| a ^ b)
 }
 
-/// Cast a scalar value to the given target type.
+// Cast
+
 pub fn scalar_cast(value: Value, target: ValueType) -> Result<Value> {
 	if value.get_type() == target {
 		return Ok(value);
@@ -515,12 +382,8 @@ pub fn scalar_cast(value: Value, target: ValueType) -> Result<Value> {
 			},
 			_,
 		) => Ok(Value::none_of(target)),
-		// To Boolean
 		(_, ValueType::Boolean) => Ok(Boolean(value_is_truthy(&value))),
-		// To Utf8
 		(_, ValueType::Utf8) => Ok(Utf8(format!("{}", value))),
-		// Number conversions
-		(_, t) if t.is_number() => convert_to(value, target),
 		_ => convert_to(value, target),
 	}
 }

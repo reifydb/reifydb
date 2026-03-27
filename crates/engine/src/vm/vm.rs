@@ -1,28 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, mem, sync::Arc};
+use std::sync::Arc;
 
-use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
-use reifydb_core::{
-	error::diagnostic::internal::internal_with_context,
-	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
-	internal_error,
-	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
-};
-use reifydb_routine::{function::GeneratorContext, procedure::context::ProcedureContext};
-use reifydb_rql::{
-	compiler::CompilationResult,
-	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
-	instruction::{Instruction, ScopeType},
-	query::QueryPlan,
-};
+use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_rql::instruction::Instruction;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
-	error::{Diagnostic, Error, ProcedureErrorKind, RuntimeErrorKind, TypeError},
-	fragment::Fragment,
 	params::Params,
-	value::{Value, frame::frame::Frame, r#type::Type},
+	value::{Value, frame::frame::Frame},
 };
 
 use super::{
@@ -48,7 +34,6 @@ use super::{
 				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
 				view::drop_view,
 			},
-			migrate::{migrate::execute_migrate, rollback::execute_rollback_migration},
 		},
 		dml::{
 			dictionary_insert::insert_dictionary, ringbuffer_delete::delete_ringbuffer,
@@ -59,50 +44,29 @@ use super::{
 	},
 	scalar,
 	services::Services,
-	stack::{ClosureValue, ControlFlow, Stack, SymbolTable, Variable},
-	volcano::{
-		compile::compile,
-		query::{QueryContext, QueryNode},
-	},
+	stack::{ControlFlow, Stack, SymbolTable, Variable},
 };
 use crate::{
 	Result,
-	arena::QueryArena,
-	error::EngineError,
-	expression::{context::EvalSession, eval::evaluate},
-	policy::PolicyEvaluator,
-	vm::instruction::{
-		ddl::{
-			alter::policy::alter_policy,
-			create::{
-				authentication::create_authentication, event::create_event, identity::create_identity,
-				policy::create_policy, role::create_role,
-			},
-			drop::{
-				authentication::drop_authentication, identity::drop_identity, policy::drop_policy,
-				role::drop_role,
-			},
-			grant::grant,
-			revoke::revoke,
+	vm::instruction::ddl::{
+		alter::policy::alter_policy,
+		create::{
+			authentication::create_authentication, event::create_event, identity::create_identity,
+			policy::create_policy, role::create_role,
 		},
-		dml::dispatch::dispatch,
+		drop::{
+			authentication::drop_authentication, identity::drop_identity, policy::drop_policy,
+			role::drop_role,
+		},
+		grant::grant,
+		revoke::revoke,
 	},
 };
 
-const MAX_ITERATIONS: usize = 10_000;
-
-fn strip_dollar_prefix(name: &str) -> String {
-	if name.starts_with('$') {
-		name[1..].to_string()
-	} else {
-		name.to_string()
-	}
-}
-
 pub struct Vm {
 	pub(crate) ip: usize,
-	iteration_count: usize,
-	stack: Stack,
+	pub(crate) iteration_count: usize,
+	pub(crate) stack: Stack,
 	pub symbols: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
@@ -122,7 +86,7 @@ impl Vm {
 
 	/// Pop a scalar Value from the stack. Works for Scalar(Columns) and
 	/// 1x1 Columns variants.
-	fn pop_value(&mut self) -> Result<Value> {
+	pub(crate) fn pop_value(&mut self) -> Result<Value> {
 		match self.stack.pop()? {
 			Variable::Scalar(c) => Ok(c.scalar_value()),
 			Variable::Columns(c) if c.len() == 1 && c.row_count() == 1 => Ok(c.scalar_value()),
@@ -131,7 +95,7 @@ impl Vm {
 	}
 
 	/// Pop the top of stack as Columns. Works for any variant.
-	fn pop_as_columns(&mut self) -> Result<Columns> {
+	pub(crate) fn pop_as_columns(&mut self) -> Result<Columns> {
 		match self.stack.pop()? {
 			Variable::Scalar(c)
 			| Variable::Columns(c)
@@ -156,2032 +120,301 @@ impl Vm {
 				Instruction::Halt => return Ok(()),
 				Instruction::Nop => {}
 
-				Instruction::PushConst(value) => {
-					self.stack.push(Variable::scalar(value.clone()));
-				}
-				Instruction::PushNone => {
-					self.stack.push(Variable::scalar(Value::none()));
-				}
-				Instruction::Pop => {
-					self.stack.pop()?;
-				}
-				Instruction::Dup => {
-					let value = self.stack.pop()?;
-					let cloned = value.clone();
-					self.stack.push(value);
-					self.stack.push(cloned);
-				}
+				Instruction::PushConst(v) => self.exec_push_const(v),
+				Instruction::PushNone => self.exec_push_none(),
+				Instruction::Pop => self.exec_pop()?,
+				Instruction::Dup => self.exec_dup()?,
 
-				Instruction::LoadVar(fragment) => {
-					let name = strip_dollar_prefix(fragment.text());
-					match self.symbols.get(&name) {
-						Some(Variable::Scalar(c)) => {
-							self.stack.push(Variable::Scalar(c.clone()));
-						}
-						Some(Variable::Closure(c)) => {
-							self.stack.push(Variable::Closure(c.clone()));
-						}
-						Some(Variable::Columns(_)) => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::VariableIsDataframe {
-									name: name.to_string(),
-								},
-								message: format!(
-									"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-									name
-								),
-							}
-							.into());
-						}
-						Some(Variable::ForIterator {
-							..
-						}) => {
-							return Err(internal_error!(
-								"Cannot load a FOR iterator as a value"
-							));
-						}
-						None => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::VariableNotFound {
-									name: name.to_string(),
-								},
-								message: format!("Variable '{}' is not defined", name),
-							}
-							.into());
-						}
-					}
-				}
-				Instruction::StoreVar(fragment) => {
-					let name = strip_dollar_prefix(fragment.text());
-					let value = self.pop_value()?;
-					self.symbols.reassign(name, Variable::scalar(value))?;
-				}
-				Instruction::DeclareVar(fragment) => {
-					let name = strip_dollar_prefix(fragment.text());
-					let sv = self.stack.pop()?;
-					let variable = match sv {
-						Variable::Scalar(c) => Variable::Scalar(c),
-						Variable::Closure(c) => Variable::Closure(c),
-						Variable::Columns(c)
-						| Variable::ForIterator {
-							columns: c,
-							..
-						} => {
-							if c.len() == 1 && c.row_count() == 1 {
-								Variable::Scalar(c)
-							} else {
-								Variable::Columns(c)
-							}
-						}
-					};
-					self.symbols.set(name, variable, true)?;
-				}
+				Instruction::LoadVar(f) => self.exec_load_var(f)?,
+				Instruction::StoreVar(f) => self.exec_store_var(f)?,
+				Instruction::DeclareVar(f) => self.exec_declare_var(f)?,
 				Instruction::FieldAccess {
 					object,
 					field,
-				} => {
-					let var_name = strip_dollar_prefix(object.text());
-					let field_name = field.text();
-					match self.symbols.get(&var_name) {
-						Some(Variable::Columns(columns)) => {
-							let col = columns
-								.columns
-								.iter()
-								.find(|c| c.name.text() == field_name);
-							match col {
-								Some(col) => {
-									let value = col.data.get_value(0);
-									self.stack.push(Variable::scalar(value));
-								}
-								None => {
-									let available: Vec<String> = columns
-										.columns
-										.iter()
-										.map(|c| c.name.text().to_string())
-										.collect();
-									return Err(TypeError::Runtime {
-										kind: RuntimeErrorKind::FieldNotFound {
-											variable: var_name.to_string(),
-											field: field_name.to_string(),
-											available: available.clone(),
-										},
-										message: format!(
-											"Field '{}' not found on variable '{}'",
-											field_name, var_name
-										),
-									}
-									.into());
-								}
-							}
-						}
-						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::FieldNotFound {
-									variable: var_name.to_string(),
-									field: field_name.to_string(),
-									available: vec![],
-								},
-								message: format!(
-									"Field '{}' not found on variable '{}'",
-									field_name, var_name
-								),
-							}
-							.into());
-						}
-						Some(Variable::ForIterator {
-							..
-						}) => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::VariableIsDataframe {
-									name: var_name.to_string(),
-								},
-								message: format!(
-									"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-									var_name
-								),
-							}
-							.into());
-						}
-						None => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::VariableNotFound {
-									name: var_name.to_string(),
-								},
-								message: format!(
-									"Variable '{}' is not defined",
-									var_name
-								),
-							}
-							.into());
-						}
-					}
-				}
+				} => self.exec_field_access(object, field)?,
 
-				Instruction::Add => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_add(left, right)?));
-				}
-				Instruction::Sub => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_sub(left, right)?));
-				}
-				Instruction::Mul => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_mul(left, right)?));
-				}
-				Instruction::Div => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_div(left, right)?));
-				}
-				Instruction::Rem => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_rem(left, right)?));
-				}
+				Instruction::Add => self.exec_binop(scalar::scalar_add)?,
+				Instruction::Sub => self.exec_binop(scalar::scalar_sub)?,
+				Instruction::Mul => self.exec_binop(scalar::scalar_mul)?,
+				Instruction::Div => self.exec_binop(scalar::scalar_div)?,
+				Instruction::Rem => self.exec_binop(scalar::scalar_rem)?,
+				Instruction::Negate => self.exec_negate()?,
+				Instruction::LogicNot => self.exec_logic_not()?,
 
-				Instruction::Negate => {
-					let value = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_negate(value)?));
-				}
-				Instruction::LogicNot => {
-					let value = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_not(&value)));
-				}
+				Instruction::CmpEq => self.exec_cmp_op(scalar::scalar_eq)?,
+				Instruction::CmpNe => self.exec_cmp_op(scalar::scalar_ne)?,
+				Instruction::CmpLt => self.exec_cmp_op(scalar::scalar_lt)?,
+				Instruction::CmpLe => self.exec_cmp_op(scalar::scalar_le)?,
+				Instruction::CmpGt => self.exec_cmp_op(scalar::scalar_gt)?,
+				Instruction::CmpGe => self.exec_cmp_op(scalar::scalar_ge)?,
 
-				Instruction::CmpEq => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_eq(&left, &right)));
-				}
-				Instruction::CmpNe => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_ne(&left, &right)));
-				}
-				Instruction::CmpLt => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_lt(&left, &right)));
-				}
-				Instruction::CmpLe => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_le(&left, &right)));
-				}
-				Instruction::CmpGt => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_gt(&left, &right)));
-				}
-				Instruction::CmpGe => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_ge(&left, &right)));
-				}
-
-				Instruction::LogicAnd => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_and(&left, &right)));
-				}
-				Instruction::LogicOr => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_or(&left, &right)));
-				}
-				Instruction::LogicXor => {
-					let right = self.pop_value()?;
-					let left = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_xor(&left, &right)));
-				}
-
-				Instruction::Between => {
-					let upper = self.pop_value()?;
-					let lower = self.pop_value()?;
-					let value = self.pop_value()?;
-					let ge = scalar::scalar_ge(&value, &lower);
-					let le = scalar::scalar_le(&value, &upper);
-					let result = match (ge, le) {
-						(Value::Boolean(a), Value::Boolean(b)) => Value::Boolean(a && b),
-						_ => Value::none(),
-					};
-					self.stack.push(Variable::scalar(result));
-				}
+				Instruction::LogicAnd => self.exec_cmp_op(scalar::scalar_and)?,
+				Instruction::LogicOr => self.exec_cmp_op(scalar::scalar_or)?,
+				Instruction::LogicXor => self.exec_cmp_op(scalar::scalar_xor)?,
+				Instruction::Between => self.exec_between()?,
 				Instruction::InList {
 					count,
 					negated,
-				} => {
-					let count = *count as usize;
-					let negated = *negated;
-					let mut list_items = Vec::with_capacity(count);
-					for _ in 0..count {
-						list_items.push(self.pop_value()?);
-					}
-					list_items.reverse();
-					let value = self.pop_value()?;
-					let has_undefined = matches!(value, Value::None { .. })
-						|| list_items.iter().any(|item| matches!(item, Value::None { .. }));
-					if has_undefined {
-						self.stack.push(Variable::scalar(Value::none()));
-					} else {
-						let found = list_items.iter().any(|item| {
-							matches!(scalar::scalar_eq(&value, item), Value::Boolean(true))
-						});
-						let result = if negated {
-							!found
-						} else {
-							found
-						};
-						self.stack.push(Variable::scalar(Value::Boolean(result)));
-					}
-				}
-				Instruction::Cast(target) => {
-					let value = self.pop_value()?;
-					self.stack.push(Variable::scalar(scalar::scalar_cast(value, target.clone())?));
-				}
-
-				Instruction::Emit => {
-					let Some(value) = self.stack.pop().ok() else {
-						self.ip += 1;
-						continue;
-					};
-					match value {
-						Variable::Columns(c)
-						| Variable::ForIterator {
-							columns: c,
-							..
-						} => {
-							result.push(Frame::from(c));
-						}
-						Variable::Scalar(c) => {
-							result.push(Frame::from(c));
-						}
-						Variable::Closure(_) => {
-							result.push(Frame::from(Columns::scalar(Value::none())));
-						}
-					}
-				}
+				} => self.exec_in_list(*count, *negated)?,
+				Instruction::Cast(target) => self.exec_cast(target)?,
 
 				Instruction::Jump(addr) => {
-					self.iteration_count += 1;
-					if self.iteration_count > MAX_ITERATIONS {
-						return Err(TypeError::Runtime {
-							kind: RuntimeErrorKind::MaxIterationsExceeded {
-								limit: MAX_ITERATIONS,
-							},
-							message: format!(
-								"Loop exceeded maximum iteration limit of {}",
-								MAX_ITERATIONS
-							),
-						}
-						.into());
-					}
-					self.ip = *addr;
+					self.exec_jump(*addr)?;
 					continue;
 				}
 				Instruction::JumpIfFalsePop(addr) => {
-					let value = self.pop_value()?;
-					if !scalar::value_is_truthy(&value) {
-						self.ip = *addr;
+					if self.exec_jump_if_false_pop(*addr)? {
 						continue;
 					}
 				}
 				Instruction::JumpIfTruePop(addr) => {
-					let value = self.pop_value()?;
-					if scalar::value_is_truthy(&value) {
-						self.ip = *addr;
+					if self.exec_jump_if_true_pop(*addr)? {
 						continue;
 					}
 				}
-				Instruction::EnterScope(scope_type) => {
-					self.symbols.enter_scope(scope_type.clone());
-				}
-				Instruction::ExitScope => {
-					self.symbols.exit_scope()?;
-				}
+				Instruction::EnterScope(scope_type) => self.exec_enter_scope(scope_type),
+				Instruction::ExitScope => self.exec_exit_scope()?,
 				Instruction::Break {
 					exit_scopes,
 					addr,
 				} => {
-					for _ in 0..*exit_scopes {
-						self.symbols.exit_scope()?;
-					}
-					self.ip = *addr;
+					self.exec_break(*exit_scopes, *addr)?;
 					continue;
 				}
 				Instruction::Continue {
 					exit_scopes,
 					addr,
 				} => {
-					for _ in 0..*exit_scopes {
-						self.symbols.exit_scope()?;
-					}
-					self.ip = *addr;
+					self.exec_continue(*exit_scopes, *addr)?;
 					continue;
 				}
 
 				Instruction::ForInit {
 					variable_name,
-				} => {
-					let columns = match self.stack.pop()? {
-						Variable::Columns(c)
-						| Variable::ForIterator {
-							columns: c,
-							..
-						} => c,
-						Variable::Scalar(_) | Variable::Closure(_) => {
-							return Err(internal_error!(
-								"ForInit expects Columns on data stack, got Scalar"
-							));
-						}
-					};
-					let var_name = variable_name.text();
-					let iter_key = format!("__for_{}", var_name);
-					self.symbols.set(
-						iter_key,
-						Variable::ForIterator {
-							columns,
-							index: 0,
-						},
-						true,
-					)?;
-				}
+				} => self.exec_for_init(variable_name)?,
 				Instruction::ForNext {
 					variable_name,
 					addr,
 				} => {
-					let var_name = variable_name.text();
-					let clean_name = if var_name.starts_with('$') {
-						&var_name[1..]
-					} else {
-						var_name
-					};
-					let iter_key = format!("__for_{}", var_name);
-
-					let (columns, index) = match self.symbols.get(&iter_key) {
-						Some(Variable::ForIterator {
-							columns,
-							index,
-						}) => (columns.clone(), *index),
-						_ => {
-							self.ip = *addr;
-							continue;
-						}
-					};
-
-					if index >= columns.row_count() {
-						self.ip = *addr;
+					if self.exec_for_next(variable_name, *addr)? {
 						continue;
 					}
-
-					if columns.len() == 1 {
-						let value = columns.columns[0].data.get_value(index);
-						self.symbols.set(
-							clean_name.to_string(),
-							Variable::scalar(value),
-							true,
-						)?;
-					} else {
-						let mut row_columns = Vec::new();
-						for col in columns.columns.iter() {
-							let value = col.data.get_value(index);
-							let mut data = ColumnData::none_typed(Type::Boolean, 0);
-							data.push_value(value);
-							row_columns.push(Column::new(col.name.clone(), data));
-						}
-						let row_frame = Columns::new(row_columns);
-						self.symbols.set(
-							clean_name.to_string(),
-							Variable::Columns(row_frame),
-							true,
-						)?;
-					}
-
-					self.symbols.reassign(
-						iter_key,
-						Variable::ForIterator {
-							columns,
-							index: index + 1,
-						},
-					)?;
 				}
 
-				Instruction::DefineFunction(node) => {
-					let func_name = node.name.text().to_string();
-					self.symbols.define_function(func_name, node.clone());
-				}
-
+				Instruction::DefineFunction(node) => self.exec_define_function(node),
 				Instruction::Call {
 					name,
 					arity,
 					is_procedure_call,
 				} => {
-					let arity = *arity as usize;
-					let is_procedure_call = *is_procedure_call;
-					let func_name = name.text();
-
-					if func_name.starts_with("testing::") {}
-
-					let mut args = Vec::with_capacity(arity);
-					for _ in 0..arity {
-						args.push(self.pop_value()?);
-					}
-					args.reverse();
-
-					if let Some(func_def) = self.symbols.get_function(func_name) {
-						let func_def = func_def.clone();
-
-						let saved_ip = self.ip;
-
-						self.symbols.enter_scope(ScopeType::Function);
-
-						for (param, arg) in func_def.parameters.iter().zip(args.into_iter()) {
-							let param_name = strip_dollar_prefix(param.name.text());
-							self.symbols.set(param_name, Variable::scalar(arg), true)?;
-						}
-
-						self.ip = 0;
-						let mut func_result = Vec::new();
-						self.run(services, tx, &func_def.body, params, &mut func_result)?;
-
-						let stack_value =
-							match mem::replace(&mut self.control_flow, ControlFlow::Normal)
-							{
-								ControlFlow::Return(c) => Variable::Scalar(
-									c.unwrap_or(Columns::scalar(Value::none())),
-								),
-								_ => {
-									if let Some(frame) = func_result.pop() {
-										if !frame.columns.is_empty()
-											&& frame.columns[0].data.len()
-												> 0
-										{
-											Variable::Columns(frame.into())
-										} else {
-											Variable::scalar(Value::none())
-										}
-									} else {
-										self.stack.pop().ok().unwrap_or(
-											Variable::scalar(Value::none()),
-										)
-									}
-								}
-							};
-
-						self.ip = saved_ip;
-						let _ = self.symbols.exit_scope();
-
-						self.stack.push(stack_value);
-					} else if let Some(Variable::Closure(closure_val)) =
-						self.symbols.get(&strip_dollar_prefix(func_name)).cloned()
-					{
-						let saved_ip = self.ip;
-
-						self.symbols.enter_scope(ScopeType::Function);
-
-						for (name, var) in &closure_val.captured {
-							self.symbols.set(name.clone(), var.clone(), true)?;
-						}
-
-						for (param, arg) in
-							closure_val.def.parameters.iter().zip(args.into_iter())
-						{
-							let param_name = strip_dollar_prefix(param.name.text());
-							self.symbols.set(param_name, Variable::scalar(arg), true)?;
-						}
-
-						self.ip = 0;
-						let mut closure_result = Vec::new();
-						self.run(
-							services,
-							tx,
-							&closure_val.def.body,
-							params,
-							&mut closure_result,
-						)?;
-
-						let stack_value =
-							match mem::replace(&mut self.control_flow, ControlFlow::Normal)
-							{
-								ControlFlow::Return(c) => Variable::Scalar(
-									c.unwrap_or(Columns::scalar(Value::none())),
-								),
-								_ => {
-									if let Some(frame) = closure_result.pop() {
-										if !frame.columns.is_empty()
-											&& frame.columns[0].data.len()
-												> 0
-										{
-											Variable::Columns(frame.into())
-										} else {
-											Variable::scalar(Value::none())
-										}
-									} else {
-										self.stack.pop().ok().unwrap_or(
-											Variable::scalar(Value::none()),
-										)
-									}
-								}
-							};
-
-						self.ip = saved_ip;
-						let _ = self.symbols.exit_scope();
-
-						self.stack.push(stack_value);
-					} else {
-						// Check catalog for stored procedures before falling back to built-in
-						// functions
-						let proc_def = {
-							let mut tx_tmp = tx.reborrow();
-							services.catalog.find_procedure_by_qualified_name(
-								&mut tx_tmp,
-								func_name,
-							)?
-						};
-
-						match proc_def {
-							Some(ResolvedProcedure::Local(proc_def)) => {
-								// Enforce procedure call policy
-								let (pol_ns, pol_name) = if let Some((ns, name)) =
-									Catalog::split_qualified_name(func_name)
-								{
-									(ns, name.to_string())
-								} else {
-									("default".to_string(), func_name.to_string())
-								};
-								PolicyEvaluator::new(services, &self.symbols)
-									.enforce_identity_policy(
-										tx,
-										&pol_ns,
-										&pol_name,
-										"call",
-										PolicyTargetType::Procedure,
-									)?;
-
-								match &proc_def.trigger {
-									ProcedureTrigger::NativeCall {
-										native_name,
-									} => {
-										let native_name = native_name.clone();
-										if let Some(proc_impl) = services
-											.procedures
-											.get_procedure(&native_name)
-										{
-											let call_params =
-												Params::Positional(
-													Arc::new(args),
-												);
-											let ctx = ProcedureContext {
-												params: &call_params,
-												catalog: &services
-													.catalog,
-												functions: &services
-													.functions,
-												runtime_context:
-													&services
-														.runtime_context,
-											};
-											let columns = proc_impl
-												.call(&ctx, tx)
-												.map_err(|e| {
-													e.with_context(name.clone())
-												})?;
-											self.stack.push(
-												Variable::Columns(
-													columns,
-												),
-											);
-										} else {
-											return Err(internal_error!(
-												"NativeCall procedure '{}' has no registered implementation",
-												native_name
-											));
-										}
-									}
-									_ => {
-										// Catalog-stored RQL procedure
-										let source = proc_def.body.clone();
-										let compiled = services
-											.compiler
-											.compile(tx, &source)?;
-										match compiled {
-										CompilationResult::Ready(
-											compiled_list,
-										) => {
-											// Save IP
-											let saved_ip = self.ip;
-
-											// Enter function scope
-											self.symbols.enter_scope(
-												ScopeType::Function,
-											);
-
-											// Bind procedure params to call
-											// args
-											for (param_def, arg) in proc_def
-												.params
-												.iter()
-												.zip(args.into_iter())
-											{
-												self.symbols.set(
-													param_def.name.clone(),
-													Variable::scalar(arg),
-													true,
-												)?;
-											}
-
-											// Execute compiled instructions
-											let mut proc_result =
-												Vec::new();
-											for compiled in
-												compiled_list.iter()
-											{
-												self.ip = 0;
-												self.run(
-													services,
-													tx,
-													&compiled.instructions,
-													params,
-													&mut proc_result,
-												)?;
-												if !self.control_flow
-													.is_normal()
-												{
-													break;
-												}
-											}
-
-											// Collect result (same pattern
-											// as DEF functions)
-											let stack_value = match mem::replace(
-												&mut self.control_flow,
-												ControlFlow::Normal,
-											) {
-												ControlFlow::Return(c) => {
-													Variable::Scalar(c.unwrap_or(
-														Columns::scalar(
-															Value::none(),
-														),
-													))
-												}
-												_ => {
-													if let Some(frame) =
-														proc_result.pop()
-													{
-														if !frame
-															.columns
-															.is_empty() && frame
-															.columns[0]
-															.data
-															.len()
-															> 0
-														{
-															Variable::Columns(frame.into())
-														} else {
-															Variable::scalar(Value::none())
-														}
-													} else {
-														self.stack.pop().ok().unwrap_or(
-															Variable::scalar(Value::none()),
-														)
-													}
-												}
-											};
-
-											// Restore IP and exit scope
-											self.ip = saved_ip;
-											let _ = self
-												.symbols
-												.exit_scope();
-
-											self.stack.push(stack_value);
-										}
-										CompilationResult::Incremental(_) => {
-											return Err(internal_error!(
-												"Procedure body should not require incremental compilation"
-											));
-										}
-									}
-									}
-								}
-							}
-							Some(ResolvedProcedure::Test(proc_def)) => {
-								if !matches!(tx, Transaction::Test(..)) {
-									return Err(TypeError::Procedure {
-										kind: ProcedureErrorKind::UndefinedProcedure {
-											name: func_name.to_string(),
-										},
-										message: format!(
-											"test procedure {} can only be called from test context",
-											func_name
-										),
-										fragment: name.clone(),
-									}
-									.into());
-								}
-
-								// Same execution logic as Local for Call-triggered
-								// procedures
-								let source = proc_def.body.clone();
-								let compiled =
-									services.compiler.compile(tx, &source)?;
-								match compiled {
-									CompilationResult::Ready(compiled_list) => {
-										let saved_ip = self.ip;
-
-										self.symbols.enter_scope(
-											ScopeType::Function,
-										);
-
-										for (param_def, arg) in proc_def
-											.params
-											.iter()
-											.zip(args.into_iter())
-										{
-											self.symbols.set(
-												param_def.name.clone(),
-												Variable::scalar(arg),
-												true,
-											)?;
-										}
-
-										let mut proc_result = Vec::new();
-										for compiled in compiled_list.iter() {
-											self.ip = 0;
-											self.run(
-												services,
-												tx,
-												&compiled.instructions,
-												params,
-												&mut proc_result,
-											)?;
-											if !self.control_flow
-												.is_normal()
-											{
-												break;
-											}
-										}
-
-										let stack_value = match mem::replace(
-											&mut self.control_flow,
-											ControlFlow::Normal,
-										) {
-											ControlFlow::Return(c) => {
-												Variable::Scalar(c.unwrap_or(
-													Columns::scalar(Value::none()),
-												))
-											}
-											_ => {
-												if let Some(frame) = proc_result.pop() {
-													if !frame.columns.is_empty()
-														&& frame.columns[0].data.len() > 0
-													{
-														Variable::Columns(frame.into())
-													} else {
-														Variable::scalar(Value::none())
-													}
-												} else {
-													self.stack.pop().ok().unwrap_or(
-														Variable::scalar(Value::none()),
-													)
-												}
-											}
-										};
-
-										self.ip = saved_ip;
-										let _ = self.symbols.exit_scope();
-
-										self.stack.push(stack_value);
-									}
-									CompilationResult::Incremental(_) => {
-										return Err(internal_error!(
-											"Procedure body should not require incremental compilation"
-										));
-									}
-								}
-							}
-							#[cfg(not(target_arch = "wasm32"))]
-							Some(ResolvedProcedure::Remote {
-								address,
-								token,
-							}) => {
-								if let Some(ref registry) = services.remote_registry {
-									let param_refs: Vec<String> = (1..=args.len())
-										.map(|i| format!("${}", i))
-										.collect();
-									let remote_rql = format!(
-										"CALL {}({})",
-										func_name,
-										param_refs.join(", ")
-									);
-									let frames = registry.forward_query(
-										&address,
-										&remote_rql,
-										Params::Positional(Arc::new(args)),
-										token.as_deref(),
-									)?;
-									if let Some(frame) = frames.into_iter().next() {
-										let cols: Columns = frame.into();
-										self.stack
-											.push(Variable::Columns(cols));
-									} else {
-										self.stack.push(Variable::scalar(
-											Value::none(),
-										));
-									}
-								} else {
-									return Err(TypeError::Procedure {
-									kind: ProcedureErrorKind::UndefinedProcedure {
-										name: func_name.to_string(),
-									},
-									message: format!("Unknown procedure: {}", func_name),
-									fragment: name.clone(),
-								}
-								.into());
-								}
-							}
-							#[cfg(target_arch = "wasm32")]
-							Some(ResolvedProcedure::Remote {
-								..
-							}) => {
-								return Err(TypeError::Procedure {
-									kind: ProcedureErrorKind::UndefinedProcedure {
-										name: func_name.to_string(),
-									},
-									message: format!(
-										"Unknown procedure: {}",
-										func_name
-									),
-									fragment: name.clone(),
-								}
-								.into());
-							}
-							None => {
-								if let Some(proc_impl) =
-									services.get_procedure(func_name)
-								{
-									// Runtime-registered native procedure (no
-									// catalog entry needed)
-									let call_params =
-										Params::Positional(Arc::new(args));
-									let ctx = ProcedureContext {
-										params: &call_params,
-										catalog: &services.catalog,
-										functions: &services.functions,
-										runtime_context: &services
-											.runtime_context,
-									};
-									let columns = proc_impl
-										.call(&ctx, tx)
-										.map_err(|e| {
-											e.with_context(name.clone())
-										})?;
-
-									// Special handling: identity::inject updates
-									// the transaction's identity
-									if func_name == "identity::inject" {
-										if let Some(col) = columns.get(0) {
-											if let Value::IdentityId(id) =
-												col.data().get_value(0)
-											{
-												tx.set_identity(id);
-											}
-										}
-									}
-
-									self.stack.push(Variable::Columns(columns));
-								} else if let Some(generator) =
-									services.functions.get_generator(func_name)
-								{
-									let arg_columns: Vec<Column> = args
-										.into_iter()
-										.enumerate()
-										.map(|(i, v)| {
-											let mut data = ColumnData::with_capacity(v.get_type(), 1);
-											data.push_value(v);
-											Column::new(
-												format!("arg{}", i),
-												data,
-											)
-										})
-										.collect();
-									let identity = tx.identity();
-									// SAFETY: GeneratorContext requires &'a mut
-									// Transaction<'a> but we only have &
-									// mut Transaction<'_>. The generator does not
-									// hold the reference beyond this call.
-									// This matches the pattern in GeneratorNode.
-									let columns = generator.generate(
-										GeneratorContext {
-											fragment: name.clone(),
-											params: Columns::new(
-												arg_columns,
-											),
-											txn: unsafe {
-												mem::transmute::<&mut Transaction, &mut Transaction>(tx)
-											},
-											catalog: &services.catalog,
-											identity,
-											ioc: &services.ioc,
-										},
-									)?;
-									self.stack.push(Variable::Columns(columns));
-								} else if is_procedure_call {
-									return Err(TypeError::Procedure {
-									kind: ProcedureErrorKind::UndefinedProcedure {
-										name: func_name.to_string(),
-									},
-									message: format!("Unknown procedure: {}", func_name),
-									fragment: name.clone(),
-								}
-								.into());
-								} else {
-									// Built-in function: evaluate via column
-									// evaluator
-									let vm_session = EvalSession {
-										params,
-										symbols: &self.symbols,
-										functions: &services.functions,
-										runtime_context: &services
-											.runtime_context,
-										arena: None,
-										identity: tx.identity(),
-										is_aggregate_context: false,
-									};
-									let evaluation_context =
-										vm_session.eval_empty();
-
-									let mut arg_exprs = Vec::with_capacity(arity);
-									for arg in &args {
-										arg_exprs
-											.push(value_to_expression(arg));
-									}
-
-									let proper_call =
-										Expression::Call(CallExpression {
-											func: IdentExpression(
-												name.clone(),
-											),
-											args: arg_exprs,
-											fragment: name.clone(),
-										});
-
-									let result_column = evaluate(
-										&evaluation_context,
-										&proper_call,
-									)?;
-									let value = if result_column.data.len() > 0 {
-										result_column.data.get_value(0)
-									} else {
-										Value::none()
-									};
-									self.stack.push(Variable::scalar(value));
-								}
-							}
-						}
-					}
+					self.exec_call(services, tx, params, name, *arity, *is_procedure_call)?;
 				}
-
 				Instruction::ReturnValue => {
-					let cols = self.pop_as_columns()?;
-					self.control_flow = ControlFlow::Return(Some(cols));
+					self.exec_return_value()?;
 					return Ok(());
 				}
 				Instruction::ReturnVoid => {
-					self.control_flow = ControlFlow::Return(None);
+					self.exec_return_void();
 					return Ok(());
 				}
+				Instruction::DefineClosure(def) => self.exec_define_closure(def),
 
-				Instruction::DefineClosure(closure_def) => {
-					let mut captured = HashMap::new();
-					for cap_name in &closure_def.captures {
-						let stripped = strip_dollar_prefix(cap_name.text());
-						if let Some(var) = self.symbols.get(&stripped) {
-							captured.insert(stripped, var.clone());
-						}
-					}
-					self.stack.push(Variable::Closure(ClosureValue {
-						def: closure_def.clone(),
-						captured,
-					}));
-				}
-
-				Instruction::CreateNamespace(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_namespace(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateRemoteNamespace(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_remote_namespace(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateTable(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_table(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateRingBuffer(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_ringbuffer(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateDeferredView(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_deferred_view(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateTransactionalView(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_transactional_view(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateDictionary(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_dictionary(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateSumType(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_sumtype(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateSubscription(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Subscription(txn) => txn.as_admin_mut(),
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_subscription(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::AlterSequence(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = alter_table_sequence(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreatePrimaryKey(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_primary_key(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateColumnProperty(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_column_property(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateProcedure(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_procedure(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateSeries(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_series(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateEvent(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_event(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateTag(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_tag(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateSource(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_source(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateSink(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_sink(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropSource(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = drop_source(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropSink(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = drop_sink(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateTest(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_test(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::CreateMigration(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_migration(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::Migrate(node) => {
-					let columns = execute_migrate(self, services, tx, node.clone(), params)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::RollbackMigration(node) => {
-					let columns =
-						execute_rollback_migration(self, services, tx, node.clone(), params)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::Dispatch(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"DISPATCH requires a command or admin transaction"
-							));
-						}
-						_ => {}
-					}
-					let depth = self.dispatch_depth;
-					self.dispatch_depth += 1;
-					let columns = dispatch(self, services, tx, node.clone(), params, depth)?;
-					self.dispatch_depth -= 1;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::AlterTable(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = execute_alter_table(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::AlterRemoteNamespace(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = alter_remote_namespace(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-
-				Instruction::DropNamespace(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_namespace(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropTable(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_table(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropView(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_view(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropRingBuffer(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_ringbuffer(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropSeries(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_series(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropDictionary(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_dictionary(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropSumType(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_sumtype(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DropSubscription(node) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Subscription(txn) => txn.as_admin_mut(),
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(Error(internal_with_context(
-								"DDL operations require an admin transaction",
-								file!(),
-								line!(),
-								column!(),
-								module_path!(),
-								module_path!(),
-							)));
-						}
-					};
-					let columns = drop_subscription(services, txn, node.clone())?;
-					self.stack.push(Variable::Columns(columns));
-				}
-
-				Instruction::Delete(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = delete(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DeleteRingBuffer(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = delete_ringbuffer(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::InsertTable(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns =
-						insert_table(services, &mut std_txn, node.clone(), &mut self.symbols)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::InsertRingBuffer(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = insert_ringbuffer(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::InsertDictionary(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = insert_dictionary(
-						services,
-						&mut std_txn,
-						node.clone(),
-						&mut self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::InsertSeries(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = insert_series(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::DeleteSeries(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = delete_series(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::Update(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = update_table(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::UpdateRingBuffer(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = update_ringbuffer(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-				Instruction::UpdateSeries(node) => {
-					match tx {
-						Transaction::Query(_) => {
-							return Err(internal_error!(
-								"Mutation operations cannot be executed in a query transaction"
-							));
-						}
-						_ => {}
-					}
-					let mut std_txn = tx.reborrow();
-					let columns = update_series(
-						services,
-						&mut std_txn,
-						node.clone(),
-						params.clone(),
-						&self.symbols,
-					)?;
-					self.stack.push(Variable::Columns(columns));
-				}
-
-				Instruction::Query(plan) => {
-					let mut std_txn = tx.reborrow();
-					if let Some(columns) = run_query_plan(
-						services,
-						&mut std_txn,
-						plan.clone(),
-						params.clone(),
-						&mut self.symbols,
-					)? {
-						self.stack.push(Variable::Columns(columns));
-					}
-				}
-
+				Instruction::Emit => self.exec_emit(result),
 				Instruction::Append {
 					target,
-				} => {
-					let clean_name = strip_dollar_prefix(target.text());
-					let columns = match self.stack.pop()? {
-						Variable::Columns(cols) => cols,
-						_ => {
-							return Err(internal_error!(
-								"APPEND requires columns/frame data on stack"
-							));
-						}
-					};
+				} => self.exec_append(target)?,
 
-					match self.symbols.get(&clean_name) {
-						Some(Variable::Columns(_)) => {
-							let mut existing = match self.symbols.get(&clean_name).unwrap()
-							{
-								Variable::Columns(f) => f.clone(),
-								_ => unreachable!(),
-							};
-							existing.append_columns(columns)?;
-							self.symbols
-								.reassign(clean_name, Variable::Columns(existing))?;
-						}
-						None => {
-							self.symbols.set(
-								clean_name,
-								Variable::Columns(columns),
-								true,
-							)?;
-						}
-						_ => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::AppendTargetNotFrame {
-									name: clean_name.to_string(),
-								},
-								message: format!(
-									"Cannot APPEND to variable '{}' because it is not a Frame",
-									clean_name
-								),
-							}
-							.into());
-						}
-					}
-				}
+				Instruction::Query(plan) => self.exec_query(services, tx, plan, params)?,
 
-				// Auth/Permissions
-				Instruction::CreateIdentity(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_identity(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateNamespace(n) => {
+					self.exec_ddl(services, tx, |s, t| create_namespace(s, t, n.clone()))?
 				}
-				Instruction::CreateRole(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_role(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateRemoteNamespace(n) => {
+					self.exec_ddl(services, tx, |s, t| create_remote_namespace(s, t, n.clone()))?
 				}
-				Instruction::Grant(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = grant(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateTable(n) => {
+					self.exec_ddl(services, tx, |s, t| create_table(s, t, n.clone()))?
 				}
-				Instruction::Revoke(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = revoke(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateRingBuffer(n) => {
+					self.exec_ddl(services, tx, |s, t| create_ringbuffer(s, t, n.clone()))?
 				}
-				Instruction::DropIdentity(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = drop_identity(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateDeferredView(n) => {
+					self.exec_ddl(services, tx, |s, t| create_deferred_view(s, t, n.clone()))?
 				}
-				Instruction::DropRole(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = drop_role(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateTransactionalView(n) => {
+					self.exec_ddl(services, tx, |s, t| create_transactional_view(s, t, n.clone()))?
 				}
-				Instruction::CreatePolicy(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_policy(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateDictionary(n) => {
+					self.exec_ddl(services, tx, |s, t| create_dictionary(s, t, n.clone()))?
 				}
-				Instruction::AlterPolicy(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = alter_policy(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateSumType(n) => {
+					self.exec_ddl(services, tx, |s, t| create_sumtype(s, t, n.clone()))?
 				}
-				Instruction::DropPolicy(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = drop_policy(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreatePrimaryKey(n) => {
+					self.exec_ddl(services, tx, |s, t| create_primary_key(s, t, n.clone()))?
 				}
-				Instruction::CreateAuthentication(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = create_authentication(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateColumnProperty(n) => {
+					self.exec_ddl(services, tx, |s, t| create_column_property(s, t, n.clone()))?
 				}
-				Instruction::DropAuthentication(plan) => {
-					let txn = match tx {
-						Transaction::Admin(txn) => txn,
-						Transaction::Test(t) => &mut *t.inner,
-						_ => {
-							return Err(internal_error!(
-								"DDL operations require an admin transaction"
-							));
-						}
-					};
-					let columns = drop_authentication(services, txn, plan.clone())?;
-					self.stack.push(Variable::Columns(columns));
+				Instruction::CreateProcedure(n) => {
+					self.exec_ddl(services, tx, |s, t| create_procedure(s, t, n.clone()))?
+				}
+				Instruction::CreateSeries(n) => {
+					self.exec_ddl(services, tx, |s, t| create_series(s, t, n.clone()))?
+				}
+				Instruction::CreateEvent(n) => {
+					self.exec_ddl(services, tx, |s, t| create_event(s, t, n.clone()))?
+				}
+				Instruction::CreateTag(n) => {
+					self.exec_ddl(services, tx, |s, t| create_tag(s, t, n.clone()))?
+				}
+				Instruction::CreateSource(n) => {
+					self.exec_ddl(services, tx, |s, t| create_source(s, t, n.clone()))?
+				}
+				Instruction::CreateSink(n) => {
+					self.exec_ddl(services, tx, |s, t| create_sink(s, t, n.clone()))?
+				}
+				Instruction::CreateTest(n) => {
+					self.exec_ddl(services, tx, |s, t| create_test(s, t, n.clone()))?
+				}
+				Instruction::CreateMigration(n) => {
+					self.exec_ddl(services, tx, |s, t| create_migration(s, t, n.clone()))?
+				}
+				Instruction::CreateIdentity(n) => {
+					self.exec_ddl(services, tx, |s, t| create_identity(s, t, n.clone()))?
+				}
+				Instruction::CreateRole(n) => {
+					self.exec_ddl(services, tx, |s, t| create_role(s, t, n.clone()))?
+				}
+				Instruction::CreatePolicy(n) => {
+					self.exec_ddl(services, tx, |s, t| create_policy(s, t, n.clone()))?
+				}
+				Instruction::CreateAuthentication(n) => {
+					self.exec_ddl(services, tx, |s, t| create_authentication(s, t, n.clone()))?
+				}
+				Instruction::Grant(n) => self.exec_ddl(services, tx, |s, t| grant(s, t, n.clone()))?,
+				Instruction::Revoke(n) => {
+					self.exec_ddl(services, tx, |s, t| revoke(s, t, n.clone()))?
 				}
 
-				Instruction::AssertBlock(node) => {
-					let rql = &node.rql;
-					let compile_result = services.compiler.compile(tx, rql);
-
-					if node.expect_error {
-						// ASSERT ERROR: success if compilation or execution errors
-						// Always push a diagnostic dataframe onto the stack
-						match compile_result {
-							Err(e) => {
-								// Compilation error → assertion passes, push diagnostic
-								self.stack.push(Variable::Columns(
-									diagnostic_to_columns(&e.0),
-								));
-							}
-							Ok(CompilationResult::Ready(units)) => {
-								let mut caught_diagnostic = None;
-								for unit in units.iter() {
-									let saved_ip = self.ip;
-									self.ip = 0;
-									let mut discard = Vec::new();
-									let exec_result = self.run(
-										services,
-										tx,
-										&unit.instructions,
-										params,
-										&mut discard,
-									);
-									self.ip = saved_ip;
-									if let Err(e) = exec_result {
-										caught_diagnostic = Some(e.0);
-										break;
-									}
-								}
-								if let Some(diag) = caught_diagnostic {
-									self.stack.push(Variable::Columns(
-										diagnostic_to_columns(&diag),
-									));
-								} else {
-									let msg = node.message.as_deref().unwrap_or(
-										"expected error but block succeeded",
-									);
-									return Err(EngineError::AssertionFailed {
-										fragment: Fragment::None,
-										message: msg.to_string(),
-										expression: Some(rql.clone()),
-									}
-									.into());
-								}
-							}
-							Ok(CompilationResult::Incremental(_)) => {
-								return Err(internal_error!(
-									"assert block does not support incremental compilation"
-								));
-							}
-						}
-					} else {
-						// Multi-statement ASSERT: compile body, execute, check last result
-						let units = match compile_result {
-							Err(e) => return Err(e),
-							Ok(CompilationResult::Ready(units)) => units,
-							Ok(CompilationResult::Incremental(_)) => {
-								return Err(internal_error!(
-									"assert block does not support incremental compilation"
-								));
-							}
-						};
-
-						let mut last_error = None;
-						for unit in units.iter() {
-							let saved_ip = self.ip;
-							self.ip = 0;
-							let mut discard = Vec::new();
-							let exec_result = self.run(
-								services,
-								tx,
-								&unit.instructions,
-								params,
-								&mut discard,
-							);
-							self.ip = saved_ip;
-							if let Err(e) = exec_result {
-								last_error = Some(e);
-								break;
-							}
-						}
-						if let Some(e) = last_error {
-							let msg = node.message.as_deref().unwrap_or("");
-							return Err(EngineError::AssertionFailed {
-								fragment: Fragment::None,
-								message: if msg.is_empty() {
-									format!("{}", e)
-								} else {
-									msg.to_string()
-								},
-								expression: Some(rql.clone()),
-							}
-							.into());
-						}
-					}
+				Instruction::CreateSubscription(n) => {
+					self.exec_ddl_sub(services, tx, |s, t| create_subscription(s, t, n.clone()))?
 				}
+
+				Instruction::AlterTable(n) => {
+					self.exec_ddl(services, tx, |s, t| execute_alter_table(s, t, n.clone()))?
+				}
+				Instruction::AlterRemoteNamespace(n) => {
+					self.exec_ddl(services, tx, |s, t| alter_remote_namespace(s, t, n.clone()))?
+				}
+				Instruction::AlterSequence(n) => {
+					self.exec_ddl(services, tx, |s, t| alter_table_sequence(s, t, n.clone()))?
+				}
+				Instruction::AlterPolicy(n) => {
+					self.exec_ddl(services, tx, |s, t| alter_policy(s, t, n.clone()))?
+				}
+
+				Instruction::DropNamespace(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_namespace(s, t, n.clone()))?
+				}
+				Instruction::DropTable(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_table(s, t, n.clone()))?
+				}
+				Instruction::DropView(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_view(s, t, n.clone()))?
+				}
+				Instruction::DropRingBuffer(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_ringbuffer(s, t, n.clone()))?
+				}
+				Instruction::DropSeries(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_series(s, t, n.clone()))?
+				}
+				Instruction::DropDictionary(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_dictionary(s, t, n.clone()))?
+				}
+				Instruction::DropSumType(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_sumtype(s, t, n.clone()))?
+				}
+				Instruction::DropSource(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_source(s, t, n.clone()))?
+				}
+				Instruction::DropSink(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_sink(s, t, n.clone()))?
+				}
+				Instruction::DropIdentity(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_identity(s, t, n.clone()))?
+				}
+				Instruction::DropRole(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_role(s, t, n.clone()))?
+				}
+				Instruction::DropPolicy(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_policy(s, t, n.clone()))?
+				}
+				Instruction::DropAuthentication(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_authentication(s, t, n.clone()))?
+				}
+
+				Instruction::DropSubscription(n) => {
+					self.exec_ddl_sub(services, tx, |s, t| drop_subscription(s, t, n.clone()))?
+				}
+
+				Instruction::Delete(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						delete(s, t, n.clone(), p, sym)
+					})?
+				}
+				Instruction::DeleteRingBuffer(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						delete_ringbuffer(s, t, n.clone(), p, sym)
+					})?
+				}
+				Instruction::DeleteSeries(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						delete_series(s, t, n.clone(), p, sym)
+					})?
+				}
+				Instruction::Update(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						update_table(s, t, n.clone(), p, sym)
+					})?
+				}
+				Instruction::UpdateRingBuffer(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						update_ringbuffer(s, t, n.clone(), p, sym)
+					})?
+				}
+				Instruction::UpdateSeries(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						update_series(s, t, n.clone(), p, sym)
+					})?
+				}
+				Instruction::InsertTable(n) => {
+					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
+						insert_table(s, t, n.clone(), sym)
+					})?
+				}
+				Instruction::InsertDictionary(n) => {
+					self.exec_dml_with_mut_symbols(services, tx, |s, t, sym| {
+						insert_dictionary(s, t, n.clone(), sym)
+					})?
+				}
+				Instruction::InsertRingBuffer(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						insert_ringbuffer(s, t, n.clone(), p, sym)
+					})?
+				}
+				Instruction::InsertSeries(n) => {
+					self.exec_dml_with_params(services, tx, params, |s, t, p, sym| {
+						insert_series(s, t, n.clone(), p, sym)
+					})?
+				}
+
+				Instruction::Dispatch(n) => self.exec_dispatch(services, tx, n, params)?,
+				Instruction::Migrate(n) => self.exec_migrate(services, tx, n, params)?,
+				Instruction::RollbackMigration(n) => {
+					self.exec_rollback_migration(services, tx, n, params)?
+				}
+				Instruction::AssertBlock(n) => self.exec_assert_block(services, tx, n, params)?,
 			}
 
 			self.ip += 1;
@@ -2192,104 +425,4 @@ impl Vm {
 		}
 		Ok(())
 	}
-}
-
-fn value_to_expression(value: &Value) -> Expression {
-	match value {
-		Value::None {
-			..
-		} => Expression::Constant(ConstantExpression::None {
-			fragment: Fragment::None,
-		}),
-		Value::Boolean(b) => Expression::Constant(ConstantExpression::Bool {
-			fragment: Fragment::internal(if *b {
-				"true"
-			} else {
-				"false"
-			}),
-		}),
-		Value::Utf8(s) => Expression::Constant(ConstantExpression::Text {
-			fragment: Fragment::internal(s),
-		}),
-		_ => Expression::Constant(ConstantExpression::Number {
-			fragment: Fragment::internal(&format!("{}", value)),
-		}),
-	}
-}
-
-fn run_query_plan(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	plan: QueryPlan,
-	params: Params,
-	symbols: &mut SymbolTable,
-) -> Result<Option<Columns>> {
-	let identity = txn.identity();
-	let context = Arc::new(QueryContext {
-		services: services.clone(),
-		source: None,
-		batch_size: 1024,
-		params,
-		symbols: symbols.clone(),
-		identity,
-	});
-
-	let mut query_node = compile(plan, txn, context.clone());
-	query_node.initialize(txn, &context)?;
-
-	let mut all_columns: Option<Columns> = None;
-	let mut mutable_context = (*context).clone();
-	let mut arena = QueryArena::new();
-
-	while let Some(batch) = query_node.next(txn, &mut mutable_context)? {
-		match &mut all_columns {
-			None => all_columns = Some(batch),
-			Some(existing) => existing.append_columns(batch)?,
-		}
-		arena.reset();
-	}
-
-	if all_columns.is_none() {
-		let headers = query_node.headers().unwrap_or_else(ColumnHeaders::empty);
-		let empty_columns: Vec<Column> = headers
-			.columns
-			.into_iter()
-			.map(|name| Column {
-				name,
-				data: ColumnData::none_typed(Type::Boolean, 0),
-			})
-			.collect();
-		return Ok(Some(Columns::new(empty_columns)));
-	}
-
-	Ok(all_columns)
-}
-
-/// Convert a `Diagnostic` into a single-row `Columns` with fields:
-/// `code`, `message`, `statement`, `label`, `help`.
-fn diagnostic_to_columns(diag: &Diagnostic) -> Columns {
-	let code_col = Column::new("code", ColumnData::utf8([diag.code.as_str()]));
-	let message_col = Column::new("message", ColumnData::utf8([diag.message.as_str()]));
-	let statement_col = Column::new(
-		"statement",
-		match &diag.statement {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
-		},
-	);
-	let label_col = Column::new(
-		"label",
-		match &diag.label {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
-		},
-	);
-	let help_col = Column::new(
-		"help",
-		match &diag.help {
-			Some(s) => ColumnData::utf8([s.as_str()]),
-			None => ColumnData::none_typed(Type::Utf8, 1),
-		},
-	);
-	Columns::new(vec![code_col, message_col, statement_col, label_col, help_col])
 }

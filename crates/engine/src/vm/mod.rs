@@ -33,6 +33,7 @@ pub struct Test<'a> {
 	pub params: Params,
 }
 
+pub(crate) mod exec;
 pub mod executor;
 pub mod instruction;
 pub(crate) mod scalar;
