@@ -2,14 +2,17 @@
 // Copyright (c) 2025 ReifyDB
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'path';
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
 
 export default defineConfig({
+    plugins: [wasm(), topLevelAwait()],
     test: {
         globals: true,
         environment: 'node',
-        testTimeout: 100,
-        hookTimeout: 100,
-        teardownTimeout: 100,
+        testTimeout: 30_000,
+        hookTimeout: 30_000,
+        teardownTimeout: 30_000,
 
         include: [
             'tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',

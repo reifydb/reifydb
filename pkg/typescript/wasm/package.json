@@ -21,6 +21,8 @@
     "@types/node": "^24.0.10",
     "tsup": "^8.5.0",
     "typescript": "^5.8.3",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.6.0",
     "vitest": "^2.1.8"
   },
   "engines": {

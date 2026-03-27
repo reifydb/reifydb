@@ -7,6 +7,11 @@ import type { WasmDB as RawWasmDB } from '../wasm/reifydb_webassembly';
 export { decode } from '@reifydb/core';
 export type { TypeValuePair, Value } from '@reifydb/core';
 
+export interface LoginResult {
+  token: string;
+  identity: string;
+}
+
 /**
  * Recursively transforms raw WASM output into decoded Value instances.
  *
@@ -65,6 +70,24 @@ export class WasmDB {
 
   queryWithParams(rql: string, params: unknown): unknown {
     return transformToValueInstances(this.db.queryWithParams(rql, params));
+  }
+
+  loginWithPassword(identifier: string, password: string): LoginResult {
+    const raw = this.db.loginWithPassword(identifier, password);
+    const result = { token: raw.token, identity: raw.identity };
+    raw.free();
+    return result;
+  }
+
+  loginWithToken(token: string): LoginResult {
+    const raw = this.db.loginWithToken(token);
+    const result = { token: raw.token, identity: raw.identity };
+    raw.free();
+    return result;
+  }
+
+  logout(): void {
+    this.db.logout();
   }
 
   free(): void {

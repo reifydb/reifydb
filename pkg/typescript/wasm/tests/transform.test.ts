@@ -73,6 +73,10 @@ describe('transformToValueInstances', () => {
 });
 
 describe('WasmDB', () => {
+  function createMockLoginResult(token = 'mock-token', identity = 'mock-identity') {
+    return { token, identity, free: () => {} };
+  }
+
   function createMockRawDB() {
     return {
       admin: (rql: string) => [{ type: 'Utf8', value: rql }],
@@ -81,6 +85,9 @@ describe('WasmDB', () => {
       commandWithParams: (rql: string, _params: unknown) => [{ type: 'Utf8', value: rql }],
       query: (rql: string) => [{ type: 'Utf8', value: rql }],
       queryWithParams: (rql: string, _params: unknown) => [{ type: 'Utf8', value: rql }],
+      loginWithPassword: (_identifier: string, _password: string) => createMockLoginResult('pw-token', 'alice-id'),
+      loginWithToken: (_token: string) => createMockLoginResult('tk-token', 'bob-id'),
+      logout: () => {},
       free: () => {},
     };
   }
@@ -108,6 +115,39 @@ describe('WasmDB', () => {
     const db = new WasmDB(createMockRawDB() as any);
     const result = db.queryWithParams('FROM users FILTER id = $id', { id: 1 }) as unknown[];
     expect(result).toHaveLength(1);
+  });
+
+  it('loginWithPassword delegates to raw and returns plain object', () => {
+    const db = new WasmDB(createMockRawDB() as any);
+    const result = db.loginWithPassword('alice', 'alice-pass');
+    expect(result.token).toBe('pw-token');
+    expect(result.identity).toBe('alice-id');
+  });
+
+  it('loginWithToken delegates to raw and returns plain object', () => {
+    const db = new WasmDB(createMockRawDB() as any);
+    const result = db.loginWithToken('bob-secret-token');
+    expect(result.token).toBe('tk-token');
+    expect(result.identity).toBe('bob-id');
+  });
+
+  it('loginWithPassword frees the raw LoginResult', () => {
+    let freed = false;
+    const mock = {
+      ...createMockRawDB(),
+      loginWithPassword: () => ({ token: 't', identity: 'i', free: () => { freed = true; } }),
+    };
+    const db = new WasmDB(mock as any);
+    db.loginWithPassword('alice', 'pass');
+    expect(freed).toBe(true);
+  });
+
+  it('logout delegates to raw', () => {
+    let loggedOut = false;
+    const mock = { ...createMockRawDB(), logout: () => { loggedOut = true; } };
+    const db = new WasmDB(mock as any);
+    db.logout();
+    expect(loggedOut).toBe(true);
   });
 
   it('delegates free to raw db', () => {
