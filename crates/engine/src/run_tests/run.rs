@@ -12,10 +12,7 @@ use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{RunTestsNode, RunTestsScope},
 };
-use reifydb_transaction::{
-	testing::TestFlowProcessor,
-	transaction::{TestTransaction, Transaction},
-};
+use reifydb_transaction::transaction::{TestTransaction, Transaction};
 use reifydb_type::{
 	params::Params,
 	value::{Value, duration::Duration as RqlDuration, frame::frame::Frame},
@@ -140,8 +137,6 @@ pub(crate) fn run_tests(
 		}
 	};
 
-	let flow_processor = services.ioc.resolve::<Arc<dyn TestFlowProcessor>>().ok();
-
 	// Stack-allocated test state — passed into Transaction::Test by reference
 	let mut events: Vec<CapturedEvent> = Vec::new();
 	let mut invocations: Vec<CapturedInvocation> = Vec::new();
@@ -202,7 +197,6 @@ pub(crate) fn run_tests(
 					&mut invocations,
 					&mut event_seq,
 					&mut handler_seq,
-					flow_processor.clone(),
 					"admin",
 					true,
 				);
@@ -265,7 +259,6 @@ pub(crate) fn run_tests(
 						&mut invocations,
 						&mut event_seq,
 						&mut handler_seq,
-						flow_processor.clone(),
 						"admin",
 						true,
 					);

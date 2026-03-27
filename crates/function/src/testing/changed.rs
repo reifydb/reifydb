@@ -28,9 +28,7 @@ impl GeneratorFunction for TestingChanged {
 		// Materialize view rows from pending source changes so that
 		// changed() sees transactional view mutations.
 		if self.primitive_type == "views" {
-			if let Some(processor) = t.flow_processor.clone() {
-				let _ = processor.process(t);
-			}
+			let _ = t.capture_testing_pre_commit();
 		}
 
 		// Read individual mutations from the accumulator

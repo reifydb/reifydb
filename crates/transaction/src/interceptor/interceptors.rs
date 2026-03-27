@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
+use reifydb_type::Result;
+
 use super::{
 	authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
 	chain::InterceptorChain,
@@ -61,6 +65,7 @@ use super::{
 		ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
 	},
 };
+use crate::transaction::TestTransaction;
 
 pub type Chain<I> = InterceptorChain<I>;
 
@@ -133,6 +138,13 @@ pub struct Interceptors {
 	pub granted_role_pre_delete: Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync>,
 	pub authentication_post_create: Chain<dyn AuthenticationPostCreateInterceptor + Send + Sync>,
 	pub authentication_pre_delete: Chain<dyn AuthenticationPreDeleteInterceptor + Send + Sync>,
+
+	/// Optional hook for test flow processing. When set, `capture_testing_pre_commit`
+	/// calls this to register uncommitted flows in the shared flow engine before
+	/// running the pre-commit interceptor chain.
+	///
+	/// Use [`set_test_pre_commit`](Interceptors::set_test_pre_commit) to configure.
+	pub(crate) test_pre_commit: Option<Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>>,
 }
 
 impl Default for Interceptors {
@@ -212,7 +224,20 @@ impl Interceptors {
 			granted_role_pre_delete: InterceptorChain::new(),
 			authentication_post_create: InterceptorChain::new(),
 			authentication_pre_delete: InterceptorChain::new(),
+			test_pre_commit: None,
 		}
+	}
+
+	/// Register a hook for test-only pre-commit flow processing.
+	///
+	/// This hook is called by [`TestTransaction::capture_testing_pre_commit`] to
+	/// rebuild the shared flow engine from all catalog flows (including uncommitted
+	/// ones) before the pre-commit interceptor chain runs.
+	pub fn set_test_pre_commit(
+		&mut self,
+		hook: Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>,
+	) {
+		self.test_pre_commit = Some(hook);
 	}
 }
 
@@ -291,6 +316,7 @@ impl Clone for Interceptors {
 			granted_role_pre_delete: self.granted_role_pre_delete.clone(),
 			authentication_post_create: self.authentication_post_create.clone(),
 			authentication_pre_delete: self.authentication_pre_delete.clone(),
+			test_pre_commit: self.test_pre_commit.clone(),
 		}
 	}
 }

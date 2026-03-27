@@ -91,7 +91,6 @@ use crate::{
 	},
 	multi::transaction::write::WriteSavepoint,
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
-	testing::TestFlowProcessor,
 	transaction::{
 		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
 		subscription::SubscriptionTransaction,
@@ -129,7 +128,6 @@ pub struct TestTransaction<'a> {
 	pub event_seq: &'a mut u64,
 	pub handler_seq: &'a mut u64,
 	pub savepoint: Option<Savepoint>,
-	pub flow_processor: Option<Arc<dyn TestFlowProcessor>>,
 	pub session_type: String,
 	pub session_default_deny: bool,
 }
@@ -141,7 +139,6 @@ impl<'a> TestTransaction<'a> {
 		invocations: &'a mut Vec<CapturedInvocation>,
 		event_seq: &'a mut u64,
 		handler_seq: &'a mut u64,
-		flow_processor: Option<Arc<dyn TestFlowProcessor>>,
 		session_type: impl Into<String>,
 		session_default_deny: bool,
 	) -> Self {
@@ -160,7 +157,6 @@ impl<'a> TestTransaction<'a> {
 			event_seq,
 			handler_seq,
 			savepoint: Some(savepoint),
-			flow_processor,
 			session_type: session_type.into(),
 			session_default_deny,
 		}
@@ -189,7 +185,6 @@ impl<'a> TestTransaction<'a> {
 			event_seq: &mut *self.event_seq,
 			handler_seq: &mut *self.handler_seq,
 			savepoint: None,
-			flow_processor: self.flow_processor.clone(),
 			session_type: self.session_type.clone(),
 			session_default_deny: self.session_default_deny,
 		}
@@ -203,13 +198,35 @@ impl<'a> TestTransaction<'a> {
 
 	/// Execute test-only pre-commit style processing without committing.
 	///
-	/// Processes accumulator entries from the baseline onwards. Used by
-	/// testing helpers that need commit-time flow work materialized while
-	/// still staying inside the test savepoint.
-	pub fn capture_testing_pre_commit<F>(&mut self, f: F) -> Result<()>
-	where
-		F: FnOnce(&mut PreCommitContext) -> Result<()>,
-	{
+	/// If a `test_pre_commit` hook is registered on the interceptors, it is
+	/// called first to ensure uncommitted flows are registered in the shared
+	/// flow engine.  Then the pre-commit interceptor chain runs (which
+	/// includes transactional flow processing) over accumulator entries from
+	/// the baseline onwards.
+	///
+	/// Used by testing helpers that need commit-time flow work materialized
+	/// while still staying inside the test savepoint.
+	pub fn capture_testing_pre_commit(&mut self) -> Result<()> {
+		// Only process if there are non-view source changes; view-only entries
+		// are flow output from a previous call and must not be re-consumed.
+		let has_source_changes = self
+			.inner
+			.accumulator
+			.entries_from(self.baseline)
+			.iter()
+			.any(|(id, _)| !matches!(id, PrimitiveId::View(_)));
+
+		if !has_source_changes {
+			return Ok(());
+		}
+
+		// Clone the hook before re-borrowing self.
+		let hook = self.inner.interceptors.test_pre_commit.clone();
+
+		if let Some(hook) = hook {
+			hook(self)?;
+		}
+
 		let offset = self.baseline;
 		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
 			.inner
@@ -231,7 +248,7 @@ impl<'a> TestTransaction<'a> {
 			view_entries: Vec::new(),
 		};
 
-		f(&mut ctx)?;
+		self.inner.interceptors.pre_commit.execute(&mut ctx)?;
 
 		for (key, value) in &ctx.pending_writes {
 			match value {
@@ -466,7 +483,6 @@ impl<'a> Transaction<'a> {
 				event_seq: t.event_seq,
 				handler_seq: t.handler_seq,
 				savepoint: None,
-				flow_processor: t.flow_processor.clone(),
 				session_type: t.session_type.clone(),
 				session_default_deny: t.session_default_deny,
 			}),
