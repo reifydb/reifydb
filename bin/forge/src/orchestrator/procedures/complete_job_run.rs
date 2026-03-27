@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_catalog::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
+use reifydb_routine::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result as TypeResult,

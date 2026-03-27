@@ -9,10 +9,9 @@ use reifydb_core::event::{
 	EventBus,
 	flow::{FlowOperatorLoadedEvent, OperatorColumn},
 };
+use reifydb_extension::operator::ffi_loader::{ColumnInfo, ffi_operator_loader};
 use reifydb_type::Result;
 use tracing::{debug, instrument};
-
-use crate::ffi::loader::{ColumnInfo, ffi_operator_loader};
 
 /// Load FFI operators from a directory into the global loader.
 ///

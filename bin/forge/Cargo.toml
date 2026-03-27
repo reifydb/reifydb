@@ -15,6 +15,7 @@ reifydb = { path = "../../pkg/rust/reifydb", features = [
     "sub_server_ws",
     "sub_tracing",
 ] }
+reifydb-routine = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-type = { workspace = true }

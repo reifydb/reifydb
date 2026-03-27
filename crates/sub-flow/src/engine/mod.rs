@@ -25,6 +25,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::vm::executor::Executor;
+#[cfg(reifydb_target = "native")]
+use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
@@ -35,9 +37,9 @@ use reifydb_type::{Result, error::Error, value::Value};
 use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
-use crate::ffi::loader::ffi_operator_loader;
-#[cfg(reifydb_target = "native")]
 use crate::operator::BoxedOperator;
+#[cfg(reifydb_target = "native")]
+use crate::operator::ffi::FFIOperator;
 use crate::{builder::OperatorFactory, operator::Operators};
 
 pub struct FlowEngine {
@@ -99,11 +101,11 @@ impl FlowEngine {
 		let config_bytes = to_stdvec(config)
 			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
 
-		let operator = loader_write
-			.create_operator_by_name(operator, node_id, &config_bytes, self.executor.clone())
+		let (descriptor, instance) = loader_write
+			.create_operator_by_name(operator, node_id, &config_bytes)
 			.map_err(|e| Error(internal!("Failed to create FFI operator: {:?}", e)))?;
 
-		Ok(Box::new(operator))
+		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))
 	}
 
 	/// Check if an operator name corresponds to an FFI operator

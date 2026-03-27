@@ -19,7 +19,7 @@ use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::MultiVersionBatch,
 };
-use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
+use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 use reifydb_type::{error::Error, util::cowvec::CowVec};
 
 use super::store_iterator::{self, StoreIteratorHandle};

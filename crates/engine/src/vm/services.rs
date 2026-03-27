@@ -4,15 +4,17 @@
 use std::sync::Arc;
 
 use reifydb_auth::registry::AuthenticationRegistry;
-use reifydb_builtin::registry::default_functions;
 use reifydb_catalog::{
 	catalog::Catalog,
-	function::registry::Functions,
-	procedure::{Procedure, registry::Procedures},
 	vtable::{system::flow_operator_store::SystemFlowOperatorStore, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::metric::MetricReader;
+use reifydb_routine::{
+	function::{default_functions, registry::Functions},
+	procedure::{Procedure, registry::Procedures},
+};
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
@@ -20,7 +22,6 @@ use reifydb_type::value::sumtype::VariantRef;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::remote::RemoteRegistry;
-use crate::transform::registry::Transforms;
 
 /// Services is a container for shared resources used throughout the execution engine.
 ///

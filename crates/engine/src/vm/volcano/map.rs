@@ -7,6 +7,7 @@ use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
 	value::column::{Column, columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -19,7 +20,6 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalSession},
 	},
-	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

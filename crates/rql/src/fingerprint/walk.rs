@@ -8,7 +8,7 @@
 
 use crate::ast::{
 	ast::*,
-	identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, UnresolvedPrimitiveIdentifier},
+	identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, UnresolvedSchemaIdentifier},
 };
 
 pub(crate) struct FingerprintBuffer(Vec<u8>);
@@ -628,7 +628,7 @@ fn write_infix_op(buf: &mut FingerprintBuffer, op: &InfixOperator<'_>) {
 	});
 }
 
-fn write_unresolved_id(buf: &mut FingerprintBuffer, id: &UnresolvedPrimitiveIdentifier<'_>) {
+fn write_unresolved_id(buf: &mut FingerprintBuffer, id: &UnresolvedSchemaIdentifier<'_>) {
 	for ns in &id.namespace {
 		buf.write_str(ns.text());
 	}

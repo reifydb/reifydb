@@ -11,6 +11,7 @@ use reifydb_core::{
 		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
 	},
 };
+use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
@@ -23,7 +24,6 @@ use crate::{
 		compile::{CompiledExpr, compile_expression},
 		context::{CompileContext, EvalSession},
 	},
-	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

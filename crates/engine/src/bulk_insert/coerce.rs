@@ -3,11 +3,11 @@
 
 //! Column coercion for bulk inserts.
 
-use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	interface::catalog::column::Column,
 	value::column::{columns::Columns, data::ColumnData},
 };
+use reifydb_routine::function::registry::Functions;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 

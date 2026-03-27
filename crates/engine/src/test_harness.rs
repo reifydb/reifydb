@@ -3,7 +3,6 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_builtin::registry::default_functions;
 use reifydb_catalog::{
 	catalog::{
 		Catalog,
@@ -11,7 +10,6 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 	materialized::MaterializedCatalog,
-	procedure::registry::Procedures,
 	schema::RowSchemaRegistry,
 };
 use reifydb_cdc::{
@@ -28,9 +26,11 @@ use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	util::ioc::IocContainer,
 };
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
+use reifydb_routine::{function::default_functions, procedure::registry::Procedures};
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::{ActorHandle, ActorSystem, ActorSystemConfig},
@@ -50,7 +50,7 @@ use reifydb_type::{
 	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 
-use crate::{engine::StandardEngine, transform::registry::Transforms};
+use crate::engine::StandardEngine;
 
 pub struct TestEngine {
 	engine: StandardEngine,

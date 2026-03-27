@@ -3,7 +3,6 @@
 
 use std::sync::LazyLock;
 
-use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	interface::{
 		catalog::property::{ColumnPropertyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY},
@@ -11,12 +10,13 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
+use reifydb_extension::transform::context::TransformContext;
+use reifydb_routine::function::registry::Functions;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
 use crate::{
 	arena::QueryArena,
-	transform::context::TransformContext,
 	vm::{stack::SymbolTable, volcano::query::QueryContext},
 };
 

@@ -24,7 +24,7 @@ use reifydb_core::{
 		table::Table,
 	},
 };
-use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
+use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::ffi::context::get_transaction_mut;

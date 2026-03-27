@@ -3,7 +3,6 @@
 
 use std::{collections::BTreeMap, sync::LazyLock};
 
-use reifydb_catalog::function::registry::Functions;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::{
 	expression::{
@@ -12,6 +11,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
+use reifydb_routine::function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
@@ -89,7 +89,7 @@ pub fn evaluate_operator_config(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_catalog::function::registry::Functions;
+	use reifydb_routine::function::registry::Functions;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_type::{fragment::Fragment, value::Value};

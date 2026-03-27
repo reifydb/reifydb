@@ -8,7 +8,6 @@ use reifydb_auth::{
 	registry::AuthenticationRegistry,
 	service::{AuthService, AuthServiceConfig},
 };
-use reifydb_builtin::{procedure::default_procedures, registry::default_functions};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
@@ -16,9 +15,7 @@ use reifydb_catalog::{
 		load_schema_registry,
 	},
 	catalog::Catalog,
-	function::registry::FunctionsBuilder,
 	materialized::MaterializedCatalog,
-	procedure::registry::ProceduresBuilder,
 	schema::RowSchemaRegistry,
 	system::SystemCatalog,
 };
@@ -38,11 +35,14 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{
-	EngineVersion, engine::StandardEngine, remote::RemoteRegistry, transform::registry::Transforms,
-};
+use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry};
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
+};
+use reifydb_routine::{
+	function::{default_functions, registry::FunctionsBuilder},
+	procedure::{default_procedures, registry::ProceduresBuilder},
 };
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
@@ -311,22 +311,20 @@ impl DatabaseBuilder {
 		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
 
 		let procedures = {
-			let mut procedures_builder = default_procedures().with_procedure(
-				"identity::inject",
-				reifydb_engine::procedure::identity_inject::IdentityInject::new,
-			);
+			let mut procedures_builder = default_procedures();
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {
-				procedures_builder = reifydb_engine::procedure::loader::register_procedures_from_dir(
-					dir,
-					procedures_builder,
-				)?;
+				procedures_builder =
+					reifydb_extension::procedure::ffi_loader::register_procedures_from_dir(
+						dir,
+						procedures_builder,
+					)?;
 			}
 
 			if let Some(dir) = &self.wasm_procedure_dir {
 				procedures_builder =
-					reifydb_engine::procedure::wasm_loader::register_wasm_procedures_from_dir(
+					reifydb_extension::procedure::wasm_loader::register_wasm_procedures_from_dir(
 						dir,
 						procedures_builder,
 					)?;

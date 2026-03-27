@@ -1081,6 +1081,7 @@ dependencies = [
  "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-routine",
  "reifydb-transaction",
  "reifydb-type",
  "tokio",
@@ -2544,13 +2545,14 @@ dependencies = [
  "rayon",
  "reifydb-auth",
  "reifydb-build",
- "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-derive",
  "reifydb-engine",
+ "reifydb-extension",
  "reifydb-metric",
+ "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -2598,30 +2600,6 @@ dependencies = [
 [[package]]
 name = "reifydb-build"
 version = "0.4.2"
-
-[[package]]
-name = "reifydb-builtin"
-version = "0.4.2"
-dependencies = [
- "bumpalo",
- "futures-util",
- "indexmap",
- "num-traits",
- "postcard",
- "reifydb-catalog",
- "reifydb-core",
- "reifydb-rql",
- "reifydb-runtime",
- "reifydb-sdk",
- "reifydb-transaction",
- "reifydb-type",
- "reifydb-wasm",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "uuid",
-]
 
 [[package]]
 name = "reifydb-catalog"
@@ -2741,13 +2719,14 @@ dependencies = [
  "reifydb-abi",
  "reifydb-auth",
  "reifydb-build",
- "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-client",
  "reifydb-core",
+ "reifydb-extension",
  "reifydb-metric",
  "reifydb-policy",
+ "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
@@ -2758,6 +2737,28 @@ dependencies = [
  "reifydb-wasm",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-extension"
+version = "0.4.2"
+dependencies = [
+ "bumpalo",
+ "libloading",
+ "postcard",
+ "reifydb-abi",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-routine",
+ "reifydb-runtime",
+ "reifydb-sdk",
+ "reifydb-transaction",
+ "reifydb-type",
+ "reifydb-wasm",
+ "serde",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -2805,6 +2806,34 @@ dependencies = [
  "reifydb-type",
  "thiserror 2.0.18",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-routine"
+version = "0.4.2"
+dependencies = [
+ "bumpalo",
+ "futures-util",
+ "indexmap",
+ "libloading",
+ "num-traits",
+ "postcard",
+ "reifydb-abi",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-sdk",
+ "reifydb-transaction",
+ "reifydb-type",
+ "reifydb-wasm",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2935,11 +2964,12 @@ dependencies = [
  "postcard",
  "reifydb-abi",
  "reifydb-build",
- "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-extension",
+ "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
@@ -3175,11 +3205,12 @@ version = "0.4.2"
 dependencies = [
  "reifydb-auth",
  "reifydb-build",
- "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-extension",
+ "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -3210,11 +3241,12 @@ dependencies = [
  "getrandom 0.4.2",
  "js-sys",
  "reifydb-auth",
- "reifydb-builtin",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-extension",
+ "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",

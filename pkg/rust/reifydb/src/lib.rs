@@ -22,7 +22,6 @@ pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::Database;
 pub use health::HealthMonitor;
 pub use reifydb_auth as auth;
-pub use reifydb_builtin as function;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
@@ -30,6 +29,7 @@ pub use reifydb_core::event::EventBus;
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
+pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,

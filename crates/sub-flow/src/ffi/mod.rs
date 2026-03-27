@@ -12,4 +12,3 @@
 
 pub mod callbacks;
 pub mod context;
-pub mod loader;

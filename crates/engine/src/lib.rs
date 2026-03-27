@@ -12,11 +12,9 @@ pub mod engine;
 pub mod environment;
 pub mod error;
 pub mod expression;
-pub mod ffi;
 pub mod flow;
 pub(crate) mod interceptor;
 pub mod policy;
-pub mod procedure;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod remote;
 pub mod run_tests;
@@ -24,7 +22,6 @@ pub mod session;
 pub mod test_harness;
 pub mod test_prelude;
 pub mod transaction;
-pub mod transform;
 pub mod vm;
 
 pub struct EngineVersion;

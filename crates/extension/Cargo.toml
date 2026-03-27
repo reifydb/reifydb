@@ -1,0 +1,32 @@
+[package]
+name = "reifydb-extension"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Unified extension loading for ReifyDB (FFI, WASM, native)"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[features]
+default = []
+
+[dependencies]
+reifydb-abi = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-routine = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sdk = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-wasm = { workspace = true }
+
+bumpalo = { workspace = true }
+libloading = { workspace = true }
+postcard = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

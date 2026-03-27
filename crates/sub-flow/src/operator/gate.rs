@@ -3,7 +3,6 @@
 
 use std::sync::{Arc, LazyLock};
 
-use reifydb_catalog::function::registry::Functions;
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
@@ -19,6 +18,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
+use reifydb_routine::function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{

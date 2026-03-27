@@ -3,11 +3,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_catalog::procedure::context::ProcedureContext;
 use reifydb_core::{
 	internal_error,
 	value::column::{Column, columns::Columns},
 };
+use reifydb_routine::procedure::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{

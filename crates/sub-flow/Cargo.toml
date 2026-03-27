@@ -18,7 +18,8 @@ reifydb-cdc = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-builtin = { workspace = true }
+reifydb-extension = { workspace = true }
+reifydb-routine = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true }

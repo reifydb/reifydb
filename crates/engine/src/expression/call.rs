@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, view::group_by::GroupByView};
+use reifydb_routine::function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
 use reifydb_rql::{
 	expression::CallExpression,
 	instruction::{CompiledFunction, Instruction, ScopeType},

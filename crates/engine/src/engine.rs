@@ -6,9 +6,7 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
-	function::registry::Functions,
 	materialized::MaterializedCatalog,
-	procedure::registry::Procedures,
 	schema::RowSchemaRegistry,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
@@ -31,7 +29,9 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::metric::MetricReader;
+use reifydb_routine::{function::registry::Functions, procedure::registry::Procedures};
 use reifydb_runtime::{actor::system::ActorSystem, context::RuntimeContext};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
@@ -57,7 +57,6 @@ use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
-	transform::registry::Transforms,
 	vm::{Admin, Command, Query, Subscription, executor::Executor},
 };
 

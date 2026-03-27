@@ -57,7 +57,7 @@ RUST_CRATES=(
     "reifydb-core"
     "reifydb-derive"
     "reifydb-engine"
-    "reifydb-builtin"
+    "reifydb-routine"
     "reifydb-macro"
     "reifydb-macro-impl"
     "reifydb-metric"

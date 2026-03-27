@@ -18,7 +18,6 @@ use reifydb_auth::{
 	registry::AuthenticationRegistry,
 	service::{AuthResponse, AuthService, AuthServiceConfig},
 };
-use reifydb_builtin::{procedure::default_procedures, registry::default_functions};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
@@ -42,6 +41,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine};
+use reifydb_routine::{function::default_functions, procedure::default_procedures};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_store_multi::{
@@ -65,7 +65,7 @@ mod error;
 mod utils;
 
 pub use error::JsError;
-use reifydb_engine::transform::registry::Transforms;
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_runtime::context::RuntimeContext;
 
 /// Result of a successful login, returned to JavaScript.
@@ -228,12 +228,7 @@ impl WasmDB {
 			.map_err(|e| JsError::from_error(&e))?;
 		load_schema_registry(&multi, &single, &schema_registry).map_err(|e| JsError::from_error(&e))?;
 
-		let procedures = default_procedures()
-			.with_procedure(
-				"identity::inject",
-				reifydb_engine::procedure::identity_inject::IdentityInject::new,
-			)
-			.build();
+		let procedures = default_procedures().build();
 
 		// Build engine with bootstrap-initialized catalog
 		let eventbus_clone = eventbus.clone();

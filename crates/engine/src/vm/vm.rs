@@ -3,17 +3,14 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
-use reifydb_catalog::{
-	catalog::{Catalog, procedure::ResolvedProcedure},
-	function::GeneratorContext,
-	procedure::context::ProcedureContext,
-};
+use reifydb_catalog::catalog::{Catalog, procedure::ResolvedProcedure};
 use reifydb_core::{
 	error::diagnostic::internal::internal_with_context,
 	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
+use reifydb_routine::{function::GeneratorContext, procedure::context::ProcedureContext};
 use reifydb_rql::{
 	compiler::CompilationResult,
 	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},

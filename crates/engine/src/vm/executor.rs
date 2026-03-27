@@ -4,13 +4,12 @@
 use std::{ops::Deref, sync::Arc};
 
 use bumpalo::Bump;
-use reifydb_catalog::{
-	catalog::Catalog, function::registry::Functions, procedure::registry::Procedures,
-	vtable::system::flow_operator_store::SystemFlowOperatorStore,
-};
+use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
 use reifydb_core::{error::diagnostic::subscription, util::ioc::IocContainer, value::column::columns::Columns};
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::metric::MetricReader;
 use reifydb_policy::inject_read_policies;
+use reifydb_routine::{function::registry::Functions, procedure::registry::Procedures};
 use reifydb_rql::{
 	ast::parse_str,
 	compiler::{CompilationResult, constrain_policy},
@@ -35,7 +34,6 @@ use crate::remote::{self, RemoteRegistry};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transform::registry::Transforms,
 	vm::{
 		Admin, Command, Query, Subscription, Test,
 		services::Services,
