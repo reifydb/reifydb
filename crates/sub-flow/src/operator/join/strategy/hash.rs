@@ -82,13 +82,13 @@ pub(crate) fn update_row_in_entry(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
-	old_row_number: RowNumber,
-	new_row_number: RowNumber,
+	pre_row_number: RowNumber,
+	post_row_number: RowNumber,
 ) -> Result<bool> {
 	if let Some(mut entry) = store.get(txn, key_hash)? {
 		for row in &mut entry.rows {
-			if *row == old_row_number {
-				*row = new_row_number;
+			if *row == pre_row_number {
+				*row = post_row_number;
 				store.set(txn, key_hash, &entry)?;
 				return Ok(true);
 			}

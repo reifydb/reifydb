@@ -229,16 +229,16 @@ where
 // POST UPDATE
 pub struct SeriesRowPostUpdateContext<'a> {
 	pub series: &'a Series,
-	pub row: &'a EncodedRow,
-	pub old_row: &'a EncodedRow,
+	pub post: &'a EncodedRow,
+	pub pre: &'a EncodedRow,
 }
 
 impl<'a> SeriesRowPostUpdateContext<'a> {
-	pub fn new(series: &'a Series, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
+	pub fn new(series: &'a Series, post: &'a EncodedRow, pre: &'a EncodedRow) -> Self {
 		Self {
 			series,
-			row,
-			old_row,
+			post,
+			pre,
 		}
 	}
 }
@@ -467,10 +467,10 @@ impl SeriesRowInterceptor {
 	pub fn post_update(
 		txn: &mut impl WithInterceptors,
 		series: &Series,
-		row: &EncodedRow,
-		old_row: &EncodedRow,
+		post: &EncodedRow,
+		pre: &EncodedRow,
 	) -> Result<()> {
-		let ctx = SeriesRowPostUpdateContext::new(series, row, old_row);
+		let ctx = SeriesRowPostUpdateContext::new(series, post, pre);
 		txn.series_row_post_update_interceptors().execute(ctx)
 	}
 

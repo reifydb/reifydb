@@ -144,8 +144,8 @@ impl Operator for SinkRingBufferViewOperator {
 						// Evict oldest if full
 						if metadata.is_full() {
 							let oldest_rn = RowNumber(metadata.head);
-							let old_key = RowKey::encoded(primitive_id, oldest_rn);
-							txn.remove(&old_key)?;
+							let pre_key = RowKey::encoded(primitive_id, oldest_rn);
+							txn.remove(&pre_key)?;
 							metadata.head += 1;
 							metadata.count -= 1;
 
@@ -238,10 +238,10 @@ impl Operator for SinkRingBufferViewOperator {
 							post_storage_rn,
 							post_encoded,
 						)?;
-						let old_key = RowKey::encoded(primitive_id, pre_storage_rn);
-						let new_key = RowKey::encoded(primitive_id, post_storage_rn);
-						txn.remove(&old_key)?;
-						txn.set(&new_key, post_encoded.clone())?;
+						let pre_key = RowKey::encoded(primitive_id, pre_storage_rn);
+						let post_key = RowKey::encoded(primitive_id, post_storage_rn);
+						txn.remove(&pre_key)?;
+						txn.set(&post_key, post_encoded.clone())?;
 						ViewRowInterceptor::post_update(
 							txn,
 							&view,

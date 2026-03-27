@@ -236,17 +236,17 @@ where
 pub struct ViewRowPostUpdateContext<'a> {
 	pub view: &'a View,
 	pub id: RowNumber,
-	pub row: &'a EncodedRow,
-	pub old_row: &'a EncodedRow,
+	pub post: &'a EncodedRow,
+	pub pre: &'a EncodedRow,
 }
 
 impl<'a> ViewRowPostUpdateContext<'a> {
-	pub fn new(view: &'a View, id: RowNumber, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
+	pub fn new(view: &'a View, id: RowNumber, post: &'a EncodedRow, pre: &'a EncodedRow) -> Self {
 		Self {
 			view,
 			id,
-			row,
-			old_row,
+			post,
+			pre,
 		}
 	}
 }
@@ -495,10 +495,10 @@ impl ViewRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		view: &View,
 		id: RowNumber,
-		row: &EncodedRow,
-		old_row: &EncodedRow,
+		post: &EncodedRow,
+		pre: &EncodedRow,
 	) -> Result<()> {
-		let ctx = ViewRowPostUpdateContext::new(view, id, row, old_row);
+		let ctx = ViewRowPostUpdateContext::new(view, id, post, pre);
 		txn.view_row_post_update_interceptors().execute(ctx)
 	}
 

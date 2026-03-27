@@ -152,18 +152,18 @@ fn process_session_group_insert(
 
 		if gap_exceeded {
 			// Emit Remove for the old session before starting a new one
-			let old_window_key = operator.create_window_key(group_hash, session_id);
-			let old_state = operator.load_window_state(txn, &old_window_key)?;
-			if !old_state.events.is_empty() {
-				if let Some(layout) = &old_state.window_layout {
-					if let Some((old_row, _)) = operator.apply_aggregations(
+			let pre_window_key = operator.create_window_key(group_hash, session_id);
+			let pre_state = operator.load_window_state(txn, &pre_window_key)?;
+			if !pre_state.events.is_empty() {
+				if let Some(layout) = &pre_state.window_layout {
+					if let Some((pre_row, _)) = operator.apply_aggregations(
 						txn,
-						&old_window_key,
+						&pre_window_key,
 						layout,
-						&old_state.events,
+						&pre_state.events,
 					)? {
 						result.push(Diff::Remove {
-							pre: Columns::from_row(&old_row),
+							pre: Columns::from_row(&pre_row),
 						});
 					}
 				}

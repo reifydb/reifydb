@@ -119,10 +119,10 @@ impl RingBufferOperations for CommandTransaction {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
 		// Check if we're overwriting existing data (for ring buffer circular behavior)
-		let old_row = self.get(&key)?.map(|v| v.row);
+		let pre = self.get(&key)?.map(|v| v.row);
 
 		// If there's an existing encoded, we need to delete it first with interceptors
-		if let Some(ref existing) = old_row {
+		if let Some(ref existing) = pre {
 			RingBufferRowInterceptor::pre_delete(self, ringbuffer, row_number)?;
 			// Don't actually remove, we'll overwrite
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
@@ -134,11 +134,11 @@ impl RingBufferOperations for CommandTransaction {
 
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
 
-		if old_row.is_some() {
+		if pre.is_some() {
 			self.track_flow_change(build_ringbuffer_update_change(
 				ringbuffer,
 				row_number,
-				old_row.as_ref().unwrap(),
+				pre.as_ref().unwrap(),
 				&row,
 			));
 		} else {
@@ -152,15 +152,15 @@ impl RingBufferOperations for CommandTransaction {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		// Get the current encoded before updating (for post-update interceptor)
-		let old_row = self.get(&key)?.map(|v| v.row);
+		let pre = self.get(&key)?.map(|v| v.row);
 
 		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
 		self.set(&key, row.clone())?;
 
-		if let Some(ref old) = old_row {
-			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
+		if let Some(ref pre) = pre {
+			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
+			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
 		}
 
 		Ok(row)
@@ -205,9 +205,9 @@ impl RingBufferOperations for AdminTransaction {
 	) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
-		let old_row = self.get(&key)?.map(|v| v.row);
+		let pre = self.get(&key)?.map(|v| v.row);
 
-		if let Some(ref existing) = old_row {
+		if let Some(ref existing) = pre {
 			RingBufferRowInterceptor::pre_delete(self, ringbuffer, row_number)?;
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
 		}
@@ -218,11 +218,11 @@ impl RingBufferOperations for AdminTransaction {
 
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
 
-		if old_row.is_some() {
+		if pre.is_some() {
 			self.track_flow_change(build_ringbuffer_update_change(
 				ringbuffer,
 				row_number,
-				old_row.as_ref().unwrap(),
+				pre.as_ref().unwrap(),
 				&row,
 			));
 		} else {
@@ -235,15 +235,15 @@ impl RingBufferOperations for AdminTransaction {
 	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		let old_row = self.get(&key)?.map(|v| v.row);
+		let pre = self.get(&key)?.map(|v| v.row);
 
 		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
 		self.set(&key, row.clone())?;
 
-		if let Some(ref old) = old_row {
-			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
+		if let Some(ref pre) = pre {
+			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
+			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
 		}
 
 		Ok(row)

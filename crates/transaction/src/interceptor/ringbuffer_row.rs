@@ -234,17 +234,17 @@ where
 pub struct RingBufferRowPostUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
-	pub row: &'a EncodedRow,
-	pub old_row: &'a EncodedRow,
+	pub post: &'a EncodedRow,
+	pub pre: &'a EncodedRow,
 }
 
 impl<'a> RingBufferRowPostUpdateContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, id: RowNumber, row: &'a EncodedRow, old_row: &'a EncodedRow) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, id: RowNumber, post: &'a EncodedRow, pre: &'a EncodedRow) -> Self {
 		Self {
 			ringbuffer,
 			id,
-			row,
-			old_row,
+			post,
+			pre,
 		}
 	}
 }
@@ -492,10 +492,10 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		id: RowNumber,
-		row: &EncodedRow,
-		old_row: &EncodedRow,
+		post: &EncodedRow,
+		pre: &EncodedRow,
 	) -> Result<()> {
-		let ctx = RingBufferRowPostUpdateContext::new(ringbuffer, id, row, old_row);
+		let ctx = RingBufferRowPostUpdateContext::new(ringbuffer, id, post, pre);
 		txn.ringbuffer_row_post_update_interceptors().execute(ctx)
 	}
 

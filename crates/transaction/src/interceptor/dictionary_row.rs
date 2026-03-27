@@ -237,17 +237,17 @@ where
 pub struct DictionaryRowPostUpdateContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
-	pub value: &'a Value,
-	pub old_value: &'a Value,
+	pub post: &'a Value,
+	pub pre: &'a Value,
 }
 
 impl<'a> DictionaryRowPostUpdateContext<'a> {
-	pub fn new(dictionary: &'a Dictionary, id: DictionaryEntryId, value: &'a Value, old_value: &'a Value) -> Self {
+	pub fn new(dictionary: &'a Dictionary, id: DictionaryEntryId, post: &'a Value, pre: &'a Value) -> Self {
 		Self {
 			dictionary,
 			id,
-			value,
-			old_value,
+			post,
+			pre,
 		}
 	}
 }
@@ -491,10 +491,10 @@ impl DictionaryRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		dictionary: &Dictionary,
 		id: DictionaryEntryId,
-		value: &Value,
-		old_value: &Value,
+		post: &Value,
+		pre: &Value,
 	) -> Result<()> {
-		let ctx = DictionaryRowPostUpdateContext::new(dictionary, id, value, old_value);
+		let ctx = DictionaryRowPostUpdateContext::new(dictionary, id, post, pre);
 		txn.dictionary_row_post_update_interceptors().execute(ctx)
 	}
 

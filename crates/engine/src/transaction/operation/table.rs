@@ -118,7 +118,7 @@ impl TableOperations for CommandTransaction {
 	fn update_table(&mut self, table: Table, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
-		let old_values = match self.get(&key)? {
+		let pre = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(row),
 		};
@@ -127,9 +127,9 @@ impl TableOperations for CommandTransaction {
 
 		self.set(&key, row.clone())?;
 
-		TableRowInterceptor::post_update(self, &table, id, &row, &old_values)?;
+		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
 
-		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
+		self.track_flow_change(build_table_update_change(&table, id, &pre, &row));
 
 		Ok(row)
 	}
@@ -184,7 +184,7 @@ impl TableOperations for AdminTransaction {
 	fn update_table(&mut self, table: Table, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
-		let old_values = match self.get(&key)? {
+		let pre = match self.get(&key)? {
 			Some(v) => v.row,
 			None => return Ok(row),
 		};
@@ -193,9 +193,9 @@ impl TableOperations for AdminTransaction {
 
 		self.set(&key, row.clone())?;
 
-		TableRowInterceptor::post_update(self, &table, id, &row, &old_values)?;
+		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
 
-		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
+		self.track_flow_change(build_table_update_change(&table, id, &pre, &row));
 
 		Ok(row)
 	}

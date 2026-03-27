@@ -185,28 +185,28 @@ pub(crate) fn update_table<'a>(
 				let row_key = RowKey::encoded(table.id, row_number);
 
 				if let Some(pk_def) = primary_key::get_primary_key(&services.catalog, txn, &table)? {
-					if let Some(old_row_data) = txn.get(&row_key)? {
-						let old_row = old_row_data.row;
-						let old_key = primary_key::encode_primary_key(
-							&pk_def, &old_row, &table, &schema,
+					if let Some(pre_row_data) = txn.get(&row_key)? {
+						let pre_row = pre_row_data.row;
+						let pre_key = primary_key::encode_primary_key(
+							&pk_def, &pre_row, &table, &schema,
 						)?;
 
 						txn.remove(&IndexEntryKey::new(
 							table.id,
 							IndexId::primary(pk_def.id),
-							old_key,
+							pre_key,
 						)
 						.encode())?;
 					}
 
-					let new_key = primary_key::encode_primary_key(&pk_def, &row, &table, &schema)?;
+					let post_key = primary_key::encode_primary_key(&pk_def, &row, &table, &schema)?;
 
 					let row_number_schema = Schema::testing(&[Type::Uint8]);
 					let mut row_number_encoded = row_number_schema.allocate();
 					row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 					txn.set(
-						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), new_key)
+						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key)
 							.encode(),
 						row_number_encoded,
 					)?;

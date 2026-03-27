@@ -583,26 +583,26 @@ impl Operator for JoinOperator {
 					post,
 				} => {
 					// Compute keys for pre and post
-					let old_keys = self.compute_join_keys(&pre, compiled_exprs)?;
-					let new_keys = self.compute_join_keys(&post, compiled_exprs)?;
+					let pre_keys = self.compute_join_keys(&pre, compiled_exprs)?;
+					let post_keys = self.compute_join_keys(&post, compiled_exprs)?;
 					let row_count = post.row_count();
 
-					// Group updates by (old_key, new_key) pair
+					// Group updates by (pre_key, post_key) pair
 					// Only updates with same key pair can be batched
 					let mut updates_by_key: IndexMap<(Hash128, Hash128), Vec<usize>> =
 						IndexMap::new();
 					let mut updates_undefined: Vec<usize> = Vec::new();
 
 					for row_idx in 0..row_count {
-						match (old_keys[row_idx], new_keys[row_idx]) {
-							(Some(old_key), Some(new_key)) => {
+						match (pre_keys[row_idx], post_keys[row_idx]) {
+							(Some(pre_key), Some(post_key)) => {
 								updates_by_key
-									.entry((old_key, new_key))
+									.entry((pre_key, post_key))
 									.or_default()
 									.push(row_idx);
 							}
 							_ => {
-								// Any undefined key (old or new) is processed
+								// Any undefined key (pre or post) is processed
 								// individually
 								updates_undefined.push(row_idx);
 							}
@@ -610,15 +610,15 @@ impl Operator for JoinOperator {
 					}
 
 					// Process updates with defined keys (batched by key pair)
-					for ((old_key, new_key), indices) in updates_by_key {
+					for ((pre_key, post_key), indices) in updates_by_key {
 						let diffs = self.strategy.handle_update(
 							txn,
 							&pre,
 							&post,
 							&indices,
 							side,
-							&old_key,
-							&new_key,
+							&pre_key,
+							&post_key,
 							&mut state,
 							self,
 							change.version,

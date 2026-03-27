@@ -67,15 +67,15 @@ impl MemoryPrimitiveStorage {
 
 		for (key, value) in entries {
 			// Check if we need to promote old current to historical
-			if let Some((old_version, old_value)) = current.get(&key) {
-				if *old_version < version {
-					// New version is newer: move old current to historical
-					let old_version = *old_version;
-					let old_value = old_value.clone();
+			if let Some((pre_version, pre_value)) = current.get(&key) {
+				if *pre_version < version {
+					// New version is newer: move pre current to historical
+					let pre_version = *pre_version;
+					let pre_value = pre_value.clone();
 					historical
 						.entry(key.clone())
 						.or_default()
-						.insert(Reverse(old_version), old_value);
+						.insert(Reverse(pre_version), pre_value);
 					// Insert new as current
 					current.insert(key, (version, value));
 				} else {

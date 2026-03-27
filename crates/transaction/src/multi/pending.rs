@@ -91,12 +91,12 @@ impl PendingWrites {
 	pub fn insert(&mut self, key: EncodedKey, value: Pending) {
 		let size_estimate = self.estimate_size(&value);
 
-		if let Some(old_value) = self.writes.insert(key.clone(), value) {
+		if let Some(pre) = self.writes.insert(key.clone(), value) {
 			// Update existing - might change size
-			let old_size = self.estimate_size(&old_value);
-			if size_estimate != old_size {
+			let pre_size = self.estimate_size(&pre);
+			if size_estimate != pre_size {
 				self.estimated_size =
-					self.estimated_size.saturating_sub(old_size).saturating_add(size_estimate);
+					self.estimated_size.saturating_sub(pre_size).saturating_add(size_estimate);
 			}
 			// Key already exists in insertion_order and position_index, don't add again
 		} else {

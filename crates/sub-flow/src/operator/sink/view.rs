@@ -106,10 +106,10 @@ impl Operator for SinkTableViewOperator {
 							post_row_number,
 							post_encoded,
 						)?;
-						let old_key = RowKey::encoded(primitive_id, pre_row_number);
-						let new_key = RowKey::encoded(primitive_id, post_row_number);
-						txn.remove(&old_key)?;
-						txn.set(&new_key, post_encoded.clone())?;
+						let pre_key = RowKey::encoded(primitive_id, pre_row_number);
+						let post_key = RowKey::encoded(primitive_id, post_row_number);
+						txn.remove(&pre_key)?;
+						txn.set(&post_key, post_encoded.clone())?;
 						ViewRowInterceptor::post_update(
 							txn,
 							&view,

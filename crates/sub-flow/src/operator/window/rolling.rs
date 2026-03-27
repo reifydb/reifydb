@@ -70,26 +70,26 @@ impl WindowOperator {
 				None => continue,
 			};
 
-			let old_agg = self.apply_aggregations(txn, &window_key, &layout, &state.events)?;
-			let old_count = state.events.len();
+			let pre_agg = self.apply_aggregations(txn, &window_key, &layout, &state.events)?;
+			let pre_count = state.events.len();
 			self.evict_old_events(&mut state, current_timestamp);
 
-			if state.events.len() < old_count {
+			if state.events.len() < pre_count {
 				if state.events.is_empty() {
 					self.save_window_state(txn, &window_key, &state)?;
-					if let Some((row, _)) = old_agg {
+					if let Some((row, _)) = pre_agg {
 						result.push(Diff::Remove {
 							pre: Columns::from_row(&row),
 						});
 					}
 				} else {
-					let new_agg =
+					let post_agg =
 						self.apply_aggregations(txn, &window_key, &layout, &state.events)?;
 					self.save_window_state(txn, &window_key, &state)?;
-					if let (Some((old_row, _)), Some((new_row, _))) = (old_agg, new_agg) {
+					if let (Some((pre_row, _)), Some((post_row, _))) = (pre_agg, post_agg) {
 						result.push(Diff::Update {
-							pre: Columns::from_row(&old_row),
-							post: Columns::from_row(&new_row),
+							pre: Columns::from_row(&pre_row),
+							post: Columns::from_row(&post_row),
 						});
 					}
 				}

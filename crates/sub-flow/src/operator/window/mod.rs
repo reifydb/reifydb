@@ -406,8 +406,8 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		group_hash: Hash128,
 		row_number: RowNumber,
-		new_row: &Row,
-		new_timestamp: u64,
+		post_row: &Row,
+		post_timestamp: u64,
 	) -> Result<Vec<Diff>> {
 		let window_ids = self.lookup_row_index(txn, group_hash, row_number)?;
 		if window_ids.is_empty() {
@@ -427,20 +427,20 @@ impl WindowOperator {
 					None => continue,
 				};
 
-				let old_aggregation =
+				let pre_aggregation =
 					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
 
-				window_state.events[idx] = WindowEvent::from_row(new_row, new_timestamp);
+				window_state.events[idx] = WindowEvent::from_row(post_row, post_timestamp);
 
-				let new_aggregation =
+				let post_aggregation =
 					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
 
 				self.save_window_state(txn, &window_key, &window_state)?;
 
-				if let (Some((old_row, _)), Some((new_row, _))) = (old_aggregation, new_aggregation) {
+				if let (Some((pre_row, _)), Some((post_row, _))) = (pre_aggregation, post_aggregation) {
 					result.push(Diff::Update {
-						pre: Columns::from_row(&old_row),
-						post: Columns::from_row(&new_row),
+						pre: Columns::from_row(&pre_row),
+						post: Columns::from_row(&post_row),
 					});
 				}
 			}
@@ -463,14 +463,14 @@ impl WindowOperator {
 		for row_idx in 0..row_count {
 			let row_number = pre.row_numbers[row_idx];
 			let group_hash = group_hashes[row_idx];
-			let new_timestamp = post_timestamps[row_idx];
+			let post_timestamp = post_timestamps[row_idx];
 
 			let single_row = post.extract_row(row_idx);
 			let projected = self.project_columns(&single_row);
-			let new_row = projected.to_single_row();
+			let post_row = projected.to_single_row();
 
 			let diffs =
-				self.replace_event_in_windows(txn, group_hash, row_number, &new_row, new_timestamp)?;
+				self.replace_event_in_windows(txn, group_hash, row_number, &post_row, post_timestamp)?;
 			result.extend(diffs);
 		}
 
@@ -502,7 +502,7 @@ impl WindowOperator {
 					None => continue,
 				};
 
-				let old_aggregation =
+				let pre_aggregation =
 					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
 
 				window_state.events.remove(idx);
@@ -510,13 +510,13 @@ impl WindowOperator {
 
 				if window_state.events.is_empty() {
 					self.save_window_state(txn, &window_key, &window_state)?;
-					if let Some((old_row, _)) = old_aggregation {
+					if let Some((pre_row, _)) = pre_aggregation {
 						result.push(Diff::Remove {
-							pre: Columns::from_row(&old_row),
+							pre: Columns::from_row(&pre_row),
 						});
 					}
 				} else {
-					let new_aggregation = self.apply_aggregations(
+					let post_aggregation = self.apply_aggregations(
 						txn,
 						&window_key,
 						&layout,
@@ -524,12 +524,12 @@ impl WindowOperator {
 					)?;
 					self.save_window_state(txn, &window_key, &window_state)?;
 
-					if let (Some((old_row, _)), Some((new_row, _))) =
-						(old_aggregation, new_aggregation)
+					if let (Some((pre_row, _)), Some((post_row, _))) =
+						(pre_aggregation, post_aggregation)
 					{
 						result.push(Diff::Update {
-							pre: Columns::from_row(&old_row),
-							post: Columns::from_row(&new_row),
+							pre: Columns::from_row(&pre_row),
+							post: Columns::from_row(&post_row),
 						});
 					}
 				}

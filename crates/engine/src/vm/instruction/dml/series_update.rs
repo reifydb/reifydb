@@ -155,8 +155,8 @@ pub(crate) fn update_series<'a>(
 		}
 
 		for (encoded_key, row, row_idx) in &updates_to_apply {
-			let old_data = txn.get(encoded_key)?;
-			let old_values = old_data.map(|v| v.row);
+			let pre_data = txn.get(encoded_key)?;
+			let pre_values = pre_data.map(|v| v.row);
 
 			let key_value = columns
 				.iter()
@@ -166,7 +166,7 @@ pub(crate) fn update_series<'a>(
 
 			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
 
-			if let Some(ref old_vals) = old_values {
+			if let Some(ref pre_vals) = pre_values {
 				let read_schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
 				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 				pre_col_vec.push(Column {
@@ -174,7 +174,7 @@ pub(crate) fn update_series<'a>(
 					data: series.key_column_data(vec![key_value]),
 				});
 				for (i, col_def) in series.data_columns().enumerate() {
-					let val = read_schema.get_value(old_vals, i + 1);
+					let val = read_schema.get_value(pre_vals, i + 1);
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(val);
 					pre_col_vec.push(Column {
@@ -217,10 +217,10 @@ pub(crate) fn update_series<'a>(
 				});
 			}
 
-			let old_row_for_interceptor = old_values.clone().unwrap_or_else(|| row.clone());
+			let pre_for_interceptor = pre_values.clone().unwrap_or_else(|| row.clone());
 			let row = SeriesRowInterceptor::pre_update(txn, &series, row.clone())?;
 			txn.set(encoded_key, row.clone())?;
-			SeriesRowInterceptor::post_update(txn, &series, &row, &old_row_for_interceptor)?;
+			SeriesRowInterceptor::post_update(txn, &series, &row, &pre_for_interceptor)?;
 			updated_count += 1;
 		}
 

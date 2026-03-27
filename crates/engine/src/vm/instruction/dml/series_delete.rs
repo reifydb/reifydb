@@ -138,10 +138,10 @@ pub(crate) fn delete_series<'a>(
 				};
 				let encoded_key = key.encode();
 
-				let Some(old_entry) = txn.get(&encoded_key)? else {
+				let Some(pre_entry) = txn.get(&encoded_key)? else {
 					continue;
 				};
-				let encoded_row = old_entry.row;
+				let encoded_row = pre_entry.row;
 
 				let row_number = RowNumber::from(sequence);
 				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());

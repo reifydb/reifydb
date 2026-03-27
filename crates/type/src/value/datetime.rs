@@ -343,10 +343,7 @@ pub mod tests {
 
 	use crate::{
 		error::{TemporalKind, TypeError},
-		value::{
-			datetime::DateTime,
-			duration::Duration,
-		},
+		value::{datetime::DateTime, duration::Duration},
 	};
 
 	#[test]
