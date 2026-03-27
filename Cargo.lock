@@ -2813,6 +2813,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-raft"
+version = "0.4.7"
+dependencies = [
+ "rand 0.10.0",
+ "reifydb-core",
+ "reifydb-type",
+]
+
+[[package]]
 name = "reifydb-routine"
 version = "0.4.7"
 dependencies = [

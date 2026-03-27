@@ -17,6 +17,7 @@ members = [
     "crates/macro",
     "crates/macro-impl",
     "crates/abi",
+    "crates/raft",
     "crates/runtime",
     "crates/sdk",
     "crates/rql",
@@ -87,6 +88,7 @@ default-members = [
     "crates/transaction",
     "crates/type",
     "crates/wasm",
+    "crates/raft",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-server-admin",
@@ -165,6 +167,7 @@ reifydb-extension = { version = "0.4.7", path = "crates/extension" }
 reifydb-metric = { version = "0.4.7", path = "crates/metric" }
 reifydb-policy = { version = "0.4.7", path = "crates/policy" }
 reifydb-abi = { version = "0.4.7", path = "crates/abi" }
+reifydb-raft = { version = "0.4.7", path = "crates/raft" }
 reifydb-runtime = { version = "0.4.7", path = "crates/runtime" }
 reifydb-sdk = { version = "0.4.7", path = "crates/sdk" }
 reifydb-rql = { version = "0.4.7", path = "crates/rql" }
