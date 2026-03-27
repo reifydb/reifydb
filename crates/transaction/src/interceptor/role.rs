@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// ROLE DEF POST CREATE
-/// Context for role def post-create interceptors
 pub struct RolePostCreateContext<'a> {
 	pub post: &'a Role,
 }
@@ -78,8 +76,6 @@ where
 	ClosureRolePostCreateInterceptor::new(f)
 }
 
-// ROLE DEF PRE UPDATE
-/// Context for role def pre-update interceptors
 pub struct RolePreUpdateContext<'a> {
 	pub pre: &'a Role,
 }
@@ -150,8 +146,6 @@ where
 	ClosureRolePreUpdateInterceptor::new(f)
 }
 
-// ROLE DEF POST UPDATE
-/// Context for role def post-update interceptors
 pub struct RolePostUpdateContext<'a> {
 	pub pre: &'a Role,
 	pub post: &'a Role,
@@ -224,8 +218,6 @@ where
 	ClosureRolePostUpdateInterceptor::new(f)
 }
 
-// ROLE DEF PRE DELETE
-/// Context for role def pre-delete interceptors
 pub struct RolePreDeleteContext<'a> {
 	pub pre: &'a Role,
 }

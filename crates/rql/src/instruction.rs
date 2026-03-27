@@ -24,7 +24,7 @@ pub type Addr = usize;
 
 /// A compiled user-defined function with pre-compiled body instructions
 #[derive(Debug, Clone)]
-pub struct CompiledFunctionDef {
+pub struct CompiledFunction {
 	/// Function name
 	pub name: Fragment,
 	/// Function parameters
@@ -37,7 +37,7 @@ pub struct CompiledFunctionDef {
 
 /// A compiled closure with captured environment
 #[derive(Debug, Clone)]
-pub struct CompiledClosureDef {
+pub struct CompiledClosure {
 	/// Closure parameters
 	pub parameters: Vec<FunctionParameter>,
 	/// Pre-compiled closure body instructions
@@ -136,7 +136,7 @@ pub enum Instruction {
 	},
 
 	// === Functions ===
-	DefineFunction(CompiledFunctionDef),
+	DefineFunction(CompiledFunction),
 	Call {
 		name: Fragment,
 		arity: u8,
@@ -146,7 +146,7 @@ pub enum Instruction {
 	ReturnVoid,
 
 	// === Closures ===
-	DefineClosure(CompiledClosureDef),
+	DefineClosure(CompiledClosure),
 
 	// === Query (volcano model) ===
 	Query(QueryPlan),

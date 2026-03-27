@@ -256,7 +256,7 @@ pub trait TransactionalMigrationChanges {
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct TransactionalDefChanges {
+pub struct TransactionalCatalogChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
 	/// Config key/value changes to be applied post-commit with the commit version
@@ -296,7 +296,7 @@ pub struct TransactionalDefChanges {
 	pub authentication: Vec<Change<Authentication>>,
 	/// All role definition changes in order (no coalescing)
 	pub role: Vec<Change<Role>>,
-	/// All identity-role definition changes in order (no coalescing)
+	/// All granted-role changes in order (no coalescing)
 	pub granted_role: Vec<Change<GrantedRole>>,
 	/// All policy definition changes in order (no coalescing)
 	pub policy: Vec<Change<Policy>>,
@@ -306,7 +306,7 @@ pub struct TransactionalDefChanges {
 	pub log: Vec<Operation>,
 }
 
-pub struct DefChangesSavepoint {
+pub struct CatalogChangesSavepoint {
 	config_changes_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
@@ -332,9 +332,9 @@ pub struct DefChangesSavepoint {
 	log_len: usize,
 }
 
-impl TransactionalDefChanges {
-	pub fn savepoint(&self) -> DefChangesSavepoint {
-		DefChangesSavepoint {
+impl TransactionalCatalogChanges {
+	pub fn savepoint(&self) -> CatalogChangesSavepoint {
+		CatalogChangesSavepoint {
 			config_changes_len: self.config_changes.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
@@ -361,7 +361,7 @@ impl TransactionalDefChanges {
 		}
 	}
 
-	pub fn restore_savepoint(&mut self, sp: DefChangesSavepoint) {
+	pub fn restore_savepoint(&mut self, sp: CatalogChangesSavepoint) {
 		self.config_changes.truncate(sp.config_changes_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
@@ -824,7 +824,7 @@ pub enum Operation {
 	},
 }
 
-impl TransactionalDefChanges {
+impl TransactionalCatalogChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,

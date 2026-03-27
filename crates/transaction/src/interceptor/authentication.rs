@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// AUTHENTICATION DEF POST CREATE
-/// Context for authentication def post-create interceptors
 pub struct AuthenticationPostCreateContext<'a> {
 	pub post: &'a Authentication,
 }
@@ -78,8 +76,6 @@ where
 	ClosureAuthenticationPostCreateInterceptor::new(f)
 }
 
-// AUTHENTICATION DEF PRE DELETE
-/// Context for authentication def pre-delete interceptors
 pub struct AuthenticationPreDeleteContext<'a> {
 	pub pre: &'a Authentication,
 }

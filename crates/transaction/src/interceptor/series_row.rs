@@ -8,7 +8,6 @@ use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
 // PRE INSERT
-/// Context for series pre-insert interceptors
 pub struct SeriesRowPreInsertContext<'a> {
 	pub series: &'a Series,
 	pub row: EncodedRow,
@@ -82,7 +81,6 @@ where
 }
 
 // POST INSERT
-/// Context for series post-insert interceptors
 pub struct SeriesRowPostInsertContext<'a> {
 	pub series: &'a Series,
 	pub row: &'a EncodedRow,
@@ -156,7 +154,6 @@ where
 }
 
 // PRE UPDATE
-/// Context for series pre-update interceptors
 pub struct SeriesRowPreUpdateContext<'a> {
 	pub series: &'a Series,
 	pub row: EncodedRow,
@@ -230,7 +227,6 @@ where
 }
 
 // POST UPDATE
-/// Context for series post-update interceptors
 pub struct SeriesRowPostUpdateContext<'a> {
 	pub series: &'a Series,
 	pub row: &'a EncodedRow,
@@ -306,7 +302,6 @@ where
 }
 
 // PRE DELETE
-/// Context for series pre-delete interceptors
 pub struct SeriesRowPreDeleteContext<'a> {
 	pub series: &'a Series,
 }
@@ -378,7 +373,6 @@ where
 }
 
 // POST DELETE
-/// Context for series post-delete interceptors
 pub struct SeriesRowPostDeleteContext<'a> {
 	pub series: &'a Series,
 	pub deleted_row: &'a EncodedRow,

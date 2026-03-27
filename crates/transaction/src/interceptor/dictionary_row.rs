@@ -11,7 +11,6 @@ use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
 // PRE INSERT
-/// Context for dictionary pre-insert interceptors
 pub struct DictionaryRowPreInsertContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub value: Value,
@@ -85,7 +84,6 @@ where
 }
 
 // POST INSERT
-/// Context for dictionary post-insert interceptors
 pub struct DictionaryRowPostInsertContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -161,7 +159,6 @@ where
 }
 
 // PRE UPDATE
-/// Context for dictionary pre-update interceptors
 pub struct DictionaryRowPreUpdateContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -237,7 +234,6 @@ where
 }
 
 // POST UPDATE
-/// Context for dictionary post-update interceptors
 pub struct DictionaryRowPostUpdateContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -315,7 +311,6 @@ where
 }
 
 // PRE DELETE
-/// Context for dictionary pre-delete interceptors
 pub struct DictionaryRowPreDeleteContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,
@@ -389,7 +384,6 @@ where
 }
 
 // POST DELETE
-/// Context for dictionary post-delete interceptors
 pub struct DictionaryRowPostDeleteContext<'a> {
 	pub dictionary: &'a Dictionary,
 	pub id: DictionaryEntryId,

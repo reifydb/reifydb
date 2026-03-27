@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::catalog::primitive::{PrimitiveDef, PrimitiveId};
+use reifydb_core::interface::catalog::primitive::{Primitive, PrimitiveId};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, vtable::VTableRegistry};
@@ -14,20 +14,20 @@ impl CatalogStore {
 	pub(crate) fn find_primitive(
 		rx: &mut Transaction<'_>,
 		primitive: impl Into<PrimitiveId>,
-	) -> Result<Option<PrimitiveDef>> {
+	) -> Result<Option<Primitive>> {
 		let primitive_id = primitive.into();
 
 		match primitive_id {
 			PrimitiveId::Table(table_id) => {
 				if let Some(table) = Self::find_table(rx, table_id)? {
-					Ok(Some(PrimitiveDef::Table(table)))
+					Ok(Some(Primitive::Table(table)))
 				} else {
 					Ok(None)
 				}
 			}
 			PrimitiveId::View(view_id) => {
 				if let Some(view) = Self::find_view(rx, view_id)? {
-					Ok(Some(PrimitiveDef::View(view)))
+					Ok(Some(Primitive::View(view)))
 				} else {
 					Ok(None)
 				}
@@ -36,7 +36,7 @@ impl CatalogStore {
 				if let Some(vtable) = VTableRegistry::find_vtable(rx, vtable_id)? {
 					// Convert Arc<VTable> to VTable
 					let vtable = Arc::try_unwrap(vtable).unwrap_or_else(|arc| (*arc).clone());
-					Ok(Some(PrimitiveDef::TableVirtual(vtable)))
+					Ok(Some(Primitive::TableVirtual(vtable)))
 				} else {
 					Ok(None)
 				}
@@ -66,7 +66,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::{TableId, ViewId},
-		primitive::{PrimitiveDef, PrimitiveId},
+		primitive::{Primitive, PrimitiveId},
 		vtable::VTableId,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
@@ -94,7 +94,7 @@ pub mod tests {
 			.expect("Primitive should exist");
 
 		match primitive {
-			PrimitiveDef::Table(t) => {
+			Primitive::Table(t) => {
 				assert_eq!(t.id, table.id);
 				assert_eq!(t.name, table.name);
 			}
@@ -108,7 +108,7 @@ pub mod tests {
 				.expect("Primitive should exist");
 
 		match primitive {
-			PrimitiveDef::Table(t) => {
+			Primitive::Table(t) => {
 				assert_eq!(t.id, table.id);
 			}
 			_ => panic!("Expected table"),
@@ -141,7 +141,7 @@ pub mod tests {
 			.expect("Primitive should exist");
 
 		match primitive {
-			PrimitiveDef::View(v) => {
+			Primitive::View(v) => {
 				assert_eq!(v.id(), view.id());
 				assert_eq!(v.name(), view.name());
 			}
@@ -155,7 +155,7 @@ pub mod tests {
 				.expect("Primitive should exist");
 
 		match primitive {
-			PrimitiveDef::View(v) => {
+			Primitive::View(v) => {
 				assert_eq!(v.id(), view.id());
 			}
 			_ => panic!("Expected view"),
@@ -190,7 +190,7 @@ pub mod tests {
 			.expect("Sequences virtual table should exist");
 
 		match primitive {
-			PrimitiveDef::TableVirtual(tv) => {
+			Primitive::TableVirtual(tv) => {
 				assert_eq!(tv.id, sequences_id);
 				assert_eq!(tv.name, "sequences");
 			}
@@ -206,7 +206,7 @@ pub mod tests {
 		.expect("Primitive should exist");
 
 		match primitive {
-			PrimitiveDef::TableVirtual(tv) => {
+			Primitive::TableVirtual(tv) => {
 				assert_eq!(tv.id, sequences_id);
 			}
 			_ => panic!("Expected virtual table"),

@@ -163,7 +163,7 @@ pub struct MaterializedCatalogInner {
 	pub(crate) roles: SkipMap<RoleId, MultiVersionRole>,
 	/// Index from role name to role ID for fast name lookups
 	pub(crate) roles_by_name: SkipMap<String, RoleId>,
-	/// MultiVersion identity-role definitions indexed by (identity_id, role_id)
+	/// MultiVersion granted-role definitions indexed by (identity_id, role_id)
 	pub(crate) granted_roles: SkipMap<(IdentityId, RoleId), MultiVersionGrantedRole>,
 	/// MultiVersion policy definitions indexed by policy ID
 	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicy>,

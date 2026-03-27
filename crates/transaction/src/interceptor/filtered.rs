@@ -197,7 +197,6 @@ macro_rules! define_filtered_interceptor {
 	};
 }
 
-// Table filtered interceptors
 define_filtered_interceptor!(
 	FilteredTableRowPreInsertInterceptor,
 	TableRowPreInsertInterceptor,
@@ -240,7 +239,6 @@ define_filtered_interceptor!(
 	table
 );
 
-// Ring buffer filtered interceptors
 define_filtered_interceptor!(
 	FilteredRingBufferRowPreInsertInterceptor,
 	RingBufferRowPreInsertInterceptor,
@@ -283,7 +281,6 @@ define_filtered_interceptor!(
 	ringbuffer
 );
 
-// View data filtered interceptors
 define_filtered_interceptor!(
 	FilteredViewRowPreInsertInterceptor,
 	ViewRowPreInsertInterceptor,
@@ -326,7 +323,6 @@ define_filtered_interceptor!(
 	view
 );
 
-// View definition filtered interceptors
 define_filtered_interceptor!(FilteredViewPostCreateInterceptor, ViewPostCreateInterceptor, ViewPostCreateContext, post);
 
 define_filtered_interceptor!(FilteredViewPreUpdateInterceptor, ViewPreUpdateInterceptor, ViewPreUpdateContext, pre);
@@ -335,7 +331,6 @@ define_filtered_interceptor!(FilteredViewPostUpdateInterceptor, ViewPostUpdateIn
 
 define_filtered_interceptor!(FilteredViewPreDeleteInterceptor, ViewPreDeleteInterceptor, ViewPreDeleteContext, pre);
 
-// Table definition filtered interceptors
 define_filtered_interceptor!(
 	FilteredTablePostCreateInterceptor,
 	TablePostCreateInterceptor,
@@ -354,7 +349,6 @@ define_filtered_interceptor!(
 
 define_filtered_interceptor!(FilteredTablePreDeleteInterceptor, TablePreDeleteInterceptor, TablePreDeleteContext, pre);
 
-// Ring buffer definition filtered interceptors
 define_filtered_interceptor!(
 	FilteredRingBufferPostCreateInterceptor,
 	RingBufferPostCreateInterceptor,
@@ -383,7 +377,6 @@ define_filtered_interceptor!(
 	pre
 );
 
-// Series data filtered interceptors
 define_filtered_interceptor!(
 	FilteredSeriesRowPreInsertInterceptor,
 	SeriesRowPreInsertInterceptor,
@@ -426,7 +419,6 @@ define_filtered_interceptor!(
 	series
 );
 
-// Series definition filtered interceptors
 define_filtered_interceptor!(
 	FilteredSeriesPostCreateInterceptor,
 	SeriesPostCreateInterceptor,
@@ -455,7 +447,6 @@ define_filtered_interceptor!(
 	pre
 );
 
-// Dictionary data filtered interceptors
 define_filtered_interceptor!(
 	FilteredDictionaryRowPreInsertInterceptor,
 	DictionaryRowPreInsertInterceptor,
@@ -498,7 +489,6 @@ define_filtered_interceptor!(
 	dictionary
 );
 
-// Dictionary definition filtered interceptors
 define_filtered_interceptor!(
 	FilteredDictionaryPostCreateInterceptor,
 	DictionaryPostCreateInterceptor,
@@ -527,7 +517,6 @@ define_filtered_interceptor!(
 	pre
 );
 
-// Namespace filtered interceptors
 define_filtered_interceptor!(
 	FilteredNamespacePostCreateInterceptor,
 	NamespacePostCreateInterceptor,
@@ -560,7 +549,6 @@ define_filtered_interceptor!(
 	name
 );
 
-// Identity definition filtered interceptors
 define_filtered_interceptor!(
 	FilteredIdentityPostCreateInterceptor,
 	IdentityPostCreateInterceptor,
@@ -589,7 +577,6 @@ define_filtered_interceptor!(
 	pre
 );
 
-// Role definition filtered interceptors
 define_filtered_interceptor!(FilteredRolePostCreateInterceptor, RolePostCreateInterceptor, RolePostCreateContext, post);
 
 define_filtered_interceptor!(FilteredRolePreUpdateInterceptor, RolePreUpdateInterceptor, RolePreUpdateContext, pre);

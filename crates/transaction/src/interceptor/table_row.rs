@@ -8,7 +8,6 @@ use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
 // PRE INSERT
-/// Context for table pre-insert interceptors
 pub struct TableRowPreInsertContext<'a> {
 	pub table: &'a Table,
 	pub rn: RowNumber,
@@ -84,7 +83,6 @@ where
 }
 
 // POST INSERT
-/// Context for table post-insert interceptors
 pub struct TableRowPostInsertContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -160,7 +158,6 @@ where
 }
 
 // PRE UPDATE
-/// Context for table pre-update interceptors
 pub struct TableRowPreUpdateContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -236,7 +233,6 @@ where
 }
 
 // POST UPDATE
-/// Context for table post-update interceptors
 pub struct TableRowPostUpdateContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -314,7 +310,6 @@ where
 }
 
 // PRE DELETE
-/// Context for table pre-delete interceptors
 pub struct TableRowPreDeleteContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,
@@ -388,7 +383,6 @@ where
 }
 
 // POST DELETE
-/// Context for table post-delete interceptors
 pub struct TableRowPostDeleteContext<'a> {
 	pub table: &'a Table,
 	pub id: RowNumber,

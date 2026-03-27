@@ -24,7 +24,7 @@ use crate::{
 	bump::{Bump, BumpBox, BumpVec},
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
-	instruction::{Addr, CompiledClosureDef, CompiledFunctionDef, Instruction, ScopeType},
+	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
 	nodes::CompiledViewStorageKind,
 	plan::{
@@ -1249,7 +1249,7 @@ impl InstructionCompiler {
 					body_compiler.compile_plan(plan)?;
 				}
 				body_compiler.emit(Instruction::Halt);
-				let compiled_func = CompiledFunctionDef {
+				let compiled_func = CompiledFunction {
 					name: node.name,
 					parameters: node.parameters,
 					return_type: node.return_type,
@@ -1286,7 +1286,7 @@ impl InstructionCompiler {
 				}
 				body_compiler.emit(Instruction::Halt);
 				let captures = scan_free_variables(&body_compiler.instructions, &node.parameters);
-				let compiled_closure = CompiledClosureDef {
+				let compiled_closure = CompiledClosure {
 					parameters: node.parameters,
 					body: body_compiler.instructions,
 					captures,

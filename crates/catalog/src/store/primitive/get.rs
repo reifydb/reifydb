@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::primitive::{PrimitiveDef, PrimitiveId},
+	interface::catalog::primitive::{Primitive, PrimitiveId},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,10 +13,7 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	/// Get a primitive (table or view) by its PrimitiveId
 	/// Returns an error if the primitive doesn't exist
-	pub(crate) fn get_primitive(
-		rx: &mut Transaction<'_>,
-		primitive: impl Into<PrimitiveId>,
-	) -> Result<PrimitiveDef> {
+	pub(crate) fn get_primitive(rx: &mut Transaction<'_>, primitive: impl Into<PrimitiveId>) -> Result<Primitive> {
 		let primitive_id = primitive.into();
 
 		CatalogStore::find_primitive(rx, primitive_id)?.ok_or_else(|| {
@@ -42,7 +39,7 @@ impl CatalogStore {
 pub mod tests {
 	use reifydb_core::interface::catalog::{
 		id::{TableId, ViewId},
-		primitive::{PrimitiveDef, PrimitiveId},
+		primitive::{Primitive, PrimitiveId},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -66,7 +63,7 @@ pub mod tests {
 		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
 		match primitive {
-			PrimitiveDef::Table(t) => {
+			Primitive::Table(t) => {
 				assert_eq!(t.id, table.id);
 				assert_eq!(t.name, table.name);
 			}
@@ -79,7 +76,7 @@ pub mod tests {
 				.unwrap();
 
 		match primitive {
-			PrimitiveDef::Table(t) => {
+			Primitive::Table(t) => {
 				assert_eq!(t.id, table.id);
 			}
 			_ => panic!("Expected table"),
@@ -110,7 +107,7 @@ pub mod tests {
 		let primitive = CatalogStore::get_primitive(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
 		match primitive {
-			PrimitiveDef::View(v) => {
+			Primitive::View(v) => {
 				assert_eq!(v.id(), view.id());
 				assert_eq!(v.name(), view.name());
 			}
@@ -123,7 +120,7 @@ pub mod tests {
 				.unwrap();
 
 		match primitive {
-			PrimitiveDef::View(v) => {
+			Primitive::View(v) => {
 				assert_eq!(v.id(), view.id());
 			}
 			_ => panic!("Expected view"),

@@ -13,7 +13,7 @@
 //!             .post_update(|ctx| { ... })
 //!         .table("myns.orders")
 //!             .post_insert(|ctx| { ... })
-//!         .table_def("myns.users")
+//!         .table("myns.users")
 //!             .post_create(|ctx| { ... })
 //!     .done()
 //!     .build()
@@ -82,7 +82,7 @@ pub trait WithInterceptorBuilder: Sized {
 /// Intermediate builder returned by `.intercept()`.
 ///
 /// Use `.table(spec)`, `.ringbuffer(spec)`, or `.view(spec)` to select data operations,
-/// or `.table_def(spec)`, `.view_def(spec)`, `.ringbuffer_def(spec)`, `.namespace(spec)`
+/// or `.table(spec)`, `.view(spec)`, `.ringbuffer(spec)`, `.namespace(spec)`
 /// for schema lifecycle operations.
 pub struct InterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,

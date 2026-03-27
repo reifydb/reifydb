@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// RING BUFFER POST CREATE
-/// Context for ring buffer post-create interceptors
 pub struct RingBufferPostCreateContext<'a> {
 	pub post: &'a RingBuffer,
 }
@@ -78,8 +76,6 @@ where
 	ClosureRingBufferPostCreateInterceptor::new(f)
 }
 
-// RING BUFFER PRE UPDATE
-/// Context for ring buffer pre-update interceptors
 pub struct RingBufferPreUpdateContext<'a> {
 	pub pre: &'a RingBuffer,
 }
@@ -150,8 +146,6 @@ where
 	ClosureRingBufferPreUpdateInterceptor::new(f)
 }
 
-// RING BUFFER POST UPDATE
-/// Context for ring buffer post-update interceptors
 pub struct RingBufferPostUpdateContext<'a> {
 	pub pre: &'a RingBuffer,
 	pub post: &'a RingBuffer,
@@ -224,8 +218,6 @@ where
 	ClosureRingBufferPostUpdateInterceptor::new(f)
 }
 
-// RING BUFFER PRE DELETE
-/// Context for ring buffer pre-delete interceptors
 pub struct RingBufferPreDeleteContext<'a> {
 	pub pre: &'a RingBuffer,
 }

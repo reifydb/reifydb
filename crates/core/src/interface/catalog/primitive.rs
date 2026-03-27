@@ -320,26 +320,26 @@ impl PrimitiveId {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum PrimitiveDef {
+pub enum Primitive {
 	Table(Table),
 	View(View),
 	TableVirtual(VTable),
 }
 
-impl PrimitiveDef {
+impl Primitive {
 	pub fn id(&self) -> PrimitiveId {
 		match self {
-			PrimitiveDef::Table(table) => table.id.into(),
-			PrimitiveDef::View(view) => view.id().into(),
-			PrimitiveDef::TableVirtual(vtable) => vtable.id.into(),
+			Primitive::Table(table) => table.id.into(),
+			Primitive::View(view) => view.id().into(),
+			Primitive::TableVirtual(vtable) => vtable.id.into(),
 		}
 	}
 
 	pub fn primitive_type(&self) -> PrimitiveId {
 		match self {
-			PrimitiveDef::Table(table) => PrimitiveId::Table(table.id),
-			PrimitiveDef::View(view) => PrimitiveId::View(view.id()),
-			PrimitiveDef::TableVirtual(vtable) => PrimitiveId::TableVirtual(vtable.id),
+			Primitive::Table(table) => PrimitiveId::Table(table.id),
+			Primitive::View(view) => PrimitiveId::View(view.id()),
+			Primitive::TableVirtual(vtable) => PrimitiveId::TableVirtual(vtable.id),
 		}
 	}
 }

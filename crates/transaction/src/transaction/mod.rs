@@ -27,7 +27,7 @@ use reifydb_type::{
 
 use crate::{
 	TransactionId,
-	change::{DefChangesSavepoint, RowChange},
+	change::{CatalogChangesSavepoint, RowChange},
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -118,7 +118,7 @@ pub struct Savepoint {
 	write: WriteSavepoint,
 	row_changes_len: usize,
 	accumulator_len: usize,
-	changes: DefChangesSavepoint,
+	changes: CatalogChangesSavepoint,
 }
 
 pub struct TestTransaction<'a> {

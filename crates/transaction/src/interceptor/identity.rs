@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// IDENTITY DEF POST CREATE
-/// Context for identity def post-create interceptors
 pub struct IdentityPostCreateContext<'a> {
 	pub post: &'a Identity,
 }
@@ -78,8 +76,6 @@ where
 	ClosureIdentityPostCreateInterceptor::new(f)
 }
 
-// IDENTITY DEF PRE UPDATE
-/// Context for identity def pre-update interceptors
 pub struct IdentityPreUpdateContext<'a> {
 	pub pre: &'a Identity,
 }
@@ -150,8 +146,6 @@ where
 	ClosureIdentityPreUpdateInterceptor::new(f)
 }
 
-// IDENTITY DEF POST UPDATE
-/// Context for identity def post-update interceptors
 pub struct IdentityPostUpdateContext<'a> {
 	pub pre: &'a Identity,
 	pub post: &'a Identity,
@@ -224,8 +218,6 @@ where
 	ClosureIdentityPostUpdateInterceptor::new(f)
 }
 
-// IDENTITY DEF PRE DELETE
-/// Context for identity def pre-delete interceptors
 pub struct IdentityPreDeleteContext<'a> {
 	pub pre: &'a Identity,
 }

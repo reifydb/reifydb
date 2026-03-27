@@ -9,7 +9,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
-		// Remove associated identity-role entries
+		// Remove associated granted-role entries
 		{
 			let range = GrantedRoleKey::identity_scan(identity);
 			let mut stream = txn.range(range, 1024)?;

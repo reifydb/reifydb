@@ -24,7 +24,7 @@ use reifydb_type::{
 
 use crate::{
 	TransactionId,
-	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
+	change::{RowChange, TransactionalCatalogChanges, TransactionalChanges},
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -239,7 +239,7 @@ impl SubscriptionTransaction {
 		self.inner.begin_single_command(keys)
 	}
 
-	pub fn get_changes(&self) -> &TransactionalDefChanges {
+	pub fn get_changes(&self) -> &TransactionalCatalogChanges {
 		self.inner.get_changes()
 	}
 

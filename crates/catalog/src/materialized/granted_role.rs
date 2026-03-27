@@ -7,7 +7,7 @@ use reifydb_type::value::identity::IdentityId;
 use crate::materialized::{MaterializedCatalog, MultiVersionGrantedRole};
 
 impl MaterializedCatalog {
-	/// Find an identity-role by composite key at a specific version
+	/// Find a granted-role by composite key at a specific version
 	pub fn find_granted_role_at(
 		&self,
 		identity: IdentityId,
@@ -20,7 +20,7 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find all identity-roles for an identity at a specific version
+	/// Find all granted-roles for an identity at a specific version
 	pub fn find_granted_roles_at(&self, identity: IdentityId, version: CommitVersion) -> Vec<GrantedRole> {
 		self.granted_roles
 			.iter()

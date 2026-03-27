@@ -13,12 +13,10 @@ use reifydb_type::Result;
 
 use crate::{
 	TransactionId,
-	change::{RowChange, TransactionalDefChanges},
+	change::{RowChange, TransactionalCatalogChanges},
 	interceptor::chain::InterceptorChain,
 };
 
-/// Context for pre-commit interceptors.
-///
 /// `flow_changes` carries the table-level changes accumulated during the transaction
 /// (input for transactional flow interceptors).
 /// `pending_writes` is populated by interceptors with view writes to be merged
@@ -114,11 +112,10 @@ where
 	ClosurePreCommitInterceptor::new(f)
 }
 
-/// Context for post-commit interceptors
 pub struct PostCommitContext {
 	pub id: TransactionId,
 	pub version: CommitVersion,
-	pub changes: TransactionalDefChanges,
+	pub changes: TransactionalCatalogChanges,
 	pub row_changes: Vec<RowChange>,
 }
 
@@ -126,7 +123,7 @@ impl PostCommitContext {
 	pub fn new(
 		id: TransactionId,
 		version: CommitVersion,
-		changes: TransactionalDefChanges,
+		changes: TransactionalCatalogChanges,
 		row_changes: Vec<RowChange>,
 	) -> Self {
 		Self {

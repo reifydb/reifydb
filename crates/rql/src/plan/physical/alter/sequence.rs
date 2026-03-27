@@ -4,7 +4,7 @@
 use reifydb_core::{
 	error::diagnostic::catalog::table_not_found,
 	interface::resolved::{
-		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
+		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, Sequence,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -58,7 +58,7 @@ impl<'bump> Compiler<'bump> {
 		let resolved_namespace = ResolvedNamespace::new(namespace_fragment, namespace.clone());
 
 		// Create resolved sequence (using table name as sequence name)
-		let sequence_def = SequenceDef {
+		let sequence_def = Sequence {
 			name: table_name.to_string(),
 			current_value: 1, // This is not used in ALTER SEQUENCE, just a placeholder
 			increment: 1,

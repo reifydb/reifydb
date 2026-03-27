@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// SERIES POST CREATE
-/// Context for series post-create interceptors
 pub struct SeriesPostCreateContext<'a> {
 	pub post: &'a Series,
 }
@@ -78,8 +76,6 @@ where
 	ClosureSeriesPostCreateInterceptor::new(f)
 }
 
-// SERIES PRE UPDATE
-/// Context for series pre-update interceptors
 pub struct SeriesPreUpdateContext<'a> {
 	pub pre: &'a Series,
 }
@@ -150,8 +146,6 @@ where
 	ClosureSeriesPreUpdateInterceptor::new(f)
 }
 
-// SERIES POST UPDATE
-/// Context for series post-update interceptors
 pub struct SeriesPostUpdateContext<'a> {
 	pub pre: &'a Series,
 	pub post: &'a Series,
@@ -224,8 +218,6 @@ where
 	ClosureSeriesPostUpdateInterceptor::new(f)
 }
 
-// SERIES PRE DELETE
-/// Context for series pre-delete interceptors
 pub struct SeriesPreDeleteContext<'a> {
 	pub pre: &'a Series,
 }

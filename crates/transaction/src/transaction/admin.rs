@@ -27,7 +27,7 @@ use tracing::instrument;
 
 use crate::{
 	TransactionId,
-	change::{RowChange, TransactionalChanges, TransactionalDefChanges},
+	change::{RowChange, TransactionalCatalogChanges, TransactionalChanges},
 	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
 	interceptor::{
@@ -104,7 +104,7 @@ use crate::{
 ///
 /// AdminTransaction is the most privileged transaction type, capable of
 /// executing DDL (schema changes), DML (data mutations), and queries.
-/// It tracks catalog definition changes (TransactionalDefChanges) for DDL.
+/// It tracks catalog definition changes (TransactionalCatalogChanges) for DDL.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct AdminTransaction {
@@ -114,7 +114,7 @@ pub struct AdminTransaction {
 
 	pub cmd: Option<MultiWriteTransaction>,
 	pub event_bus: EventBus,
-	pub changes: TransactionalDefChanges,
+	pub changes: TransactionalCatalogChanges,
 
 	// Track row changes for post-commit events
 	pub(crate) row_changes: Vec<RowChange>,
@@ -160,7 +160,7 @@ impl AdminTransaction {
 			state: TransactionState::Active,
 			event_bus,
 			interceptors,
-			changes: TransactionalDefChanges::new(txn_id),
+			changes: TransactionalCatalogChanges::new(txn_id),
 			row_changes: Vec::new(),
 			accumulator: ChangeAccumulator::new(),
 			identity,
@@ -389,7 +389,7 @@ impl AdminTransaction {
 	}
 
 	/// Get reference to catalog changes for this transaction
-	pub fn get_changes(&self) -> &TransactionalDefChanges {
+	pub fn get_changes(&self) -> &TransactionalCatalogChanges {
 		&self.changes
 	}
 

@@ -599,11 +599,11 @@ pub struct ResolvedSequence(Arc<ResolvedSequenceInner>);
 struct ResolvedSequenceInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: SequenceDef,
+	pub def: Sequence,
 }
 
 impl ResolvedSequence {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: SequenceDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: Sequence) -> Self {
 		Self(Arc::new(ResolvedSequenceInner {
 			identifier,
 			namespace,
@@ -619,7 +619,7 @@ impl ResolvedSequence {
 		&self.0.namespace
 	}
 
-	pub fn def(&self) -> &SequenceDef {
+	pub fn def(&self) -> &Sequence {
 		&self.0.def
 	}
 }
@@ -631,11 +631,11 @@ pub struct ResolvedIndex(Arc<ResolvedIndexInner>);
 struct ResolvedIndexInner {
 	pub identifier: Fragment,
 	pub table: ResolvedTable,
-	pub def: IndexDef,
+	pub def: Index,
 }
 
 impl ResolvedIndex {
-	pub fn new(identifier: Fragment, table: ResolvedTable, def: IndexDef) -> Self {
+	pub fn new(identifier: Fragment, table: ResolvedTable, def: Index) -> Self {
 		Self(Arc::new(ResolvedIndexInner {
 			identifier,
 			table,
@@ -651,7 +651,7 @@ impl ResolvedIndex {
 		&self.0.table
 	}
 
-	pub fn def(&self) -> &IndexDef {
+	pub fn def(&self) -> &Index {
 		&self.0.def
 	}
 }
@@ -663,11 +663,11 @@ pub struct ResolvedFunction(Arc<ResolvedFunctionInner>);
 struct ResolvedFunctionInner {
 	pub identifier: Fragment,
 	pub namespace: Vec<ResolvedNamespace>,
-	pub def: FunctionDef,
+	pub def: Function,
 }
 
 impl ResolvedFunction {
-	pub fn new(identifier: Fragment, namespace: Vec<ResolvedNamespace>, def: FunctionDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: Vec<ResolvedNamespace>, def: Function) -> Self {
 		Self(Arc::new(ResolvedFunctionInner {
 			identifier,
 			namespace,
@@ -683,7 +683,7 @@ impl ResolvedFunction {
 		&self.0.namespace
 	}
 
-	pub fn def(&self) -> &FunctionDef {
+	pub fn def(&self) -> &Function {
 		&self.0.def
 	}
 }
@@ -974,21 +974,21 @@ pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOu
 
 // Placeholder types - these will be defined properly in catalog
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SequenceDef {
+pub struct Sequence {
 	pub name: String,
 	pub current_value: i64,
 	pub increment: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IndexDef {
+pub struct Index {
 	pub name: String,
 	pub columns: Vec<String>,
 	pub unique: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionDef {
+pub struct Function {
 	pub name: String,
 	pub parameters: Vec<String>,
 	pub return_type: String,

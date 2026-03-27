@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// DICTIONARY POST CREATE
-/// Context for dictionary post-create interceptors
 pub struct DictionaryPostCreateContext<'a> {
 	pub post: &'a Dictionary,
 }
@@ -78,8 +76,6 @@ where
 	ClosureDictionaryPostCreateInterceptor::new(f)
 }
 
-// DICTIONARY PRE UPDATE
-/// Context for dictionary pre-update interceptors
 pub struct DictionaryPreUpdateContext<'a> {
 	pub pre: &'a Dictionary,
 }
@@ -150,8 +146,6 @@ where
 	ClosureDictionaryPreUpdateInterceptor::new(f)
 }
 
-// DICTIONARY POST UPDATE
-/// Context for dictionary post-update interceptors
 pub struct DictionaryPostUpdateContext<'a> {
 	pub pre: &'a Dictionary,
 	pub post: &'a Dictionary,
@@ -224,8 +218,6 @@ where
 	ClosureDictionaryPostUpdateInterceptor::new(f)
 }
 
-// DICTIONARY PRE DELETE
-/// Context for dictionary pre-delete interceptors
 pub struct DictionaryPreDeleteContext<'a> {
 	pub pre: &'a Dictionary,
 }

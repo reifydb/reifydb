@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// TABLE DEF POST CREATE
-/// Context for table def post-create interceptors
 pub struct TablePostCreateContext<'a> {
 	pub post: &'a Table,
 }
@@ -78,8 +76,6 @@ where
 	ClosureTablePostCreateInterceptor::new(f)
 }
 
-// TABLE DEF PRE UPDATE
-/// Context for table def pre-update interceptors
 pub struct TablePreUpdateContext<'a> {
 	pub pre: &'a Table,
 }
@@ -150,8 +146,6 @@ where
 	ClosureTablePreUpdateInterceptor::new(f)
 }
 
-// TABLE DEF POST UPDATE
-/// Context for table def post-update interceptors
 pub struct TablePostUpdateContext<'a> {
 	pub pre: &'a Table,
 	pub post: &'a Table,
@@ -224,8 +218,6 @@ where
 	ClosureTablePostUpdateInterceptor::new(f)
 }
 
-// TABLE DEF PRE DELETE
-/// Context for table def pre-delete interceptors
 pub struct TablePreDeleteContext<'a> {
 	pub pre: &'a Table,
 }

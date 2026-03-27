@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{internal, value::column::columns::Columns};
-use reifydb_rql::instruction::{CompiledClosureDef, CompiledFunctionDef, ScopeType};
+use reifydb_rql::instruction::{CompiledClosure, CompiledFunction, ScopeType};
 use reifydb_type::{error, value::Value};
 
 use crate::{Result, error::EngineError};
@@ -52,7 +52,7 @@ impl Default for Stack {
 /// A closure paired with its captured environment (snapshotted at definition time)
 #[derive(Debug, Clone)]
 pub struct ClosureValue {
-	pub def: CompiledClosureDef,
+	pub def: CompiledClosure,
 	pub captured: HashMap<String, Variable>,
 }
 
@@ -94,7 +94,7 @@ pub struct SymbolTable {
 struct SymbolTableInner {
 	scopes: Vec<Scope>,
 	/// User-defined functions (pre-compiled)
-	functions: HashMap<String, CompiledFunctionDef>,
+	functions: HashMap<String, CompiledFunction>,
 }
 
 /// Represents a single scope containing variables
@@ -304,12 +304,12 @@ impl SymbolTable {
 	}
 
 	/// Define a user-defined function (pre-compiled)
-	pub fn define_function(&mut self, name: String, func: CompiledFunctionDef) {
+	pub fn define_function(&mut self, name: String, func: CompiledFunction) {
 		Arc::make_mut(&mut self.inner).functions.insert(name, func);
 	}
 
 	/// Get a user-defined function by name
-	pub fn get_function(&self, name: &str) -> Option<&CompiledFunctionDef> {
+	pub fn get_function(&self, name: &str) -> Option<&CompiledFunction> {
 		self.inner.functions.get(name)
 	}
 

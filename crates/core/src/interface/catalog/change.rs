@@ -151,7 +151,7 @@ pub trait CatalogTrackRoleChangeOperations {
 	fn track_role_deleted(&mut self, role: Role) -> Result<()>;
 }
 
-/// Trait for tracking identity-role definition changes during a transaction.
+/// Trait for tracking granted-role changes during a transaction.
 pub trait CatalogTrackGrantedRoleChangeOperations {
 	fn track_granted_role_created(&mut self, granted_role: GrantedRole) -> Result<()>;
 

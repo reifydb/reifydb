@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// IDENTITY ROLE DEF POST CREATE
-/// Context for identity-role def post-create interceptors
 pub struct GrantedRolePostCreateContext<'a> {
 	pub post: &'a GrantedRole,
 }
@@ -78,8 +76,6 @@ where
 	ClosureGrantedRolePostCreateInterceptor::new(f)
 }
 
-// IDENTITY ROLE DEF PRE DELETE
-/// Context for identity-role def pre-delete interceptors
 pub struct GrantedRolePreDeleteContext<'a> {
 	pub pre: &'a GrantedRole,
 }

@@ -27,7 +27,7 @@ use tracing::instrument;
 
 use crate::{
 	TransactionId,
-	change::{RowChange, TransactionalDefChanges},
+	change::{RowChange, TransactionalCatalogChanges},
 	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
 	interceptor::{
@@ -251,7 +251,7 @@ impl CommandTransaction {
 			let id = multi.tm.id();
 			self.state = TransactionState::Committed;
 
-			let changes = TransactionalDefChanges::default();
+			let changes = TransactionalCatalogChanges::default();
 			let row_changes = take(&mut self.row_changes);
 
 			let version = multi.commit()?;

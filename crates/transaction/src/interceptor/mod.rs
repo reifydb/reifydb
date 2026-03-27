@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// Submodule declarations
 pub mod authentication;
 pub mod builder;
 pub mod chain;
@@ -25,7 +24,6 @@ pub mod transaction;
 pub mod view;
 pub mod view_row;
 
-// Re-import types for use in WithInterceptors trait
 use authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor};
 use chain::InterceptorChain;
 use dictionary::{

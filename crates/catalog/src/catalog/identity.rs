@@ -541,7 +541,7 @@ impl Catalog {
 				let mut names = Vec::new();
 				let mut seen_roles = HashSet::new();
 
-				// 1. Check transactional identity-role changes first
+				// 1. Check transactional granted-role changes first
 				for ir in TransactionalGrantedRoleChanges::find_granted_roles_for_identity(
 					admin, identity,
 				) {
@@ -560,7 +560,7 @@ impl Catalog {
 					}
 				}
 
-				// 2. Check materialized identity-roles
+				// 2. Check materialized granted-roles
 				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
@@ -580,7 +580,7 @@ impl Catalog {
 				let mut names = Vec::new();
 				let mut seen_roles = HashSet::new();
 
-				// 1. Check transactional identity-role changes first
+				// 1. Check transactional granted-role changes first
 				for ir in
 					TransactionalGrantedRoleChanges::find_granted_roles_for_identity(sub, identity)
 				{
@@ -598,7 +598,7 @@ impl Catalog {
 					}
 				}
 
-				// 2. Check materialized identity-roles
+				// 2. Check materialized granted-roles
 				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
@@ -618,7 +618,7 @@ impl Catalog {
 				let mut names = Vec::new();
 				let mut seen_roles = HashSet::new();
 
-				// 1. Check transactional identity-role changes first
+				// 1. Check transactional granted-role changes first
 				for ir in TransactionalGrantedRoleChanges::find_granted_roles_for_identity(
 					t.inner, identity,
 				) {
@@ -637,7 +637,7 @@ impl Catalog {
 					}
 				}
 
-				// 2. Check materialized identity-roles
+				// 2. Check materialized granted-roles
 				for ir in self.materialized.find_granted_roles_at(identity, version) {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(

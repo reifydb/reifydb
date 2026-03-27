@@ -8,7 +8,6 @@ use super::WithInterceptors;
 use crate::interceptor::chain::InterceptorChain;
 
 // PRE INSERT
-/// Context for ringbuffer pre-insert interceptors
 pub struct RingBufferRowPreInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub row: EncodedRow,
@@ -82,7 +81,6 @@ where
 }
 
 // POST INSERT
-/// Context for ringbuffer post-insert interceptors
 pub struct RingBufferRowPostInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -158,7 +156,6 @@ where
 }
 
 // PRE UPDATE
-/// Context for ringbuffer pre-update interceptors
 pub struct RingBufferRowPreUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -234,7 +231,6 @@ where
 }
 
 // POST UPDATE
-/// Context for ringbuffer post-update interceptors
 pub struct RingBufferRowPostUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -312,7 +308,6 @@ where
 }
 
 // PRE DELETE
-/// Context for ringbuffer pre-delete interceptors
 pub struct RingBufferRowPreDeleteContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,
@@ -386,7 +381,6 @@ where
 }
 
 // POST DELETE
-/// Context for ringbuffer post-delete interceptors
 pub struct RingBufferRowPostDeleteContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub id: RowNumber,

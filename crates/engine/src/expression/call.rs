@@ -5,7 +5,7 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, vi
 use reifydb_function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
 use reifydb_rql::{
 	expression::CallExpression,
-	instruction::{CompiledFunctionDef, Instruction, ScopeType},
+	instruction::{CompiledFunction, Instruction, ScopeType},
 	query::QueryPlan,
 };
 use reifydb_runtime::context::RuntimeContext;
@@ -123,7 +123,7 @@ pub(crate) fn call_eval_with_args(
 fn call_user_defined_function(
 	ctx: &EvalContext,
 	call: &CallExpression,
-	func_def: CompiledFunctionDef,
+	func_def: CompiledFunction,
 	arguments: &Columns,
 	functions: &Functions,
 ) -> Result<Column> {
