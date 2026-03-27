@@ -3,7 +3,7 @@
 
 use reifydb_sdk::error::FFIError;
 use reifydb_type::{
-	error::{Diagnostic, Error, IntoDiagnostic},
+	error::{Diagnostic, Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,
 	value::r#type::Type,
 };
@@ -38,6 +38,12 @@ pub enum ProcedureError {
 impl From<Error> for ProcedureError {
 	fn from(err: Error) -> Self {
 		ProcedureError::Wrapped(Box::new(err))
+	}
+}
+
+impl From<TypeError> for ProcedureError {
+	fn from(err: TypeError) -> Self {
+		ProcedureError::Wrapped(Box::new(Error::from(err)))
 	}
 }
 

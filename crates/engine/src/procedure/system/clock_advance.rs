@@ -69,16 +69,8 @@ impl Procedure for ClockAdvanceProcedure {
 						} else {
 							// Calendar-aware: go through DateTime arithmetic
 							let current_nanos = mock.now_nanos();
-							let current_dt = DateTime::from_timestamp_nanos(current_nanos);
-							let new_dt =
-								current_dt.add_duration(dur).map_err(|reason| {
-									ProcedureError::ExecutionFailed {
-										procedure: Fragment::internal(
-											"clock::advance",
-										),
-										reason,
-									}
-								})?;
+							let current_dt = DateTime::from_timestamp_nanos(current_nanos)?;
+							let new_dt = current_dt.add_duration(dur)?;
 							let new_nanos = new_dt.to_nanos_since_epoch_u128().map_err(
 								|reason| ProcedureError::ExecutionFailed {
 									procedure: Fragment::internal("clock::advance"),
@@ -101,7 +93,7 @@ impl Procedure for ClockAdvanceProcedure {
 					}
 				}
 				let current_nanos = mock.now_nanos();
-				let dt = DateTime::from_timestamp_nanos(current_nanos);
+				let dt = DateTime::from_timestamp_nanos(current_nanos)?;
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
 			Clock::Real => Err(ProcedureError::ExecutionFailed {

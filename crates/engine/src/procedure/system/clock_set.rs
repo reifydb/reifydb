@@ -57,12 +57,7 @@ impl Procedure for ClockSetProcedure {
 					}
 					Value::Duration(dur) => {
 						let epoch = DateTime::default(); // 1970-01-01T00:00:00Z
-						let target = epoch.add_duration(dur).map_err(|reason| {
-							ProcedureError::ExecutionFailed {
-								procedure: Fragment::internal("clock::set"),
-								reason,
-							}
-						})?;
+						let target = epoch.add_duration(dur)?;
 						let nanos = target.to_nanos_since_epoch_u128().map_err(|reason| {
 							ProcedureError::ExecutionFailed {
 								procedure: Fragment::internal("clock::set"),
@@ -84,7 +79,7 @@ impl Procedure for ClockSetProcedure {
 					}
 				}
 				let current_nanos = mock.now_nanos();
-				let dt = DateTime::from_timestamp_nanos(current_nanos);
+				let dt = DateTime::from_timestamp_nanos(current_nanos)?;
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
 			Clock::Real => Err(ProcedureError::ExecutionFailed {

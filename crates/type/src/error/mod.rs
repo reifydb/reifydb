@@ -280,12 +280,21 @@ pub enum TemporalKind {
 		component: char,
 	},
 	DateTimeOutOfRange,
+	DateTimeOverflow {
+		message: String,
+	},
 	DurationOverflow {
 		message: String,
 	},
 	DurationMixedSign {
 		days: i32,
 		nanos: i64,
+	},
+	TimeOverflow {
+		message: String,
+	},
+	DateOverflow {
+		message: String,
 	},
 }
 

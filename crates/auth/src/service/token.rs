@@ -23,7 +23,7 @@ impl AuthService {
 		if let Ok(Some(def)) = find_token_by_value(&mut Transaction::Query(&mut txn), token) {
 			// Check expiry
 			if let Some(expires_at) = def.expires_at {
-				if expires_at < self.now() {
+				if expires_at < self.now().ok()? {
 					return None;
 				}
 			}
@@ -101,8 +101,8 @@ impl AuthService {
 
 	/// Clean up expired sessions and challenges.
 	pub fn cleanup_expired(&self) {
-		if let Ok(mut admin) = self.engine.begin_admin() {
-			if drop_expired_tokens(&mut admin, self.now()).is_ok() {
+		if let (Ok(mut admin), Ok(now)) = (self.engine.begin_admin(), self.now()) {
+			if drop_expired_tokens(&mut admin, now).is_ok() {
 				let _ = admin.commit();
 			}
 		}

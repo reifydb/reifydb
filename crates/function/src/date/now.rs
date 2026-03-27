@@ -33,7 +33,7 @@ impl ScalarFunction for DateNow {
 		}
 
 		let millis = ctx.runtime_context.clock.now_millis();
-		let dt = DateTime::from_timestamp_millis(millis);
+		let dt = DateTime::from_timestamp_millis(millis)?;
 		let date = dt.date();
 
 		let mut container = TemporalContainer::with_capacity(row_count);

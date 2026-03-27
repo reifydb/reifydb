@@ -1074,7 +1074,7 @@ impl CoordinatorActor {
 
 	fn handle_tick(&self, state: &mut CoordinatorState, ctx: &Context<CoordinatorMsg>) {
 		let now = self.clock.instant();
-		let timestamp = DateTime::from_timestamp_millis(self.clock.now_millis());
+		let timestamp = DateTime::from_timestamp_millis(self.clock.now_millis()).unwrap();
 
 		let mut due_flows: BTreeMap<usize, Vec<FlowId>> = BTreeMap::new();
 

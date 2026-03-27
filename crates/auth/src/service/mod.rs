@@ -136,23 +136,26 @@ impl AuthService {
 	}
 
 	/// Get the current time as a DateTime.
-	pub(super) fn now(&self) -> DateTime {
-		DateTime::from_timestamp_nanos(self.clock.now_nanos())
+	pub(super) fn now(&self) -> Result<DateTime, Error> {
+		Ok(DateTime::from_timestamp_nanos(self.clock.now_nanos())?)
 	}
 
 	/// Compute the expiration DateTime from the configured session TTL.
-	pub(super) fn expires_at(&self) -> Option<DateTime> {
-		self.session_ttl.map(|ttl| {
-			let nanos = self.clock.now_nanos() + ttl.as_nanos();
-			DateTime::from_timestamp_nanos(nanos)
-		})
+	pub(super) fn expires_at(&self) -> Result<Option<DateTime>, Error> {
+		match self.session_ttl {
+			Some(ttl) => {
+				let nanos = self.clock.now_nanos() + ttl.as_nanos();
+				Ok(Some(DateTime::from_timestamp_nanos(nanos)?))
+			}
+			None => Ok(None),
+		}
 	}
 
 	/// Persist a token to the database.
 	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<Token, Error> {
 		let mut admin = self.engine.begin_admin()?;
 
-		let def = create_token(&mut admin, token, identity, self.expires_at(), self.now())?;
+		let def = create_token(&mut admin, token, identity, self.expires_at()?, self.now()?)?;
 
 		admin.commit()?;
 		Ok(def)

@@ -8,6 +8,11 @@ use serde::{
 	de::{self, Visitor},
 };
 
+use crate::{
+	error::{TemporalKind, TypeError},
+	fragment::Fragment,
+};
+
 /// A time value representing time of day (hour, minute, second, nanosecond)
 /// without date information.
 ///
@@ -33,6 +38,16 @@ impl Time {
 	const NANOS_PER_MINSVTE: u64 = 60 * Self::NANOS_PER_SECOND;
 	const NANOS_PER_HOUR: u64 = 60 * Self::NANOS_PER_MINSVTE;
 
+	fn overflow_err(message: impl Into<String>) -> TypeError {
+		TypeError::Temporal {
+			kind: TemporalKind::TimeOverflow {
+				message: message.into(),
+			},
+			message: "time overflow".to_string(),
+			fragment: Fragment::None,
+		}
+	}
+
 	pub fn new(hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
 		// Validate inputs
 		if hour >= 24 || min >= 60 || sec >= 60 || nano >= Self::NANOS_PER_SECOND as u32 {
@@ -49,13 +64,15 @@ impl Time {
 		})
 	}
 
-	pub fn from_hms(hour: u32, min: u32, sec: u32) -> Result<Self, String> {
-		Self::new(hour, min, sec, 0).ok_or_else(|| format!("Invalid time: {:02}:{:02}:{:02}", hour, min, sec))
+	pub fn from_hms(hour: u32, min: u32, sec: u32) -> Result<Self, TypeError> {
+		Self::new(hour, min, sec, 0)
+			.ok_or_else(|| Self::overflow_err(format!("invalid time: {:02}:{:02}:{:02}", hour, min, sec)))
 	}
 
-	pub fn from_hms_nano(hour: u32, min: u32, sec: u32, nano: u32) -> Result<Self, String> {
-		Self::new(hour, min, sec, nano)
-			.ok_or_else(|| format!("Invalid time: {:02}:{:02}:{:02}.{:09}", hour, min, sec, nano))
+	pub fn from_hms_nano(hour: u32, min: u32, sec: u32, nano: u32) -> Result<Self, TypeError> {
+		Self::new(hour, min, sec, nano).ok_or_else(|| {
+			Self::overflow_err(format!("invalid time: {:02}:{:02}:{:02}.{:09}", hour, min, sec, nano))
+		})
 	}
 
 	pub fn midnight() -> Self {
@@ -187,9 +204,12 @@ impl<'de> Deserialize<'de> for Time {
 
 #[cfg(test)]
 pub mod tests {
+	use std::fmt::Debug;
+
 	use serde_json::{from_str, to_string};
 
 	use super::*;
+	use crate::error::{TemporalKind, TypeError};
 
 	#[test]
 	fn test_time_display_standard_format() {
@@ -438,5 +458,38 @@ pub mod tests {
 
 		let recovered: Time = from_str(&json).unwrap();
 		assert_eq!(time, recovered);
+	}
+
+	fn assert_time_overflow<T: Debug>(result: Result<T, TypeError>) {
+		let err = result.expect_err("expected TimeOverflow error");
+		match err {
+			TypeError::Temporal {
+				kind: TemporalKind::TimeOverflow {
+					..
+				},
+				..
+			} => {}
+			other => panic!("expected TimeOverflow, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_from_hms_invalid_hour() {
+		assert_time_overflow(Time::from_hms(24, 0, 0));
+	}
+
+	#[test]
+	fn test_from_hms_invalid_minute() {
+		assert_time_overflow(Time::from_hms(0, 60, 0));
+	}
+
+	#[test]
+	fn test_from_hms_invalid_second() {
+		assert_time_overflow(Time::from_hms(0, 0, 60));
+	}
+
+	#[test]
+	fn test_from_hms_nano_invalid_nano() {
+		assert_time_overflow(Time::from_hms_nano(0, 0, 0, 1_000_000_000));
 	}
 }

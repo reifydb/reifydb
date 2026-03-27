@@ -32,7 +32,7 @@ impl ScalarFunction for TimeNow {
 		}
 
 		let millis = ctx.runtime_context.clock.now_millis();
-		let dt = DateTime::from_timestamp_millis(millis);
+		let dt = DateTime::from_timestamp_millis(millis)?;
 		let time = dt.time();
 
 		let mut container = TemporalContainer::with_capacity(row_count);
