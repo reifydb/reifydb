@@ -344,7 +344,7 @@ pub mod tests {
 	use crate::{
 		error::{TemporalKind, TypeError},
 		value::{
-			datetime::{DateTime, NANOS_PER_DAY},
+			datetime::DateTime,
 			duration::Duration,
 		},
 	};

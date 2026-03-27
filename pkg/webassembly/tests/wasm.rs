@@ -142,3 +142,69 @@ fn test_create_view_with_inline_data_returns_error() {
 
 	assert!(result.is_err(), "Creating a view with only inline data should return an error, not panic");
 }
+
+#[wasm_bindgen_test]
+fn test_login_with_password() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER alice").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	let result = db.login_with_password("alice", "alice-pass");
+	assert!(result.is_ok(), "Login with correct password should succeed");
+
+	let login = result.expect("login failed");
+	assert!(!login.token().is_empty(), "Token should not be empty");
+	assert!(!login.identity().is_empty(), "Identity should not be empty");
+}
+
+#[wasm_bindgen_test]
+fn test_login_with_wrong_password() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER alice").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	let result = db.login_with_password("alice", "wrong-password");
+	assert!(result.is_err(), "Login with wrong password should fail");
+}
+
+#[wasm_bindgen_test]
+fn test_login_with_token() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER bob").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR bob { method: token; token: 'bob-secret-token' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	let result = db.login_with_token("bob-secret-token");
+	assert!(result.is_ok(), "Token login should succeed");
+
+	let login = result.expect("login failed");
+	assert!(!login.token().is_empty(), "Token should not be empty");
+	assert!(!login.identity().is_empty(), "Identity should not be empty");
+}
+
+#[wasm_bindgen_test]
+fn test_logout() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER alice").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	db.login_with_password("alice", "alice-pass").expect("Login failed");
+
+	let result = db.logout();
+	assert!(result.is_ok(), "Logout should succeed");
+}
+
+#[wasm_bindgen_test]
+fn test_logout_without_login() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	let result = db.logout();
+	assert!(result.is_ok(), "Logout without login should succeed (no-op)");
+}
