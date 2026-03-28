@@ -34,53 +34,52 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
         executionTime: undefined,
     });
 
-    const abortControllerRef = useRef<AbortController | null>(null);
-    const isMountedRef = useRef(true);
+    const clientRef = useRef(client);
+    clientRef.current = client;
+
+    const isMountedRef = useRef(false);
     useEffect(() => {
+        isMountedRef.current = true;
         return () => { isMountedRef.current = false; };
     }, []);
 
-    const command = useCallback(
-        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): void => {
-            // Cancel any ongoing command for THIS instance only
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-            abortControllerRef.current = new AbortController();
-            const currentController = abortControllerRef.current;
+    const executionIdRef = useRef(0);
+    const pendingRef = useRef<{statements: string | string[], params?: any, schemas?: readonly SchemaNode[]} | null>(null);
 
-            setState({
-                isExecuting: true,
-                results: undefined,
-                error: undefined,
-                executionTime: undefined,
-            });
+    const command = useCallback(
+        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): Promise<void> => {
+            const currentClient = clientRef.current;
+
+            if (!currentClient) {
+                pendingRef.current = {statements, params, schemas};
+                setState(prev => ({...prev, isExecuting: true, error: undefined}));
+                return Promise.resolve();
+            }
+
+            pendingRef.current = null;
+            const thisExecution = ++executionIdRef.current;
+
+            setState(prev => ({...prev, isExecuting: true, error: undefined}));
 
             const startTime = Date.now();
 
-            (async () => {
+            return (async () => {
                 try {
-                    // Call client.command which returns FrameResults (array of frames)
-                    // Commands and queries both use the same command method
-                    const frameResults = await client?.command(statements, params || null, schemas || []) || [];
+                    const frameResults = await currentClient.command(statements, params || null, schemas || []) || [];
 
-                    // If this execution was superseded by a newer one, discard results
-                    if (currentController.signal.aborted) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
                     const executionTime = Date.now() - startTime;
-                    
-                    // Process each frame into a CommandResult
+
                     const results: CommandResult<T>[] = frameResults.map((frame: any) => {
                         if (Array.isArray(frame) && frame.length > 0) {
                             const firstRow = frame[0];
                             let columns: Column[] = [];
-                            
-                            // Check if we have Value objects or plain objects
-                            const hasValueObjects = firstRow && typeof firstRow === 'object' && 
+
+                            const hasValueObjects = firstRow && typeof firstRow === 'object' &&
                                 Object.values(firstRow).some(v => v && typeof v === 'object' && 'type' in v);
-                            
+
                             if (hasValueObjects) {
-                                // We have Value objects - extract type info
                                 columns = Object.keys(firstRow).map((key) => {
                                     const value = firstRow[key];
                                     const dataType = value?.type || 'Utf8';
@@ -91,21 +90,19 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                                     };
                                 });
                             } else {
-                                // Plain objects from schema conversion
                                 columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
-                                    type: 'Utf8', // Default type for plain objects
+                                    type: 'Utf8',
                                     payload: [],
                                 }));
                             }
-                            
+
                             return {
                                 columns,
                                 rows: frame as T[],
                                 executionTimeMs: executionTime,
                             };
                         } else {
-                            // Empty result or rows affected
                             return {
                                 columns: [],
                                 rows: [],
@@ -123,8 +120,7 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                         executionTime,
                     });
                 } catch (err) {
-                    // If this execution was superseded by a newer one, discard error
-                    if (currentController.signal.aborted) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
                     const executionTime = Date.now() - startTime;
                     let errorMessage = 'Command execution failed';
@@ -140,39 +136,41 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
                     console.error('Command execution failed:', errorMessage);
 
                     if (!isMountedRef.current) return;
-                    setState({
+                    setState(prev => ({
+                        ...prev,
                         isExecuting: false,
-                        results: undefined,
                         error: errorMessage,
                         executionTime,
-                    });
-                } finally {
-                    abortControllerRef.current = null;
+                    }));
+
+                    throw err;
                 }
             })();
         },
-        [client]
+        []
     );
 
-    const cancelCommand = useCallback(() => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            setState((prev) => ({
-                ...prev,
-                isExecuting: false,
-                error: 'Command cancelled',
-            }));
+    useEffect(() => {
+        if (client && pendingRef.current) {
+            const {statements, params, schemas} = pendingRef.current;
+            command(statements, params, schemas);
         }
+    }, [client, command]);
+
+    const cancelCommand = useCallback(() => {
+        executionIdRef.current++;
+        setState((prev) => ({
+            ...prev,
+            isExecuting: false,
+            error: 'Command cancelled',
+        }));
     }, []);
 
     return {
-        // State
         isExecuting: state.isExecuting,
         results: state.results,
         error: state.error,
         executionTime: state.executionTime,
-
-        // Actions
         command,
         cancelCommand,
     };

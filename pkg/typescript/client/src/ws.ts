@@ -138,9 +138,10 @@ export class WsClient {
 
         // Normalize statements to array
         const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so all results are returned
+        // When multiple array elements, mark each with OUTPUT so results are returned.
+        // Only add OUTPUT to statements that have a corresponding schema (i.e., expect results).
         const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            ? statementArray.map((s, i) => s.trim() && schemas[i] ? `OUTPUT ${s}` : s)
             : statementArray;
 
         // Encode params without schema assumptions
@@ -184,9 +185,10 @@ export class WsClient {
 
         // Normalize statements to array
         const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so all results are returned
+        // When multiple array elements, mark each with OUTPUT so results are returned.
+        // Only add OUTPUT to statements that have a corresponding schema (i.e., expect results).
         const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            ? statementArray.map((s, i) => s.trim() && schemas[i] ? `OUTPUT ${s}` : s)
             : statementArray;
 
         // Encode params without schema assumptions
@@ -231,9 +233,10 @@ export class WsClient {
 
         // Normalize statements to array
         const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so all results are returned
+        // When multiple array elements, mark each with OUTPUT so results are returned.
+        // Only add OUTPUT to statements that have a corresponding schema (i.e., expect results).
         const outputStatements = statementArray.length > 1
-            ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
+            ? statementArray.map((s, i) => s.trim() && schemas[i] ? `OUTPUT ${s}` : s)
             : statementArray;
 
         // Encode params without schema assumptions
