@@ -1,6 +1,6 @@
 {
   "name": "@reifydb/shell",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Interactive terminal shell for ReifyDB databases",
   "type": "module",
   "main": "dist/index.js",
