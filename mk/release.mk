@@ -8,7 +8,8 @@
 RELEASE_CONFIG ?= release.toml
 SCRIPTS_DIR := scripts
 VERSION_FILE := .version
-SKIP_TESTS ?= 0
+SKIP_TESTS ?= $(SKIP_TEST)
+SKIP_TEST ?= 0
 FORCE ?= 0
 
 # Colors for output

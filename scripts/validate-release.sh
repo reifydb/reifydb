@@ -17,6 +17,9 @@ VERSION=${1:-""}
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Allow SKIP_TEST as alias for SKIP_TESTS
+SKIP_TESTS="${SKIP_TESTS:-${SKIP_TEST:-0}}"
+
 # Track validation status
 VALIDATION_FAILED=0
 WARNINGS=0
