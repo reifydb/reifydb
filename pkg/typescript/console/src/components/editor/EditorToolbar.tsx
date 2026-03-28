@@ -47,14 +47,14 @@ export function EditorToolbar({
           onClick={onClear}
           disabled={isExecuting}
         >
-          [clear]
+          Clear
         </button>
         <button
           className="rdb-editor-toolbar__btn"
           onClick={onRun}
           disabled={isExecuting}
         >
-          {isExecuting ? '[running...]' : '[run]'}
+          {isExecuting ? 'Running...' : 'Run'}
         </button>
       </div>
     </div>

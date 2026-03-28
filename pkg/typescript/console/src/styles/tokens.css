@@ -2,7 +2,8 @@
 /* Copyright (c) 2025 ReifyDB */
 
 /* CSS custom properties for @reifydb/console theming */
-:root {
+:where(.rdb-console),
+:where(.rdb-snippet) {
   --rdb-font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
   --rdb-font-size-xs: 0.75rem;
   --rdb-font-size-sm: 0.875rem;
@@ -12,21 +13,28 @@
   --rdb-color-bg-secondary: #1F1F1F;
   --rdb-color-bg-elevated: #262626;
   --rdb-color-bg-tertiary: #151515;
-  --rdb-color-primary: #1DE5D2;
-  --rdb-color-primary-hover: #4DEADA;
-  --rdb-color-text: #E5E5E5;
-  --rdb-color-secondary: #A3A3A3;
-  --rdb-color-muted: #525252;
+  --rdb-color-primary: #818CF8;
+  --rdb-color-primary-hover: #A5B4FC;
+  --rdb-color-text: #F0F0F0;
+  --rdb-color-secondary: #A0A0A0;
+  --rdb-color-muted: #666666;
   --rdb-color-border: rgba(255, 255, 255, 0.12);
-  --rdb-color-error: #EF4444;
+  --rdb-color-error: #DC2626;
   --rdb-color-success: #22C55E;
 
   /* Value type colors */
-  --rdb-color-value-string: #34D399;
-  --rdb-color-value-number: #F472B6;
+  --rdb-color-value-string: #22d3ee;
+  --rdb-color-value-number: #22d3ee;
   --rdb-color-value-boolean: #818CF8;
-  --rdb-color-value-date: #06B6D4;
-  --rdb-color-value-uuid: #1DE5D2;
+  --rdb-color-value-date: #22d3ee;
+  --rdb-color-value-uuid: #818CF8;
+
+  /* Interactive states */
+  --rdb-color-hover-bg: rgba(255, 255, 255, 0.03);
+  --rdb-color-hover-bg-strong: rgba(255, 255, 255, 0.05);
+  --rdb-color-row-border: rgba(255, 255, 255, 0.05);
+  --rdb-color-overlay-bg: rgba(0, 0, 0, 0.8);
+  --rdb-color-hover-secondary-btn: rgba(255, 255, 255, 0.1);
 
   /* Spacing */
   --rdb-space-1: 0.25rem;
@@ -34,9 +42,12 @@
   --rdb-space-3: 0.75rem;
   --rdb-space-4: 1rem;
 
+  /* Border radius */
+  --rdb-radius: 6px;
+
   /* Borders */
-  --rdb-border: 2px dashed var(--rdb-color-border);
-  --rdb-border-thin: 1px solid var(--rdb-color-border);
+  --rdb-border: none;
+  --rdb-border-thin: none;
 }
 
 /* Light theme overrides */
@@ -45,8 +56,9 @@
   --rdb-color-bg-secondary: #F5F5F5;
   --rdb-color-bg-elevated: #F0F0F0;
   --rdb-color-bg-tertiary: #FAFAFA;
-  --rdb-color-primary: #14AD9E;
-  --rdb-color-primary-hover: #1DE5D2;
+  --rdb-color-primary: #6366F1;
+  --rdb-color-primary-hover: #818CF8;
+
   --rdb-color-text: #1A1A1A;
   --rdb-color-secondary: #525252;
   --rdb-color-muted: #9CA3AF;
@@ -58,5 +70,11 @@
   --rdb-color-value-number: #DB2777;
   --rdb-color-value-boolean: #6366F1;
   --rdb-color-value-date: #0891B2;
-  --rdb-color-value-uuid: #14AD9E;
+  --rdb-color-value-uuid: #6366F1;
+
+  --rdb-color-hover-bg: rgba(0, 0, 0, 0.03);
+  --rdb-color-hover-bg-strong: rgba(0, 0, 0, 0.05);
+  --rdb-color-row-border: rgba(0, 0, 0, 0.05);
+  --rdb-color-overlay-bg: rgba(0, 0, 0, 0.4);
+  --rdb-color-hover-secondary-btn: rgba(0, 0, 0, 0.06);
 }

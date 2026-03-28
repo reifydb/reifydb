@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Client } from '@reifydb/client';
+import type { editor } from 'monaco-editor';
 import type { Executor } from '../types';
 import { WsExecutor, type WsClient } from '../executor/ws-executor';
 import { ConsoleProvider, useConsoleStore } from '../state/use-console-store';
@@ -29,6 +30,7 @@ export interface ConsoleProps {
   historyKey?: string;
   connection?: ConnectionConfig;
   theme?: RdbTheme;
+  monacoTheme?: string | editor.IStandaloneThemeData;
 }
 
 const TABS = [
@@ -39,7 +41,7 @@ const TABS = [
 
 const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
 
-function ConsoleInner({ executor, historyKey, connection, theme = 'light' }: { executor: Executor; historyKey?: string; connection?: ConnectionConfig; theme?: RdbTheme }) {
+function ConsoleInner({ executor, historyKey, connection, theme = 'light', monacoTheme }: { executor: Executor; historyKey?: string; connection?: ConnectionConfig; theme?: RdbTheme; monacoTheme?: string | editor.IStandaloneThemeData }) {
   const { state, dispatch } = useConsoleStore();
   const connectionLocked = connection != null;
   const lockedWsUrl = connection?.mode === 'websocket' ? connection.url : null;
@@ -203,6 +205,17 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light' }: { e
     setConnectionMode(mode);
   }, [connectionMode, executor]);
 
+  const resolvedMonacoThemeName = useMemo(() => {
+    if (!monacoTheme) return undefined;
+    if (typeof monacoTheme === 'string') return monacoTheme;
+    return 'rdb-custom';
+  }, [monacoTheme]);
+
+  const resolvedMonacoThemeData = useMemo(() => {
+    if (!monacoTheme || typeof monacoTheme === 'string') return undefined;
+    return monacoTheme;
+  }, [monacoTheme]);
+
   const connectionLabel = connectionMode === 'wasm' ? 'wasm' : wsUrl;
 
   const handleRun = useCallback(async () => {
@@ -270,6 +283,8 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light' }: { e
           onChange={(code) => dispatch({ type: 'SET_CODE', code })}
           onRun={handleRun}
           theme={theme}
+          monacoThemeName={resolvedMonacoThemeName}
+          monacoThemeData={resolvedMonacoThemeData}
         />
       </div>
     </div>
@@ -303,10 +318,10 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light' }: { e
   );
 }
 
-export function Console({ executor, initialCode, historyKey, connection, theme }: ConsoleProps) {
+export function Console({ executor, initialCode, historyKey, connection, theme, monacoTheme }: ConsoleProps) {
   return (
     <ConsoleProvider initialCode={initialCode}>
-      <ConsoleInner executor={executor} historyKey={historyKey} connection={connection} theme={theme} />
+      <ConsoleInner executor={executor} historyKey={historyKey} connection={connection} theme={theme} monacoTheme={monacoTheme} />
     </ConsoleProvider>
   );
 }

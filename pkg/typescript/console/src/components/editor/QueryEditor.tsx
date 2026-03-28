@@ -11,12 +11,16 @@ interface QueryEditorProps {
   onChange: (code: string) => void;
   onRun: () => void;
   theme?: 'light' | 'dark';
+  monacoThemeName?: string;
+  monacoThemeData?: editor.IStandaloneThemeData;
 }
 
-export function QueryEditor({ code, onChange, onRun, theme = 'light' }: QueryEditorProps) {
+export function QueryEditor({ code, onChange, onRun, theme = 'light', monacoThemeName, monacoThemeData }: QueryEditorProps) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
+
+  const resolvedTheme = monacoThemeName ?? (theme === 'light' ? 'premium-light' : 'premium-dark');
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -34,13 +38,16 @@ export function QueryEditor({ code, onChange, onRun, theme = 'light' }: QueryEdi
 
   const handleBeforeMount = (monaco: typeof import('monaco-editor')) => {
     registerRqlLanguage(monaco);
+    if (monacoThemeName && monacoThemeData) {
+      monaco.editor.defineTheme(monacoThemeName, monacoThemeData);
+    }
   };
 
   return (
     <Editor
       height="100%"
       language="rql"
-      theme={theme === 'light' ? 'premium-light' : 'premium-dark'}
+      theme={resolvedTheme}
       value={code}
       onChange={(value) => onChange(value || '')}
       beforeMount={handleBeforeMount}

@@ -16,6 +16,7 @@ export type { Executor, ExecutionResult, HistoryEntry } from './types';
 export { rqlLanguageDefinition, rqlLanguageConfiguration } from './monaco/rql-language';
 export { premiumDarkTheme, premiumLightTheme, brutalistDarkTheme, brutalistLightTheme } from './monaco/themes';
 export { registerRqlLanguage } from './monaco/register';
+export type { editor } from 'monaco-editor';
 
 // Format utilities
 export { formatValue, getValueStyle } from './format/value';
