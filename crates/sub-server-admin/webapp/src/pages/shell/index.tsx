@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { useRef, useEffect, useReducer } from 'react'
 import { Shell, WsExecutor, COLORS } from '@reifydb/shell'
 import { useConnection } from '@reifydb/react'

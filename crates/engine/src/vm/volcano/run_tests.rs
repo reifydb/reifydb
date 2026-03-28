@@ -3,17 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	testing::TestingContext,
-	value::column::{columns::Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_type::params::Params;
 
 use crate::{
 	Result,
-	test::run::run_tests,
+	run_tests::run::run_tests,
 	vm::{
 		services::Services,
 		stack::SymbolTable,
@@ -25,8 +22,7 @@ use crate::{
 pub(crate) struct RunTestsQueryNode {
 	node: RunTestsNode,
 	services: Arc<Services>,
-	stack: SymbolTable,
-	identity: IdentityId,
+	symbols: SymbolTable,
 	executed: bool,
 }
 
@@ -35,8 +31,7 @@ impl RunTestsQueryNode {
 		Self {
 			node,
 			services: context.services.clone(),
-			stack: context.stack.clone(),
-			identity: context.identity,
+			symbols: context.symbols.clone(),
 			executed: false,
 		}
 	}
@@ -53,9 +48,7 @@ impl QueryNode for RunTestsQueryNode {
 		}
 		self.executed = true;
 
-		let mut vm = Vm::new(self.stack.clone(), self.identity);
-		vm.in_test_context = true;
-		vm.testing = Some(TestingContext::new());
+		let mut vm = Vm::new(self.symbols.clone());
 		let columns = run_tests(&mut vm, &self.services, rx, self.node.clone(), &Params::None)?;
 		Ok(Some(columns))
 	}

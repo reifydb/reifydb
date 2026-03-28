@@ -4,7 +4,7 @@
 use reifydb_core::{
 	error::diagnostic::catalog::table_not_found,
 	interface::resolved::{
-		ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedSequence, ResolvedTable, SequenceDef,
+		ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedSequence, ResolvedTable, Sequence,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -36,7 +36,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
-		let Some(table_def) = self.catalog.find_table_by_name(rx, namespace.id(), table_name)? else {
+		let Some(table) = self.catalog.find_table_by_name(rx, namespace.id(), table_name)? else {
 			return_error!(table_not_found(
 				self.interner.intern_fragment(&alter.sequence.name),
 				namespace.name(),
@@ -46,7 +46,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Find the column in the table
 		let column_name = alter.column.name.text();
-		let column_def = table_def
+		let column = table
 			.columns
 			.iter()
 			.find(|c| c.name == column_name)
@@ -58,7 +58,7 @@ impl<'bump> Compiler<'bump> {
 		let resolved_namespace = ResolvedNamespace::new(namespace_fragment, namespace.clone());
 
 		// Create resolved sequence (using table name as sequence name)
-		let sequence_def = SequenceDef {
+		let sequence_def = Sequence {
 			name: table_name.to_string(),
 			current_value: 1, // This is not used in ALTER SEQUENCE, just a placeholder
 			increment: 1,
@@ -71,15 +71,12 @@ impl<'bump> Compiler<'bump> {
 
 		// Create resolved table
 		let table_fragment = Fragment::internal(table_name.to_string());
-		let resolved_table = ResolvedTable::new(table_fragment, resolved_namespace, table_def);
+		let resolved_table = ResolvedTable::new(table_fragment, resolved_namespace, table);
 
 		// Create resolved source and column
-		let resolved_source = ResolvedPrimitive::Table(resolved_table);
-		let resolved_column = ResolvedColumn::new(
-			self.interner.intern_fragment(&alter.column.name),
-			resolved_source,
-			column_def,
-		);
+		let resolved_source = ResolvedSchema::Table(resolved_table);
+		let resolved_column =
+			ResolvedColumn::new(self.interner.intern_fragment(&alter.column.name), resolved_source, column);
 
 		Ok(PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence: resolved_sequence,

@@ -2,14 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::path::PathBuf;
+#[cfg(feature = "sub_server")]
+use std::sync::Arc;
 
+use reifydb_auth::service::AuthServiceConfig;
 use reifydb_core::config::SystemConfig;
-use reifydb_engine::procedure::registry::ProceduresBuilder;
-use reifydb_function::registry::FunctionsBuilder;
+use reifydb_routine::{function::registry::FunctionsBuilder, procedure::registry::ProceduresBuilder};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowBuilder;
+#[cfg(feature = "sub_server")]
+use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
 #[cfg(feature = "sub_server_admin")]
 use reifydb_sub_server_admin::{config::AdminConfig, factory::AdminSubsystemFactory};
 #[cfg(feature = "sub_server_grpc")]
@@ -26,14 +30,17 @@ use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
-	Database,
+	Database, Migration,
 	api::{StorageFactory, transaction},
 };
 
 pub struct ServerBuilder {
 	storage_factory: StorageFactory,
 	runtime_config: Option<SharedRuntimeConfig>,
+	migrations: Vec<Migration>,
 	interceptors: InterceptorBuilder,
+	#[cfg(feature = "sub_server")]
+	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
@@ -46,6 +53,7 @@ pub struct ServerBuilder {
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 	otel_tracing_config: Option<(OtelConfig, Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>)>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
 }
 
 impl ServerBuilder {
@@ -53,7 +61,10 @@ impl ServerBuilder {
 		Self {
 			storage_factory,
 			runtime_config: None,
+			migrations: Vec::new(),
 			interceptors: InterceptorBuilder::new(),
+			#[cfg(feature = "sub_server")]
+			request_interceptors: Vec::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
 			procedures_configurator: None,
@@ -66,6 +77,7 @@ impl ServerBuilder {
 			flow_configurator: None,
 			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 			otel_tracing_config: None,
+			auth_configurator: None,
 		}
 	}
 
@@ -74,6 +86,19 @@ impl ServerBuilder {
 	/// If not set, a default configuration will be used.
 	pub fn with_runtime_config(mut self, config: SharedRuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
+		self
+	}
+
+	pub fn with_auth<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+	{
+		self.auth_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
+		self.migrations = migrations;
 		self
 	}
 
@@ -172,6 +197,16 @@ impl ServerBuilder {
 		self
 	}
 
+	/// Register a request-level interceptor.
+	///
+	/// Interceptors are called in registration order for `pre_execute`,
+	/// and in reverse order for `post_execute`.
+	#[cfg(feature = "sub_server")]
+	pub fn with_request_interceptor<I: RequestInterceptor>(mut self, interceptor: I) -> Self {
+		self.request_interceptors.push(Arc::new(interceptor));
+		self
+	}
+
 	#[cfg(feature = "sub_server_admin")]
 	pub fn with_admin(mut self, config: AdminConfig) -> Self {
 		let factory = AdminSubsystemFactory::new(config);
@@ -200,6 +235,20 @@ impl ServerBuilder {
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)
 			.with_stores(multi_store, single_store);
+
+		#[cfg(feature = "sub_server")]
+		{
+			let chain = RequestInterceptorChain::new(self.request_interceptors);
+			database_builder = database_builder.with_request_interceptor_chain(chain);
+		}
+
+		if let Some(configurator) = self.auth_configurator {
+			database_builder = database_builder.with_auth(configurator);
+		}
+
+		if !self.migrations.is_empty() {
+			database_builder = database_builder.with_migrations(self.migrations);
+		}
 
 		if let Some(configurator) = self.functions_configurator {
 			database_builder = database_builder.with_functions_configurator(configurator);
@@ -238,7 +287,8 @@ impl ServerBuilder {
 			database_builder = database_builder.add_subsystem_factory(Box::new(factory));
 		} else {
 			#[cfg(feature = "sub_tracing")]
-			if let Some(configurator) = self.tracing_configurator {
+			{
+				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
 				database_builder = database_builder.with_tracing(configurator);
 			}
 		}
@@ -246,7 +296,8 @@ impl ServerBuilder {
 		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel")))]
 		{
 			#[cfg(feature = "sub_tracing")]
-			if let Some(configurator) = self.tracing_configurator {
+			{
+				let configurator = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
 				database_builder = database_builder.with_tracing(configurator);
 			}
 		}

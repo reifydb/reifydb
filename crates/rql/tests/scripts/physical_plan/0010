@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-physical 'window { count(items) } with { interval: "5s" }'
+physical 'window tumbling { count(items) } with { interval: "5s" }'
 ---
-> └── Window: Time(Processing), Size: Duration(5s)
+> └── Window: Tumbling { size: Duration(5s) }
 >

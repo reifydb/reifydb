@@ -6,65 +6,16 @@ use std::{
 		BTreeMap,
 		btree_map::{Iter, Range},
 	},
-	mem::take,
 	ops::RangeBounds,
-	slice, vec,
 };
 
-use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
-	interface::change::Change,
-};
-use vec::Drain;
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
-	Set(EncodedValues),
+	Set(EncodedRow),
 	Remove,
-}
-
-/// Newtype wrapping `Vec<Change>` for view changes generated during flow processing.
-#[derive(Debug, Default, Clone)]
-pub struct ViewChanges(Vec<Change>);
-
-impl ViewChanges {
-	pub fn new() -> Self {
-		Self(Vec::new())
-	}
-
-	pub fn push(&mut self, change: Change) {
-		self.0.push(change);
-	}
-
-	pub fn extend(&mut self, iter: impl IntoIterator<Item = Change>) {
-		self.0.extend(iter);
-	}
-
-	pub fn drain(&mut self) -> Drain<'_, Change> {
-		self.0.drain(..)
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.0.is_empty()
-	}
-
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	pub fn iter(&self) -> slice::Iter<'_, Change> {
-		self.0.iter()
-	}
-}
-
-impl IntoIterator for ViewChanges {
-	type Item = Change;
-	type IntoIter = vec::IntoIter<Change>;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
-	}
 }
 
 /// Manages pending writes and removes with sorted key access
@@ -72,8 +23,6 @@ impl IntoIterator for ViewChanges {
 pub struct Pending {
 	/// Primary storage - BTreeMap for sorted key access and range queries
 	writes: BTreeMap<EncodedKey, PendingWrite>,
-	/// View changes generated during flow processing
-	view_changes: ViewChanges,
 }
 
 impl Pending {
@@ -81,12 +30,11 @@ impl Pending {
 	pub fn new() -> Self {
 		Self {
 			writes: BTreeMap::new(),
-			view_changes: ViewChanges::new(),
 		}
 	}
 
 	/// Insert a write operation
-	pub fn insert(&mut self, key: EncodedKey, value: EncodedValues) {
+	pub fn insert(&mut self, key: EncodedKey, value: EncodedRow) {
 		self.writes.insert(key, PendingWrite::Set(value));
 	}
 
@@ -96,7 +44,7 @@ impl Pending {
 	}
 
 	/// Get a value if it exists and is a write (not a remove)
-	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedValues> {
+	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		match self.writes.get(key) {
 			Some(PendingWrite::Set(value)) => Some(value),
 			_ => None,
@@ -125,28 +73,13 @@ impl Pending {
 	{
 		self.writes.range(range)
 	}
-
-	/// Take all view changes, leaving an empty collection
-	pub fn take_view_changes(&mut self) -> ViewChanges {
-		take(&mut self.view_changes)
-	}
-
-	/// Append a view change
-	pub fn push_view_change(&mut self, change: Change) {
-		self.view_changes.push(change);
-	}
-
-	/// Extend view changes from another source
-	pub fn extend_view_changes(&mut self, changes: impl IntoIterator<Item = Change>) {
-		self.view_changes.extend(changes);
-	}
 }
 
 #[cfg(test)]
 pub mod tests {
 	use std::vec;
 
-	use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+	use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;
@@ -155,8 +88,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]

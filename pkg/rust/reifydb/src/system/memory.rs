@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 #[cfg(target_os = "macos")]
 use std::ptr;
 #[cfg(target_os = "linux")]

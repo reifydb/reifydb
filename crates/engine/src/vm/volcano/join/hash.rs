@@ -233,7 +233,7 @@ impl HashJoinNode {
 		// Compile residual predicates
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 		};
 		let compiled_residual: Vec<CompiledExpr> = self
 			.residual

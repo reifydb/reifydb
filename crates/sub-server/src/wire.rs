@@ -9,7 +9,7 @@
 //!
 //! These types deserialize that format and convert it to the internal [`Params`] type.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_type::{
 	fragment::Fragment,
@@ -121,14 +121,14 @@ impl WireParams {
 				for item in items {
 					values.push(wire_value_to_value(item)?);
 				}
-				Ok(Params::Positional(values))
+				Ok(Params::Positional(Arc::new(values)))
 			}
 			WireParams::Named(map) => {
 				let mut result = HashMap::with_capacity(map.len());
 				for (key, wire) in map {
 					result.insert(key, wire_value_to_value(wire)?);
 				}
-				Ok(Params::Named(result))
+				Ok(Params::Named(Arc::new(result)))
 			}
 		}
 	}

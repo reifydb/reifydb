@@ -21,24 +21,24 @@ impl Default for SumTypeKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SumTypeDef {
+pub struct SumType {
 	pub id: SumTypeId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub variants: Vec<VariantDef>,
+	pub variants: Vec<Variant>,
 	#[serde(default)]
 	pub kind: SumTypeKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct VariantDef {
+pub struct Variant {
 	pub tag: u8,
 	pub name: String,
-	pub fields: Vec<FieldDef>,
+	pub fields: Vec<Field>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FieldDef {
+pub struct Field {
 	pub name: String,
 	pub field_type: TypeConstraint,
 }

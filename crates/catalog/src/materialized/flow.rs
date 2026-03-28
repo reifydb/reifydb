@@ -4,16 +4,16 @@
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		flow::{FlowDef, FlowId},
+		flow::{Flow, FlowId},
 		id::NamespaceId,
 	},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionFlowDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionFlow};
 
 impl MaterializedCatalog {
 	/// Find a flow by ID at a specific version
-	pub fn find_flow_at(&self, flow: FlowId, version: CommitVersion) -> Option<FlowDef> {
+	pub fn find_flow_at(&self, flow: FlowId, version: CommitVersion) -> Option<Flow> {
 		self.flows.get(&flow).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -21,12 +21,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a flow by name in a namespace at a specific version
-	pub fn find_flow_by_name_at(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Option<FlowDef> {
+	pub fn find_flow_by_name_at(&self, namespace: NamespaceId, name: &str, version: CommitVersion) -> Option<Flow> {
 		self.flows_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let flow_id = *entry.value();
 			self.find_flow_at(flow_id, version)
@@ -34,7 +29,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a flow by ID (returns latest version)
-	pub fn find_flow(&self, flow: FlowId) -> Option<FlowDef> {
+	pub fn find_flow(&self, flow: FlowId) -> Option<Flow> {
 		self.flows.get(&flow).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -42,14 +37,14 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a flow by name in a namespace (returns latest version)
-	pub fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<FlowDef> {
+	pub fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Flow> {
 		self.flows_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
 			let flow_id = *entry.value();
 			self.find_flow(flow_id)
 		})
 	}
 
-	pub fn set_flow(&self, id: FlowId, version: CommitVersion, flow: Option<FlowDef>) {
+	pub fn set_flow(&self, id: FlowId, version: CommitVersion, flow: Option<Flow>) {
 		// Look up the current flow to update the index
 		if let Some(entry) = self.flows.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
@@ -57,7 +52,7 @@ impl MaterializedCatalog {
 			}
 		}
 
-		let multi = self.flows.get_or_insert_with(id, MultiVersionFlowDef::new);
+		let multi = self.flows.get_or_insert_with(id, MultiVersionFlow::new);
 		if let Some(new) = flow {
 			self.flows_by_name.insert((new.namespace, new.name.clone()), id);
 			multi.value().insert(version, new);
@@ -73,12 +68,13 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_flow(id: FlowId, namespace: NamespaceId, name: &str) -> FlowDef {
-		FlowDef {
+	fn create_test_flow(id: FlowId, namespace: NamespaceId, name: &str) -> Flow {
+		Flow {
 			id,
 			namespace,
 			name: name.to_string(),
 			status: FlowStatus::Active,
+			tick: None,
 		}
 	}
 

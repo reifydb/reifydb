@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.63"
 name = "tokio-tungstenite"
-version = "0.28.0"
+version = "0.29.0"
 authors = [
     "Daniel Abramov <dabramov@snapview.de>",
     "Alexey Galakhov <agalakhov@snapview.de>",
@@ -33,7 +33,7 @@ autotests = false
 autobenches = false
 description = "Tokio binding for Tungstenite, the Lightweight stream-based WebSocket implementation"
 homepage = "https://github.com/snapview/tokio-tungstenite"
-documentation = "https://docs.rs/tokio-tungstenite/0.28.0"
+documentation = "https://docs.rs/tokio-tungstenite/0.29.0"
 readme = "README.md"
 keywords = [
     "websocket",
@@ -182,7 +182,7 @@ optional = true
 default-features = false
 
 [dependencies.tungstenite]
-version = "0.28.0"
+version = "0.29.0"
 default-features = false
 
 [dependencies.webpki-roots]

@@ -4,7 +4,7 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{Ast, AstWindow, AstWindowConfig},
+		ast::{Ast, AstWindow, AstWindowConfig, AstWindowKind},
 		parse::{Parser, Precedence},
 	},
 	diagnostic::AstError,
@@ -19,6 +19,42 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_window(&mut self) -> Result<AstWindow<'bump>> {
 		let start = self.current()?.fragment.offset();
 		let token = self.consume_keyword(Window)?;
+
+		// Parse mandatory window kind (tumbling, sliding, rolling, session)
+		let kind = if !self.is_eof() {
+			match self.current()?.fragment.text().to_lowercase().as_str() {
+				"tumbling" => {
+					let _ = self.advance()?;
+					AstWindowKind::Tumbling
+				}
+				"sliding" => {
+					let _ = self.advance()?;
+					AstWindowKind::Sliding
+				}
+				"rolling" => {
+					let _ = self.advance()?;
+					AstWindowKind::Rolling
+				}
+				"session" => {
+					let _ = self.advance()?;
+					AstWindowKind::Session
+				}
+				_ => {
+					return Err(AstError::UnexpectedToken {
+						expected: "window kind (tumbling, sliding, rolling, session)"
+							.to_string(),
+						fragment: self.current()?.fragment.to_owned(),
+					}
+					.into());
+				}
+			}
+		} else {
+			return Err(AstError::UnexpectedToken {
+				expected: "window kind (tumbling, sliding, rolling, session)".to_string(),
+				fragment: self.current()?.fragment.to_owned(),
+			}
+			.into());
+		};
 
 		// Parse computation block
 		self.consume_operator(OpenCurly)?;
@@ -84,6 +120,7 @@ impl<'bump> Parser<'bump> {
 
 		Ok(AstWindow {
 			token,
+			kind,
 			config,
 			aggregations,
 			group_by,
@@ -189,12 +226,16 @@ impl<'bump> Parser<'bump> {
 
 #[cfg(test)]
 pub mod tests {
-	use crate::{ast::parse::Parser, bump::Bump, token::tokenize};
+	use crate::{
+		ast::{ast::AstWindowKind, parse::Parser},
+		bump::Bump,
+		token::tokenize,
+	};
 
 	#[test]
-	fn test_parse_time_window() {
+	fn test_parse_tumbling_time_window() {
 		let bump = Bump::new();
-		let source = r#"window { count(*) } with { interval: "5m" }"#;
+		let source = r#"window tumbling { count(*) } with { interval: "5m" }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -202,15 +243,16 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
+		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.config.len(), 1);
 		assert_eq!(window.config[0].key.text(), "interval");
 		assert_eq!(window.aggregations.len(), 1);
 	}
 
 	#[test]
-	fn test_parse_count_window() {
+	fn test_parse_tumbling_count_window() {
 		let bump = Bump::new();
-		let source = r#"window { sum(value) } with { count: 100 }"#;
+		let source = r#"window tumbling { sum(value) } with { count: 100 }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -218,6 +260,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
+		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.config.len(), 1);
 		assert_eq!(window.config[0].key.text(), "count");
 		assert_eq!(window.aggregations.len(), 1);
@@ -226,7 +269,7 @@ pub mod tests {
 	#[test]
 	fn test_parse_sliding_window() {
 		let bump = Bump::new();
-		let source = r#"window { count(*), avg(value) } with { interval: "5m", slide: "1m" }"#;
+		let source = r#"window sliding { count(*), avg(value) } with { interval: "5m", slide: "1m" }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -234,14 +277,15 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
+		assert_eq!(window.kind, AstWindowKind::Sliding);
 		assert_eq!(window.config.len(), 2);
 		assert_eq!(window.aggregations.len(), 2);
 	}
 
 	#[test]
-	fn test_parse_grouped_window() {
+	fn test_parse_tumbling_grouped_window() {
 		let bump = Bump::new();
-		let source = r#"window { count(*) } with { interval: "1h" } by { user_id }"#;
+		let source = r#"window tumbling { count(*) } with { interval: "1h" } by { user_id }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -249,6 +293,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
+		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.config.len(), 1);
 		assert_eq!(window.group_by.len(), 1);
 		assert_eq!(window.aggregations.len(), 1);
@@ -257,7 +302,7 @@ pub mod tests {
 	#[test]
 	fn test_parse_window_by_then_with() {
 		let bump = Bump::new();
-		let source = r#"window { count(*) } by { user_id, region } with { interval: "1h" }"#;
+		let source = r#"window tumbling { count(*) } by { user_id, region } with { interval: "1h" }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -265,15 +310,16 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
+		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.config.len(), 1);
 		assert_eq!(window.group_by.len(), 2);
 		assert_eq!(window.aggregations.len(), 1);
 	}
 
 	#[test]
-	fn test_parse_window_multiple_aggregations_and_grouping() {
+	fn test_parse_sliding_multiple_aggregations_and_grouping() {
 		let bump = Bump::new();
-		let source = r#"window { count(*), sum(amount), avg(price) } with { interval: "30m", slide: "5m" } by { customer_id, product_category }"#;
+		let source = r#"window sliding { count(*), sum(amount), avg(price) } with { interval: "30m", slide: "5m" } by { customer_id, product_category }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -281,6 +327,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
+		assert_eq!(window.kind, AstWindowKind::Sliding);
 		assert_eq!(window.config.len(), 2);
 		assert_eq!(window.group_by.len(), 2);
 		assert_eq!(window.aggregations.len(), 3);
@@ -289,7 +336,7 @@ pub mod tests {
 	#[test]
 	fn test_parse_rolling_count_window() {
 		let bump = Bump::new();
-		let source = r#"window { count(*), avg(value) } with { count: 10, rolling: true } by { user_id }"#;
+		let source = r#"window rolling { count(*), avg(value) } with { count: 10 } by { user_id }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -297,9 +344,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
-		assert_eq!(window.config.len(), 2);
+		assert_eq!(window.kind, AstWindowKind::Rolling);
+		assert_eq!(window.config.len(), 1);
 		assert_eq!(window.config[0].key.text(), "count");
-		assert_eq!(window.config[1].key.text(), "rolling");
 		assert_eq!(window.group_by.len(), 1);
 		assert_eq!(window.aggregations.len(), 2);
 	}
@@ -307,7 +354,7 @@ pub mod tests {
 	#[test]
 	fn test_parse_rolling_time_window() {
 		let bump = Bump::new();
-		let source = r#"window { sum(amount) } with { interval: "5m", rolling: true }"#;
+		let source = r#"window rolling { sum(amount) } with { interval: "5m" }"#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
@@ -315,9 +362,42 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 		let window = result[0].first_unchecked().as_window();
 
-		assert_eq!(window.config.len(), 2);
+		assert_eq!(window.kind, AstWindowKind::Rolling);
+		assert_eq!(window.config.len(), 1);
 		assert_eq!(window.config[0].key.text(), "interval");
-		assert_eq!(window.config[1].key.text(), "rolling");
 		assert_eq!(window.aggregations.len(), 1);
+	}
+
+	#[test]
+	fn test_parse_session_window() {
+		let bump = Bump::new();
+		let source = r#"window session { count(*) } with { gap: "10m" } by { user_id }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let window = result[0].first_unchecked().as_window();
+
+		assert_eq!(window.kind, AstWindowKind::Session);
+		assert_eq!(window.config.len(), 1);
+		assert_eq!(window.config[0].key.text(), "gap");
+		assert_eq!(window.group_by.len(), 1);
+		assert_eq!(window.aggregations.len(), 1);
+	}
+
+	#[test]
+	fn test_parse_bare_window_is_error() {
+		let bump = Bump::new();
+		let source = r#"window { count(*) } with { interval: "5m" }"#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let err = parser.parse().unwrap_err();
+		let msg = err.to_string();
+
+		assert!(
+			msg.contains("window kind (tumbling, sliding, rolling, session)"),
+			"expected error about missing window kind, got: {msg}"
+		);
 	}
 }

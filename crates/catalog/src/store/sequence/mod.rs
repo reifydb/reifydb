@@ -9,6 +9,8 @@ pub mod get;
 pub mod list;
 pub mod row;
 pub mod schema;
+pub mod sink;
+pub mod source;
 pub mod system;
 
 use reifydb_core::interface::catalog::id::{NamespaceId, SequenceId};

@@ -5,10 +5,10 @@ use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
-	encoded::key::EncodedKeyRange,
+	encoded::{key::EncodedKeyRange, row::EncodedRow},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
+		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedTable},
 	},
 	internal_error,
 	key::{
@@ -16,7 +16,6 @@ use reifydb_core::{
 		index_entry::IndexEntryKey,
 		row::{RowKey, RowKeyRange},
 	},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteTableNode;
@@ -24,10 +23,14 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
-use super::{primary_key, schema::get_or_create_table_schema};
+use super::{
+	primary_key,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_table_schema,
+};
 use crate::{
 	Result,
 	error::EngineError,
@@ -48,9 +51,7 @@ pub(crate) fn delete<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteTableNode,
 	params: Params,
-	identity: IdentityId,
-	symbol_table_ref: &SymbolTable,
-	testing: &mut Option<TestingContext>,
+	symbols: &SymbolTable,
 ) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
@@ -87,9 +88,14 @@ pub(crate) fn delete<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
+	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
 
 	let mut deleted_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	if let Some(input_plan) = plan.input {
 		// Delete specific rows based on input plan
@@ -104,9 +110,8 @@ pub(crate) fn delete<'a>(
 				source: resolved_source.clone(),
 				batch_size: 1024,
 				params: params.clone(),
-				stack: SymbolTable::new(),
+				symbols: symbols.clone(),
 				identity: IdentityId::root(),
-				testing: None,
 			}),
 		);
 
@@ -115,9 +120,8 @@ pub(crate) fn delete<'a>(
 			source: resolved_source.clone(),
 			batch_size: 1024,
 			params: params.clone(),
-			stack: SymbolTable::new(),
+			symbols: symbols.clone(),
 			identity: IdentityId::root(),
-			testing: None,
 		};
 
 		// Initialize the operator before execution
@@ -126,9 +130,8 @@ pub(crate) fn delete<'a>(
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			// Enforce write policies before processing rows
-			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
+			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
-				identity,
 				&namespace.name(),
 				&table.name,
 				"delete",
@@ -158,7 +161,7 @@ pub(crate) fn delete<'a>(
 
 			// Get row values for metrics tracking (and for primary key encoding)
 			let row_values = match txn.get(&row_key)? {
-				Some(v) => v.values,
+				Some(v) => v.row,
 				None => continue, // Row doesn't exist, skip
 			};
 
@@ -181,20 +184,16 @@ pub(crate) fn delete<'a>(
 				)?;
 			}
 
-			if let Some(log) = testing.as_mut() {
-				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-				let old = columns_from_encoded(&table.columns, &schema, &row_values);
-				let key = format!("tables::{}::{}", namespace.name(), table.name);
-				log.record_delete(key, old);
+			let deleted_values = txn.remove_from_table(table.clone(), row_number)?;
+			if plan.returning.is_some() {
+				returned_rows.push((row_number, deleted_values));
 			}
-
-			txn.remove_from_table(table.clone(), row_number)?;
 			deleted_count += 1;
 		}
 	} else {
 		// Delete entire table - scan all rows and delete them
 		let range = RowKeyRange {
-			primitive: table.id.into(),
+			object: table.id.into(),
 		};
 
 		// Get primary key info if table has one
@@ -209,7 +208,7 @@ pub(crate) fn delete<'a>(
 
 		for multi in rows {
 			if let Some(ref pk_def) = pk_def {
-				let fingerprint = multi.values.fingerprint();
+				let fingerprint = multi.row.fingerprint();
 				let schema =
 					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
 						internal_error!(
@@ -218,25 +217,27 @@ pub(crate) fn delete<'a>(
 							table.name
 						)
 					})?;
-				let index_key =
-					primary_key::encode_primary_key(pk_def, &multi.values, &table, &schema)?;
+				let index_key = primary_key::encode_primary_key(pk_def, &multi.row, &table, &schema)?;
 
 				txn.remove(
 					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode()
 				)?;
 			}
 
-			if let Some(log) = testing.as_mut() {
-				let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-				let old = columns_from_encoded(&table.columns, &schema, &multi.values);
-				let key = format!("tables::{}::{}", namespace.name(), table.name);
-				log.record_delete(key, old);
-			}
-
 			let row_key = RowKey::decode(&multi.key).expect("valid RowKey encoding");
-			txn.remove_from_table(table.clone(), row_key.row)?;
+			let deleted_values = txn.remove_from_table(table.clone(), row_key.row)?;
+			if plan.returning.is_some() {
+				returned_rows.push((row_key.row, deleted_values));
+			}
 			deleted_count += 1;
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against deleted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return summary columns

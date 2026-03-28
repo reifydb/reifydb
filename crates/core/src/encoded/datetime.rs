@@ -5,44 +5,32 @@ use std::ptr;
 
 use reifydb_type::value::{datetime::DateTime, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
-	pub fn set_datetime(&self, row: &mut EncodedValues, index: usize, value: DateTime) {
+impl RowSchema {
+	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
 		row.set_valid(index, true);
 
-		let (seconds, nanos) = value.to_parts();
+		let nanos = value.to_nanos();
 		unsafe {
-			// Write seconds at offset
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut i64,
-				seconds,
-			);
-			// Write nanos at offset + 8
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize + 8) as *mut u32,
-				nanos,
-			);
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u64, nanos);
 		}
 	}
 
-	pub fn get_datetime(&self, row: &EncodedValues, index: usize) -> DateTime {
+	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::DateTime);
 		unsafe {
-			// Read i64 seconds at offset
-			let seconds = (row.as_ptr().add(field.offset as usize) as *const i64).read_unaligned();
-			// Read u32 nanos at offset + 8
-			let nanos = (row.as_ptr().add(field.offset as usize + 8) as *const u32).read_unaligned();
-			DateTime::from_parts(seconds, nanos).unwrap()
+			let nanos = (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned();
+			DateTime::from_nanos(nanos)
 		}
 	}
 
-	pub fn try_get_datetime(&self, row: &EncodedValues, index: usize) -> Option<DateTime> {
+	pub fn try_get_datetime(&self, row: &EncodedRow, index: usize) -> Option<DateTime> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::DateTime {
 			Some(self.get_datetime(row, index))
 		} else {
@@ -55,11 +43,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{datetime::DateTime, r#type::Type};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_datetime() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		let value = DateTime::new(2024, 9, 9, 08, 17, 0, 1234).unwrap();
@@ -69,7 +57,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_datetime() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_datetime(&row, 0), None);
@@ -81,7 +69,7 @@ pub mod tests {
 
 	#[test]
 	fn test_epoch() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		let epoch = DateTime::default(); // Unix epoch
@@ -91,7 +79,7 @@ pub mod tests {
 
 	#[test]
 	fn test_with_nanoseconds() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		// Test with high precision nanoseconds
@@ -102,7 +90,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_timestamps() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 
 		let test_datetimes = [
 			DateTime::from_timestamp(0).unwrap(),          // Unix epoch
@@ -119,25 +107,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_negative_timestamps() {
-		let schema = Schema::testing(&[Type::DateTime]);
-
-		// Test dates before Unix epoch
-		let pre_epoch_datetimes = [
-			DateTime::from_timestamp(-86400).unwrap(),    // 1969-12-31
-			DateTime::from_timestamp(-31536000).unwrap(), // 1969-01-01
-		];
-
-		for datetime in pre_epoch_datetimes {
-			let mut row = schema.allocate();
-			schema.set_datetime(&mut row, 0, datetime.clone());
-			assert_eq!(schema.get_datetime(&row, 0), datetime);
-		}
-	}
-
-	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::DateTime, Type::Boolean, Type::DateTime, Type::Int8]);
+		let schema = RowSchema::testing(&[Type::DateTime, Type::Boolean, Type::DateTime, Type::Int8]);
 		let mut row = schema.allocate();
 
 		let datetime1 = DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
@@ -156,7 +127,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::DateTime, Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime, Type::DateTime]);
 		let mut row = schema.allocate();
 
 		let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000).unwrap();
@@ -171,7 +142,7 @@ pub mod tests {
 
 	#[test]
 	fn test_precision_preservation() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		// Test that nanosecond precision is preserved
@@ -181,15 +152,14 @@ pub mod tests {
 		let retrieved = schema.get_datetime(&row, 0);
 		assert_eq!(retrieved, high_precision);
 
-		let (orig_sec, orig_nanos) = high_precision.to_parts();
-		let (ret_sec, ret_nanos) = retrieved.to_parts();
-		assert_eq!(orig_sec, ret_sec);
+		let orig_nanos = high_precision.to_nanos();
+		let ret_nanos = retrieved.to_nanos();
 		assert_eq!(orig_nanos, ret_nanos);
 	}
 
 	#[test]
 	fn test_year_2038_problem() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		// Test the Y2038 boundary (beyond 32-bit timestamp limits)
@@ -200,7 +170,7 @@ pub mod tests {
 
 	#[test]
 	fn test_far_future() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		// Test a far future date
@@ -211,7 +181,7 @@ pub mod tests {
 
 	#[test]
 	fn test_microsecond_precision() {
-		let schema = Schema::testing(&[Type::DateTime]);
+		let schema = RowSchema::testing(&[Type::DateTime]);
 		let mut row = schema.allocate();
 
 		// Test microsecond precision (common in databases)
@@ -222,7 +192,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_datetime_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

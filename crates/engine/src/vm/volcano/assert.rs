@@ -11,7 +11,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{context::EvalContext, eval::evaluate},
+	expression::{context::EvalSession, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -48,29 +48,13 @@ impl QueryNode for AssertNode {
 
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let row_count = columns.row_count();
+			let session = EvalSession::from_query(stored_ctx);
 
 			// Evaluate each assert expression
 			for assert_expr in &self.expressions {
-				let eval_ctx = EvalContext {
-					target: None,
-					columns: columns.clone(),
-					row_count,
-					take: None,
-					params: &stored_ctx.params,
-					symbol_table: &stored_ctx.stack,
-					is_aggregate_context: false,
-					functions: &stored_ctx.services.functions,
-					clock: &stored_ctx.services.clock,
-					arena: None,
-					identity: stored_ctx.identity,
-				};
+				let eval_ctx = session.eval(columns.clone(), row_count);
 
-				let result = evaluate(
-					&eval_ctx,
-					assert_expr,
-					&stored_ctx.services.functions,
-					&stored_ctx.services.clock,
-				)?;
+				let result = evaluate(&eval_ctx, assert_expr)?;
 
 				let frag = assert_expr.full_fragment_owned();
 				match result.data() {
@@ -149,28 +133,12 @@ impl QueryNode for AssertWithoutInputNode {
 
 		debug_assert!(self.context.is_some(), "AssertWithoutInputNode::next() called before initialize()");
 		let stored_ctx = self.context.as_ref().unwrap();
+		let session = EvalSession::from_query(stored_ctx);
 
 		for assert_expr in &self.expressions {
-			let eval_ctx = EvalContext {
-				target: None,
-				columns: Columns::empty(),
-				row_count: 1,
-				take: None,
-				params: &stored_ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: &stored_ctx.services.functions,
-				clock: &stored_ctx.services.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let eval_ctx = session.eval_empty();
 
-			let result = evaluate(
-				&eval_ctx,
-				assert_expr,
-				&stored_ctx.services.functions,
-				&stored_ctx.services.clock,
-			)?;
+			let result = evaluate(&eval_ctx, assert_expr)?;
 
 			let frag = assert_expr.full_fragment_owned();
 			match result.data() {

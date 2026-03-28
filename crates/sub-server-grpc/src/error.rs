@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{error, fmt, string::FromUtf8Error, sync::Arc};
+use std::{error, fmt, string::FromUtf8Error};
 
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError, subscribe::CreateSubscriptionError};
-use reifydb_type::{error::Diagnostic, value::r#type::Type};
+use reifydb_type::value::r#type::Type;
 use serde_json::to_string as to_json;
 use tonic::Status;
 
@@ -33,17 +33,8 @@ pub enum GrpcError {
 	UnsupportedParamType(Type),
 	/// Authentication failed.
 	Unauthenticated(AuthError),
-	/// Query execution timed out.
-	Timeout,
-	/// Query was cancelled.
-	Cancelled,
-	/// Query stream disconnected.
-	Disconnected,
-	/// Database engine returned an error.
-	Engine {
-		diagnostic: Arc<Diagnostic>,
-		statement: String,
-	},
+	/// Query/command execution error (timeout, cancelled, engine error, rejected, etc.).
+	Execute(ExecuteError),
 	/// Subscription creation failed.
 	SubscriptionFailed(String),
 }
@@ -67,13 +58,7 @@ impl fmt::Display for GrpcError {
 			GrpcError::InvalidDecimal(msg) => write!(f, "Invalid decimal: {}", msg),
 			GrpcError::UnsupportedParamType(ty) => write!(f, "Unsupported param type: {:?}", ty),
 			GrpcError::Unauthenticated(e) => write!(f, "{}", e),
-			GrpcError::Timeout => write!(f, "Query execution timed out"),
-			GrpcError::Cancelled => write!(f, "Query was cancelled"),
-			GrpcError::Disconnected => write!(f, "Query stream disconnected"),
-			GrpcError::Engine {
-				diagnostic,
-				..
-			} => write!(f, "Engine error: {}", diagnostic.message),
+			GrpcError::Execute(e) => write!(f, "{}", e),
 			GrpcError::SubscriptionFailed(msg) => write!(f, "Subscription failed: {}", msg),
 		}
 	}
@@ -102,16 +87,7 @@ impl fmt::Debug for GrpcError {
 			GrpcError::InvalidDecimal(msg) => f.debug_tuple("InvalidDecimal").field(msg).finish(),
 			GrpcError::UnsupportedParamType(ty) => f.debug_tuple("UnsupportedParamType").field(ty).finish(),
 			GrpcError::Unauthenticated(e) => f.debug_tuple("Unauthenticated").field(e).finish(),
-			GrpcError::Timeout => write!(f, "Timeout"),
-			GrpcError::Cancelled => write!(f, "Cancelled"),
-			GrpcError::Disconnected => write!(f, "Disconnected"),
-			GrpcError::Engine {
-				diagnostic,
-				statement,
-			} => f.debug_struct("Engine")
-				.field("diagnostic", diagnostic)
-				.field("statement", statement)
-				.finish(),
+			GrpcError::Execute(e) => f.debug_tuple("Execute").field(e).finish(),
 			GrpcError::SubscriptionFailed(msg) => f.debug_tuple("SubscriptionFailed").field(msg).finish(),
 		}
 	}
@@ -127,25 +103,14 @@ impl From<AuthError> for GrpcError {
 
 impl From<ExecuteError> for GrpcError {
 	fn from(err: ExecuteError) -> Self {
-		match err {
-			ExecuteError::Timeout => GrpcError::Timeout,
-			ExecuteError::Cancelled => GrpcError::Cancelled,
-			ExecuteError::Disconnected => GrpcError::Disconnected,
-			ExecuteError::Engine {
-				diagnostic,
-				statement,
-			} => GrpcError::Engine {
-				diagnostic,
-				statement,
-			},
-		}
+		GrpcError::Execute(err)
 	}
 }
 
 impl From<CreateSubscriptionError> for GrpcError {
 	fn from(err: CreateSubscriptionError) -> Self {
 		match err {
-			CreateSubscriptionError::Execute(e) => GrpcError::from(e),
+			CreateSubscriptionError::Execute(e) => GrpcError::Execute(e),
 			CreateSubscriptionError::ExtractionFailed => {
 				GrpcError::SubscriptionFailed("Failed to extract subscription ID".to_string())
 			}
@@ -170,20 +135,25 @@ impl From<GrpcError> for Status {
 			| GrpcError::InvalidDecimal(_)
 			| GrpcError::UnsupportedParamType(_) => Status::invalid_argument(err.to_string()),
 			GrpcError::Unauthenticated(_) => Status::unauthenticated(err.to_string()),
-			GrpcError::Timeout => Status::deadline_exceeded(err.to_string()),
-			GrpcError::Cancelled => Status::cancelled(err.to_string()),
-			GrpcError::Disconnected => Status::internal(err.to_string()),
-			GrpcError::Engine {
-				diagnostic,
-				statement,
-			} => {
-				let mut diag = (*diagnostic).clone();
-				if diag.statement.is_none() && !statement.is_empty() {
-					diag.with_statement(statement);
+			GrpcError::Execute(ref inner) => match inner {
+				ExecuteError::Timeout => Status::deadline_exceeded(err.to_string()),
+				ExecuteError::Cancelled => Status::cancelled(err.to_string()),
+				ExecuteError::Disconnected => Status::internal(err.to_string()),
+				ExecuteError::Engine {
+					diagnostic,
+					statement,
+				} => {
+					let mut diag = (**diagnostic).clone();
+					if diag.statement.is_none() && !statement.is_empty() {
+						diag.with_statement(statement.clone());
+					}
+					let json = to_json(&diag).unwrap_or_else(|_| diagnostic.message.clone());
+					Status::invalid_argument(json)
 				}
-				let json = to_json(&diag).unwrap_or_else(|_| diagnostic.message.clone());
-				Status::invalid_argument(json)
-			}
+				ExecuteError::Rejected {
+					..
+				} => Status::permission_denied(err.to_string()),
+			},
 			GrpcError::SubscriptionFailed(_) => Status::internal(err.to_string()),
 		}
 	}

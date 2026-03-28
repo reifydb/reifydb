@@ -247,7 +247,7 @@ impl CdcStorage for CdcStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		encoded::{encoded::EncodedValues, key::EncodedKey},
+		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::cdc::SystemChange,
 	};
 	use reifydb_type::util::cowvec::CowVec;
@@ -258,7 +258,7 @@ pub mod tests {
 		let system_changes: Vec<SystemChange> = (0..num_changes)
 			.map(|i| SystemChange::Insert {
 				key: EncodedKey::new(vec![i as u8]),
-				post: EncodedValues(CowVec::new(vec![])),
+				post: EncodedRow(CowVec::new(vec![])),
 			})
 			.collect();
 
@@ -450,8 +450,8 @@ pub mod tests {
 			12345,
 			Vec::new(),
 			vec![SystemChange::Insert {
-				key: EncodedKey::new(vec![1, 2, 3]),                        // 3 bytes
-				post: EncodedValues(CowVec::new(vec![10, 20, 30, 40, 50])), // 5 bytes
+				key: EncodedKey::new(vec![1, 2, 3]),                     // 3 bytes
+				post: EncodedRow(CowVec::new(vec![10, 20, 30, 40, 50])), // 5 bytes
 			}],
 		);
 		storage.write(&cdc).unwrap();

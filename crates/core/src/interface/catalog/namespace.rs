@@ -25,6 +25,7 @@ pub enum Namespace {
 		local_name: String,
 		parent_id: NamespaceId,
 		address: String,
+		token: Option<String>,
 	},
 }
 
@@ -87,6 +88,16 @@ impl Namespace {
 				address,
 				..
 			} => Some(address),
+			_ => None,
+		}
+	}
+
+	pub fn token(&self) -> Option<&str> {
+		match self {
+			Namespace::Remote {
+				token,
+				..
+			} => token.as_deref(),
 			_ => None,
 		}
 	}

@@ -12,6 +12,11 @@ use serde::{
 	de::{self, Visitor},
 };
 
+use crate::{
+	error::{TemporalKind, TypeError},
+	fragment::Fragment,
+};
+
 /// A date value representing a calendar date (year, month, day) without time
 /// information. Always interpreted in SVTC.
 ///
@@ -116,14 +121,25 @@ impl Date {
 }
 
 impl Date {
+	fn overflow_err(message: impl Into<String>) -> TypeError {
+		TypeError::Temporal {
+			kind: TemporalKind::DateOverflow {
+				message: message.into(),
+			},
+			message: "date overflow".to_string(),
+			fragment: Fragment::None,
+		}
+	}
+
 	pub fn new(year: i32, month: u32, day: u32) -> Option<Self> {
 		Self::ymd_to_days_since_epoch(year, month, day).map(|days_since_epoch| Self {
 			days_since_epoch,
 		})
 	}
 
-	pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, String> {
-		Self::new(year, month, day).ok_or_else(|| format!("Invalid date: {}-{:02}-{:02}", year, month, day))
+	pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, TypeError> {
+		Self::new(year, month, day)
+			.ok_or_else(|| Self::overflow_err(format!("invalid date: {}-{:02}-{:02}", year, month, day)))
 	}
 
 	pub fn today() -> Self {
@@ -235,9 +251,12 @@ impl<'de> Deserialize<'de> for Date {
 
 #[cfg(test)]
 pub mod tests {
+	use std::fmt::Debug;
+
 	use serde_json::{from_str, to_string};
 
 	use super::*;
+	use crate::error::{TemporalKind, TypeError};
 
 	#[test]
 	fn test_date_display_standard_dates() {
@@ -402,5 +421,35 @@ pub mod tests {
 
 		let recovered: Date = from_str(&json).unwrap();
 		assert_eq!(date, recovered);
+	}
+
+	fn assert_date_overflow<T: Debug>(result: Result<T, TypeError>) {
+		let err = result.expect_err("expected DateOverflow error");
+		match err {
+			TypeError::Temporal {
+				kind: TemporalKind::DateOverflow {
+					..
+				},
+				..
+			} => {}
+			other => panic!("expected DateOverflow, got: {:?}", other),
+		}
+	}
+
+	#[test]
+	fn test_from_ymd_invalid_month() {
+		assert_date_overflow(Date::from_ymd(2024, 0, 1));
+		assert_date_overflow(Date::from_ymd(2024, 13, 1));
+	}
+
+	#[test]
+	fn test_from_ymd_invalid_day() {
+		assert_date_overflow(Date::from_ymd(2024, 1, 0));
+		assert_date_overflow(Date::from_ymd(2024, 1, 32));
+	}
+
+	#[test]
+	fn test_from_ymd_non_leap_year() {
+		assert_date_overflow(Date::from_ymd(2023, 2, 29));
 	}
 }

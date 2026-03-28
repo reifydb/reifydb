@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	error::diagnostic::catalog::namespace_not_found,
-	interface::catalog::procedure::{ProcedureParamDef, ProcedureTrigger},
+	interface::catalog::procedure::{ProcedureParam, ProcedureTrigger},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, return_error};
@@ -43,7 +43,7 @@ impl<'bump> Compiler<'bump> {
 		let mut params = Vec::with_capacity(create.params.len());
 		for param in &create.params {
 			let constraint = convert_data_type_with_constraints(&param.param_type)?;
-			params.push(ProcedureParamDef {
+			params.push(ProcedureParam {
 				name: param.name.text().to_string(),
 				param_type: constraint,
 			});

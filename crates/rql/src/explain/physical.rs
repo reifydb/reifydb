@@ -4,7 +4,7 @@
 use std::fmt::Write;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{common::JoinType, interface::resolved::ResolvedPrimitive};
+use reifydb_core::{common::JoinType, interface::resolved::ResolvedSchema};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -102,8 +102,12 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 		PhysicalPlan::DropSumType(_) => unimplemented!(),
 		PhysicalPlan::DropSubscription(_) => unimplemented!(),
 		PhysicalPlan::DropSeries(_) => unimplemented!(),
-		PhysicalPlan::CreateUser(n) => {
-			write_node_header(output, prefix, is_last, &format!("CreateUser name={}", n.name.text()));
+		PhysicalPlan::CreateSource(_) => unimplemented!(),
+		PhysicalPlan::CreateSink(_) => unimplemented!(),
+		PhysicalPlan::DropSource(_) => unimplemented!(),
+		PhysicalPlan::DropSink(_) => unimplemented!(),
+		PhysicalPlan::CreateIdentity(n) => {
+			write_node_header(output, prefix, is_last, &format!("CreateIdentity name={}", n.name.text()));
 		}
 		PhysicalPlan::CreateRole(n) => {
 			write_node_header(output, prefix, is_last, &format!("CreateRole name={}", n.name.text()));
@@ -124,12 +128,12 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 				&format!("Revoke role={} user={}", n.role.text(), n.user.text()),
 			);
 		}
-		PhysicalPlan::DropUser(n) => {
+		PhysicalPlan::DropIdentity(n) => {
 			write_node_header(
 				output,
 				prefix,
 				is_last,
-				&format!("DropUser name={} if_exists={}", n.name.text(), n.if_exists),
+				&format!("DropIdentity name={} if_exists={}", n.name.text(), n.if_exists),
 			);
 		}
 		PhysicalPlan::DropRole(n) => {
@@ -585,7 +589,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::Window(node) => {
-			let label = format!("Window: {:?}, Size: {:?}", node.window_type, node.size);
+			let label = format!("Window: {:?}", node.kind);
 			write_node_header(output, prefix, is_last, &label);
 
 			if let Some(ref input) = node.input {
@@ -672,9 +676,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowPointLookup(lookup) => {
 			let source_name = match &lookup.source {
-				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
-				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
-				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedSchema::Table(t) => t.identifier().text().to_string(),
+				ResolvedSchema::View(v) => v.identifier().text().to_string(),
+				ResolvedSchema::RingBuffer(rb) => rb.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(
@@ -687,9 +691,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowListLookup(lookup) => {
 			let source_name = match &lookup.source {
-				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
-				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
-				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedSchema::Table(t) => t.identifier().text().to_string(),
+				ResolvedSchema::View(v) => v.identifier().text().to_string(),
+				ResolvedSchema::RingBuffer(rb) => rb.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			let rows_str = lookup.row_numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
@@ -703,9 +707,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 
 		PhysicalPlan::RowRangeScan(scan) => {
 			let source_name = match &scan.source {
-				ResolvedPrimitive::Table(t) => t.identifier().text().to_string(),
-				ResolvedPrimitive::View(v) => v.identifier().text().to_string(),
-				ResolvedPrimitive::RingBuffer(rb) => rb.identifier().text().to_string(),
+				ResolvedSchema::Table(t) => t.identifier().text().to_string(),
+				ResolvedSchema::View(v) => v.identifier().text().to_string(),
+				ResolvedSchema::RingBuffer(rb) => rb.identifier().text().to_string(),
 				_ => "unknown".to_string(),
 			};
 			write_node_header(

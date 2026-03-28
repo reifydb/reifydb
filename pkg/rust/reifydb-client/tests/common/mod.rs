@@ -18,32 +18,47 @@ use tokio::runtime::Runtime;
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
 		.with_flow(|f| f)
-		.with_grpc(GrpcConfig::default().bind_addr("[::1]:0"))
-		.with_http(HttpConfig::default().bind_addr("::1:0"))
-		.with_ws(WsConfig::default().bind_addr("::1:0"))
+		.with_grpc(GrpcConfig::default().admin_bind_addr("[::1]:0"))
+		.with_http(HttpConfig::default().admin_bind_addr("::1:0"))
+		.with_ws(WsConfig::default().admin_bind_addr("::1:0"))
 		.build()
 		.unwrap()
 }
 
-/// Start server and return WebSocket port
+/// Start server and return WebSocket admin port
 #[allow(dead_code)]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server_ws().unwrap().port().unwrap())
+	server.admin_as_root(
+		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+		reifydb_type::params::Params::None,
+	)
+	.unwrap();
+	Ok(server.sub_server_ws().unwrap().admin_port().unwrap())
 }
 
-/// Start server and return gRPC port
+/// Start server and return gRPC admin port
 #[allow(dead_code)]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server_grpc().unwrap().port().unwrap())
+	server.admin_as_root(
+		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+		reifydb_type::params::Params::None,
+	)
+	.unwrap();
+	Ok(server.sub_server_grpc().unwrap().admin_port().unwrap())
 }
 
-/// Start server and return HTTP port
+/// Start server and return HTTP admin port
 #[allow(dead_code)]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server_http().unwrap().port().unwrap())
+	server.admin_as_root(
+		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+		reifydb_type::params::Params::None,
+	)
+	.unwrap();
+	Ok(server.sub_server_http().unwrap().admin_port().unwrap())
 }
 
 /// Parse RQL command from testscript Command
@@ -59,13 +74,13 @@ pub fn parse_positional_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
 	if args.is_empty() {
-		return (String::new(), Params::Positional(vec![]));
+		return (String::new(), Params::Positional(Arc::new(vec![])));
 	}
 
 	let sql = args[0].to_string();
-	let params = args[1..].iter().map(|s| parse_param_value(s)).collect();
+	let params: Vec<_> = args[1..].iter().map(|s| parse_param_value(s)).collect();
 
-	(sql, Params::Positional(params))
+	(sql, Params::Positional(Arc::new(params)))
 }
 
 /// Parse named parameters from command arguments
@@ -75,7 +90,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
 	if args.is_empty() {
-		return (String::new(), Params::Named(HashMap::new()));
+		return (String::new(), Params::Named(Arc::new(HashMap::new())));
 	}
 
 	let sql = args[0].to_string();
@@ -87,7 +102,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 		}
 	}
 
-	(sql, Params::Named(params))
+	(sql, Params::Named(Arc::new(params)))
 }
 
 /// Parse a parameter value from string

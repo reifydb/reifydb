@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::{constraint::TypeConstraint, sumtype::SumTypeId};
+use reifydb_type::value::{constraint::TypeConstraint, sumtype::VariantRef};
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::id::{NamespaceId, ProcedureId};
@@ -12,8 +12,7 @@ pub enum ProcedureTrigger {
 	Call,
 	/// Triggered by DISPATCH on an event variant
 	Event {
-		sumtype_id: SumTypeId,
-		variant_tag: u8,
+		variant: VariantRef,
 	},
 	/// Invoked via CALL but dispatched to a registered native (Rust) implementation
 	NativeCall {
@@ -28,11 +27,11 @@ impl Default for ProcedureTrigger {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProcedureDef {
+pub struct Procedure {
 	pub id: ProcedureId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub params: Vec<ProcedureParamDef>,
+	pub params: Vec<ProcedureParam>,
 	pub return_type: Option<TypeConstraint>,
 	/// RQL source text, compiled on load
 	pub body: String,
@@ -42,7 +41,7 @@ pub struct ProcedureDef {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProcedureParamDef {
+pub struct ProcedureParam {
 	pub name: String,
 	pub param_type: TypeConstraint,
 }

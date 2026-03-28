@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Query and command execution with async streaming.
+//! Query and command execution with interceptor support.
 //!
-//! This module provides async wrappers around the database engine operations.
-//! The engine uses a compute pool for sync execution, streaming results back
-//! through async channels.
+//! All execution goes through [`execute`], which runs pre/post interceptor
+//! hooks around the actual engine dispatch. When no interceptors are
+//! registered the overhead is a single `is_empty()` check.
 
 use std::{error, fmt, sync::Arc, time::Duration};
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
@@ -18,6 +18,8 @@ use reifydb_type::{
 };
 use tokio::time;
 use tracing::warn;
+
+use crate::interceptor::{Operation, RequestContext, RequestInterceptorChain, ResponseContext};
 
 /// Error types for query/command execution.
 #[derive(Debug)]
@@ -35,6 +37,13 @@ pub enum ExecuteError {
 		/// The statement that caused the error.
 		statement: String,
 	},
+	/// Request was rejected by a request interceptor.
+	Rejected {
+		/// Error code for the rejection (e.g. "AUTH_REQUIRED", "INSUFFICIENT_CREDITS").
+		code: String,
+		/// Human-readable reason for rejection.
+		message: String,
+	},
 }
 
 impl fmt::Display for ExecuteError {
@@ -47,6 +56,10 @@ impl fmt::Display for ExecuteError {
 				diagnostic,
 				..
 			} => write!(f, "Engine error: {}", diagnostic.message),
+			ExecuteError::Rejected {
+				code,
+				message,
+			} => write!(f, "Rejected [{}]: {}", code, message),
 		}
 	}
 }
@@ -84,166 +97,166 @@ where
 	Err(last_err.unwrap())
 }
 
-/// Execute a query with timeout.
-///
-/// This function:
-/// 1. Starts the query execution on the actor system's compute pool
-/// 2. Applies a timeout to the operation
-/// 3. Returns the query results or an appropriate error
-///
-/// # Arguments
-///
-/// * `system` - The actor system to execute the query on
-/// * `engine` - The database engine to execute the query on
-/// * `query` - The RQL query string
-/// * `identity` - The identity context for permission checking
-/// * `params` - Query parameters
-/// * `timeout` - Maximum time to wait for query completion
-///
-/// # Returns
-///
-/// * `Ok(Vec<Frame>)` - Query results on success
-/// * `Err(ExecuteError::Timeout)` - If the query exceeds the timeout
-/// * `Err(ExecuteError::Cancelled)` - If the query was cancelled
-/// * `Err(ExecuteError::Engine)` - If the engine returns an error
-///
-/// # Example
-///
-/// ```ignore
-/// let result = execute_query(
-///     system,
-///     engine,
-///     "FROM users take 42".to_string(),
-///     identity,
-///     Params::None,
-///     Duration::from_secs(30),
-/// ).await?;
-/// ```
-pub async fn execute_query(
+async fn raw_query(
 	system: ActorSystem,
 	engine: StandardEngine,
 	query: String,
 	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	// Execute synchronous query on actor system's compute pool with timeout
-	let task = system.execute(move || engine.query_as(identity, &query, params));
-
-	let result = time::timeout(timeout, task).await;
-
-	match result {
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = engine.query_as(identity, &query, params);
+		(r, t.elapsed())
+	});
+	match time::timeout(timeout, task).await {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
 
-/// Execute an admin operation with timeout.
-///
-/// Admin operations include DDL (CREATE TABLE, ALTER, etc.), DML (INSERT, UPDATE, DELETE),
-/// and read queries. This is the most privileged execution level.
-///
-/// # Arguments
-///
-/// * `system` - The actor system to execute the admin operation on
-/// * `engine` - The database engine to execute the admin operation on
-/// * `statements` - The RQL admin statements
-/// * `identity` - The identity context for permission checking
-/// * `params` - Admin parameters
-/// * `timeout` - Maximum time to wait for admin completion
-///
-/// # Returns
-///
-/// * `Ok(Vec<Frame>)` - Admin results on success
-/// * `Err(ExecuteError::Timeout)` - If the admin operation exceeds the timeout
-/// * `Err(ExecuteError::Cancelled)` - If the admin operation was cancelled
-/// * `Err(ExecuteError::Engine)` - If the engine returns an error
-pub async fn execute_admin(
+async fn raw_command(
 	system: ActorSystem,
 	engine: StandardEngine,
-	statements: Vec<String>,
+	statements: String,
 	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	let combined = statements.join("; ");
-
-	// Execute synchronous admin operation on actor system's compute pool with timeout
-	let task = system.execute(move || retry_on_conflict(|| engine.admin_as(identity, &combined, params.clone())));
-
-	let result = time::timeout(timeout, task).await;
-
-	match result {
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = retry_on_conflict(|| engine.command_as(identity, &statements, params.clone()));
+		(r, t.elapsed())
+	});
+	match time::timeout(timeout, task).await {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
 
-/// Execute a subscription operation with timeout.
-///
-/// Subscription operations are restricted to CREATE SUBSCRIPTION and DROP SUBSCRIPTION.
-/// This provides security isolation by not granting full admin access to subscription clients.
-pub async fn execute_subscription(
+async fn raw_admin(
+	system: ActorSystem,
+	engine: StandardEngine,
+	statements: String,
+	identity: IdentityId,
+	params: Params,
+	timeout: Duration,
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = retry_on_conflict(|| engine.admin_as(identity, &statements, params.clone()));
+		(r, t.elapsed())
+	});
+	match time::timeout(timeout, task).await {
+		Err(_elapsed) => Err(ExecuteError::Timeout),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
+		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+	}
+}
+
+async fn raw_subscription(
 	system: ActorSystem,
 	engine: StandardEngine,
 	statement: String,
 	identity: IdentityId,
 	params: Params,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	// Execute synchronous subscription operation on actor system's compute pool with timeout
-	let task = system
-		.execute(move || retry_on_conflict(|| engine.subscription_as(identity, &statement, params.clone())));
-
-	let result = time::timeout(timeout, task).await;
-
-	match result {
+	clock: Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	let task = system.execute(move || {
+		let t = clock.instant();
+		let r = retry_on_conflict(|| engine.subscription_as(identity, &statement, params.clone()));
+		(r, t.elapsed())
+	});
+	match time::timeout(timeout, task).await {
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
+		Ok(Ok((result, compute))) => result.map(|f| (f, compute)).map_err(ExecuteError::from),
 		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
 	}
 }
 
-/// Execute a command with timeout.
+/// Execute a database operation with interceptor support.
 ///
-/// Commands are write operations (INSERT, UPDATE, DELETE) that modify
-/// the database state. DDL operations are not allowed in command transactions.
+/// This is the single entry point for all protocol handlers.
+/// Interceptors run before and after the engine dispatch:
 ///
-/// # Arguments
+/// 1. `pre_execute` — may reject the request or mutate identity/metadata
+/// 2. Engine dispatch (query / command / admin / subscribe)
+/// 3. `post_execute` — observes result and duration (fire-and-forget)
 ///
-/// * `system` - The actor system to execute the command on
-/// * `engine` - The database engine to execute the command on
-/// * `statements` - The RQL command statements
-/// * `identity` - The identity context for permission checking
-/// * `params` - Command parameters
-/// * `timeout` - Maximum time to wait for command completion
-///
-/// # Returns
-///
-/// * `Ok(Vec<Frame>)` - Command results on success
-/// * `Err(ExecuteError::Timeout)` - If the command exceeds the timeout
-/// * `Err(ExecuteError::Cancelled)` - If the command was cancelled
-/// * `Err(ExecuteError::Engine)` - If the engine returns an error
-pub async fn execute_command(
+/// When the interceptor chain is empty, steps 1 and 3 are skipped.
+pub async fn execute(
+	chain: &RequestInterceptorChain,
 	system: ActorSystem,
 	engine: StandardEngine,
-	statements: Vec<String>,
-	identity: IdentityId,
-	params: Params,
+	mut ctx: RequestContext,
 	timeout: Duration,
-) -> ExecuteResult<Vec<Frame>> {
-	let combined = statements.join("; ");
-
-	// Execute synchronous command on actor system's compute pool with timeout
-	let task = system.execute(move || retry_on_conflict(|| engine.command_as(identity, &combined, params.clone())));
-
-	let result = time::timeout(timeout, task).await;
-
-	match result {
-		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok(frames_result)) => frames_result.map_err(ExecuteError::from),
-		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+	clock: &Clock,
+) -> ExecuteResult<(Vec<Frame>, Duration)> {
+	// Pre-execute interceptors (may reject, may mutate identity)
+	if !chain.is_empty() {
+		chain.pre_execute(&mut ctx).await?;
 	}
+
+	let start = clock.instant();
+
+	let operation = ctx.operation;
+	let combined = ctx.statements.join("; ");
+
+	// Clone params for response context only when interceptors need it
+	let response_parts = if !chain.is_empty() {
+		Some((ctx.identity, ctx.statements, ctx.params.clone(), ctx.metadata))
+	} else {
+		None
+	};
+
+	let result = match operation {
+		Operation::Query => {
+			raw_query(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
+		}
+		Operation::Command => {
+			raw_command(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
+		}
+		Operation::Admin => {
+			raw_admin(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
+		}
+		Operation::Subscribe => {
+			raw_subscription(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone())
+				.await
+		}
+	};
+
+	let duration = start.elapsed();
+
+	// Separate frames from compute_duration
+	let (result, compute_duration) = match result {
+		Ok((frames, cd)) => (Ok(frames), cd),
+		Err(e) => (Err(e), duration),
+	};
+
+	// Post-execute interceptors
+	if let Some((identity, statements, params, metadata)) = response_parts {
+		let response_ctx = ResponseContext {
+			identity,
+			operation,
+			statements,
+			params,
+			metadata,
+			result: match &result {
+				Ok(frames) => Ok(frames.len()),
+				Err(e) => Err(e.to_string()),
+			},
+			duration,
+			compute_duration,
+		};
+		chain.post_execute(&response_ctx).await;
+	}
+
+	result.map(|frames| (frames, duration))
 }

@@ -35,8 +35,9 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
     });
 
     const abortControllerRef = useRef<AbortController | null>(null);
-    const isMountedRef = useRef(true);
+    const isMountedRef = useRef(false);
     useEffect(() => {
+        isMountedRef.current = true;
         return () => { isMountedRef.current = false; };
     }, []);
 
@@ -47,6 +48,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                 abortControllerRef.current.abort();
             }
             abortControllerRef.current = new AbortController();
+            const currentController = abortControllerRef.current;
 
             setState({
                 isExecuting: true,
@@ -61,6 +63,9 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                 try {
                     // Call client.query which returns FrameResults (array of frames)
                     const frameResults = await client?.query(statements, params || null, schemas || []) || [];
+
+                    // If this execution was superseded by a newer one, discard results
+                    if (currentController.signal.aborted) return;
 
                     const executionTime = Date.now() - startTime;
                     
@@ -82,7 +87,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                                     return {
                                         name: key,
                                         type: dataType,
-                                        data: [],
+                                        payload: [],
                                     };
                                 });
                             } else {
@@ -90,7 +95,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                                 columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
                                     type: 'Utf8', // Default type for plain objects
-                                    data: [],
+                                    payload: [],
                                 }));
                             }
                             
@@ -117,6 +122,9 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                         executionTime,
                     });
                 } catch (err) {
+                    // If this execution was superseded by a newer one, discard error
+                    if (currentController.signal.aborted) return;
+
                     const executionTime = Date.now() - startTime;
                     let errorMessage = 'Query execution failed';
 

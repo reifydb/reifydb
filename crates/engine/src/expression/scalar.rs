@@ -18,265 +18,72 @@ use reifydb_type::{
 
 use crate::expression::context::EvalContext;
 
-impl EvalContext<'_> {
-	pub fn add<'a, L, R>(
-		&self,
-		l: &L,
-		r: &R,
-		fragment: impl LazyFragment + Copy,
-	) -> Result<Option<<L as Promote<R>>::Output>>
-	where
-		L: Promote<R>,
-		R: IsNumber,
-		<L as Promote<R>>::Output: IsNumber,
-		<L as Promote<R>>::Output: SafeAdd,
-	{
-		match &self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return Err(TypeError::NumberOutOfRange {
-						target: <L as Promote<R>>::Output::get_type(),
-						fragment: fragment.fragment(),
-						descriptor,
+macro_rules! impl_scalar_op {
+	($method:ident, $safe_trait:ident, $checked_method:ident) => {
+		impl EvalContext<'_> {
+			pub fn $method<'a, L, R>(
+				&self,
+				l: &L,
+				r: &R,
+				fragment: impl LazyFragment + Copy,
+			) -> Result<Option<<L as Promote<R>>::Output>>
+			where
+				L: Promote<R>,
+				R: IsNumber,
+				<L as Promote<R>>::Output: IsNumber,
+				<L as Promote<R>>::Output: $safe_trait,
+			{
+				match &self.saturation_policy() {
+					ColumnSaturationPolicy::Error => {
+						let Some((lp, rp)) = l.checked_promote(r) else {
+							let descriptor = self
+								.target
+								.as_ref()
+								.and_then(|c| c.to_number_descriptor());
+							return Err(TypeError::NumberOutOfRange {
+								target: <L as Promote<R>>::Output::get_type(),
+								fragment: fragment.fragment(),
+								descriptor,
+							}
+							.into());
+						};
+
+						lp.$checked_method(&rp)
+							.ok_or_else(|| {
+								let descriptor = self
+									.target
+									.as_ref()
+									.and_then(|c| c.to_number_descriptor());
+								TypeError::NumberOutOfRange {
+									target: <L as Promote<R>>::Output::get_type(),
+									fragment: fragment.fragment(),
+									descriptor,
+								}
+								.into()
+							})
+							.map(Some)
 					}
-					.into());
-				};
+					ColumnSaturationPolicy::None => {
+						let Some((lp, rp)) = l.checked_promote(r) else {
+							return Ok(None);
+						};
 
-				lp.checked_add(&rp)
-					.ok_or_else(|| {
-						let descriptor =
-							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						TypeError::NumberOutOfRange {
-							target: <L as Promote<R>>::Output::get_type(),
-							fragment: fragment.fragment(),
-							descriptor,
+						match lp.$checked_method(&rp) {
+							None => Ok(None),
+							Some(value) => Ok(Some(value)),
 						}
-						.into()
-					})
-					.map(Some)
-			}
-			ColumnSaturationPolicy::None => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					return Ok(None);
-				};
-
-				match lp.checked_add(&rp) {
-					None => Ok(None),
-					Some(value) => Ok(Some(value)),
+					}
 				}
 			}
 		}
-	}
+	};
 }
 
-impl EvalContext<'_> {
-	pub fn sub<'a, L, R>(
-		&self,
-		l: &L,
-		r: &R,
-		fragment: impl LazyFragment + Copy,
-	) -> Result<Option<<L as Promote<R>>::Output>>
-	where
-		L: Promote<R>,
-		R: IsNumber,
-		<L as Promote<R>>::Output: IsNumber,
-		<L as Promote<R>>::Output: SafeSub,
-	{
-		match &self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return Err(TypeError::NumberOutOfRange {
-						target: <L as Promote<R>>::Output::get_type(),
-						fragment: fragment.fragment(),
-						descriptor,
-					}
-					.into());
-				};
-
-				lp.checked_sub(&rp)
-					.ok_or_else(|| {
-						let descriptor =
-							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						TypeError::NumberOutOfRange {
-							target: <L as Promote<R>>::Output::get_type(),
-							fragment: fragment.fragment(),
-							descriptor,
-						}
-						.into()
-					})
-					.map(Some)
-			}
-			ColumnSaturationPolicy::None => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					return Ok(None);
-				};
-
-				match lp.checked_sub(&rp) {
-					None => Ok(None),
-					Some(value) => Ok(Some(value)),
-				}
-			}
-		}
-	}
-}
-
-impl EvalContext<'_> {
-	pub fn mul<'a, L, R>(
-		&self,
-		l: &L,
-		r: &R,
-		fragment: impl LazyFragment + Copy,
-	) -> Result<Option<<L as Promote<R>>::Output>>
-	where
-		L: Promote<R>,
-		R: IsNumber,
-		<L as Promote<R>>::Output: IsNumber,
-		<L as Promote<R>>::Output: SafeMul,
-	{
-		match &self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return Err(TypeError::NumberOutOfRange {
-						target: <L as Promote<R>>::Output::get_type(),
-						fragment: fragment.fragment(),
-						descriptor,
-					}
-					.into());
-				};
-
-				lp.checked_mul(&rp)
-					.ok_or_else(|| {
-						let descriptor =
-							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						TypeError::NumberOutOfRange {
-							target: <L as Promote<R>>::Output::get_type(),
-							fragment: fragment.fragment(),
-							descriptor,
-						}
-						.into()
-					})
-					.map(Some)
-			}
-			ColumnSaturationPolicy::None => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					return Ok(None);
-				};
-
-				match lp.checked_mul(&rp) {
-					None => Ok(None),
-					Some(value) => Ok(Some(value)),
-				}
-			}
-		}
-	}
-}
-
-impl EvalContext<'_> {
-	pub fn div<'a, L, R>(
-		&self,
-		l: &L,
-		r: &R,
-		fragment: impl LazyFragment + Copy,
-	) -> Result<Option<<L as Promote<R>>::Output>>
-	where
-		L: Promote<R>,
-		R: IsNumber,
-		<L as Promote<R>>::Output: IsNumber,
-		<L as Promote<R>>::Output: SafeDiv,
-	{
-		match &self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return Err(TypeError::NumberOutOfRange {
-						target: <L as Promote<R>>::Output::get_type(),
-						fragment: fragment.fragment(),
-						descriptor,
-					}
-					.into());
-				};
-
-				lp.checked_div(&rp)
-					.ok_or_else(|| {
-						let descriptor =
-							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						TypeError::NumberOutOfRange {
-							target: <L as Promote<R>>::Output::get_type(),
-							fragment: fragment.fragment(),
-							descriptor,
-						}
-						.into()
-					})
-					.map(Some)
-			}
-			ColumnSaturationPolicy::None => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					return Ok(None);
-				};
-
-				match lp.checked_div(&rp) {
-					None => Ok(None),
-					Some(value) => Ok(Some(value)),
-				}
-			}
-		}
-	}
-}
-
-impl EvalContext<'_> {
-	pub fn remainder<'a, L, R>(
-		&self,
-		l: &L,
-		r: &R,
-		fragment: impl LazyFragment + Copy,
-	) -> Result<Option<<L as Promote<R>>::Output>>
-	where
-		L: Promote<R>,
-		R: IsNumber,
-		<L as Promote<R>>::Output: IsNumber,
-		<L as Promote<R>>::Output: SafeRemainder,
-	{
-		match &self.saturation_policy() {
-			ColumnSaturationPolicy::Error => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
-					return Err(TypeError::NumberOutOfRange {
-						target: <L as Promote<R>>::Output::get_type(),
-						fragment: fragment.fragment(),
-						descriptor,
-					}
-					.into());
-				};
-
-				lp.checked_rem(&rp)
-					.ok_or_else(|| {
-						let descriptor =
-							self.target.as_ref().and_then(|c| c.to_number_descriptor());
-						TypeError::NumberOutOfRange {
-							target: <L as Promote<R>>::Output::get_type(),
-							fragment: fragment.fragment(),
-							descriptor,
-						}
-						.into()
-					})
-					.map(Some)
-			}
-			ColumnSaturationPolicy::None => {
-				let Some((lp, rp)) = l.checked_promote(r) else {
-					return Ok(None);
-				};
-
-				match lp.checked_rem(&rp) {
-					None => Ok(None),
-					Some(value) => Ok(Some(value)),
-				}
-			}
-		}
-	}
-}
+impl_scalar_op!(add, SafeAdd, checked_add);
+impl_scalar_op!(sub, SafeSub, checked_sub);
+impl_scalar_op!(mul, SafeMul, checked_mul);
+impl_scalar_op!(div, SafeDiv, checked_div);
+impl_scalar_op!(remainder, SafeRemainder, checked_rem);
 
 #[cfg(test)]
 pub mod tests {

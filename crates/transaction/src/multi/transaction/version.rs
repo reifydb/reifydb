@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::schema::{Schema, SchemaField},
+	encoded::schema::{RowSchema, RowSchemaField},
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -48,12 +48,12 @@ pub struct StandardVersionProvider {
 	current_block_end: Arc<AtomicU64>,
 	// Mutex for block boundary persistence (rare - 1 in BLOCK_SIZE operations)
 	block_persist_lock: Arc<Mutex<()>>,
-	schema: Schema,
+	schema: RowSchema,
 }
 
 impl StandardVersionProvider {
 	pub fn new(single: SingleTransaction) -> Result<Self> {
-		let schema = Schema::new(vec![SchemaField::unconstrained("version", Type::Uint8)]);
+		let schema = RowSchema::new(vec![RowSchemaField::unconstrained("version", Type::Uint8)]);
 
 		// Load current version and allocate first block
 		let current_version = Self::load_current_version(&schema, &single)?;
@@ -71,23 +71,23 @@ impl StandardVersionProvider {
 		})
 	}
 
-	fn load_current_version(schema: &Schema, single: &SingleTransaction) -> Result<u64> {
+	fn load_current_version(schema: &RowSchema, single: &SingleTransaction) -> Result<u64> {
 		let key = TransactionVersionKey {}.encode();
 
 		let mut tx = single.begin_query([&key])?;
 		match tx.get(&key)? {
 			None => Ok(0),
-			Some(single) => Ok(schema.get_u64(&single.values, 0)),
+			Some(single) => Ok(schema.get_u64(&single.row, 0)),
 		}
 	}
 
-	fn persist_version(schema: &Schema, single: &SingleTransaction, version: u64) -> Result<()> {
+	fn persist_version(schema: &RowSchema, single: &SingleTransaction, version: u64) -> Result<()> {
 		let key = TransactionVersionKey {}.encode();
-		let mut values = schema.allocate();
-		schema.set_u64(&mut values, 0, version);
+		let mut row = schema.allocate();
+		schema.set_u64(&mut row, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
-		tx.set(&key, values)?;
+		tx.set(&key, row)?;
 		tx.commit()
 	}
 }
@@ -265,14 +265,14 @@ pub mod tests {
 		let single = SingleTransaction::testing();
 
 		// Manually set a version in storage
-		let schema = Schema::testing(&[Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut values = schema.allocate();
-		schema.set_u64(&mut values, 0, 500u64);
+		let mut row = schema.allocate();
+		schema.set_u64(&mut row, 0, 500u64);
 
 		{
 			let mut tx = single.begin_command([&key]).unwrap();
-			tx.set(&key, values).unwrap();
+			tx.set(&key, row).unwrap();
 			tx.commit().unwrap();
 		} // tx is dropped here, releasing the key lock
 

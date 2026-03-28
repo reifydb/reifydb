@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
 use crate::{
 	Result,
-	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -49,7 +49,7 @@ impl QueryNode for TakeNode {
 			}
 			let transform_ctx = TransformContext {
 				functions: &ctx.services.functions,
-				clock: &ctx.services.clock,
+				runtime_context: &ctx.services.runtime_context,
 				params: &ctx.params,
 			};
 			let result = self.apply(&transform_ctx, columns)?;

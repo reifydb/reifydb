@@ -13,7 +13,7 @@
 //!             .post_update(|ctx| { ... })
 //!         .table("myns.orders")
 //!             .post_insert(|ctx| { ... })
-//!         .table_def("myns.users")
+//!         .table("myns.users")
 //!             .post_create(|ctx| { ... })
 //!     .done()
 //!     .build()
@@ -27,21 +27,21 @@ use reifydb_transaction::interceptor::{
 	filtered::{
 		FilteredNamespacePostCreateInterceptor, FilteredNamespacePostUpdateInterceptor,
 		FilteredNamespacePreDeleteInterceptor, FilteredNamespacePreUpdateInterceptor,
-		FilteredRingBufferDefPostCreateInterceptor, FilteredRingBufferDefPostUpdateInterceptor,
-		FilteredRingBufferDefPreDeleteInterceptor, FilteredRingBufferDefPreUpdateInterceptor,
-		FilteredRingBufferPostDeleteInterceptor, FilteredRingBufferPostInsertInterceptor,
-		FilteredRingBufferPostUpdateInterceptor, FilteredRingBufferPreDeleteInterceptor,
-		FilteredRingBufferPreInsertInterceptor, FilteredRingBufferPreUpdateInterceptor,
-		FilteredTableDefPostCreateInterceptor, FilteredTableDefPostUpdateInterceptor,
-		FilteredTableDefPreDeleteInterceptor, FilteredTableDefPreUpdateInterceptor,
-		FilteredTablePostDeleteInterceptor, FilteredTablePostInsertInterceptor,
-		FilteredTablePostUpdateInterceptor, FilteredTablePreDeleteInterceptor,
-		FilteredTablePreInsertInterceptor, FilteredTablePreUpdateInterceptor,
-		FilteredViewDefPostCreateInterceptor, FilteredViewDefPostUpdateInterceptor,
-		FilteredViewDefPreDeleteInterceptor, FilteredViewDefPreUpdateInterceptor,
-		FilteredViewPostDeleteInterceptor, FilteredViewPostInsertInterceptor,
-		FilteredViewPostUpdateInterceptor, FilteredViewPreDeleteInterceptor, FilteredViewPreInsertInterceptor,
-		FilteredViewPreUpdateInterceptor,
+		FilteredRingBufferPostCreateInterceptor, FilteredRingBufferPostUpdateInterceptor,
+		FilteredRingBufferPreDeleteInterceptor, FilteredRingBufferPreUpdateInterceptor,
+		FilteredRingBufferRowPostDeleteInterceptor, FilteredRingBufferRowPostInsertInterceptor,
+		FilteredRingBufferRowPostUpdateInterceptor, FilteredRingBufferRowPreDeleteInterceptor,
+		FilteredRingBufferRowPreInsertInterceptor, FilteredRingBufferRowPreUpdateInterceptor,
+		FilteredTablePostCreateInterceptor, FilteredTablePostUpdateInterceptor,
+		FilteredTablePreDeleteInterceptor, FilteredTablePreUpdateInterceptor,
+		FilteredTableRowPostDeleteInterceptor, FilteredTableRowPostInsertInterceptor,
+		FilteredTableRowPostUpdateInterceptor, FilteredTableRowPreDeleteInterceptor,
+		FilteredTableRowPreInsertInterceptor, FilteredTableRowPreUpdateInterceptor,
+		FilteredViewPostCreateInterceptor, FilteredViewPostUpdateInterceptor, FilteredViewPreDeleteInterceptor,
+		FilteredViewPreUpdateInterceptor, FilteredViewRowPostDeleteInterceptor,
+		FilteredViewRowPostInsertInterceptor, FilteredViewRowPostUpdateInterceptor,
+		FilteredViewRowPreDeleteInterceptor, FilteredViewRowPreInsertInterceptor,
+		FilteredViewRowPreUpdateInterceptor,
 	},
 	interceptors::Interceptors,
 	namespace::{
@@ -49,27 +49,22 @@ use reifydb_transaction::interceptor::{
 		NamespacePreUpdateContext,
 	},
 	ringbuffer::{
-		RingBufferPostDeleteContext, RingBufferPostInsertContext, RingBufferPostUpdateContext,
-		RingBufferPreDeleteContext, RingBufferPreInsertContext, RingBufferPreUpdateContext,
+		RingBufferPostCreateContext, RingBufferPostUpdateContext, RingBufferPreDeleteContext,
+		RingBufferPreUpdateContext,
 	},
-	ringbuffer_def::{
-		RingBufferDefPostCreateContext, RingBufferDefPostUpdateContext, RingBufferDefPreDeleteContext,
-		RingBufferDefPreUpdateContext,
+	ringbuffer_row::{
+		RingBufferRowPostDeleteContext, RingBufferRowPostInsertContext, RingBufferRowPostUpdateContext,
+		RingBufferRowPreDeleteContext, RingBufferRowPreInsertContext, RingBufferRowPreUpdateContext,
 	},
-	table::{
-		TablePostDeleteContext, TablePostInsertContext, TablePostUpdateContext, TablePreDeleteContext,
-		TablePreInsertContext, TablePreUpdateContext,
+	table::{TablePostCreateContext, TablePostUpdateContext, TablePreDeleteContext, TablePreUpdateContext},
+	table_row::{
+		TableRowPostDeleteContext, TableRowPostInsertContext, TableRowPostUpdateContext,
+		TableRowPreDeleteContext, TableRowPreInsertContext, TableRowPreUpdateContext,
 	},
-	table_def::{
-		TableDefPostCreateContext, TableDefPostUpdateContext, TableDefPreDeleteContext,
-		TableDefPreUpdateContext,
-	},
-	view::{
-		ViewPostDeleteContext, ViewPostInsertContext, ViewPostUpdateContext, ViewPreDeleteContext,
-		ViewPreInsertContext, ViewPreUpdateContext,
-	},
-	view_def::{
-		ViewDefPostCreateContext, ViewDefPostUpdateContext, ViewDefPreDeleteContext, ViewDefPreUpdateContext,
+	view::{ViewPostCreateContext, ViewPostUpdateContext, ViewPreDeleteContext, ViewPreUpdateContext},
+	view_row::{
+		ViewRowPostDeleteContext, ViewRowPostInsertContext, ViewRowPostUpdateContext, ViewRowPreDeleteContext,
+		ViewRowPreInsertContext, ViewRowPreUpdateContext,
 	},
 };
 
@@ -87,7 +82,7 @@ pub trait WithInterceptorBuilder: Sized {
 /// Intermediate builder returned by `.intercept()`.
 ///
 /// Use `.table(spec)`, `.ringbuffer(spec)`, or `.view(spec)` to select data operations,
-/// or `.table_def(spec)`, `.view_def(spec)`, `.ringbuffer_def(spec)`, `.namespace(spec)`
+/// or `.table(spec)`, `.view(spec)`, `.ringbuffer(spec)`, `.namespace(spec)`
 /// for schema lifecycle operations.
 pub struct InterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
@@ -102,33 +97,33 @@ impl<B: WithInterceptorBuilder> InterceptBuilder<B> {
 	}
 
 	/// Start building interceptors for a specific table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Start building interceptors for a specific table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Start building interceptors for a specific table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Start building interceptors for a specific ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Start building interceptors for a specific ring buffer.
+	/// Start building interceptors for a specific ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Start building interceptors for a specific ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Start building interceptors for a specific view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Start building interceptors for a specific view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Start building interceptors for a specific namespace definition.
@@ -143,12 +138,12 @@ impl<B: WithInterceptorBuilder> InterceptBuilder<B> {
 }
 
 /// Fluent builder for table interceptors.
-pub struct TableInterceptBuilder<B: WithInterceptorBuilder> {
+pub struct TableRowInterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 	filter: InterceptFilter,
 }
 
-impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
+impl<B: WithInterceptorBuilder> TableRowInterceptBuilder<B> {
 	/// Create a new table intercept builder.
 	pub fn new(builder: B, filter: InterceptFilter) -> Self {
 		Self {
@@ -160,14 +155,14 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a pre-insert interceptor.
 	pub fn pre_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_pre_insert
-				.add(Arc::new(FilteredTablePreInsertInterceptor::new(filter.clone(), f.clone())));
+				.table_row_pre_insert
+				.add(Arc::new(FilteredTableRowPreInsertInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -175,14 +170,14 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a post-insert interceptor.
 	pub fn post_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_post_insert
-				.add(Arc::new(FilteredTablePostInsertInterceptor::new(filter.clone(), f.clone())));
+				.table_row_post_insert
+				.add(Arc::new(FilteredTableRowPostInsertInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -190,14 +185,14 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a pre-update interceptor.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_pre_update
-				.add(Arc::new(FilteredTablePreUpdateInterceptor::new(filter.clone(), f.clone())));
+				.table_row_pre_update
+				.add(Arc::new(FilteredTableRowPreUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -205,14 +200,14 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a post-update interceptor.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_post_update
-				.add(Arc::new(FilteredTablePostUpdateInterceptor::new(filter.clone(), f.clone())));
+				.table_row_post_update
+				.add(Arc::new(FilteredTableRowPostUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -220,14 +215,14 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a pre-delete interceptor.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_pre_delete
-				.add(Arc::new(FilteredTablePreDeleteInterceptor::new(filter.clone(), f.clone())));
+				.table_row_pre_delete
+				.add(Arc::new(FilteredTableRowPreDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -235,46 +230,46 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Register a post-delete interceptor.
 	pub fn post_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TablePostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TableRowPostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_post_delete
-				.add(Arc::new(FilteredTablePostDeleteInterceptor::new(filter.clone(), f.clone())));
+				.table_row_post_delete
+				.add(Arc::new(FilteredTableRowPostDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
 
 	/// Switch to intercepting a different table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Switch to intercepting a table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Switch to intercepting a ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer.
+	/// Switch to intercepting a ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Switch to intercepting a view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a namespace definition.
@@ -289,12 +284,12 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 }
 
 /// Fluent builder for ring buffer interceptors.
-pub struct RingBufferInterceptBuilder<B: WithInterceptorBuilder> {
+pub struct RingBufferRowInterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 	filter: InterceptFilter,
 }
 
-impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
+impl<B: WithInterceptorBuilder> RingBufferRowInterceptBuilder<B> {
 	/// Create a new ring buffer intercept builder.
 	pub fn new(builder: B, filter: InterceptFilter) -> Self {
 		Self {
@@ -306,14 +301,14 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a pre-insert interceptor.
 	pub fn pre_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors
-				.ringbuffer_pre_insert
-				.add(Arc::new(FilteredRingBufferPreInsertInterceptor::new(filter.clone(), f.clone())));
+			interceptors.ringbuffer_row_pre_insert.add(Arc::new(
+				FilteredRingBufferRowPreInsertInterceptor::new(filter.clone(), f.clone()),
+			));
 		});
 		self
 	}
@@ -321,14 +316,14 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a post-insert interceptor.
 	pub fn post_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors
-				.ringbuffer_post_insert
-				.add(Arc::new(FilteredRingBufferPostInsertInterceptor::new(filter.clone(), f.clone())));
+			interceptors.ringbuffer_row_post_insert.add(Arc::new(
+				FilteredRingBufferRowPostInsertInterceptor::new(filter.clone(), f.clone()),
+			));
 		});
 		self
 	}
@@ -336,14 +331,14 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a pre-update interceptor.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors
-				.ringbuffer_pre_update
-				.add(Arc::new(FilteredRingBufferPreUpdateInterceptor::new(filter.clone(), f.clone())));
+			interceptors.ringbuffer_row_pre_update.add(Arc::new(
+				FilteredRingBufferRowPreUpdateInterceptor::new(filter.clone(), f.clone()),
+			));
 		});
 		self
 	}
@@ -351,14 +346,14 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a post-update interceptor.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors
-				.ringbuffer_post_update
-				.add(Arc::new(FilteredRingBufferPostUpdateInterceptor::new(filter.clone(), f.clone())));
+			interceptors.ringbuffer_row_post_update.add(Arc::new(
+				FilteredRingBufferRowPostUpdateInterceptor::new(filter.clone(), f.clone()),
+			));
 		});
 		self
 	}
@@ -366,14 +361,14 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a pre-delete interceptor.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors
-				.ringbuffer_pre_delete
-				.add(Arc::new(FilteredRingBufferPreDeleteInterceptor::new(filter.clone(), f.clone())));
+			interceptors.ringbuffer_row_pre_delete.add(Arc::new(
+				FilteredRingBufferRowPreDeleteInterceptor::new(filter.clone(), f.clone()),
+			));
 		});
 		self
 	}
@@ -381,46 +376,46 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Register a post-delete interceptor.
 	pub fn post_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferPostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferRowPostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors
-				.ringbuffer_post_delete
-				.add(Arc::new(FilteredRingBufferPostDeleteInterceptor::new(filter.clone(), f.clone())));
+			interceptors.ringbuffer_row_post_delete.add(Arc::new(
+				FilteredRingBufferRowPostDeleteInterceptor::new(filter.clone(), f.clone()),
+			));
 		});
 		self
 	}
 
 	/// Switch to intercepting a table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Switch to intercepting a table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Switch to intercepting a different ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a different ring buffer.
+	/// Switch to intercepting a ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Switch to intercepting a view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a namespace definition.
@@ -435,12 +430,12 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 }
 
 /// Fluent builder for view interceptors.
-pub struct ViewInterceptBuilder<B: WithInterceptorBuilder> {
+pub struct ViewRowInterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 	filter: InterceptFilter,
 }
 
-impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
+impl<B: WithInterceptorBuilder> ViewRowInterceptBuilder<B> {
 	/// Create a new view intercept builder.
 	pub fn new(builder: B, filter: InterceptFilter) -> Self {
 		Self {
@@ -452,14 +447,14 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	/// Register a pre-insert interceptor for view data.
 	pub fn pre_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewRowPreInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_pre_insert
-				.add(Arc::new(FilteredViewPreInsertInterceptor::new(filter.clone(), f.clone())));
+				.view_row_pre_insert
+				.add(Arc::new(FilteredViewRowPreInsertInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -467,14 +462,14 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	/// Register a post-insert interceptor for view data.
 	pub fn post_insert<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewRowPostInsertContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_post_insert
-				.add(Arc::new(FilteredViewPostInsertInterceptor::new(filter.clone(), f.clone())));
+				.view_row_post_insert
+				.add(Arc::new(FilteredViewRowPostInsertInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -482,14 +477,14 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	/// Register a pre-update interceptor for view data.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewRowPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_pre_update
-				.add(Arc::new(FilteredViewPreUpdateInterceptor::new(filter.clone(), f.clone())));
+				.view_row_pre_update
+				.add(Arc::new(FilteredViewRowPreUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -497,14 +492,14 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	/// Register a post-update interceptor for view data.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewRowPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_post_update
-				.add(Arc::new(FilteredViewPostUpdateInterceptor::new(filter.clone(), f.clone())));
+				.view_row_post_update
+				.add(Arc::new(FilteredViewRowPostUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -512,14 +507,14 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	/// Register a pre-delete interceptor for view data.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewRowPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_pre_delete
-				.add(Arc::new(FilteredViewPreDeleteInterceptor::new(filter.clone(), f.clone())));
+				.view_row_pre_delete
+				.add(Arc::new(FilteredViewRowPreDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -527,46 +522,46 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	/// Register a post-delete interceptor for view data.
 	pub fn post_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewPostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewRowPostDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_post_delete
-				.add(Arc::new(FilteredViewPostDeleteInterceptor::new(filter.clone(), f.clone())));
+				.view_row_post_delete
+				.add(Arc::new(FilteredViewRowPostDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
 
 	/// Switch to intercepting a table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Switch to intercepting a table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Switch to intercepting a ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer.
+	/// Switch to intercepting a ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Switch to intercepting a different view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a namespace definition.
@@ -581,12 +576,12 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 }
 
 /// Fluent builder for table definition interceptors.
-pub struct TableDefInterceptBuilder<B: WithInterceptorBuilder> {
+pub struct TableInterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 	filter: InterceptFilter,
 }
 
-impl<B: WithInterceptorBuilder> TableDefInterceptBuilder<B> {
+impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	/// Create a new table def intercept builder.
 	pub fn new(builder: B, filter: InterceptFilter) -> Self {
 		Self {
@@ -598,14 +593,14 @@ impl<B: WithInterceptorBuilder> TableDefInterceptBuilder<B> {
 	/// Register a post-create interceptor for the table definition.
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableDefPostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_def_post_create
-				.add(Arc::new(FilteredTableDefPostCreateInterceptor::new(filter.clone(), f.clone())));
+				.table_post_create
+				.add(Arc::new(FilteredTablePostCreateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -613,14 +608,14 @@ impl<B: WithInterceptorBuilder> TableDefInterceptBuilder<B> {
 	/// Register a pre-update interceptor for the table definition.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableDefPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_def_pre_update
-				.add(Arc::new(FilteredTableDefPreUpdateInterceptor::new(filter.clone(), f.clone())));
+				.table_pre_update
+				.add(Arc::new(FilteredTablePreUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -628,14 +623,14 @@ impl<B: WithInterceptorBuilder> TableDefInterceptBuilder<B> {
 	/// Register a post-update interceptor for the table definition.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableDefPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_def_post_update
-				.add(Arc::new(FilteredTableDefPostUpdateInterceptor::new(filter.clone(), f.clone())));
+				.table_post_update
+				.add(Arc::new(FilteredTablePostUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -643,46 +638,46 @@ impl<B: WithInterceptorBuilder> TableDefInterceptBuilder<B> {
 	/// Register a pre-delete interceptor for the table definition.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut TableDefPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut TablePreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.table_def_pre_delete
-				.add(Arc::new(FilteredTableDefPreDeleteInterceptor::new(filter.clone(), f.clone())));
+				.table_pre_delete
+				.add(Arc::new(FilteredTablePreDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
 
 	/// Switch to intercepting a table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Switch to intercepting a different table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a different table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Switch to intercepting a ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer.
+	/// Switch to intercepting a ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Switch to intercepting a view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a namespace definition.
@@ -697,12 +692,12 @@ impl<B: WithInterceptorBuilder> TableDefInterceptBuilder<B> {
 }
 
 /// Fluent builder for view definition interceptors.
-pub struct ViewDefInterceptBuilder<B: WithInterceptorBuilder> {
+pub struct ViewInterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 	filter: InterceptFilter,
 }
 
-impl<B: WithInterceptorBuilder> ViewDefInterceptBuilder<B> {
+impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	/// Create a new view def intercept builder.
 	pub fn new(builder: B, filter: InterceptFilter) -> Self {
 		Self {
@@ -714,14 +709,14 @@ impl<B: WithInterceptorBuilder> ViewDefInterceptBuilder<B> {
 	/// Register a post-create interceptor for the view definition.
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewDefPostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_def_post_create
-				.add(Arc::new(FilteredViewDefPostCreateInterceptor::new(filter.clone(), f.clone())));
+				.view_post_create
+				.add(Arc::new(FilteredViewPostCreateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -729,14 +724,14 @@ impl<B: WithInterceptorBuilder> ViewDefInterceptBuilder<B> {
 	/// Register a pre-update interceptor for the view definition.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewDefPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_def_pre_update
-				.add(Arc::new(FilteredViewDefPreUpdateInterceptor::new(filter.clone(), f.clone())));
+				.view_pre_update
+				.add(Arc::new(FilteredViewPreUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -744,14 +739,14 @@ impl<B: WithInterceptorBuilder> ViewDefInterceptBuilder<B> {
 	/// Register a post-update interceptor for the view definition.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewDefPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_def_post_update
-				.add(Arc::new(FilteredViewDefPostUpdateInterceptor::new(filter.clone(), f.clone())));
+				.view_post_update
+				.add(Arc::new(FilteredViewPostUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -759,46 +754,46 @@ impl<B: WithInterceptorBuilder> ViewDefInterceptBuilder<B> {
 	/// Register a pre-delete interceptor for the view definition.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut ViewDefPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut ViewPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
 			interceptors
-				.view_def_pre_delete
-				.add(Arc::new(FilteredViewDefPreDeleteInterceptor::new(filter.clone(), f.clone())));
+				.view_pre_delete
+				.add(Arc::new(FilteredViewPreDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
 
 	/// Switch to intercepting a table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Switch to intercepting a table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Switch to intercepting a ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer.
+	/// Switch to intercepting a ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Switch to intercepting a view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a different view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a namespace definition.
@@ -813,12 +808,12 @@ impl<B: WithInterceptorBuilder> ViewDefInterceptBuilder<B> {
 }
 
 /// Fluent builder for ring buffer definition interceptors.
-pub struct RingBufferDefInterceptBuilder<B: WithInterceptorBuilder> {
+pub struct RingBufferInterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 	filter: InterceptFilter,
 }
 
-impl<B: WithInterceptorBuilder> RingBufferDefInterceptBuilder<B> {
+impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Create a new ring buffer def intercept builder.
 	pub fn new(builder: B, filter: InterceptFilter) -> Self {
 		Self {
@@ -830,14 +825,14 @@ impl<B: WithInterceptorBuilder> RingBufferDefInterceptBuilder<B> {
 	/// Register a post-create interceptor for the ring buffer definition.
 	pub fn post_create<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferDefPostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPostCreateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.ringbuffer_def_post_create.add(Arc::new(
-				FilteredRingBufferDefPostCreateInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.ringbuffer_post_create
+				.add(Arc::new(FilteredRingBufferPostCreateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -845,14 +840,14 @@ impl<B: WithInterceptorBuilder> RingBufferDefInterceptBuilder<B> {
 	/// Register a pre-update interceptor for the ring buffer definition.
 	pub fn pre_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferDefPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPreUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.ringbuffer_def_pre_update.add(Arc::new(
-				FilteredRingBufferDefPreUpdateInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.ringbuffer_pre_update
+				.add(Arc::new(FilteredRingBufferPreUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -860,14 +855,14 @@ impl<B: WithInterceptorBuilder> RingBufferDefInterceptBuilder<B> {
 	/// Register a post-update interceptor for the ring buffer definition.
 	pub fn post_update<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferDefPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPostUpdateContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.ringbuffer_def_post_update.add(Arc::new(
-				FilteredRingBufferDefPostUpdateInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.ringbuffer_post_update
+				.add(Arc::new(FilteredRingBufferPostUpdateInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
@@ -875,46 +870,46 @@ impl<B: WithInterceptorBuilder> RingBufferDefInterceptBuilder<B> {
 	/// Register a pre-delete interceptor for the ring buffer definition.
 	pub fn pre_delete<F>(mut self, f: F) -> Self
 	where
-		F: Fn(&mut RingBufferDefPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
+		F: Fn(&mut RingBufferPreDeleteContext) -> reifydb_type::Result<()> + Send + Sync + Clone + 'static,
 	{
 		let filter = self.filter.clone();
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(move |interceptors: &mut Interceptors| {
-			interceptors.ringbuffer_def_pre_delete.add(Arc::new(
-				FilteredRingBufferDefPreDeleteInterceptor::new(filter.clone(), f.clone()),
-			));
+			interceptors
+				.ringbuffer_pre_delete
+				.add(Arc::new(FilteredRingBufferPreDeleteInterceptor::new(filter.clone(), f.clone())));
 		});
 		self
 	}
 
 	/// Switch to intercepting a table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Switch to intercepting a table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Switch to intercepting a ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer.
+	/// Switch to intercepting a different ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a different ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Switch to intercepting a view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a namespace definition.
@@ -1004,33 +999,33 @@ impl<B: WithInterceptorBuilder> NamespaceInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a table.
+	pub fn table_row(self, spec: &str) -> TableRowInterceptBuilder<B> {
+		TableRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	}
+
+	/// Switch to intercepting a table definition.
 	pub fn table(self, spec: &str) -> TableInterceptBuilder<B> {
 		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a table definition.
-	pub fn table_def(self, spec: &str) -> TableDefInterceptBuilder<B> {
-		TableDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	/// Switch to intercepting a ring buffer.
+	pub fn ringbuffer_row(self, spec: &str) -> RingBufferRowInterceptBuilder<B> {
+		RingBufferRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer.
+	/// Switch to intercepting a ring buffer definition.
 	pub fn ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a ring buffer definition.
-	pub fn ringbuffer_def(self, spec: &str) -> RingBufferDefInterceptBuilder<B> {
-		RingBufferDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Switch to intercepting a view.
-	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view_row(self, spec: &str) -> ViewRowInterceptBuilder<B> {
+		ViewRowInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a view definition.
-	pub fn view_def(self, spec: &str) -> ViewDefInterceptBuilder<B> {
-		ViewDefInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
+	pub fn view(self, spec: &str) -> ViewInterceptBuilder<B> {
+		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Switch to intercepting a different namespace definition.

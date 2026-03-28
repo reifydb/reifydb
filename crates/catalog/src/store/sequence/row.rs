@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{RingBufferId, TableId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	},
 	key::row_sequence::RowSequenceKey,
 };
@@ -17,7 +17,7 @@ pub struct RowSequence {}
 
 impl RowSequence {
 	pub(crate) fn next_row_number(txn: &mut impl SequenceTransaction, table: TableId) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(table)), None).map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(SchemaId::from(table)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a table.
@@ -27,7 +27,7 @@ impl RowSequence {
 		table: TableId,
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(table), count)
+		Self::next_row_number_batch_for_source(txn, SchemaId::from(table), count)
 	}
 
 	/// Allocates the next row number for a ring buffer.
@@ -35,7 +35,7 @@ impl RowSequence {
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,
 	) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::encoded(PrimitiveId::from(ringbuffer)), None).map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(SchemaId::from(ringbuffer)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a ring buffer.
@@ -45,16 +45,16 @@ impl RowSequence {
 		ringbuffer: RingBufferId,
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, PrimitiveId::from(ringbuffer), count)
+		Self::next_row_number_batch_for_source(txn, SchemaId::from(ringbuffer), count)
 	}
 
-	/// Allocates a batch of contiguous row numbers for any source.
+	/// Allocates a batch of contiguous row numbers for any schema.
 	fn next_row_number_batch_for_source(
 		txn: &mut impl SequenceTransaction,
-		source: PrimitiveId,
+		schema: SchemaId,
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
-		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(source), None, count)?;
+		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(schema), None, count)?;
 
 		// Calculate the first row number in the batch
 		// next_batched returns the last allocated ID

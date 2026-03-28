@@ -28,7 +28,7 @@ use reifydb_runtime::{
 		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
-	clock::{Clock, Instant},
+	context::clock::{Clock, Instant},
 };
 use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, debug, error, instrument};

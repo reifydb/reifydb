@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{handler::HandlerDef, id::HandlerId},
+	interface::catalog::{handler::Handler, id::HandlerId},
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> Result<HandlerDef> {
+	pub(crate) fn get_handler(rx: &mut Transaction<'_>, handler: HandlerId) -> Result<Handler> {
 		match Self::find_handler(rx, handler)? {
 			Some(def) => Ok(def),
 			None => return_internal_error!("Handler with ID {:?} not found in catalog.", handler),
@@ -21,9 +21,9 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{HandlerId, NamespaceId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_type::value::sumtype::SumTypeId;
+	use reifydb_type::value::sumtype::{SumTypeId, VariantRef};
 
 	use crate::{
 		CatalogStore,
@@ -38,9 +38,36 @@ pub mod tests {
 		create_namespace(&mut txn, "namespace_two");
 		create_namespace(&mut txn, "namespace_three");
 
-		create_handler(&mut txn, "namespace_one", "handler_one", SumTypeId(0), 0, "");
-		create_handler(&mut txn, "namespace_two", "handler_two", SumTypeId(0), 0, "");
-		create_handler(&mut txn, "namespace_three", "handler_three", SumTypeId(0), 0, "");
+		create_handler(
+			&mut txn,
+			"namespace_one",
+			"handler_one",
+			VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
+			"",
+		);
+		create_handler(
+			&mut txn,
+			"namespace_two",
+			"handler_two",
+			VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
+			"",
+		);
+		create_handler(
+			&mut txn,
+			"namespace_three",
+			"handler_three",
+			VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
+			"",
+		);
 
 		let result = CatalogStore::get_handler(&mut Transaction::Admin(&mut txn), HandlerId(2)).unwrap();
 
@@ -57,9 +84,36 @@ pub mod tests {
 		create_namespace(&mut txn, "namespace_two");
 		create_namespace(&mut txn, "namespace_three");
 
-		create_handler(&mut txn, "namespace_one", "handler_one", SumTypeId(0), 0, "");
-		create_handler(&mut txn, "namespace_two", "handler_two", SumTypeId(0), 0, "");
-		create_handler(&mut txn, "namespace_three", "handler_three", SumTypeId(0), 0, "");
+		create_handler(
+			&mut txn,
+			"namespace_one",
+			"handler_one",
+			VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
+			"",
+		);
+		create_handler(
+			&mut txn,
+			"namespace_two",
+			"handler_two",
+			VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
+			"",
+		);
+		create_handler(
+			&mut txn,
+			"namespace_three",
+			"handler_three",
+			VariantRef {
+				sumtype_id: SumTypeId(0),
+				variant_tag: 0,
+			},
+			"",
+		);
 
 		let err = CatalogStore::get_handler(&mut Transaction::Admin(&mut txn), HandlerId(42)).unwrap_err();
 

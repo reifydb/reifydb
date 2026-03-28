@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::{collections::HashMap, sync::Arc};
+
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
@@ -29,13 +31,14 @@ use reifydb_type::{
 use tonic::{metadata::MetadataValue, transport::Channel};
 
 use super::generated::{
-	AdminRequest as ProtoAdminRequest, CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, NamedParams,
+	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
+	CommandRequest as ProtoCommandRequest, Frame as ProtoFrame, LogoutRequest as ProtoLogoutRequest, NamedParams,
 	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
 	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
 	UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
 	reify_db_client::ReifyDbClient, subscription_event,
 };
-use crate::{AdminResult, CommandResult, QueryResult};
+use crate::{AdminResult, CommandResult, LoginResult, QueryResult};
 
 #[derive(Clone)]
 pub struct GrpcClient {
@@ -61,6 +64,66 @@ impl GrpcClient {
 
 	pub fn authenticate(&mut self, token: &str) {
 		self.token = Some(token.to_string());
+	}
+
+	/// Login with identifier and password. On success, stores the session token
+	/// for subsequent requests and returns the login result.
+	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("identifier".to_string(), identifier.to_string());
+		credentials.insert("password".to_string(), password.to_string());
+		self.login("password", credentials).await
+	}
+
+	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("token".to_string(), token.to_string());
+		self.login("token", credentials).await
+	}
+
+	pub async fn login(
+		&mut self,
+		method: &str,
+		credentials: HashMap<String, String>,
+	) -> Result<LoginResult, Error> {
+		let request = ProtoAuthenticateRequest {
+			method: method.to_string(),
+			credentials,
+		};
+
+		let mut client = self.inner.clone();
+		let response = client.authenticate(tonic::Request::new(request)).await.map_err(status_to_error)?;
+		let inner = response.into_inner();
+
+		if inner.status == "authenticated" {
+			self.token = Some(inner.token.clone());
+			Ok(LoginResult {
+				token: inner.token,
+				identity: inner.identity,
+			})
+		} else {
+			Err(Error(Diagnostic {
+				code: "AUTH_FAILED".to_string(),
+				message: inner.reason,
+				..Default::default()
+			}))
+		}
+	}
+
+	/// Logout from the server, revoking the current session token.
+	pub async fn logout(&mut self) -> Result<(), Error> {
+		if self.token.is_none() {
+			return Ok(());
+		}
+
+		let request = ProtoLogoutRequest {};
+		let mut client = self.inner.clone();
+		let mut req = tonic::Request::new(request);
+		self.attach_auth(&mut req);
+
+		client.logout(req).await.map_err(status_to_error)?;
+		self.token = None;
+		Ok(())
 	}
 
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
@@ -260,12 +323,15 @@ fn params_to_proto(params: Params) -> Option<ProtoParams> {
 		Params::None => None,
 		Params::Positional(values) => Some(ProtoParams {
 			params: Some(ProtoParamsOneof::Positional(PositionalParams {
-				values: values.into_iter().map(value_to_typed_value).collect(),
+				values: Arc::unwrap_or_clone(values).into_iter().map(value_to_typed_value).collect(),
 			})),
 		}),
 		Params::Named(map) => Some(ProtoParams {
 			params: Some(ProtoParamsOneof::Named(NamedParams {
-				values: map.into_iter().map(|(k, v)| (k, value_to_typed_value(v))).collect(),
+				values: Arc::unwrap_or_clone(map)
+					.into_iter()
+					.map(|(k, v)| (k, value_to_typed_value(v)))
+					.collect(),
 			})),
 		}),
 	}
@@ -293,12 +359,7 @@ fn value_to_typed_value(value: Value) -> TypedValue {
 		Value::Uuid4(u) => (Type::Uuid4.to_u8() as u32, u.0.as_bytes().to_vec()),
 		Value::Uuid7(u) => (Type::Uuid7.to_u8() as u32, u.0.as_bytes().to_vec()),
 		Value::Date(d) => (Type::Date.to_u8() as u32, d.to_days_since_epoch().to_le_bytes().to_vec()),
-		Value::DateTime(dt) => {
-			let mut buf = Vec::with_capacity(12);
-			buf.extend_from_slice(&dt.timestamp().to_le_bytes());
-			buf.extend_from_slice(&dt.nanosecond().to_le_bytes());
-			(Type::DateTime.to_u8() as u32, buf)
-		}
+		Value::DateTime(dt) => (Type::DateTime.to_u8() as u32, dt.to_nanos().to_le_bytes().to_vec()),
 		Value::Time(t) => (Type::Time.to_u8() as u32, t.to_nanos_since_midnight().to_le_bytes().to_vec()),
 		Value::Duration(d) => {
 			let mut buf = Vec::with_capacity(16);
@@ -356,7 +417,7 @@ fn proto_frames_to_frames(frames: Vec<ProtoFrame>) -> Vec<Frame> {
 				.into_iter()
 				.map(|c| {
 					let ty = Type::from_u8(c.r#type as u8);
-					let data = decode_column_data(ty, &c.data, &c.bitvec);
+					let data = decode_column_data(ty, &c.payload, &c.bitvec);
 					FrameColumn {
 						name: c.name,
 						data,
@@ -478,12 +539,10 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 		}
 		Type::DateTime => {
 			let values: Vec<DateTime> = data
-				.chunks_exact(12)
+				.chunks_exact(8)
 				.map(|chunk| {
-					let secs = i64::from_le_bytes(chunk[..8].try_into().unwrap());
-					let nanos = u32::from_le_bytes(chunk[8..12].try_into().unwrap());
-					DateTime::from_parts(secs, nanos)
-						.unwrap_or_else(|_| DateTime::from_timestamp(0).unwrap())
+					let nanos = u64::from_le_bytes(chunk.try_into().unwrap());
+					DateTime::from_nanos(nanos)
 				})
 				.collect();
 			FrameColumnData::DateTime(TemporalContainer::new(values))
@@ -506,7 +565,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 					let months = i32::from_le_bytes(chunk[..4].try_into().unwrap());
 					let days = i32::from_le_bytes(chunk[4..8].try_into().unwrap());
 					let nanos = i64::from_le_bytes(chunk[8..16].try_into().unwrap());
-					Duration::new(months, days, nanos)
+					Duration::new(months, days, nanos).unwrap()
 				})
 				.collect();
 			FrameColumnData::Duration(TemporalContainer::new(values))
@@ -706,11 +765,9 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			(Value::Date(d), pos + 4)
 		}
 		Type::DateTime => {
-			let secs = i64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
-			let nanos = u32::from_le_bytes(data[pos + 8..pos + 12].try_into().unwrap());
-			let dt = DateTime::from_parts(secs, nanos)
-				.unwrap_or_else(|_| DateTime::from_timestamp(0).unwrap());
-			(Value::DateTime(dt), pos + 12)
+			let nanos = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
+			let dt = DateTime::from_nanos(nanos);
+			(Value::DateTime(dt), pos + 8)
 		}
 		Type::Time => {
 			let nanos = u64::from_le_bytes(data[pos..pos + 8].try_into().unwrap());
@@ -722,7 +779,7 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			let months = i32::from_le_bytes(data[pos..pos + 4].try_into().unwrap());
 			let days = i32::from_le_bytes(data[pos + 4..pos + 8].try_into().unwrap());
 			let nanos = i64::from_le_bytes(data[pos + 8..pos + 16].try_into().unwrap());
-			(Value::Duration(Duration::new(months, days, nanos)), pos + 16)
+			(Value::Duration(Duration::new(months, days, nanos).unwrap()), pos + 16)
 		}
 		Type::IdentityId => {
 			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());

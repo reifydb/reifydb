@@ -23,6 +23,7 @@ impl<'bump> Compiler<'bump> {
 			segments: ast.namespace.segments,
 			if_not_exists: ast.if_not_exists,
 			grpc: ast.grpc,
+			token: ast.token_value,
 		}))
 	}
 }

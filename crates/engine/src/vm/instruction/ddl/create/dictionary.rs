@@ -16,13 +16,14 @@ pub(crate) fn create_dictionary(
 	txn: &mut AdminTransaction,
 	plan: CreateDictionaryNode,
 ) -> Result<Columns> {
-	if let Some(_) = services.catalog.find_dictionary_by_name(
+	if let Some(existing) = services.catalog.find_dictionary_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
 		plan.dictionary.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(existing.id.0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -39,9 +40,11 @@ pub(crate) fn create_dictionary(
 			id_type: plan.id_type,
 		},
 	)?;
-	txn.track_dictionary_def_created(result)?;
+	let id = result.id;
+	txn.track_dictionary_created(result)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
 		("created", Value::Boolean(true)),
@@ -50,13 +53,10 @@ pub(crate) fn create_dictionary(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
-		params::Params,
-		value::{Value, identity::IdentityId},
-	};
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
-		test_utils::create_test_admin_transaction,
+		test_harness::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 
@@ -64,14 +64,12 @@ pub mod tests {
 	fn test_create_dictionary() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -82,14 +80,14 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		let frames = instance
 			.admin(
@@ -97,14 +95,14 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY IF NOT EXISTS test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(false));
 
 		let err = instance
 			.admin(
@@ -112,7 +110,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap_err();
@@ -123,14 +120,12 @@ pub mod tests {
 	fn test_create_same_dictionary_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -139,7 +134,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE another_schema",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -150,14 +144,14 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		let frames = instance
 			.admin(
@@ -165,13 +159,13 @@ pub mod tests {
 				Admin {
 					rql: "CREATE DICTIONARY another_schema::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_dictionary".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 }

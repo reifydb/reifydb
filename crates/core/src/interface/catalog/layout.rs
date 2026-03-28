@@ -1,27 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use super::{ringbuffer::RingBufferDef, table::TableDef, view::ViewDef};
-use crate::encoded::schema::Schema;
+use super::{ringbuffer::RingBuffer, table::Table, view::View};
+use crate::encoded::schema::RowSchema;
 
 pub trait GetSchema {
-	fn get_schema(&self) -> Schema;
+	fn get_schema(&self) -> RowSchema;
 }
 
-impl GetSchema for TableDef {
-	fn get_schema(&self) -> Schema {
-		Schema::from(&self.columns)
+impl GetSchema for Table {
+	fn get_schema(&self) -> RowSchema {
+		RowSchema::from(&self.columns)
 	}
 }
 
-impl GetSchema for ViewDef {
-	fn get_schema(&self) -> Schema {
-		Schema::from(&self.columns)
+impl GetSchema for View {
+	fn get_schema(&self) -> RowSchema {
+		RowSchema::from(self.columns())
 	}
 }
 
-impl GetSchema for RingBufferDef {
-	fn get_schema(&self) -> Schema {
-		Schema::from(&self.columns)
+impl GetSchema for RingBuffer {
+	fn get_schema(&self) -> RowSchema {
+		RowSchema::from(&self.columns)
 	}
 }

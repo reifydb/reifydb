@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
-	pub fn set_i32(&self, row: &mut EncodedValues, index: usize, value: impl Into<i32>) {
+impl RowSchema {
+	pub fn set_i32(&self, row: &mut EncodedRow, index: usize, value: impl Into<i32>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int4);
@@ -21,14 +21,14 @@ impl Schema {
 		}
 	}
 
-	pub fn get_i32(&self, row: &EncodedValues, index: usize) -> i32 {
+	pub fn get_i32(&self, row: &EncodedRow, index: usize) -> i32 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Int4);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const i32).read_unaligned() }
 	}
 
-	pub fn try_get_i32(&self, row: &EncodedValues, index: usize) -> Option<i32> {
+	pub fn try_get_i32(&self, row: &EncodedRow, index: usize) -> Option<i32> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Int4 {
 			Some(self.get_i32(row, index))
 		} else {
@@ -41,11 +41,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_i32() {
-		let schema = Schema::testing(&[Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Int4]);
 		let mut row = schema.allocate();
 		schema.set_i32(&mut row, 0, 56789i32);
 		assert_eq!(schema.get_i32(&row, 0), 56789i32);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_i32() {
-		let schema = Schema::testing(&[Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Int4]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_i32(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let schema = Schema::testing(&[Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Int4]);
 		let mut row = schema.allocate();
 
 		schema.set_i32(&mut row, 0, i32::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let schema = Schema::testing(&[Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Int4]);
 
 		let test_values =
 			[-2_147_483_648i32, -1_000_000_000i32, -1i32, 0i32, 1i32, 1_000_000_000i32, 2_147_483_647i32];
@@ -95,7 +95,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Int4, Type::Boolean, Type::Int4, Type::Float4]);
+		let schema = RowSchema::testing(&[Type::Int4, Type::Boolean, Type::Int4, Type::Float4]);
 		let mut row = schema.allocate();
 
 		schema.set_i32(&mut row, 0, -1_000_000i32);
@@ -111,7 +111,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Int4, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Int4, Type::Int4]);
 		let mut row = schema.allocate();
 
 		schema.set_i32(&mut row, 0, 12345);
@@ -125,7 +125,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_i32_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

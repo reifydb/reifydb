@@ -4,18 +4,17 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		index::primary_key_violation,
 	},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::InsertTableNode;
@@ -24,11 +23,15 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
 
-use super::{primary_key, schema::get_or_create_table_schema};
+use super::{
+	primary_key,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_table_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -49,9 +52,7 @@ pub(crate) fn insert_table<'a>(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,
-	stack: &mut SymbolTable,
-	identity: IdentityId,
-	testing: &mut Option<TestingContext>,
+	symbols: &mut SymbolTable,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
@@ -74,16 +75,15 @@ pub(crate) fn insert_table<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
+	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
 
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: resolved_source,
 		batch_size: 1024,
 		params: Params::None,
-		stack: stack.clone(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -93,14 +93,13 @@ pub(crate) fn insert_table<'a>(
 
 	// PASS 1: Validate and encode all rows first, before allocating any row numbers
 	// This ensures we only allocate row numbers for valid rows (fail-fast on validation errors)
-	let mut validated_rows: Vec<EncodedValues> = Vec::new();
+	let mut validated_rows: Vec<EncodedRow> = Vec::new();
 	let mut mutable_context = (*execution_context).clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		PolicyEvaluator::new(services, stack).enforce_write_policies(
+		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
-			identity,
 			namespace_name,
 			table_name,
 			"insert",
@@ -201,20 +200,24 @@ pub(crate) fn insert_table<'a>(
 	// Hoist loop-invariant computations out of PASS 2
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
 	let row_number_schema = if pk_def.is_some() {
-		Some(Schema::testing(&[Type::Uint8]))
+		Some(RowSchema::testing(&[Type::Uint8]))
 	} else {
 		None
 	};
 
 	// PASS 2: Insert all validated rows using the pre-allocated row numbers
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
+		Vec::with_capacity(total_rows)
+	} else {
+		Vec::new()
+	};
+
 	for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 		// Insert the row directly into storage
-		txn.insert_table(&table, &schema, row.clone(), row_number)?;
+		let stored_row = txn.insert_table(&table, &schema, row.clone(), row_number)?;
 
-		if let Some(log) = testing.as_mut() {
-			let new = columns_from_encoded(&table.columns, &schema, row);
-			let key = format!("tables::{}::{}", namespace.name(), table.name);
-			log.record_insert(key, new);
+		if plan.returning.is_some() {
+			returned_rows.push((row_number, stored_row));
 		}
 
 		// Store primary key index entry if table has one
@@ -240,6 +243,12 @@ pub(crate) fn insert_table<'a>(
 
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against inserted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return summary columns

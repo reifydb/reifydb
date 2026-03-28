@@ -5,7 +5,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{
 	blob::Blob,
 	date::Date,
@@ -23,7 +23,7 @@ use reifydb_type::value::{
 #[test]
 fn test_mixed_type_stress() {
 	// Comprehensive test with all types interacting
-	let schema = Schema::testing(&[
+	let schema = RowSchema::testing(&[
 		Type::Boolean,
 		Type::Int1,
 		Type::Int2,
@@ -72,7 +72,7 @@ fn test_mixed_type_stress() {
 	schema.set_date(&mut row, 15, Date::from_ymd(2024, 12, 25).unwrap());
 	schema.set_datetime(&mut row, 16, DateTime::from_timestamp(0).unwrap());
 	schema.set_time(&mut row, 17, Time::from_hms(23, 59, 59).unwrap());
-	schema.set_duration(&mut row, 18, Duration::from_days(365));
+	schema.set_duration(&mut row, 18, Duration::from_days(365).unwrap());
 	schema.set_uuid4(&mut row, 19, Uuid4::generate());
 	schema.set_uuid7(&mut row, 20, Uuid7::generate());
 	schema.set_identity_id(&mut row, 21, IdentityId::generate());
@@ -99,7 +99,7 @@ fn test_mixed_type_stress() {
 	assert_eq!(schema.get_date(&row, 15), Date::from_ymd(2024, 12, 25).unwrap());
 	assert_eq!(schema.get_datetime(&row, 16), DateTime::from_timestamp(0).unwrap());
 	assert_eq!(schema.get_time(&row, 17), Time::from_hms(23, 59, 59).unwrap());
-	assert_eq!(schema.get_duration(&row, 18), Duration::from_days(365));
+	assert_eq!(schema.get_duration(&row, 18), Duration::from_days(365).unwrap());
 	// UUIDs are generated, so just check they exist
 	assert!(row.is_defined(19));
 	assert!(row.is_defined(20));

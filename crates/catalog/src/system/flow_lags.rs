@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -16,16 +16,16 @@ use super::ids::{columns::flow_lags::*, vtable::FLOW_LAGS};
 ///
 /// This table exposes per-source lag information for each flow,
 /// showing how far behind each flow is for each of its subscribed sources.
-pub fn flow_lags() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn flow_lags() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: FLOW_LAGS,
 			namespace: NamespaceId::SYSTEM,
 			name: "flow_lags".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: FLOW_ID,
 					name: "flow_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -34,16 +34,16 @@ pub fn flow_lags() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: PRIMITIVE_ID,
-					name: "primitive_id".to_string(),
+					name: "object_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: LAG,
 					name: "lag".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),

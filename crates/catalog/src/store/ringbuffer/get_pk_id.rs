@@ -21,7 +21,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = ringbuffer::SCHEMA.get_u64(&multi.values, ringbuffer::PRIMARY_KEY);
+		let pk_id = ringbuffer::SCHEMA.get_u64(&multi.row, ringbuffer::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)
@@ -34,7 +34,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, RingBufferId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};

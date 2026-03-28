@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.63"
+rust-version = "1.71"
 name = "terminal_size"
-version = "0.4.3"
+version = "0.4.4"
 authors = ["Andrew Chin <achin@eminence32.net>"]
 build = false
 autolib = false
@@ -47,7 +47,7 @@ version = "1.0.1"
 features = ["termios"]
 
 [target."cfg(windows)".dependencies.windows-sys]
-version = "0.60.0"
+version = ">=0.59, <=0.61"
 features = [
     "Win32_Foundation",
     "Win32_System_Console",

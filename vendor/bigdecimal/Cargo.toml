@@ -12,9 +12,16 @@
 [package]
 edition = "2015"
 name = "bigdecimal"
-version = "0.4.9"
+version = "0.4.10"
 authors = ["Andrew Kubera"]
 build = "build.rs"
+include = [
+    "LICENSE-APACHE",
+    "LICENSE-MIT",
+    "README.md",
+    "build.rs",
+    "src/**/*.rs",
+]
 autolib = false
 autobins = false
 autoexamples = false
@@ -55,22 +62,6 @@ string-only = []
 name = "bigdecimal"
 path = "src/lib.rs"
 bench = false
-
-[[example]]
-name = "floating-precision"
-path = "examples/floating-precision.rs"
-
-[[example]]
-name = "formatting-examples"
-path = "examples/formatting-examples.rs"
-
-[[example]]
-name = "repeated_squares"
-path = "examples/repeated_squares.rs"
-
-[[example]]
-name = "simple-math"
-path = "examples/simple-math.rs"
 
 [dependencies.libm]
 version = "0.2.6"

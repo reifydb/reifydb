@@ -9,13 +9,13 @@ use cfg_if::cfg_if;
 
 use crate::sync::mutex::MutexGuard;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub mod native;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub mod wasm;
 
 cfg_if! {
-	if #[cfg(reifydb_target = "native")] {
+	if #[cfg(not(reifydb_single_threaded))] {
 		type CondvarInner = native::CondvarInner;
 	} else {
 		type CondvarInner = wasm::CondvarInner;

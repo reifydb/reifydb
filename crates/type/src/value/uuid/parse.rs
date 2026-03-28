@@ -6,7 +6,10 @@ use ::uuid::Uuid;
 use crate::{
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::uuid::{Uuid4, Uuid7},
+	value::{
+		identity::IdentityId,
+		uuid::{Uuid4, Uuid7},
+	},
 };
 
 pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, Error> {
@@ -37,6 +40,11 @@ pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, Error> {
 		fragment,
 	}
 	.into())
+}
+
+pub fn parse_identity_id(fragment: Fragment) -> Result<IdentityId, Error> {
+	let uuid7 = parse_uuid7(fragment)?;
+	Ok(IdentityId(uuid7))
 }
 
 #[cfg(test)]
@@ -164,6 +172,53 @@ pub mod tests {
 		#[test]
 		fn test_invalid_uuid7_malformed() {
 			let result = parse_uuid7(Fragment::testing("017f22e2-79b0-7cc3"));
+			assert!(result.is_err());
+		}
+	}
+
+	mod identity_id {
+		use crate::{fragment::Fragment, value::uuid::parse::parse_identity_id};
+
+		#[test]
+		fn test_valid_identity_id() {
+			let uuid_str = "017f22e2-79b0-7cc3-98c4-dc0c0c07398f";
+			let result = parse_identity_id(Fragment::testing(uuid_str));
+			assert!(result.is_ok());
+			let id = result.unwrap();
+			assert_eq!(id.0.get_version_num(), 7);
+		}
+
+		#[test]
+		fn test_valid_identity_id_uppercase() {
+			let uuid_str = "017F22E2-79B0-7CC3-98C4-DC0C0C07398F";
+			let result = parse_identity_id(Fragment::testing(uuid_str));
+			assert!(result.is_ok());
+		}
+
+		#[test]
+		fn test_valid_identity_id_with_spaces() {
+			let uuid_str = "  017f22e2-79b0-7cc3-98c4-dc0c0c07398f  ";
+			let result = parse_identity_id(Fragment::testing(uuid_str));
+			assert!(result.is_ok());
+		}
+
+		#[test]
+		fn test_invalid_identity_id_empty() {
+			let result = parse_identity_id(Fragment::testing(""));
+			assert!(result.is_err());
+		}
+
+		#[test]
+		fn test_invalid_identity_id_wrong_version() {
+			// UUID v4 should fail - IdentityId requires v7
+			let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
+			let result = parse_identity_id(Fragment::testing(uuid_str));
+			assert!(result.is_err());
+		}
+
+		#[test]
+		fn test_invalid_identity_id_malformed() {
+			let result = parse_identity_id(Fragment::testing("not-a-uuid"));
 			assert!(result.is_err());
 		}
 	}

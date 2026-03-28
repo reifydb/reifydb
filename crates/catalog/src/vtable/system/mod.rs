@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod authentications;
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
@@ -22,7 +23,9 @@ pub mod flow_operator_store;
 pub mod flow_operators;
 pub mod flow_storage_stats;
 pub mod flows;
+pub mod granted_roles;
 pub mod handlers;
+pub mod identities;
 pub mod index_storage_stats;
 pub mod migrations;
 pub mod namespaces;
@@ -31,12 +34,12 @@ pub mod policies;
 pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
-pub mod primitive_retention_policies;
 pub mod procedures;
 pub mod ringbuffer_storage_stats;
 pub mod ringbuffers;
 pub mod roles;
 pub mod schema_fields;
+pub mod schema_retention_policies;
 pub mod schemas;
 pub mod sequences;
 pub mod series;
@@ -46,9 +49,6 @@ pub mod tables_virtual;
 pub mod tag_variants;
 pub mod tags;
 pub mod types;
-pub mod user_authentications;
-pub mod user_roles;
-pub mod users;
 pub mod versions;
 pub mod view_storage_stats;
 pub mod views;

@@ -86,12 +86,23 @@ pub trait PasswordHasher<H> {
     ///
     /// The salt should be unique per password. When in doubt, use [`PasswordHasher::hash_password`]
     /// which will choose the salt for you.
+    ///
+    /// # Errors
+    /// These will vary by algorithm/implementation of this trait, but may be due to:
+    /// - length restrictions on the password and/or salt
+    /// - algorithm-specific internal error
     fn hash_password_with_salt(&self, password: &[u8], salt: &[u8]) -> Result<H>;
 
     /// Compute the hash `H` from the given password, potentially using configuration stored in
     /// `&self` for the parameters, or otherwise the recommended defaults.
     ///
     /// A large random salt will be generated automatically.
+    ///
+    /// # Errors
+    /// These will vary by algorithm/implementation of this trait, but may be due to:
+    /// - length restrictions on the password
+    /// - algorithm-specific internal error
+    /// - RNG internal error
     #[cfg(feature = "getrandom")]
     fn hash_password(&self, password: &[u8]) -> Result<H> {
         let salt = try_generate_salt()?;
@@ -102,6 +113,12 @@ pub trait PasswordHasher<H> {
     /// `&self` for the parameters, or otherwise the recommended defaults.
     ///
     /// A large random salt will be generated automatically from the provided RNG.
+    ///
+    /// # Errors
+    /// These will vary by algorithm/implementation of this trait, but may be due to:
+    /// - length restrictions on the password
+    /// - algorithm-specific internal error
+    /// - RNG internal error
     #[cfg(feature = "rand_core")]
     fn hash_password_with_rng<R: TryCryptoRng + ?Sized>(
         &self,
@@ -116,16 +133,20 @@ pub trait PasswordHasher<H> {
 
 /// Trait for password hashing functions which support customization.
 ///
-/// Generic around a password hash to be returned (typically [`PasswordHash`])
+/// Generic around a password hash to be returned (typically [`phc::PasswordHash`]).
 pub trait CustomizedPasswordHasher<H> {
     /// Algorithm-specific parameters.
     type Params: Clone + Debug + Default;
 
-    /// Compute a [`PasswordHash`] from the provided password using an
-    /// explicit set of customized algorithm parameters as opposed to the
-    /// defaults.
+    /// Compute a password hash from the provided password using an explicit set of customized
+    /// algorithm parameters as opposed to the defaults.
     ///
     /// When in doubt, use [`PasswordHasher::hash_password`] instead.
+    ///
+    /// # Errors
+    /// These will vary by algorithm/implementation of this trait, but may be due to:
+    /// - length restrictions on the password and/or salt
+    /// - algorithm-specific params or internal error
     fn hash_password_customized(
         &self,
         password: &[u8],
@@ -135,8 +156,13 @@ pub trait CustomizedPasswordHasher<H> {
         params: Self::Params,
     ) -> Result<H>;
 
-    /// Compute a [`PasswordHash`] using customized parameters only, using the default
-    /// algorithm and version.
+    /// Compute a password hash using customized parameters only, using the default algorithm and
+    /// version.
+    ///
+    /// # Errors
+    /// These will vary by algorithm/implementation of this trait, but may be due to:
+    /// - length restrictions on the password and/or salt
+    /// - algorithm-specific params or internal error
     fn hash_password_with_params(
         &self,
         password: &[u8],
@@ -149,16 +175,21 @@ pub trait CustomizedPasswordHasher<H> {
 
 /// Trait for password verification.
 ///
-/// Generic around a password hash to be returned (typically [`phc::PasswordHash`])
+/// Generic around a password hash to be returned (typically [`phc::PasswordHash`]).
 ///
 /// Automatically impl'd for type that impl [`PasswordHasher`] with [`phc::PasswordHash`] as `H`.
 ///
-/// This trait is object safe and can be used to implement abstractions over
-/// multiple password hashing algorithms.
+/// This trait is object safe and can be used to implement abstractions over multiple password
+/// hashing algorithms.
 pub trait PasswordVerifier<H: ?Sized> {
-    /// Compute this password hashing function against the provided password
-    /// using the parameters from the provided password hash and see if the
-    /// computed output matches.
+    /// Compute this password hashing function against the provided password using the parameters
+    /// from the provided password hash and see if the computed output matches.
+    ///
+    /// # Errors
+    /// - Returns [`Error::Algorithm`] if the algorithm requested by the hash `H` is unsupported
+    /// - Returns [`Error::PasswordInvalid`] if the computed hash for the supplied password does not
+    ///   match the expected hash
+    /// - May return other algorithm-specific errors
     fn verify_password(&self, password: &[u8], hash: &H) -> Result<()>;
 }
 
@@ -193,31 +224,21 @@ where
     }
 }
 
-/// Trait for password hashing algorithms which support the legacy
-/// [Modular Crypt Format (MCF)][MCF].
-///
-/// [MCF]: https://passlib.readthedocs.io/en/stable/modular_crypt_format.html
-#[cfg(feature = "phc")]
-pub trait McfHasher {
-    /// Upgrade an MCF hash to a PHC hash. MCF follow this rough format:
-    ///
-    /// ```text
-    /// $<id>$<content>
-    /// ```
-    ///
-    /// MCF hashes are otherwise largely unstructured and parsed according to
-    /// algorithm-specific rules so hashers must parse a raw string themselves.
-    fn upgrade_mcf_hash(&self, hash: &str) -> Result<phc::PasswordHash>;
-}
-
 /// Generate a random salt value of the recommended length using the system's secure RNG.
+///
+/// # Panics
+/// If the system's secure RNG experiences an internal failure.
 #[cfg(feature = "getrandom")]
+#[must_use]
 pub fn generate_salt() -> [u8; RECOMMENDED_SALT_LEN] {
     try_generate_salt().expect("RNG failure")
 }
 
 /// Try generating a random salt value of the recommended length using the system's secure RNG,
 /// returning errors if they occur.
+///
+/// # Errors
+/// If the system's secure RNG experiences an internal failure.
 #[cfg(feature = "getrandom")]
 pub fn try_generate_salt() -> core::result::Result<[u8; RECOMMENDED_SALT_LEN], getrandom::Error> {
     let mut salt = [0u8; RECOMMENDED_SALT_LEN];

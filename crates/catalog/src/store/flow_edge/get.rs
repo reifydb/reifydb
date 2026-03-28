@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::{FlowEdgeDef, FlowEdgeId},
+	interface::catalog::flow::{FlowEdge, FlowEdgeId},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_flow_edge(rx: &mut Transaction<'_>, edge_id: FlowEdgeId) -> Result<FlowEdgeDef> {
+	pub(crate) fn get_flow_edge(rx: &mut Transaction<'_>, edge_id: FlowEdgeId) -> Result<FlowEdge> {
 		CatalogStore::find_flow_edge(rx, edge_id)?.ok_or_else(|| {
 			Error(internal!(
 				"Flow edge with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -24,7 +24,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowEdgeId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{

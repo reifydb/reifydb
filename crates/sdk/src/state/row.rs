@@ -6,7 +6,7 @@
 use std::iter;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey},
 	util::encoding::keycode::serializer::KeySerializer,
@@ -73,7 +73,7 @@ impl RowNumberProvider {
 
 			// Save the mapping from key to row number
 			let row_num_bytes = counter.to_be_bytes().to_vec();
-			ctx.state().set(&internal_key.encode(), &EncodedValues(CowVec::new(row_num_bytes)))?;
+			ctx.state().set(&internal_key.encode(), &EncodedRow(CowVec::new(row_num_bytes)))?;
 
 			results.push((new_row_number, true));
 			counter += 1;
@@ -122,7 +122,7 @@ impl RowNumberProvider {
 	fn save_counter(&self, ctx: &mut OperatorContext, counter: u64) -> Result<()> {
 		let key = self.make_counter_key();
 		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
-		let value = EncodedValues(CowVec::new(counter.to_be_bytes().to_vec()));
+		let value = EncodedRow(CowVec::new(counter.to_be_bytes().to_vec()));
 		ctx.state().set(&internal_key.encode(), &value)?;
 		Ok(())
 	}
@@ -180,7 +180,7 @@ pub mod tests {
 
 	use crate::{
 		error::Result,
-		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
 		state::{FFIRawStatefulOperator, row::RowNumberProvider},
 		testing::{harness::TestHarnessBuilder, helpers::encode_key},
 	};
@@ -193,8 +193,8 @@ pub mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Test operator for row number provider";
-		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 

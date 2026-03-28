@@ -3,7 +3,7 @@
 
 use std::env;
 
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{
 	error::{Diagnostic, IntoDiagnostic, util::value_max},
 	fragment::Fragment,

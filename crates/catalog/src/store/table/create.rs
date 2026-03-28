@@ -5,9 +5,9 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, TableId},
-		primitive::PrimitiveId,
 		property::ColumnPropertyKind,
-		table::TableDef,
+		schema::SchemaId,
+		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 	retention::RetentionPolicy,
@@ -23,7 +23,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		retention_policy::create::create_primitive_retention_policy,
+		retention_policy::create::create_schema_retention_policy,
 		sequence::system::SystemSequence,
 		table::schema::{table, table_namespace},
 	},
@@ -48,7 +48,7 @@ pub struct TableToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<TableDef> {
+	pub(crate) fn create_table(txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_table_by_name(
@@ -71,7 +71,7 @@ impl CatalogStore {
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
 		if let Some(retention_policy) = &to_create.retention_policy {
-			create_primitive_retention_policy(txn, PrimitiveId::Table(table_id), retention_policy)?;
+			create_schema_retention_policy(txn, SchemaId::Table(table_id), retention_policy)?;
 		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
@@ -124,7 +124,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace_name.clone(),
-					primitive_name: to_create.name.text().to_string(),
+					schema_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: column_to_create.properties.clone(),
@@ -144,7 +144,7 @@ pub mod tests {
 		interface::catalog::id::{NamespaceId, TableId},
 		key::namespace_table::NamespaceTableKey,
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{
@@ -207,12 +207,12 @@ pub mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1025);
 		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1026);
 		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "another_table");
 	}

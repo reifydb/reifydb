@@ -10,9 +10,13 @@ use std::{
 };
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_sdk::connector::{
+	sink::{FFISink, FFISinkMetadata},
+	source::{FFISource, FFISourceMetadata},
+};
 use reifydb_type::{Result, value::Value};
 
-use crate::operator::BoxedOperator;
+use crate::{connector::ConnectorRegistry, operator::BoxedOperator};
 
 pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &BTreeMap<String, Value>) -> Result<BoxedOperator> + Send + Sync>;
 
@@ -20,6 +24,7 @@ pub struct FlowBuilder {
 	operators_dir: Option<PathBuf>,
 	num_workers: Option<usize>,
 	custom_operators: HashMap<String, OperatorFactory>,
+	connector_registry: ConnectorRegistry,
 }
 
 impl Default for FlowBuilder {
@@ -35,6 +40,7 @@ impl FlowBuilder {
 			operators_dir: None,
 			num_workers: None,
 			custom_operators: HashMap::new(),
+			connector_registry: ConnectorRegistry::new(),
 		}
 	}
 
@@ -61,12 +67,25 @@ impl FlowBuilder {
 		self
 	}
 
+	/// Register a native Rust source connector.
+	pub fn register_source<S: FFISource + FFISourceMetadata>(mut self) -> Self {
+		self.connector_registry.register_source::<S>();
+		self
+	}
+
+	/// Register a native Rust sink connector.
+	pub fn register_sink<S: FFISink + FFISinkMetadata>(mut self) -> Self {
+		self.connector_registry.register_sink::<S>();
+		self
+	}
+
 	/// Build the configuration (internal use only)
 	pub(crate) fn build_config(self) -> FlowBuilderConfig {
 		FlowBuilderConfig {
 			operators_dir: self.operators_dir,
 			num_workers: self.num_workers.unwrap_or(1),
 			custom_operators: self.custom_operators,
+			connector_registry: self.connector_registry,
 		}
 	}
 }
@@ -79,4 +98,6 @@ pub struct FlowBuilderConfig {
 	pub num_workers: usize,
 	/// Native Rust operator factories registered via FlowBuilder::register_operator
 	pub custom_operators: HashMap<String, OperatorFactory>,
+	/// Registry of source and sink connectors
+	pub connector_registry: ConnectorRegistry,
 }

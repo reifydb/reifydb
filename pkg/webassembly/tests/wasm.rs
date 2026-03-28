@@ -115,3 +115,96 @@ fn test_multiple_queries() {
 	db.query(r#"FROM [{ y: 2 }]"#).expect("Second query failed");
 	db.query(r#"FROM [{ z: 3 }]"#).expect("Third query failed");
 }
+
+#[wasm_bindgen_test]
+fn test_create_transactional_view_with_table_source() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE NAMESPACE ns").expect("CREATE NAMESPACE failed");
+	db.admin(r#"CREATE TABLE ns::t { id: int4, name: utf8 }"#).expect("CREATE TABLE failed");
+	db.admin(r#"CREATE TRANSACTIONAL VIEW ns::v { id: int4, name: utf8 } AS { FROM ns::t }"#)
+		.expect("CREATE TRANSACTIONAL VIEW failed");
+
+	db.command(r#"INSERT ns::t [{ id: 1, name: "Alice" }, { id: 2, name: "Bob" }]"#).expect("INSERT failed");
+
+	let result = db.query_text("FROM ns::v").expect("Query on transactional view should succeed");
+	assert!(result.contains("Alice"), "View should contain Alice, got: {}", result);
+	assert!(result.contains("Bob"), "View should contain Bob, got: {}", result);
+}
+
+#[wasm_bindgen_test]
+fn test_create_view_with_inline_data_returns_error() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE NAMESPACE ns2").expect("CREATE NAMESPACE failed");
+
+	let result = db.admin(r#"CREATE TRANSACTIONAL VIEW ns2::v { id: int4 } AS { FROM [{ id: 1 }] }"#);
+
+	assert!(result.is_err(), "Creating a view with only inline data should return an error, not panic");
+}
+
+#[wasm_bindgen_test]
+fn test_login_with_password() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER alice").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	let result = db.login_with_password("alice", "alice-pass");
+	assert!(result.is_ok(), "Login with correct password should succeed");
+
+	let login = result.expect("login failed");
+	assert!(!login.token().is_empty(), "Token should not be empty");
+	assert!(!login.identity().is_empty(), "Identity should not be empty");
+}
+
+#[wasm_bindgen_test]
+fn test_login_with_wrong_password() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER alice").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	let result = db.login_with_password("alice", "wrong-password");
+	assert!(result.is_err(), "Login with wrong password should fail");
+}
+
+#[wasm_bindgen_test]
+fn test_login_with_token() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER bob").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR bob { method: token; token: 'bob-secret-token' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	let result = db.login_with_token("bob-secret-token");
+	assert!(result.is_ok(), "Token login should succeed");
+
+	let login = result.expect("login failed");
+	assert!(!login.token().is_empty(), "Token should not be empty");
+	assert!(!login.identity().is_empty(), "Identity should not be empty");
+}
+
+#[wasm_bindgen_test]
+fn test_logout() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	db.admin("CREATE USER alice").expect("CREATE USER failed");
+	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }")
+		.expect("CREATE AUTHENTICATION failed");
+
+	db.login_with_password("alice", "alice-pass").expect("Login failed");
+
+	let result = db.logout();
+	assert!(result.is_ok(), "Logout should succeed");
+}
+
+#[wasm_bindgen_test]
+fn test_logout_without_login() {
+	let db = WasmDB::new().expect("Failed to create db");
+
+	let result = db.logout();
+	assert!(result.is_ok(), "Logout without login should succeed (no-op)");
+}

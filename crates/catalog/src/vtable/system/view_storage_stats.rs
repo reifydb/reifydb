@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{primitive::PrimitiveId, vtable::VTableDef},
+	interface::catalog::{schema::SchemaId, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_metric::{MetricId, metric::MetricReader, multi::Tier};
@@ -15,20 +15,20 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes storage statistics for views
-pub struct ViewStorageStats {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemViewStorageStats {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 	stats_reader: MetricReader<SingleStore>,
 }
 
-impl ViewStorageStats {
+impl SystemViewStorageStats {
 	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_view_storage_stats_table_def().clone(),
+			definition: SystemCatalog::get_system_view_storage_stats_table().clone(),
 			exhausted: false,
 			stats_reader,
 		}
@@ -43,7 +43,7 @@ fn tier_to_str(tier: Tier) -> &'static str {
 	}
 }
 
-impl VTable for ViewStorageStats {
+impl BaseVTable for SystemViewStorageStats {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -62,10 +62,10 @@ impl VTable for ViewStorageStats {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
 				// Filter for view sources only
-				if let MetricId::Source(PrimitiveId::View(view_id)) = obj_id {
+				if let MetricId::Source(SchemaId::View(view_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id = match CatalogStore::find_view(txn, view_id)? {
-						Some(view_def) => view_def.namespace.0,
+						Some(view) => view.namespace().0,
 						None => 0,
 					};
 
@@ -201,7 +201,7 @@ impl VTable for ViewStorageStats {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

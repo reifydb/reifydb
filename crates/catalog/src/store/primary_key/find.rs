@@ -3,10 +3,10 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		column::ColumnDef,
+		column::Column,
 		id::{TableId, ViewId},
-		key::PrimaryKeyDef,
-		primitive::PrimitiveId,
+		key::PrimaryKey,
+		schema::SchemaId,
 	},
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
@@ -21,34 +21,32 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn find_primary_key(
 		rx: &mut Transaction<'_>,
-		primitive: impl Into<PrimitiveId>,
-	) -> Result<Option<PrimaryKeyDef>> {
-		let primitive_id = primitive.into();
+		object: impl Into<SchemaId>,
+	) -> Result<Option<PrimaryKey>> {
+		let object_id = object.into();
 
-		let primary_key_id = match primitive_id {
-			PrimitiveId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
+		let primary_key_id = match object_id {
+			SchemaId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			PrimitiveId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
+			SchemaId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			PrimitiveId::TableVirtual(_) => {
+			SchemaId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			PrimitiveId::RingBuffer(ringbuffer_id) => {
-				match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
-					Some(pk_id) => pk_id,
-					None => return Ok(None),
-				}
-			}
-			PrimitiveId::Dictionary(_) => {
+			SchemaId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
+				Some(pk_id) => pk_id,
+				None => return Ok(None),
+			},
+			SchemaId::Dictionary(_) => {
 				// Dictionaries don't have traditional primary keys
 				return Ok(None);
 			}
-			PrimitiveId::Series(_) => {
+			SchemaId::Series(_) => {
 				// Series use timestamp-based key ordering, no traditional primary keys
 				return Ok(None);
 			}
@@ -64,25 +62,25 @@ impl CatalogStore {
 		};
 
 		// Deserialize column IDs
-		let column_ids_blob = primary_key::SCHEMA.get_blob(&primary_key_multi.values, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::SCHEMA.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
-		// Fetch full ColumnDef for each column ID
+		// Fetch full Column for each column ID
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = Self::get_column(rx, column_id)?;
-			columns.push(ColumnDef {
-				id: column_def.id,
-				name: column_def.name,
-				constraint: column_def.constraint,
-				properties: column_def.properties,
-				index: column_def.index,
-				auto_increment: column_def.auto_increment,
+			let column = Self::get_column(rx, column_id)?;
+			columns.push(Column {
+				id: column.id,
+				name: column.name,
+				constraint: column.constraint,
+				properties: column.properties,
+				index: column.index,
+				auto_increment: column.auto_increment,
 				dictionary_id: None,
 			});
 		}
 
-		Ok(Some(PrimaryKeyDef {
+		Ok(Some(PrimaryKey {
 			id: primary_key_id,
 			columns,
 		}))
@@ -92,15 +90,12 @@ impl CatalogStore {
 	pub(crate) fn find_table_primary_key(
 		rx: &mut Transaction<'_>,
 		table_id: TableId,
-	) -> Result<Option<PrimaryKeyDef>> {
+	) -> Result<Option<PrimaryKey>> {
 		Self::find_primary_key(rx, table_id)
 	}
 
 	#[inline]
-	pub(crate) fn find_view_primary_key(
-		rx: &mut Transaction<'_>,
-		view_id: ViewId,
-	) -> Result<Option<PrimaryKeyDef>> {
+	pub(crate) fn find_view_primary_key(rx: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKey>> {
 		Self::find_primary_key(rx, view_id)
 	}
 }

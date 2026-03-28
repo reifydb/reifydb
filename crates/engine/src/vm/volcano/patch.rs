@@ -7,6 +7,7 @@ use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
 	value::column::{Column, columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
@@ -17,9 +18,8 @@ use crate::{
 	expression::{
 		cast::cast_column_data,
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
-	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -49,7 +49,7 @@ impl QueryNode for PatchNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions
@@ -69,7 +69,7 @@ impl QueryNode for PatchNode {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
 			let transform_ctx = TransformContext {
 				functions: &stored_ctx.services.functions,
-				clock: &stored_ctx.services.clock,
+				runtime_context: &stored_ctx.services.runtime_context,
 				params: &stored_ctx.params,
 			};
 			let result = self.apply(&transform_ctx, columns)?;
@@ -125,21 +125,10 @@ impl Transform for PatchNode {
 
 		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
 
+		let session = EvalSession::from_transform(ctx, stored_ctx);
 		let mut patch_columns = Vec::with_capacity(self.expressions.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = EvalContext {
-				target: None,
-				columns: input.clone(),
-				row_count,
-				take: None,
-				params: ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: ctx.functions,
-				clock: ctx.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let mut exec_ctx = session.eval(input.clone(), row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();

@@ -3,12 +3,12 @@
 
 //! Temporal data edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::Schema;
+use reifydb_core::encoded::schema::RowSchema;
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
 
 #[test]
 fn test_date_boundaries() {
-	let schema = Schema::testing(&[Type::Date]);
+	let schema = RowSchema::testing(&[Type::Date]);
 	let mut row = schema.allocate();
 
 	let dates = [
@@ -27,7 +27,7 @@ fn test_date_boundaries() {
 
 #[test]
 fn test_datetime_precision_limits() {
-	let schema = Schema::testing(&[Type::DateTime]);
+	let schema = RowSchema::testing(&[Type::DateTime]);
 	let mut row = schema.allocate();
 
 	// Test nanosecond precision preservation
@@ -37,15 +37,12 @@ fn test_datetime_precision_limits() {
 	assert_eq!(retrieved, dt);
 
 	// Verify nanosecond precision
-	let (sec1, nano1) = dt.to_parts();
-	let (sec2, nano2) = retrieved.to_parts();
-	assert_eq!(sec1, sec2);
-	assert_eq!(nano1, nano2);
+	assert_eq!(dt.to_nanos(), retrieved.to_nanos());
 }
 
 #[test]
 fn test_time_edge_values() {
-	let schema = Schema::testing(&[Type::Time]);
+	let schema = RowSchema::testing(&[Type::Time]);
 	let mut row = schema.allocate();
 
 	let times = [
@@ -64,18 +61,18 @@ fn test_time_edge_values() {
 
 #[test]
 fn test_interval_combinations() {
-	let schema = Schema::testing(&[Type::Duration]);
+	let schema = RowSchema::testing(&[Type::Duration]);
 	let mut row = schema.allocate();
 
 	let intervals = [
-		Duration::from_seconds(0),
-		Duration::from_seconds(-1),
-		Duration::from_days(365),
-		Duration::from_weeks(-52),
-		Duration::new(12, 30, 123456789),            // Complex interval
-		Duration::new(-12, -30, -123456789),         // Negative complex
-		Duration::new(i32::MAX, i32::MAX, i64::MAX), // Max values
-		Duration::new(i32::MIN, i32::MIN, i64::MIN), // Min values
+		Duration::from_seconds(0).unwrap(),
+		Duration::from_seconds(-1).unwrap(),
+		Duration::from_days(365).unwrap(),
+		Duration::from_weeks(-52).unwrap(),
+		Duration::new(12, 30, 123456789).unwrap(),    // Complex interval
+		Duration::new(-12, -30, -123456789).unwrap(), // Negative complex
+		Duration::new(i32::MAX, i32::MAX, 86_399_999_999_999).unwrap(), // Large positive (nanos < 1 day)
+		Duration::new(i32::MIN, i32::MIN, -86_399_999_999_999).unwrap(), // Large negative (nanos > -1 day)
 	];
 
 	for interval in intervals {

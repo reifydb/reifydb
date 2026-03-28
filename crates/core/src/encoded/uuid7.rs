@@ -6,10 +6,10 @@ use std::ptr;
 use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
-	pub fn set_uuid7(&self, row: &mut EncodedValues, index: usize, value: Uuid7) {
+impl RowSchema {
+	pub fn set_uuid7(&self, row: &mut EncodedRow, index: usize, value: Uuid7) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid7);
@@ -23,7 +23,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_uuid7(&self, row: &EncodedValues, index: usize) -> Uuid7 {
+	pub fn get_uuid7(&self, row: &EncodedRow, index: usize) -> Uuid7 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uuid7);
@@ -35,7 +35,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_uuid7(&self, row: &EncodedValues, index: usize) -> Option<Uuid7> {
+	pub fn try_get_uuid7(&self, row: &EncodedRow, index: usize) -> Option<Uuid7> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uuid7 {
 			Some(self.get_uuid7(row, index))
 		} else {
@@ -50,11 +50,11 @@ pub mod tests {
 
 	use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_uuid7() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let uuid = Uuid7::generate();
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uuid7() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_uuid7(&row, 0), None);
@@ -76,7 +76,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_generations() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 
 		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
@@ -99,7 +99,7 @@ pub mod tests {
 
 	#[test]
 	fn test_version_check() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let uuid = Uuid7::generate();
@@ -112,7 +112,7 @@ pub mod tests {
 
 	#[test]
 	fn test_timestamp_ordering() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 
 		// Generate UUIDs in sequence - they should be ordered by
 		// timestamp
@@ -137,7 +137,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Uuid7, Type::Boolean, Type::Uuid7, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Uuid7, Type::Boolean, Type::Uuid7, Type::Int4]);
 		let mut row = schema.allocate();
 
 		let uuid1 = Uuid7::generate();
@@ -156,7 +156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Uuid7, Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7, Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let uuid = Uuid7::generate();
@@ -171,7 +171,7 @@ pub mod tests {
 
 	#[test]
 	fn test_persistence() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let uuid = Uuid7::generate();
@@ -187,7 +187,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let original_uuid = Uuid7::generate();
@@ -202,7 +202,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = Schema::testing(&[Type::Uuid7, Type::Uuid7, Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7, Type::Uuid7, Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let uuid1 = Uuid7::generate();
@@ -225,7 +225,7 @@ pub mod tests {
 
 	#[test]
 	fn test_format_consistency() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let uuid = Uuid7::generate();
@@ -244,7 +244,7 @@ pub mod tests {
 
 	#[test]
 	fn test_byte_level_storage() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		let uuid = Uuid7::generate();
@@ -263,7 +263,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_based_properties() {
-		let schema = Schema::testing(&[Type::Uuid7]);
+		let schema = RowSchema::testing(&[Type::Uuid7]);
 
 		// Generate UUIDs at different times
 		let uuid1 = Uuid7::generate();
@@ -285,7 +285,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uuid7_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

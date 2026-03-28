@@ -8,16 +8,20 @@
 //! - `/v1/query` - Execute read-only queries
 //! - `/v1/command` - Execute write commands
 
+use std::collections::HashMap;
+
 use axum::{
 	Json,
 	extract::{Query, State},
 	http::{HeaderMap, StatusCode, header},
 	response::{IntoResponse, Response},
 };
+use reifydb_auth::service::AuthResponse as EngineAuthResponse;
 use reifydb_core::value::frame::response::{ResponseFrame, convert_frames};
 use reifydb_sub_server::{
-	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
-	execute::{execute_admin, execute_command, execute_query},
+	auth::{AuthError, extract_identity_from_auth_header},
+	execute::execute,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	state::AppState,
 	wire::WireParams,
@@ -76,13 +80,150 @@ pub async fn health() -> impl IntoResponse {
 	)
 }
 
+/// Response body for logout endpoint.
+#[derive(Debug, Serialize)]
+pub struct LogoutResponse {
+	pub status: String,
+}
+
+/// Request body for authentication endpoint.
+#[derive(Debug, Deserialize)]
+pub struct AuthenticateRequest {
+	/// Authentication method: "password", "solana", "token".
+	pub method: String,
+	/// Credentials (method-specific key-value pairs).
+	#[serde(default)]
+	pub credentials: HashMap<String, String>,
+}
+
+/// Response body for authentication endpoint.
+#[derive(Debug, Serialize)]
+pub struct AuthenticateResponse {
+	/// Authentication status: "authenticated", "challenge", "failed".
+	pub status: String,
+	/// Session token (present when status is "authenticated").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub token: Option<String>,
+	/// Identity ID (present when status is "authenticated").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub identity: Option<String>,
+	/// Challenge ID (present when status is "challenge").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub challenge_id: Option<String>,
+	/// Challenge payload (present when status is "challenge").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub payload: Option<HashMap<String, String>>,
+	/// Failure reason (present when status is "failed").
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub reason: Option<String>,
+}
+
+pub async fn handle_authenticate(
+	State(state): State<AppState>,
+	Json(request): Json<AuthenticateRequest>,
+) -> Result<Response, AppError> {
+	match state.auth_service().authenticate(&request.method, request.credentials) {
+		Ok(EngineAuthResponse::Authenticated {
+			identity,
+			token,
+		}) => Ok((
+			StatusCode::OK,
+			Json(AuthenticateResponse {
+				status: "authenticated".to_string(),
+				token: Some(token),
+				identity: Some(identity.to_string()),
+				challenge_id: None,
+				payload: None,
+				reason: None,
+			}),
+		)
+			.into_response()),
+		Ok(EngineAuthResponse::Challenge {
+			challenge_id,
+			payload,
+		}) => Ok((
+			StatusCode::OK,
+			Json(AuthenticateResponse {
+				status: "challenge".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: Some(challenge_id),
+				payload: Some(payload),
+				reason: None,
+			}),
+		)
+			.into_response()),
+		Ok(EngineAuthResponse::Failed {
+			reason,
+		}) => Ok((
+			StatusCode::UNAUTHORIZED,
+			Json(AuthenticateResponse {
+				status: "failed".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: None,
+				payload: None,
+				reason: Some(reason),
+			}),
+		)
+			.into_response()),
+		Err(e) => Ok((
+			StatusCode::INTERNAL_SERVER_ERROR,
+			Json(AuthenticateResponse {
+				status: "failed".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: None,
+				payload: None,
+				reason: Some(e.to_string()),
+			}),
+		)
+			.into_response()),
+	}
+}
+
+pub async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
+	let auth_header = headers.get("authorization").ok_or(AppError::Auth(AuthError::MissingCredentials))?;
+	let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
+	let token = auth_str.strip_prefix("Bearer ").ok_or(AppError::Auth(AuthError::InvalidHeader))?.trim();
+
+	if token.is_empty() {
+		return Err(AppError::Auth(AuthError::InvalidToken));
+	}
+
+	let revoked = state.auth_service().revoke_token(token);
+
+	if revoked {
+		Ok((
+			StatusCode::OK,
+			Json(LogoutResponse {
+				status: "ok".to_string(),
+			}),
+		)
+			.into_response())
+	} else {
+		Err(AppError::Auth(AuthError::InvalidToken))
+	}
+}
+
+/// Build `RequestMetadata` from HTTP headers.
+fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
+	let mut metadata = RequestMetadata::new(Protocol::Http);
+	for (name, value) in headers.iter() {
+		if let Ok(v) = value.to_str() {
+			metadata.insert(name.as_str(), v);
+		}
+	}
+	metadata
+}
+
 /// Execute a read-only query.
 ///
 /// # Authentication
 ///
-/// Requires one of:
+/// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <key>` header
+/// - No credentials (anonymous access)
 ///
 /// # Request Body
 ///
@@ -106,39 +247,7 @@ pub async fn handle_query(
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
 ) -> Result<Response, AppError> {
-	// Extract identity from headers
-	let identity = extract_identity(&headers)?;
-
-	// Combine statements
-	let query = request.statements.join("; ");
-
-	// Get params or default
-	let params = match request.params {
-		None => Params::None,
-		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
-	};
-
-	// Execute with timeout
-	let frames = execute_query(
-		state.actor_system(),
-		state.engine_clone(),
-		query,
-		identity,
-		params,
-		state.query_timeout(),
-	)
-	.await?;
-
-	if format_params.format.as_deref() == Some("json") {
-		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-			.map_err(|e| AppError::BadRequest(e))?;
-		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
-	} else {
-		Ok(Json(QueryResponse {
-			frames: convert_frames(&frames),
-		})
-		.into_response())
-	}
+	execute_and_respond(&state, Operation::Query, &headers, request, &format_params).await
 }
 
 /// Execute an admin operation.
@@ -148,45 +257,16 @@ pub async fn handle_query(
 ///
 /// # Authentication
 ///
-/// Requires one of:
+/// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <key>` header
+/// - No credentials (anonymous access)
 pub async fn handle_admin(
 	State(state): State<AppState>,
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
 ) -> Result<Response, AppError> {
-	// Extract identity from headers
-	let identity = extract_identity(&headers)?;
-
-	// Get params or default
-	let params = match request.params {
-		None => Params::None,
-		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
-	};
-
-	// Execute with timeout
-	let frames = execute_admin(
-		state.actor_system(),
-		state.engine_clone(),
-		request.statements,
-		identity,
-		params,
-		state.query_timeout(),
-	)
-	.await?;
-
-	if format_params.format.as_deref() == Some("json") {
-		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-			.map_err(|e| AppError::BadRequest(e))?;
-		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
-	} else {
-		Ok(Json(QueryResponse {
-			frames: convert_frames(&frames),
-		})
-		.into_response())
-	}
+	execute_and_respond(&state, Operation::Admin, &headers, request, &format_params).await
 }
 
 /// Execute a write command.
@@ -195,86 +275,80 @@ pub async fn handle_admin(
 ///
 /// # Authentication
 ///
-/// Requires one of:
+/// Supported via one of:
 /// - `Authorization: Bearer <token>` header
-/// - `X-Api-Key: <key>` header
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///   "statements": ["INSERT INTO users (name) VALUES ($1)"],
-///   "params": {"$1": "Alice"}
-/// }
-/// ```
-///
-/// # Response
-///
-/// ```json
-/// {
-///   "frames": [...]
-/// }
-/// ```
+/// - No credentials (anonymous access)
 pub async fn handle_command(
 	State(state): State<AppState>,
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
 ) -> Result<Response, AppError> {
-	// Extract identity from headers
-	let identity = extract_identity(&headers)?;
+	execute_and_respond(&state, Operation::Command, &headers, request, &format_params).await
+}
 
-	// Get params or default
+/// Shared implementation for query, admin, and command handlers.
+async fn execute_and_respond(
+	state: &AppState,
+	operation: Operation,
+	headers: &HeaderMap,
+	request: StatementRequest,
+	format_params: &FormatParams,
+) -> Result<Response, AppError> {
+	let identity = extract_identity(state, headers)?;
+	let metadata = build_metadata(headers);
 	let params = match request.params {
 		None => Params::None,
 		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
 	};
 
-	// Execute with timeout
-	let frames = execute_command(
+	let ctx = RequestContext {
+		identity,
+		operation,
+		statements: request.statements,
+		params,
+		metadata,
+	};
+
+	let (frames, duration) = execute(
+		state.request_interceptors(),
 		state.actor_system(),
 		state.engine_clone(),
-		request.statements,
-		identity,
-		params,
+		ctx,
 		state.query_timeout(),
+		state.clock(),
 	)
 	.await?;
 
-	if format_params.format.as_deref() == Some("json") {
+	let mut response = if format_params.format.as_deref() == Some("json") {
 		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
 			.map_err(|e| AppError::BadRequest(e))?;
-		Ok((StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response())
+		(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response()
 	} else {
-		Ok(Json(QueryResponse {
+		Json(QueryResponse {
 			frames: convert_frames(&frames),
 		})
-		.into_response())
-	}
+		.into_response()
+	};
+	response.headers_mut().insert("x-duration-ms", duration.as_millis().to_string().parse().unwrap());
+	Ok(response)
 }
 
 /// Extract identity from request headers.
 ///
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
-/// 2. X-Api-Key header
-fn extract_identity(headers: &HeaderMap) -> Result<IdentityId, AppError> {
-	// Try Authorization header first
+/// 2. Falls back to anonymous identity
+fn extract_identity(state: &AppState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
+	// Try Authorization header
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 
-		return extract_identity_from_auth_header(auth_str).map_err(AppError::Auth);
+		return extract_identity_from_auth_header(state.auth_service(), auth_str).map_err(AppError::Auth);
 	}
 
-	// Try X-Api-Key header
-	if let Some(api_key) = headers.get("x-api-key") {
-		let key = api_key.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
-
-		return extract_identity_from_api_key(key).map_err(AppError::Auth);
-	}
-
-	// No credentials provided
-	Err(AppError::Auth(AuthError::MissingCredentials))
+	// No credentials provided — anonymous access
+	Ok(IdentityId::anonymous())
 }
 
 #[cfg(test)]

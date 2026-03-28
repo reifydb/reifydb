@@ -11,6 +11,5 @@ description = "Column-oriented storage for analytical queries in ReifyDB"
 reifydb-core = { workspace = true }
 reifydb-runtime = {workspace = true}
 reifydb-type = { workspace = true }
-reifydb-compression = { workspace = true }
 
 crossbeam-skiplist = { workspace = true }

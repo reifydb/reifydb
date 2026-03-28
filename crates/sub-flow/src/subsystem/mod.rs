@@ -31,12 +31,14 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle};
+use reifydb_rql::flow::loader::load_flow_dag;
+use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle, context::RuntimeContext};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
-	interceptor::interceptors::Interceptors, testing::TestingViewMutationCaptor, transaction::Transaction,
+	interceptor::interceptors::Interceptors,
+	transaction::{TestTransaction, Transaction},
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::{info, warn};
 
 use crate::{
@@ -46,11 +48,10 @@ use crate::{
 		coordinator::{CoordinatorActor, CoordinatorMsg, FlowConsumeRef, extract_new_flow_ids},
 		lag::FlowLags,
 		pool::{PoolActor, PoolMsg},
-		tracker::PrimitiveVersionTracker,
+		tracker::SchemaVersionTracker,
 		worker::{FlowMsg, FlowWorkerActor},
 	},
 	engine::FlowEngine,
-	testing::ViewInlineTestingMutationCapture,
 	transactional::{
 		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
 		registrar::TransactionalFlowRegistrar,
@@ -71,7 +72,7 @@ impl CdcConsume for FlowConsumeDispatcher {
 		// Check for newly-created flows that might be transactional views.
 		let new_flow_ids = extract_new_flow_ids(&cdcs);
 		if !new_flow_ids.is_empty() {
-			if let Ok(mut query) = self.engine.begin_query() {
+			if let Ok(mut query) = self.engine.begin_query(IdentityId::system()) {
 				for flow_id in new_flow_ids {
 					match self
 						.flow_catalog
@@ -147,7 +148,8 @@ impl FlowSubsystem {
 
 		let runtime = ioc.resolve::<SharedRuntime>().expect("SharedRuntime must be registered");
 		let clock = runtime.clock().clone();
-		let clock_for_factory = clock.clone();
+		let runtime_context = RuntimeContext::with_clock(clock.clone());
+		let runtime_context_for_factory = runtime_context.clone();
 
 		let custom_operators = Arc::new(config.custom_operators);
 		let custom_operators_for_factory = custom_operators.clone();
@@ -156,13 +158,13 @@ impl FlowSubsystem {
 			let cat = catalog.clone();
 			let exec = executor.clone();
 			let bus = event_bus.clone();
-			let clk = clock_for_factory.clone();
+			let rc = runtime_context_for_factory.clone();
 			let co = custom_operators_for_factory.clone();
 
-			move || FlowEngine::new(cat, exec, bus, clk, co)
+			move || FlowEngine::new(cat, exec, bus, rc, co)
 		};
 
-		let primitive_tracker = Arc::new(PrimitiveVersionTracker::new());
+		let primitive_tracker = Arc::new(SchemaVersionTracker::new());
 
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
 
@@ -216,7 +218,7 @@ impl FlowSubsystem {
 			engine.catalog(),
 			engine.executor(),
 			engine.event_bus().clone(),
-			runtime.clock().clone(),
+			RuntimeContext::with_clock(runtime.clock().clone()),
 			custom_operators.clone(),
 		)));
 
@@ -229,7 +231,7 @@ impl FlowSubsystem {
 
 		let transactional_flow_engine_for_self = transactional_flow_engine.clone();
 
-		// Register both pre-commit and post-commit interceptors via a single factory function.
+		// Register pre-commit, post-commit, and test pre-commit interceptors via a single factory function.
 		{
 			let flow_engine_for_interceptor = transactional_flow_engine.clone();
 			let engine_for_interceptor = engine.clone();
@@ -239,6 +241,14 @@ impl FlowSubsystem {
 				engine: engine.clone(),
 				catalog: engine.catalog(),
 			};
+
+			// Captures for the test_pre_commit hook.
+			let test_flow_engine = flow_engine_for_interceptor.clone();
+			let test_engine = engine_for_interceptor.clone();
+			let test_catalog = catalog_for_interceptor.clone();
+			let test_event_bus = engine.event_bus().clone();
+			let test_runtime_context = RuntimeContext::with_clock(runtime.clock().clone());
+			let test_custom_operators = custom_operators.clone();
 
 			engine.add_interceptor_factory(Arc::new(move |interceptors: &mut Interceptors| {
 				interceptors.pre_commit.add(Arc::new(TransactionalFlowPreCommitInterceptor {
@@ -253,6 +263,47 @@ impl FlowSubsystem {
 						catalog: registrar_for_interceptor.catalog.clone(),
 					},
 				}));
+
+				// Hook for test flow processing: rebuilds the shared transactional flow
+				// engine from all catalog flows (including uncommitted ones visible through
+				// the admin transaction), so that capture_testing_pre_commit can process
+				// flows for views that haven't been committed yet.
+				let hook_flow_engine = test_flow_engine.clone();
+				let hook_engine = test_engine.clone();
+				let hook_catalog = test_catalog.clone();
+				let hook_event_bus = test_event_bus.clone();
+				let hook_runtime_context = test_runtime_context.clone();
+				let hook_custom_operators = test_custom_operators.clone();
+
+				interceptors.set_test_pre_commit(Arc::new(
+					move |test_txn: &mut TestTransaction<'_>| {
+						let mut fresh_engine = FlowEngine::new(
+							hook_catalog.clone(),
+							hook_engine.executor(),
+							hook_event_bus.clone(),
+							hook_runtime_context.clone(),
+							hook_custom_operators.clone(),
+						);
+
+						let flows = hook_catalog
+							.list_flows_all(&mut Transaction::Test(test_txn.reborrow()))?;
+
+						for flow in flows {
+							let dag = load_flow_dag(
+								&hook_catalog,
+								&mut Transaction::Test(test_txn.reborrow()),
+								flow.id,
+							)?;
+							fresh_engine.register_with_transaction(
+								&mut Transaction::Test(test_txn.reborrow()),
+								dag,
+							)?;
+						}
+
+						*hook_flow_engine.write().unwrap() = fresh_engine;
+						Ok(())
+					},
+				));
 			}));
 		}
 
@@ -261,16 +312,6 @@ impl FlowSubsystem {
 			engine.clone(),
 			flow_catalog.clone(),
 		)));
-
-		ioc.register_service::<Arc<dyn TestingViewMutationCaptor>>(Arc::new(
-			ViewInlineTestingMutationCapture {
-				engine: engine.clone(),
-				catalog: engine.catalog(),
-				event_bus: engine.event_bus().clone(),
-				clock: runtime.clock().clone(),
-				custom_operators: custom_operators.clone(),
-			},
-		));
 
 		let poll_config =
 			PollConsumerConfig::new(consumer_id, "flow-cdc-poll", Duration::from_millis(10), Some(100));

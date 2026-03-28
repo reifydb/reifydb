@@ -4,17 +4,16 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
+	encoded::row::EncodedRow,
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
 	},
 	interface::{
 		catalog::policy::PolicyTargetType,
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
 	},
 	internal_error,
-	key::row::RowKey,
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateRingBufferNode;
@@ -23,10 +22,14 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId},
+	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
-use super::{coerce::coerce_value_to_column_type, schema::get_or_create_ringbuffer_schema};
+use super::{
+	coerce::coerce_value_to_column_type,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_ringbuffer_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -46,9 +49,7 @@ pub(crate) fn update_ringbuffer<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateRingBufferNode,
 	params: Params,
-	identity: IdentityId,
-	symbol_table_ref: &SymbolTable,
-	testing: &mut Option<TestingContext>,
+	symbols: &SymbolTable,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -61,11 +62,8 @@ pub(crate) fn update_ringbuffer<'a>(
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
 
-	// Get current metadata - we need it to validate that rows exist
-	let Some(metadata) = services.catalog.find_ringbuffer_metadata(txn, ringbuffer.id)? else {
-		let fragment = Fragment::internal(plan.target.name());
-		return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
-	};
+	// Load all partitions — unified across global and partitioned
+	let partitions = services.catalog.list_ringbuffer_partitions(txn, &ringbuffer)?;
 
 	// Get or create schema with proper field names and constraints
 	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
@@ -76,7 +74,7 @@ pub(crate) fn update_ringbuffer<'a>(
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
 
 	// Create execution context
 	let context = QueryContext {
@@ -84,12 +82,16 @@ pub(crate) fn update_ringbuffer<'a>(
 		source: resolved_source,
 		batch_size: 1024,
 		params: params.clone(),
-		stack: SymbolTable::new(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	};
 
 	let mut updated_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	// Process all input batches
 	{
@@ -101,9 +103,8 @@ pub(crate) fn update_ringbuffer<'a>(
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			// Enforce write policies before processing rows
-			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
+			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
-				identity,
 				&namespace.name(),
 				&ringbuffer.name,
 				"update",
@@ -188,45 +189,31 @@ pub(crate) fn update_ringbuffer<'a>(
 				// Update the encoded using the existing RowNumber from the columns
 				let row_number = row_numbers[row_idx];
 
-				// Validate that the encoded number is within the valid range for this ring
-				// buffer Ring buffer positions are from 0 to capacity-1
-				if row_number.0 >= metadata.capacity {
-					// Skip invalid encoded numbers silently or could return an error
-					continue;
-				}
-
-				// Check if the encoded exists in the ring buffer
-				// A encoded exists if it's within the current entries
-				if metadata.is_empty() {
-					// No entries, can't update
-					continue;
-				}
-
-				// Check if row is in the valid occupied range [head, tail)
-				let is_occupied = row_number.0 >= metadata.head && row_number.0 < metadata.tail;
+				// Find which partition this row belongs to
+				let is_occupied = partitions.iter().any(|p| {
+					!p.metadata.is_empty()
+						&& row_number.0 >= p.metadata.head && row_number.0 < p.metadata.tail
+				});
 
 				if !is_occupied {
 					continue;
 				}
 
-				if let Some(log) = testing.as_mut() {
-					let row_key = RowKey::encoded(ringbuffer.id, row_number);
-					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&ringbuffer.columns, &schema, &old_row_data.values)
-					} else {
-						Columns::empty()
-					};
-					let new = columns_from_encoded(&ringbuffer.columns, &schema, &row);
-					let key = format!("ringbuffers::{}::{}", namespace.name(), ringbuffer.name);
-					log.record_update(key, old, new);
-				}
-
 				// Update the encoded using interceptors
-				txn.update_ringbuffer(ringbuffer.clone(), row_number, row)?;
+				let stored_row = txn.update_ringbuffer(ringbuffer.clone(), row_number, row)?;
+				if plan.returning.is_some() {
+					returned_rows.push((row_number, stored_row));
+				}
 
 				updated_count += 1;
 			}
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against updated rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return summary columns

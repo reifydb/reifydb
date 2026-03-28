@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_sdk::{
 	error::Result,
-	operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+	operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
 	state::cache::StateCache,
 	testing::{builders::TestChangeBuilder, harness::TestHarnessBuilder},
 };
@@ -42,8 +42,8 @@ impl FFIOperatorMetadata for PassthroughOperator {
 	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "Pass-through operator for testing";
-	const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use num_bigint::BigInt;
 use reifydb_type::{
@@ -40,7 +40,7 @@ pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcEr
 		Some(ProtoParamsOneof::Positional(pos)) => {
 			let values: Result<Vec<Value>, GrpcError> =
 				pos.values.into_iter().map(typed_value_to_value).collect();
-			Ok(Params::Positional(values?))
+			Ok(Params::Positional(Arc::new(values?)))
 		}
 		Some(ProtoParamsOneof::Named(named)) => {
 			let map: Result<HashMap<String, Value>, GrpcError> = named
@@ -48,7 +48,7 @@ pub fn proto_params_to_params(proto: generated::Params) -> Result<Params, GrpcEr
 				.into_iter()
 				.map(|(k, tv)| typed_value_to_value(tv).map(|v| (k, v)))
 				.collect();
-			Ok(Params::Named(map?))
+			Ok(Params::Named(Arc::new(map?)))
 		}
 	}
 }
@@ -136,12 +136,9 @@ fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
 			Ok(Value::Date(d))
 		}
 		Type::DateTime => {
-			expect_bytes(ty, 12, data.len())?;
-			let secs = i64::from_le_bytes(data[..8].try_into().unwrap());
-			let nanos = u32::from_le_bytes(data[8..12].try_into().unwrap());
-			let dt = DateTime::from_parts(secs, nanos)
-				.map_err(|e| GrpcError::InvalidDateTime(e.to_string()))?;
-			Ok(Value::DateTime(dt))
+			expect_bytes(ty, 8, data.len())?;
+			let nanos = u64::from_le_bytes(data[..8].try_into().unwrap());
+			Ok(Value::DateTime(DateTime::from_nanos(nanos)))
 		}
 		Type::Time => {
 			expect_bytes(ty, 8, data.len())?;
@@ -156,7 +153,7 @@ fn typed_value_to_value(tv: TypedValue) -> Result<Value, GrpcError> {
 			let months = i32::from_le_bytes(data[..4].try_into().unwrap());
 			let days = i32::from_le_bytes(data[4..8].try_into().unwrap());
 			let nanos = i64::from_le_bytes(data[8..16].try_into().unwrap());
-			Ok(Value::Duration(Duration::new(months, days, nanos)))
+			Ok(Value::Duration(Duration::new(months, days, nanos).unwrap()))
 		}
 		Type::Blob => Ok(Value::Blob(Blob::new(data.clone()))),
 		Type::IdentityId => {
@@ -205,7 +202,7 @@ pub fn frames_to_proto(frames: Vec<Frame>) -> Vec<ProtoFrame> {
 					ProtoFrameColumn {
 						name: col.name,
 						r#type: type_u8 as u32,
-						data,
+						payload: data,
 						bitvec,
 					}
 				})
@@ -339,10 +336,9 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 		}
 		FrameColumnData::DateTime(c) => {
 			let slice: &[DateTime] = c;
-			let mut buf = Vec::with_capacity(slice.len() * 12);
+			let mut buf = Vec::with_capacity(slice.len() * 8);
 			for v in slice {
-				buf.extend_from_slice(&v.timestamp().to_le_bytes());
-				buf.extend_from_slice(&v.nanosecond().to_le_bytes());
+				buf.extend_from_slice(&v.to_nanos().to_le_bytes());
 			}
 			(Type::DateTime.to_u8(), buf, vec![])
 		}
@@ -537,8 +533,7 @@ fn encode_any_value(val: &Value, buf: &mut Vec<u8>) {
 		}
 		Value::Date(d) => buf.extend_from_slice(&d.to_days_since_epoch().to_le_bytes()),
 		Value::DateTime(dt) => {
-			buf.extend_from_slice(&dt.timestamp().to_le_bytes());
-			buf.extend_from_slice(&dt.nanosecond().to_le_bytes());
+			buf.extend_from_slice(&dt.to_nanos().to_le_bytes());
 		}
 		Value::Time(t) => buf.extend_from_slice(&t.to_nanos_since_midnight().to_le_bytes()),
 		Value::Duration(d) => {

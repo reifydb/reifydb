@@ -1,54 +1,60 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::{
 		catalog::{
-			dictionary::DictionaryDef,
-			flow::{FlowDef, FlowId},
-			handler::HandlerDef,
+			authentication::{Authentication, AuthenticationId},
+			dictionary::Dictionary,
+			flow::{Flow, FlowId},
+			handler::Handler,
 			id::{
-				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-				SubscriptionId, TableId, TestId, ViewId,
+				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SinkId,
+				SourceId, SubscriptionId, TableId, TestId, ViewId,
 			},
-			migration::MigrationDef,
+			identity::{GrantedRole, Identity, Role, RoleId},
+			migration::Migration,
 			namespace::Namespace,
-			policy::{PolicyDef, PolicyId},
-			procedure::ProcedureDef,
-			ringbuffer::RingBufferDef,
-			series::SeriesDef,
-			subscription::SubscriptionDef,
-			sumtype::SumTypeDef,
-			table::TableDef,
-			test::TestDef,
-			user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
-			user_authentication::{UserAuthenticationDef, UserAuthenticationId},
-			view::ViewDef,
+			policy::{Policy, PolicyId},
+			procedure::Procedure,
+			ringbuffer::RingBuffer,
+			series::Series,
+			sink::Sink,
+			source::Source,
+			subscription::Subscription,
+			sumtype::SumType,
+			table::Table,
+			test::Test,
+			view::View,
 		},
-		store::{MultiVersionBatch, MultiVersionValues},
+		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
 use reifydb_type::{
 	Result,
-	value::{dictionary::DictionaryId, sumtype::SumTypeId},
+	params::Params,
+	value::{dictionary::DictionaryId, frame::frame::Frame, identity::IdentityId, sumtype::SumTypeId},
 };
 use tracing::instrument;
 
 use crate::{
 	TransactionId,
 	change::{
-		TransactionalChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalHandlerChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
+		TransactionalAuthenticationChanges, TransactionalChanges, TransactionalDictionaryChanges,
+		TransactionalFlowChanges, TransactionalGrantedRoleChanges, TransactionalHandlerChanges,
+		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSubscriptionChanges,
-		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
-		TransactionalUserAuthenticationChanges, TransactionalUserChanges, TransactionalUserRoleChanges,
-		TransactionalViewChanges,
+		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalSourceChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
+		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
+	transaction::{RqlExecutor, Transaction},
 };
 
 /// An active query transaction that holds a multi query transaction
@@ -56,16 +62,37 @@ use crate::{
 pub struct QueryTransaction {
 	pub(crate) multi: MultiReadTransaction,
 	pub(crate) single: SingleTransaction,
+
+	/// The identity executing this transaction.
+	pub identity: IdentityId,
+
+	/// Optional RQL executor for running RQL within this transaction.
+	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 }
 
 impl QueryTransaction {
 	/// Creates a new active query transaction
 	#[instrument(name = "transaction::query::new", level = "debug", skip_all)]
-	pub fn new(multi: MultiReadTransaction, single: SingleTransaction) -> Self {
+	pub fn new(multi: MultiReadTransaction, single: SingleTransaction, identity: IdentityId) -> Self {
 		Self {
 			multi,
 			single,
+			identity,
+			executor: None,
 		}
+	}
+
+	/// Set the RQL executor for this transaction.
+	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
+		self.executor = Some(executor);
+	}
+
+	/// Execute RQL within this transaction using the attached executor.
+	///
+	/// Panics if no `RqlExecutor` has been set on this transaction.
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		let executor = self.executor.clone().expect("RqlExecutor not set");
+		executor.rql(&mut Transaction::Query(self), rql, params)
 	}
 
 	/// Get the transaction version
@@ -82,8 +109,8 @@ impl QueryTransaction {
 
 	/// Get a value by key
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
-		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_values()))
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
+		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	/// Check if a key exists
@@ -117,7 +144,7 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		self.multi.range(range, batch_size)
 	}
 
@@ -127,7 +154,7 @@ impl QueryTransaction {
 		&self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		self.multi.range_rev(range, batch_size)
 	}
 
@@ -166,11 +193,11 @@ impl QueryTransaction {
 // Query transactions don't track changes, so all methods return None/false.
 
 impl TransactionalDictionaryChanges for QueryTransaction {
-	fn find_dictionary(&self, _id: DictionaryId) -> Option<&DictionaryDef> {
+	fn find_dictionary(&self, _id: DictionaryId) -> Option<&Dictionary> {
 		None
 	}
 
-	fn find_dictionary_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&DictionaryDef> {
+	fn find_dictionary_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Dictionary> {
 		None
 	}
 
@@ -184,11 +211,11 @@ impl TransactionalDictionaryChanges for QueryTransaction {
 }
 
 impl TransactionalFlowChanges for QueryTransaction {
-	fn find_flow(&self, _id: FlowId) -> Option<&FlowDef> {
+	fn find_flow(&self, _id: FlowId) -> Option<&Flow> {
 		None
 	}
 
-	fn find_flow_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&FlowDef> {
+	fn find_flow_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Flow> {
 		None
 	}
 
@@ -220,11 +247,11 @@ impl TransactionalNamespaceChanges for QueryTransaction {
 }
 
 impl TransactionalProcedureChanges for QueryTransaction {
-	fn find_procedure(&self, _id: ProcedureId) -> Option<&ProcedureDef> {
+	fn find_procedure(&self, _id: ProcedureId) -> Option<&Procedure> {
 		None
 	}
 
-	fn find_procedure_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&ProcedureDef> {
+	fn find_procedure_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Procedure> {
 		None
 	}
 
@@ -238,11 +265,11 @@ impl TransactionalProcedureChanges for QueryTransaction {
 }
 
 impl TransactionalTestChanges for QueryTransaction {
-	fn find_test(&self, _id: TestId) -> Option<&TestDef> {
+	fn find_test(&self, _id: TestId) -> Option<&Test> {
 		None
 	}
 
-	fn find_test_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&TestDef> {
+	fn find_test_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Test> {
 		None
 	}
 
@@ -256,11 +283,11 @@ impl TransactionalTestChanges for QueryTransaction {
 }
 
 impl TransactionalRingBufferChanges for QueryTransaction {
-	fn find_ringbuffer(&self, _id: RingBufferId) -> Option<&RingBufferDef> {
+	fn find_ringbuffer(&self, _id: RingBufferId) -> Option<&RingBuffer> {
 		None
 	}
 
-	fn find_ringbuffer_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&RingBufferDef> {
+	fn find_ringbuffer_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&RingBuffer> {
 		None
 	}
 
@@ -274,11 +301,11 @@ impl TransactionalRingBufferChanges for QueryTransaction {
 }
 
 impl TransactionalSeriesChanges for QueryTransaction {
-	fn find_series(&self, _id: SeriesId) -> Option<&SeriesDef> {
+	fn find_series(&self, _id: SeriesId) -> Option<&Series> {
 		None
 	}
 
-	fn find_series_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SeriesDef> {
+	fn find_series_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Series> {
 		None
 	}
 
@@ -292,11 +319,11 @@ impl TransactionalSeriesChanges for QueryTransaction {
 }
 
 impl TransactionalTableChanges for QueryTransaction {
-	fn find_table(&self, _id: TableId) -> Option<&TableDef> {
+	fn find_table(&self, _id: TableId) -> Option<&Table> {
 		None
 	}
 
-	fn find_table_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&TableDef> {
+	fn find_table_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Table> {
 		None
 	}
 
@@ -310,11 +337,11 @@ impl TransactionalTableChanges for QueryTransaction {
 }
 
 impl TransactionalViewChanges for QueryTransaction {
-	fn find_view(&self, _id: ViewId) -> Option<&ViewDef> {
+	fn find_view(&self, _id: ViewId) -> Option<&View> {
 		None
 	}
 
-	fn find_view_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&ViewDef> {
+	fn find_view_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&View> {
 		None
 	}
 
@@ -328,11 +355,11 @@ impl TransactionalViewChanges for QueryTransaction {
 }
 
 impl TransactionalSumTypeChanges for QueryTransaction {
-	fn find_sumtype(&self, _id: SumTypeId) -> Option<&SumTypeDef> {
+	fn find_sumtype(&self, _id: SumTypeId) -> Option<&SumType> {
 		None
 	}
 
-	fn find_sumtype_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SumTypeDef> {
+	fn find_sumtype_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&SumType> {
 		None
 	}
 
@@ -346,7 +373,7 @@ impl TransactionalSumTypeChanges for QueryTransaction {
 }
 
 impl TransactionalSubscriptionChanges for QueryTransaction {
-	fn find_subscription(&self, _id: SubscriptionId) -> Option<&SubscriptionDef> {
+	fn find_subscription(&self, _id: SubscriptionId) -> Option<&Subscription> {
 		None
 	}
 
@@ -356,11 +383,11 @@ impl TransactionalSubscriptionChanges for QueryTransaction {
 }
 
 impl TransactionalHandlerChanges for QueryTransaction {
-	fn find_handler_by_id(&self, _id: HandlerId) -> Option<&HandlerDef> {
+	fn find_handler_by_id(&self, _id: HandlerId) -> Option<&Handler> {
 		None
 	}
 
-	fn find_handler_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&HandlerDef> {
+	fn find_handler_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Handler> {
 		None
 	}
 
@@ -369,30 +396,30 @@ impl TransactionalHandlerChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalUserChanges for QueryTransaction {
-	fn find_user(&self, _id: UserId) -> Option<&UserDef> {
+impl TransactionalIdentityChanges for QueryTransaction {
+	fn find_identity(&self, _id: IdentityId) -> Option<&Identity> {
 		None
 	}
 
-	fn find_user_by_name(&self, _name: &str) -> Option<&UserDef> {
+	fn find_identity_by_name(&self, _name: &str) -> Option<&Identity> {
 		None
 	}
 
-	fn is_user_deleted(&self, _id: UserId) -> bool {
+	fn is_identity_deleted(&self, _id: IdentityId) -> bool {
 		false
 	}
 
-	fn is_user_deleted_by_name(&self, _name: &str) -> bool {
+	fn is_identity_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }
 
 impl TransactionalRoleChanges for QueryTransaction {
-	fn find_role(&self, _id: RoleId) -> Option<&RoleDef> {
+	fn find_role(&self, _id: RoleId) -> Option<&Role> {
 		None
 	}
 
-	fn find_role_by_name(&self, _name: &str) -> Option<&RoleDef> {
+	fn find_role_by_name(&self, _name: &str) -> Option<&Role> {
 		None
 	}
 
@@ -405,22 +432,26 @@ impl TransactionalRoleChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalUserRoleChanges for QueryTransaction {
-	fn find_user_role(&self, _user: UserId, _role: RoleId) -> Option<&UserRoleDef> {
+impl TransactionalGrantedRoleChanges for QueryTransaction {
+	fn find_granted_role(&self, _identity: IdentityId, _role: RoleId) -> Option<&GrantedRole> {
 		None
 	}
 
-	fn is_user_role_deleted(&self, _user: UserId, _role: RoleId) -> bool {
+	fn find_granted_roles_for_identity(&self, _identity: IdentityId) -> Vec<&GrantedRole> {
+		Vec::new()
+	}
+
+	fn is_granted_role_deleted(&self, _identity: IdentityId, _role: RoleId) -> bool {
 		false
 	}
 }
 
 impl TransactionalPolicyChanges for QueryTransaction {
-	fn find_policy(&self, _id: PolicyId) -> Option<&PolicyDef> {
+	fn find_policy(&self, _id: PolicyId) -> Option<&Policy> {
 		None
 	}
 
-	fn find_policy_by_name(&self, _name: &str) -> Option<&PolicyDef> {
+	fn find_policy_by_name(&self, _name: &str) -> Option<&Policy> {
 		None
 	}
 
@@ -434,11 +465,11 @@ impl TransactionalPolicyChanges for QueryTransaction {
 }
 
 impl TransactionalMigrationChanges for QueryTransaction {
-	fn find_migration(&self, _id: MigrationId) -> Option<&MigrationDef> {
+	fn find_migration(&self, _id: MigrationId) -> Option<&Migration> {
 		None
 	}
 
-	fn find_migration_by_name(&self, _name: &str) -> Option<&MigrationDef> {
+	fn find_migration_by_name(&self, _name: &str) -> Option<&Migration> {
 		None
 	}
 
@@ -451,20 +482,56 @@ impl TransactionalMigrationChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalUserAuthenticationChanges for QueryTransaction {
-	fn find_user_authentication(&self, _id: UserAuthenticationId) -> Option<&UserAuthenticationDef> {
+impl TransactionalAuthenticationChanges for QueryTransaction {
+	fn find_authentication(&self, _id: AuthenticationId) -> Option<&Authentication> {
 		None
 	}
 
-	fn find_user_authentication_by_user_and_method(
+	fn find_authentication_by_identity_and_method(
 		&self,
-		_user_id: UserId,
+		_identity: IdentityId,
 		_method: &str,
-	) -> Option<&UserAuthenticationDef> {
+	) -> Option<&Authentication> {
 		None
 	}
 
-	fn is_user_authentication_deleted(&self, _id: UserAuthenticationId) -> bool {
+	fn is_authentication_deleted(&self, _id: AuthenticationId) -> bool {
+		false
+	}
+}
+
+impl TransactionalSourceChanges for QueryTransaction {
+	fn find_source(&self, _id: SourceId) -> Option<&Source> {
+		None
+	}
+
+	fn find_source_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Source> {
+		None
+	}
+
+	fn is_source_deleted(&self, _id: SourceId) -> bool {
+		false
+	}
+
+	fn is_source_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalSinkChanges for QueryTransaction {
+	fn find_sink(&self, _id: SinkId) -> Option<&Sink> {
+		None
+	}
+
+	fn find_sink_by_name(&self, _namespace: NamespaceId, _name: &str) -> Option<&Sink> {
+		None
+	}
+
+	fn is_sink_deleted(&self, _id: SinkId) -> bool {
+		false
+	}
+
+	fn is_sink_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
 }

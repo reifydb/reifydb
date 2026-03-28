@@ -9,15 +9,13 @@ CREATE TABLE tbi::items { id: int4, name: text };
 CREATE TEST tbi::batch_insert_tracking {
     INSERT tbi::items [{ id: 1, name: "A" }, { id: 2, name: "B" }, { id: 3, name: "C" }];
     testing::tables::changed("tbi::items")
-        | AGGREGATE { n: math::count(sequence) }
+        | AGGREGATE { n: math::count(op) }
         | ASSERT { n == 3 };
     testing::tables::changed("tbi::items")
-        | FILTER { sequence == 1 }
-        | ASSERT { new_id == 1 }
+        | FILTER { new_id == 1 }
         | ASSERT { new_name == "A" };
     testing::tables::changed("tbi::items")
-        | FILTER { sequence == 3 }
-        | ASSERT { new_id == 3 }
+        | FILTER { new_id == 3 }
         | ASSERT { new_name == "C" }
 };
 

@@ -23,29 +23,33 @@ impl CatalogStore {
 				if let Key::Namespace(namespace_key) = key {
 					let namespace_id = namespace_key.namespace;
 
-					let name =
-						namespace::SCHEMA.get_utf8(&entry.values, namespace::NAME).to_string();
+					let name = namespace::SCHEMA.get_utf8(&entry.row, namespace::NAME).to_string();
 					let parent_id = NamespaceId(
-						namespace::SCHEMA.get_u64(&entry.values, namespace::PARENT_ID),
+						namespace::SCHEMA.get_u64(&entry.row, namespace::PARENT_ID),
 					);
 					let grpc = namespace::SCHEMA
-						.try_get_utf8(&entry.values, namespace::GRPC)
+						.try_get_utf8(&entry.row, namespace::GRPC)
 						.map(|s| s.to_string())
 						.filter(|s| !s.is_empty());
 					let local_name = namespace::SCHEMA
-						.try_get_utf8(&entry.values, namespace::LOCAL_NAME)
+						.try_get_utf8(&entry.row, namespace::LOCAL_NAME)
 						.filter(|s| !s.is_empty())
 						.unwrap_or_else(|| {
 							name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name)
 						})
 						.to_string();
 					let namespace = if let Some(address) = grpc {
+						let token = namespace::SCHEMA
+							.try_get_utf8(&entry.row, namespace::TOKEN)
+							.map(|s| s.to_string())
+							.filter(|s| !s.is_empty());
 						Namespace::Remote {
 							id: namespace_id,
 							name,
 							local_name,
 							parent_id,
 							address,
+							token,
 						}
 					} else {
 						Namespace::Local {

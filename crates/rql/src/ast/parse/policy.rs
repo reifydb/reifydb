@@ -61,7 +61,7 @@ impl<'bump> Parser<'bump> {
 				self.advance()?
 			} else {
 				// Allow keywords like "read", "write", etc. as operation names
-				self.consume_keyword_as_ident()?
+				self.consume_name()?
 			};
 
 			// Consume colon

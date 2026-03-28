@@ -9,6 +9,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 pub mod get;
+pub mod input_types;
 pub mod promote;
 
 use std::fmt;
@@ -280,10 +281,9 @@ impl Type {
 			Type::Uint8 => 8,
 			Type::Uint16 => 16,
 			Type::Date => 4,
-			Type::DateTime => 12, // seconds: i64 + nanos: u32
+			Type::DateTime => 8, // nanos: u64
 			Type::Time => 8,
-			Type::Duration => 16, // months: i32 + days: i32 +
-			// nanos: i64
+			Type::Duration => 16,   // months: i32 + days: i32 + nanos: i64
 			Type::IdentityId => 16, // UUID v7 is 16 bytes
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,

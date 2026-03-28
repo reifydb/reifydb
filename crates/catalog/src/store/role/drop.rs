@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::user::RoleId,
-	key::{EncodableKey, role::RoleKey, user_role::UserRoleKey},
+	interface::catalog::identity::RoleId,
+	key::{EncodableKey, granted_role::GrantedRoleKey, role::RoleKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
@@ -11,14 +11,14 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_role(txn: &mut AdminTransaction, role: RoleId) -> Result<()> {
-		// Remove associated user-role entries that reference this role
+		// Remove associated granted-role entries that reference this role
 		{
-			let range = UserRoleKey::full_scan();
+			let range = GrantedRoleKey::full_scan();
 			let mut stream = txn.range(range, 1024)?;
 			let mut keys_to_remove = Vec::new();
 			while let Some(entry) = stream.next() {
 				let entry = entry?;
-				if let Some(key) = UserRoleKey::decode(&entry.key) {
+				if let Some(key) = GrantedRoleKey::decode(&entry.key) {
 					if key.role == role {
 						keys_to_remove.push(key);
 					}
@@ -26,7 +26,7 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&UserRoleKey::encoded(key.user, key.role))?;
+				txn.remove(&GrantedRoleKey::encoded(key.identity, key.role))?;
 			}
 		}
 
@@ -37,7 +37,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::CatalogStore;

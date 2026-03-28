@@ -8,9 +8,9 @@ use reifydb_core::{
 	error::diagnostic::internal::internal_with_context,
 	interface::catalog::{policy::PolicyTargetType, procedure::ProcedureTrigger},
 	internal_error,
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
+use reifydb_routine::{function::GeneratorContext, procedure::context::ProcedureContext};
 use reifydb_rql::{
 	compiler::CompilationResult,
 	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
@@ -22,7 +22,7 @@ use reifydb_type::{
 	error::{Diagnostic, Error, ProcedureErrorKind, RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	params::Params,
-	value::{Value, frame::frame::Frame, identity::IdentityId, r#type::Type},
+	value::{Value, frame::frame::Frame, r#type::Type},
 };
 
 use super::{
@@ -37,14 +37,16 @@ use super::{
 				migration::create_migration, namespace::create_namespace,
 				primary_key::create_primary_key, procedure::create_procedure,
 				property::create_column_property, remote_namespace::create_remote_namespace,
-				ringbuffer::create_ringbuffer, series::create_series,
-				subscription::create_subscription, sumtype::create_sumtype, table::create_table,
-				tag::create_tag, test::create_test, transactional::create_transactional_view,
+				ringbuffer::create_ringbuffer, series::create_series, sink::create_sink,
+				source::create_source, subscription::create_subscription, sumtype::create_sumtype,
+				table::create_table, tag::create_tag, test::create_test,
+				transactional::create_transactional_view,
 			},
 			drop::{
 				dictionary::drop_dictionary, namespace::drop_namespace, ringbuffer::drop_ringbuffer,
-				series::drop_series, subscription::drop_subscription, sumtype::drop_sumtype,
-				table::drop_table, view::drop_view,
+				series::drop_series, sink::drop_sink, source::drop_source,
+				subscription::drop_subscription, sumtype::drop_sumtype, table::drop_table,
+				view::drop_view,
 			},
 			migrate::{migrate::execute_migrate, rollback::execute_rollback_migration},
 		},
@@ -67,28 +69,23 @@ use crate::{
 	Result,
 	arena::QueryArena,
 	error::EngineError,
-	expression::{context::EvalContext, eval::evaluate},
+	expression::{context::EvalSession, eval::evaluate},
 	policy::PolicyEvaluator,
-	procedure::context::ProcedureContext,
-	testing,
-	vm::{
-		executor::Executor,
-		instruction::{
-			ddl::{
-				alter::policy::alter_policy,
-				create::{
-					authentication::create_authentication, event::create_event,
-					policy::create_policy, role::create_role, user::create_user,
-				},
-				drop::{
-					authentication::drop_authentication, policy::drop_policy, role::drop_role,
-					user::drop_user,
-				},
-				grant::grant,
-				revoke::revoke,
+	vm::instruction::{
+		ddl::{
+			alter::policy::alter_policy,
+			create::{
+				authentication::create_authentication, event::create_event, identity::create_identity,
+				policy::create_policy, role::create_role,
 			},
-			dml::dispatch::dispatch,
+			drop::{
+				authentication::drop_authentication, identity::drop_identity, policy::drop_policy,
+				role::drop_role,
+			},
+			grant::grant,
+			revoke::revoke,
 		},
+		dml::dispatch::dispatch,
 	},
 };
 
@@ -106,27 +103,20 @@ pub struct Vm {
 	pub(crate) ip: usize,
 	iteration_count: usize,
 	stack: Stack,
-	pub symbol_table: SymbolTable,
+	pub symbols: SymbolTable,
 	pub control_flow: ControlFlow,
 	pub(crate) dispatch_depth: u8,
-	pub(crate) identity: IdentityId,
-	pub(crate) in_test_context: bool,
-	/// Test audit log. Only `Some` when in test context. Zero cost in production.
-	pub(crate) testing: Option<TestingContext>,
 }
 
 impl Vm {
-	pub fn new(symbol_table: SymbolTable, identity: IdentityId) -> Self {
+	pub fn new(symbols: SymbolTable) -> Self {
 		Self {
 			ip: 0,
 			iteration_count: 0,
 			stack: Stack::new(),
-			symbol_table,
+			symbols,
 			control_flow: ControlFlow::Normal,
 			dispatch_depth: 0,
-			identity,
-			in_test_context: false,
-			testing: None,
 		}
 	}
 
@@ -184,7 +174,7 @@ impl Vm {
 
 				Instruction::LoadVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
-					match self.symbol_table.get(&name) {
+					match self.symbols.get(&name) {
 						Some(Variable::Scalar(c)) => {
 							self.stack.push(Variable::Scalar(c.clone()));
 						}
@@ -224,7 +214,7 @@ impl Vm {
 				Instruction::StoreVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
 					let value = self.pop_value()?;
-					self.symbol_table.reassign(name, Variable::scalar(value))?;
+					self.symbols.reassign(name, Variable::scalar(value))?;
 				}
 				Instruction::DeclareVar(fragment) => {
 					let name = strip_dollar_prefix(fragment.text());
@@ -244,7 +234,7 @@ impl Vm {
 							}
 						}
 					};
-					self.symbol_table.set(name, variable, true)?;
+					self.symbols.set(name, variable, true)?;
 				}
 				Instruction::FieldAccess {
 					object,
@@ -252,7 +242,7 @@ impl Vm {
 				} => {
 					let var_name = strip_dollar_prefix(object.text());
 					let field_name = field.text();
-					match self.symbol_table.get(&var_name) {
+					match self.symbols.get(&var_name) {
 						Some(Variable::Columns(columns)) => {
 							let col = columns
 								.columns
@@ -508,17 +498,17 @@ impl Vm {
 					}
 				}
 				Instruction::EnterScope(scope_type) => {
-					self.symbol_table.enter_scope(scope_type.clone());
+					self.symbols.enter_scope(scope_type.clone());
 				}
 				Instruction::ExitScope => {
-					self.symbol_table.exit_scope()?;
+					self.symbols.exit_scope()?;
 				}
 				Instruction::Break {
 					exit_scopes,
 					addr,
 				} => {
 					for _ in 0..*exit_scopes {
-						self.symbol_table.exit_scope()?;
+						self.symbols.exit_scope()?;
 					}
 					self.ip = *addr;
 					continue;
@@ -528,7 +518,7 @@ impl Vm {
 					addr,
 				} => {
 					for _ in 0..*exit_scopes {
-						self.symbol_table.exit_scope()?;
+						self.symbols.exit_scope()?;
 					}
 					self.ip = *addr;
 					continue;
@@ -551,7 +541,7 @@ impl Vm {
 					};
 					let var_name = variable_name.text();
 					let iter_key = format!("__for_{}", var_name);
-					self.symbol_table.set(
+					self.symbols.set(
 						iter_key,
 						Variable::ForIterator {
 							columns,
@@ -572,7 +562,7 @@ impl Vm {
 					};
 					let iter_key = format!("__for_{}", var_name);
 
-					let (columns, index) = match self.symbol_table.get(&iter_key) {
+					let (columns, index) = match self.symbols.get(&iter_key) {
 						Some(Variable::ForIterator {
 							columns,
 							index,
@@ -590,7 +580,7 @@ impl Vm {
 
 					if columns.len() == 1 {
 						let value = columns.columns[0].data.get_value(index);
-						self.symbol_table.set(
+						self.symbols.set(
 							clean_name.to_string(),
 							Variable::scalar(value),
 							true,
@@ -604,14 +594,14 @@ impl Vm {
 							row_columns.push(Column::new(col.name.clone(), data));
 						}
 						let row_frame = Columns::new(row_columns);
-						self.symbol_table.set(
+						self.symbols.set(
 							clean_name.to_string(),
 							Variable::Columns(row_frame),
 							true,
 						)?;
 					}
 
-					self.symbol_table.reassign(
+					self.symbols.reassign(
 						iter_key,
 						Variable::ForIterator {
 							columns,
@@ -622,7 +612,7 @@ impl Vm {
 
 				Instruction::DefineFunction(node) => {
 					let func_name = node.name.text().to_string();
-					self.symbol_table.define_function(func_name, node.clone());
+					self.symbols.define_function(func_name, node.clone());
 				}
 
 				Instruction::Call {
@@ -634,45 +624,24 @@ impl Vm {
 					let is_procedure_call = *is_procedure_call;
 					let func_name = name.text();
 
+					if func_name.starts_with("testing::") {}
+
 					let mut args = Vec::with_capacity(arity);
 					for _ in 0..arity {
 						args.push(self.pop_value()?);
 					}
 					args.reverse();
 
-					// Built-in testing::* functions (zero cost — only checked in test context)
-					if func_name.starts_with("testing::") {
-						if !self.in_test_context {
-							return Err(internal_error!(
-								"testing::* functions are only available in test context"
-							));
-						}
-						let columns = testing::handle_testing_call(
-							func_name,
-							&args,
-							&self.testing,
-							&services.ioc,
-							tx,
-						)?;
-						self.stack.push(Variable::Columns(columns));
-						self.ip += 1;
-						continue;
-					}
-
-					if let Some(func_def) = self.symbol_table.get_function(func_name) {
+					if let Some(func_def) = self.symbols.get_function(func_name) {
 						let func_def = func_def.clone();
 
 						let saved_ip = self.ip;
 
-						self.symbol_table.enter_scope(ScopeType::Function);
+						self.symbols.enter_scope(ScopeType::Function);
 
 						for (param, arg) in func_def.parameters.iter().zip(args.into_iter()) {
 							let param_name = strip_dollar_prefix(param.name.text());
-							self.symbol_table.set(
-								param_name,
-								Variable::scalar(arg),
-								true,
-							)?;
+							self.symbols.set(param_name, Variable::scalar(arg), true)?;
 						}
 
 						self.ip = 0;
@@ -704,29 +673,25 @@ impl Vm {
 							};
 
 						self.ip = saved_ip;
-						let _ = self.symbol_table.exit_scope();
+						let _ = self.symbols.exit_scope();
 
 						self.stack.push(stack_value);
 					} else if let Some(Variable::Closure(closure_val)) =
-						self.symbol_table.get(&strip_dollar_prefix(func_name)).cloned()
+						self.symbols.get(&strip_dollar_prefix(func_name)).cloned()
 					{
 						let saved_ip = self.ip;
 
-						self.symbol_table.enter_scope(ScopeType::Function);
+						self.symbols.enter_scope(ScopeType::Function);
 
 						for (name, var) in &closure_val.captured {
-							self.symbol_table.set(name.clone(), var.clone(), true)?;
+							self.symbols.set(name.clone(), var.clone(), true)?;
 						}
 
 						for (param, arg) in
 							closure_val.def.parameters.iter().zip(args.into_iter())
 						{
 							let param_name = strip_dollar_prefix(param.name.text());
-							self.symbol_table.set(
-								param_name,
-								Variable::scalar(arg),
-								true,
-							)?;
+							self.symbols.set(param_name, Variable::scalar(arg), true)?;
 						}
 
 						self.ip = 0;
@@ -764,7 +729,7 @@ impl Vm {
 							};
 
 						self.ip = saved_ip;
-						let _ = self.symbol_table.exit_scope();
+						let _ = self.symbols.exit_scope();
 
 						self.stack.push(stack_value);
 					} else {
@@ -788,10 +753,9 @@ impl Vm {
 								} else {
 									("default".to_string(), func_name.to_string())
 								};
-								PolicyEvaluator::new(services, &self.symbol_table)
+								PolicyEvaluator::new(services, &self.symbols)
 									.enforce_identity_policy(
 										tx,
-										self.identity,
 										&pol_ns,
 										&pol_name,
 										"call",
@@ -809,26 +773,23 @@ impl Vm {
 										{
 											let call_params =
 												Params::Positional(
-													args,
-												);
-											let identity = self.identity;
-											let executor =
-												Executor::from_services(
-													services.clone(
-													),
+													Arc::new(args),
 												);
 											let ctx = ProcedureContext {
-												identity,
 												params: &call_params,
 												catalog: &services
 													.catalog,
 												functions: &services
 													.functions,
-												clock: &services.clock,
-												executor: &executor,
+												runtime_context:
+													&services
+														.runtime_context,
 											};
 											let columns = proc_impl
-												.call(&ctx, tx)?;
+												.call(&ctx, tx)
+												.map_err(|e| {
+													e.with_context(name.clone())
+												})?;
 											self.stack.push(
 												Variable::Columns(
 													columns,
@@ -855,7 +816,7 @@ impl Vm {
 											let saved_ip = self.ip;
 
 											// Enter function scope
-											self.symbol_table.enter_scope(
+											self.symbols.enter_scope(
 												ScopeType::Function,
 											);
 
@@ -866,7 +827,7 @@ impl Vm {
 												.iter()
 												.zip(args.into_iter())
 											{
-												self.symbol_table.set(
+												self.symbols.set(
 													param_def.name.clone(),
 													Variable::scalar(arg),
 													true,
@@ -934,7 +895,7 @@ impl Vm {
 											// Restore IP and exit scope
 											self.ip = saved_ip;
 											let _ = self
-												.symbol_table
+												.symbols
 												.exit_scope();
 
 											self.stack.push(stack_value);
@@ -949,7 +910,7 @@ impl Vm {
 								}
 							}
 							Some(ResolvedProcedure::Test(proc_def)) => {
-								if !self.in_test_context {
+								if !matches!(tx, Transaction::Test(..)) {
 									return Err(TypeError::Procedure {
 										kind: ProcedureErrorKind::UndefinedProcedure {
 											name: func_name.to_string(),
@@ -972,7 +933,7 @@ impl Vm {
 									CompilationResult::Ready(compiled_list) => {
 										let saved_ip = self.ip;
 
-										self.symbol_table.enter_scope(
+										self.symbols.enter_scope(
 											ScopeType::Function,
 										);
 
@@ -981,7 +942,7 @@ impl Vm {
 											.iter()
 											.zip(args.into_iter())
 										{
-											self.symbol_table.set(
+											self.symbols.set(
 												param_def.name.clone(),
 												Variable::scalar(arg),
 												true,
@@ -1032,7 +993,7 @@ impl Vm {
 										};
 
 										self.ip = saved_ip;
-										let _ = self.symbol_table.exit_scope();
+										let _ = self.symbols.exit_scope();
 
 										self.stack.push(stack_value);
 									}
@@ -1046,6 +1007,7 @@ impl Vm {
 							#[cfg(not(target_arch = "wasm32"))]
 							Some(ResolvedProcedure::Remote {
 								address,
+								token,
 							}) => {
 								if let Some(ref registry) = services.remote_registry {
 									let param_refs: Vec<String> = (1..=args.len())
@@ -1059,7 +1021,8 @@ impl Vm {
 									let frames = registry.forward_query(
 										&address,
 										&remote_rql,
-										Params::Positional(args),
+										Params::Positional(Arc::new(args)),
+										token.as_deref(),
 									)?;
 									if let Some(frame) = frames.into_iter().next() {
 										let cols: Columns = frame.into();
@@ -1103,33 +1066,69 @@ impl Vm {
 								{
 									// Runtime-registered native procedure (no
 									// catalog entry needed)
-									let call_params = Params::Positional(args);
-									let identity = self.identity;
-									let executor = Executor::from_services(
-										services.clone(),
-									);
+									let call_params =
+										Params::Positional(Arc::new(args));
 									let ctx = ProcedureContext {
-										identity,
 										params: &call_params,
 										catalog: &services.catalog,
 										functions: &services.functions,
-										clock: &services.clock,
-										executor: &executor,
+										runtime_context: &services
+											.runtime_context,
 									};
-									let columns = proc_impl.call(&ctx, tx)?;
+									let columns = proc_impl
+										.call(&ctx, tx)
+										.map_err(|e| {
+											e.with_context(name.clone())
+										})?;
 
 									// Special handling: identity::inject updates
-									// the VM's identity
+									// the transaction's identity
 									if func_name == "identity::inject" {
 										if let Some(col) = columns.get(0) {
 											if let Value::IdentityId(id) =
 												col.data().get_value(0)
 											{
-												self.identity = id;
+												tx.set_identity(id);
 											}
 										}
 									}
 
+									self.stack.push(Variable::Columns(columns));
+								} else if let Some(generator) =
+									services.functions.get_generator(func_name)
+								{
+									let arg_columns: Vec<Column> = args
+										.into_iter()
+										.enumerate()
+										.map(|(i, v)| {
+											let mut data = ColumnData::with_capacity(v.get_type(), 1);
+											data.push_value(v);
+											Column::new(
+												format!("arg{}", i),
+												data,
+											)
+										})
+										.collect();
+									let identity = tx.identity();
+									// SAFETY: GeneratorContext requires &'a mut
+									// Transaction<'a> but we only have &
+									// mut Transaction<'_>. The generator does not
+									// hold the reference beyond this call.
+									// This matches the pattern in GeneratorNode.
+									let columns = generator.generate(
+										GeneratorContext {
+											fragment: name.clone(),
+											params: Columns::new(
+												arg_columns,
+											),
+											txn: unsafe {
+												mem::transmute::<&mut Transaction, &mut Transaction>(tx)
+											},
+											catalog: &services.catalog,
+											identity,
+											ioc: &services.ioc,
+										},
+									)?;
 									self.stack.push(Variable::Columns(columns));
 								} else if is_procedure_call {
 									return Err(TypeError::Procedure {
@@ -1143,19 +1142,18 @@ impl Vm {
 								} else {
 									// Built-in function: evaluate via column
 									// evaluator
-									let evaluation_context = EvalContext {
-										target: None,
-										columns: Columns::empty(),
-										row_count: 1,
-										take: None,
+									let vm_session = EvalSession {
 										params,
-										symbol_table: &self.symbol_table,
-										is_aggregate_context: false,
+										symbols: &self.symbols,
 										functions: &services.functions,
-										clock: &services.clock,
+										runtime_context: &services
+											.runtime_context,
 										arena: None,
-										identity: self.identity,
+										identity: tx.identity(),
+										is_aggregate_context: false,
 									};
+									let evaluation_context =
+										vm_session.eval_empty();
 
 									let mut arg_exprs = Vec::with_capacity(arity);
 									for arg in &args {
@@ -1175,8 +1173,6 @@ impl Vm {
 									let result_column = evaluate(
 										&evaluation_context,
 										&proper_call,
-										&services.functions,
-										&services.clock,
 									)?;
 									let value = if result_column.data.len() > 0 {
 										result_column.data.get_value(0)
@@ -1204,7 +1200,7 @@ impl Vm {
 					let mut captured = HashMap::new();
 					for cap_name in &closure_def.captures {
 						let stripped = strip_dollar_prefix(cap_name.text());
-						if let Some(var) = self.symbol_table.get(&stripped) {
+						if let Some(var) = self.symbols.get(&stripped) {
 							captured.insert(stripped, var.clone());
 						}
 					}
@@ -1217,6 +1213,7 @@ impl Vm {
 				Instruction::CreateNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1229,6 +1226,7 @@ impl Vm {
 				Instruction::CreateRemoteNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1241,6 +1239,7 @@ impl Vm {
 				Instruction::CreateTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1253,6 +1252,7 @@ impl Vm {
 				Instruction::CreateRingBuffer(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1265,6 +1265,7 @@ impl Vm {
 				Instruction::CreateDeferredView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1277,6 +1278,7 @@ impl Vm {
 				Instruction::CreateTransactionalView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1289,6 +1291,7 @@ impl Vm {
 				Instruction::CreateDictionary(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1301,6 +1304,7 @@ impl Vm {
 				Instruction::CreateSumType(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1326,6 +1330,7 @@ impl Vm {
 				Instruction::AlterSequence(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1338,6 +1343,7 @@ impl Vm {
 				Instruction::CreatePrimaryKey(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1350,6 +1356,7 @@ impl Vm {
 				Instruction::CreateColumnProperty(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1362,6 +1369,7 @@ impl Vm {
 				Instruction::CreateProcedure(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1374,6 +1382,7 @@ impl Vm {
 				Instruction::CreateSeries(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1386,6 +1395,7 @@ impl Vm {
 				Instruction::CreateEvent(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1398,6 +1408,7 @@ impl Vm {
 				Instruction::CreateTag(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1407,9 +1418,62 @@ impl Vm {
 					let columns = create_tag(services, txn, node.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
+				Instruction::CreateSource(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_source(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::CreateSink(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = create_sink(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropSource(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_source(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
+				Instruction::DropSink(node) => {
+					let txn = match tx {
+						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
+						_ => {
+							return Err(internal_error!(
+								"DDL operations require an admin transaction"
+							));
+						}
+					};
+					let columns = drop_sink(services, txn, node.clone())?;
+					self.stack.push(Variable::Columns(columns));
+				}
 				Instruction::CreateTest(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1422,6 +1486,7 @@ impl Vm {
 				Instruction::CreateMigration(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1458,6 +1523,7 @@ impl Vm {
 				Instruction::AlterTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1470,6 +1536,7 @@ impl Vm {
 				Instruction::AlterRemoteNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1480,10 +1547,10 @@ impl Vm {
 					self.stack.push(Variable::Columns(columns));
 				}
 
-				// === DDL (Drop) ===
 				Instruction::DropNamespace(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1501,6 +1568,7 @@ impl Vm {
 				Instruction::DropTable(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1518,6 +1586,7 @@ impl Vm {
 				Instruction::DropView(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1535,6 +1604,7 @@ impl Vm {
 				Instruction::DropRingBuffer(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1552,6 +1622,7 @@ impl Vm {
 				Instruction::DropSeries(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1569,6 +1640,7 @@ impl Vm {
 				Instruction::DropDictionary(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1586,6 +1658,7 @@ impl Vm {
 				Instruction::DropSumType(node) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1604,6 +1677,7 @@ impl Vm {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
 						Transaction::Subscription(txn) => txn.as_admin_mut(),
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(Error(internal_with_context(
 								"DDL operations require an admin transaction",
@@ -1619,7 +1693,6 @@ impl Vm {
 					self.stack.push(Variable::Columns(columns));
 				}
 
-				// === DML ===
 				Instruction::Delete(node) => {
 					match tx {
 						Transaction::Query(_) => {
@@ -1635,9 +1708,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1656,9 +1727,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1672,14 +1741,8 @@ impl Vm {
 						_ => {}
 					}
 					let mut std_txn = tx.reborrow();
-					let columns = insert_table(
-						services,
-						&mut std_txn,
-						node.clone(),
-						&mut self.symbol_table,
-						self.identity,
-						&mut self.testing,
-					)?;
+					let columns =
+						insert_table(services, &mut std_txn, node.clone(), &mut self.symbols)?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::InsertRingBuffer(node) => {
@@ -1697,9 +1760,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1717,9 +1778,7 @@ impl Vm {
 						services,
 						&mut std_txn,
 						node.clone(),
-						&mut self.symbol_table,
-						self.identity,
-						&mut self.testing,
+						&mut self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1738,9 +1797,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1759,9 +1816,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1780,9 +1835,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1801,9 +1854,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1822,9 +1873,7 @@ impl Vm {
 						&mut std_txn,
 						node.clone(),
 						params.clone(),
-						self.identity,
-						&self.symbol_table,
-						&mut self.testing,
+						&self.symbols,
 					)?;
 					self.stack.push(Variable::Columns(columns));
 				}
@@ -1836,9 +1885,7 @@ impl Vm {
 						&mut std_txn,
 						plan.clone(),
 						params.clone(),
-						&mut self.symbol_table,
-						self.identity,
-						&self.testing,
+						&mut self.symbols,
 					)? {
 						self.stack.push(Variable::Columns(columns));
 					}
@@ -1857,19 +1904,19 @@ impl Vm {
 						}
 					};
 
-					match self.symbol_table.get(&clean_name) {
+					match self.symbols.get(&clean_name) {
 						Some(Variable::Columns(_)) => {
-							let mut existing =
-								match self.symbol_table.get(&clean_name).unwrap() {
-									Variable::Columns(f) => f.clone(),
-									_ => unreachable!(),
-								};
+							let mut existing = match self.symbols.get(&clean_name).unwrap()
+							{
+								Variable::Columns(f) => f.clone(),
+								_ => unreachable!(),
+							};
 							existing.append_columns(columns)?;
-							self.symbol_table
+							self.symbols
 								.reassign(clean_name, Variable::Columns(existing))?;
 						}
 						None => {
-							self.symbol_table.set(
+							self.symbols.set(
 								clean_name,
 								Variable::Columns(columns),
 								true,
@@ -1891,21 +1938,23 @@ impl Vm {
 				}
 
 				// Auth/Permissions
-				Instruction::CreateUser(plan) => {
+				Instruction::CreateIdentity(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
 					};
-					let columns = create_user(services, txn, plan.clone())?;
+					let columns = create_identity(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::CreateRole(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1918,6 +1967,7 @@ impl Vm {
 				Instruction::Grant(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1930,6 +1980,7 @@ impl Vm {
 				Instruction::Revoke(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1939,21 +1990,23 @@ impl Vm {
 					let columns = revoke(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
-				Instruction::DropUser(plan) => {
+				Instruction::DropIdentity(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
 							));
 						}
 					};
-					let columns = drop_user(services, txn, plan.clone())?;
+					let columns = drop_identity(services, txn, plan.clone())?;
 					self.stack.push(Variable::Columns(columns));
 				}
 				Instruction::DropRole(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1966,6 +2019,7 @@ impl Vm {
 				Instruction::CreatePolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1978,6 +2032,7 @@ impl Vm {
 				Instruction::AlterPolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -1990,6 +2045,7 @@ impl Vm {
 				Instruction::DropPolicy(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -2002,6 +2058,7 @@ impl Vm {
 				Instruction::CreateAuthentication(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -2014,6 +2071,7 @@ impl Vm {
 				Instruction::DropAuthentication(plan) => {
 					let txn = match tx {
 						Transaction::Admin(txn) => txn,
+						Transaction::Test(t) => &mut *t.inner,
 						_ => {
 							return Err(internal_error!(
 								"DDL operations require an admin transaction"
@@ -2164,18 +2222,16 @@ fn run_query_plan(
 	txn: &mut Transaction<'_>,
 	plan: QueryPlan,
 	params: Params,
-	symbol_table: &mut SymbolTable,
-	identity: IdentityId,
-	testing: &Option<TestingContext>,
+	symbols: &mut SymbolTable,
 ) -> Result<Option<Columns>> {
+	let identity = txn.identity();
 	let context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,
 		batch_size: 1024,
 		params,
-		stack: symbol_table.clone(),
+		symbols: symbols.clone(),
 		identity,
-		testing: testing.clone(),
 	});
 
 	let mut query_node = compile(plan, txn, context.clone());

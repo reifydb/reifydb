@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::CommitVersion,
-	encoded::schema::{Schema, SchemaField},
+	encoded::schema::{RowSchema, RowSchemaField},
 	interface::catalog::{
 		id::{NamespaceId, SubscriptionColumnId, SubscriptionId},
-		key::PrimaryKeyDef,
+		key::PrimaryKey,
 	},
 };
 
@@ -17,27 +17,27 @@ use crate::{
 pub const IMPLICIT_COLUMN_OP: &str = "_op";
 
 /// A column definition for a subscription.
-/// Simpler than regular ColumnDef - only has id, name, and type.
+/// Simpler than regular Column - only has id, name, and type.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SubscriptionColumnDef {
+pub struct SubscriptionColumn {
 	pub id: SubscriptionColumnId,
 	pub name: String,
 	pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SubscriptionDef {
+pub struct Subscription {
 	pub id: SubscriptionId,
 	// Note: Subscriptions do NOT have names - identified only by ID
-	pub columns: Vec<SubscriptionColumnDef>,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub columns: Vec<SubscriptionColumn>,
+	pub primary_key: Option<PrimaryKey>,
 	pub acknowledged_version: CommitVersion,
 }
 
-impl SubscriptionDef {
+impl Subscription {
 	/// Returns the implicit columns that are automatically added to all subscriptions
-	pub fn implicit_columns() -> Vec<SubscriptionColumnDef> {
-		vec![SubscriptionColumnDef {
+	pub fn implicit_columns() -> Vec<SubscriptionColumn> {
+		vec![SubscriptionColumn {
 			id: SubscriptionColumnId(u64::MAX - 2), // Use high IDs for implicit columns
 			name: IMPLICIT_COLUMN_OP.to_string(),
 			ty: Type::Uint1, // 1=INSERT, 2=UPDATE, 3=DELETE
@@ -45,22 +45,22 @@ impl SubscriptionDef {
 	}
 
 	/// Returns all columns including user-defined and implicit columns
-	pub fn all_columns(&self) -> Vec<SubscriptionColumnDef> {
+	pub fn all_columns(&self) -> Vec<SubscriptionColumn> {
 		let mut all = self.columns.clone();
 		all.extend(Self::implicit_columns());
 		all
 	}
 }
 
-impl From<&SubscriptionDef> for Schema {
-	fn from(value: &SubscriptionDef) -> Self {
+impl From<&Subscription> for RowSchema {
+	fn from(value: &Subscription) -> Self {
 		// Use only user-defined columns for schema (implicit columns like _op removed)
 		let fields = value
 			.columns
 			.iter()
-			.map(|col| SchemaField::unconstrained(col.name.clone(), col.ty.clone()))
+			.map(|col| RowSchemaField::unconstrained(col.name.clone(), col.ty.clone()))
 			.collect();
-		Schema::new(fields)
+		RowSchema::new(fields)
 	}
 }
 

@@ -84,7 +84,7 @@ impl<'bump> Compiler<'bump> {
 			series: self.interner.intern_fragment(&create.series.name),
 			columns: create.columns,
 			tag,
-			precision: create.precision,
+			key: create.key,
 		}))
 	}
 }

@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -47,7 +47,7 @@ pub struct TakeOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	limit: usize,
-	schema: Schema,
+	schema: RowSchema,
 }
 
 impl TakeOperator {
@@ -56,7 +56,7 @@ impl TakeOperator {
 			parent,
 			node,
 			limit,
-			schema: Schema::testing(&[Type::Blob]),
+			schema: RowSchema::testing(&[Type::Blob]),
 		}
 	}
 
@@ -78,12 +78,13 @@ impl TakeOperator {
 	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> Result<()> {
 		let serialized =
 			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
-
-		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);
-		self.schema.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, state_row)
+		self.update_state(txn, |schema, row| {
+			schema.set_blob(row, 0, &blob);
+			Ok(())
+		})?;
+		Ok(())
 	}
 
 	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> Result<Vec<Diff>> {
@@ -137,7 +138,7 @@ impl TakeOperator {
 impl RawStatefulOperator for TakeOperator {}
 
 impl SingleStateful for TakeOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.schema.clone()
 	}
 }

@@ -5,10 +5,10 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::{NamespaceId, PrimaryKeyId, RingBufferId},
-			key::PrimaryKeyDef,
-			ringbuffer::RingBufferDef,
+			key::PrimaryKey,
+			ringbuffer::RingBuffer,
 		},
-		store::MultiVersionValues,
+		store::MultiVersionRow,
 	},
 	key::ringbuffer::RingBufferKey,
 };
@@ -33,33 +33,41 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &MaterializedC
 
 		let pk_id = get_ringbuffer_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let ringbuffer_def = convert_ringbuffer(multi, primary_key);
+		let ringbuffer = convert_ringbuffer(multi, primary_key);
 
-		catalog.set_ringbuffer(ringbuffer_def.id, version, Some(ringbuffer_def));
+		catalog.set_ringbuffer(ringbuffer.id, version, Some(ringbuffer));
 	}
 
 	Ok(())
 }
 
-fn convert_ringbuffer(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> RingBufferDef {
-	let row = multi.values;
+fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> RingBuffer {
+	let row = multi.row;
 	let id = RingBufferId(ringbuffer::SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(ringbuffer::SCHEMA.get_u64(&row, NAMESPACE));
 	let name = ringbuffer::SCHEMA.get_utf8(&row, NAME).to_string();
 	let capacity = ringbuffer::SCHEMA.get_u64(&row, CAPACITY);
 
-	RingBufferDef {
+	let partition_by_str = ringbuffer::SCHEMA.get_utf8(&row, ringbuffer::PARTITION_BY);
+	let partition_by = if partition_by_str.is_empty() {
+		vec![]
+	} else {
+		partition_by_str.split(',').map(|s| s.to_string()).collect()
+	};
+
+	RingBuffer {
 		id,
 		name,
 		namespace,
 		columns: vec![],
 		capacity,
 		primary_key,
+		partition_by,
 	}
 }
 
-fn get_ringbuffer_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
-	let pk_id_raw = ringbuffer::SCHEMA.get_u64(&multi.values, PRIMARY_KEY);
+fn get_ringbuffer_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
+	let pk_id_raw = ringbuffer::SCHEMA.get_u64(&multi.row, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

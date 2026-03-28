@@ -27,6 +27,7 @@ pub struct NamespaceToCreate {
 	pub local_name: String,
 	pub parent_id: NamespaceId,
 	pub grpc: Option<String>,
+	pub token: Option<String>,
 }
 
 impl From<NamespaceToCreate> for StoreNamespaceToCreate {
@@ -37,6 +38,7 @@ impl From<NamespaceToCreate> for StoreNamespaceToCreate {
 			local_name: to_create.local_name,
 			parent_id: to_create.parent_id,
 			grpc: to_create.grpc,
+			token: to_create.token,
 		}
 	}
 }
@@ -139,6 +141,20 @@ impl Catalog {
 					return Ok(Some(namespace));
 				}
 
+				Ok(None)
+			}
+			Transaction::Test(mut t) => {
+				if let Some(ns) = TransactionalNamespaceChanges::find_namespace(t.inner, id) {
+					return Ok(Some(ns.clone()));
+				}
+				if TransactionalNamespaceChanges::is_namespace_deleted(t.inner, id) {
+					return Ok(None);
+				}
+				if let Some(ns) =
+					CatalogStore::find_namespace(&mut Transaction::Test(t.reborrow()), id)?
+				{
+					return Ok(Some(ns));
+				}
 				Ok(None)
 			}
 		}
@@ -246,6 +262,21 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(mut t) => {
+				if let Some(ns) = TransactionalNamespaceChanges::find_namespace_by_name(t.inner, name) {
+					return Ok(Some(ns.clone()));
+				}
+				if TransactionalNamespaceChanges::is_namespace_deleted_by_name(t.inner, name) {
+					return Ok(None);
+				}
+				if let Some(ns) = CatalogStore::find_namespace_by_name(
+					&mut Transaction::Test(t.reborrow()),
+					name,
+				)? {
+					return Ok(Some(ns));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -304,6 +335,22 @@ impl Catalog {
 					return Ok(Some(ns));
 				}
 				let all = CatalogStore::list_namespaces_all(&mut Transaction::Subscription(&mut *sub))?;
+				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
+			}
+			Transaction::Test(t) => {
+				if let Some(ns) = t.inner.changes.namespace.iter().rev().find_map(|change| {
+					change.post
+						.as_ref()
+						.filter(|ns| ns.local_name() == name && ns.parent_id() == parent_id)
+				}) {
+					return Ok(Some(ns.clone()));
+				}
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, t.inner.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Admin(&mut *t.inner))?;
 				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
 			}
 		}

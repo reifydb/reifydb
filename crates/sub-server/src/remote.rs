@@ -45,10 +45,16 @@ impl RemoteSubscription {
 }
 
 /// Connect to a remote node and create a subscription.
-pub async fn connect_remote(address: &str, query: &str) -> Result<RemoteSubscription, RemoteSubscriptionError> {
+pub async fn connect_remote(
+	address: &str,
+	query: &str,
+	token: Option<&str>,
+) -> Result<RemoteSubscription, RemoteSubscriptionError> {
 	let mut client =
 		GrpcClient::connect(address).await.map_err(|e| RemoteSubscriptionError::Connect(e.to_string()))?;
-	client.authenticate("service-token");
+	if let Some(t) = token {
+		client.authenticate(t);
+	}
 	let sub = client.subscribe(query).await.map_err(|e| RemoteSubscriptionError::Subscribe(e.to_string()))?;
 	let subscription_id = sub.subscription_id().to_string();
 	Ok(RemoteSubscription {

@@ -5,9 +5,9 @@ use crate::{
 	Result,
 	ast::ast::AstDrop,
 	plan::logical::{
-		Compiler, DropAuthenticationNode, DropDictionaryNode, DropNamespaceNode, DropPolicyNode,
-		DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSubscriptionNode, DropSumTypeNode, DropTableNode,
-		DropUserNode, DropViewNode, LogicalPlan,
+		Compiler, DropAuthenticationNode, DropDictionaryNode, DropIdentityNode, DropNamespaceNode,
+		DropPolicyNode, DropRingBufferNode, DropRoleNode, DropSeriesNode, DropSinkNode, DropSourceNode,
+		DropSubscriptionNode, DropSumTypeNode, DropTableNode, DropViewNode, LogicalPlan,
 	},
 };
 
@@ -54,7 +54,7 @@ impl<'bump> Compiler<'bump> {
 				if_exists: node.if_exists,
 				cascade: node.cascade,
 			})),
-			AstDrop::User(node) => Ok(LogicalPlan::DropUser(DropUserNode {
+			AstDrop::Identity(node) => Ok(LogicalPlan::DropIdentity(DropIdentityNode {
 				name: node.name,
 				if_exists: node.if_exists,
 			})),
@@ -71,6 +71,16 @@ impl<'bump> Compiler<'bump> {
 				target_type: node.target_type,
 				name: node.name,
 				if_exists: node.if_exists,
+			})),
+			AstDrop::Source(node) => Ok(LogicalPlan::DropSource(DropSourceNode {
+				source: node.source,
+				if_exists: node.if_exists,
+				cascade: node.cascade,
+			})),
+			AstDrop::Sink(node) => Ok(LogicalPlan::DropSink(DropSinkNode {
+				sink: node.sink,
+				if_exists: node.if_exists,
+				cascade: node.cascade,
 			})),
 		}
 	}

@@ -17,13 +17,14 @@ pub(crate) fn create_ringbuffer(
 	plan: CreateRingBufferNode,
 ) -> Result<Columns> {
 	// Check if ring buffer already exists using the catalog
-	if let Some(_) = services.catalog.find_ringbuffer_by_name(
+	if let Some(existing) = services.catalog.find_ringbuffer_by_name(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.ringbuffer.text(),
 	)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(existing.id.0)),
 				("namespace", Value::Utf8(plan.namespace.name().to_string())),
 				("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
 				("created", Value::Boolean(false)),
@@ -40,11 +41,14 @@ pub(crate) fn create_ringbuffer(
 			namespace: plan.namespace.def().id(),
 			columns: plan.columns,
 			capacity: plan.capacity,
+			partition_by: plan.partition_by,
 		},
 	)?;
-	txn.track_ringbuffer_def_created(result)?;
+	let id = result.id;
+	txn.track_ringbuffer_created(result)?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(id.0)),
 		("namespace", Value::Utf8(plan.namespace.name().to_string())),
 		("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
 		("created", Value::Boolean(true)),
@@ -53,13 +57,10 @@ pub(crate) fn create_ringbuffer(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
-		params::Params,
-		value::{Value, identity::IdentityId},
-	};
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
-		test_utils::create_test_admin_transaction,
+		test_harness::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 
@@ -67,7 +68,6 @@ pub mod tests {
 	fn test_create_ringbuffer() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// Create namespace first
 		instance.admin(
@@ -75,7 +75,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -87,14 +86,14 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Creating the same ring buffer again should return error
 		let err = instance
@@ -103,7 +102,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap_err();
@@ -114,7 +112,6 @@ pub mod tests {
 	fn test_create_same_ringbuffer_in_different_schema() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// Create both namespaces
 		instance.admin(
@@ -122,7 +119,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -131,7 +127,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE NAMESPACE another_schema",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -143,14 +138,14 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER test_namespace::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("test_namespace".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Create ringbuffer with same name in different namespace
 		let frames = instance
@@ -159,13 +154,13 @@ pub mod tests {
 				Admin {
 					rql: "CREATE RINGBUFFER another_schema::test_ringbuffer { id: Int4 } WITH { capacity: 1000 }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("another_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
-		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
+		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 }

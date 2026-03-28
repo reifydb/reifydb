@@ -14,8 +14,8 @@ use std::ops::RangeBounds;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::transaction::PostCommitEvent,
 	interface::store::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet},
@@ -148,7 +148,7 @@ impl MultiWriteTransaction {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
 			Some(v) => {
-				if v.values().is_some() {
+				if v.row().is_some() {
 					Ok(Some(v.into()))
 				} else {
 					Ok(None)
@@ -158,14 +158,14 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	#[instrument(name = "transaction::command::set", level = "trace", skip(self, values), fields(key_hex = %hex::display(key.as_ref()), value_len = values.as_ref().len()))]
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
-		self.tm.set(key, values)
+	#[instrument(name = "transaction::command::set", level = "trace", skip(self, row), fields(key_hex = %hex::display(key.as_ref()), value_len = row.as_ref().len()))]
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		self.tm.set(key, row)
 	}
 
-	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, values), fields(key_hex = %hex::display(key.as_ref()), value_len = values.len()))]
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
-		self.tm.unset(key, values)
+	#[instrument(name = "transaction::command::unset", level = "trace", skip(self, row), fields(key_hex = %hex::display(key.as_ref()), value_len = row.len()))]
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+		self.tm.unset(key, row)
 	}
 
 	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
@@ -200,7 +200,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -226,7 +226,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_> {
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -246,7 +246,7 @@ impl MultiWriteTransaction {
 
 use std::{cmp::Ordering, iter, vec};
 
-use reifydb_core::interface::store::MultiVersionValues;
+use reifydb_core::interface::store::MultiVersionRow;
 
 use crate::multi::{pending::PendingWrites, types::Pending};
 
@@ -254,13 +254,13 @@ use crate::multi::{pending::PendingWrites, types::Pending};
 struct MergePendingIterator<I> {
 	pending_iter: iter::Peekable<vec::IntoIter<(EncodedKey, Pending)>>,
 	storage_iter: I,
-	next_storage: Option<MultiVersionValues>,
+	next_storage: Option<MultiVersionRow>,
 	reverse: bool,
 }
 
 impl<I> MergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
 	fn new(pending: Vec<(EncodedKey, Pending)>, storage_iter: I, reverse: bool) -> Self {
 		Self {
@@ -274,9 +274,9 @@ where
 
 impl<I> Iterator for MergePendingIterator<I>
 where
-	I: Iterator<Item = Result<MultiVersionValues>>,
+	I: Iterator<Item = Result<MultiVersionRow>>,
 {
-	type Item = Result<MultiVersionValues>;
+	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -303,10 +303,10 @@ where
 					if should_yield_pending {
 						// Pending key comes first
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let Some(values) = value.values() {
-							return Some(Ok(MultiVersionValues {
+						if let Some(row) = value.row() {
+							return Some(Ok(MultiVersionRow {
 								key,
-								values: values.clone(),
+								row: row.clone(),
 								version: value.version,
 							}));
 						}
@@ -315,10 +315,10 @@ where
 						// Same key - pending shadows storage
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.next_storage = None; // Consume storage entry
-						if let Some(values) = value.values() {
-							return Some(Ok(MultiVersionValues {
+						if let Some(row) = value.row() {
+							return Some(Ok(MultiVersionRow {
 								key,
-								values: values.clone(),
+								row: row.clone(),
 								version: value.version,
 							}));
 						}
@@ -331,10 +331,10 @@ where
 				(Some(_), None) => {
 					// Only pending left
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let Some(values) = value.values() {
-						return Some(Ok(MultiVersionValues {
+					if let Some(row) = value.row() {
+						return Some(Ok(MultiVersionRow {
 							key,
-							values: values.clone(),
+							row: row.clone(),
 							version: value.version,
 						}));
 					}

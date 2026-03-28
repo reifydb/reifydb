@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
@@ -11,8 +11,8 @@ use crate::value::Value;
 pub enum Params {
 	#[default]
 	None,
-	Positional(Vec<Value>),
-	Named(HashMap<String, Value>),
+	Positional(Arc<Vec<Value>>),
+	Named(Arc<HashMap<String, Value>>),
 }
 
 impl Params {
@@ -43,19 +43,19 @@ impl From<()> for Params {
 
 impl From<Vec<Value>> for Params {
 	fn from(values: Vec<Value>) -> Self {
-		Params::Positional(values)
+		Params::Positional(Arc::new(values))
 	}
 }
 
 impl From<HashMap<String, Value>> for Params {
 	fn from(map: HashMap<String, Value>) -> Self {
-		Params::Named(map)
+		Params::Named(Arc::new(map))
 	}
 }
 
 impl<const N: usize> From<[Value; N]> for Params {
 	fn from(values: [Value; N]) -> Self {
-		Params::Positional(values.to_vec())
+		Params::Positional(Arc::new(values.to_vec()))
 	}
 }
 
@@ -68,7 +68,7 @@ macro_rules! params {
             $(
                 map.insert($crate::params_key!($key), $crate::value::into::IntoValue::into_value($value));
             )*
-            $crate::params::Params::Named(map)
+            $crate::params::Params::Named(::std::sync::Arc::new(map))
         }
     };
 
@@ -83,7 +83,7 @@ macro_rules! params {
             let values = vec![
                 $($crate::value::into::IntoValue::into_value($value)),*
             ];
-            $crate::params::Params::Positional(values)
+            $crate::params::Params::Positional(::std::sync::Arc::new(values))
         }
     };
 }

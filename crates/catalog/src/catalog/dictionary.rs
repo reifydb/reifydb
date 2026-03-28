@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	change::CatalogTrackDictionaryChangeOperations, dictionary::DictionaryDef, id::NamespaceId,
+	change::CatalogTrackDictionaryChangeOperations, dictionary::Dictionary, id::NamespaceId,
 };
 use reifydb_transaction::{
 	change::TransactionalDictionaryChanges,
@@ -40,7 +40,7 @@ impl From<DictionaryToCreate> for StoreDictionaryToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self, txn))]
-	pub fn find_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Option<DictionaryDef>> {
+	pub fn find_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Option<Dictionary>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -138,6 +138,20 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(mut t) => {
+				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary(t.inner, id) {
+					return Ok(Some(dict.clone()));
+				}
+				if TransactionalDictionaryChanges::is_dictionary_deleted(t.inner, id) {
+					return Ok(None);
+				}
+				if let Some(dict) =
+					CatalogStore::find_dictionary(&mut Transaction::Test(t.reborrow()), id)?
+				{
+					return Ok(Some(dict));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -147,7 +161,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<DictionaryDef>> {
+	) -> Result<Option<Dictionary>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -266,11 +280,31 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(mut t) => {
+				if let Some(dict) = TransactionalDictionaryChanges::find_dictionary_by_name(
+					t.inner, namespace, name,
+				) {
+					return Ok(Some(dict.clone()));
+				}
+				if TransactionalDictionaryChanges::is_dictionary_deleted_by_name(
+					t.inner, namespace, name,
+				) {
+					return Ok(None);
+				}
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(
+					&mut Transaction::Test(t.reborrow()),
+					namespace,
+					name,
+				)? {
+					return Ok(Some(dict));
+				}
+				Ok(None)
+			}
 		}
 	}
 
 	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self, txn))]
-	pub fn get_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<DictionaryDef> {
+	pub fn get_dictionary(&self, txn: &mut Transaction<'_>, id: DictionaryId) -> Result<Dictionary> {
 		CatalogStore::get_dictionary(txn, id)
 	}
 
@@ -279,30 +313,26 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: DictionaryToCreate,
-	) -> Result<DictionaryDef> {
+	) -> Result<Dictionary> {
 		let dictionary = CatalogStore::create_dictionary(txn, to_create.into())?;
-		txn.track_dictionary_def_created(dictionary.clone())?;
+		txn.track_dictionary_created(dictionary.clone())?;
 		Ok(dictionary)
 	}
 
 	#[instrument(name = "catalog::dictionary::drop", level = "debug", skip(self, txn))]
-	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: DictionaryDef) -> Result<()> {
+	pub fn drop_dictionary(&self, txn: &mut AdminTransaction, dictionary: Dictionary) -> Result<()> {
 		CatalogStore::drop_dictionary(txn, dictionary.id)?;
-		txn.track_dictionary_def_deleted(dictionary)?;
+		txn.track_dictionary_deleted(dictionary)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::dictionary::list", level = "debug", skip(self, txn))]
-	pub fn list_dictionaries(
-		&self,
-		txn: &mut Transaction<'_>,
-		namespace: NamespaceId,
-	) -> Result<Vec<DictionaryDef>> {
+	pub fn list_dictionaries(&self, txn: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
 		CatalogStore::list_dictionaries(txn, namespace)
 	}
 
 	#[instrument(name = "catalog::dictionary::list_all", level = "debug", skip(self, txn))]
-	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> Result<Vec<DictionaryDef>> {
+	pub fn list_all_dictionaries(&self, txn: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		CatalogStore::list_all_dictionaries(txn)
 	}
 }

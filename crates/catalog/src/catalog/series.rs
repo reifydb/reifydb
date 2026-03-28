@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{SeriesDef, SeriesMetadata, TimestampPrecision},
+		series::{Series, SeriesKey, SeriesMetadata},
 	},
 	internal,
 };
@@ -43,7 +43,7 @@ pub struct SeriesToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 }
 
 impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
@@ -66,14 +66,14 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			tag: to_create.tag,
-			precision: to_create.precision,
+			key: to_create.key,
 		}
 	}
 }
 
 impl Catalog {
 	#[instrument(name = "catalog::series::find", level = "trace", skip(self, txn))]
-	pub fn find_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<SeriesDef>> {
+	pub fn find_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Option<Series>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				CatalogStore::find_series(&mut Transaction::Command(&mut *cmd), id)
@@ -85,6 +85,7 @@ impl Catalog {
 			Transaction::Subscription(sub) => {
 				CatalogStore::find_series(&mut Transaction::Subscription(&mut *sub), id)
 			}
+			Transaction::Test(t) => CatalogStore::find_series(&mut Transaction::Admin(&mut *t.inner), id),
 		}
 	}
 
@@ -94,7 +95,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<SeriesDef>> {
+	) -> Result<Option<Series>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				CatalogStore::find_series_by_name(&mut Transaction::Command(&mut *cmd), namespace, name)
@@ -110,11 +111,16 @@ impl Catalog {
 				namespace,
 				name,
 			),
+			Transaction::Test(t) => CatalogStore::find_series_by_name(
+				&mut Transaction::Admin(&mut *t.inner),
+				namespace,
+				name,
+			),
 		}
 	}
 
 	#[instrument(name = "catalog::series::get", level = "trace", skip(self, txn))]
-	pub fn get_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<SeriesDef> {
+	pub fn get_series(&self, txn: &mut Transaction<'_>, id: SeriesId) -> Result<Series> {
 		self.find_series(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Series with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -124,25 +130,25 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<SeriesDef> {
+	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
-		txn.track_series_def_created(series.clone())?;
+		txn.track_series_created(series.clone())?;
 
-		let schema = Schema::from(series.columns.as_slice());
+		let schema = RowSchema::from(series.columns.as_slice());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		Ok(series)
 	}
 
 	#[instrument(name = "catalog::series::drop", level = "debug", skip(self, txn))]
-	pub fn drop_series(&self, txn: &mut AdminTransaction, series: SeriesDef) -> Result<()> {
+	pub fn drop_series(&self, txn: &mut AdminTransaction, series: Series) -> Result<()> {
 		CatalogStore::drop_series(txn, series.id)?;
-		txn.track_series_def_deleted(series)?;
+		txn.track_series_deleted(series)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::series::list_all", level = "debug", skip(self, txn))]
-	pub fn list_series_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<SeriesDef>> {
+	pub fn list_series_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Series>> {
 		CatalogStore::list_series_all(txn)
 	}
 

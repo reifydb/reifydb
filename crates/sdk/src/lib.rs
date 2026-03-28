@@ -6,6 +6,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod catalog;
+pub mod connector;
 pub mod error;
 pub mod ffi;
 pub mod flow;

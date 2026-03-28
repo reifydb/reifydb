@@ -151,18 +151,18 @@ impl JoinStrategy {
 		post: &Columns,
 		indices: &[usize],
 		side: JoinSide,
-		old_key: &Hash128,
-		new_key: &Hash128,
+		pre_key: &Hash128,
+		post_key: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
 	) -> Result<Vec<Diff>> {
 		match self {
 			JoinStrategy::LeftHash(s) => s.handle_update(
-				txn, pre, post, indices, side, old_key, new_key, state, operator, version,
+				txn, pre, post, indices, side, pre_key, post_key, state, operator, version,
 			),
 			JoinStrategy::InnerHash(s) => s.handle_update(
-				txn, pre, post, indices, side, old_key, new_key, state, operator, version,
+				txn, pre, post, indices, side, pre_key, post_key, state, operator, version,
 			),
 		}
 	}

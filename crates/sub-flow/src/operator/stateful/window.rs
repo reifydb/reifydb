@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
-		schema::Schema,
+		row::EncodedRow,
+		schema::RowSchema,
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
@@ -17,31 +17,41 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait WindowStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> Schema;
+	fn layout(&self) -> RowSchema;
 
 	/// Create a new state encoded with default values
-	fn create_state(&self) -> EncodedValues {
+	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
 	/// Load state for a window
-	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> Result<EncodedRow> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
 	/// Save state for a window
-	fn save_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
+	}
+
+	/// Scan keys within a range without removing them (read-only)
+	fn scan_keys_in_range(&self, txn: &mut FlowTransaction, range: &EncodedKeyRange) -> Result<Vec<EncodedKey>> {
+		let prefixed_range = range.clone().with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
+		let mut stream = txn.range(prefixed_range, 1024);
+		let mut keys = Vec::new();
+		while let Some(result) = stream.next() {
+			let multi = result?;
+			keys.push(EncodedKey::new(multi.key.to_vec()));
+		}
+		Ok(keys)
 	}
 
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
 	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<u32> {
-		// Add the operator state prefix to the range
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
-		// Collect keys to remove (similar pattern to state_clear in utils.rs)
 		let keys_to_remove = {
 			let mut stream = txn.range(prefixed_range, 1024);
 			let mut keys = Vec::new();
@@ -87,7 +97,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement WindowStateful
 	impl WindowStateful for TestOperator {
-		fn layout(&self) -> Schema {
+		fn layout(&self) -> RowSchema {
 			self.layout.clone()
 		}
 	}

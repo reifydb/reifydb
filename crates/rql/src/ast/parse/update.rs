@@ -5,11 +5,11 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstUpdate},
-		identifier::UnresolvedPrimitiveIdentifier,
+		identifier::UnresolvedSchemaIdentifier,
 		parse::Parser,
 	},
 	bump::BumpBox,
-	error::RqlError,
+	error::{OperationKind, RqlError},
 	token::{keyword::Keyword, operator::Operator, token::TokenKind},
 };
 
@@ -29,9 +29,9 @@ impl<'bump> Parser<'bump> {
 		let target = if segments.len() > 1 {
 			let name = segments.pop().unwrap().into_fragment();
 			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-			UnresolvedPrimitiveIdentifier::new(namespace, name)
+			UnresolvedSchemaIdentifier::new(namespace, name)
 		} else {
-			UnresolvedPrimitiveIdentifier::new(vec![], segments.remove(0).into_fragment())
+			UnresolvedSchemaIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
 		// 2. Parse assignments block { name: 'value', ... } - REQUIRED
@@ -41,7 +41,7 @@ impl<'bump> Parser<'bump> {
 			}
 			.into());
 		}
-		let (assignments, _) = self.parse_expressions(true, false)?;
+		let (assignments, _) = self.parse_expressions(true, false, None)?;
 		if assignments.is_empty() {
 			return Err(RqlError::UpdateEmptyAssignmentsBlock {
 				fragment: token.fragment.to_owned(),
@@ -58,11 +58,35 @@ impl<'bump> Parser<'bump> {
 		}
 		let filter = self.parse_filter()?;
 
+		let take = if !self.is_eof() && self.current()?.is_keyword(Keyword::Take) {
+			let take = self.parse_take()?;
+			Some(BumpBox::new_in(Ast::Take(take), self.bump()))
+		} else {
+			None
+		};
+
+		let returning = if !self.is_eof() && self.current()?.is_keyword(Keyword::Returning) {
+			let returning_token = self.advance()?;
+			let (exprs, had_braces) = self.parse_expressions(true, false, None)?;
+			if !had_braces {
+				return Err(RqlError::OperatorMissingBraces {
+					kind: OperationKind::Returning,
+					fragment: returning_token.fragment.to_owned(),
+				}
+				.into());
+			}
+			Some(exprs)
+		} else {
+			None
+		};
+
 		Ok(AstUpdate {
 			token,
 			target,
 			assignments,
 			filter: BumpBox::new_in(Ast::Filter(filter), self.bump()),
+			take,
+			returning,
 		})
 	}
 }
@@ -71,7 +95,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{Ast, InfixOperator},
+			ast::{Ast, AstTakeValue, InfixOperator},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -154,6 +178,59 @@ pub mod tests {
 		let filter = update.filter.as_filter();
 		let condition = filter.node.as_infix();
 		assert!(matches!(condition.operator, InfixOperator::And(_)));
+	}
+
+	#[test]
+	fn test_update_with_take() {
+		let bump = Bump::new();
+		let source = r#"
+        UPDATE users { x: 1 } FILTER {id > 0} TAKE 10
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let update = result.first_unchecked().as_update();
+
+		let take = update.take.as_ref().unwrap().as_take();
+		assert_eq!(take.take, AstTakeValue::Literal(10));
+	}
+
+	#[test]
+	fn test_update_with_take_variable() {
+		let bump = Bump::new();
+		let source = r#"
+        UPDATE users { x: 1 } FILTER {id > 0} TAKE $limit
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let update = result.first_unchecked().as_update();
+
+		let take = update.take.as_ref().unwrap().as_take();
+		assert!(matches!(take.take, AstTakeValue::Variable(_)));
+	}
+
+	#[test]
+	fn test_update_without_take() {
+		let bump = Bump::new();
+		let source = r#"
+        UPDATE users { x: 1 } FILTER {id > 0}
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let update = result.first_unchecked().as_update();
+
+		assert!(update.take.is_none());
 	}
 
 	#[test]

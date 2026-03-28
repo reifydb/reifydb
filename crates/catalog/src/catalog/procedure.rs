@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackProcedureChangeOperations,
 	id::{NamespaceId, ProcedureId},
-	procedure::{ProcedureDef, ProcedureParamDef, ProcedureTrigger},
+	procedure::{Procedure, ProcedureParam, ProcedureTrigger},
 };
 use reifydb_transaction::{
 	change::TransactionalProcedureChanges,
@@ -12,7 +12,7 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, sumtype::SumTypeId},
+	value::{constraint::TypeConstraint, sumtype::VariantRef},
 };
 use tracing::instrument;
 
@@ -22,12 +22,13 @@ use crate::{Result, catalog::Catalog, store::sequence::system::SystemSequence};
 /// Distinguishes between locally-defined procedures and those in remote namespaces.
 #[derive(Debug, Clone)]
 pub enum ResolvedProcedure {
-	Local(ProcedureDef),
+	Local(Procedure),
 	Remote {
 		address: String,
+		token: Option<String>,
 	},
 	/// Test procedure — always local, only callable from test context
-	Test(ProcedureDef),
+	Test(Procedure),
 }
 
 /// Procedure creation specification for the Catalog API.
@@ -35,7 +36,7 @@ pub enum ResolvedProcedure {
 pub struct ProcedureToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub params: Vec<ProcedureParamDef>,
+	pub params: Vec<ProcedureParam>,
 	pub return_type: Option<TypeConstraint>,
 	pub body: String,
 	pub trigger: ProcedureTrigger,
@@ -44,7 +45,7 @@ pub struct ProcedureToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::procedure::find", level = "trace", skip(self, txn))]
-	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<ProcedureDef>> {
+	pub fn find_procedure(&self, txn: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) = self.materialized.find_procedure_at(id, cmd.version()) {
@@ -94,6 +95,24 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(t.inner, id) {
+					return Ok(Some(procedure.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalProcedureChanges::is_procedure_deleted(t.inner, id) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(procedure) = self.materialized.find_procedure_at(id, t.inner.version()) {
+					return Ok(Some(procedure));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -103,7 +122,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<ProcedureDef>> {
+	) -> Result<Option<Procedure>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(procedure) =
@@ -165,6 +184,29 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(procedure) =
+					TransactionalProcedureChanges::find_procedure_by_name(t.inner, namespace, name)
+				{
+					return Ok(Some(procedure.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalProcedureChanges::is_procedure_deleted_by_name(t.inner, namespace, name)
+				{
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(procedure) =
+					self.materialized.find_procedure_by_name_at(namespace, name, t.inner.version())
+				{
+					return Ok(Some(procedure));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -188,6 +230,7 @@ impl Catalog {
 				if let Some(address) = ns.address() {
 					return Ok(Some(ResolvedProcedure::Remote {
 						address: address.to_string(),
+						token: ns.token().map(|t| t.to_string()),
 					}));
 				}
 				return Ok(self.find_procedure_by_name(txn, ns.id(), proc_name)?.map(|p| {
@@ -214,35 +257,28 @@ impl Catalog {
 	pub fn list_procedures_for_variant(
 		&self,
 		txn: &mut Transaction<'_>,
-		sumtype_id: SumTypeId,
-		variant_tag: u8,
-	) -> Result<Vec<ProcedureDef>> {
+		variant: VariantRef,
+	) -> Result<Vec<Procedure>> {
 		match txn.reborrow() {
-			Transaction::Command(cmd) => Ok(self.materialized.list_procedures_for_variant_at(
-				sumtype_id,
-				variant_tag,
-				cmd.version(),
-			)),
+			Transaction::Command(cmd) => {
+				Ok(self.materialized.list_procedures_for_variant_at(variant, cmd.version()))
+			}
 			Transaction::Admin(admin) => {
 				// Check materialized catalog + transactional additions
-				let mut procedures = self.materialized.list_procedures_for_variant_at(
-					sumtype_id,
-					variant_tag,
-					admin.version(),
-				);
+				let mut procedures =
+					self.materialized.list_procedures_for_variant_at(variant, admin.version());
 
 				// Also check transactional changes for newly created procedures with event binding
-				for change in &admin.changes.procedure_def {
+				for change in &admin.changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
-							sumtype_id: sid,
-							variant_tag: vtag,
+							variant: v,
 						} = &p.trigger
 						{
-							if *sid == sumtype_id
-								&& *vtag == variant_tag && !procedures
-								.iter()
-								.any(|existing| existing.id == p.id)
+							if *v == variant
+								&& !procedures
+									.iter()
+									.any(|existing| existing.id == p.id)
 							{
 								procedures.push(p.clone());
 							}
@@ -252,31 +288,50 @@ impl Catalog {
 
 				Ok(procedures)
 			}
-			Transaction::Query(qry) => Ok(self.materialized.list_procedures_for_variant_at(
-				sumtype_id,
-				variant_tag,
-				qry.version(),
-			)),
+			Transaction::Query(qry) => {
+				Ok(self.materialized.list_procedures_for_variant_at(variant, qry.version()))
+			}
 			Transaction::Subscription(sub) => {
 				// Check materialized catalog + transactional additions
-				let mut procedures = self.materialized.list_procedures_for_variant_at(
-					sumtype_id,
-					variant_tag,
-					sub.version(),
-				);
+				let mut procedures =
+					self.materialized.list_procedures_for_variant_at(variant, sub.version());
 
 				// Also check transactional changes for newly created procedures with event binding
-				for change in &sub.as_admin_mut().changes.procedure_def {
+				for change in &sub.as_admin_mut().changes.procedure {
 					if let Some(p) = &change.post {
 						if let ProcedureTrigger::Event {
-							sumtype_id: sid,
-							variant_tag: vtag,
+							variant: v,
 						} = &p.trigger
 						{
-							if *sid == sumtype_id
-								&& *vtag == variant_tag && !procedures
-								.iter()
-								.any(|existing| existing.id == p.id)
+							if *v == variant
+								&& !procedures
+									.iter()
+									.any(|existing| existing.id == p.id)
+							{
+								procedures.push(p.clone());
+							}
+						}
+					}
+				}
+
+				Ok(procedures)
+			}
+			Transaction::Test(t) => {
+				// Check materialized catalog + transactional additions
+				let mut procedures =
+					self.materialized.list_procedures_for_variant_at(variant, t.inner.version());
+
+				// Also check transactional changes for newly created procedures with event binding
+				for change in &t.inner.changes.procedure {
+					if let Some(p) = &change.post {
+						if let ProcedureTrigger::Event {
+							variant: v,
+						} = &p.trigger
+						{
+							if *v == variant
+								&& !procedures
+									.iter()
+									.any(|existing| existing.id == p.id)
 							{
 								procedures.push(p.clone());
 							}
@@ -290,14 +345,10 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::procedure::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_procedure(
-		&self,
-		txn: &mut AdminTransaction,
-		to_create: ProcedureToCreate,
-	) -> Result<ProcedureDef> {
+	pub fn create_procedure(&self, txn: &mut AdminTransaction, to_create: ProcedureToCreate) -> Result<Procedure> {
 		let id = SystemSequence::next_procedure_id(txn)?;
 
-		let procedure = ProcedureDef {
+		let procedure = Procedure {
 			id,
 			namespace: to_create.namespace,
 			name: to_create.name.text().to_string(),
@@ -308,7 +359,7 @@ impl Catalog {
 			is_test: to_create.is_test,
 		};
 
-		txn.track_procedure_def_created(procedure.clone())?;
+		txn.track_procedure_created(procedure.clone())?;
 
 		Ok(procedure)
 	}

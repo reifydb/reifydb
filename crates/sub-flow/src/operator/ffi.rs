@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 #![cfg(reifydb_target = "native")]
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
@@ -24,7 +27,10 @@ use reifydb_core::{
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_sdk::{error::FFIError, ffi::arena::Arena};
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use tracing::{Span, error, field, instrument};
 
 use crate::{
@@ -226,5 +232,58 @@ impl Operator for FFIOperator {
 		arena.clear();
 
 		Ok(columns)
+	}
+
+	#[instrument(name = "flow::ffi::tick", level = "debug", skip_all, fields(
+		operator_id = self.operator_id.0,
+		output_diff_count = field::Empty
+	))]
+	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
+		let mut arena = self.arena.borrow_mut();
+
+		let timestamp_nanos = timestamp.to_nanos();
+		let mut ffi_output = ChangeFFI::empty();
+
+		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
+		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
+
+		let result = catch_unwind(AssertUnwindSafe(|| {
+			(self.vtable.tick)(self.instance, ffi_ctx_ptr, timestamp_nanos, &mut ffi_output)
+		}));
+
+		let result_code = match result {
+			Ok(code) => code,
+			Err(panic_info) => {
+				let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+					s.to_string()
+				} else if let Some(s) = panic_info.downcast_ref::<String>() {
+					s.clone()
+				} else {
+					"Unknown panic".to_string()
+				};
+				error!(operator_id = self.operator_id.0, "FFI operator panicked during tick: {}", msg);
+				abort();
+			}
+		};
+
+		if result_code < 0 {
+			return Err(
+				FFIError::Other(format!("FFI operator tick failed with code: {}", result_code)).into()
+			);
+		}
+
+		if result_code == 1 {
+			// No output (no-op)
+			arena.clear();
+			return Ok(None);
+		}
+
+		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(|e| FFIError::Other(e))?;
+
+		arena.clear();
+
+		Span::current().record("output_diff_count", output_change.diffs.len());
+
+		Ok(Some(output_change))
 	}
 }

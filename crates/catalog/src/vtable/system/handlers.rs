@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{procedure::ProcedureTrigger, vtable::VTableDef},
+	interface::catalog::{
+		procedure::{Procedure, ProcedureTrigger},
+		vtable::VTable,
+	},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,33 +17,33 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes procedures with trigger = Event (event handlers)
-pub struct Handlers {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemHandlers {
+	pub(crate) definition: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl Handlers {
+impl SystemHandlers {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_handlers_table_def().clone(),
+			definition: SystemCatalog::get_system_handlers_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Handlers {
+impl BaseVTable for SystemHandlers {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -51,18 +54,31 @@ impl VTable for Handlers {
 		let mut sumtype_ids = Vec::new();
 		let mut variant_tags = Vec::new();
 
-		for entry in self.catalog.materialized.procedures.iter() {
-			if let Some(proc_def) = entry.value().get_latest() {
-				if let ProcedureTrigger::Event {
-					sumtype_id,
-					variant_tag,
-				} = &proc_def.trigger
-				{
+		let mut collect = |proc_def: &Procedure| {
+			if let ProcedureTrigger::Event {
+				variant,
+			} = &proc_def.trigger
+			{
+				if !ids.contains(&proc_def.id.0) {
 					ids.push(proc_def.id.0);
 					namespace_ids.push(proc_def.namespace.0);
 					names.push(proc_def.name.clone());
-					sumtype_ids.push(sumtype_id.0);
-					variant_tags.push(*variant_tag);
+					sumtype_ids.push(variant.sumtype_id.0);
+					variant_tags.push(variant.variant_tag);
+				}
+			}
+		};
+
+		for entry in self.catalog.materialized.procedures.iter() {
+			if let Some(ref proc_def) = entry.value().get_latest() {
+				collect(proc_def);
+			}
+		}
+
+		if let Transaction::Test(t) = txn {
+			for change in &t.inner.changes.procedure {
+				if let Some(proc_def) = &change.post {
+					collect(proc_def);
 				}
 			}
 		}
@@ -119,7 +135,7 @@ impl VTable for Handlers {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

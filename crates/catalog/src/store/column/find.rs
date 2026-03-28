@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column::ColumnDef, id::ColumnId, primitive::PrimitiveId},
+	interface::catalog::{column::Column, id::ColumnId, schema::SchemaId},
 	key::column::ColumnKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -12,15 +12,15 @@ use crate::{CatalogStore, Result, store::column::schema::primitive_column};
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
 		rx: &mut Transaction<'_>,
-		source: impl Into<PrimitiveId>,
+		schema: impl Into<SchemaId>,
 		column_name: &str,
-	) -> Result<Option<ColumnDef>> {
-		let mut stream = rx.range(ColumnKey::full_scan(source), 1024)?;
+	) -> Result<Option<Column>> {
+		let mut stream = rx.range(ColumnKey::full_scan(schema), 1024)?;
 
 		let mut found_id = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = multi.values;
+			let row = multi.row;
 			let column = ColumnId(primitive_column::SCHEMA.get_u64(&row, primitive_column::ID));
 			let name = primitive_column::SCHEMA.get_utf8(&row, primitive_column::NAME);
 
@@ -43,7 +43,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{ColumnId, TableId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 

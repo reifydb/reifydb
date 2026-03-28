@@ -25,6 +25,7 @@ pub enum OperationKind {
 	Take,
 	Aggregate,
 	AggregateBy,
+	Returning,
 }
 
 impl Display for OperationKind {
@@ -40,6 +41,7 @@ impl Display for OperationKind {
 			OperationKind::Take => f.write_str("TAKE"),
 			OperationKind::Aggregate => f.write_str("AGGREGATE"),
 			OperationKind::AggregateBy => f.write_str("AGGREGATE BY"),
+			OperationKind::Returning => f.write_str("RETURNING"),
 		}
 	}
 }
@@ -419,6 +421,16 @@ impl IntoDiagnostic for RqlError {
 							"AGGREGATE BY always requires curly braces: BY {columns}".to_string(),
 							"Global aggregation (no grouping): BY {}".to_string(),
 							"Multiple columns: BY {col1, col2}".to_string(),
+						],
+					),
+					OperationKind::Returning => (
+						"RETURNING_001",
+						"RETURNING requires curly braces around expressions",
+						"Wrap RETURNING expressions in curly braces, e.g., 'RETURNING {id, name}'",
+						vec![
+							"RETURNING always requires curly braces: RETURNING {expressions}".to_string(),
+							"All columns: RETURNING {*}".to_string(),
+							"Computed: RETURNING {id, total: price * qty}".to_string(),
 						],
 					),
 				};
@@ -869,7 +881,7 @@ impl From<RqlError> for Error {
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
-	SourceNotFound(PrimitiveNotFoundError),
+	SourceNotFound(SchemaNotFoundError),
 	ColumnNotFound {
 		column: String,
 	},
@@ -889,6 +901,7 @@ pub enum IdentifierError {
 		namespace: String,
 		name: String,
 		address: String,
+		token: Option<String>,
 		fragment: Fragment,
 	},
 }
@@ -956,28 +969,35 @@ impl From<IdentifierError> for Error {
 				namespace,
 				name,
 				address,
+				token,
 				fragment,
-			} => Error(Diagnostic {
-				code: "REMOTE_001".to_string(),
-				statement: None,
-				message: format!(
-					"Remote namespace '{}': source '{}' is on remote instance at {}",
-					namespace, name, address
-				),
-				column: None,
-				fragment,
-				label: Some("source is on a remote instance".to_string()),
-				help: Some(
-					"Remote namespaces cannot be queried directly. Use the remote instance's endpoint instead."
-						.to_string(),
-				),
-				notes: vec![
+			} => {
+				let mut notes = vec![
 					format!("Namespace '{}' is configured as a remote namespace", namespace),
 					format!("Remote gRPC address: {}", address),
-				],
-				cause: None,
-				operator_chain: None,
-			}),
+				];
+				if let Some(ref t) = token {
+					notes.push(format!("Remote token: {}", t));
+				}
+				Error(Diagnostic {
+					code: "REMOTE_001".to_string(),
+					statement: None,
+					message: format!(
+						"Remote namespace '{}': source '{}' is on remote instance at {}",
+						namespace, name, address
+					),
+					column: None,
+					fragment,
+					label: Some("source is on a remote instance".to_string()),
+					help: Some(
+						"Remote namespaces cannot be queried directly. Use the remote instance's endpoint instead."
+							.to_string(),
+					),
+					notes,
+					cause: None,
+					operator_chain: None,
+				})
+			}
 			_ => {
 				internal_error!("{}", err)
 			}
@@ -985,27 +1005,15 @@ impl From<IdentifierError> for Error {
 	}
 }
 
-/// Namespace not found error
+/// Schema (table/view) not found error
 #[derive(Debug, Clone)]
 pub struct SchemaNotFoundError {
-	pub namespace: String,
-}
-
-impl fmt::Display for SchemaNotFoundError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Namespace '{}' does not exist", self.namespace)
-	}
-}
-
-/// Source (table/view) not found error
-#[derive(Debug, Clone)]
-pub struct PrimitiveNotFoundError {
 	pub namespace: String,
 	pub name: String,
 	pub fragment: Fragment,
 }
 
-impl fmt::Display for PrimitiveNotFoundError {
+impl fmt::Display for SchemaNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if self.namespace == "public" || self.namespace.is_empty() {
 			write!(f, "Table or view '{}' does not exist", self.name)
@@ -1015,7 +1023,7 @@ impl fmt::Display for PrimitiveNotFoundError {
 	}
 }
 
-impl PrimitiveNotFoundError {
+impl SchemaNotFoundError {
 	/// Create error with additional context about what type was expected
 	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
 		// Could extend this to include expected type in the error
@@ -1080,23 +1088,15 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_schema_not_found_display() {
+	fn test_source_not_found_display() {
 		let err = SchemaNotFoundError {
-			namespace: "myschema".to_string(),
-		};
-		assert_eq!(err.to_string(), "Namespace 'myschema' does not exist");
-	}
-
-	#[test]
-	fn test_primitive_not_found_display() {
-		let err = PrimitiveNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
-		let err = PrimitiveNotFoundError {
+		let err = SchemaNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,

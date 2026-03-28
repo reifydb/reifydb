@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::VTableDef;
+use reifydb_core::interface::VTable;
 
 use super::VTable;
 
@@ -17,15 +17,15 @@ use super::VTable;
 ///
 /// ```ignore
 /// struct MyTableFactory {
-///     definition: Arc<VTableDef>,
+///     definition: Arc<VTable>,
 /// }
 ///
 /// impl VirtualTableFactory for MyTableFactory {
-///     fn create_boxed(&self) -> Box<dyn VTable + Send + Sync> {
+///     fn create_boxed(&self) -> Box<dyn BaseVTable + Send + Sync> {
 ///         Box::new(MyVirtualTable::new(self.definition.clone()))
 ///     }
 ///
-///     fn definition(&self) -> Arc<VTableDef> {
+///     fn definition(&self) -> Arc<VTable> {
 ///         self.definition.clone()
 ///     }
 /// }
@@ -34,10 +34,10 @@ pub trait VirtualTableFactory: Send + Sync + 'static {
 	/// Create a new virtual table instance.
 	///
 	/// Each call should return a fresh instance ready to process a new query.
-	fn create_boxed(&self) -> Box<dyn VTable + Send + Sync>;
+	fn create_boxed(&self) -> Box<dyn BaseVTable + Send + Sync>;
 
 	/// Get the table definition (schema).
 	///
 	/// Returns the metadata including column names, types, and constraints.
-	fn definition(&self) -> Arc<VTableDef>;
+	fn definition(&self) -> Arc<VTable>;
 }

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Schema evolution and resolution utilities.
+//! RowSchema evolution and resolution utilities.
 //!
 //! SchemaResolver handles reading data written with one schema
 //! using a different (but compatible) target schema.
 
 use reifydb_type::value::constraint::TypeConstraint;
 
-use crate::encoded::schema::Schema;
+use crate::encoded::schema::RowSchema;
 
 /// Describes how to map a source field to a target field during schema evolution.
 #[derive(Debug, Clone)]
@@ -30,9 +30,9 @@ pub enum FieldMapping {
 #[derive(Debug)]
 pub struct SchemaResolver {
 	/// The schema the data was written with
-	source: Schema,
+	source: RowSchema,
 	/// The schema we want to read as
-	target: Schema,
+	target: RowSchema,
 	/// Mapping from target field index to source field
 	mappings: Vec<FieldMapping>,
 }
@@ -42,7 +42,7 @@ impl SchemaResolver {
 	///
 	/// Returns None if the schemas are incompatible (e.g., type mismatch
 	/// on same-named field without valid widening path).
-	pub fn new(source: Schema, target: Schema) -> Option<Self> {
+	pub fn new(source: RowSchema, target: RowSchema) -> Option<Self> {
 		// If fingerprints match, no resolution needed - schemas are identical
 		if source.fingerprint() == target.fingerprint() {
 			return Some(Self {
@@ -98,12 +98,12 @@ impl SchemaResolver {
 	}
 
 	/// Get the source schema
-	pub fn source(&self) -> &Schema {
+	pub fn source(&self) -> &RowSchema {
 		&self.source
 	}
 
 	/// Get the target schema
-	pub fn target(&self) -> &Schema {
+	pub fn target(&self) -> &RowSchema {
 		&self.target
 	}
 
@@ -123,14 +123,16 @@ mod tests {
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
-	use crate::encoded::schema::SchemaField;
+	use crate::encoded::schema::RowSchemaField;
 
 	#[test]
 	fn test_resolver_identity() {
-		let fields =
-			vec![SchemaField::unconstrained("a", Type::Int4), SchemaField::unconstrained("b", Type::Utf8)];
+		let fields = vec![
+			RowSchemaField::unconstrained("a", Type::Int4),
+			RowSchemaField::unconstrained("b", Type::Utf8),
+		];
 
-		let schema = Schema::new(fields);
+		let schema = RowSchema::new(fields);
 		let resolver = SchemaResolver::new(schema.clone(), schema.clone()).unwrap();
 
 		assert!(resolver.is_identity());
@@ -139,15 +141,15 @@ mod tests {
 
 	#[test]
 	fn test_resolver_added_field() {
-		let source_fields = vec![SchemaField::unconstrained("a", Type::Int4)];
+		let source_fields = vec![RowSchemaField::unconstrained("a", Type::Int4)];
 
 		let target_fields = vec![
-			SchemaField::unconstrained("a", Type::Int4),
-			SchemaField::unconstrained("b", Type::Utf8), // new field
+			RowSchemaField::unconstrained("a", Type::Int4),
+			RowSchemaField::unconstrained("b", Type::Utf8), // new field
 		];
 
-		let source = Schema::new(source_fields);
-		let target = Schema::new(target_fields);
+		let source = RowSchema::new(source_fields);
+		let target = RowSchema::new(target_fields);
 
 		let resolver = SchemaResolver::new(source, target).unwrap();
 
@@ -163,11 +165,11 @@ mod tests {
 
 	#[test]
 	fn test_resolver_incompatible_types() {
-		let source_fields = vec![SchemaField::unconstrained("a", Type::Int4)];
-		let target_fields = vec![SchemaField::unconstrained("a", Type::Utf8)]; // type changed
+		let source_fields = vec![RowSchemaField::unconstrained("a", Type::Int4)];
+		let target_fields = vec![RowSchemaField::unconstrained("a", Type::Utf8)]; // type changed
 
-		let source = Schema::new(source_fields);
-		let target = Schema::new(target_fields);
+		let source = RowSchema::new(source_fields);
+		let target = RowSchema::new(target_fields);
 
 		// Should return None due to incompatible types
 		assert!(SchemaResolver::new(source, target).is_none());

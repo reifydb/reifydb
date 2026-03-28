@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowNodeId,
 		id::{RingBufferId, SeriesId, TableId, ViewId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 		vtable::VTableId,
 	},
 	key::kind::KeyKind,
@@ -228,15 +228,15 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 	}
 }
 
-// PrimitiveId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
-fn encode_source_id(source_id: PrimitiveId) -> [u8; 9] {
+// SchemaId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
+fn encode_source_id(source_id: SchemaId) -> [u8; 9] {
 	let mut buf = [0u8; 9];
 	buf[0] = source_id.to_type_u8();
 	buf[1..9].copy_from_slice(&source_id.as_u64().to_be_bytes());
 	buf
 }
 
-fn decode_source_id(bytes: &[u8]) -> Option<PrimitiveId> {
+fn decode_source_id(bytes: &[u8]) -> Option<SchemaId> {
 	if bytes.len() < 9 {
 		return None;
 	}
@@ -244,19 +244,19 @@ fn decode_source_id(bytes: &[u8]) -> Option<PrimitiveId> {
 	let id = u64::from_be_bytes(bytes[1..9].try_into().ok()?);
 
 	match discriminant {
-		1 => Some(PrimitiveId::Table(TableId(id))),
-		2 => Some(PrimitiveId::View(ViewId(id))),
-		3 => Some(PrimitiveId::TableVirtual(VTableId(id))),
-		5 => Some(PrimitiveId::RingBuffer(RingBufferId(id))),
-		6 => Some(PrimitiveId::Dictionary(DictionaryId(id))),
-		7 => Some(PrimitiveId::Series(SeriesId(id))),
+		1 => Some(SchemaId::Table(TableId(id))),
+		2 => Some(SchemaId::View(ViewId(id))),
+		3 => Some(SchemaId::TableVirtual(VTableId(id))),
+		5 => Some(SchemaId::RingBuffer(RingBufferId(id))),
+		6 => Some(SchemaId::Dictionary(DictionaryId(id))),
+		7 => Some(SchemaId::Series(SeriesId(id))),
 		_ => None,
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId};
+	use reifydb_core::interface::catalog::{flow::FlowNodeId, id::TableId, schema::SchemaId};
 
 	use super::*;
 
@@ -274,7 +274,7 @@ pub mod tests {
 	#[test]
 	fn test_storage_stats_key_source_roundtrip() {
 		let tier = Tier::Hot;
-		let source_id = PrimitiveId::Table(TableId(12345));
+		let source_id = SchemaId::Table(TableId(12345));
 		let id = MetricId::Source(source_id);
 
 		let key = encode_storage_stats_key(tier, id);
@@ -307,7 +307,7 @@ pub mod tests {
 
 	#[test]
 	fn test_cdc_stats_key_roundtrip() {
-		let source_id = PrimitiveId::Table(TableId(12345));
+		let source_id = SchemaId::Table(TableId(12345));
 		let id = MetricId::Source(source_id);
 
 		let key = encode_cdc_stats_key(id);

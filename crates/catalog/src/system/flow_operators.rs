@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::flow_operators::*, vtable::FLOW_OPERATORS};
 
 /// Returns the static definition for the system.flow_operators virtual table
 /// This table exposes information about loaded FFI operators from shared libraries
-pub fn flow_operators() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn flow_operators() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: FLOW_OPERATORS,
 			namespace: NamespaceId::SYSTEM,
 			name: "flow_operators".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: OPERATOR,
 					name: "operator".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -32,7 +32,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: LIBRARY_PATH,
 					name: "library_path".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -41,7 +41,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: API,
 					name: "api".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint4),
@@ -50,7 +50,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CAP_INSERT,
 					name: "cap_insert".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
@@ -59,7 +59,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CAP_UPDATE,
 					name: "cap_update".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
@@ -68,7 +68,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CAP_DELETE,
 					name: "cap_delete".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
@@ -77,7 +77,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CAP_DROP,
 					name: "cap_drop".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
@@ -86,7 +86,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CAP_PULL,
 					name: "cap_pull".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
@@ -95,7 +95,7 @@ pub fn flow_operators() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: CAP_TICK,
 					name: "cap_tick".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),

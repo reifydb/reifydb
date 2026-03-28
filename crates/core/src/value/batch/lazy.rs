@@ -8,8 +8,8 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::{encoded::EncodedValues, schema::Schema},
-	interface::catalog::dictionary::DictionaryDef,
+	encoded::{row::EncodedRow, schema::RowSchema},
+	interface::catalog::dictionary::Dictionary,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 
@@ -23,7 +23,7 @@ pub struct LazyColumnMeta {
 	/// Type after decoding (e.g., Utf8 for dictionary value)
 	pub output_type: Type,
 	/// Dictionary definition if this column uses dictionary encoding
-	pub dictionary: Option<DictionaryDef>,
+	pub dictionary: Option<Dictionary>,
 }
 
 /// A batch of rows that defers column materialization until needed.
@@ -33,11 +33,11 @@ pub struct LazyColumnMeta {
 #[derive(Debug, Clone)]
 pub struct LazyBatch {
 	/// Encoded row data
-	rows: Vec<EncodedValues>,
+	rows: Vec<EncodedRow>,
 	/// Row numbers from storage
 	row_numbers: Vec<RowNumber>,
-	/// Schema for interpreting encoded rows
-	schema: Schema,
+	/// RowSchema for interpreting encoded rows
+	schema: RowSchema,
 	/// Column metadata (names, types, dictionary defs)
 	column_metas: Vec<LazyColumnMeta>,
 	/// Validity bitmap - rows that passed filters (true = valid)
@@ -46,9 +46,9 @@ pub struct LazyBatch {
 
 impl LazyBatch {
 	pub fn new(
-		rows: Vec<EncodedValues>,
+		rows: Vec<EncodedRow>,
 		row_numbers: Vec<RowNumber>,
-		schema: &Schema,
+		schema: &RowSchema,
 		column_metas: Vec<LazyColumnMeta>,
 	) -> Self {
 		debug_assert_eq!(rows.len(), row_numbers.len());
@@ -159,12 +159,12 @@ impl LazyBatch {
 	}
 
 	/// Get the schema
-	pub fn schema(&self) -> &Schema {
+	pub fn schema(&self) -> &RowSchema {
 		&self.schema
 	}
 
 	#[deprecated(since = "0.1.0", note = "Use schema() instead")]
-	pub fn layout(&self) -> &Schema {
+	pub fn layout(&self) -> &RowSchema {
 		&self.schema
 	}
 
@@ -179,7 +179,7 @@ impl LazyBatch {
 	}
 
 	/// Get encoded row by index
-	pub fn encoded_row(&self, row_idx: usize) -> &EncodedValues {
+	pub fn encoded_row(&self, row_idx: usize) -> &EncodedRow {
 		&self.rows[row_idx]
 	}
 
@@ -195,8 +195,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn create_test_schema() -> Schema {
-		Schema::testing(&[Type::Int4, Type::Utf8, Type::Boolean])
+	fn create_test_schema() -> RowSchema {
+		RowSchema::testing(&[Type::Int4, Type::Utf8, Type::Boolean])
 	}
 
 	fn create_test_metas() -> Vec<LazyColumnMeta> {

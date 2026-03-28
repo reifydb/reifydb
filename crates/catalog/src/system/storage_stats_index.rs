@@ -4,25 +4,25 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::{ColumnId, NamespaceId},
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
 use super::ids::vtable::INDEX_STORAGE_STATS;
 
 /// Returns the static definition for the system.index_storage_stats virtual table
-pub fn index_storage_stats() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn index_storage_stats() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: INDEX_STORAGE_STATS,
 			namespace: NamespaceId::SYSTEM,
 			name: "index_storage_stats".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -31,7 +31,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(3),
 					name: "table_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -40,7 +40,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(4),
 					name: "tier".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -49,7 +49,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(5),
 					name: "current_key_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -58,7 +58,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(6),
 					name: "current_value_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -67,7 +67,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(7),
 					name: "current_total_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -76,7 +76,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(8),
 					name: "current_count".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -85,7 +85,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(9),
 					name: "historical_key_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -94,7 +94,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(10),
 					name: "historical_value_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -103,7 +103,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(11),
 					name: "historical_total_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -112,7 +112,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(12),
 					name: "historical_count".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -121,7 +121,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(13),
 					name: "total_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -130,7 +130,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(14),
 					name: "cdc_key_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -139,7 +139,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(15),
 					name: "cdc_value_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -148,7 +148,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(16),
 					name: "cdc_total_bytes".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -157,7 +157,7 @@ pub fn index_storage_stats() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(17),
 					name: "cdc_count".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),

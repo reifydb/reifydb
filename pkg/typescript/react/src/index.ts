@@ -5,7 +5,7 @@ export * from '@reifydb/core';
 export * from '@reifydb/client';
 
 // Export connection utilities
-export {Connection, type ConnectionConfig, DEFAULT_CONFIG} from './connection/connection';
+export {Connection, type ConnectionConfig, DEFAULT_CONFIG, DEFAULT_URL} from './connection/connection';
 export {getConnection, clearConnection} from './connection/connection-pool';
 export {ConnectionProvider, ConnectionContext, type ConnectionProviderProps} from './connection/connection-context';
 

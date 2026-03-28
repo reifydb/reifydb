@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
-		schema::Schema,
+		row::EncodedRow,
+		schema::RowSchema,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
@@ -22,7 +22,7 @@ impl FlowTransaction {
 		key_len = key.as_bytes().len(),
 		found = field::Empty
 	))]
-	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
 		let result = self.get(&encoded_key)?;
@@ -34,10 +34,10 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
-		value_len = value.as_ref().len()
+		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedValues) -> Result<()> {
-		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
+	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+		let state_key = FlowNodeStateKey::new(id, key.to_vec());
 		let encoded_key = state_key.encode();
 		self.set(&encoded_key, value)
 	}
@@ -140,8 +140,8 @@ impl FlowTransaction {
 		&mut self,
 		id: FlowNodeId,
 		key: &EncodedKey,
-		schema: &Schema,
-	) -> Result<EncodedValues> {
+		schema: &RowSchema,
+	) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -159,7 +159,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_bytes().len()
 	))]
-	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.state_set(id, key, row)
 	}
 }
@@ -172,9 +172,9 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		encoded::{
-			encoded::EncodedValues,
 			key::{EncodedKey, EncodedKeyRange},
-			schema::Schema,
+			row::EncodedRow,
+			schema::RowSchema,
 		},
 		interface::catalog::flow::FlowNodeId,
 	};
@@ -188,8 +188,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]
@@ -399,7 +399,7 @@ pub mod tests {
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
-		let schema = Schema::testing(&[Type::Int8, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Int8, Type::Float8]);
 
 		// Set existing state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
@@ -417,13 +417,13 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
-		let schema = Schema::testing(&[Type::Int8, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Int8, Type::Float8]);
 
 		// load_or_create should allocate new row
 		let result = txn.load_or_create_row(node_id, &key, &schema).unwrap();
 
 		// Result should be a newly allocated row (schema.allocate())
-		assert!(!result.as_ref().is_empty());
+		assert!(!result.is_empty());
 	}
 
 	#[test]

@@ -8,8 +8,8 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::{
-	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, QueryRequest,
-	QueryResult, Request, RequestPayload, Response, ResponsePayload, ServerPush, SubscribeRequest,
+	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, LoginResult,
+	QueryRequest, QueryResult, Request, RequestPayload, Response, ResponsePayload, ServerPush, SubscribeRequest,
 	UnsubscribeRequest, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 	utils::generate_request_id,
@@ -159,7 +159,7 @@ impl WsClient {
 		pending_guard.clear();
 	}
 
-	/// Authenticate with the server.
+	/// Authenticate with the server using a bearer token.
 	///
 	/// # Arguments
 	/// * `token` - Bearer token for authentication
@@ -169,6 +169,8 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Auth(AuthRequest {
 				token: Some(token.to_string()),
+				method: None,
+				credentials: None,
 			}),
 		};
 
@@ -180,8 +182,82 @@ impl WsClient {
 				Ok(())
 			}
 			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
-			// _ => Err(Error(internal("Unexpected response type for auth"))),
 			_ => panic!("Unexpected response type for auth"), // FIXME better error handling
+		}
+	}
+
+	/// Login with identifier and password. On success, stores the session token
+	/// for subsequent requests and returns the login result.
+	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("identifier".to_string(), identifier.to_string());
+		credentials.insert("password".to_string(), password.to_string());
+		self.login("password", credentials).await
+	}
+
+	pub async fn login_with_token(&mut self, token: &str) -> Result<LoginResult, Error> {
+		let mut credentials = HashMap::new();
+		credentials.insert("token".to_string(), token.to_string());
+		self.login("token", credentials).await
+	}
+
+	pub async fn login(
+		&mut self,
+		method: &str,
+		credentials: HashMap<String, String>,
+	) -> Result<LoginResult, Error> {
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Auth(AuthRequest {
+				token: None,
+				method: Some(method.to_string()),
+				credentials: Some(credentials),
+			}),
+		};
+
+		let response = self.send_request(request).await?;
+
+		match response.payload {
+			ResponsePayload::Auth(auth) => {
+				if auth.status.as_deref() == Some("authenticated") {
+					let token = auth.token.unwrap_or_default();
+					let identity = auth.identity.unwrap_or_default();
+					self.is_authenticated = true;
+					Ok(LoginResult {
+						token,
+						identity,
+					})
+				} else {
+					panic!("Authentication failed") // FIXME better error handling
+				}
+			}
+			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			_ => panic!("Unexpected response type for login"), // FIXME better error handling
+		}
+	}
+
+	/// Logout from the server, revoking the current session token.
+	pub async fn logout(&mut self) -> Result<(), Error> {
+		if !self.is_authenticated {
+			return Ok(());
+		}
+
+		let id = generate_request_id();
+		let request = Request {
+			id,
+			payload: RequestPayload::Logout,
+		};
+
+		let response = self.send_request(request).await?;
+
+		match response.payload {
+			ResponsePayload::Logout(_) => {
+				self.is_authenticated = false;
+				Ok(())
+			}
+			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			_ => panic!("Unexpected response type for logout"), // FIXME better error handling
 		}
 	}
 

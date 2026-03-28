@@ -24,7 +24,7 @@ pub type Addr = usize;
 
 /// A compiled user-defined function with pre-compiled body instructions
 #[derive(Debug, Clone)]
-pub struct CompiledFunctionDef {
+pub struct CompiledFunction {
 	/// Function name
 	pub name: Fragment,
 	/// Function parameters
@@ -37,7 +37,7 @@ pub struct CompiledFunctionDef {
 
 /// A compiled closure with captured environment
 #[derive(Debug, Clone)]
-pub struct CompiledClosureDef {
+pub struct CompiledClosure {
 	/// Closure parameters
 	pub parameters: Vec<FunctionParameter>,
 	/// Pre-compiled closure body instructions
@@ -63,13 +63,11 @@ pub enum ScopeType {
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
-	// === Stack ===
 	PushConst(Value),
 	PushNone,
 	Pop,
 	Dup,
 
-	// === Variables ===
 	LoadVar(Fragment),
 	StoreVar(Fragment),
 	DeclareVar(Fragment),
@@ -79,18 +77,15 @@ pub enum Instruction {
 		field: Fragment,
 	},
 
-	// === Arithmetic (pop 2, push 1) ===
 	Add,
 	Sub,
 	Mul,
 	Div,
 	Rem,
 
-	// === Unary ===
 	Negate,
 	LogicNot,
 
-	// === Comparison (pop 2, push Boolean) ===
 	CmpEq,
 	CmpNe,
 	CmpLt,
@@ -98,12 +93,10 @@ pub enum Instruction {
 	CmpGt,
 	CmpGe,
 
-	// === Logic ===
 	LogicAnd,
 	LogicOr,
 	LogicXor,
 
-	// === Compound ===
 	Between,
 	InList {
 		count: u16,
@@ -111,7 +104,6 @@ pub enum Instruction {
 	},
 	Cast(Type),
 
-	// === Control flow ===
 	Jump(Addr),
 	JumpIfFalsePop(Addr),
 	JumpIfTruePop(Addr),
@@ -126,7 +118,6 @@ pub enum Instruction {
 		addr: Addr,
 	},
 
-	// === Loops ===
 	ForInit {
 		variable_name: Fragment,
 	},
@@ -135,8 +126,7 @@ pub enum Instruction {
 		addr: Addr,
 	},
 
-	// === Functions ===
-	DefineFunction(CompiledFunctionDef),
+	DefineFunction(CompiledFunction),
 	Call {
 		name: Fragment,
 		arity: u8,
@@ -145,13 +135,10 @@ pub enum Instruction {
 	ReturnValue,
 	ReturnVoid,
 
-	// === Closures ===
-	DefineClosure(CompiledClosureDef),
+	DefineClosure(CompiledClosure),
 
-	// === Query (volcano model) ===
 	Query(QueryPlan),
 
-	// === DDL ===
 	CreateNamespace(CreateNamespaceNode),
 	CreateRemoteNamespace(CreateRemoteNamespaceNode),
 	CreateTable(CreateTableNode),
@@ -167,6 +154,8 @@ pub enum Instruction {
 	CreateSeries(CreateSeriesNode),
 	CreateEvent(CreateEventNode),
 	CreateTag(CreateTagNode),
+	CreateSource(nodes::CreateSourceNode),
+	CreateSink(nodes::CreateSinkNode),
 	CreateTest(CreateTestNode),
 	AssertBlock(nodes::AssertBlockNode),
 
@@ -178,7 +167,6 @@ pub enum Instruction {
 	AlterTable(nodes::AlterTableNode),
 	AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode),
 
-	// === DDL (Drop) ===
 	DropNamespace(nodes::DropNamespaceNode),
 	DropTable(nodes::DropTableNode),
 	DropView(nodes::DropViewNode),
@@ -187,21 +175,21 @@ pub enum Instruction {
 	DropSumType(nodes::DropSumTypeNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
+	DropSource(nodes::DropSourceNode),
+	DropSink(nodes::DropSinkNode),
 
-	// === Auth/Permissions ===
-	CreateUser(nodes::CreateUserNode),
+	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
 	Grant(nodes::GrantNode),
 	Revoke(nodes::RevokeNode),
-	DropUser(nodes::DropUserNode),
+	DropIdentity(nodes::DropIdentityNode),
 	DropRole(nodes::DropRoleNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
 	CreatePolicy(nodes::CreatePolicyNode),
 	AlterPolicy(nodes::AlterPolicyNode),
 	DropPolicy(nodes::DropPolicyNode),
 
-	// === DML ===
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),
 	DeleteSeries(DeleteSeriesNode),
@@ -213,15 +201,12 @@ pub enum Instruction {
 	UpdateRingBuffer(UpdateRingBufferNode),
 	UpdateSeries(UpdateSeriesNode),
 
-	// === Append ===
 	Append {
 		target: Fragment,
 	},
 
-	// === Output ===
 	Emit,
 
-	// === Control ===
 	Nop,
 	Halt,
 }

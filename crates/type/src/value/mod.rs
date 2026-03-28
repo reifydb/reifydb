@@ -31,6 +31,7 @@ pub mod row_number;
 pub mod sumtype;
 pub mod temporal;
 pub mod time;
+pub mod to_value;
 pub mod try_from;
 pub mod r#type;
 pub mod uint;

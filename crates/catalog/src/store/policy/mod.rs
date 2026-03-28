@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::{
-	catalog::policy::{PolicyDef, PolicyOperationDef, PolicyTargetType},
-	store::MultiVersionValues,
+	catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
+	store::MultiVersionRow,
 };
 
 use crate::store::policy::schema::{policy, policy_op};
@@ -15,8 +15,8 @@ pub mod find;
 pub mod list;
 pub mod schema;
 
-pub(crate) fn convert_policy(multi: MultiVersionValues) -> PolicyDef {
-	let row = multi.values;
+pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
+	let row = multi.row;
 	let id = policy::SCHEMA.get_u64(&row, policy::ID);
 	let name_str = policy::SCHEMA.get_utf8(&row, policy::NAME).to_string();
 	let name = if name_str.is_empty() {
@@ -54,7 +54,7 @@ pub(crate) fn convert_policy(multi: MultiVersionValues) -> PolicyDef {
 	};
 	let enabled = policy::SCHEMA.get_bool(&row, policy::ENABLED);
 
-	PolicyDef {
+	Policy {
 		id,
 		name,
 		target_type,
@@ -64,13 +64,13 @@ pub(crate) fn convert_policy(multi: MultiVersionValues) -> PolicyDef {
 	}
 }
 
-pub(crate) fn convert_policy_op(multi: MultiVersionValues) -> PolicyOperationDef {
-	let row = multi.values;
+pub(crate) fn convert_policy_op(multi: MultiVersionRow) -> PolicyOperation {
+	let row = multi.row;
 	let policy_id = policy_op::SCHEMA.get_u64(&row, policy_op::POLICY_ID);
 	let operation = policy_op::SCHEMA.get_utf8(&row, policy_op::OPERATION).to_string();
 	let body_source = policy_op::SCHEMA.get_utf8(&row, policy_op::BODY_SOURCE).to_string();
 
-	PolicyOperationDef {
+	PolicyOperation {
 		policy_id,
 		operation,
 		body_source,

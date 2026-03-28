@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 #![cfg(reifydb_target = "native")]
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
@@ -9,4 +12,3 @@
 
 pub mod callbacks;
 pub mod context;
-pub mod loader;

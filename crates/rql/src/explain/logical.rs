@@ -13,7 +13,7 @@ use crate::{
 		AggregateNode, AlterSequenceNode, AppendNode, AssertNode, Compiler, CreateColumnPropertyNode,
 		CreateIndexNode, CreatePrimaryKeyNode, DistinctNode, ExtendNode, FilterNode, GateNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		PatchNode, PrimitiveScanNode, RemoteScanNode, TakeNode, VariableSourceNode,
+		PatchNode, RemoteScanNode, SchemaScanNode, TakeNode, VariableSourceNode,
 	},
 };
 
@@ -94,7 +94,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		LogicalPlan::DropSumType(_) => unimplemented!(),
 		LogicalPlan::DropSubscription(_) => unimplemented!(),
 		LogicalPlan::DropSeries(_) => unimplemented!(),
-		LogicalPlan::CreateUser(n) => {
+		LogicalPlan::CreateSource(_) => unimplemented!(),
+		LogicalPlan::CreateSink(_) => unimplemented!(),
+		LogicalPlan::DropSource(_) => unimplemented!(),
+		LogicalPlan::DropSink(_) => unimplemented!(),
+		LogicalPlan::CreateIdentity(n) => {
 			output.push_str(&format!("{}{} CreateUser name={}\n", prefix, branch, n.name.text()));
 		}
 		LogicalPlan::CreateRole(n) => {
@@ -118,7 +122,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				n.user.text()
 			));
 		}
-		LogicalPlan::DropUser(n) => {
+		LogicalPlan::DropIdentity(n) => {
 			output.push_str(&format!(
 				"{}{} DropUser name={} if_exists={}\n",
 				prefix,
@@ -563,7 +567,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
 			}
 		}
-		LogicalPlan::PrimitiveScan(PrimitiveScanNode {
+		LogicalPlan::PrimitiveScan(SchemaScanNode {
 			source,
 			columns: _,
 			index,
@@ -592,6 +596,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			address,
 			local_namespace,
 			remote_name,
+			..
 		}) => {
 			output.push_str(&format!(
 				"{}{} RemoteScan {}::{} @ {}\n",
@@ -734,11 +739,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					"│   "
 				}
 			);
-			output.push_str(&format!("{}├── Window Type: {:?}\n", child_prefix, window.window_type));
-			output.push_str(&format!("{}├── Size: {:?}\n", child_prefix, window.size));
-			if let Some(ref slide) = window.slide {
-				output.push_str(&format!("{}├── Slide: {:?}\n", child_prefix, slide));
-			}
+			output.push_str(&format!("{}├── Kind: {:?}\n", child_prefix, window.kind));
 			if !window.group_by.is_empty() {
 				output.push_str(&format!(
 					"{}├── Group By: {} expressions\n",

@@ -2,14 +2,14 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
-		column::{ColumnDef, ColumnIndex},
+		column::{Column, ColumnIndex},
 		id::{NamespaceId, PrimaryKeyId, TableId},
-		primitive::PrimitiveId,
 		property::ColumnPropertyKind,
-		table::TableDef,
+		schema::SchemaId,
+		table::Table,
 	},
 	internal,
 	retention::RetentionPolicy,
@@ -89,7 +89,7 @@ impl From<TableToCreate> for StoreTableToCreate {
 
 impl Catalog {
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self, txn))]
-	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<TableDef>> {
+	pub fn find_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -171,6 +171,19 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(mut t) => {
+				if let Some(table) = TransactionalTableChanges::find_table(t.inner, id) {
+					return Ok(Some(table.clone()));
+				}
+				if TransactionalTableChanges::is_table_deleted(t.inner, id) {
+					return Ok(None);
+				}
+				if let Some(table) = CatalogStore::find_table(&mut Transaction::Test(t.reborrow()), id)?
+				{
+					return Ok(Some(table));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -180,7 +193,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<TableDef>> {
+	) -> Result<Option<Table>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -297,11 +310,29 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(mut t) => {
+				if let Some(table) =
+					TransactionalTableChanges::find_table_by_name(t.inner, namespace, name)
+				{
+					return Ok(Some(table.clone()));
+				}
+				if TransactionalTableChanges::is_table_deleted_by_name(t.inner, namespace, name) {
+					return Ok(None);
+				}
+				if let Some(table) = CatalogStore::find_table_by_name(
+					&mut Transaction::Test(t.reborrow()),
+					namespace,
+					name,
+				)? {
+					return Ok(Some(table));
+				}
+				Ok(None)
+			}
 		}
 	}
 
 	#[instrument(name = "catalog::table::get", level = "trace", skip(self, txn))]
-	pub fn get_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<TableDef> {
+	pub fn get_table(&self, txn: &mut Transaction<'_>, id: TableId) -> Result<Table> {
 		self.find_table(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -316,7 +347,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl Into<Fragment> + Send,
-	) -> Result<TableDef> {
+	) -> Result<Table> {
 		let name = name.into();
 
 		// Try to get the namespace name for the error message
@@ -337,13 +368,13 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<TableDef> {
+	pub fn create_table(&self, txn: &mut AdminTransaction, to_create: TableToCreate) -> Result<Table> {
 		let pk_columns = to_create.primary_key_columns.clone();
 
 		let table = CatalogStore::create_table(txn, to_create.into())?;
-		txn.track_table_def_created(table.clone())?;
+		txn.track_table_created(table.clone())?;
 
-		let schema = Schema::from(table.columns.as_slice());
+		let schema = RowSchema::from(table.columns.as_slice());
 		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
 
 		if let Some(pk_columns) = pk_columns {
@@ -364,12 +395,12 @@ impl Catalog {
 			let _pk_id = CatalogStore::create_primary_key(
 				txn,
 				PrimaryKeyToCreate {
-					primitive: PrimitiveId::Table(table.id),
+					object: SchemaId::Table(table.id),
 					column_ids,
 				},
 			)?;
 
-			// txn.track_primary_key_created(pk_id, PrimitiveId::Table(table.id))?;
+			// txn.track_primary_key_created(pk_id, SchemaId::Table(table.id))?;
 
 			return Ok(CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id)?);
 		}
@@ -378,21 +409,21 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::table::drop", level = "debug", skip(self, txn))]
-	pub fn drop_table(&self, txn: &mut AdminTransaction, table: TableDef) -> Result<()> {
+	pub fn drop_table(&self, txn: &mut AdminTransaction, table: Table) -> Result<()> {
 		CatalogStore::drop_table(txn, table.id)?;
-		txn.track_table_def_deleted(table)?;
+		txn.track_table_deleted(table)?;
 		Ok(())
 	}
 
 	/// Lists all tables in the catalog.
 	#[instrument(name = "catalog::table::list_all", level = "debug", skip(self, txn))]
-	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<TableDef>> {
+	pub fn list_tables_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Table>> {
 		CatalogStore::list_tables_all(txn)
 	}
 
 	/// Lists all columns for a given table.
 	#[instrument(name = "catalog::table::list_columns", level = "debug", skip(self, txn))]
-	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<ColumnDef>> {
+	pub fn list_columns(&self, txn: &mut Transaction<'_>, table_id: TableId) -> Result<Vec<Column>> {
 		CatalogStore::list_columns(txn, table_id)
 	}
 
@@ -420,7 +451,7 @@ impl Catalog {
 		table_id: TableId,
 		column: TableColumnToCreate,
 		namespace_name: &str,
-	) -> Result<TableDef> {
+	) -> Result<Table> {
 		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 		let index = ColumnIndex(pre.columns.len() as u8);
 
@@ -430,7 +461,7 @@ impl Catalog {
 			ColumnToCreate {
 				fragment: Some(column.fragment.clone()),
 				namespace_name: namespace_name.to_string(),
-				primitive_name: pre.name.clone(),
+				schema_name: pre.name.clone(),
 				column: column.name.text().to_string(),
 				constraint: column.constraint,
 				properties: column.properties,
@@ -441,7 +472,7 @@ impl Catalog {
 		)?;
 
 		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-		txn.track_table_def_updated(pre, post.clone())?;
+		txn.track_table_updated(pre, post.clone())?;
 
 		Ok(post)
 	}
@@ -453,7 +484,7 @@ impl Catalog {
 		table_id: TableId,
 		column_name: &str,
 		namespace_name: &str,
-	) -> Result<TableDef> {
+	) -> Result<Table> {
 		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 
 		let column = pre.columns.iter().find(|c| c.name == column_name).ok_or_else(|| {
@@ -466,10 +497,10 @@ impl Catalog {
 			}
 		})?;
 
-		CatalogStore::drop_column(txn, PrimitiveId::Table(table_id), column.id)?;
+		CatalogStore::drop_column(txn, SchemaId::Table(table_id), column.id)?;
 
 		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-		txn.track_table_def_updated(pre, post.clone())?;
+		txn.track_table_updated(pre, post.clone())?;
 
 		Ok(post)
 	}
@@ -482,7 +513,7 @@ impl Catalog {
 		old_name: &str,
 		new_name: &str,
 		namespace_name: &str,
-	) -> Result<TableDef> {
+	) -> Result<Table> {
 		let pre = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
 
 		let column = pre.columns.iter().find(|c| c.name == old_name).ok_or_else(|| {
@@ -495,10 +526,10 @@ impl Catalog {
 			}
 		})?;
 
-		CatalogStore::rename_column(txn, PrimitiveId::Table(table_id), column.id, new_name)?;
+		CatalogStore::rename_column(txn, SchemaId::Table(table_id), column.id, new_name)?;
 
 		let post = CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table_id)?;
-		txn.track_table_def_updated(pre, post.clone())?;
+		txn.track_table_updated(pre, post.clone())?;
 
 		Ok(post)
 	}

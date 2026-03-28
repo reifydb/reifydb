@@ -3,15 +3,20 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use reifydb_auth::AuthVersion;
+use reifydb_auth::{
+	AuthVersion,
+	registry::AuthenticationRegistry,
+	service::{AuthService, AuthServiceConfig},
+};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
-		bootstrap_config_defaults, bootstrap_system_procedures, load_materialized_catalog, load_schema_registry,
+		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
+		load_schema_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -30,27 +35,24 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{
-	EngineVersion,
-	engine::StandardEngine,
-	procedure::{
-		registry::{Procedures, ProceduresBuilder},
-		system::set_config::SetConfigProcedure,
-	},
-	remote::RemoteRegistry,
-	transform::registry::Transforms,
-};
-use reifydb_function::registry::{Functions, FunctionsBuilder};
+use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry};
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
+use reifydb_routine::{
+	function::{default_functions, registry::FunctionsBuilder},
+	procedure::{default_procedures, registry::ProceduresBuilder},
+};
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
+use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowBuilder, subsystem::factory::FlowSubsystemFactory};
+#[cfg(feature = "sub_server")]
+use reifydb_sub_server::interceptor::RequestInterceptorChain;
 use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingBuilder;
@@ -84,6 +86,7 @@ pub struct DatabaseBuilder {
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
 	task_factory: Option<Box<dyn SubsystemFactory>>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
 	migrations: Vec<Migration>,
 }
 
@@ -98,7 +101,7 @@ impl DatabaseBuilder {
 		let ioc = IocContainer::new()
 			.register(system_config.clone())
 			.register(MaterializedCatalog::new(system_config))
-			.register(SchemaRegistry::new(single.clone()))
+			.register(RowSchemaRegistry::new(single.clone()))
 			.register(eventbus)
 			.register(multi)
 			.register(single);
@@ -122,6 +125,7 @@ impl DatabaseBuilder {
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
 			task_factory: None,
+			auth_configurator: None,
 			migrations: Vec::new(),
 		}
 	}
@@ -158,6 +162,12 @@ impl DatabaseBuilder {
 
 	pub fn with_interceptor_builder(mut self, builder: InterceptorBuilder) -> Self {
 		self.interceptors = builder;
+		self
+	}
+
+	#[cfg(feature = "sub_server")]
+	pub fn with_request_interceptor_chain(self, chain: RequestInterceptorChain) -> Self {
+		self.ioc.register_service(chain);
 		self
 	}
 
@@ -214,6 +224,14 @@ impl DatabaseBuilder {
 		self
 	}
 
+	pub fn with_auth<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+	{
+		self.auth_configurator = Some(Box::new(configurator));
+		self
+	}
+
 	pub fn with_migrations(mut self, migrations: Vec<Migration>) -> Self {
 		self.migrations = migrations;
 		self
@@ -224,6 +242,7 @@ impl DatabaseBuilder {
 	}
 
 	pub fn build(mut self) -> crate::Result<Database> {
+		let default_builder = default_functions();
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
@@ -246,13 +265,14 @@ impl DatabaseBuilder {
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
-		let schema_registry = self.ioc.resolve::<SchemaRegistry>()?;
+		let schema_registry = self.ioc.resolve::<RowSchemaRegistry>()?;
 		let multi = self.ioc.resolve::<MultiTransaction>()?;
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		load_materialized_catalog(&multi, &single, &catalog)?;
-		bootstrap_config_defaults(&multi, &single, &catalog, &eventbus)?;
+		bootstrap_root_identity(&multi, &single, &catalog, &eventbus)?;
+		bootstrap_configaults(&multi, &single, &catalog, &eventbus)?;
 		bootstrap_system_procedures(&multi, &single, &catalog, &schema_registry, &eventbus)?;
 		load_schema_registry(&multi, &single, &schema_registry)?;
 
@@ -282,8 +302,6 @@ impl DatabaseBuilder {
 		// Register single store in IoC for engine to access
 		self.ioc = self.ioc.register(single_store);
 
-		let default_builder = Functions::defaults();
-
 		let functions = if let Some(configurator) = self.functions_configurator {
 			configurator(default_builder).build()
 		} else {
@@ -293,24 +311,20 @@ impl DatabaseBuilder {
 		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
 
 		let procedures = {
-			let mut procedures_builder = Procedures::builder()
-				.with_procedure(
-					"identity::inject",
-					reifydb_engine::procedure::identity_inject::IdentityInject::new,
-				)
-				.with_procedure("system::config::set", SetConfigProcedure::new);
+			let mut procedures_builder = default_procedures();
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {
-				procedures_builder = reifydb_engine::procedure::loader::register_procedures_from_dir(
-					dir,
-					procedures_builder,
-				)?;
+				procedures_builder =
+					reifydb_extension::procedure::ffi_loader::register_procedures_from_dir(
+						dir,
+						procedures_builder,
+					)?;
 			}
 
 			if let Some(dir) = &self.wasm_procedure_dir {
 				procedures_builder =
-					reifydb_engine::procedure::wasm_loader::register_wasm_procedures_from_dir(
+					reifydb_extension::procedure::wasm_loader::register_wasm_procedures_from_dir(
 						dir,
 						procedures_builder,
 					)?;
@@ -337,7 +351,7 @@ impl DatabaseBuilder {
 			eventbus.clone(),
 			self.interceptors.build(),
 			Catalog::new(catalog, schema_registry),
-			runtime.clock().clone(),
+			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 			functions,
 			procedures,
 			transforms,
@@ -346,6 +360,19 @@ impl DatabaseBuilder {
 		);
 
 		self.ioc = self.ioc.register(engine.clone());
+
+		// Create AuthService for token validation
+		let auth_service = AuthService::new(
+			Arc::new(engine.clone()),
+			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
+			runtime.rng().clone(),
+			runtime.clock().clone(),
+			match self.auth_configurator {
+				Some(configurator) => configurator(AuthServiceConfig::default()),
+				None => AuthServiceConfig::default(),
+			},
+		);
+		self.ioc = self.ioc.register(auth_service.clone());
 
 		// Spawn CDC producer actor and register event listener
 		// The handle is stored in IoC to keep it alive for the database lifetime
@@ -424,6 +451,14 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		self.ioc.register(system_catalog);
 
-		Ok(Database::new(engine, subsystems, health_monitor, runtime, actor_system, self.migrations))
+		Ok(Database::new(
+			engine,
+			auth_service,
+			subsystems,
+			health_monitor,
+			runtime,
+			actor_system,
+			self.migrations,
+		))
 	}
 }

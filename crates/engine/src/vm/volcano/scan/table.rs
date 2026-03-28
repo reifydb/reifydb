@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	error::diagnostic,
-	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedTable},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable},
 	key::{
 		EncodableKey,
 		row::{RowKey, RowKeyRange},
@@ -33,9 +33,9 @@ pub(crate) struct TableScanNode {
 	/// Storage types for each column (dictionary ID types for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
-	dictionaries: Vec<Option<DictionaryDef>>,
+	dictionaries: Vec<Option<Dictionary>>,
 	/// Cached schema loaded from the first batch
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
@@ -78,7 +78,7 @@ impl TableScanNode {
 		})
 	}
 
-	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -88,7 +88,7 @@ impl TableScanNode {
 		let stored_ctx = self.context.as_ref().expect("TableScanNode context not set");
 		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
 			error!(diagnostic::internal::internal(format!(
-				"Schema with fingerprint {:?} not found for table {}",
+				"RowSchema with fingerprint {:?} not found for table {}",
 				fingerprint,
 				self.table.def().name
 			)))
@@ -132,7 +132,7 @@ impl QueryNode for TableScanNode {
 			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
-						batch_rows.push(multi.values);
+						batch_rows.push(multi.row);
 						row_numbers.push(key.row);
 						new_last_key = Some(multi.key);
 					}
@@ -221,7 +221,7 @@ impl QueryNode for TableScanNode {
 			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
-						encoded_rows.push(multi.values);
+						encoded_rows.push(multi.row);
 						row_numbers.push(key.row);
 						self.last_key = Some(multi.key);
 					}

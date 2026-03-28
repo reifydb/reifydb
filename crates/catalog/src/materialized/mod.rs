@@ -4,23 +4,25 @@
 pub mod config;
 pub mod dictionary;
 pub mod flow;
+pub mod granted_role;
 pub mod handler;
+pub mod identity;
 pub mod load;
 pub mod migration;
 pub mod namespace;
 pub mod operator_retention_policy;
 pub mod policy;
 pub mod primary_key;
-pub mod primitive_retention_policy;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
+pub mod schema_retention_policy;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod test;
-pub mod user;
-pub mod user_role;
 pub mod view;
 
 use std::{ops, sync::Arc};
@@ -30,35 +32,42 @@ use reifydb_core::{
 	common::CommitVersion,
 	config::SystemConfig,
 	interface::catalog::{
-		config::ConfigDef,
-		dictionary::DictionaryDef,
-		flow::{FlowDef, FlowId, FlowNodeId},
-		handler::HandlerDef,
+		config::Config,
+		dictionary::Dictionary,
+		flow::{Flow, FlowId, FlowNodeId},
+		handler::Handler,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
-			SubscriptionId, TableId, TestId, ViewId,
+			SinkId, SourceId, SubscriptionId, TableId, TestId, ViewId,
 		},
-		key::PrimaryKeyDef,
-		migration::{MigrationDef, MigrationEvent},
+		identity::{GrantedRole, Identity, Role, RoleId},
+		key::PrimaryKey,
+		migration::{Migration, MigrationEvent},
 		namespace::Namespace,
-		policy::{PolicyDef, PolicyId, PolicyOperationDef},
-		primitive::PrimitiveId,
-		procedure::ProcedureDef,
-		ringbuffer::RingBufferDef,
-		subscription::SubscriptionDef,
-		sumtype::SumTypeDef,
-		table::TableDef,
-		test::TestDef,
-		user::{RoleDef, RoleId, UserDef, UserId, UserRoleDef},
-		view::ViewDef,
-		vtable::{VTableDef, VTableId},
+		policy::{Policy, PolicyId, PolicyOperation},
+		procedure::Procedure,
+		ringbuffer::RingBuffer,
+		schema::SchemaId,
+		sink::Sink,
+		source::Source,
+		subscription::Subscription,
+		sumtype::SumType,
+		table::Table,
+		test::Test,
+		view::View,
+		vtable::{VTable, VTableId},
 	},
 	retention::RetentionPolicy,
 	util::multi::MultiVersionContainer,
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{Value, dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
+	value::{
+		Value,
+		dictionary::DictionaryId,
+		identity::IdentityId,
+		sumtype::{SumTypeId, VariantRef},
+	},
 };
 
 use crate::{
@@ -67,24 +76,26 @@ use crate::{
 };
 
 pub type MultiVersionNamespace = MultiVersionContainer<Namespace>;
-pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
-pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
-pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
-pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
+pub type MultiVersionTable = MultiVersionContainer<Table>;
+pub type MultiVersionView = MultiVersionContainer<View>;
+pub type MultiVersionFlow = MultiVersionContainer<Flow>;
+pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
-pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
-pub type MultiVersionHandlerDef = MultiVersionContainer<HandlerDef>;
-pub type MultiVersionMigrationDef = MultiVersionContainer<MigrationDef>;
+pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
+pub type MultiVersionHandler = MultiVersionContainer<Handler>;
+pub type MultiVersionMigration = MultiVersionContainer<Migration>;
 pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
-pub type MultiVersionProcedureDef = MultiVersionContainer<ProcedureDef>;
-pub type MultiVersionRingBufferDef = MultiVersionContainer<RingBufferDef>;
-pub type MultiVersionTestDef = MultiVersionContainer<TestDef>;
-pub type MultiVersionSumTypeDef = MultiVersionContainer<SumTypeDef>;
-pub type MultiVersionSubscriptionDef = MultiVersionContainer<SubscriptionDef>;
-pub type MultiVersionUserDef = MultiVersionContainer<UserDef>;
-pub type MultiVersionRoleDef = MultiVersionContainer<RoleDef>;
-pub type MultiVersionUserRoleDef = MultiVersionContainer<UserRoleDef>;
-pub type MultiVersionPolicyDef = MultiVersionContainer<PolicyDef>;
+pub type MultiVersionProcedure = MultiVersionContainer<Procedure>;
+pub type MultiVersionRingBuffer = MultiVersionContainer<RingBuffer>;
+pub type MultiVersionTest = MultiVersionContainer<Test>;
+pub type MultiVersionSumType = MultiVersionContainer<SumType>;
+pub type MultiVersionSubscription = MultiVersionContainer<Subscription>;
+pub type MultiVersionIdentity = MultiVersionContainer<Identity>;
+pub type MultiVersionRole = MultiVersionContainer<Role>;
+pub type MultiVersionGrantedRole = MultiVersionContainer<GrantedRole>;
+pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
+pub type MultiVersionSource = MultiVersionContainer<Source>;
+pub type MultiVersionSink = MultiVersionContainer<Sink>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -101,80 +112,86 @@ pub struct MaterializedCatalogInner {
 	/// Index from namespace name to namespace ID for fast name lookups
 	pub(crate) namespaces_by_name: SkipMap<String, NamespaceId>,
 	/// MultiVersion table definitions indexed by table ID
-	pub(crate) tables: SkipMap<TableId, MultiVersionTableDef>,
+	pub(crate) tables: SkipMap<TableId, MultiVersionTable>,
 	/// Index from (namespace_id, table_name) to table ID for fast name lookups
 	pub(crate) tables_by_name: SkipMap<(NamespaceId, String), TableId>,
 	/// MultiVersion view definitions indexed by view ID
-	pub(crate) views: SkipMap<ViewId, MultiVersionViewDef>,
+	pub(crate) views: SkipMap<ViewId, MultiVersionView>,
 	/// Index from (namespace_id, view_name) to view ID for fast name lookups
 	pub(crate) views_by_name: SkipMap<(NamespaceId, String), ViewId>,
 	/// MultiVersion flow definitions indexed by flow ID
-	pub(crate) flows: SkipMap<FlowId, MultiVersionFlowDef>,
+	pub(crate) flows: SkipMap<FlowId, MultiVersionFlow>,
 	/// Index from (namespace_id, flow_name) to flow ID for fast name lookups
 	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
 	/// MultiVersion procedure definitions indexed by procedure ID
-	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedureDef>,
+	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedure>,
 	/// Index from (namespace_id, procedure_name) to procedure ID for fast name lookups
 	pub(crate) procedures_by_name: SkipMap<(NamespaceId, String), ProcedureId>,
-	/// Index from (sumtype_id, variant_tag) to Vec<ProcedureId> for procedure dispatch
-	pub(crate) procedures_by_variant: SkipMap<(SumTypeId, u8), Vec<ProcedureId>>,
+	/// Index from variant ref to Vec<ProcedureId> for procedure dispatch
+	pub(crate) procedures_by_variant: SkipMap<VariantRef, Vec<ProcedureId>>,
 	/// MultiVersion test definitions indexed by test ID
-	pub(crate) tests: SkipMap<TestId, MultiVersionTestDef>,
+	pub(crate) tests: SkipMap<TestId, MultiVersionTest>,
 	/// Index from (namespace_id, test_name) to test ID for fast name lookups
 	pub(crate) tests_by_name: SkipMap<(NamespaceId, String), TestId>,
 	/// MultiVersion primary key definitions indexed by primary key ID
-	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
+	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
 	/// MultiVersion source retention policies indexed by source ID
-	pub(crate) source_retention_policies: SkipMap<PrimitiveId, MultiVersionRetentionPolicy>,
+	pub(crate) schema_retention_policies: SkipMap<SchemaId, MultiVersionRetentionPolicy>,
 	/// MultiVersion operator retention policies indexed by operator ID
 	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,
 	/// MultiVersion dictionary definitions indexed by dictionary ID
-	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionaryDef>,
+	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionary>,
 	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
 	pub(crate) dictionaries_by_name: SkipMap<(NamespaceId, String), DictionaryId>,
 	/// MultiVersion sum type definitions indexed by sum type ID
-	pub(crate) sumtypes: SkipMap<SumTypeId, MultiVersionSumTypeDef>,
+	pub(crate) sumtypes: SkipMap<SumTypeId, MultiVersionSumType>,
 	/// Index from (namespace_id, sumtype_name) to sum type ID for fast name lookups
 	pub(crate) sumtypes_by_name: SkipMap<(NamespaceId, String), SumTypeId>,
 	/// MultiVersion ringbuffer definitions indexed by ringbuffer ID
-	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBufferDef>,
+	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBuffer>,
 	/// Index from (namespace_id, ringbuffer_name) to ringbuffer ID for fast name lookups
 	pub(crate) ringbuffers_by_name: SkipMap<(NamespaceId, String), RingBufferId>,
 	/// MultiVersion subscription definitions indexed by subscription ID
 	/// Note: Subscriptions do NOT have names - they are identified only by ID
-	pub(crate) subscriptions: SkipMap<SubscriptionId, MultiVersionSubscriptionDef>,
+	pub(crate) subscriptions: SkipMap<SubscriptionId, MultiVersionSubscription>,
 	/// MultiVersion handler definitions indexed by handler ID
-	pub(crate) handlers: SkipMap<HandlerId, MultiVersionHandlerDef>,
+	pub(crate) handlers: SkipMap<HandlerId, MultiVersionHandler>,
 	/// Index from (namespace_id, handler_name) to handler ID for fast name lookups
 	pub(crate) handlers_by_name: SkipMap<(NamespaceId, String), HandlerId>,
-	/// Index from (sumtype_id, variant_tag) to Vec<HandlerId> for dispatch hot-path
-	pub(crate) handlers_by_variant: SkipMap<(SumTypeId, u8), Vec<HandlerId>>,
-	/// MultiVersion user definitions indexed by user ID
-	pub(crate) users: SkipMap<UserId, MultiVersionUserDef>,
-	/// Index from user name to user ID for fast name lookups
-	pub(crate) users_by_name: SkipMap<String, UserId>,
-	/// Index from identity ID to user ID for fast identity lookups
-	pub(crate) users_by_identity: SkipMap<IdentityId, UserId>,
+	/// Index from variant ref to Vec<HandlerId> for dispatch hot-path
+	pub(crate) handlers_by_variant: SkipMap<VariantRef, Vec<HandlerId>>,
+	/// MultiVersion identity definitions indexed by IdentityId
+	pub(crate) identities: SkipMap<IdentityId, MultiVersionIdentity>,
+	/// Index from identity name to IdentityId for fast name lookups
+	pub(crate) identities_by_name: SkipMap<String, IdentityId>,
 	/// MultiVersion role definitions indexed by role ID
-	pub(crate) roles: SkipMap<RoleId, MultiVersionRoleDef>,
+	pub(crate) roles: SkipMap<RoleId, MultiVersionRole>,
 	/// Index from role name to role ID for fast name lookups
 	pub(crate) roles_by_name: SkipMap<String, RoleId>,
-	/// MultiVersion user-role definitions indexed by (user_id, role_id)
-	pub(crate) user_roles: SkipMap<(UserId, RoleId), MultiVersionUserRoleDef>,
+	/// MultiVersion granted-role definitions indexed by (identity_id, role_id)
+	pub(crate) granted_roles: SkipMap<(IdentityId, RoleId), MultiVersionGrantedRole>,
 	/// MultiVersion policy definitions indexed by policy ID
-	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicyDef>,
+	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicy>,
 	/// Index from policy name to policy ID for fast name lookups
 	pub(crate) policies_by_name: SkipMap<String, PolicyId>,
 	/// Policy operations indexed by policy ID for fast lookups (avoids KV store scans)
-	pub(crate) policy_operations: SkipMap<PolicyId, Vec<PolicyOperationDef>>,
+	pub(crate) policy_operations: SkipMap<PolicyId, Vec<PolicyOperation>>,
 	/// MultiVersion migration definitions indexed by migration ID
-	pub(crate) migrations: SkipMap<MigrationId, MultiVersionMigrationDef>,
+	pub(crate) migrations: SkipMap<MigrationId, MultiVersionMigration>,
 	/// Index from migration name to migration ID for fast name lookups
 	pub(crate) migrations_by_name: SkipMap<String, MigrationId>,
 	/// MultiVersion migration events indexed by event ID
 	pub(crate) migration_events: SkipMap<MigrationEventId, MultiVersionMigrationEvent>,
+	/// MultiVersion source definitions indexed by source ID
+	pub(crate) sources: SkipMap<SourceId, MultiVersionSource>,
+	/// Index from (namespace_id, source_name) to source ID for fast name lookups
+	pub(crate) sources_by_name: SkipMap<(NamespaceId, String), SourceId>,
+	/// MultiVersion sink definitions indexed by sink ID
+	pub(crate) sinks: SkipMap<SinkId, MultiVersionSink>,
+	/// Index from (namespace_id, sink_name) to sink ID for fast name lookups
+	pub(crate) sinks_by_name: SkipMap<(NamespaceId, String), SinkId>,
 	/// User-defined virtual table definitions indexed by ID
-	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTableDef>>,
+	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTable>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
 }
@@ -223,7 +240,7 @@ impl MaterializedCatalog {
 			flows: SkipMap::new(),
 			flows_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
-			source_retention_policies: SkipMap::new(),
+			schema_retention_policies: SkipMap::new(),
 			operator_retention_policies: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
@@ -235,18 +252,21 @@ impl MaterializedCatalog {
 			handlers: SkipMap::new(),
 			handlers_by_name: SkipMap::new(),
 			handlers_by_variant: SkipMap::new(),
-			users: SkipMap::new(),
-			users_by_name: SkipMap::new(),
-			users_by_identity: SkipMap::new(),
+			identities: SkipMap::new(),
+			identities_by_name: SkipMap::new(),
 			roles: SkipMap::new(),
 			roles_by_name: SkipMap::new(),
-			user_roles: SkipMap::new(),
+			granted_roles: SkipMap::new(),
 			policies: SkipMap::new(),
 			policies_by_name: SkipMap::new(),
 			policy_operations: SkipMap::new(),
 			migrations: SkipMap::new(),
 			migrations_by_name: SkipMap::new(),
 			migration_events: SkipMap::new(),
+			sources: SkipMap::new(),
+			sources_by_name: SkipMap::new(),
+			sinks: SkipMap::new(),
+			sinks_by_name: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 		}))
@@ -255,7 +275,7 @@ impl MaterializedCatalog {
 	/// Register a user-defined virtual table
 	///
 	/// Returns an error if a virtual table with the same name already exists in the namespace.
-	pub fn register_vtable_user(&self, def: Arc<VTableDef>) -> Result<()> {
+	pub fn register_vtable_user(&self, def: Arc<VTable>) -> Result<()> {
 		let key = (def.namespace, def.name.clone());
 
 		// Check if already exists
@@ -305,7 +325,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a user-defined virtual table by namespace and name
-	pub fn find_vtable_user_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Arc<VTableDef>> {
+	pub fn find_vtable_user_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Arc<VTable>> {
 		let key = (namespace, name.to_string());
 		self.vtable_user_by_name
 			.get(&key)
@@ -313,12 +333,12 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a user-defined virtual table by ID
-	pub fn find_vtable_user(&self, id: VTableId) -> Option<Arc<VTableDef>> {
+	pub fn find_vtable_user(&self, id: VTableId) -> Option<Arc<VTable>> {
 		self.vtable_user.get(&id).map(|e| e.value().clone())
 	}
 
 	/// List all user-defined virtual tables in a namespace
-	pub fn list_vtable_user_in_namespace(&self, namespace: NamespaceId) -> Vec<Arc<VTableDef>> {
+	pub fn list_vtable_user_in_namespace(&self, namespace: NamespaceId) -> Vec<Arc<VTable>> {
 		self.vtable_user
 			.iter()
 			.filter(|e| e.value().namespace == namespace)
@@ -327,7 +347,7 @@ impl MaterializedCatalog {
 	}
 
 	/// List all user-defined virtual tables
-	pub fn list_vtable_user_all(&self) -> Vec<Arc<VTableDef>> {
+	pub fn list_vtable_user_all(&self) -> Vec<Arc<VTable>> {
 		self.vtable_user.iter().map(|e| e.value().clone()).collect()
 	}
 
@@ -337,12 +357,12 @@ impl MaterializedCatalog {
 	}
 
 	/// List all registered configurations with their current values.
-	pub fn list_configs(&self) -> Vec<ConfigDef> {
+	pub fn list_configs(&self) -> Vec<Config> {
 		self.0.system_config.list_all()
 	}
 
 	/// List all registered configurations with values as of a specific snapshot version.
-	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<ConfigDef> {
+	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<Config> {
 		self.0.system_config.list_all_at(version)
 	}
 

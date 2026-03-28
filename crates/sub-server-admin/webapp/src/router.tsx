@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { MainLayout } from '@/components/layout/main-layout.tsx'
 import { DashboardPage } from '@/pages/dashboard'

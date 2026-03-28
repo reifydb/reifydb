@@ -1,0 +1,15 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+(admin 'CREATE NAMESPACE test')
+(admin 'CREATE RINGBUFFER test::rb { id: int4, name: utf8 } WITH { capacity: 10 }')
+(admin 'CREATE TABLE test::src { id: int4, name: utf8 }')
+(command 'INSERT test::src [{ id: 1, name: "a" }]')
+command 'LET $x = FROM test::src; INSERT test::rb $x RETURNING { id, name }'
+---
+> +----------+------+--------+
+> |  rownum  |  id  |  name  |
+> +----------+------+--------+
+> |    1     |  1   |   a    |
+> +----------+------+--------+
+>

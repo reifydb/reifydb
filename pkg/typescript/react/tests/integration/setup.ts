@@ -9,7 +9,7 @@ export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<vo
         let url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
         let client = null;
         try {
-            client = await Client.connect_ws(url, {timeoutMs: 5000});
+            client = await Client.connect_ws(url, {timeoutMs: 5000, token: process.env.REIFYDB_TOKEN});
             // Test connection with simple query - query() requires 3 params
             const result = await client.query(`MAP {test: 1}`, null, []);
             if (!result || !Array.isArray(result)) {
@@ -29,6 +29,25 @@ export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<vo
                     // Ignore disconnect errors
                 }
             }
+        }
+    }
+}
+
+export async function waitForDatabaseHttp(maxRetries = 30, delay = 1000): Promise<void> {
+    for (let i = 0; i < maxRetries; i++) {
+        let url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+        try {
+            const client = Client.connect_http(url, {token: process.env.REIFYDB_TOKEN});
+            const result = await client.query(`MAP {test: 1}`, null, []);
+            if (!result || !Array.isArray(result)) {
+                throw new Error('Invalid query result');
+            }
+            return;
+        } catch (error: any) {
+            if (i === maxRetries - 1) {
+                throw new Error(`${url} not ready after ${maxRetries} attempts`);
+            }
+            await new Promise(resolve => setTimeout(resolve, delay));
         }
     }
 }

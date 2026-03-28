@@ -34,13 +34,13 @@ fn main() {
 
 	let mut db = embedded::memory()
 		.intercept()
-		.view("test::active_users")
+		.view_row("test::active_users")
 		.post_insert(|ctx| {
-			info!("[VIEW INTERCEPTOR] Post-insert into view: {}", ctx.view.name);
+			info!("[VIEW INTERCEPTOR] Post-insert into view: {}", ctx.view.name());
 			Ok(())
 		})
 		.post_delete(|ctx| {
-			info!("[VIEW INTERCEPTOR] Post-delete from view: {}", ctx.view.name);
+			info!("[VIEW INTERCEPTOR] Post-delete from view: {}", ctx.view.name());
 			Ok(())
 		})
 		.done()

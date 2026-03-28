@@ -4,9 +4,9 @@
 use std::collections::HashMap;
 
 use reifydb_core::encoded::{
-	encoded::EncodedValues,
 	key::{EncodedKey, IntoEncodedKey},
-	schema::Schema,
+	row::EncodedRow,
+	schema::RowSchema,
 };
 use reifydb_type::{
 	util::cowvec::CowVec,
@@ -17,13 +17,13 @@ use super::helpers::get_values;
 
 /// Test helper for FFISingleStateful operators
 pub struct SingleStatefulTestHelper {
-	schema: Schema,
+	schema: RowSchema,
 	state: Option<Vec<u8>>,
 }
 
 impl SingleStatefulTestHelper {
 	/// Create a new single stateful test helper
-	pub fn new(schema: Schema) -> Self {
+	pub fn new(schema: RowSchema) -> Self {
 		Self {
 			schema,
 			state: None,
@@ -32,7 +32,7 @@ impl SingleStatefulTestHelper {
 
 	/// Create with a simple counter schema (single int8)
 	pub fn counter() -> Self {
-		Self::new(Schema::testing(&[Type::Int8]))
+		Self::new(RowSchema::testing(&[Type::Int8]))
 	}
 
 	/// Set the current state
@@ -45,7 +45,7 @@ impl SingleStatefulTestHelper {
 	/// Get the current state
 	pub fn get_state(&self) -> Option<Vec<Value>> {
 		self.state.as_ref().map(|bytes| {
-			let encoded = EncodedValues(CowVec::new(bytes.clone()));
+			let encoded = EncodedRow(CowVec::new(bytes.clone()));
 			get_values(&self.schema, &encoded)
 		})
 	}
@@ -69,13 +69,13 @@ impl SingleStatefulTestHelper {
 
 /// Test helper for FFIKeyedStateful operators
 pub struct KeyedStatefulTestHelper {
-	schema: Schema,
-	states: HashMap<EncodedKey, EncodedValues>,
+	schema: RowSchema,
+	states: HashMap<EncodedKey, EncodedRow>,
 }
 
 impl KeyedStatefulTestHelper {
 	/// Create a new keyed stateful test helper
-	pub fn new(schema: Schema) -> Self {
+	pub fn new(schema: RowSchema) -> Self {
 		Self {
 			schema,
 			states: HashMap::new(),
@@ -84,12 +84,12 @@ impl KeyedStatefulTestHelper {
 
 	/// Create with a simple counter schema (single int8)
 	pub fn counter() -> Self {
-		Self::new(Schema::testing(&[Type::Int8]))
+		Self::new(RowSchema::testing(&[Type::Int8]))
 	}
 
 	/// Create with a sum schema (single int8 or int4)
 	pub fn sum() -> Self {
-		Self::new(Schema::testing(&[Type::Int4]))
+		Self::new(RowSchema::testing(&[Type::Int4]))
 	}
 
 	/// Set state for a key
@@ -163,14 +163,14 @@ impl KeyedStatefulTestHelper {
 
 /// Test helper for FFIWindowStateful operators
 pub struct WindowStatefulTestHelper {
-	schema: Schema,
-	windows: HashMap<i64, HashMap<EncodedKey, EncodedValues>>, // window_id -> key -> state
+	schema: RowSchema,
+	windows: HashMap<i64, HashMap<EncodedKey, EncodedRow>>, // window_id -> key -> state
 	window_size: i64,
 }
 
 impl WindowStatefulTestHelper {
 	/// Create a new window stateful test helper
-	pub fn new(schema: Schema, window_size: i64) -> Self {
+	pub fn new(schema: RowSchema, window_size: i64) -> Self {
 		Self {
 			schema,
 			windows: HashMap::new(),
@@ -180,12 +180,12 @@ impl WindowStatefulTestHelper {
 
 	/// Create with a counter schema for time windows
 	pub fn time_window_counter(window_size_seconds: i64) -> Self {
-		Self::new(Schema::testing(&[Type::Int8]), window_size_seconds)
+		Self::new(RowSchema::testing(&[Type::Int8]), window_size_seconds)
 	}
 
 	/// Create with a sum schema for count windows
 	pub fn count_window_sum(window_size_count: i64) -> Self {
-		Self::new(Schema::testing(&[Type::Int4]), window_size_count)
+		Self::new(RowSchema::testing(&[Type::Int4]), window_size_count)
 	}
 
 	/// Set state for a window and key
@@ -226,12 +226,12 @@ impl WindowStatefulTestHelper {
 	}
 
 	/// Get all states for a window
-	pub fn get_window(&self, window_id: i64) -> Option<&HashMap<EncodedKey, EncodedValues>> {
+	pub fn get_window(&self, window_id: i64) -> Option<&HashMap<EncodedKey, EncodedRow>> {
 		self.windows.get(&window_id)
 	}
 
 	/// Remove a window
-	pub fn remove_window(&mut self, window_id: i64) -> Option<HashMap<EncodedKey, EncodedValues>> {
+	pub fn remove_window(&mut self, window_id: i64) -> Option<HashMap<EncodedKey, EncodedRow>> {
 		self.windows.remove(&window_id)
 	}
 

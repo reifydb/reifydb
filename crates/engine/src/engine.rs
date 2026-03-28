@@ -3,14 +3,15 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 	vtable::{
-		system::flow_operator_store::{FlowOperatorEventListener, FlowOperatorStore},
+		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
-		user::{UserVTable, UserVTableColumnDef, registry::UserVTableEntry},
+		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
 use reifydb_cdc::{consume::host::CdcHost, storage::CdcStore};
@@ -21,16 +22,17 @@ use reifydb_core::{
 	interface::{
 		WithEventBus,
 		catalog::{
-			column::{ColumnDef, ColumnIndex},
+			column::{Column, ColumnIndex},
 			id::ColumnId,
-			vtable::{VTableDef, VTableId},
+			vtable::{VTable, VTableId},
 		},
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_function::registry::Functions;
+use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::metric::MetricReader;
-use reifydb_runtime::{actor::system::ActorSystem, clock::Clock};
+use reifydb_routine::{function::registry::Functions, procedure::registry::Procedures};
+use reifydb_runtime::{actor::system::ActorSystem, context::RuntimeContext};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
@@ -55,8 +57,6 @@ use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
-	procedure::registry::Procedures,
-	transform::registry::Transforms,
 	vm::{Admin, Command, Query, Subscription, executor::Executor},
 };
 
@@ -68,46 +68,80 @@ impl WithEventBus for StandardEngine {
 	}
 }
 
+impl AuthEngine for StandardEngine {
+	fn begin_admin(&self) -> Result<AdminTransaction> {
+		StandardEngine::begin_admin(self, IdentityId::system())
+	}
+
+	fn begin_query(&self) -> Result<QueryTransaction> {
+		StandardEngine::begin_query(self, IdentityId::system())
+	}
+
+	fn catalog(&self) -> Catalog {
+		StandardEngine::catalog(self)
+	}
+}
+
 // Engine methods (formerly from Engine trait in reifydb-core)
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> Result<CommandTransaction> {
+	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
 		let interceptors = self.interceptors.create();
-		CommandTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
-	}
-
-	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
-	pub fn begin_admin(&self) -> Result<AdminTransaction> {
-		let interceptors = self.interceptors.create();
-		AdminTransaction::new(self.multi.clone(), self.single.clone(), self.event_bus.clone(), interceptors)
-	}
-
-	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	pub fn begin_query(&self) -> Result<QueryTransaction> {
-		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
-	}
-
-	#[instrument(name = "engine::transaction::begin_subscription", level = "debug", skip(self))]
-	pub fn begin_subscription(&self) -> Result<SubscriptionTransaction> {
-		let interceptors = self.interceptors.create();
-		SubscriptionTransaction::new(
+		let mut txn = CommandTransaction::new(
 			self.multi.clone(),
 			self.single.clone(),
 			self.event_bus.clone(),
 			interceptors,
-		)
+			identity,
+		)?;
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
+	}
+
+	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
+	pub fn begin_admin(&self, identity: IdentityId) -> Result<AdminTransaction> {
+		let interceptors = self.interceptors.create();
+		let mut txn = AdminTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			interceptors,
+			identity,
+		)?;
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
+	}
+
+	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
+	pub fn begin_query(&self, identity: IdentityId) -> Result<QueryTransaction> {
+		let mut txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), identity);
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
+	}
+
+	#[instrument(name = "engine::transaction::begin_subscription", level = "debug", skip(self))]
+	pub fn begin_subscription(&self, identity: IdentityId) -> Result<SubscriptionTransaction> {
+		let interceptors = self.interceptors.create();
+		let mut txn = SubscriptionTransaction::new(
+			self.multi.clone(),
+			self.single.clone(),
+			self.event_bus.clone(),
+			interceptors,
+			identity,
+		)?;
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
 	}
 
 	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_admin()?;
+			let mut txn = self.begin_admin(identity)?;
 			let frames = self.executor.admin(
 				&mut txn,
 				Admin {
 					rql,
 					params,
-					identity,
 				},
 			)?;
 			txn.commit()?;
@@ -122,13 +156,12 @@ impl StandardEngine {
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_command()?;
+			let mut txn = self.begin_command(identity)?;
 			let frames = self.executor.command(
 				&mut txn,
 				Command {
 					rql,
 					params,
-					identity,
 				},
 			)?;
 			txn.commit()?;
@@ -143,13 +176,12 @@ impl StandardEngine {
 	#[instrument(name = "engine::query", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_query()?;
+			let mut txn = self.begin_query(identity)?;
 			self.executor.query(
 				&mut txn,
 				Query {
 					rql,
 					params,
-					identity,
 				},
 			)
 		})()
@@ -162,13 +194,12 @@ impl StandardEngine {
 	#[instrument(name = "engine::subscription", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn subscription_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_subscription()?;
+			let mut txn = self.begin_subscription(identity)?;
 			let frames = self.executor.subscription(
 				&mut txn,
 				Subscription {
 					rql,
 					params,
-					identity,
 				},
 			)?;
 			txn.commit()?;
@@ -183,8 +214,8 @@ impl StandardEngine {
 	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
 	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>> {
-		let mut txn = self.begin_command()?;
-		let frames = self.executor.call_procedure(&mut txn, identity, name, &params)?;
+		let mut txn = self.begin_command(identity)?;
+		let frames = self.executor.call_procedure(&mut txn, name, &params)?;
 		txn.commit()?;
 		Ok(frames)
 	}
@@ -206,7 +237,7 @@ impl StandardEngine {
 	/// # Example
 	///
 	/// ```ignore
-	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumnDef};
+	/// use reifydb_engine::vtable::{UserVTable, UserVTableColumn};
 	/// use reifydb_type::value::r#type::Type;
 	/// use reifydb_core::value::Columns;
 	///
@@ -214,8 +245,8 @@ impl StandardEngine {
 	/// struct MyTable;
 	///
 	/// impl UserVTable for MyTable {
-	///     fn definition(&self) -> Vec<UserVTableColumnDef> {
-	///         vec![UserVTableColumnDef::new("id", Type::Uint8)]
+	///     fn definition(&self) -> Vec<UserVTableColumn> {
+	///         vec![UserVTableColumn::new("id", Type::Uint8)]
 	///     }
 	///     fn get(&self) -> Columns {
 	///         // Return column-oriented data
@@ -237,10 +268,10 @@ impl StandardEngine {
 		let table_id = self.executor.virtual_table_registry.allocate_id();
 		// Convert user column definitions to internal column definitions
 		let table_columns = table.definition();
-		let columns = convert_vtable_user_columns_to_column_defs(&table_columns);
+		let columns = convert_vtable_user_columns_to_columns(&table_columns);
 
 		// Create the table definition
-		let def = Arc::new(VTableDef {
+		let def = Arc::new(VTable {
 			id: table_id,
 			namespace: ns_def.id(),
 			name: name.to_string(),
@@ -263,11 +294,11 @@ impl StandardEngine {
 
 impl CdcHost for StandardEngine {
 	fn begin_command(&self) -> Result<CommandTransaction> {
-		StandardEngine::begin_command(self)
+		StandardEngine::begin_command(self, IdentityId::system())
 	}
 
 	fn begin_query(&self) -> Result<QueryTransaction> {
-		StandardEngine::begin_query(self)
+		StandardEngine::begin_query(self, IdentityId::system())
 	}
 
 	fn current_version(&self) -> Result<CommitVersion> {
@@ -282,7 +313,7 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn schema_registry(&self) -> &SchemaRegistry {
+	fn row_schema_registry(&self) -> &RowSchemaRegistry {
 		&self.catalog.schema
 	}
 }
@@ -306,9 +337,9 @@ pub struct Inner {
 	single: SingleTransaction,
 	event_bus: EventBus,
 	executor: Executor,
-	interceptors: InterceptorFactory,
+	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
-	flow_operator_store: FlowOperatorStore,
+	flow_operator_store: SystemFlowOperatorStore,
 }
 
 impl StandardEngine {
@@ -318,15 +349,15 @@ impl StandardEngine {
 		event_bus: EventBus,
 		interceptors: InterceptorFactory,
 		catalog: Catalog,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 		functions: Functions,
 		procedures: Procedures,
 		transforms: Transforms,
 		ioc: IocContainer,
 		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
-		let flow_operator_store = FlowOperatorStore::new();
-		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
+		let flow_operator_store = SystemFlowOperatorStore::new();
+		let listener = SystemFlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);
 
 		// Get the metrics store from IoC to create the stats reader
@@ -343,13 +374,15 @@ impl StandardEngine {
 				.add(Arc::new(MaterializedCatalogInterceptor::new(materialized.clone())));
 		}));
 
+		let interceptors = Arc::new(interceptors);
+
 		Self(Arc::new(Inner {
 			multi,
 			single,
 			event_bus,
 			executor: Executor::new(
 				catalog.clone(),
-				clock,
+				runtime_context,
 				functions,
 				procedures,
 				transforms,
@@ -384,8 +417,14 @@ impl StandardEngine {
 	/// read from the same snapshot (same CommitVersion) for consistency.
 	#[instrument(name = "engine::transaction::begin_query_at_version", level = "debug", skip(self), fields(version = %version.0
     ))]
-	pub fn begin_query_at_version(&self, version: CommitVersion) -> Result<QueryTransaction> {
-		Ok(QueryTransaction::new(self.multi.begin_query_at_version(version)?, self.single.clone()))
+	pub fn begin_query_at_version(&self, version: CommitVersion, identity: IdentityId) -> Result<QueryTransaction> {
+		let mut txn = QueryTransaction::new(
+			self.multi.begin_query_at_version(version)?,
+			self.single.clone(),
+			identity,
+		);
+		txn.set_executor(Arc::new(self.executor.clone()));
+		Ok(txn)
 	}
 
 	#[inline]
@@ -433,7 +472,7 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn flow_operator_store(&self) -> &FlowOperatorStore {
+	pub fn flow_operator_store(&self) -> &SystemFlowOperatorStore {
 		&self.flow_operator_store
 	}
 
@@ -512,15 +551,15 @@ impl StandardEngine {
 	}
 }
 
-/// Convert user column definitions to internal ColumnDef format.
-fn convert_vtable_user_columns_to_column_defs(columns: &[UserVTableColumnDef]) -> Vec<ColumnDef> {
+/// Convert user column definitions to internal Column format.
+fn convert_vtable_user_columns_to_columns(columns: &[UserVTableColumn]) -> Vec<Column> {
 	columns.iter()
 		.enumerate()
 		.map(|(idx, col)| {
 			// Note: For virtual tables, we use unconstrained for all types.
 			// The nullable field is still available for documentation purposes.
 			let constraint = TypeConstraint::unconstrained(col.data_type.clone());
-			ColumnDef {
+			Column {
 				id: ColumnId(idx as u64),
 				name: col.name.clone(),
 				constraint,

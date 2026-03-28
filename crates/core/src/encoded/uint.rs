@@ -7,13 +7,12 @@ use num_bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
 use reifydb_type::value::{r#type::Type, uint::Uint};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
 /// Uint storage modes using MSB of u128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
 /// MSB = 1: Dynamic storage, lower 127 bits contain offset+length
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
-const MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
 
 /// Bit masks for inline mode (127 bits for value)
@@ -23,11 +22,11 @@ const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
 
-impl Schema {
+impl RowSchema {
 	/// Set a Uint value with 2-tier storage optimization
 	/// - Values fitting in 127 bits: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_uint(&self, row: &mut EncodedValues, index: usize, value: &Uint) {
+	pub fn set_uint(&self, row: &mut EncodedRow, index: usize, value: &Uint) {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
 
@@ -38,6 +37,9 @@ impl Schema {
 		if let Some(u128_val) = unsigned_value.to_u128() {
 			// Check if value fits in 127 bits (MSB must be 0)
 			if u128_val < (1u128 << 127) {
+				// Clean up old dynamic data if transitioning from dynamic→inline
+				self.remove_dynamic_data(row, index);
+
 				// Mode 0: Store inline in lower 127 bits
 				let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
 				unsafe {
@@ -52,33 +54,12 @@ impl Schema {
 		}
 
 		// Mode 1: Dynamic storage for arbitrary precision
-		debug_assert!(!row.is_defined(index), "Uint field {} already set", index);
-
-		// Serialize as unsigned bytes
 		let bytes = unsigned_value.to_bytes_le();
-
-		let dynamic_offset = self.dynamic_section_size(row);
-		let total_size = bytes.len();
-
-		// Append to dynamic section
-		row.0.extend_from_slice(&bytes);
-
-		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part = ((total_size as u128) << 64) & DYNAMIC_LENGTH_MASK;
-		let packed = MODE_DYNAMIC | offset_part | length_part;
-
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
-				packed.to_le(),
-			);
-		}
-		row.set_valid(index, true);
+		self.replace_dynamic_data(row, index, &bytes);
 	}
 
 	/// Get a Uint value, detecting storage mode from MSB
-	pub fn get_uint(&self, row: &EncodedValues, index: usize) -> Uint {
+	pub fn get_uint(&self, row: &EncodedRow, index: usize) -> Uint {
 		let field = &self.fields()[index];
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint);
 
@@ -109,7 +90,7 @@ impl Schema {
 	}
 
 	/// Try to get a Uint value, returning None if undefined
-	pub fn try_get_uint(&self, row: &EncodedValues, index: usize) -> Option<Uint> {
+	pub fn try_get_uint(&self, row: &EncodedRow, index: usize) -> Option<Uint> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint {
 			Some(self.get_uint(row, index))
 		} else {
@@ -124,11 +105,11 @@ pub mod tests {
 	use num_traits::Zero;
 	use reifydb_type::value::{r#type::Type, uint::Uint};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_u64_inline() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Test simple unsigned value
@@ -148,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_u128_boundary() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Value that needs u128 storage
@@ -168,7 +149,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dynamic_storage() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Create a value that requires dynamic storage (>127 bits)
@@ -187,7 +168,7 @@ pub mod tests {
 
 	#[test]
 	fn test_zero() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		let zero = Uint::from(0);
@@ -200,7 +181,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let mut row = schema.allocate();
 
 		// Undefined initially
@@ -214,7 +195,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_on_write() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 		let row1 = schema.allocate();
 		let mut row2 = row1.clone();
 
@@ -229,7 +210,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = Schema::testing(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
@@ -253,7 +234,7 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_input_handling() {
-		let schema = Schema::testing(&[Type::Uint]);
+		let schema = RowSchema::testing(&[Type::Uint]);
 
 		// Test how negative values are handled (should be converted to
 		// 0 or error)
@@ -268,11 +249,69 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uint_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);
 
 		assert_eq!(schema.try_get_uint(&row, 0), None);
+	}
+
+	#[test]
+	fn test_update_uint_inline_to_inline() {
+		let schema = RowSchema::testing(&[Type::Uint]);
+		let mut row = schema.allocate();
+
+		schema.set_uint(&mut row, 0, &Uint::from(42u64));
+		assert_eq!(schema.get_uint(&row, 0), Uint::from(42u64));
+
+		schema.set_uint(&mut row, 0, &Uint::from(999u64));
+		assert_eq!(schema.get_uint(&row, 0), Uint::from(999u64));
+	}
+
+	#[test]
+	fn test_update_uint_inline_to_dynamic() {
+		let schema = RowSchema::testing(&[Type::Uint]);
+		let mut row = schema.allocate();
+
+		schema.set_uint(&mut row, 0, &Uint::from(42u64));
+
+		let huge = Uint::from(
+			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
+		);
+		schema.set_uint(&mut row, 0, &huge);
+		assert_eq!(schema.get_uint(&row, 0), huge);
+	}
+
+	#[test]
+	fn test_update_uint_dynamic_to_inline() {
+		let schema = RowSchema::testing(&[Type::Uint]);
+		let mut row = schema.allocate();
+
+		let huge = Uint::from(
+			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
+		);
+		schema.set_uint(&mut row, 0, &huge);
+
+		schema.set_uint(&mut row, 0, &Uint::from(42u64));
+		assert_eq!(schema.get_uint(&row, 0), Uint::from(42u64));
+		assert_eq!(row.len(), schema.total_static_size());
+	}
+
+	#[test]
+	fn test_update_uint_with_other_dynamic_fields() {
+		let schema = RowSchema::testing(&[Type::Uint, Type::Utf8]);
+		let mut row = schema.allocate();
+
+		let huge = Uint::from(
+			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
+		);
+		schema.set_uint(&mut row, 0, &huge);
+		schema.set_utf8(&mut row, 1, "hello");
+
+		// Update uint to inline, verify utf8 still works
+		schema.set_uint(&mut row, 0, &Uint::from(1u64));
+		assert_eq!(schema.get_uint(&row, 0), Uint::from(1u64));
+		assert_eq!(schema.get_utf8(&row, 1), "hello");
 	}
 }

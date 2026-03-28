@@ -26,7 +26,7 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = multi.values.clone();
+		let mut updated_row = multi.row.clone();
 		view::SCHEMA.set_u64(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(&ViewKey::encoded(view_id), updated_row)?;
@@ -38,7 +38,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, ViewId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::{
 		fragment::Fragment,
 		value::{constraint::TypeConstraint, r#type::Type},
@@ -46,7 +46,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::view::create::{ViewColumnToCreate, ViewToCreate},
+		store::view::create::{ViewColumnToCreate, ViewStorageConfig, ViewToCreate},
 		test_utils::ensure_test_namespace,
 	};
 
@@ -65,12 +65,13 @@ pub mod tests {
 					fragment: Fragment::None,
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 				}],
+				storage: ViewStorageConfig::default(),
 			},
 		)
 		.unwrap();
 
 		// Set primary key
-		CatalogStore::set_view_primary_key(&mut txn, view.id, PrimaryKeyId(42)).unwrap();
+		CatalogStore::set_view_primary_key(&mut txn, view.id(), PrimaryKeyId(42)).unwrap();
 
 		// The test succeeds if no error is thrown.
 		// In real usage, create_primary_key would create both the

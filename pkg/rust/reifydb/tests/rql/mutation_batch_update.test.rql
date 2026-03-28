@@ -10,10 +10,10 @@ INSERT tbu::items [{ id: 1, status: "pending" }, { id: 2, status: "pending" }, {
 CREATE TEST tbu::batch_update_tracking {
     UPDATE tbu::items { status: "shipped" } FILTER status == "pending";
     testing::tables::changed("tbu::items")
-        | AGGREGATE { n: math::count(sequence) }
+        | AGGREGATE { n: math::count(op) }
         | ASSERT { n == 2 };
     testing::tables::changed("tbu::items")
-        | FILTER { sequence == 1 }
+        | FILTER { old_id == 1 }
         | ASSERT { op == "update" }
         | ASSERT { old_status == "pending" }
         | ASSERT { new_status == "shipped" }

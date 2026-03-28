@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
-		catalog::{dictionary::DictionaryDef, ringbuffer::RingBufferMetadata},
+		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
 	},
 	internal_error,
@@ -17,7 +17,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{row_number::RowNumber, r#type::Type},
+	value::{Value, row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
 
@@ -29,15 +29,19 @@ use crate::{
 
 pub struct RingBufferScan {
 	ringbuffer: ResolvedRingBuffer,
-	metadata: Option<RingBufferMetadata>,
+	/// All partitions for this ringbuffer (global = 1-element, partitioned = N-element)
+	partitions: Vec<PartitionedMetadata>,
+	current_partition_index: usize,
 	headers: ColumnHeaders,
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	/// Storage types for each column (Type::DictionaryId for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
-	dictionaries: Vec<Option<DictionaryDef>>,
+	dictionaries: Vec<Option<Dictionary>>,
+	/// Column indices for partition_by columns (empty for global ringbuffers)
+	partition_col_indices: Vec<usize>,
 	current_position: u64,
-	rows_returned: u64,
+	rows_returned_in_partition: u64,
 	context: Option<Arc<QueryContext>>,
 	initialized: bool,
 }
@@ -68,6 +72,14 @@ impl RingBufferScan {
 			}
 		}
 
+		// Resolve partition column indices
+		let partition_col_indices: Vec<usize> = ringbuffer
+			.def()
+			.partition_by
+			.iter()
+			.map(|pb_col| ringbuffer.columns().iter().position(|c| c.name == *pb_col).unwrap())
+			.collect();
+
 		// Create columns headers
 		let headers = ColumnHeaders {
 			columns: ringbuffer.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
@@ -75,19 +87,21 @@ impl RingBufferScan {
 
 		Ok(Self {
 			ringbuffer,
-			metadata: None,
+			partitions: Vec::new(),
+			current_partition_index: 0,
 			headers,
 			schema: None,
 			storage_types,
 			dictionaries,
+			partition_col_indices,
 			current_position: 0,
-			rows_returned: 0,
+			rows_returned_in_partition: 0,
 			context: Some(context),
 			initialized: false,
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -97,7 +111,7 @@ impl RingBufferScan {
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
-				"Schema with fingerprint {:?} not found for ringbuffer {}",
+				"RowSchema with fingerprint {:?} not found for ringbuffer {}",
 				fingerprint,
 				self.ringbuffer.def().name
 			)
@@ -107,20 +121,35 @@ impl RingBufferScan {
 
 		Ok(schema)
 	}
+
+	/// Advance to next non-empty partition if current is exhausted. Returns false if all done.
+	fn advance_to_next_partition(&mut self) -> bool {
+		loop {
+			self.current_partition_index += 1;
+			if self.current_partition_index >= self.partitions.len() {
+				return false;
+			}
+			let partition = &self.partitions[self.current_partition_index].metadata;
+			if !partition.is_empty() {
+				self.current_position = partition.head;
+				self.rows_returned_in_partition = 0;
+				return true;
+			}
+		}
+	}
 }
 
 impl QueryNode for RingBufferScan {
 	#[instrument(name = "volcano::scan::ringbuffer::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		if !self.initialized {
-			// Get ring buffer metadata from the catalog
-			let metadata = ctx.services.catalog.find_ringbuffer_metadata(txn, self.ringbuffer.def().id)?;
-			self.metadata = metadata;
+			// Load all partitions (global = 1-element vec, partitioned = N-element vec)
+			self.partitions =
+				ctx.services.catalog.list_ringbuffer_partitions(txn, self.ringbuffer.def())?;
 
-			if let Some(ref metadata) = self.metadata {
-				// Start scanning from head (oldest row number)
-				// For empty buffer, this value doesn't matter since no rows will be returned
-				self.current_position = metadata.head;
+			// Start scanning from the first non-empty partition's head
+			if let Some(partition) = self.partitions.first() {
+				self.current_position = partition.metadata.head;
 			}
 
 			self.initialized = true;
@@ -132,17 +161,10 @@ impl QueryNode for RingBufferScan {
 	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
-		// Get metadata or return empty
-		let metadata = match &self.metadata {
-			Some(m) => m,
-			None => return Ok(None),
-		};
-
-		// If we've returned all rows, we're done
-		if self.rows_returned >= metadata.count {
-			if self.rows_returned == 0 {
-				// Empty ringbuffer: return empty columns with correct types to preserve schema
-				self.rows_returned = 1; // prevent re-entry
+		// If no partitions, return empty schema
+		if self.partitions.is_empty() {
+			if self.current_partition_index == 0 {
+				self.current_partition_index = 1; // prevent re-entry
 				let columns: Vec<Column> = self
 					.ringbuffer
 					.columns()
@@ -157,40 +179,93 @@ impl QueryNode for RingBufferScan {
 			return Ok(None);
 		}
 
-		let batch_size = stored_ctx.batch_size;
+		// Check if we're past all partitions
+		if self.current_partition_index >= self.partitions.len() {
+			return Ok(None);
+		}
 
-		// Collect rows for this batch
+		let batch_size = stored_ctx.batch_size as usize;
+
+		// Collect rows for this batch, spanning partitions if needed
 		let mut batch_rows = Vec::new();
 		let mut row_numbers = Vec::new();
-		let mut batch_count = 0;
 
-		// Scan row numbers starting from head (monotonically increasing)
-		// With monotonically increasing row numbers, we iterate from head to tail-1
-		// Row numbers may have gaps after DELETE operations
-		let max_row_num = metadata.tail; // tail is next row number to allocate
-		while batch_count < batch_size
-			&& self.rows_returned < metadata.count
-			&& self.current_position < max_row_num
-		{
-			let row_num = RowNumber(self.current_position);
-
-			// Create the encoded key
-			let key = RowKey::encoded(self.ringbuffer.def().id, row_num);
-
-			// Get the encoded from storage
-			if let Some(multi) = txn.get(&key)? {
-				let row_data = multi.values;
-				batch_rows.push(row_data);
-				row_numbers.push(row_num);
-				self.rows_returned += 1;
-				batch_count += 1;
+		loop {
+			if self.current_partition_index >= self.partitions.len() {
+				break;
 			}
 
-			// Move to next row number (monotonically increasing)
-			self.current_position += 1;
+			// Copy partition fields to avoid holding a borrow on self
+			let partition_empty = self.partitions[self.current_partition_index].metadata.is_empty();
+			if partition_empty {
+				if !self.advance_to_next_partition() {
+					break;
+				}
+				continue;
+			}
+
+			let max_row_num = self.partitions[self.current_partition_index].metadata.tail;
+			let partition_count = self.partitions[self.current_partition_index].metadata.count;
+			let partition_values = self.partitions[self.current_partition_index].partition_values.clone();
+			let partition_col_indices = self.partition_col_indices.clone();
+
+			while batch_rows.len() < batch_size
+				&& self.rows_returned_in_partition < partition_count
+				&& self.current_position < max_row_num
+			{
+				let row_num = RowNumber(self.current_position);
+				let key = RowKey::encoded(self.ringbuffer.def().id, row_num);
+
+				if let Some(multi) = txn.get(&key)? {
+					// For partitioned ringbuffers, check if this row belongs to the current
+					// partition
+					if !partition_col_indices.is_empty() {
+						let schema = self.get_or_load_schema(txn, &multi.row)?;
+						if !row_matches_partition(
+							&schema,
+							&multi.row,
+							&partition_col_indices,
+							&partition_values,
+						) {
+							self.current_position += 1;
+							continue;
+						}
+					}
+					batch_rows.push(multi.row);
+					row_numbers.push(row_num);
+					self.rows_returned_in_partition += 1;
+				}
+
+				self.current_position += 1;
+			}
+
+			// If we've exhausted this partition, move to next
+			if self.rows_returned_in_partition >= partition_count || self.current_position >= max_row_num {
+				if !self.advance_to_next_partition() {
+					break;
+				}
+			}
+
+			// If we've filled a batch, stop
+			if batch_rows.len() >= batch_size {
+				break;
+			}
 		}
 
 		if batch_rows.is_empty() {
+			// If we never returned any rows at all, return empty schema
+			if self.partitions.iter().all(|p| p.metadata.is_empty()) {
+				let columns: Vec<Column> = self
+					.ringbuffer
+					.columns()
+					.iter()
+					.map(|col| Column {
+						name: Fragment::internal(&col.name),
+						data: ColumnData::none_typed(col.constraint.get_type(), 0),
+					})
+					.collect();
+				return Ok(Some(Columns::new(columns)));
+			}
 			Ok(None)
 		} else {
 			// Create columns with storage types (Type::DictionaryId for dictionary columns)
@@ -221,4 +296,16 @@ impl QueryNode for RingBufferScan {
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
 	}
+}
+
+fn row_matches_partition(
+	schema: &RowSchema,
+	row: &EncodedRow,
+	partition_col_indices: &[usize],
+	expected_values: &[Value],
+) -> bool {
+	partition_col_indices
+		.iter()
+		.zip(expected_values)
+		.all(|(&idx, expected)| schema.get_value(row, idx) == *expected)
 }

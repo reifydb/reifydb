@@ -3,14 +3,14 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackHandlerChangeOperations,
-	handler::HandlerDef,
+	handler::Handler,
 	id::{HandlerId, NamespaceId},
 };
 use reifydb_transaction::{
 	change::TransactionalHandlerChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
-use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
+use reifydb_type::{fragment::Fragment, value::sumtype::VariantRef};
 use tracing::instrument;
 
 use crate::{CatalogStore, Result, catalog::Catalog, store::handler::create::HandlerToCreate as StoreHandlerToCreate};
@@ -20,14 +20,13 @@ use crate::{CatalogStore, Result, catalog::Catalog, store::handler::create::Hand
 pub struct HandlerToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
-	pub on_sumtype_id: SumTypeId,
-	pub on_variant_tag: u8,
+	pub variant: VariantRef,
 	pub body_source: String,
 }
 
 impl Catalog {
 	#[instrument(name = "catalog::handler::find_by_id", level = "trace", skip(self, txn))]
-	pub fn find_handler_by_id(&self, txn: &mut Transaction<'_>, id: HandlerId) -> Result<Option<HandlerDef>> {
+	pub fn find_handler_by_id(&self, txn: &mut Transaction<'_>, id: HandlerId) -> Result<Option<Handler>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) = self.materialized.find_handler_at(id, cmd.version()) {
@@ -67,6 +66,19 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(handler) = TransactionalHandlerChanges::find_handler_by_id(t.inner, id) {
+					return Ok(Some(handler.clone()));
+				}
+
+				// 2. Check MaterializedCatalog
+				if let Some(handler) = self.materialized.find_handler_at(id, t.inner.version()) {
+					return Ok(Some(handler));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -76,7 +88,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Result<Option<HandlerDef>> {
+	) -> Result<Option<Handler>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				if let Some(handler) =
@@ -138,6 +150,28 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(t) => {
+				// 1. Check transactional changes first
+				if let Some(handler) =
+					TransactionalHandlerChanges::find_handler_by_name(t.inner, namespace, name)
+				{
+					return Ok(Some(handler.clone()));
+				}
+
+				// 2. Check if deleted
+				if TransactionalHandlerChanges::is_handler_deleted_by_name(t.inner, namespace, name) {
+					return Ok(None);
+				}
+
+				// 3. Check MaterializedCatalog
+				if let Some(handler) =
+					self.materialized.find_handler_by_name_at(namespace, name, t.inner.version())
+				{
+					return Ok(Some(handler));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -145,30 +179,22 @@ impl Catalog {
 	pub fn list_handlers_for_variant(
 		&self,
 		txn: &mut Transaction<'_>,
-		sumtype_id: SumTypeId,
-		variant_tag: u8,
-	) -> Result<Vec<HandlerDef>> {
+		variant: VariantRef,
+	) -> Result<Vec<Handler>> {
 		match txn.reborrow() {
-			Transaction::Command(cmd) => Ok(self.materialized.list_handlers_for_variant_at(
-				sumtype_id,
-				variant_tag,
-				cmd.version(),
-			)),
+			Transaction::Command(cmd) => {
+				Ok(self.materialized.list_handlers_for_variant_at(variant, cmd.version()))
+			}
 			Transaction::Admin(admin) => {
 				// Check materialized catalog + transactional additions
-				let mut handlers = self.materialized.list_handlers_for_variant_at(
-					sumtype_id,
-					variant_tag,
-					admin.version(),
-				);
+				let mut handlers =
+					self.materialized.list_handlers_for_variant_at(variant, admin.version());
 
 				// Also check transactional changes for newly created handlers
-				for change in &admin.changes.handler_def {
+				for change in &admin.changes.handler {
 					if let Some(h) = &change.post {
-						if h.on_sumtype_id == sumtype_id
-							&& h.on_variant_tag == variant_tag && !handlers
-							.iter()
-							.any(|existing| existing.id == h.id)
+						if h.variant == variant
+							&& !handlers.iter().any(|existing| existing.id == h.id)
 						{
 							handlers.push(h.clone());
 						}
@@ -177,26 +203,37 @@ impl Catalog {
 
 				Ok(handlers)
 			}
-			Transaction::Query(qry) => Ok(self.materialized.list_handlers_for_variant_at(
-				sumtype_id,
-				variant_tag,
-				qry.version(),
-			)),
+			Transaction::Query(qry) => {
+				Ok(self.materialized.list_handlers_for_variant_at(variant, qry.version()))
+			}
 			Transaction::Subscription(sub) => {
 				// Check materialized catalog + transactional additions
-				let mut handlers = self.materialized.list_handlers_for_variant_at(
-					sumtype_id,
-					variant_tag,
-					sub.version(),
-				);
+				let mut handlers =
+					self.materialized.list_handlers_for_variant_at(variant, sub.version());
 
 				// Also check transactional changes for newly created handlers
-				for change in &sub.as_admin_mut().changes.handler_def {
+				for change in &sub.as_admin_mut().changes.handler {
 					if let Some(h) = &change.post {
-						if h.on_sumtype_id == sumtype_id
-							&& h.on_variant_tag == variant_tag && !handlers
-							.iter()
-							.any(|existing| existing.id == h.id)
+						if h.variant == variant
+							&& !handlers.iter().any(|existing| existing.id == h.id)
+						{
+							handlers.push(h.clone());
+						}
+					}
+				}
+
+				Ok(handlers)
+			}
+			Transaction::Test(t) => {
+				// Check materialized catalog + transactional additions
+				let mut handlers =
+					self.materialized.list_handlers_for_variant_at(variant, t.inner.version());
+
+				// Also check transactional changes for newly created handlers
+				for change in &t.inner.changes.handler {
+					if let Some(h) = &change.post {
+						if h.variant == variant
+							&& !handlers.iter().any(|existing| existing.id == h.id)
 						{
 							handlers.push(h.clone());
 						}
@@ -209,18 +246,17 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::handler::create", level = "debug", skip(self, txn, to_create))]
-	pub fn create_handler(&self, txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<HandlerDef> {
+	pub fn create_handler(&self, txn: &mut AdminTransaction, to_create: HandlerToCreate) -> Result<Handler> {
 		let store_to_create = StoreHandlerToCreate {
 			name: to_create.name.clone(),
 			namespace: to_create.namespace,
-			on_sumtype_id: to_create.on_sumtype_id,
-			on_variant_tag: to_create.on_variant_tag,
+			variant: to_create.variant,
 			body_source: to_create.body_source.clone(),
 		};
 
 		let handler = CatalogStore::create_handler(txn, store_to_create)?;
 
-		txn.track_handler_def_created(handler.clone())?;
+		txn.track_handler_created(handler.clone())?;
 
 		Ok(handler)
 	}

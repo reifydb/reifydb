@@ -4,12 +4,14 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
+use reifydb_auth::service::AuthResponse;
 use reifydb_core::{
 	interface::catalog::id::SubscriptionId as DbSubscriptionId, value::frame::response::convert_frames,
 };
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
-	execute::{ExecuteError, execute_admin, execute_command, execute_query},
+	execute::{ExecuteError, execute},
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	state::AppState,
 	subscribe::cleanup_subscription,
@@ -88,8 +90,9 @@ pub async fn handle_connection(
 	// Channel for receiving push messages from the registry
 	let (push_tx, mut push_rx) = mpsc::channel::<PushMessage>(100);
 
-	// Connection starts unauthenticated
-	let mut identity: Option<IdentityId> = None;
+	// Connection starts with anonymous identity; Auth message upgrades it
+	let mut identity: Option<IdentityId> = Some(IdentityId::anonymous());
+	let mut auth_token: Option<String> = None;
 
 	// Track remote subscription proxy tasks (not registered in registry/poller)
 	let mut remote_tasks: HashMap<String, JoinHandle<()>> = HashMap::new();
@@ -133,6 +136,7 @@ pub async fn handle_connection(
 							&text,
 							&state,
 							&mut identity,
+							&mut auth_token,
 							connection_id,
 							&registry,
 							&poller,
@@ -212,6 +216,7 @@ async fn process_message(
 	text: &str,
 	state: &AppState,
 	identity: &mut Option<IdentityId>,
+	auth_token: &mut Option<String>,
 	connection_id: ConnectionId,
 	registry: &SubscriptionRegistry,
 	poller: &SubscriptionPoller,
@@ -227,13 +232,44 @@ async fn process_message(
 	};
 
 	match request.payload {
-		RequestPayload::Auth(auth) => match extract_identity_from_ws_auth(auth.token.as_deref()) {
-			Ok(id) => {
-				*identity = Some(id);
-				Some(Response::auth(&request.id).to_json())
+		RequestPayload::Auth(auth) => {
+			if let Some(method) = auth.method.as_deref() {
+				let credentials = auth.credentials.unwrap_or_default();
+				match state.auth_service().authenticate(method, credentials) {
+					Ok(AuthResponse::Authenticated {
+						identity: id,
+						token,
+					}) => {
+						*identity = Some(id);
+						*auth_token = Some(token.clone());
+						Some(Response::auth_authenticated(&request.id, token, id.to_string())
+							.to_json())
+					}
+					Ok(AuthResponse::Challenge {
+						challenge_id,
+						payload,
+					}) => Some(Response::auth_challenge(&request.id, challenge_id, payload).to_json()),
+					Ok(AuthResponse::Failed {
+						reason,
+					}) => Some(build_error(&request.id, "AUTH_FAILED", &reason)),
+					Err(e) => Some(build_error(&request.id, "AUTH_ERROR", &e.to_string())),
+				}
+			} else {
+				// Token validation flow (existing behavior)
+				match extract_identity_from_ws_auth(state.auth_service(), auth.token.as_deref()) {
+					Ok(id) => {
+						*identity = Some(id);
+						*auth_token = auth.token;
+						Some(Response::auth(&request.id).to_json())
+					}
+					Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
+				}
 			}
-			Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
-		},
+		}
+
+		RequestPayload::Admin(_) if !state.admin_enabled() => {
+			return Some(build_error(&request.id, "NOT_FOUND", "Unknown request type"));
+		}
 
 		RequestPayload::Admin(a) => {
 			let id: IdentityId = match identity.as_ref() {
@@ -257,18 +293,27 @@ async fn process_message(
 				},
 			};
 			let timeout = state.query_timeout();
+			let metadata = build_ws_metadata(auth_token);
 
-			match execute_admin(
+			let ctx = RequestContext {
+				identity: id,
+				operation: Operation::Admin,
+				statements: a.statements,
+				params,
+				metadata,
+			};
+
+			match execute(
+				state.request_interceptors(),
 				state.actor_system(),
 				state.engine_clone(),
-				a.statements,
-				id,
-				params,
+				ctx,
 				timeout,
+				state.clock(),
 			)
 			.await
 			{
-				Ok(frames) => {
+				Ok((frames, _duration)) => {
 					let (content_type, body) =
 						build_response_body(frames, format.as_deref(), unwrap);
 					Some(Response::admin(&request.id, content_type, body).to_json())
@@ -298,13 +343,28 @@ async fn process_message(
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let query = q.statements.join("; ");
 			let timeout = state.query_timeout();
+			let metadata = build_ws_metadata(auth_token);
 
-			match execute_query(state.actor_system(), state.engine_clone(), query, id, params, timeout)
-				.await
+			let ctx = RequestContext {
+				identity: id,
+				operation: Operation::Query,
+				statements: q.statements,
+				params,
+				metadata,
+			};
+
+			match execute(
+				state.request_interceptors(),
+				state.actor_system(),
+				state.engine_clone(),
+				ctx,
+				timeout,
+				state.clock(),
+			)
+			.await
 			{
-				Ok(frames) => {
+				Ok((frames, _duration)) => {
 					let (content_type, body) =
 						build_response_body(frames, format.as_deref(), unwrap);
 					Some(Response::query(&request.id, content_type, body).to_json())
@@ -335,18 +395,27 @@ async fn process_message(
 				},
 			};
 			let timeout = state.query_timeout();
+			let metadata = build_ws_metadata(auth_token);
 
-			match execute_command(
+			let ctx = RequestContext {
+				identity: id,
+				operation: Operation::Command,
+				statements: c.statements,
+				params,
+				metadata,
+			};
+
+			match execute(
+				state.request_interceptors(),
 				state.actor_system(),
 				state.engine_clone(),
-				c.statements,
-				id,
-				params,
+				ctx,
 				timeout,
+				state.clock(),
 			)
 			.await
 			{
-				Ok(frames) => {
+				Ok((frames, _duration)) => {
 					let (content_type, body) =
 						build_response_body(frames, format.as_deref(), unwrap);
 					Some(Response::command(&request.id, content_type, body).to_json())
@@ -360,6 +429,7 @@ async fn process_message(
 				&request.id,
 				sub,
 				*identity,
+				auth_token,
 				connection_id,
 				state,
 				registry,
@@ -369,6 +439,21 @@ async fn process_message(
 				shutdown,
 			)
 			.await
+		}
+
+		RequestPayload::Logout => {
+			if let Some(token) = auth_token.as_ref() {
+				let revoked = state.auth_service().revoke_token(token);
+				if revoked {
+					*identity = Some(IdentityId::anonymous());
+					*auth_token = None;
+					Some(Response::logout(&request.id).to_json())
+				} else {
+					Some(build_error(&request.id, "LOGOUT_FAILED", "Token revocation failed"))
+				}
+			} else {
+				Some(build_error(&request.id, "AUTH_REQUIRED", "No active session to logout"))
+			}
 		}
 
 		RequestPayload::Unsubscribe(unsub) => {
@@ -422,6 +507,15 @@ async fn process_message(
 	}
 }
 
+/// Build `RequestMetadata` for a WebSocket request, injecting the stored auth token if present.
+fn build_ws_metadata(auth_token: &Option<String>) -> RequestMetadata {
+	let mut metadata = RequestMetadata::new(Protocol::WebSocket);
+	if let Some(token) = auth_token {
+		metadata.insert("authorization", format!("Bearer {}", token));
+	}
+	metadata
+}
+
 /// Convert an ExecuteError to a JSON response string.
 pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 	match e {
@@ -435,6 +529,10 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 			error!("Query stream disconnected unexpectedly");
 			Response::internal_error(id, "INTERNAL_ERROR", "Internal server error").to_json()
 		}
+		ExecuteError::Rejected {
+			code,
+			message,
+		} => Response::rejected(id, &code, &message).to_json(),
 		ExecuteError::Engine {
 			diagnostic,
 			statement,

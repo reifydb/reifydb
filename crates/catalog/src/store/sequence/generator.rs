@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, schema::RowSchema},
 	error::CoreError,
 };
 use reifydb_transaction::{
@@ -76,7 +76,7 @@ macro_rules! impl_generator {
 			use super::*;
 			use crate::Result;
 
-			pub(crate) static SCHEMA: Lazy<Schema> = Lazy::new(|| Schema::testing(&[$type_enum]));
+			pub(crate) static SCHEMA: Lazy<RowSchema> = Lazy::new(|| RowSchema::testing(&[$type_enum]));
 
 			pub(crate) struct $generator {}
 
@@ -98,7 +98,7 @@ macro_rules! impl_generator {
 					let mut tx = txn.begin_single_command([key])?;
 					let result = match tx.get(key)? {
 						Some(row) => {
-							let mut row = row.values;
+							let mut row = row.row;
 							let current_value = SCHEMA.$getter(&row, 0);
 							let next_value = current_value.saturating_add(incr);
 
@@ -154,7 +154,7 @@ macro_rules! impl_generator {
 				) -> Result<()> {
 					let mut tx = txn.begin_single_command([key])?;
 					let mut row = match tx.get(key)? {
-						Some(row) => row.values,
+						Some(row) => row.row,
 						None => SCHEMA.allocate(),
 					};
 					SCHEMA.$setter(&mut row, 0, value);
@@ -167,7 +167,7 @@ macro_rules! impl_generator {
 			#[cfg(test)]
 			mod tests {
 				use reifydb_core::{encoded::key::EncodedKey, error::CoreError};
-				use reifydb_engine::test_utils::create_test_admin_transaction;
+				use reifydb_engine::test_harness::create_test_admin_transaction;
 				use reifydb_type::{error::IntoDiagnostic, value::r#type::Type};
 
 				use super::{SCHEMA, $generator};
@@ -191,7 +191,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
-					assert_eq!(SCHEMA.$getter(&single.values, 0), final_val);
+					assert_eq!(SCHEMA.$getter(&single.row, 0), final_val);
 				}
 
 				#[test]
@@ -216,7 +216,7 @@ macro_rules! impl_generator {
 				}
 
 				#[test]
-				fn test_default() {
+				fn testault() {
 					let mut txn = create_test_admin_transaction();
 
 					let default_val = ($start as u32).saturating_add(99).min($max as u32) as $prim;
@@ -287,7 +287,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
-					assert_eq!(SCHEMA.$getter(&single.values, 0), final_val);
+					assert_eq!(SCHEMA.$getter(&single.row, 0), final_val);
 
 					// Test batch allocation by batch_size_2
 					for i in 0..iterations_2 {

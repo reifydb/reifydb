@@ -9,7 +9,7 @@ use reifydb_rql::flow::{
 	flow::FlowDag,
 	node::{FlowNode, FlowNodeType::SourceInlineData},
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -26,7 +26,7 @@ impl FlowEngine {
 		let mut nodes_processed = 0;
 
 		match change.origin {
-			ChangeOrigin::Primitive(source) => {
+			ChangeOrigin::Schema(source) => {
 				let node_registrations = self.sources.get(&source).cloned();
 
 				if let Some(node_registrations) = node_registrations {
@@ -86,11 +86,11 @@ impl FlowEngine {
 		apply_time_us = field::Empty
 	))]
 	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
-		let lock_start = self.clock.instant();
+		let lock_start = self.runtime_context.clock.instant();
 		let operator = self.operators.get(&node.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
-		let apply_start = self.clock.instant();
+		let apply_start = self.runtime_context.clock.instant();
 		let result = operator.apply(txn, change)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
 		Span::current().record("output_diffs", result.diffs.len());
@@ -124,7 +124,7 @@ impl FlowEngine {
 			}
 		};
 
-		let propagation_start = self.clock.instant();
+		let propagation_start = self.runtime_context.clock.instant();
 		if changes.is_empty() {
 		} else if changes.len() == 1 {
 			let output_id = changes[0];
@@ -138,6 +138,37 @@ impl FlowEngine {
 		}
 		Span::current().record("propagation_time_us", propagation_start.elapsed().as_micros() as u64);
 
+		Ok(())
+	}
+
+	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
+		flow_id = ?flow_id,
+		timestamp = %timestamp
+	))]
+	pub fn process_tick(&self, txn: &mut FlowTransaction, flow_id: FlowId, timestamp: DateTime) -> Result<()> {
+		let flow = match self.flows.get(&flow_id) {
+			Some(f) => f.clone(),
+			None => return Ok(()),
+		};
+
+		for node_id in flow.topological_order()? {
+			let operator = match self.operators.get(&node_id) {
+				Some(op) => op.clone(),
+				None => continue,
+			};
+
+			if let Some(change) = operator.tick(txn, timestamp)? {
+				let node = flow.get_node(&node_id).unwrap();
+				for &output_id in &node.outputs {
+					self.process_change(
+						txn,
+						&flow,
+						flow.get_node(&output_id).unwrap(),
+						change.clone(),
+					)?;
+				}
+			}
+		}
 		Ok(())
 	}
 }

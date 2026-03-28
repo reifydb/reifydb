@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
 # Release Management Makefile
 # This makefile handles versioning and release orchestration for the ReifyDB monorepo
 
@@ -179,7 +182,8 @@ release:
 	echo "$(GREEN)✓ All packages published$(NC)"; \
 	echo ""; \
 	echo "$(YELLOW)[7/7] Pushing to remote...$(NC)"; \
-	git push origin release --follow-tags || exit 1; \
+	git push origin release || exit 1; \
+	git push origin "v$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Pushed to remote$(NC)"; \
 	echo ""; \
 	echo "$(GREEN)=====================================$(NC)"; \

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 export function UsersPage() {

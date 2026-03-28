@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Schema fingerprint computation for content-addressable storage.
+//! RowSchema fingerprint computation for content-addressable storage.
 //!
 //! The fingerprint is a deterministic hash of the schema's canonical representation,
 //! ensuring that identical schemas always produce the same fingerprint regardless
@@ -12,7 +12,7 @@ use std::ops::Deref;
 use reifydb_runtime::hash::{Hash64, xxh3_64};
 use serde::{Deserialize, Serialize};
 
-use crate::encoded::schema::SchemaField;
+use crate::encoded::schema::RowSchemaField;
 
 /// A fingerprint that uniquely identifies a schema layout.
 ///
@@ -20,9 +20,9 @@ use crate::encoded::schema::SchemaField;
 /// allowing the schema to be identified without external metadata.
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct SchemaFingerprint(pub Hash64);
+pub struct RowSchemaFingerprint(pub Hash64);
 
-impl Deref for SchemaFingerprint {
+impl Deref for RowSchemaFingerprint {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
@@ -30,7 +30,7 @@ impl Deref for SchemaFingerprint {
 	}
 }
 
-impl SchemaFingerprint {
+impl RowSchemaFingerprint {
 	/// Create a new schema fingerprint from a u64 value.
 	#[inline]
 	pub const fn new(value: u64) -> Self {
@@ -62,19 +62,19 @@ impl SchemaFingerprint {
 	}
 }
 
-impl From<Hash64> for SchemaFingerprint {
+impl From<Hash64> for RowSchemaFingerprint {
 	fn from(hash: Hash64) -> Self {
 		Self(hash)
 	}
 }
 
-impl From<SchemaFingerprint> for Hash64 {
-	fn from(fp: SchemaFingerprint) -> Self {
+impl From<RowSchemaFingerprint> for Hash64 {
+	fn from(fp: RowSchemaFingerprint) -> Self {
 		fp.0
 	}
 }
 
-impl From<u64> for SchemaFingerprint {
+impl From<u64> for RowSchemaFingerprint {
 	fn from(value: u64) -> Self {
 		Self(Hash64(value))
 	}
@@ -95,7 +95,7 @@ impl From<u64> for SchemaFingerprint {
 ///   - Constraint type (u8)
 ///   - Constraint param1 (u32)
 ///   - Constraint param2 (u32)
-pub fn compute_fingerprint(fields: &[SchemaField]) -> SchemaFingerprint {
+pub fn compute_fingerprint(fields: &[RowSchemaField]) -> RowSchemaFingerprint {
 	// Estimate buffer size: 2 bytes for count + ~42 bytes per field average
 	let estimated_size = 2 + fields.len() * 42;
 	let mut buffer = Vec::with_capacity(estimated_size);
@@ -120,7 +120,7 @@ pub fn compute_fingerprint(fields: &[SchemaField]) -> SchemaFingerprint {
 		buffer.extend_from_slice(&ffi.constraint_param2.to_le_bytes());
 	}
 
-	SchemaFingerprint(xxh3_64(&buffer))
+	RowSchemaFingerprint(xxh3_64(&buffer))
 }
 
 #[cfg(test)]
@@ -132,8 +132,8 @@ mod tests {
 
 	use super::*;
 
-	fn make_field(name: &str, field_type: Type) -> SchemaField {
-		SchemaField {
+	fn make_field(name: &str, field_type: Type) -> RowSchemaField {
+		RowSchemaField {
 			name: name.to_string(),
 			constraint: TypeConstraint::unconstrained(field_type),
 			offset: 0,
@@ -142,8 +142,8 @@ mod tests {
 		}
 	}
 
-	fn make_constrained_field(name: &str, constraint: TypeConstraint) -> SchemaField {
-		SchemaField {
+	fn make_constrained_field(name: &str, constraint: TypeConstraint) -> RowSchemaField {
+		RowSchemaField {
 			name: name.to_string(),
 			constraint,
 			offset: 0,
@@ -188,15 +188,11 @@ mod tests {
 
 	#[test]
 	fn test_fingerprint_empty_schema() {
-		let fields: Vec<SchemaField> = vec![];
+		let fields: Vec<RowSchemaField> = vec![];
 		// Should not panic and should produce a valid hash
 		let fp = compute_fingerprint(&fields);
 		assert_ne!(*fp, 0);
 	}
-
-	// ==================== Constraint Tests ====================
-
-	// --- Utf8 with MaxBytes constraint ---
 
 	#[test]
 	fn test_fingerprint_utf8_constrained_vs_unconstrained() {
@@ -654,8 +650,6 @@ mod tests {
 			"Mixed constrained/unconstrained should differ from all unconstrained"
 		);
 	}
-
-	// --- Edge case constraint values ---
 
 	#[test]
 	fn test_fingerprint_max_bytes_edge_values() {

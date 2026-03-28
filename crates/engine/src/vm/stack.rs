@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{internal, value::column::columns::Columns};
-use reifydb_rql::instruction::{CompiledClosureDef, CompiledFunctionDef, ScopeType};
+use reifydb_rql::instruction::{CompiledClosure, CompiledFunction, ScopeType};
 use reifydb_type::{error, value::Value};
 
 use crate::{Result, error::EngineError};
@@ -52,7 +52,7 @@ impl Default for Stack {
 /// A closure paired with its captured environment (snapshotted at definition time)
 #[derive(Debug, Clone)]
 pub struct ClosureValue {
-	pub def: CompiledClosureDef,
+	pub def: CompiledClosure,
 	pub captured: HashMap<String, Variable>,
 }
 
@@ -87,9 +87,14 @@ impl Variable {
 /// Context for storing and managing variables during query execution with scope support
 #[derive(Debug, Clone)]
 pub struct SymbolTable {
+	inner: Arc<SymbolTableInner>,
+}
+
+#[derive(Debug, Clone)]
+struct SymbolTableInner {
 	scopes: Vec<Scope>,
 	/// User-defined functions (pre-compiled)
-	functions: HashMap<String, CompiledFunctionDef>,
+	functions: HashMap<String, CompiledFunction>,
 }
 
 /// Represents a single scope containing variables
@@ -130,8 +135,10 @@ impl SymbolTable {
 		};
 
 		Self {
-			scopes: vec![global_scope],
-			functions: HashMap::new(),
+			inner: Arc::new(SymbolTableInner {
+				scopes: vec![global_scope],
+				functions: HashMap::new(),
+			}),
 		}
 	}
 
@@ -141,27 +148,27 @@ impl SymbolTable {
 			variables: HashMap::new(),
 			scope_type,
 		};
-		self.scopes.push(new_scope);
+		Arc::make_mut(&mut self.inner).scopes.push(new_scope);
 	}
 
 	/// Exit the current scope (pop from stack)
 	/// Returns error if trying to exit the global scope
 	pub fn exit_scope(&mut self) -> Result<()> {
-		if self.scopes.len() <= 1 {
+		if self.inner.scopes.len() <= 1 {
 			return Err(error!(internal!("Cannot exit global scope")));
 		}
-		self.scopes.pop();
+		Arc::make_mut(&mut self.inner).scopes.pop();
 		Ok(())
 	}
 
 	/// Get the current scope depth (0 = global scope)
 	pub fn scope_depth(&self) -> usize {
-		self.scopes.len() - 1
+		self.inner.scopes.len() - 1
 	}
 
 	/// Get the type of the current scope
 	pub fn current_scope_type(&self) -> &ScopeType {
-		&self.scopes.last().unwrap().scope_type
+		&self.inner.scopes.last().unwrap().scope_type
 	}
 
 	/// Set a variable in the current (innermost) scope (allows shadowing)
@@ -172,8 +179,9 @@ impl SymbolTable {
 	/// Reassign an existing variable (checks mutability)
 	/// Searches from innermost to outermost scope to find the variable
 	pub fn reassign(&mut self, name: String, variable: Variable) -> Result<()> {
+		let inner = Arc::make_mut(&mut self.inner);
 		// Search from innermost scope to outermost scope
-		for scope in self.scopes.iter_mut().rev() {
+		for scope in inner.scopes.iter_mut().rev() {
 			if let Some(existing) = scope.variables.get(&name) {
 				if !existing.mutable {
 					return Err(EngineError::VariableIsImmutable {
@@ -202,7 +210,8 @@ impl SymbolTable {
 	/// Set a variable specifically in the current scope
 	/// Allows shadowing - new variable declarations can shadow existing ones
 	pub fn set_in_current_scope(&mut self, name: String, variable: Variable, mutable: bool) -> Result<()> {
-		let current_scope = self.scopes.last_mut().unwrap();
+		let inner = Arc::make_mut(&mut self.inner);
+		let current_scope = inner.scopes.last_mut().unwrap();
 
 		// Allow shadowing - simply insert the new variable binding
 		current_scope.variables.insert(
@@ -218,7 +227,7 @@ impl SymbolTable {
 	/// Get a variable by searching from innermost to outermost scope
 	pub fn get(&self, name: &str) -> Option<&Variable> {
 		// Search from innermost scope (end of vector) to outermost scope (beginning)
-		for scope in self.scopes.iter().rev() {
+		for scope in self.inner.scopes.iter().rev() {
 			if let Some(binding) = scope.variables.get(name) {
 				return Some(&binding.variable);
 			}
@@ -229,9 +238,9 @@ impl SymbolTable {
 	/// Get a variable with its scope depth information
 	pub fn get_with_scope(&self, name: &str) -> Option<(&Variable, usize)> {
 		// Search from innermost scope to outermost scope
-		for (depth_from_end, scope) in self.scopes.iter().rev().enumerate() {
+		for (depth_from_end, scope) in self.inner.scopes.iter().rev().enumerate() {
 			if let Some(binding) = scope.variables.get(name) {
-				let scope_depth = self.scopes.len() - 1 - depth_from_end;
+				let scope_depth = self.inner.scopes.len() - 1 - depth_from_end;
 				return Some((&binding.variable, scope_depth));
 			}
 		}
@@ -240,7 +249,7 @@ impl SymbolTable {
 
 	/// Check if a variable exists in the current scope only
 	pub fn exists_in_current_scope(&self, name: &str) -> bool {
-		self.scopes.last().unwrap().variables.contains_key(name)
+		self.inner.scopes.last().unwrap().variables.contains_key(name)
 	}
 
 	/// Check if a variable exists in any scope (searches all scopes)
@@ -250,7 +259,7 @@ impl SymbolTable {
 
 	/// Check if a variable is mutable (searches from innermost scope)
 	pub fn is_mutable(&self, name: &str) -> bool {
-		for scope in self.scopes.iter().rev() {
+		for scope in self.inner.scopes.iter().rev() {
 			if let Some(binding) = scope.variables.get(name) {
 				return binding.mutable;
 			}
@@ -261,7 +270,7 @@ impl SymbolTable {
 	/// Get all variable names from all scopes (for debugging)
 	pub fn all_variable_names(&self) -> Vec<String> {
 		let mut names = Vec::new();
-		for (scope_idx, scope) in self.scopes.iter().enumerate() {
+		for (scope_idx, scope) in self.inner.scopes.iter().enumerate() {
 			for name in scope.variables.keys() {
 				names.push(format!("{}@scope{}", name, scope_idx));
 			}
@@ -274,7 +283,7 @@ impl SymbolTable {
 		let mut visible = HashMap::new();
 
 		// Process scopes from outermost to innermost so inner scopes override outer ones
-		for scope in &self.scopes {
+		for scope in &self.inner.scopes {
 			for name in scope.variables.keys() {
 				visible.insert(name.clone(), ());
 			}
@@ -285,27 +294,28 @@ impl SymbolTable {
 
 	/// Clear all variables in all scopes (reset to just global scope)
 	pub fn clear(&mut self) {
-		self.scopes.clear();
-		self.scopes.push(Scope {
+		let inner = Arc::make_mut(&mut self.inner);
+		inner.scopes.clear();
+		inner.scopes.push(Scope {
 			variables: HashMap::new(),
 			scope_type: ScopeType::Global,
 		});
-		self.functions.clear();
+		inner.functions.clear();
 	}
 
 	/// Define a user-defined function (pre-compiled)
-	pub fn define_function(&mut self, name: String, func: CompiledFunctionDef) {
-		self.functions.insert(name, func);
+	pub fn define_function(&mut self, name: String, func: CompiledFunction) {
+		Arc::make_mut(&mut self.inner).functions.insert(name, func);
 	}
 
 	/// Get a user-defined function by name
-	pub fn get_function(&self, name: &str) -> Option<&CompiledFunctionDef> {
-		self.functions.get(name)
+	pub fn get_function(&self, name: &str) -> Option<&CompiledFunction> {
+		self.inner.functions.get(name)
 	}
 
 	/// Check if a function exists
 	pub fn function_exists(&self, name: &str) -> bool {
-		self.functions.contains_key(name)
+		self.inner.functions.contains_key(name)
 	}
 }
 

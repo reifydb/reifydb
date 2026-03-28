@@ -30,6 +30,27 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
+	/// Check if the next token is `(` (keyword used as function call),
+	/// and if so, consume the keyword as identifier and parse the call.
+	/// Otherwise fall through to parse as identifier.
+	fn try_parse_keyword_as_function_call(&mut self) -> Result<Ast<'bump>> {
+		if self.position + 1 < self.tokens.len()
+			&& self.tokens[self.position + 1].is_operator(Operator::OpenParen)
+		{
+			let first_ident_token = self.consume_name()?;
+			let open_paren_token = self.advance()?;
+			let arguments = self.parse_tuple_call(open_paren_token)?;
+			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment);
+			Ok(Ast::CallFunction(AstCallFunction {
+				token: first_ident_token,
+				function,
+				arguments,
+			}))
+		} else {
+			Ok(Ast::Identifier(self.parse_as_identifier()?))
+		}
+	}
+
 	pub(crate) fn parse_primary(&mut self) -> Result<Ast<'bump>> {
 		loop {
 			if self.is_eof() {
@@ -125,23 +146,8 @@ impl<'bump> Parser<'bump> {
 								}
 								_ => unreachable!(),
 							}
-						} else if self.position + 1 < self.tokens.len()
-							&& unsafe { self.tokens.get_unchecked(self.position + 1) }
-								.is_operator(Operator::OpenParen)
-						{
-							let first_ident_token = self.consume_keyword_as_ident()?;
-							let open_paren_token = self.advance()?;
-							let arguments = self.parse_tuple_call(open_paren_token)?;
-							let function = MaybeQualifiedFunctionIdentifier::new(
-								first_ident_token.fragment,
-							);
-							Ok(Ast::CallFunction(AstCallFunction {
-								token: first_ident_token,
-								function,
-								arguments,
-							}))
 						} else {
-							Ok(Ast::Identifier(self.parse_as_identifier()?))
+							self.try_parse_keyword_as_function_call()
 						}
 					}
 					Keyword::Inner => Ok(Ast::Join(self.parse_inner_join()?)),
@@ -239,24 +245,7 @@ impl<'bump> Parser<'bump> {
 							) {
 							Ok(Ast::DefFunction(self.parse_def_function()?))
 						} else {
-							let first_ident_token = self.consume_keyword_as_ident()?;
-							if !self.is_eof()
-								&& self.current()?.is_operator(Operator::OpenParen)
-							{
-								let open_paren_token = self.advance()?;
-								let arguments =
-									self.parse_tuple_call(open_paren_token)?;
-								let function = MaybeQualifiedFunctionIdentifier::new(
-									first_ident_token.fragment,
-								);
-								Ok(Ast::CallFunction(AstCallFunction {
-									token: first_ident_token,
-									function,
-									arguments,
-								}))
-							} else {
-								Ok(Ast::Identifier(self.parse_as_identifier()?))
-							}
+							self.try_parse_keyword_as_function_call()
 						}
 					}
 					Keyword::Return => Ok(Ast::Return(self.parse_return()?)),
@@ -266,36 +255,16 @@ impl<'bump> Parser<'bump> {
 							token,
 						}))
 					}
-					_ => {
-						// Check if this keyword is used as a function name: keyword(args)
-						if self.position + 1 < self.tokens.len()
-							&& unsafe { self.tokens.get_unchecked(self.position + 1) }
-								.is_operator(Operator::OpenParen)
-						{
-							let first_ident_token = self.consume_keyword_as_ident()?;
-							let open_paren_token = self.advance()?;
-							let arguments = self.parse_tuple_call(open_paren_token)?;
-							let function = MaybeQualifiedFunctionIdentifier::new(
-								first_ident_token.fragment,
-							);
-							Ok(Ast::CallFunction(AstCallFunction {
-								token: first_ident_token,
-								function,
-								arguments,
-							}))
-						} else {
-							Ok(Ast::Identifier(self.parse_as_identifier()?))
-						}
-					}
+					_ => self.try_parse_keyword_as_function_call(),
 				}
 			}
 			_ => match current {
-				_ if current.is_literal(Number) => Ok(Ast::Literal(self.parse_literal_number()?)),
-				_ if current.is_literal(True) => Ok(Ast::Literal(self.parse_literal_true()?)),
-				_ if current.is_literal(False) => Ok(Ast::Literal(self.parse_literal_false()?)),
-				_ if current.is_literal(Text) => Ok(Ast::Literal(self.parse_literal_text()?)),
-				_ if current.is_literal(Temporal) => Ok(Ast::Literal(self.parse_literal_temporal()?)),
-				_ if current.is_literal(None) => Ok(Ast::Literal(self.parse_literal_none()?)),
+				_ if current.is_literal(Number) => Ok(Ast::Literal(self.parse_literal(Number)?)),
+				_ if current.is_literal(True) => Ok(Ast::Literal(self.parse_literal(True)?)),
+				_ if current.is_literal(False) => Ok(Ast::Literal(self.parse_literal(False)?)),
+				_ if current.is_literal(Text) => Ok(Ast::Literal(self.parse_literal(Text)?)),
+				_ if current.is_literal(Temporal) => Ok(Ast::Literal(self.parse_literal(Temporal)?)),
+				_ if current.is_literal(None) => Ok(Ast::Literal(self.parse_literal(None)?)),
 				_ if current.is_identifier() => {
 					if self.is_function_call_pattern() {
 						Ok(Ast::CallFunction(self.parse_function_call()?))

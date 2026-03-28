@@ -1,4 +1,5 @@
 use crate::{Function, Handle, Int, Resolve, Type, TypeDefKind};
+use alloc::vec::Vec;
 
 /// A core WebAssembly signature with params and results.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, PartialOrd, Ord)]
@@ -191,7 +192,7 @@ impl Resolve {
         // is needed down below for imports.
         let mut storage = [WasmType::I32; Self::MAX_FLAT_PARAMS + 1];
         let mut params = FlatTypes::new(&mut storage);
-        let ok = self.push_flat_list(func.params.iter().map(|(_, param)| param), &mut params);
+        let ok = self.push_flat_list(func.params.iter().map(|p| &p.ty), &mut params);
         assert_eq!(ok, !params.overflow);
 
         let max = match variant {
@@ -339,7 +340,7 @@ impl Resolve {
                     result.push(WasmType::Pointer) && result.push(WasmType::Length)
                 }
 
-                TypeDefKind::FixedSizeList(ty, size) => {
+                TypeDefKind::FixedLengthList(ty, size) => {
                     self.push_flat_list((0..*size).map(|_| ty), result)
                 }
 

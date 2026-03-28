@@ -36,6 +36,7 @@ pub(crate) fn create_namespace(
 					local_name: plan.segments[i].text().to_string(),
 					parent_id,
 					grpc: None,
+					token: None,
 				},
 			)?;
 			txn.track_namespace_created(result.clone())?;
@@ -44,9 +45,10 @@ pub(crate) fn create_namespace(
 	}
 
 	// Create the final (leaf) namespace
-	if let Some(_) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)? {
+	if let Some(existing) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)? {
 		if plan.if_not_exists {
 			return Ok(Columns::single_row([
+				("id", Value::Uint8(existing.id().0)),
 				("namespace", Value::Utf8(full_name)),
 				("created", Value::Boolean(false)),
 			]));
@@ -61,11 +63,13 @@ pub(crate) fn create_namespace(
 			local_name: plan.segments.last().unwrap().text().to_string(),
 			parent_id,
 			grpc: None,
+			token: None,
 		},
 	)?;
 	txn.track_namespace_created(result.clone())?;
 
 	Ok(Columns::single_row([
+		("id", Value::Uint8(result.id().0)),
 		("namespace", Value::Utf8(result.name().to_string())),
 		("created", Value::Boolean(true)),
 	]))
@@ -73,13 +77,10 @@ pub(crate) fn create_namespace(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
-		params::Params,
-		value::{Value, identity::IdentityId},
-	};
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
-		test_utils::create_test_admin_transaction,
+		test_harness::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 
@@ -87,7 +88,6 @@ pub mod tests {
 	fn test_create_namespace() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// First creation should succeed
 		let frames = instance
@@ -96,30 +96,30 @@ pub mod tests {
 				Admin {
 					rql: "CREATE NAMESPACE my_schema",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Utf8("my_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Boolean(true));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("my_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 
 		// Creating the same namespace again with `IF NOT EXISTS`
-		// should not error
+		// should not error and return the same id
 		let frames = instance
 			.admin(
 				&mut txn,
 				Admin {
 					rql: "CREATE NAMESPACE IF NOT EXISTS my_schema",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
-		assert_eq!(frame[0].get_value(0), Value::Utf8("my_schema".to_string()));
-		assert_eq!(frame[1].get_value(0), Value::Boolean(false));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("my_schema".to_string()));
+		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
 
 		// Creating the same namespace again without `IF NOT EXISTS`
 		// should return error
@@ -129,7 +129,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE NAMESPACE my_schema",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap_err();

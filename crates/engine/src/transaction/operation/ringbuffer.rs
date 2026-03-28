@@ -3,23 +3,23 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
-		catalog::{primitive::PrimitiveId, ringbuffer::RingBufferDef},
+		catalog::{ringbuffer::RingBuffer, schema::SchemaId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::{
-	interceptor::ringbuffer::RingBufferInterceptor,
+	interceptor::ringbuffer_row::RingBufferRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::Result;
 
-fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &EncodedValues) -> Columns {
+fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
 	let fields = schema.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
@@ -41,13 +41,13 @@ fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &Encod
 }
 
 fn build_ringbuffer_insert_change(
-	rb: &RingBufferDef,
-	schema: &Schema,
+	rb: &RingBuffer,
+	schema: &RowSchema,
 	row_number: RowNumber,
-	encoded: &EncodedValues,
+	encoded: &EncodedRow,
 ) -> Change {
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Insert {
 			post: build_encoded_columns(schema, row_number, encoded),
@@ -56,26 +56,26 @@ fn build_ringbuffer_insert_change(
 }
 
 fn build_ringbuffer_update_change(
-	rb: &RingBufferDef,
+	rb: &RingBuffer,
 	row_number: RowNumber,
-	old: &EncodedValues,
-	new: &EncodedValues,
+	pre: &EncodedRow,
+	post: &EncodedRow,
 ) -> Change {
-	let schema: Schema = (&rb.columns).into();
+	let schema: RowSchema = (&rb.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Update {
-			pre: build_encoded_columns(&schema, row_number, old),
-			post: build_encoded_columns(&schema, row_number, new),
+			pre: build_encoded_columns(&schema, row_number, pre),
+			post: build_encoded_columns(&schema, row_number, post),
 		}],
 	}
 }
 
-fn build_ringbuffer_remove_change(rb: &RingBufferDef, row_number: RowNumber, encoded: &EncodedValues) -> Change {
-	let schema: Schema = (&rb.columns).into();
+fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedRow) -> Change {
+	let schema: RowSchema = (&rb.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Remove {
 			pre: build_encoded_columns(&schema, row_number, encoded),
@@ -84,23 +84,23 @@ fn build_ringbuffer_remove_change(rb: &RingBufferDef, row_number: RowNumber, enc
 }
 
 pub(crate) trait RingBufferOperations {
-	fn insert_ringbuffer(&mut self, ringbuffer: RingBufferDef, row: EncodedValues) -> Result<RowNumber>;
+	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, row: EncodedRow) -> Result<RowNumber>;
 
 	fn insert_ringbuffer_at(
 		&mut self,
-		ringbuffer: &RingBufferDef,
-		schema: &Schema,
+		ringbuffer: &RingBuffer,
+		schema: &RowSchema,
 		row_number: RowNumber,
-		row: EncodedValues,
-	) -> Result<()>;
+		row: EncodedRow,
+	) -> Result<EncodedRow>;
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()>;
+	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow>;
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()>;
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow>;
 }
 
 impl RingBufferOperations for CommandTransaction {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> Result<RowNumber> {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
 		// For ring buffers, the row_number is determined by the caller based on ring buffer metadata
 		// This is different from tables which use RowSequence::next_row_number
 		// The caller must provide the correct row_number based on head/tail position
@@ -111,86 +111,86 @@ impl RingBufferOperations for CommandTransaction {
 
 	fn insert_ringbuffer_at(
 		&mut self,
-		ringbuffer: &RingBufferDef,
-		schema: &Schema,
+		ringbuffer: &RingBuffer,
+		schema: &RowSchema,
 		row_number: RowNumber,
-		row: EncodedValues,
-	) -> Result<()> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
 		// Check if we're overwriting existing data (for ring buffer circular behavior)
-		let old_row = self.get(&key)?.map(|v| v.values);
+		let pre = self.get(&key)?.map(|v| v.row);
 
 		// If there's an existing encoded, we need to delete it first with interceptors
-		if let Some(ref existing) = old_row {
-			RingBufferInterceptor::pre_delete(self, ringbuffer, row_number)?;
+		if let Some(ref existing) = pre {
+			RingBufferRowInterceptor::pre_delete(self, ringbuffer, row_number)?;
 			// Don't actually remove, we'll overwrite
-			RingBufferInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
+			RingBufferRowInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
 		}
 
-		RingBufferInterceptor::pre_insert(self, ringbuffer, &row)?;
+		let row = RingBufferRowInterceptor::pre_insert(self, ringbuffer, row)?;
 
 		self.set(&key, row.clone())?;
 
-		RingBufferInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
+		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
 
-		if old_row.is_some() {
+		if pre.is_some() {
 			self.track_flow_change(build_ringbuffer_update_change(
 				ringbuffer,
 				row_number,
-				old_row.as_ref().unwrap(),
+				pre.as_ref().unwrap(),
 				&row,
 			));
 		} else {
 			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, schema, row_number, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		// Get the current encoded before updating (for post-update interceptor)
-		let old_row = self.get(&key)?.map(|v| v.values);
+		let pre = self.get(&key)?.map(|v| v.row);
 
-		RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row)?;
+		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
 		self.set(&key, row.clone())?;
 
-		if let Some(ref old) = old_row {
-			RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
+		if let Some(ref pre) = pre {
+			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
+			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()> {
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		// Get the encoded before removing (for post-delete interceptor)
 		let deleted_row = match self.get(&key)? {
-			Some(v) => v.values,
-			None => return Ok(()), // Nothing to delete
+			Some(v) => v.row,
+			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
 
 		// Execute pre-delete interceptors
-		RingBufferInterceptor::pre_delete(self, ringbuffer, id)?;
+		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
 
 		// Remove the encoded from the database
 		self.unset(&key, deleted_row.clone())?;
 
-		RingBufferInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
+		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
 
 		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
 
-		Ok(())
+		Ok(deleted_row)
 	}
 }
 
 impl RingBufferOperations for AdminTransaction {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> Result<RowNumber> {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
 		unimplemented!(
 			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
 		)
@@ -198,79 +198,79 @@ impl RingBufferOperations for AdminTransaction {
 
 	fn insert_ringbuffer_at(
 		&mut self,
-		ringbuffer: &RingBufferDef,
-		schema: &Schema,
+		ringbuffer: &RingBuffer,
+		schema: &RowSchema,
 		row_number: RowNumber,
-		row: EncodedValues,
-	) -> Result<()> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, row_number);
 
-		let old_row = self.get(&key)?.map(|v| v.values);
+		let pre = self.get(&key)?.map(|v| v.row);
 
-		if let Some(ref existing) = old_row {
-			RingBufferInterceptor::pre_delete(self, ringbuffer, row_number)?;
-			RingBufferInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
+		if let Some(ref existing) = pre {
+			RingBufferRowInterceptor::pre_delete(self, ringbuffer, row_number)?;
+			RingBufferRowInterceptor::post_delete(self, ringbuffer, row_number, existing)?;
 		}
 
-		RingBufferInterceptor::pre_insert(self, ringbuffer, &row)?;
+		let row = RingBufferRowInterceptor::pre_insert(self, ringbuffer, row)?;
 
 		self.set(&key, row.clone())?;
 
-		RingBufferInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
+		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
 
-		if old_row.is_some() {
+		if pre.is_some() {
 			self.track_flow_change(build_ringbuffer_update_change(
 				ringbuffer,
 				row_number,
-				old_row.as_ref().unwrap(),
+				pre.as_ref().unwrap(),
 				&row,
 			));
 		} else {
 			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, schema, row_number, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
-		let old_row = self.get(&key)?.map(|v| v.values);
+		let pre = self.get(&key)?.map(|v| v.row);
 
-		RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row)?;
+		let row = RingBufferRowInterceptor::pre_update(self, &ringbuffer, id, row)?;
 
 		self.set(&key, row.clone())?;
 
-		if let Some(ref old) = old_row {
-			RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
-			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, old, &row));
+		if let Some(ref pre) = pre {
+			RingBufferRowInterceptor::post_update(self, &ringbuffer, id, &row, pre)?;
+			self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, pre, &row));
 		}
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()> {
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(ringbuffer.id, id);
 
 		let deleted_row = match self.get(&key)? {
-			Some(v) => v.values,
-			None => return Ok(()),
+			Some(v) => v.row,
+			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
 
-		RingBufferInterceptor::pre_delete(self, ringbuffer, id)?;
+		RingBufferRowInterceptor::pre_delete(self, ringbuffer, id)?;
 
 		self.unset(&key, deleted_row.clone())?;
 
-		RingBufferInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
+		RingBufferRowInterceptor::post_delete(self, ringbuffer, id, &deleted_row)?;
 
 		self.track_flow_change(build_ringbuffer_remove_change(ringbuffer, id, &deleted_row));
 
-		Ok(())
+		Ok(deleted_row)
 	}
 }
 
 impl RingBufferOperations for Transaction<'_> {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBufferDef, _row: EncodedValues) -> Result<RowNumber> {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
 		unimplemented!(
 			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
 		)
@@ -278,35 +278,38 @@ impl RingBufferOperations for Transaction<'_> {
 
 	fn insert_ringbuffer_at(
 		&mut self,
-		ringbuffer: &RingBufferDef,
-		schema: &Schema,
+		ringbuffer: &RingBuffer,
+		schema: &RowSchema,
 		row_number: RowNumber,
-		row: EncodedValues,
-	) -> Result<()> {
+		row: EncodedRow,
+	) -> Result<EncodedRow> {
 		match self {
 			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
 			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
 			Transaction::Subscription(txn) => {
 				txn.as_admin_mut().insert_ringbuffer_at(ringbuffer, schema, row_number, row)
 			}
+			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
 
-	fn update_ringbuffer(&mut self, ringbuffer: RingBufferDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_ringbuffer(&mut self, ringbuffer: RingBuffer, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		match self {
 			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, id, row),
 			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, id, row),
 			Transaction::Subscription(txn) => txn.as_admin_mut().update_ringbuffer(ringbuffer, id, row),
+			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
 
-	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBufferDef, id: RowNumber) -> Result<()> {
+	fn remove_from_ringbuffer(&mut self, ringbuffer: &RingBuffer, id: RowNumber) -> Result<EncodedRow> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Subscription(txn) => txn.as_admin_mut().remove_from_ringbuffer(ringbuffer, id),
+			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

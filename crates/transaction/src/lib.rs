@@ -17,12 +17,12 @@ use reifydb_type::{error::Error, value::uuid::Uuid7};
 use uuid::Uuid;
 
 pub mod change;
+pub mod change_accumulator;
 pub mod delta;
 pub mod error;
 pub mod interceptor;
 pub mod multi;
 pub mod single;
-pub mod testing;
 pub mod transaction;
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered

@@ -2,14 +2,19 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues, interface::catalog::ringbuffer::RingBufferMetadata,
+	encoded::row::EncodedRow,
+	interface::catalog::{
+		id::RingBufferId,
+		ringbuffer::{RingBuffer, RingBufferMetadata},
+	},
 	key::ringbuffer::RingBufferMetadataKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
+use reifydb_type::value::Value;
 
 use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer_metadata};
 
-fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedValues {
+pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
 	let mut row = ringbuffer_metadata::SCHEMA.allocate();
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
@@ -17,6 +22,16 @@ fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedValues {
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
 	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
 	row
+}
+
+pub fn decode_ringbuffer_metadata(row: &EncodedRow) -> RingBufferMetadata {
+	RingBufferMetadata {
+		id: RingBufferId(ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::ID)),
+		capacity: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::CAPACITY),
+		count: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::COUNT),
+		head: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::HEAD),
+		tail: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::TAIL),
+	}
 }
 
 impl CatalogStore {
@@ -46,11 +61,49 @@ impl CatalogStore {
 		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
 		Ok(())
 	}
+
+	pub(crate) fn update_ringbuffer_partition_metadata(
+		txn: &mut CommandTransaction,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		let row = encode_ringbuffer_metadata(metadata);
+		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
+		txn.set(&key, row)?;
+		Ok(())
+	}
+
+	/// Save metadata for a specific partition. Global uses empty key → RingBufferMetadataKey.
+	pub(crate) fn save_partition_metadata(
+		txn: &mut Transaction<'_>,
+		ringbuffer: &RingBuffer,
+		partition_key: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		if ringbuffer.partition_by.is_empty() {
+			Self::update_ringbuffer_metadata_txn(txn, metadata.clone())
+		} else {
+			Self::update_ringbuffer_partition_metadata_txn(txn, ringbuffer.id, partition_key, metadata)
+		}
+	}
+
+	pub(crate) fn update_ringbuffer_partition_metadata_txn(
+		txn: &mut Transaction<'_>,
+		ringbuffer: RingBufferId,
+		partition_values: &[Value],
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		let row = encode_ringbuffer_metadata(metadata);
+		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
+		txn.set(&key, row)?;
+		Ok(())
+	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
@@ -68,8 +121,8 @@ pub mod tests {
 				.expect("Metadata should exist");
 
 		assert_eq!(metadata.count, 0);
-		assert_eq!(metadata.head, 0);
-		assert_eq!(metadata.tail, 0);
+		assert_eq!(metadata.head, 1);
+		assert_eq!(metadata.tail, 1);
 
 		// Update metadata
 		metadata.count = 5;

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::policy::{PolicyDef, PolicyId},
+	interface::catalog::policy::{Policy, PolicyId},
 	key::policy::PolicyKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,16 +13,16 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<PolicyDef>> {
+	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<Policy>> {
 		Ok(rx.get(&PolicyKey::encoded(id))?.map(convert_policy))
 	}
 
-	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<PolicyDef>> {
+	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
 		let mut stream = rx.range(PolicyKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let policy_name = policy::SCHEMA.get_utf8(&multi.values, policy::NAME);
+			let policy_name = policy::SCHEMA.get_utf8(&multi.row, policy::NAME);
 			if !policy_name.is_empty() && name == policy_name {
 				return Ok(Some(convert_policy(multi)));
 			}
@@ -35,7 +35,7 @@ impl CatalogStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::catalog::policy::{PolicyTargetType, PolicyToCreate};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::CatalogStore;

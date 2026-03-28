@@ -166,7 +166,7 @@ impl WaterMark {
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread, thread::sleep, time::Duration};
 
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
+	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;

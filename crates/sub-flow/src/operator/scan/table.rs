@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
-		catalog::{flow::FlowNodeId, primitive::PrimitiveId, table::TableDef},
+		catalog::{flow::FlowNodeId, schema::SchemaId, table::Table},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -16,11 +16,11 @@ use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::Fl
 
 pub struct PrimitiveTableOperator {
 	node: FlowNodeId,
-	table: TableDef,
+	table: Table,
 }
 
 impl PrimitiveTableOperator {
-	pub fn new(node: FlowNodeId, table: TableDef) -> Self {
+	pub fn new(node: FlowNodeId, table: Table) -> Self {
 		Self {
 			node,
 			table,
@@ -75,10 +75,10 @@ impl Operator for PrimitiveTableOperator {
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {
 		if rows.is_empty() {
-			return Ok(Columns::from_table_def(&self.table));
+			return Ok(Columns::from_table(&self.table));
 		}
 
-		let schema: Schema = (&self.table.columns).into();
+		let schema: RowSchema = (&self.table.columns).into();
 		let fields = schema.fields();
 
 		// Pre-allocate columns with capacity
@@ -92,7 +92,7 @@ impl Operator for PrimitiveTableOperator {
 		let mut row_numbers = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
-			let key = RowKey::encoded(PrimitiveId::table(self.table.id), *row_num);
+			let key = RowKey::encoded(SchemaId::table(self.table.id), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				// Decode each column value directly
@@ -104,7 +104,7 @@ impl Operator for PrimitiveTableOperator {
 		}
 
 		if row_numbers.is_empty() {
-			Ok(Columns::from_table_def(&self.table))
+			Ok(Columns::from_table(&self.table))
 		} else {
 			Ok(Columns {
 				row_numbers: CowVec::new(row_numbers),

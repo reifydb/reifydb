@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackPolicyChangeOperations,
-	policy::{PolicyDef, PolicyId},
+	policy::{Policy, PolicyId},
 };
 use reifydb_type::Result;
 
@@ -17,40 +17,40 @@ use crate::{
 };
 
 impl CatalogTrackPolicyChangeOperations for AdminTransaction {
-	fn track_policy_def_created(&mut self, policy: PolicyDef) -> Result<()> {
+	fn track_policy_created(&mut self, policy: Policy) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(policy),
 			op: Create,
 		};
-		self.changes.add_policy_def_change(change);
+		self.changes.add_policy_change(change);
 		Ok(())
 	}
 
-	fn track_policy_def_updated(&mut self, pre: PolicyDef, post: PolicyDef) -> Result<()> {
+	fn track_policy_updated(&mut self, pre: Policy, post: Policy) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
 			op: Update,
 		};
-		self.changes.add_policy_def_change(change);
+		self.changes.add_policy_change(change);
 		Ok(())
 	}
 
-	fn track_policy_def_deleted(&mut self, policy: PolicyDef) -> Result<()> {
+	fn track_policy_deleted(&mut self, policy: Policy) -> Result<()> {
 		let change = Change {
 			pre: Some(policy),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_policy_def_change(change);
+		self.changes.add_policy_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalPolicyChanges for AdminTransaction {
-	fn find_policy(&self, id: PolicyId) -> Option<&PolicyDef> {
-		for change in self.changes.policy_def.iter().rev() {
+	fn find_policy(&self, id: PolicyId) -> Option<&Policy> {
+		for change in self.changes.policy.iter().rev() {
 			if let Some(policy) = &change.post {
 				if policy.id == id {
 					return Some(policy);
@@ -64,9 +64,9 @@ impl TransactionalPolicyChanges for AdminTransaction {
 		None
 	}
 
-	fn find_policy_by_name(&self, name: &str) -> Option<&PolicyDef> {
+	fn find_policy_by_name(&self, name: &str) -> Option<&Policy> {
 		self.changes
-			.policy_def
+			.policy
 			.iter()
 			.rev()
 			.find_map(|change| change.post.as_ref().filter(|p| p.name.as_deref() == Some(name)))
@@ -74,14 +74,14 @@ impl TransactionalPolicyChanges for AdminTransaction {
 
 	fn is_policy_deleted(&self, id: PolicyId) -> bool {
 		self.changes
-			.policy_def
+			.policy
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|p| p.id) == Some(id))
 	}
 
 	fn is_policy_deleted_by_name(&self, name: &str) -> bool {
-		self.changes.policy_def.iter().rev().any(|change| {
+		self.changes.policy.iter().rev().any(|change| {
 			change.op == Delete
 				&& change.pre.as_ref().map(|p| p.name.as_deref() == Some(name)).unwrap_or(false)
 		})
@@ -89,25 +89,25 @@ impl TransactionalPolicyChanges for AdminTransaction {
 }
 
 impl CatalogTrackPolicyChangeOperations for SubscriptionTransaction {
-	fn track_policy_def_created(&mut self, policy: PolicyDef) -> Result<()> {
-		self.inner.track_policy_def_created(policy)
+	fn track_policy_created(&mut self, policy: Policy) -> Result<()> {
+		self.inner.track_policy_created(policy)
 	}
 
-	fn track_policy_def_updated(&mut self, pre: PolicyDef, post: PolicyDef) -> Result<()> {
-		self.inner.track_policy_def_updated(pre, post)
+	fn track_policy_updated(&mut self, pre: Policy, post: Policy) -> Result<()> {
+		self.inner.track_policy_updated(pre, post)
 	}
 
-	fn track_policy_def_deleted(&mut self, policy: PolicyDef) -> Result<()> {
-		self.inner.track_policy_def_deleted(policy)
+	fn track_policy_deleted(&mut self, policy: Policy) -> Result<()> {
+		self.inner.track_policy_deleted(policy)
 	}
 }
 
 impl TransactionalPolicyChanges for SubscriptionTransaction {
-	fn find_policy(&self, id: PolicyId) -> Option<&PolicyDef> {
+	fn find_policy(&self, id: PolicyId) -> Option<&Policy> {
 		self.inner.find_policy(id)
 	}
 
-	fn find_policy_by_name(&self, name: &str) -> Option<&PolicyDef> {
+	fn find_policy_by_name(&self, name: &str) -> Option<&Policy> {
 		self.inner.find_policy_by_name(name)
 	}
 

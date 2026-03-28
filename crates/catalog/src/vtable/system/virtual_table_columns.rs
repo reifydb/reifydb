@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,27 +14,27 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext, VTableRegistry},
+	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry},
 };
 
 /// Virtual table that exposes column information for all virtual tables
-pub struct VirtualTableColumns {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemVirtualTableColumns {
+	pub(crate) definition: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl VirtualTableColumns {
+impl SystemVirtualTableColumns {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_virtual_table_columns_table_def().clone(),
+			definition: SystemCatalog::get_system_virtual_table_columns_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for VirtualTableColumns {
+impl BaseVTable for SystemVirtualTableColumns {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -52,10 +52,10 @@ impl VTable for VirtualTableColumns {
 		let mut positions = Vec::new();
 
 		// Add columns from system virtual tables
-		for vtable_def in VTableRegistry::list_vtables(txn)? {
-			for col in &vtable_def.columns {
+		for vtable in VTableRegistry::list_vtables(txn)? {
+			for col in &vtable.columns {
 				column_ids.push(col.id.0);
-				vtable_ids.push(vtable_def.id.0);
+				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
 				types.push(col.constraint.get_type().to_u8());
 				positions.push(col.index.0);
@@ -63,10 +63,10 @@ impl VTable for VirtualTableColumns {
 		}
 
 		// Add columns from user-defined virtual tables
-		for vtable_def in self.catalog.list_user_vtables() {
-			for col in &vtable_def.columns {
+		for vtable in self.catalog.list_user_vtables() {
+			for col in &vtable.columns {
 				column_ids.push(col.id.0);
-				vtable_ids.push(vtable_def.id.0);
+				vtable_ids.push(vtable.id.0);
 				names.push(col.name.clone());
 				types.push(col.constraint.get_type().to_u8());
 				positions.push(col.index.0);
@@ -102,7 +102,7 @@ impl VTable for VirtualTableColumns {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

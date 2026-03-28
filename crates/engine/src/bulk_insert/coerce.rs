@@ -4,38 +4,35 @@
 //! Column coercion for bulk inserts.
 
 use reifydb_core::{
-	interface::catalog::column::ColumnDef,
+	interface::catalog::column::Column,
 	value::column::{columns::Columns, data::ColumnData},
 };
-use reifydb_function::registry::Functions;
-use reifydb_runtime::clock::Clock;
+use reifydb_routine::function::registry::Functions;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{
 	Result,
-	expression::{cast::cast_column_data, context::EvalContext},
+	expression::{cast::cast_column_data, context::EvalSession},
 	vm::stack::SymbolTable,
 };
 
 /// Coerce each column's data to the target type in batch.
 pub(super) fn coerce_columns(
 	column_data: &[ColumnData],
-	columns: &[ColumnDef],
+	columns: &[Column],
 	num_rows: usize,
 ) -> Result<Vec<ColumnData>> {
-	let ctx = EvalContext {
-		target: None,
-		columns: Columns::empty(),
-		row_count: num_rows,
-		take: None,
+	let session = EvalSession {
 		params: &Params::None,
-		symbol_table: &SymbolTable::new(),
-		is_aggregate_context: false,
+		symbols: &SymbolTable::new(),
 		functions: &Functions::empty(),
-		clock: &Clock::default(),
+		runtime_context: &RuntimeContext::default(),
 		arena: None,
 		identity: IdentityId::root(),
+		is_aggregate_context: false,
 	};
+	let ctx = session.eval(Columns::empty(), num_rows);
 
 	let mut coerced_columns: Vec<ColumnData> = Vec::with_capacity(columns.len());
 

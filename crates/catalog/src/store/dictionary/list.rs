@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
+	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -15,17 +15,14 @@ use crate::{
 
 impl CatalogStore {
 	/// List all dictionaries in a namespace
-	pub(crate) fn list_dictionaries(
-		rx: &mut Transaction<'_>,
-		namespace: NamespaceId,
-	) -> Result<Vec<DictionaryDef>> {
+	pub(crate) fn list_dictionaries(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<Dictionary>> {
 		// Collect dictionary IDs first to avoid borrow conflict
 		let mut dictionary_ids = Vec::new();
 		{
 			let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
-				let row = &multi.values;
+				let row = &multi.row;
 				dictionary_ids.push(DictionaryId(
 					dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID),
 				));
@@ -43,20 +40,20 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<DictionaryDef>> {
+	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		let mut dictionaries = Vec::new();
 
 		let mut stream = rx.range(DictionaryKey::full_scan(), 1024)?;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let id = DictionaryId(dictionary::SCHEMA.get_u64(&row, dictionary::ID));
 			let namespace = NamespaceId(dictionary::SCHEMA.get_u64(&row, dictionary::NAMESPACE));
 			let name = dictionary::SCHEMA.get_utf8(&row, dictionary::NAME).to_string();
 			let value_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::VALUE_TYPE);
 			let id_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::ID_TYPE);
 
-			dictionaries.push(DictionaryDef {
+			dictionaries.push(Dictionary {
 				id,
 				namespace,
 				name,
@@ -72,7 +69,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
@@ -128,6 +125,7 @@ pub mod tests {
 				local_name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
+				token: None,
 			},
 		)
 		.unwrap();
@@ -178,6 +176,7 @@ pub mod tests {
 				local_name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
+				token: None,
 			},
 		)
 		.unwrap();

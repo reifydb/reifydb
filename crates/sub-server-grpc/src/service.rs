@@ -3,10 +3,12 @@
 
 use std::sync::Arc;
 
+use reifydb_auth::service::AuthResponse as EngineAuthResponse;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_sub_server::{
-	auth::{AuthError, extract_identity_from_api_key, extract_identity_from_auth_header},
-	execute::{execute_admin, execute_command, execute_query},
+	auth::{AuthError, extract_identity_from_auth_header},
+	execute::execute,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	remote::{connect_remote, proxy_remote},
 	state::AppState,
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
@@ -18,22 +20,24 @@ use tokio::{
 	sync::{mpsc, watch},
 };
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status, metadata::KeyAndValueRef};
 use tracing::{debug, info, warn};
 
 use crate::{
 	convert::{frames_to_proto, proto_params_to_params},
 	error::GrpcError,
 	generated::{
-		AdminRequest, AdminResponse, ChangeEvent, CommandRequest, CommandResponse, Params as ProtoParams,
-		QueryRequest, QueryResponse, SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest,
-		UnsubscribeResponse, reify_db_server::ReifyDb, subscription_event,
+		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, ChangeEvent, CommandRequest,
+		CommandResponse, LogoutRequest, LogoutResponse, Params as ProtoParams, QueryRequest, QueryResponse,
+		SubscribeRequest, SubscribedEvent, SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse,
+		reify_db_server::ReifyDb, subscription_event,
 	},
 	subscription::GrpcSubscriptionRegistry,
 };
 
 pub struct ReifyDbService {
 	state: AppState,
+	admin_enabled: bool,
 	registry: Arc<GrpcSubscriptionRegistry>,
 	poller: Arc<SubscriptionPoller>,
 	shutdown_rx: watch::Receiver<bool>,
@@ -42,12 +46,14 @@ pub struct ReifyDbService {
 impl ReifyDbService {
 	pub fn new(
 		state: AppState,
+		admin_enabled: bool,
 		registry: Arc<GrpcSubscriptionRegistry>,
 		poller: Arc<SubscriptionPoller>,
 		shutdown_rx: watch::Receiver<bool>,
 	) -> Self {
 		Self {
 			state,
+			admin_enabled,
 			registry,
 			poller,
 			shutdown_rx,
@@ -59,15 +65,23 @@ impl ReifyDbService {
 
 		if let Some(auth) = metadata.get("authorization") {
 			let header = auth.to_str().map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
-			return Ok(extract_identity_from_auth_header(header)?);
+			return Ok(extract_identity_from_auth_header(self.state.auth_service(), header)?);
 		}
 
-		if let Some(api_key) = metadata.get("x-api-key") {
-			let key = api_key.to_str().map_err(|_| GrpcError::Unauthenticated(AuthError::InvalidHeader))?;
-			return Ok(extract_identity_from_api_key(key)?);
-		}
+		// No credentials provided — anonymous access
+		Ok(IdentityId::anonymous())
+	}
 
-		Err(GrpcError::Unauthenticated(AuthError::MissingCredentials))
+	fn build_metadata<T>(request: &Request<T>) -> RequestMetadata {
+		let mut meta = RequestMetadata::new(Protocol::Grpc);
+		for key_and_value in request.metadata().iter() {
+			if let KeyAndValueRef::Ascii(key, value) = key_and_value {
+				if let Ok(v) = value.to_str() {
+					meta.insert(key.as_str(), v);
+				}
+			}
+		}
+		meta
 	}
 
 	fn extract_params(params: Option<ProtoParams>) -> Result<Params, GrpcError> {
@@ -146,9 +160,11 @@ impl ReifyDbService {
 		&self,
 		address: String,
 		query: &str,
+		token: Option<String>,
 	) -> Result<Response<ReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
-		let remote_sub =
-			connect_remote(&address, query).await.map_err(|e| Status::unavailable(e.to_string()))?;
+		let remote_sub = connect_remote(&address, query, token.as_deref())
+			.await
+			.map_err(|e| Status::unavailable(e.to_string()))?;
 
 		let (tx, rx) = mpsc::channel(256);
 
@@ -177,17 +193,29 @@ impl ReifyDbService {
 #[tonic::async_trait]
 impl ReifyDb for ReifyDbService {
 	async fn admin(&self, request: Request<AdminRequest>) -> Result<Response<AdminResponse>, Status> {
+		if !self.admin_enabled {
+			return Err(Status::not_found("not found"));
+		}
 		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
 
-		let frames = execute_admin(
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Admin,
+			statements: inner.statements,
+			params,
+			metadata,
+		};
+
+		let (frames, _duration) = execute(
+			self.state.request_interceptors(),
 			self.state.actor_system(),
 			self.state.engine_clone(),
-			inner.statements,
-			identity,
-			params,
+			ctx,
 			self.state.query_timeout(),
+			self.state.clock(),
 		)
 		.await
 		.map_err(GrpcError::from)?;
@@ -199,16 +227,25 @@ impl ReifyDb for ReifyDbService {
 
 	async fn command(&self, request: Request<CommandRequest>) -> Result<Response<CommandResponse>, Status> {
 		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
 
-		let frames = execute_command(
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Command,
+			statements: inner.statements,
+			params,
+			metadata,
+		};
+
+		let (frames, _duration) = execute(
+			self.state.request_interceptors(),
 			self.state.actor_system(),
 			self.state.engine_clone(),
-			inner.statements,
-			identity,
-			params,
+			ctx,
 			self.state.query_timeout(),
+			self.state.clock(),
 		)
 		.await
 		.map_err(GrpcError::from)?;
@@ -220,17 +257,25 @@ impl ReifyDb for ReifyDbService {
 
 	async fn query(&self, request: Request<QueryRequest>) -> Result<Response<QueryResponse>, Status> {
 		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
 
-		let statements = inner.statements.join("; ");
-		let frames = execute_query(
+		let ctx = RequestContext {
+			identity,
+			operation: Operation::Query,
+			statements: inner.statements,
+			params,
+			metadata,
+		};
+
+		let (frames, _duration) = execute(
+			self.state.request_interceptors(),
 			self.state.actor_system(),
 			self.state.engine_clone(),
-			statements,
-			identity,
-			params,
+			ctx,
 			self.state.query_timeout(),
+			self.state.clock(),
 		)
 		.await
 		.map_err(GrpcError::from)?;
@@ -247,14 +292,24 @@ impl ReifyDb for ReifyDbService {
 		request: Request<SubscribeRequest>,
 	) -> Result<Response<Self::SubscribeStream>, Status> {
 		let identity = self.extract_identity(&request)?;
+		let token = request
+			.metadata()
+			.get("authorization")
+			.and_then(|v| v.to_str().ok())
+			.and_then(|h| h.strip_prefix("Bearer "))
+			.map(|t| t.to_string());
+		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 
-		match create_subscription(&self.state, identity, &inner.query).await.map_err(GrpcError::from)? {
+		match create_subscription(&self.state, identity, &inner.query, metadata)
+			.await
+			.map_err(GrpcError::from)?
+		{
 			CreateSubscriptionResult::Local(subscription_id) => self.subscribe_local(subscription_id).await,
 			CreateSubscriptionResult::Remote {
 				address,
 				query,
-			} => self.subscribe_remote(address, &query).await,
+			} => self.subscribe_remote(address, &query, token).await,
 		}
 	}
 
@@ -291,5 +346,59 @@ impl ReifyDb for ReifyDbService {
 		Ok(Response::new(UnsubscribeResponse {
 			subscription_id: inner.subscription_id,
 		}))
+	}
+
+	async fn authenticate(
+		&self,
+		request: Request<AuthenticateRequest>,
+	) -> Result<Response<AuthenticateResponse>, Status> {
+		let inner = request.into_inner();
+		match self.state.auth_service().authenticate(&inner.method, inner.credentials) {
+			Ok(EngineAuthResponse::Authenticated {
+				identity,
+				token,
+			}) => Ok(Response::new(AuthenticateResponse {
+				status: "authenticated".to_string(),
+				token,
+				identity: identity.to_string(),
+				reason: String::new(),
+			})),
+			Ok(EngineAuthResponse::Failed {
+				reason,
+			}) => Ok(Response::new(AuthenticateResponse {
+				status: "failed".to_string(),
+				token: String::new(),
+				identity: String::new(),
+				reason,
+			})),
+			Ok(EngineAuthResponse::Challenge {
+				..
+			}) => Err(Status::unimplemented("Challenge-response auth not supported over gRPC")),
+			Err(e) => Err(Status::internal(e.to_string())),
+		}
+	}
+
+	async fn logout(&self, request: Request<LogoutRequest>) -> Result<Response<LogoutResponse>, Status> {
+		let token = request
+			.metadata()
+			.get("authorization")
+			.and_then(|v| v.to_str().ok())
+			.and_then(|h| h.strip_prefix("Bearer "))
+			.map(|t| t.trim().to_string())
+			.ok_or_else(|| Status::unauthenticated("Missing authorization token"))?;
+
+		if token.is_empty() {
+			return Err(Status::unauthenticated("Empty token"));
+		}
+
+		let revoked = self.state.auth_service().revoke_token(&token);
+
+		if revoked {
+			Ok(Response::new(LogoutResponse {
+				status: "ok".to_string(),
+			}))
+		} else {
+			Err(Status::unauthenticated("Invalid or expired token"))
+		}
 	}
 }

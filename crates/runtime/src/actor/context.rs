@@ -17,6 +17,8 @@ use std::{
 	time::Duration,
 };
 
+#[cfg(reifydb_target = "wasi")]
+use crate::actor::timers::wasi::{schedule_once_fn, schedule_repeat};
 #[cfg(reifydb_target = "wasm")]
 use crate::actor::timers::wasm::{schedule_once_fn, schedule_repeat};
 use crate::actor::{mailbox::ActorRef, system::ActorSystem, timers::TimerHandle};
@@ -102,7 +104,7 @@ impl<M: Send + 'static> Context<M> {
 	///
 	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
 	/// Returns a handle that can be used to cancel the timer.
-	#[cfg(reifydb_target = "native")]
+	#[cfg(not(reifydb_single_threaded))]
 	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
 		let actor_ref = self.self_ref.clone();
 		self.system.scheduler().schedule_once(delay, move || {
@@ -114,7 +116,7 @@ impl<M: Send + 'static> Context<M> {
 	///
 	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
 	/// Returns a handle that can be used to cancel the timer.
-	#[cfg(reifydb_target = "wasm")]
+	#[cfg(reifydb_single_threaded)]
 	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
 		schedule_once_fn(self.self_ref.clone(), delay, factory)
 	}
@@ -125,7 +127,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	///
 	/// The timer continues until cancelled or the actor is dropped.
 	/// Returns a handle that can be used to cancel the timer.
-	#[cfg(reifydb_target = "native")]
+	#[cfg(not(reifydb_single_threaded))]
 	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
 		let actor_ref = self.self_ref.clone();
 		self.system.scheduler().schedule_repeat(interval, move || actor_ref.send(msg.clone()).is_ok())
@@ -135,7 +137,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	///
 	/// The timer continues until cancelled or the actor is dropped.
 	/// Returns a handle that can be used to cancel the timer.
-	#[cfg(reifydb_target = "wasm")]
+	#[cfg(reifydb_single_threaded)]
 	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
 		schedule_repeat(self.self_ref.clone(), interval, msg)
 	}

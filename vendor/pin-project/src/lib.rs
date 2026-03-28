@@ -93,12 +93,13 @@ see [examples] directory for more examples and generated code.
 #![no_std]
 #![doc(test(
     no_crate_inject,
-    attr(
-        deny(warnings, rust_2018_idioms, single_use_lifetimes),
-        allow(dead_code, unused_variables)
-    )
+    attr(allow(
+        dead_code,
+        unused_variables,
+        clippy::undocumented_unsafe_blocks,
+        clippy::unused_trait_names,
+    ))
 ))]
-#![warn(unsafe_op_in_unsafe_fn)]
 #![warn(
     // Lints that may help when writing public library.
     missing_debug_implementations,
@@ -107,9 +108,9 @@ see [examples] directory for more examples and generated code.
     clippy::exhaustive_enums,
     clippy::exhaustive_structs,
     clippy::impl_trait_in_params,
-    // clippy::missing_inline_in_public_items,
     clippy::std_instead_of_alloc,
     clippy::std_instead_of_core,
+    // clippy::missing_inline_in_public_items,
 )]
 #![allow(clippy::needless_doctest_main)]
 
@@ -171,6 +172,7 @@ pub use pin_project_internal::pinned_drop;
 ///     field_2: V,
 /// }
 ///
+/// # #[allow(clippy::undocumented_unsafe_blocks)]
 /// unsafe impl<K, V> UnsafeUnpin for Struct<K, V> where K: Unpin + Clone {}
 /// ```
 ///

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeDef,
+	interface::catalog::flow::FlowNode,
 	key::flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -13,7 +13,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNodeDef) -> Result<()> {
+	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNode) -> Result<()> {
 		// Write to main flow_node table
 		let mut row = flow_node::SCHEMA.allocate();
 		flow_node::SCHEMA.set_u64(&mut row, flow_node::ID, node_def.id);
@@ -36,8 +36,8 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowNodeDef;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_core::interface::catalog::flow::FlowNode;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::blob::Blob;
 
@@ -54,7 +54,7 @@ pub mod tests {
 		let flow = ensure_test_flow(&mut txn);
 
 		let node_id = next_flow_node_id(&mut txn).unwrap();
-		let node_def = FlowNodeDef {
+		let node_def = FlowNode {
 			id: node_id,
 			flow: flow.id,
 			node_type: 1, // SourceTable
@@ -68,7 +68,7 @@ pub mod tests {
 		assert_eq!(result.id, node_id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.node_type, 1);
-		assert_eq!(result.data.as_ref(), &[0x01, 0x02, 0x03]);
+		assert_eq!(result.data.as_bytes(), &[0x01, 0x02, 0x03]);
 	}
 
 	#[test]
@@ -79,7 +79,7 @@ pub mod tests {
 
 		// Create first node
 		let node1_id = next_flow_node_id(&mut txn).unwrap();
-		let node1 = FlowNodeDef {
+		let node1 = FlowNode {
 			id: node1_id,
 			flow: flow.id,
 			node_type: 1, // SourceTable
@@ -89,7 +89,7 @@ pub mod tests {
 
 		// Create second node
 		let node2_id = next_flow_node_id(&mut txn).unwrap();
-		let node2 = FlowNodeDef {
+		let node2 = FlowNode {
 			id: node2_id,
 			flow: flow.id,
 			node_type: 4, // Filter
@@ -116,7 +116,7 @@ pub mod tests {
 
 		// Create node in first flow
 		let node1_id = next_flow_node_id(&mut txn).unwrap();
-		let node1 = FlowNodeDef {
+		let node1 = FlowNode {
 			id: node1_id,
 			flow: flow1.id,
 			node_type: 1,
@@ -126,7 +126,7 @@ pub mod tests {
 
 		// Create node in second flow
 		let node2_id = next_flow_node_id(&mut txn).unwrap();
-		let node2 = FlowNodeDef {
+		let node2 = FlowNode {
 			id: node2_id,
 			flow: flow2.id,
 			node_type: 1,
@@ -149,7 +149,7 @@ pub mod tests {
 		let flow = ensure_test_flow(&mut txn);
 
 		let node_id = next_flow_node_id(&mut txn).unwrap();
-		let node_def = FlowNodeDef {
+		let node_def = FlowNode {
 			id: node_id,
 			flow: flow.id,
 			node_type: 1,

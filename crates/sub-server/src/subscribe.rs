@@ -21,7 +21,8 @@ use reifydb_type::{
 use tracing::{debug, error};
 
 use crate::{
-	execute::{ExecuteError, execute_subscription},
+	execute::{ExecuteError, execute},
+	interceptor::{Operation, RequestContext, RequestMetadata},
 	state::AppState,
 };
 
@@ -69,17 +70,26 @@ pub async fn create_subscription(
 	state: &AppState,
 	identity: IdentityId,
 	query: &str,
+	metadata: RequestMetadata,
 ) -> Result<CreateSubscriptionResult, CreateSubscriptionError> {
 	let statement = format!("CREATE SUBSCRIPTION AS {{ {} }}", query);
 	debug!("Subscription statement: {}", statement);
 
-	let frames = execute_subscription(
+	let ctx = RequestContext {
+		identity,
+		operation: Operation::Subscribe,
+		statements: vec![statement],
+		params: Params::None,
+		metadata,
+	};
+
+	let (frames, _duration) = execute(
+		state.request_interceptors(),
 		state.actor_system(),
 		state.engine_clone(),
-		statement,
-		identity,
-		Params::None,
+		ctx,
 		state.query_timeout(),
+		state.clock(),
 	)
 	.await?;
 
@@ -142,7 +152,7 @@ pub async fn create_subscription(
 
 /// Synchronous cleanup: begin subscription txn, drop flow, drop subscription, commit.
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let mut txn = engine.begin_subscription()?;
+	let mut txn = engine.begin_subscription(IdentityId::system())?;
 	let flow_name = subscription_flow_name(subscription_id);
 	let namespace_id = subscription_flow_namespace();
 	drop_flow_by_name(txn.as_admin_mut(), namespace_id, &flow_name)?;

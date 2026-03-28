@@ -33,6 +33,7 @@ impl<'bump> Compiler<'bump> {
 			segments: create.segments.iter().map(|s| self.interner.intern_fragment(s)).collect(),
 			if_not_exists: create.if_not_exists,
 			grpc: self.interner.intern_fragment(&create.grpc),
+			token: create.token.as_ref().map(|t| self.interner.intern_fragment(t)),
 		}))
 	}
 }

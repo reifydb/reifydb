@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
 use reifydb_type::value::Value;
 
 use super::helpers::get_values;
@@ -11,7 +11,7 @@ use super::helpers::get_values;
 /// Mock state store for testing operators
 #[derive(Debug, Clone, Default)]
 pub struct TestStateStore {
-	data: HashMap<EncodedKey, EncodedValues>,
+	data: HashMap<EncodedKey, EncodedRow>,
 }
 
 impl TestStateStore {
@@ -23,17 +23,17 @@ impl TestStateStore {
 	}
 
 	/// Get a value from the store
-	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedValues> {
+	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		self.data.get(key)
 	}
 
 	/// Set a value in the store
-	pub fn set(&mut self, key: EncodedKey, value: EncodedValues) {
+	pub fn set(&mut self, key: EncodedKey, value: EncodedRow) {
 		self.data.insert(key, value);
 	}
 
 	/// Remove a value from the store
-	pub fn remove(&mut self, key: &EncodedKey) -> Option<EncodedValues> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Option<EncodedRow> {
 		self.data.remove(key)
 	}
 
@@ -63,17 +63,17 @@ impl TestStateStore {
 	}
 
 	/// Get all key-value pairs
-	pub fn entries(&self) -> Vec<(&EncodedKey, &EncodedValues)> {
+	pub fn entries(&self) -> Vec<(&EncodedKey, &EncodedRow)> {
 		self.data.iter().map(|(k, v)| (k, v)).collect()
 	}
 
 	/// Decode a value using a schema
-	pub fn decode_value(&self, key: &EncodedKey, schema: &Schema) -> Option<Vec<Value>> {
+	pub fn decode_value(&self, key: &EncodedKey, schema: &RowSchema) -> Option<Vec<Value>> {
 		self.get(key).map(|encoded| get_values(schema, encoded))
 	}
 
 	/// Decode a value using a schema with field names
-	pub fn decode_named_value(&self, key: &EncodedKey, schema: &Schema) -> Option<HashMap<String, Value>> {
+	pub fn decode_named_value(&self, key: &EncodedKey, schema: &RowSchema) -> Option<HashMap<String, Value>> {
 		self.get(key).map(|encoded| {
 			let values = get_values(schema, encoded);
 			schema.field_names().map(|n| n.to_string()).zip(values).collect()
@@ -81,14 +81,14 @@ impl TestStateStore {
 	}
 
 	/// Set a value using a schema
-	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], schema: &Schema) {
+	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], schema: &RowSchema) {
 		let mut encoded = schema.allocate();
 		schema.set_values(&mut encoded, values);
 		self.set(key, encoded);
 	}
 
 	/// Set a value using a schema with field names
-	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, schema: &Schema) {
+	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, schema: &RowSchema) {
 		let mut encoded = schema.allocate();
 
 		// Convert HashMap to ordered values based on schema field names
@@ -100,17 +100,17 @@ impl TestStateStore {
 	}
 
 	/// Create a snapshot of the current state
-	pub fn snapshot(&self) -> HashMap<EncodedKey, EncodedValues> {
+	pub fn snapshot(&self) -> HashMap<EncodedKey, EncodedRow> {
 		self.data.clone()
 	}
 
 	/// Restore from a snapshot
-	pub fn restore(&mut self, snapshot: HashMap<EncodedKey, EncodedValues>) {
+	pub fn restore(&mut self, snapshot: HashMap<EncodedKey, EncodedRow>) {
 		self.data = snapshot;
 	}
 
 	/// Assert that a key has a specific value
-	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], schema: &Schema) {
+	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], schema: &RowSchema) {
 		let actual = self.decode_value(key, schema).expect(&format!("Key {:?} not found in state", key));
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
 	}
@@ -134,8 +134,8 @@ impl TestStateStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::encoded::{
-		encoded::EncodedValues,
-		schema::{Schema, SchemaField},
+		row::EncodedRow,
+		schema::{RowSchema, RowSchemaField},
 	};
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
@@ -146,7 +146,7 @@ pub mod tests {
 	fn test_state_store_basic_operations() {
 		let mut store = TestStateStore::new();
 		let key = encode_key("test_key");
-		let value = EncodedValues(CowVec::new(vec![1, 2, 3, 4]));
+		let value = EncodedRow(CowVec::new(vec![1, 2, 3, 4]));
 
 		assert!(store.is_empty());
 
@@ -163,7 +163,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_with_schema() {
 		let mut store = TestStateStore::new();
-		let schema = Schema::testing(&[Type::Int8, Type::Utf8]);
+		let schema = RowSchema::testing(&[Type::Int8, Type::Utf8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(42i64), Value::Utf8("hello".into())];
 
@@ -176,9 +176,9 @@ pub mod tests {
 	#[test]
 	fn test_state_store_with_named_schema() {
 		let mut store = TestStateStore::new();
-		let schema = Schema::new(vec![
-			SchemaField::unconstrained("count", Type::Int8),
-			SchemaField::unconstrained("name", Type::Utf8),
+		let schema = RowSchema::new(vec![
+			RowSchemaField::unconstrained("count", Type::Int8),
+			RowSchemaField::unconstrained("name", Type::Utf8),
 		]);
 		let key = encode_key("test_key");
 
@@ -198,8 +198,8 @@ pub mod tests {
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");
 
-		store.set(key1.clone(), EncodedValues(CowVec::new(vec![1])));
-		store.set(key2.clone(), EncodedValues(CowVec::new(vec![2])));
+		store.set(key1.clone(), EncodedRow(CowVec::new(vec![1])));
+		store.set(key2.clone(), EncodedRow(CowVec::new(vec![2])));
 
 		let snapshot = store.snapshot();
 		assert_eq!(snapshot.len(), 2);
@@ -209,14 +209,14 @@ pub mod tests {
 
 		store.restore(snapshot);
 		assert_eq!(store.len(), 2);
-		assert_eq!(store.get(&key1), Some(&EncodedValues(CowVec::new(vec![1]))));
-		assert_eq!(store.get(&key2), Some(&EncodedValues(CowVec::new(vec![2]))));
+		assert_eq!(store.get(&key1), Some(&EncodedRow(CowVec::new(vec![1]))));
+		assert_eq!(store.get(&key2), Some(&EncodedRow(CowVec::new(vec![2]))));
 	}
 
 	#[test]
 	fn test_state_store_assertions() {
 		let mut store = TestStateStore::new();
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(100i64)];
 

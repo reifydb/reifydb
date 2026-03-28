@@ -7,7 +7,7 @@ use reifydb_core::event::EventBus;
 use reifydb_runtime::{
 	SharedRuntimeConfig,
 	actor::{mailbox::ActorRef, system::ActorSystem},
-	clock::Clock,
+	context::clock::Clock,
 };
 use tracing::instrument;
 

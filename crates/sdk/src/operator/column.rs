@@ -7,7 +7,7 @@ use reifydb_type::value::constraint::TypeConstraint;
 
 /// A single column definition in an operator's input/output
 #[derive(Debug, Clone)]
-pub struct OperatorColumnDef {
+pub struct OperatorColumn {
 	/// Column name
 	pub name: &'static str,
 	/// Column type constraint

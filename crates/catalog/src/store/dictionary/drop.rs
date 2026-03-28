@@ -55,10 +55,10 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		encoded::encoded::EncodedValues,
+		encoded::row::EncodedRow,
 		key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
@@ -129,11 +129,11 @@ pub mod tests {
 		let mut entry_value = Vec::with_capacity(16 + dummy_value.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&dummy_value);
-		txn.set(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash), EncodedValues(CowVec::new(entry_value)))
+		txn.set(&DictionaryEntryKey::encoded(dict_def.id, dummy_hash), EncodedRow(CowVec::new(entry_value)))
 			.unwrap();
 		txn.set(
 			&DictionaryEntryIndexKey::encoded(dict_def.id, next_id as u64),
-			EncodedValues(CowVec::new(dummy_value)),
+			EncodedRow(CowVec::new(dummy_value)),
 		)
 		.unwrap();
 

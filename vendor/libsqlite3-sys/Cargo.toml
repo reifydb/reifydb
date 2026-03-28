@@ -12,10 +12,11 @@
 [package]
 edition = "2021"
 name = "libsqlite3-sys"
-version = "0.35.0"
+version = "0.37.0"
 authors = ["The rusqlite developers"]
 build = "build.rs"
 links = "sqlite3"
+exclude = ["**/*.sh"]
 autolib = false
 autobins = false
 autoexamples = false
@@ -53,14 +54,14 @@ bundled-windows = [
 ]
 bundled_bindings = []
 column_metadata = []
-default = ["min_sqlite_version_3_14_0"]
+default = ["min_sqlite_version_3_34_1"]
 in_gecko = []
 loadable_extension = [
     "prettyplease",
     "quote",
     "syn",
 ]
-min_sqlite_version_3_14_0 = [
+min_sqlite_version_3_34_1 = [
     "pkg-config",
     "vcpkg",
 ]
@@ -89,7 +90,7 @@ optional = true
 default-features = false
 
 [build-dependencies.cc]
-version = "1.1.6"
+version = "1.2.27"
 optional = true
 
 [build-dependencies.pkg-config]
@@ -106,7 +107,7 @@ optional = true
 default-features = false
 
 [build-dependencies.syn]
-version = "2.0.72"
+version = "2.0.89"
 features = [
     "full",
     "extra-traits",

@@ -14,8 +14,8 @@ use reifydb_transaction::multi::transaction::write::MultiWriteTransaction;
 
 use super::test_multi;
 use crate::{
-	as_key, as_values, from_key, from_values,
-	multi::transaction::{FromKey, FromValues},
+	as_key, as_values, from_key, from_row,
+	multi::transaction::{FromKey, FromRow},
 };
 
 #[test]
@@ -35,8 +35,8 @@ fn test_write_skew() {
 
 	fn get_bal(txn: &mut MultiWriteTransaction, k: &EncodedKey) -> u64 {
 		let sv = txn.get(k).unwrap().unwrap();
-		let val = sv.values();
-		from_values!(u64, val)
+		let val = sv.row();
+		from_row!(u64, val)
 	}
 
 	// Start two transactions, each would read both accounts and deduct from
@@ -99,7 +99,7 @@ fn test_black_white() {
 		.unwrap()
 		.into_iter()
 		.filter_map(|sv| {
-			if sv.values == as_values!("black".to_string()) {
+			if sv.row == as_values!("black".to_string()) {
 				Some(sv.key.clone())
 			} else {
 				None
@@ -118,7 +118,7 @@ fn test_black_white() {
 		.unwrap()
 		.into_iter()
 		.filter_map(|sv| {
-			if sv.values == as_values!("white".to_string()) {
+			if sv.row == as_values!("white".to_string()) {
 				Some(sv.key.clone())
 			} else {
 				None
@@ -139,7 +139,7 @@ fn test_black_white() {
 	assert_eq!(result.len(), 10);
 
 	result.iter().for_each(|sv| {
-		assert_eq!(sv.values, as_values!("black".to_string()));
+		assert_eq!(sv.row, as_values!("black".to_string()));
 	})
 }
 
@@ -157,12 +157,12 @@ fn test_overdraft_protection() {
 
 	// txn1
 	let mut txn1 = engine.begin_command().unwrap();
-	let money = from_values!(i32, *txn1.get(&key).unwrap().unwrap().values());
+	let money = from_row!(i32, *txn1.get(&key).unwrap().unwrap().row());
 	txn1.set(&key, as_values!(money - 500)).unwrap();
 
 	// txn2
 	let mut txn2 = engine.begin_command().unwrap();
-	let money = from_values!(i32, *txn2.get(&key).unwrap().unwrap().values());
+	let money = from_row!(i32, *txn2.get(&key).unwrap().unwrap().row());
 	txn2.set(&key, as_values!(money - 500)).unwrap();
 
 	txn1.commit().unwrap();
@@ -170,7 +170,7 @@ fn test_overdraft_protection() {
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().unwrap();
-	let money = from_values!(i32, *rx.get(&key).unwrap().unwrap().values());
+	let money = from_row!(i32, *rx.get(&key).unwrap().unwrap().row());
 	assert_eq!(money, 500);
 }
 
@@ -199,7 +199,7 @@ fn test_primary_colors() {
 		.unwrap()
 		.into_iter()
 		.filter_map(|sv| {
-			if sv.values == as_values!("yellow".to_string()) {
+			if sv.row == as_values!("yellow".to_string()) {
 				Some(sv.key.clone())
 			} else {
 				None
@@ -217,7 +217,7 @@ fn test_primary_colors() {
 		.unwrap()
 		.into_iter()
 		.filter_map(|sv| {
-			if sv.values == as_values!("blue".to_string()) {
+			if sv.row == as_values!("blue".to_string()) {
 				Some(sv.key.clone())
 			} else {
 				None
@@ -235,7 +235,7 @@ fn test_primary_colors() {
 		.unwrap()
 		.into_iter()
 		.filter_map(|sv| {
-			if sv.values == as_values!("blue".to_string()) {
+			if sv.row == as_values!("blue".to_string()) {
 				Some(sv.key.clone())
 			} else {
 				None
@@ -262,7 +262,7 @@ fn test_primary_colors() {
 	let mut blue_count = 0;
 
 	result.iter().for_each(|sv| {
-		let value = from_values!(String, sv.values);
+		let value = from_row!(String, sv.row);
 		match value.as_str() {
 			"red" => red_count += 1,
 			"yellow" => yellow_count += 1,
@@ -298,7 +298,7 @@ fn test_intersecting_data() {
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
-			let value = from_values!(u64, tv.values);
+			let value = from_row!(u64, tv.row);
 			if key.starts_with('a') {
 				Some(value)
 			} else {
@@ -318,7 +318,7 @@ fn test_intersecting_data() {
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
-			let value = from_values!(u64, tv.values);
+			let value = from_row!(u64, tv.row);
 			if key.starts_with('b') {
 				Some(value)
 			} else {
@@ -342,7 +342,7 @@ fn test_intersecting_data() {
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
-			let value = from_values!(u64, tv.values);
+			let value = from_row!(u64, tv.row);
 			if key.starts_with('a') {
 				Some(value)
 			} else {
@@ -373,7 +373,7 @@ fn test_intersecting_data2() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|tv| from_values!(u64, tv.values))
+		.map(|tv| from_row!(u64, tv.row))
 		.sum::<u64>();
 
 	txn1.set(&as_key!("b3"), as_values!(10)).unwrap();
@@ -385,7 +385,7 @@ fn test_intersecting_data2() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|tv| from_values!(u64, tv.values))
+		.map(|tv| from_row!(u64, tv.row))
 		.sum::<u64>();
 
 	assert_eq!(300, val);
@@ -403,7 +403,7 @@ fn test_intersecting_data2() {
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
-			let value = from_values!(u64, tv.values);
+			let value = from_row!(u64, tv.row);
 			if key.starts_with('a') {
 				Some(value)
 			} else {
@@ -432,7 +432,7 @@ fn test_intersecting_data3() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|tv| from_values!(u64, tv.values))
+		.map(|tv| from_row!(u64, tv.row))
 		.sum::<u64>();
 	txn1.set(&as_key!("b3"), as_values!(0u64)).unwrap();
 	assert_eq!(0, val);
@@ -443,7 +443,7 @@ fn test_intersecting_data3() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|tv| from_values!(u64, tv.values))
+		.map(|tv| from_row!(u64, tv.row))
 		.sum::<u64>();
 
 	txn2.set(&as_key!("a3"), as_values!(300u64)).unwrap();
@@ -460,7 +460,7 @@ fn test_intersecting_data3() {
 		.into_iter()
 		.filter_map(|tv| {
 			let key = from_key!(String, &tv.key);
-			let value = from_values!(u64, tv.values);
+			let value = from_row!(u64, tv.row);
 			if key.starts_with('a') {
 				Some(value)
 			} else {

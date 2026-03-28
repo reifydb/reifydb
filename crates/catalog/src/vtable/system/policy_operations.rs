@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,25 +13,25 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system policy operation information
-pub struct PolicyOperations {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemPolicyOperations {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl PolicyOperations {
+impl SystemPolicyOperations {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_policy_operations_table_def().clone(),
+			definition: SystemCatalog::get_system_policy_operations_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for PolicyOperations {
+impl BaseVTable for SystemPolicyOperations {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -75,7 +75,7 @@ impl VTable for PolicyOperations {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

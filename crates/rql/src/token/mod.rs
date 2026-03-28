@@ -269,7 +269,7 @@ pub mod tests {
 		assert_eq!(tokens[3].kind, TokenKind::Identifier);
 		assert_eq!(tokens[4].kind, TokenKind::Keyword(Keyword::From));
 		assert_eq!(tokens[5].kind, TokenKind::Identifier);
-		assert_eq!(tokens[6].kind, TokenKind::Keyword(Keyword::Where));
+		assert_eq!(tokens[6].kind, TokenKind::Identifier);
 		assert_eq!(tokens[7].kind, TokenKind::Identifier);
 		assert_eq!(tokens[8].kind, TokenKind::Operator(Operator::RightAngle));
 		assert_eq!(tokens[9].kind, TokenKind::Literal(Literal::Number));

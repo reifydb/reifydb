@@ -12,8 +12,8 @@
   --rdb-color-bg-secondary: #1F1F1F;
   --rdb-color-bg-elevated: #262626;
   --rdb-color-bg-tertiary: #151515;
-  --rdb-color-primary: #14B8A6;
-  --rdb-color-primary-hover: #2DD4BF;
+  --rdb-color-primary: #1DE5D2;
+  --rdb-color-primary-hover: #4DEADA;
   --rdb-color-text: #E5E5E5;
   --rdb-color-secondary: #A3A3A3;
   --rdb-color-muted: #525252;
@@ -26,7 +26,7 @@
   --rdb-color-value-number: #F472B6;
   --rdb-color-value-boolean: #818CF8;
   --rdb-color-value-date: #06B6D4;
-  --rdb-color-value-uuid: #14B8A6;
+  --rdb-color-value-uuid: #1DE5D2;
 
   /* Spacing */
   --rdb-space-1: 0.25rem;
@@ -45,8 +45,8 @@
   --rdb-color-bg-secondary: #F5F5F5;
   --rdb-color-bg-elevated: #F0F0F0;
   --rdb-color-bg-tertiary: #FAFAFA;
-  --rdb-color-primary: #0D9488;
-  --rdb-color-primary-hover: #14B8A6;
+  --rdb-color-primary: #14AD9E;
+  --rdb-color-primary-hover: #1DE5D2;
   --rdb-color-text: #1A1A1A;
   --rdb-color-secondary: #525252;
   --rdb-color-muted: #9CA3AF;
@@ -58,5 +58,5 @@
   --rdb-color-value-number: #DB2777;
   --rdb-color-value-boolean: #6366F1;
   --rdb-color-value-date: #0891B2;
-  --rdb-color-value-uuid: #0D9488;
+  --rdb-color-value-uuid: #14AD9E;
 }

@@ -6,7 +6,6 @@ use std::sync::Arc;
 use reifydb_core::{
 	error::diagnostic::catalog::{dictionary_not_found, namespace_not_found},
 	interface::catalog::policy::PolicyTargetType,
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertDictionaryNode;
@@ -18,6 +17,7 @@ use reifydb_type::{
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type},
 };
 
+use super::returning::evaluate_returning;
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -36,9 +36,7 @@ pub(crate) fn insert_dictionary<'a>(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,
-	stack: &mut SymbolTable,
-	identity: IdentityId,
-	testing: &mut Option<TestingContext>,
+	symbols: &mut SymbolTable,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 
@@ -58,9 +56,8 @@ pub(crate) fn insert_dictionary<'a>(
 		source: None,
 		batch_size: 1024,
 		params: Params::None,
-		stack: stack.clone(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
@@ -75,9 +72,8 @@ pub(crate) fn insert_dictionary<'a>(
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		PolicyEvaluator::new(services, stack).enforce_write_policies(
+		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
-			identity,
 			namespace_name,
 			dictionary_name,
 			"insert",
@@ -118,15 +114,20 @@ pub(crate) fn insert_dictionary<'a>(
 				DictionaryEntryId::U16(v) => Value::Uint16(v),
 			};
 
-			if let Some(log) = testing.as_mut() {
-				let new = Columns::single_row([("value", coerced_value.clone())]);
-				let key = format!("dictionaries::{}::{}", namespace.name(), dictionary.name);
-				log.record_insert(key, new);
-			}
-
 			ids.push(id_value);
 			values.push(coerced_value);
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against inserted rows
+	if let Some(returning_exprs) = &plan.returning {
+		if ids.is_empty() {
+			return evaluate_returning(services, symbols, returning_exprs, Columns::empty());
+		}
+		let id_column = build_id_column(&ids, dictionary.id_type)?;
+		let value_column = build_value_column(&values, dictionary.value_type)?;
+		let columns = Columns::new(vec![id_column, value_column]);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	// Return result with inserted entries

@@ -144,7 +144,7 @@
 //! [wrapping]: struct.Specification.html#structfield.wrap
 
 #![no_std]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -1256,14 +1256,45 @@ impl Encoding {
     ///
     /// See [`encode_mut`] for when to use it.
     ///
+    /// # Panics
+    ///
+    /// May panic if `len` is greater than `usize::MAX / 512`:
+    /// - `len <= 8_388_607` when `target_pointer_width = "32"`
+    /// - `len <= 36028_797018_963967` when `target_pointer_width = "64"`
+    ///
+    /// If you need to encode an input of length greater than this limit (possibly of infinite
+    /// length), then you must chunk your input, encode each chunk, and concatenate to obtain the
+    /// output. The length of each input chunk must be a multiple of [`encode_align`].
+    ///
+    /// Note that this function only _may_ panic in those cases. The function may also return the
+    /// correct value in some cases depending on the implementation. In other words, those limits
+    /// are the guarantee below which the function will not panic, and not the guarantee above which
+    /// the function will panic.
+    ///
+    /// [`encode_align`]: struct.Encoding.html#method.encode_align
     /// [`encode_mut`]: struct.Encoding.html#method.encode_mut
     #[must_use]
     pub fn encode_len(&self, len: usize) -> usize {
+        assert!(len <= usize::MAX / 512);
         dispatch! {
             let bit: usize = self.bit();
             let pad: Option<u8> = self.pad();
             let wrap: Option<(usize, &[u8])> = self.wrap();
             encode_wrap_len(bit, pad, wrap, len)
+        }
+    }
+
+    /// Returns the minimum alignment when chunking a long input
+    ///
+    /// See [`encode_len`] for context.
+    ///
+    /// [`encode_len`]: struct.Encoding.html#method.encode_len
+    #[must_use]
+    pub fn encode_align(&self) -> usize {
+        let bit = self.bit();
+        match self.wrap() {
+            None => enc(bit),
+            Some((col, _)) => col * bit / 8,
         }
     }
 
@@ -1433,6 +1464,27 @@ impl Encoding {
     /// See [`decode_mut`] for when to use it. In particular, the actual decoded length might be
     /// smaller if the actual input contains padding or ignored characters.
     ///
+    /// # Panics
+    ///
+    /// May panic if `len` is greater than `usize::MAX / 8`:
+    /// - `len <= 536_870_911` when `target_pointer_width = "32"`
+    /// - `len <= 2_305843_009213_693951` when `target_pointer_width = "64"`
+    ///
+    /// If you need to decode an input of length greater than this limit (possibly of infinite
+    /// length), then you must decode your input chunk by chunk with [`decode_mut`], making sure
+    /// that you take into account how many bytes have been read from the input and how many bytes
+    /// have been written to the output:
+    /// - `Ok(written)` means all bytes have been read and `written` bytes have been written
+    /// - `Err(DecodePartial { error, .. })` means an error occurred if `error.kind !=
+    ///   DecodeKind::Length` or this was the last input chunk
+    /// - `Err(DecodePartial { read, written, .. })` means that `read` bytes have been read and
+    ///   `written` bytes written (the error can be ignored)
+    ///
+    /// Note that this function only _may_ panic in those cases. The function may also return the
+    /// correct value in some cases depending on the implementation. In other words, those limits
+    /// are the guarantee below which the function will not panic, and not the guarantee above which
+    /// the function will panic.
+    ///
     /// # Errors
     ///
     /// Returns an error if `len` is invalid. The error kind is [`Length`] and the [position] is the
@@ -1442,6 +1494,7 @@ impl Encoding {
     /// [`Length`]: enum.DecodeKind.html#variant.Length
     /// [position]: struct.DecodeError.html#structfield.position
     pub fn decode_len(&self, len: usize) -> Result<usize, DecodeError> {
+        assert!(len <= usize::MAX / 8);
         let (ilen, olen) = dispatch! {
             let bit: usize = self.bit();
             let pad: bool = self.pad().is_some();

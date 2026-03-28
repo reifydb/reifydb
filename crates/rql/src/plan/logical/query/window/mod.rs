@@ -4,62 +4,53 @@
 use std::time::Duration;
 
 use reifydb_core::{
-	common::{WindowSize, WindowSlide, WindowTimeMode, WindowType},
+	common::{WindowKind, WindowSize},
 	internal_error,
 };
+use reifydb_type::fragment::Fragment;
 
 use crate::{
 	Result,
 	ast::ast::{
 		Ast,
 		Ast::Literal,
-		AstLiteral,
 		AstLiteral::{Number, Text},
-		AstWindow, AstWindowConfig,
+		AstWindow, AstWindowConfig, AstWindowKind,
 	},
 	diagnostic::AstError,
 	expression::{Expression, ExpressionCompiler},
 	plan::logical::{Compiler, LogicalPlan},
 };
 
-pub mod sliding;
-pub mod tumbling;
+/// Raw parsed config values from WITH clause (before constructing WindowKind)
+#[derive(Debug, Default)]
+struct ParsedConfig {
+	pub interval: Option<Duration>,
+	pub count: Option<u64>,
+	pub slide_duration: Option<Duration>,
+	pub slide_count: Option<u64>,
+	pub gap: Option<Duration>,
+	pub ts: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct WindowNode {
-	pub window_type: WindowType,
-	pub size: WindowSize,
-	pub slide: Option<WindowSlide>,
+	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub min_events: usize,
-	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<Duration>,
+	pub ts: Option<String>,
 	pub rql: String,
-}
-
-/// Configuration parameters parsed from WITH clause
-#[derive(Debug, Default)]
-pub struct WindowConfig {
-	pub window_type: Option<WindowType>,
-	pub size: Option<WindowSize>,
-	pub slide: Option<WindowSlide>,
-	pub timestamp_column: Option<String>,
-	pub min_events: Option<usize>,
-	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<Duration>,
-	pub is_rolling: bool,
 }
 
 impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_window(&self, ast: AstWindow<'bump>) -> Result<LogicalPlan<'bump>> {
 		let rql = ast.rql.to_string();
-		let mut config = WindowConfig::default();
+		let mut parsed = ParsedConfig::default();
 		let mut group_by = Vec::new();
 
 		// Parse configuration parameters
 		for config_item in &ast.config {
-			Self::parse_config_item(config_item, &mut config)?;
+			Self::parse_config_item(config_item, &mut parsed)?;
 		}
 
 		// Compile group by expressions from AST
@@ -75,29 +66,80 @@ impl<'bump> Compiler<'bump> {
 			aggregations.push(agg_expr);
 		}
 
-		// Determine window type based on configuration
-		let window_node = if config.is_rolling {
-			// Rolling window - set slide to Rolling variant
-			let mut rolling_config = config;
-			rolling_config.slide = Some(WindowSlide::Rolling);
-			sliding::create_sliding_window(rolling_config, group_by, aggregations, rql)?
-		} else if config.slide.is_some() {
-			// Sliding window
-			sliding::create_sliding_window(config, group_by, aggregations, rql)?
-		} else {
-			// Tumbling window
-			tumbling::create_tumbling_window(config, group_by, aggregations, rql)?
+		// Determine WindowKind from explicit kind keyword
+		let kind = match ast.kind {
+			AstWindowKind::Tumbling => {
+				let size = Self::build_measure(&parsed)?;
+				WindowKind::Tumbling {
+					size,
+				}
+			}
+			AstWindowKind::Sliding => {
+				let size = Self::build_measure(&parsed)?;
+				let slide = if let Some(d) = parsed.slide_duration {
+					WindowSize::Duration(d)
+				} else if let Some(c) = parsed.slide_count {
+					WindowSize::Count(c)
+				} else {
+					return Err(AstError::UnexpectedToken {
+						expected: "slide parameter is required for sliding windows".to_string(),
+						fragment: Fragment::None,
+					}
+					.into());
+				};
+				WindowKind::Sliding {
+					size,
+					slide,
+				}
+			}
+			AstWindowKind::Rolling => {
+				let size = Self::build_measure(&parsed)?;
+				WindowKind::Rolling {
+					size,
+				}
+			}
+			AstWindowKind::Session => {
+				let gap = parsed.gap.ok_or_else(|| AstError::UnexpectedToken {
+					expected: "gap parameter is required for session windows".to_string(),
+					fragment: Fragment::None,
+				})?;
+				WindowKind::Session {
+					gap,
+				}
+			}
+		};
+
+		let window_node = WindowNode {
+			kind,
+			group_by,
+			aggregations,
+			ts: parsed.ts,
+			rql,
 		};
 
 		Ok(LogicalPlan::Window(window_node))
 	}
 
-	fn parse_config_item(config_item: &AstWindowConfig, config: &mut WindowConfig) -> Result<()> {
+	/// Build a WindowSize from parsed config (interval or count)
+	fn build_measure(parsed: &ParsedConfig) -> Result<WindowSize> {
+		if let Some(d) = parsed.interval {
+			Ok(WindowSize::Duration(d))
+		} else if let Some(c) = parsed.count {
+			Ok(WindowSize::Count(c))
+		} else {
+			Err(AstError::UnexpectedToken {
+				expected: "interval or count must be specified".to_string(),
+				fragment: Fragment::None,
+			}
+			.into())
+		}
+	}
+
+	fn parse_config_item(config_item: &AstWindowConfig, config: &mut ParsedConfig) -> Result<()> {
 		match config_item.key.text() {
-			"interval" => {
-				config.window_type = Some(WindowType::Time(WindowTimeMode::Processing));
+			"interval" | "duration" => {
 				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.size = Some(WindowSize::Duration(Self::parse_duration(&duration_str)?));
+					config.interval = Some(Self::parse_duration(&duration_str)?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -107,9 +149,8 @@ impl<'bump> Compiler<'bump> {
 				}
 			}
 			"count" => {
-				config.window_type = Some(WindowType::Count);
 				if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
-					config.size = Some(WindowSize::Count(count_val as u64));
+					config.count = Some(count_val as u64);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "number".to_string(),
@@ -120,10 +161,9 @@ impl<'bump> Compiler<'bump> {
 			}
 			"slide" => {
 				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.slide =
-						Some(WindowSlide::Duration(Self::parse_duration(&duration_str)?));
+					config.slide_duration = Some(Self::parse_duration(&duration_str)?);
 				} else if let Some(count_val) = Self::extract_literal_number(&config_item.value) {
-					config.slide = Some(WindowSlide::Count(count_val as u64));
+					config.slide_count = Some(count_val as u64);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string or number".to_string(),
@@ -132,61 +172,9 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
-			"timestamp_column" => {
-				if let Some(column_name) = Self::extract_literal_string(&config_item.value) {
-					config.timestamp_column = Some(column_name.clone());
-					// Update window_type to use EventTime mode if timestamp_column is specified
-					if let Some(WindowType::Time(_)) = config.window_type {
-						config.window_type =
-							Some(WindowType::Time(WindowTimeMode::EventTime(column_name)));
-					}
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "column name string".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
-			}
-			"min_events" => {
-				if let Some(min_events_val) = Self::extract_literal_number(&config_item.value) {
-					if min_events_val < 1 {
-						return Err(AstError::UnexpectedToken {
-							expected: "min_events must be >= 1".to_string(),
-							fragment: config_item.value.token().fragment.to_owned(),
-						}
-						.into());
-					}
-					config.min_events = Some(min_events_val as usize);
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "number".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
-			}
-			"max_window_count" => {
-				if let Some(max_window_count_val) = Self::extract_literal_number(&config_item.value) {
-					if max_window_count_val < 1 {
-						return Err(AstError::UnexpectedToken {
-							expected: "max_window_count must be >= 1".to_string(),
-							fragment: config_item.value.token().fragment.to_owned(),
-						}
-						.into());
-					}
-					config.max_window_count = Some(max_window_count_val as usize);
-				} else {
-					return Err(AstError::UnexpectedToken {
-						expected: "number".to_string(),
-						fragment: config_item.value.token().fragment.to_owned(),
-					}
-					.into());
-				}
-			}
-			"max_window_age" => {
+			"gap" => {
 				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
-					config.max_window_age = Some(Self::parse_duration(&duration_str)?);
+					config.gap = Some(Self::parse_duration(&duration_str)?);
 				} else {
 					return Err(AstError::UnexpectedToken {
 						expected: "duration string".to_string(),
@@ -195,12 +183,12 @@ impl<'bump> Compiler<'bump> {
 					.into());
 				}
 			}
-			"rolling" => {
-				if let Some(rolling_val) = Self::extract_literal_boolean(&config_item.value) {
-					config.is_rolling = rolling_val;
+			"ts" => {
+				if let Some(ts_str) = Self::extract_literal_string(&config_item.value) {
+					config.ts = Some(ts_str);
 				} else {
 					return Err(AstError::UnexpectedToken {
-						expected: "boolean value".to_string(),
+						expected: "column name string".to_string(),
 						fragment: config_item.value.token().fragment.to_owned(),
 					}
 					.into());
@@ -208,19 +196,18 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				return Err(AstError::UnexpectedToken {
-					expected: "interval, count, slide, timestamp_column, min_events, max_window_count, max_window_age, or rolling".to_string(),
+					expected: "interval, count, slide, or gap".to_string(),
 					fragment: config_item.key.token.fragment.to_owned(),
-				}.into());
+				}
+				.into());
 			}
 		}
 		Ok(())
 	}
 
 	pub fn parse_duration(duration_str: &str) -> Result<Duration> {
-		// Parse duration strings like "5m", "1h", "30s", "100ms"
 		let duration_str = duration_str.trim_matches('"');
 
-		// Handle milliseconds suffix "ms"
 		if duration_str.ends_with("ms") {
 			let number_part = &duration_str[..duration_str.len() - 2];
 			let number: u64 =
@@ -228,7 +215,6 @@ impl<'bump> Compiler<'bump> {
 			return Ok(Duration::from_millis(number));
 		}
 
-		// Handle single character suffixes
 		if let Some(suffix) = duration_str.chars().last() {
 			let number_part = &duration_str[..duration_str.len() - 1];
 			let number: u64 =
@@ -266,22 +252,6 @@ impl<'bump> Compiler<'bump> {
 		if let Literal(literal) = ast {
 			if let Number(number) = literal {
 				number.0.fragment.text().parse().ok()
-			} else {
-				None
-			}
-		} else {
-			None
-		}
-	}
-
-	pub fn extract_literal_boolean(ast: &Ast) -> Option<bool> {
-		if let Literal(literal) = ast {
-			if let AstLiteral::Boolean(boolean) = literal {
-				match boolean.0.fragment.text() {
-					"true" => Some(true),
-					"false" => Some(false),
-					_ => None,
-				}
 			} else {
 				None
 			}

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, schema::RowSchema},
 	interface::change::{Change, Diff},
 	row::Row,
 	value::column::columns::Columns,
@@ -275,7 +275,7 @@ impl<'a> StateAssertion<'a> {
 	}
 
 	/// Assert a key has specific values
-	pub fn key_has_values(&self, key: &EncodedKey, expected: &[Value], schema: &Schema) -> &Self {
+	pub fn key_has_values(&self, key: &EncodedKey, expected: &[Value], schema: &RowSchema) -> &Self {
 		self.store.assert_value(key, expected, schema);
 		self
 	}
@@ -336,7 +336,7 @@ impl Assertable for TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::schema::Schema;
+	use reifydb_core::encoded::schema::RowSchema;
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
@@ -386,7 +386,7 @@ pub mod tests {
 	#[test]
 	fn test_state_assertions() {
 		let mut store = TestStateStore::new();
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");
 

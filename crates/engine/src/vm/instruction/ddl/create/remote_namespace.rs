@@ -36,6 +36,7 @@ pub(crate) fn create_remote_namespace(
 					local_name: plan.segments[i].text().to_string(),
 					parent_id,
 					grpc: None,
+					token: None,
 				},
 			)?;
 			txn.track_namespace_created(result.clone())?;
@@ -54,6 +55,7 @@ pub(crate) fn create_remote_namespace(
 	}
 
 	let grpc_text = plan.grpc.text().to_string();
+	let token_text = plan.token.as_ref().map(|t| t.text().to_string());
 	let result = services.catalog.create_namespace(
 		txn,
 		NamespaceToCreate {
@@ -62,6 +64,7 @@ pub(crate) fn create_remote_namespace(
 			local_name: plan.segments.last().unwrap().text().to_string(),
 			parent_id,
 			grpc: Some(grpc_text),
+			token: token_text,
 		},
 	)?;
 	txn.track_namespace_created(result.clone())?;
@@ -81,7 +84,7 @@ pub mod tests {
 	};
 
 	use crate::{
-		test_utils::create_test_admin_transaction,
+		test_harness::create_test_admin_transaction,
 		vm::{Admin, Query, executor::Executor},
 	};
 
@@ -89,7 +92,6 @@ pub mod tests {
 	fn test_create_remote_namespace() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		let frames = instance
 			.admin(
@@ -97,7 +99,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -111,7 +112,6 @@ pub mod tests {
 	fn test_create_remote_namespace_if_not_exists() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// First creation
 		instance.admin(
@@ -119,7 +119,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -131,7 +130,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE REMOTE NAMESPACE IF NOT EXISTS remote_ns WITH { grpc: 'localhost:50051' }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -152,21 +150,20 @@ pub mod tests {
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'http://localhost:50051' }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
 		txn.commit().unwrap();
 
 		// Query compiles to RemoteScan; without a RemoteRegistry it returns empty frames
-		let mut qt = QueryTransaction::new(txn.multi.clone().begin_query().unwrap(), txn.single.clone());
+		let mut qt =
+			QueryTransaction::new(txn.multi.clone().begin_query().unwrap(), txn.single.clone(), identity);
 		let frames = instance
 			.query(
 				&mut qt,
 				Query {
 					rql: "FROM remote_ns::some_table",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();
@@ -179,7 +176,6 @@ pub mod tests {
 	fn test_create_remote_namespace_nested() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		let frames = instance
 			.admin(
@@ -187,7 +183,6 @@ pub mod tests {
 				Admin {
 					rql: "CREATE REMOTE NAMESPACE blockchain::protocol WITH { grpc: '10.0.0.5:50051' }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();

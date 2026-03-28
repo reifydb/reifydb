@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "tokio-macros"
-version = "2.6.0"
+version = "2.6.1"
 authors = ["Tokio Contributors <team@tokio.rs>"]
 build = false
 autolib = false
@@ -52,7 +52,10 @@ features = ["full"]
 
 [dev-dependencies.tokio]
 version = "1.0.0"
-features = ["full"]
+features = [
+    "full",
+    "test-util",
+]
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

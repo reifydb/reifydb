@@ -7,7 +7,7 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_type::value::blob::Blob;
+use reifydb_type::value::{blob::Blob, duration::Duration};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 use crate::interface::catalog::id::NamespaceId;
@@ -255,17 +255,18 @@ impl FlowStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FlowDef {
+pub struct Flow {
 	pub id: FlowId,
 	pub namespace: NamespaceId,
 	pub name: String,
 	pub status: FlowStatus,
+	pub tick: Option<Duration>,
 }
 
 /// Catalog definition for a flow node
 /// The node type and its data are stored as a type discriminator and serialized blob
 #[derive(Debug, Clone, PartialEq)]
-pub struct FlowNodeDef {
+pub struct FlowNode {
 	pub id: FlowNodeId,
 	pub flow: FlowId,
 	pub node_type: u8, // FlowNodeType discriminator
@@ -274,7 +275,7 @@ pub struct FlowNodeDef {
 
 /// Catalog definition for a flow edge
 #[derive(Debug, Clone, PartialEq)]
-pub struct FlowEdgeDef {
+pub struct FlowEdge {
 	pub id: FlowEdgeId,
 	pub flow: FlowId,
 	pub source: FlowNodeId,

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import {useState} from 'react'
 import {Plus, Database, MoreVertical, Edit, Trash} from 'lucide-react'
 import {Button} from '@/components/ui/button'

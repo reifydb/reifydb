@@ -3,6 +3,6 @@
 
 pub mod encoded;
 pub mod get;
-pub mod layout;
 pub mod range;
+pub mod schema;
 pub mod set;

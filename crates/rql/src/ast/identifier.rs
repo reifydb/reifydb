@@ -13,13 +13,13 @@ use crate::{
 /// Represents a source identifier that hasn't been resolved to a specific type yet
 /// Used in AST parsing before we know whether it's a table, view, or ring buffer
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnresolvedPrimitiveIdentifier<'bump> {
+pub struct UnresolvedSchemaIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
-impl<'bump> UnresolvedPrimitiveIdentifier<'bump> {
+impl<'bump> UnresolvedSchemaIdentifier<'bump> {
 	pub fn new(namespace: Vec<BumpFragment<'bump>>, name: BumpFragment<'bump>) -> Self {
 		Self {
 			namespace,
@@ -338,11 +338,11 @@ impl<'bump> MaybeQualifiedIndexIdentifier<'bump> {
 
 /// How a maybe-qualified column is referenced
 #[derive(Debug, Clone, PartialEq)]
-pub enum MaybeQualifiedColumnPrimitive<'bump> {
-	/// Qualified by primitive name (table/view) - namespace still optional
-	Primitive {
+pub enum MaybeQualifiedColumnSchema<'bump> {
+	/// Qualified by schema name (table/view) - namespace still optional
+	Qualified {
 		namespace: Vec<BumpFragment<'bump>>,
-		primitive: BumpFragment<'bump>,
+		name: BumpFragment<'bump>,
 	},
 	/// Qualified by alias
 	Alias(BumpFragment<'bump>),
@@ -350,30 +350,30 @@ pub enum MaybeQualifiedColumnPrimitive<'bump> {
 	Unqualified,
 }
 
-/// Maybe-qualified column identifier - primitive qualification is optional
+/// Maybe-qualified column identifier - schema qualification is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedColumnIdentifier<'bump> {
-	pub primitive: MaybeQualifiedColumnPrimitive<'bump>,
+	pub schema: MaybeQualifiedColumnSchema<'bump>,
 	pub name: BumpFragment<'bump>,
 }
 
 impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 	pub fn unqualified(name: BumpFragment<'bump>) -> Self {
 		Self {
-			primitive: MaybeQualifiedColumnPrimitive::Unqualified,
+			schema: MaybeQualifiedColumnSchema::Unqualified,
 			name,
 		}
 	}
 
-	pub fn with_primitive(
+	pub fn with_schema(
 		namespace: Vec<BumpFragment<'bump>>,
-		primitive: BumpFragment<'bump>,
+		schema: BumpFragment<'bump>,
 		name: BumpFragment<'bump>,
 	) -> Self {
 		Self {
-			primitive: MaybeQualifiedColumnPrimitive::Primitive {
+			schema: MaybeQualifiedColumnSchema::Qualified {
 				namespace,
-				primitive,
+				name: schema,
 			},
 			name,
 		}
@@ -381,7 +381,7 @@ impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 
 	pub fn with_alias(alias: BumpFragment<'bump>, name: BumpFragment<'bump>) -> Self {
 		Self {
-			primitive: MaybeQualifiedColumnPrimitive::Alias(alias),
+			schema: MaybeQualifiedColumnSchema::Alias(alias),
 			name,
 		}
 	}
@@ -443,6 +443,70 @@ pub struct MaybeQualifiedTestIdentifier<'bump> {
 }
 
 impl<'bump> MaybeQualifiedTestIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}
+
+/// Generic maybe-qualified identifier - namespace is optional.
+/// Used for targets/sources in CREATE SOURCE/SINK where the entity type is not known at parse time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}
+
+/// Maybe-qualified source identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedSourceIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedSourceIdentifier<'bump> {
+	pub fn new(name: BumpFragment<'bump>) -> Self {
+		Self {
+			namespace: Vec::new(),
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+		self.namespace = namespace;
+		self
+	}
+}
+
+/// Maybe-qualified sink identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedSinkIdentifier<'bump> {
+	pub namespace: Vec<BumpFragment<'bump>>,
+	pub name: BumpFragment<'bump>,
+}
+
+impl<'bump> MaybeQualifiedSinkIdentifier<'bump> {
 	pub fn new(name: BumpFragment<'bump>) -> Self {
 		Self {
 			namespace: Vec::new(),

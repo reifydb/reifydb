@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::{ColumnId, NamespaceId},
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::vtable::FLOW_NODE_TYPES;
 
 /// Returns the static definition for the system.flow_node_types virtual table
 /// This table exposes information about all FlowNodeType variants
-pub fn flow_node_types() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn flow_node_types() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: FLOW_NODE_TYPES,
 			namespace: NamespaceId::SYSTEM,
 			name: "flow_node_types".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -32,7 +32,7 @@ pub fn flow_node_types() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(2),
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),

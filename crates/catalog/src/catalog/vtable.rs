@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::catalog::{id::NamespaceId, vtable::VTableDef};
+use reifydb_core::interface::catalog::{id::NamespaceId, vtable::VTable};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::catalog::Catalog;
@@ -16,13 +16,13 @@ impl Catalog {
 		_txn: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: &str,
-	) -> Option<Arc<VTableDef>> {
+	) -> Option<Arc<VTable>> {
 		self.materialized.find_vtable_user_by_name(namespace, name)
 	}
 
 	/// List all user-defined virtual tables.
 	/// VTables are not transactionally modified, so this just delegates to the materialized catalog.
-	pub fn list_user_vtables(&self) -> Vec<Arc<VTableDef>> {
+	pub fn list_user_vtables(&self) -> Vec<Arc<VTable>> {
 		self.materialized.list_vtable_user_all()
 	}
 }

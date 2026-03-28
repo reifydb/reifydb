@@ -12,12 +12,12 @@ use crate::{
 		ast::{Ast, AstFrom, AstInsert},
 		identifier::{
 			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedTableIdentifier, UnresolvedPrimitiveIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedTableIdentifier, UnresolvedSchemaIdentifier,
 		},
 	},
 	bump::BumpBox,
 	error::{IdentifierError, RqlError},
-	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
+	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
 		Compiler, InlineDataNode, InsertDictionaryNode, InsertRingBufferNode, InsertSeriesNode,
 		InsertTableNode, LogicalPlan,
@@ -32,6 +32,16 @@ impl<'bump> Compiler<'bump> {
 	) -> Result<LogicalPlan<'bump>> {
 		let unresolved_target = ast.target;
 		let source_ast = BumpBox::into_inner(ast.source);
+
+		let returning = if let Some(returning_asts) = ast.returning {
+			let mut exprs = Vec::with_capacity(returning_asts.len());
+			for ast_node in returning_asts {
+				exprs.push(ExpressionCompiler::compile(ast_node)?);
+			}
+			Some(exprs)
+		} else {
+			None
+		};
 
 		let source = match source_ast {
 			Ast::From(AstFrom::Inline {
@@ -50,13 +60,14 @@ impl<'bump> Compiler<'bump> {
 			other => self.compile_single(other, tx)?,
 		};
 
-		self.build_insert_node(unresolved_target, source, tx)
+		self.build_insert_node(unresolved_target, source, returning, tx)
 	}
 
 	fn build_insert_node(
 		&self,
-		unresolved_target: UnresolvedPrimitiveIdentifier<'bump>,
+		unresolved_target: UnresolvedSchemaIdentifier<'bump>,
 		source: LogicalPlan<'bump>,
+		returning: Option<Vec<Expression>>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
 		let target_name = unresolved_target.name.text();
@@ -71,6 +82,7 @@ impl<'bump> Compiler<'bump> {
 					namespace: ns_segments.join("::"),
 					name: target_name.to_string(),
 					address: address.to_string(),
+					token: ns.token().map(|s| s.to_string()),
 					fragment: name.to_owned(),
 				}
 				.into());
@@ -84,6 +96,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::InsertTable(InsertTableNode {
 				target,
 				source: BumpBox::new_in(source, self.bump),
+				returning,
 			}));
 		};
 
@@ -95,6 +108,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::InsertRingBuffer(InsertRingBufferNode {
 				target,
 				source: BumpBox::new_in(source, self.bump),
+				returning,
 			}));
 		}
 
@@ -106,6 +120,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::InsertDictionary(InsertDictionaryNode {
 				target,
 				source: BumpBox::new_in(source, self.bump),
+				returning,
 			}));
 		}
 
@@ -117,6 +132,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::InsertSeries(InsertSeriesNode {
 				target,
 				source: BumpBox::new_in(source, self.bump),
+				returning,
 			}));
 		}
 
@@ -127,12 +143,13 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::InsertTable(InsertTableNode {
 			target,
 			source: BumpBox::new_in(source, self.bump),
+			returning,
 		}))
 	}
 
 	fn compile_positional_tuples(
 		&self,
-		target: &UnresolvedPrimitiveIdentifier<'bump>,
+		target: &UnresolvedSchemaIdentifier<'bump>,
 		nodes: Vec<Ast<'bump>>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {

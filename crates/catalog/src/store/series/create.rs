@@ -6,11 +6,11 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{SeriesDef, TimestampPrecision},
+		series::{Series, SeriesKey},
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
-		series::{SeriesKey, SeriesMetadataKey},
+		series::{SeriesKey as SeriesStorageKey, SeriesMetadataKey},
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -45,11 +45,11 @@ pub struct SeriesToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 }
 
 impl CatalogStore {
-	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<SeriesDef> {
+	pub(crate) fn create_series(txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(series) = CatalogStore::find_series_by_name(
@@ -89,10 +89,21 @@ impl CatalogStore {
 		series::SCHEMA.set_u64(&mut row, series::NAMESPACE, namespace);
 		series::SCHEMA.set_utf8(&mut row, series::NAME, to_create.name.text());
 		series::SCHEMA.set_u64(&mut row, series::TAG, to_create.tag.map(|t| *t).unwrap_or(0));
-		series::SCHEMA.set_u8(&mut row, series::PRECISION, to_create.precision as u8);
+		series::SCHEMA.set_utf8(&mut row, series::KEY_COLUMN, to_create.key.column());
+		let (key_kind_u8, precision_u8) = match &to_create.key {
+			SeriesKey::DateTime {
+				precision,
+				..
+			} => (0u8, *precision as u8),
+			SeriesKey::Integer {
+				..
+			} => (1u8, 0u8),
+		};
+		series::SCHEMA.set_u8(&mut row, series::KEY_KIND, key_kind_u8);
+		series::SCHEMA.set_u8(&mut row, series::PRECISION, precision_u8);
 		series::SCHEMA.set_u64(&mut row, series::PRIMARY_KEY, 0u64);
 
-		txn.set(&SeriesKey::encoded(series_id), row)?;
+		txn.set(&SeriesStorageKey::encoded(series_id), row)?;
 
 		Ok(())
 	}
@@ -124,7 +135,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
-					primitive_name: String::new(),
+					schema_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint.clone(),
 					properties: col.properties.clone(),
@@ -142,8 +153,8 @@ impl CatalogStore {
 		let mut row = series_metadata::SCHEMA.allocate();
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ID, series_id);
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ROW_COUNT, 0u64);
-		series_metadata::SCHEMA.set_i64(&mut row, series_metadata::OLDEST_TIMESTAMP, 0i64);
-		series_metadata::SCHEMA.set_i64(&mut row, series_metadata::NEWEST_TIMESTAMP, 0i64);
+		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::OLDEST_KEY, 0u64);
+		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::NEWEST_KEY, 0u64);
 		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
 
 		txn.set(&SeriesMetadataKey::encoded(series_id), row)?;

@@ -7,21 +7,21 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::primitive::drop::drop_primitive_metadata};
+use crate::{CatalogStore, Result, store::schema::drop::drop_schema_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
 		// First, find the view to get its namespace and primary key
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
 			// Remove the namespace-view link (secondary index)
-			txn.remove(&NamespaceViewKey::encoded(view_def.namespace, view))?;
-			view_def.primary_key.as_ref().map(|pk| pk.id)
+			txn.remove(&NamespaceViewKey::encoded(view_def.namespace(), view))?;
+			view_def.primary_key().map(|pk| pk.id)
 		} else {
 			None
 		};
 
 		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
-		drop_primitive_metadata(txn, view.into(), pk_id)?;
+		drop_schema_metadata(txn, view.into(), pk_id)?;
 
 		// Remove the view metadata
 		txn.remove(&ViewKey::encoded(view))?;
@@ -33,7 +33,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::ViewId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
@@ -60,7 +60,7 @@ pub mod tests {
 		assert!(found.is_some());
 
 		// Drop it
-		CatalogStore::drop_view(&mut txn, created.id).unwrap();
+		CatalogStore::drop_view(&mut txn, created.id()).unwrap();
 
 		// Verify it's gone
 		let found = CatalogStore::find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "test_view")
@@ -103,14 +103,14 @@ pub mod tests {
 		);
 
 		// Verify columns exist before drop
-		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Drop the view
-		CatalogStore::drop_view(&mut txn, view.id).unwrap();
+		CatalogStore::drop_view(&mut txn, view.id()).unwrap();
 
 		// Verify columns are cleaned up
-		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 		assert!(columns.is_empty());
 
 		// Verify view itself is gone

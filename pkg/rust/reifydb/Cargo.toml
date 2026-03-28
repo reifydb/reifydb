@@ -9,11 +9,12 @@ description = "A modern, real-time database with streaming and analytical capabi
 
 [dependencies]
 reifydb-auth = { workspace = true }
-reifydb-function = { workspace = true }
+reifydb-routine = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-extension = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-store-multi = { workspace = true }

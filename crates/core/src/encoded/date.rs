@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::{date::Date, r#type::Type};
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
-	pub fn set_date(&self, row: &mut EncodedValues, index: usize, value: Date) {
+impl RowSchema {
+	pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
@@ -21,7 +21,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_date(&self, row: &EncodedValues, index: usize) -> Date {
+	pub fn get_date(&self, row: &EncodedRow, index: usize) -> Date {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Date);
@@ -33,7 +33,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_date(&self, row: &EncodedValues, index: usize) -> Option<Date> {
+	pub fn try_get_date(&self, row: &EncodedRow, index: usize) -> Option<Date> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Date {
 			Some(self.get_date(row, index))
 		} else {
@@ -46,11 +46,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::{date::Date, r#type::Type};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_date() {
-		let schema = Schema::testing(&[Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date]);
 		let mut row = schema.allocate();
 
 		let value = Date::new(2021, 1, 1).unwrap();
@@ -60,7 +60,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_date() {
-		let schema = Schema::testing(&[Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_date(&row, 0), None);
@@ -72,7 +72,7 @@ pub mod tests {
 
 	#[test]
 	fn test_epoch() {
-		let schema = Schema::testing(&[Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date]);
 		let mut row = schema.allocate();
 
 		let epoch = Date::default(); // Unix epoch
@@ -82,7 +82,7 @@ pub mod tests {
 
 	#[test]
 	fn test_various_dates() {
-		let schema = Schema::testing(&[Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date]);
 
 		let test_dates = [
 			Date::new(1970, 1, 1).unwrap(),   // Unix epoch
@@ -100,7 +100,7 @@ pub mod tests {
 
 	#[test]
 	fn test_boundaries() {
-		let schema = Schema::testing(&[Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date]);
 
 		// Test various boundary dates that should work
 		let boundary_dates = [
@@ -119,7 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Date, Type::Boolean, Type::Date, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Date, Type::Boolean, Type::Date, Type::Int4]);
 		let mut row = schema.allocate();
 
 		let date1 = Date::new(2025, 6, 15).unwrap();
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Date, Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date, Type::Date]);
 		let mut row = schema.allocate();
 
 		let date = Date::new(2025, 7, 4).unwrap();
@@ -153,7 +153,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let schema = Schema::testing(&[Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date]);
 		let mut row = schema.allocate();
 
 		let original_date = Date::new(2023, 9, 15).unwrap();
@@ -168,7 +168,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_years() {
-		let schema = Schema::testing(&[Type::Date]);
+		let schema = RowSchema::testing(&[Type::Date]);
 
 		// Test leap years and century boundaries
 		let special_dates = [
@@ -189,7 +189,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_date_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

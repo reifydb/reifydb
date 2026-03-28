@@ -4,36 +4,40 @@
 pub mod config;
 pub mod dictionary;
 pub mod flow;
+pub mod granted_role;
+pub mod identity;
 pub mod namespace;
 pub mod operator_retention_policy;
 pub mod policy;
 pub mod primary_key;
-pub mod primitive_retention_policy;
 pub mod ringbuffer;
 pub mod role;
+pub mod schema_retention_policy;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
-pub mod user;
-pub mod user_role;
 pub mod view;
 
 use config::load_configs;
 use dictionary::load_dictionaries;
 use flow::load_flows;
+use granted_role::load_granted_roles;
+use identity::load_identities;
 use namespace::load_namespaces;
 use operator_retention_policy::load_operator_retention_policies;
 use policy::load_policies;
 use primary_key::load_primary_keys;
-use primitive_retention_policy::load_source_retention_policies;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
+use schema_retention_policy::load_schema_retention_policies;
+use sink::load_sinks;
+use source::load_sources;
 use subscription::load_subscriptions;
 use sumtype::load_sumtypes;
 use table::load_tables;
-use user::load_users;
-use user_role::load_user_roles;
 use view::load_views;
 
 use super::MaterializedCatalog;
@@ -47,13 +51,13 @@ impl MaterializedCatalogLoader {
 	///
 	/// This is a no-op on subsequent starts (idempotent).
 	pub fn bootstrap_missing_defaults(txn: &mut AdminTransaction, catalog: &MaterializedCatalog) -> Result<()> {
-		for config_def in catalog.system_config().list_all() {
+		for config in catalog.system_config().list_all() {
 			let existing = {
 				let mut tx = Transaction::Admin(txn);
-				CatalogStore::get_config(&mut tx, &config_def.key)?
+				CatalogStore::get_config(&mut tx, &config.key)?
 			};
 			if existing.is_none() {
-				CatalogStore::set_config(txn, &config_def.key, &config_def.default_value)?;
+				CatalogStore::set_config(txn, &config.key, &config.default_value)?;
 			}
 		}
 		Ok(())
@@ -70,7 +74,7 @@ impl MaterializedCatalogLoader {
 		load_flows(rx, catalog)?;
 		load_ringbuffers(rx, catalog)?;
 
-		load_source_retention_policies(rx, catalog)?;
+		load_schema_retention_policies(rx, catalog)?;
 		load_operator_retention_policies(rx, catalog)?;
 
 		load_dictionaries(rx, catalog)?;
@@ -78,9 +82,12 @@ impl MaterializedCatalogLoader {
 
 		load_subscriptions(rx, catalog)?;
 
-		load_users(rx, catalog)?;
+		load_sources(rx, catalog)?;
+		load_sinks(rx, catalog)?;
+
+		load_identities(rx, catalog)?;
 		load_roles(rx, catalog)?;
-		load_user_roles(rx, catalog)?;
+		load_granted_roles(rx, catalog)?;
 		load_policies(rx, catalog)?;
 
 		Ok(())

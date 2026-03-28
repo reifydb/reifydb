@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;

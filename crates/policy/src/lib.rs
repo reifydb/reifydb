@@ -10,8 +10,8 @@ pub mod evaluate;
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
-	catalog::policy::{PolicyDef, PolicyOperationDef, PolicyTargetType},
-	resolved::ResolvedPrimitive,
+	catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
+	resolved::ResolvedSchema,
 };
 use reifydb_rql::{
 	ast::parse_str,
@@ -19,7 +19,7 @@ use reifydb_rql::{
 	plan::logical::{FilterNode, LogicalPlan, PipelineNode, compile_logical},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, fragment::Fragment, value::identity::IdentityId};
+use reifydb_type::{Result, fragment::Fragment};
 
 /// Inject read policies into logical plans.
 ///
@@ -33,8 +33,8 @@ pub fn inject_read_policies<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: IdentityId,
 ) -> Result<BumpVec<'a, LogicalPlan<'a>>> {
+	let identity = tx.identity();
 	// Root bypasses all policies
 	if identity.is_privileged() {
 		return Ok(plans);
@@ -86,15 +86,15 @@ fn inject_pipeline<'a>(
 			LogicalPlan::PrimitiveScan(scan) => {
 				// Determine target type, namespace, and object name
 				let target_type = match &scan.source {
-					ResolvedPrimitive::Table(_) | ResolvedPrimitive::TableVirtual(_) => {
+					ResolvedSchema::Table(_) | ResolvedSchema::TableVirtual(_) => {
 						PolicyTargetType::Table
 					}
-					ResolvedPrimitive::View(_)
-					| ResolvedPrimitive::DeferredView(_)
-					| ResolvedPrimitive::TransactionalView(_) => PolicyTargetType::View,
-					ResolvedPrimitive::RingBuffer(_) => PolicyTargetType::RingBuffer,
-					ResolvedPrimitive::Series(_) => PolicyTargetType::Series,
-					ResolvedPrimitive::Dictionary(_) => PolicyTargetType::Dictionary,
+					ResolvedSchema::View(_)
+					| ResolvedSchema::DeferredView(_)
+					| ResolvedSchema::TransactionalView(_) => PolicyTargetType::View,
+					ResolvedSchema::RingBuffer(_) => PolicyTargetType::RingBuffer,
+					ResolvedSchema::Series(_) => PolicyTargetType::Series,
+					ResolvedSchema::Dictionary(_) => PolicyTargetType::Dictionary,
 				};
 				let target_ns = scan.source.namespace().unwrap().name().to_string();
 				let target_obj = scan.source.name().to_string();
@@ -102,7 +102,7 @@ fn inject_pipeline<'a>(
 				// Push the scan node first
 				result.push(step);
 
-				// Look up policies for this primitive
+				// Look up policies for this schema
 				let policies = catalog.list_all_policies(tx)?;
 				let mut found_policy = false;
 
@@ -160,7 +160,7 @@ fn inject_pipeline<'a>(
 }
 
 /// Check if a policy's scope matches a given target namespace and object.
-fn scope_matches(policy: &PolicyDef, target_ns: &str, target_obj: &str) -> bool {
+fn scope_matches(policy: &Policy, target_ns: &str, target_obj: &str) -> bool {
 	match (&policy.target_namespace, &policy.target_object) {
 		(None, None) => true, // Global
 		(Some(ns), None) => {
@@ -181,12 +181,12 @@ fn scope_matches(policy: &PolicyDef, target_ns: &str, target_obj: &str) -> bool 
 pub fn resolve_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: IdentityId,
 	target_namespace: &str,
 	target_object: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
-) -> Result<Vec<(PolicyDef, PolicyOperationDef)>> {
+) -> Result<Vec<(Policy, PolicyOperation)>> {
+	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(vec![]);
 	}

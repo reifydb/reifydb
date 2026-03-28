@@ -6,8 +6,6 @@ use reifydb_type::Result;
 
 use crate::interceptor::chain::InterceptorChain;
 
-// NAMESPACE POST CREATE
-/// Context for namespace post-create interceptors
 pub struct NamespacePostCreateContext<'a> {
 	pub post: &'a Namespace,
 }
@@ -78,8 +76,6 @@ where
 	ClosureNamespacePostCreateInterceptor::new(f)
 }
 
-// NAMESPACE PRE UPDATE
-/// Context for namespace pre-update interceptors
 pub struct NamespacePreUpdateContext<'a> {
 	pub pre: &'a Namespace,
 }
@@ -150,8 +146,6 @@ where
 	ClosureNamespacePreUpdateInterceptor::new(f)
 }
 
-// NAMESPACE POST UPDATE
-/// Context for namespace post-update interceptors
 pub struct NamespacePostUpdateContext<'a> {
 	pub pre: &'a Namespace,
 	pub post: &'a Namespace,
@@ -224,8 +218,6 @@ where
 	ClosureNamespacePostUpdateInterceptor::new(f)
 }
 
-// NAMESPACE PRE DELETE
-/// Context for namespace pre-delete interceptors
 pub struct NamespacePreDeleteContext<'a> {
 	pub pre: &'a Namespace,
 }

@@ -1,0 +1,13 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+(admin 'CREATE NAMESPACE test')
+
+!admin 'CREATE DEFERRED VIEW test::v { id: Int4 } AS { FROM [{ id: 1 }] }'
+---
+> Error FLOW_008
+>   Flow requires at least one source
+>
+> HELP
+>   A view flow must read from a table, view, ring buffer, or series. Inline data (FROM [...]) cannot be used as the source for a view.
+>

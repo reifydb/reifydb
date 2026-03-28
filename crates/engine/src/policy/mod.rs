@@ -18,7 +18,7 @@ use reifydb_type::{Result, params::Params, value::identity::IdentityId};
 use crate::{
 	expression::{
 		compile::compile_expression,
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::{services::Services, stack::SymbolTable},
 };
@@ -29,21 +29,20 @@ use crate::{
 /// (for variable resolution), and compiles+evaluates RQL expressions.
 pub struct PolicyEvaluator<'a> {
 	services: &'a Arc<Services>,
-	symbol_table: &'a SymbolTable,
+	symbols: &'a SymbolTable,
 }
 
 impl<'a> PolicyEvaluator<'a> {
-	pub fn new(services: &'a Arc<Services>, symbol_table: &'a SymbolTable) -> Self {
+	pub fn new(services: &'a Arc<Services>, symbols: &'a SymbolTable) -> Self {
 		Self {
 			services,
-			symbol_table,
+			symbols,
 		}
 	}
 
 	pub fn enforce_write_policies(
 		&self,
 		tx: &mut Transaction<'_>,
-		identity: IdentityId,
 		target_namespace: &str,
 		target_object: &str,
 		operation: &str,
@@ -53,7 +52,6 @@ impl<'a> PolicyEvaluator<'a> {
 		enforce_write_policies(
 			&self.services.catalog,
 			tx,
-			identity,
 			target_namespace,
 			target_object,
 			operation,
@@ -66,17 +64,15 @@ impl<'a> PolicyEvaluator<'a> {
 	pub fn enforce_session_policy(
 		&self,
 		tx: &mut Transaction<'_>,
-		identity: IdentityId,
 		session_type: &str,
 		default_deny: bool,
 	) -> Result<()> {
-		enforce_session_policy(&self.services.catalog, tx, identity, session_type, default_deny, self)
+		enforce_session_policy(&self.services.catalog, tx, session_type, default_deny, self)
 	}
 
 	pub fn enforce_identity_policy(
 		&self,
 		tx: &mut Transaction<'_>,
-		identity: IdentityId,
 		target_namespace: &str,
 		target_object: &str,
 		operation: &str,
@@ -85,7 +81,6 @@ impl<'a> PolicyEvaluator<'a> {
 		enforce_identity_policy(
 			&self.services.catalog,
 			tx,
-			identity,
 			target_namespace,
 			target_object,
 			operation,
@@ -105,23 +100,20 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 	) -> Result<bool> {
 		let compile_ctx = CompileContext {
 			functions: &self.services.functions,
-			symbol_table: self.symbol_table,
+			symbols: self.symbols,
 		};
 		let compiled = compile_expression(&compile_ctx, expr)?;
 
-		let eval_ctx = EvalContext {
-			target: None,
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &Params::None,
-			symbol_table: self.symbol_table,
-			is_aggregate_context: false,
+			symbols: self.symbols,
 			functions: &self.services.functions,
-			clock: &self.services.clock,
+			runtime_context: &self.services.runtime_context,
 			arena: None,
 			identity,
+			is_aggregate_context: false,
 		};
+		let eval_ctx = session.eval(columns.clone(), row_count);
 
 		let result = compiled.execute(&eval_ctx)?;
 

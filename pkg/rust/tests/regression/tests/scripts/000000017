@@ -1,0 +1,14 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+(admin 'CREATE NAMESPACE test')
+(admin 'CREATE SERIES test::s { ts: int8, val: int8 } WITH { key: ts }')
+(command 'INSERT test::s [{ ts: 1000, val: 42 }, { ts: 2000, val: 84 }]')
+command 'LET $x = 1000; UPDATE test::s { val: 99 } FILTER ts == $x RETURNING { ts, val }'
+---
+> +----------+--------+-------+
+> |  rownum  |   ts   |  val  |
+> +----------+--------+-------+
+> |    1     |  1000  |  99   |
+> +----------+--------+-------+
+>

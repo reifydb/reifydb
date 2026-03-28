@@ -12,7 +12,7 @@
 use std::ops::AddAssign;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::store::SingleVersionStore,
 };
 use reifydb_type::{Result, util::cowvec::CowVec};
@@ -109,14 +109,14 @@ impl<S: SingleVersionStore> CdcStatsWriter<S> {
 		let mut stats = self
 			.storage
 			.get(&storage_key)?
-			.and_then(|v| decode_cdc_stats(v.values.as_slice()))
+			.and_then(|v| decode_cdc_stats(v.row.as_slice()))
 			.unwrap_or_default();
 
 		// Modify
 		stats.record(key_bytes, value_bytes);
 
 		// Write back
-		self.storage.set(&storage_key, EncodedValues(CowVec::new(encode_cdc_stats(&stats))))
+		self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_cdc_stats(&stats))))
 	}
 
 	/// Record CDC entry drop (decrement stats).
@@ -128,11 +128,11 @@ impl<S: SingleVersionStore> CdcStatsWriter<S> {
 		let mut stats = self
 			.storage
 			.get(&storage_key)?
-			.and_then(|v| decode_cdc_stats(v.values.as_slice()))
+			.and_then(|v| decode_cdc_stats(v.row.as_slice()))
 			.unwrap_or_default();
 
 		stats.record_drop(key_bytes, value_bytes);
-		self.storage.set(&storage_key, EncodedValues(CowVec::new(encode_cdc_stats(&stats))))
+		self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_cdc_stats(&stats))))
 	}
 }
 
@@ -153,7 +153,7 @@ impl<S: SingleVersionStore> CdcStatsReader<S> {
 	/// Get stats for a specific object.
 	pub fn get(&self, id: MetricId) -> Result<Option<CdcStats>> {
 		let key = EncodedKey::new(encode_cdc_stats_key(id));
-		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.values.as_slice())))
+		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.row.as_slice())))
 	}
 
 	/// Scan all CDC stats entries.
@@ -164,7 +164,7 @@ impl<S: SingleVersionStore> CdcStatsReader<S> {
 		let mut results = Vec::new();
 		for item in batch.items {
 			if let Some(id) = decode_cdc_stats_key(item.key.as_slice()) {
-				if let Some(stats) = decode_cdc_stats(item.values.as_slice()) {
+				if let Some(stats) = decode_cdc_stats(item.row.as_slice()) {
 					results.push((id, stats));
 				}
 			}

@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::enum_variants::*, vtable::ENUM_VARIANTS};
 
 /// Returns the static definition for the system.enum_variants virtual table
 /// This table exposes variant and field information for all enum sumtypes
-pub fn enum_variants() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn enum_variants() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: ENUM_VARIANTS,
 			namespace: NamespaceId::SYSTEM,
 			name: "enum_variants".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ID,
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn enum_variants() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: VARIANT_TAG,
 					name: "variant_tag".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -41,7 +41,7 @@ pub fn enum_variants() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: VARIANT_NAME,
 					name: "variant_name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -50,7 +50,7 @@ pub fn enum_variants() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: FIELD_COUNT,
 					name: "field_count".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -59,7 +59,7 @@ pub fn enum_variants() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: FIELD_INDEX,
 					name: "field_index".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -68,7 +68,7 @@ pub fn enum_variants() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: FIELD_NAME,
 					name: "field_name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -77,7 +77,7 @@ pub fn enum_variants() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: FIELD_TYPE,
 					name: "field_type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),

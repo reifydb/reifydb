@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::flow_edges::*, vtable::FLOW_EDGES};
 
 /// Returns the static definition for the system.flow_edges virtual table
 /// This table exposes information about all flow edges in the database
-pub fn flow_edges() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn flow_edges() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: FLOW_EDGES,
 			namespace: NamespaceId::SYSTEM,
 			name: "flow_edges".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ID,
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn flow_edges() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: FLOW_ID,
 					name: "flow_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -41,7 +41,7 @@ pub fn flow_edges() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: SOURCE,
 					name: "source".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -50,7 +50,7 @@ pub fn flow_edges() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: TARGET,
 					name: "target".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),

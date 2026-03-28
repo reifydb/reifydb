@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::{
@@ -17,9 +17,9 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait KeyedStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> Schema;
+	fn layout(&self) -> RowSchema;
 
-	/// Schema for keys - defines the types of the key components
+	/// RowSchema for keys - defines the types of the key components
 	fn key_types(&self) -> &[Type];
 
 	/// Create EncodedKey from Values
@@ -35,27 +35,27 @@ pub trait KeyedStateful: RawStatefulOperator {
 	}
 
 	/// Create a new state encoded with default values
-	fn create_state(&self) -> EncodedValues {
+	fn create_state(&self) -> EncodedRow {
 		let layout = self.layout();
 		layout.allocate()
 	}
 
 	/// Load state for a specific key
-	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedRow> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save state for a specific key
-	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedValues) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedRow) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state for a key with a function
-	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedValues) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.layout();
 		let mut row = self.load_state(txn, key_values)?;
@@ -85,7 +85,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {
-		fn layout(&self) -> Schema {
+		fn layout(&self) -> RowSchema {
 			self.layout.clone()
 		}
 

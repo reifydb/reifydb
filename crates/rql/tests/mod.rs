@@ -5,7 +5,7 @@ use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::catalog::{Catalog, namespace::NamespaceToCreate, table::TableToCreate};
 use reifydb_core::interface::catalog::{id::NamespaceId, namespace::Namespace};
-use reifydb_engine::test_utils::create_test_admin_transaction;
+use reifydb_engine::test_harness::create_test_admin_transaction;
 use reifydb_rql::explain::{
 	ast::explain_ast, logical::explain_logical_plan, physical::explain_physical_plan, tokenize::explain_tokenize,
 };
@@ -96,6 +96,7 @@ impl Runner for TestRunner {
 								local_name: "test".to_string(),
 								parent_id: NamespaceId::ROOT,
 								grpc: None,
+								token: None,
 							},
 						)
 						.unwrap();

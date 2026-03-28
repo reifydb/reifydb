@@ -1,63 +1,95 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::mem::take;
+use std::{mem::take, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::EventBus,
 	interface::{
 		WithEventBus,
-		change::Change,
-		store::{MultiVersionBatch, MultiVersionValues},
+		change::{Change, ChangeOrigin},
+		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	testing::TestingContext,
 };
-use reifydb_type::Result;
+use reifydb_type::{
+	Result,
+	error::Diagnostic,
+	params::Params,
+	value::{frame::frame::Frame, identity::IdentityId},
+};
 use tracing::instrument;
 
 use crate::{
 	TransactionId,
-	change::{RowChange, TransactionalDefChanges},
+	change::{RowChange, TransactionalCatalogChanges},
+	change_accumulator::ChangeAccumulator,
 	error::TransactionError,
 	interceptor::{
 		WithInterceptors,
+		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
 		chain::InterceptorChain as Chain,
+		dictionary::{
+			DictionaryPostCreateInterceptor, DictionaryPostUpdateInterceptor,
+			DictionaryPreDeleteInterceptor, DictionaryPreUpdateInterceptor,
+		},
+		dictionary_row::{
+			DictionaryRowPostDeleteInterceptor, DictionaryRowPostInsertInterceptor,
+			DictionaryRowPostUpdateInterceptor, DictionaryRowPreDeleteInterceptor,
+			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
+		},
+		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
+		identity::{
+			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
+			IdentityPreUpdateInterceptor,
+		},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 			NamespacePreUpdateInterceptor,
 		},
 		ringbuffer::{
-			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
-			RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
-			RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+			RingBufferPostCreateInterceptor, RingBufferPostUpdateInterceptor,
+			RingBufferPreDeleteInterceptor, RingBufferPreUpdateInterceptor,
 		},
-		ringbuffer_def::{
-			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
-			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		ringbuffer_row::{
+			RingBufferRowPostDeleteInterceptor, RingBufferRowPostInsertInterceptor,
+			RingBufferRowPostUpdateInterceptor, RingBufferRowPreDeleteInterceptor,
+			RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
+		},
+		role::{
+			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
+			RolePreUpdateInterceptor,
+		},
+		series::{
+			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
+			SeriesPreUpdateInterceptor,
+		},
+		series_row::{
+			SeriesRowPostDeleteInterceptor, SeriesRowPostInsertInterceptor, SeriesRowPostUpdateInterceptor,
+			SeriesRowPreDeleteInterceptor, SeriesRowPreInsertInterceptor, SeriesRowPreUpdateInterceptor,
 		},
 		table::{
-			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
-			TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+			TablePostCreateInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+			TablePreUpdateInterceptor,
 		},
-		table_def::{
-			TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
-			TableDefPreUpdateInterceptor,
+		table_row::{
+			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
+			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
 		transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
 		view::{
-			ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor,
-			ViewPreDeleteInterceptor, ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
+			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
+			ViewPreUpdateInterceptor,
 		},
-		view_def::{
-			ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-			ViewDefPreUpdateInterceptor,
+		view_row::{
+			ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
+			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
 		},
 	},
 	multi::{
@@ -65,7 +97,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::query::QueryTransaction,
+	transaction::{RqlExecutor, Transaction, query::QueryTransaction},
 };
 
 /// An active command transaction that holds a multi command transaction
@@ -84,11 +116,17 @@ pub struct CommandTransaction {
 	pub(crate) row_changes: Vec<RowChange>,
 	pub(crate) interceptors: Interceptors,
 
-	// Track table changes for transactional flow pre-commit processing
-	pub(crate) pending_flow_changes: Vec<Change>,
+	// Accumulate flow changes for transactional view pre-commit processing
+	pub(crate) accumulator: ChangeAccumulator,
 
-	/// Testing audit log. Set by the VM when in test context.
-	pub testing: Option<TestingContext>,
+	/// The identity executing this transaction.
+	pub identity: IdentityId,
+
+	/// Optional RQL executor for running RQL within this transaction.
+	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
+
+	/// When the transaction has been poisoned, stores the original error diagnostic.
+	poison_cause: Option<Diagnostic>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -96,6 +134,7 @@ enum TransactionState {
 	Active,
 	Committed,
 	RolledBack,
+	Poisoned,
 }
 
 impl CommandTransaction {
@@ -106,6 +145,7 @@ impl CommandTransaction {
 		single: SingleTransaction,
 		event_bus: EventBus,
 		interceptors: Interceptors,
+		identity: IdentityId,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		Ok(Self {
@@ -116,9 +156,29 @@ impl CommandTransaction {
 			event_bus,
 			interceptors,
 			row_changes: Vec::new(),
-			pending_flow_changes: Vec::new(),
-			testing: None,
+			accumulator: ChangeAccumulator::new(),
+			identity,
+			executor: None,
+			poison_cause: None,
 		})
+	}
+
+	/// Set the RQL executor for this transaction.
+	pub fn set_executor(&mut self, executor: Arc<dyn RqlExecutor>) {
+		self.executor = Some(executor);
+	}
+
+	/// Execute RQL within this transaction using the attached executor.
+	///
+	/// Panics if no `RqlExecutor` has been set on this transaction.
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		self.check_active()?;
+		let executor = self.executor.clone().expect("RqlExecutor not set");
+		let result = executor.rql(&mut Transaction::Command(self), rql, params);
+		if let Err(ref e) = result {
+			self.poison(e.0.clone());
+		}
+		result
 	}
 
 	#[instrument(name = "transaction::command::event_bus", level = "trace", skip(self))]
@@ -137,7 +197,19 @@ impl CommandTransaction {
 			TransactionState::RolledBack => {
 				return Err(TransactionError::AlreadyRolledBack.into());
 			}
+			TransactionState::Poisoned => {
+				return Err(TransactionError::Poisoned {
+					cause: self.poison_cause.clone().unwrap(),
+				}
+				.into());
+			}
 		}
+	}
+
+	/// Mark this transaction as poisoned, storing the original error diagnostic.
+	pub(crate) fn poison(&mut self, cause: Diagnostic) {
+		self.state = TransactionState::Poisoned;
+		self.poison_cause = Some(cause);
 	}
 
 	/// Commit the transaction.
@@ -147,26 +219,25 @@ impl CommandTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
 
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedValues>)> = self
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
 			.pending_writes()
 			.iter()
 			.map(|(key, pending)| match &pending.delta {
 				Delta::Set {
-					values,
+					row,
 					..
-				} => (key.clone(), Some(values.clone())),
+				} => (key.clone(), Some(row.clone())),
 				_ => (key.clone(), None),
 			})
 			.collect();
 
 		let mut ctx = PreCommitContext {
-			flow_changes: take(&mut self.pending_flow_changes),
+			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
 			pending_writes: Vec::new(),
 			transaction_writes,
-			testing: self.testing.take(),
+			view_entries: Vec::new(),
 		};
 		self.interceptors.pre_commit.execute(&mut ctx)?;
-		self.testing = ctx.testing;
 
 		if let Some(mut multi) = self.cmd.take() {
 			// Apply pending view writes produced by pre-commit interceptors
@@ -180,7 +251,7 @@ impl CommandTransaction {
 			let id = multi.tm.id();
 			self.state = TransactionState::Committed;
 
-			let changes = TransactionalDefChanges::default();
+			let changes = TransactionalCatalogChanges::default();
 			let row_changes = take(&mut self.row_changes);
 
 			let version = multi.commit()?;
@@ -254,7 +325,8 @@ impl CommandTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn =
+			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
 
 		f(&mut query_txn)
 	}
@@ -266,7 +338,8 @@ impl CommandTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn =
+			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
 
 		query_txn.read_as_of_version_exclusive(version)?;
 
@@ -280,7 +353,8 @@ impl CommandTransaction {
 	{
 		self.check_active()?;
 
-		let mut query_txn = QueryTransaction::new(self.multi.begin_query()?, self.single.clone());
+		let mut query_txn =
+			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
 
 		query_txn.multi.read_as_of_version_inclusive(version);
 
@@ -312,9 +386,13 @@ impl CommandTransaction {
 		self.row_changes.push(change);
 	}
 
-	/// Track a flow change for transactional view pre-commit processing
+	/// Track a flow change for transactional view pre-commit processing.
 	pub fn track_flow_change(&mut self, change: Change) {
-		self.pending_flow_changes.push(change);
+		if let ChangeOrigin::Schema(id) = change.origin {
+			for diff in change.diffs {
+				self.accumulator.track(id, diff);
+			}
+		}
 	}
 
 	/// Get the transaction version
@@ -331,9 +409,9 @@ impl CommandTransaction {
 
 	/// Get a value by key
 	#[inline]
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>> {
 		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_values()))
+		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
 	}
 
 	/// Check if a key exists
@@ -367,18 +445,18 @@ impl CommandTransaction {
 
 	/// Set a key-value pair
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
 	}
 
 	/// Unset a key, preserving the deleted values.
 	///
-	/// The `values` parameter contains the deleted values for CDC and metrics.
+	/// The `row` parameter contains the deleted row for CDC and metrics.
 	#[inline]
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().unset(key, values)
+		self.cmd.as_mut().unwrap().unset(key, row)
 	}
 
 	/// Remove a key without preserving the deleted values.
@@ -396,7 +474,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range(range, batch_size))
 	}
@@ -407,7 +485,7 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: usize,
-	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + '_>> {
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_>> {
 		self.check_active()?;
 		Ok(self.cmd.as_mut().unwrap().range_rev(range, batch_size))
 	}
@@ -420,64 +498,70 @@ impl WithEventBus for CommandTransaction {
 }
 
 impl WithInterceptors for CommandTransaction {
-	fn table_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TablePreInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.table_pre_insert
+	fn table_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn TableRowPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.table_row_pre_insert
 	}
 
-	fn table_post_insert_interceptors(&mut self) -> &mut Chain<dyn TablePostInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.table_post_insert
-	}
-
-	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_pre_update
-	}
-
-	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_post_update
-	}
-
-	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.table_pre_delete
-	}
-
-	fn table_post_delete_interceptors(&mut self) -> &mut Chain<dyn TablePostDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.table_post_delete
-	}
-
-	fn ringbuffer_pre_insert_interceptors(
+	fn table_row_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferPreInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_pre_insert
+	) -> &mut Chain<dyn TableRowPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.table_row_post_insert
 	}
 
-	fn ringbuffer_post_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPostInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_post_insert
+	fn table_row_pre_update_interceptors(&mut self) -> &mut Chain<dyn TableRowPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_row_pre_update
 	}
 
-	fn ringbuffer_pre_update_interceptors(
+	fn table_row_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_pre_update
+	) -> &mut Chain<dyn TableRowPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_row_post_update
 	}
 
-	fn ringbuffer_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_post_update
+	fn table_row_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableRowPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.table_row_pre_delete
 	}
 
-	fn ringbuffer_pre_delete_interceptors(
+	fn table_row_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_pre_delete
+	) -> &mut Chain<dyn TableRowPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.table_row_post_delete
 	}
 
-	fn ringbuffer_post_delete_interceptors(
+	fn ringbuffer_row_pre_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferPostDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_post_delete
+	) -> &mut Chain<dyn RingBufferRowPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_row_pre_insert
+	}
+
+	fn ringbuffer_row_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_row_post_insert
+	}
+
+	fn ringbuffer_row_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_row_pre_update
+	}
+
+	fn ringbuffer_row_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_row_post_update
+	}
+
+	fn ringbuffer_row_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_row_pre_delete
+	}
+
+	fn ringbuffer_row_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_row_post_delete
 	}
 
 	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync> {
@@ -508,32 +592,48 @@ impl WithInterceptors for CommandTransaction {
 		&mut self.interceptors.namespace_pre_delete
 	}
 
-	fn table_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn TableDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_post_create
+	fn table_post_create_interceptors(&mut self) -> &mut Chain<dyn TablePostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_post_create
 	}
 
-	fn table_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn TableDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_pre_update
+	fn table_pre_update_interceptors(&mut self) -> &mut Chain<dyn TablePreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_pre_update
 	}
 
-	fn table_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<dyn TableDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_post_update
+	fn table_post_update_interceptors(&mut self) -> &mut Chain<dyn TablePostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.table_post_update
 	}
 
-	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TableDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.table_def_pre_delete
+	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<dyn TablePreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.table_pre_delete
 	}
 
-	fn view_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPreInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.view_pre_insert
+	fn view_row_pre_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.view_row_pre_insert
 	}
 
-	fn view_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewPostInsertInterceptor + Send + Sync> {
-		&mut self.interceptors.view_post_insert
+	fn view_row_post_insert_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.view_row_post_insert
+	}
+
+	fn view_row_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_row_pre_update
+	}
+
+	fn view_row_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_row_post_update
+	}
+
+	fn view_row_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.view_row_pre_delete
+	}
+
+	fn view_row_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewRowPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.view_row_post_delete
+	}
+
+	fn view_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.view_post_create
 	}
 
 	fn view_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewPreUpdateInterceptor + Send + Sync> {
@@ -548,56 +648,204 @@ impl WithInterceptors for CommandTransaction {
 		&mut self.interceptors.view_pre_delete
 	}
 
-	fn view_post_delete_interceptors(&mut self) -> &mut Chain<dyn ViewPostDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.view_post_delete
-	}
-
-	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_post_create
-	}
-
-	fn view_def_pre_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_pre_update
-	}
-
-	fn view_def_post_update_interceptors(&mut self) -> &mut Chain<dyn ViewDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_post_update
-	}
-
-	fn view_def_pre_delete_interceptors(&mut self) -> &mut Chain<dyn ViewDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.view_def_pre_delete
-	}
-
-	fn ringbuffer_def_post_create_interceptors(
+	fn ringbuffer_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPostCreateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_post_create
+	) -> &mut Chain<dyn RingBufferPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_post_create
 	}
 
-	fn ringbuffer_def_pre_update_interceptors(
+	fn ringbuffer_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_pre_update
+	) -> &mut Chain<dyn RingBufferPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_pre_update
 	}
 
-	fn ringbuffer_def_post_update_interceptors(
+	fn ringbuffer_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_post_update
+	) -> &mut Chain<dyn RingBufferPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_post_update
 	}
 
-	fn ringbuffer_def_pre_delete_interceptors(
+	fn ringbuffer_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<dyn RingBufferDefPreDeleteInterceptor + Send + Sync> {
-		&mut self.interceptors.ringbuffer_def_pre_delete
+	) -> &mut Chain<dyn RingBufferPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.ringbuffer_pre_delete
+	}
+
+	fn dictionary_row_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryRowPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_row_pre_insert
+	}
+
+	fn dictionary_row_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryRowPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_row_post_insert
+	}
+
+	fn dictionary_row_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryRowPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_row_pre_update
+	}
+
+	fn dictionary_row_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryRowPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_row_post_update
+	}
+
+	fn dictionary_row_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryRowPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_row_pre_delete
+	}
+
+	fn dictionary_row_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryRowPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_row_post_delete
+	}
+
+	fn dictionary_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_post_create
+	}
+
+	fn dictionary_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_pre_update
+	}
+
+	fn dictionary_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_post_update
+	}
+
+	fn dictionary_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn DictionaryPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.dictionary_pre_delete
+	}
+
+	fn series_row_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesRowPreInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.series_row_pre_insert
+	}
+
+	fn series_row_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesRowPostInsertInterceptor + Send + Sync> {
+		&mut self.interceptors.series_row_post_insert
+	}
+
+	fn series_row_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesRowPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_row_pre_update
+	}
+
+	fn series_row_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesRowPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_row_post_update
+	}
+
+	fn series_row_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesRowPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.series_row_pre_delete
+	}
+
+	fn series_row_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn SeriesRowPostDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.series_row_post_delete
+	}
+
+	fn series_post_create_interceptors(&mut self) -> &mut Chain<dyn SeriesPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_post_create
+	}
+
+	fn series_pre_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_pre_update
+	}
+
+	fn series_post_update_interceptors(&mut self) -> &mut Chain<dyn SeriesPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.series_post_update
+	}
+
+	fn series_pre_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.series_pre_delete
+	}
+
+	fn identity_post_create_interceptors(&mut self) -> &mut Chain<dyn IdentityPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_post_create
+	}
+
+	fn identity_pre_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_pre_update
+	}
+
+	fn identity_post_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_post_update
+	}
+
+	fn identity_pre_delete_interceptors(&mut self) -> &mut Chain<dyn IdentityPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.identity_pre_delete
+	}
+
+	fn role_post_create_interceptors(&mut self) -> &mut Chain<dyn RolePostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.role_post_create
+	}
+
+	fn role_pre_update_interceptors(&mut self) -> &mut Chain<dyn RolePreUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.role_pre_update
+	}
+
+	fn role_post_update_interceptors(&mut self) -> &mut Chain<dyn RolePostUpdateInterceptor + Send + Sync> {
+		&mut self.interceptors.role_post_update
+	}
+
+	fn role_pre_delete_interceptors(&mut self) -> &mut Chain<dyn RolePreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.role_pre_delete
+	}
+
+	fn granted_role_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn GrantedRolePostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.granted_role_post_create
+	}
+
+	fn granted_role_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn GrantedRolePreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.granted_role_pre_delete
+	}
+
+	fn authentication_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn AuthenticationPostCreateInterceptor + Send + Sync> {
+		&mut self.interceptors.authentication_post_create
+	}
+
+	fn authentication_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<dyn AuthenticationPreDeleteInterceptor + Send + Sync> {
+		&mut self.interceptors.authentication_pre_delete
 	}
 }
 
 impl Drop for CommandTransaction {
 	fn drop(&mut self) {
 		if let Some(mut multi) = self.cmd.take() {
-			// Auto-rollback if still active (not committed or rolled back)
-			if self.state == TransactionState::Active {
+			// Auto-rollback if still active or poisoned (not committed or rolled back)
+			if self.state == TransactionState::Active || self.state == TransactionState::Poisoned {
 				let _ = multi.rollback();
 			}
 		}

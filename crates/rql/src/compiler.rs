@@ -1,21 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc};
+use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc, time};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::util::lru::LruCache;
+use reifydb_core::{
+	interface::catalog::series::{SeriesKey, TimestampPrecision},
+	util::lru::LruCache,
+};
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, fragment::Fragment, value::Value};
+use reifydb_type::{
+	Result,
+	fragment::Fragment,
+	value::{Value, duration::Duration},
+};
 
 use crate::{
-	ast::parse_str,
+	ast::{
+		ast::{AstTimestampPrecision, AstViewStorageKind},
+		parse_str,
+	},
 	bump::{Bump, BumpBox, BumpVec},
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
-	instruction::{Addr, CompiledClosureDef, CompiledFunctionDef, Instruction, ScopeType},
+	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
+	nodes::CompiledViewStorageKind,
 	plan::{
 		logical::LogicalPlan,
 		physical::{self, PhysicalPlan},
@@ -257,6 +268,44 @@ impl Compiler {
 	}
 }
 
+fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind {
+	match ast {
+		AstViewStorageKind::Table => CompiledViewStorageKind::Table,
+		AstViewStorageKind::RingBuffer {
+			capacity,
+			propagate_evictions,
+			partition_by,
+		} => CompiledViewStorageKind::RingBuffer {
+			capacity,
+			propagate_evictions: propagate_evictions.unwrap_or(true),
+			partition_by,
+		},
+		AstViewStorageKind::Series {
+			key_column,
+			precision,
+		} => {
+			let precision = precision
+				.map(|p| match p {
+					AstTimestampPrecision::Second => TimestampPrecision::Second,
+					AstTimestampPrecision::Millisecond => TimestampPrecision::Millisecond,
+					AstTimestampPrecision::Microsecond => TimestampPrecision::Microsecond,
+					AstTimestampPrecision::Nanosecond => TimestampPrecision::Nanosecond,
+				})
+				.unwrap_or(TimestampPrecision::Millisecond);
+			CompiledViewStorageKind::Series {
+				key: SeriesKey::DateTime {
+					column: key_column,
+					precision,
+				},
+			}
+		}
+	}
+}
+
+fn compile_tick_duration(std_dur: time::Duration) -> Duration {
+	Duration::from_nanoseconds(std_dur.as_nanos() as i64).unwrap()
+}
+
 /// Recursively convert a bump-allocated query PhysicalPlan into an owned QueryPlan.
 /// Panics if the plan contains non-query nodes (DDL, DML, control flow, etc.).
 fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
@@ -346,14 +395,10 @@ fn materialize_query_plan(plan: PhysicalPlan<'_>) -> QueryPlan {
 		}),
 		PhysicalPlan::Window(node) => QueryPlan::Window(nodes::WindowNode {
 			input: node.input.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
-			window_type: node.window_type,
-			size: node.size,
-			slide: node.slide,
+			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			min_events: node.min_events,
-			max_window_count: node.max_window_count,
-			max_window_age: node.max_window_age,
+			ts: node.ts,
 		}),
 		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
 			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
@@ -517,9 +562,6 @@ impl InstructionCompiler {
 		self.emit(Instruction::JumpIfFalsePop(0))
 	}
 
-	// ========================================================================
-	// Expression compilation
-	// ========================================================================
 	fn compile_expression(&mut self, expr: &Expression) {
 		match expr {
 			Expression::Constant(c) => {
@@ -779,10 +821,6 @@ impl InstructionCompiler {
 		}
 	}
 
-	// ========================================================================
-	// Plan compilation (operates on bump-allocated PhysicalPlan directly)
-	// ========================================================================
-
 	fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
 		match plan {
 			// DDL — leaf instructions (no query children to materialize)
@@ -836,6 +874,14 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::CreateTag(node) => {
 				self.emit(Instruction::CreateTag(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateSource(node) => {
+				self.emit(Instruction::CreateSource(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateSink(node) => {
+				self.emit(Instruction::CreateSink(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateTest(node) => {
@@ -897,10 +943,18 @@ impl InstructionCompiler {
 				self.emit(Instruction::DropSeries(node));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::DropSource(node) => {
+				self.emit(Instruction::DropSource(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropSink(node) => {
+				self.emit(Instruction::DropSink(node));
+				self.emit(Instruction::Emit);
+			}
 
 			// Auth/Permissions — leaf instructions
-			PhysicalPlan::CreateUser(node) => {
-				self.emit(Instruction::CreateUser(node));
+			PhysicalPlan::CreateIdentity(node) => {
+				self.emit(Instruction::CreateIdentity(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::CreateRole(node) => {
@@ -915,8 +969,8 @@ impl InstructionCompiler {
 				self.emit(Instruction::Revoke(node));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::DropUser(node) => {
-				self.emit(Instruction::DropUser(node));
+			PhysicalPlan::DropIdentity(node) => {
+				self.emit(Instruction::DropIdentity(node));
 				self.emit(Instruction::Emit);
 			}
 			PhysicalPlan::DropRole(node) => {
@@ -954,6 +1008,8 @@ impl InstructionCompiler {
 					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
 					))),
+					storage_kind: compile_view_storage_kind(node.storage_kind),
+					tick: node.tick.map(compile_tick_duration),
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -966,6 +1022,8 @@ impl InstructionCompiler {
 					as_clause: Box::new(materialize_query_plan(BumpBox::into_inner(
 						node.as_clause,
 					))),
+					storage_kind: compile_view_storage_kind(node.storage_kind),
+					tick: node.tick.map(compile_tick_duration),
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1016,6 +1074,7 @@ impl InstructionCompiler {
 						.input
 						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1025,6 +1084,7 @@ impl InstructionCompiler {
 						.input
 						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1032,6 +1092,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertTable(nodes::InsertTableNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1039,6 +1100,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertRingBuffer(nodes::InsertRingBufferNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1046,6 +1108,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertDictionary(nodes::InsertDictionaryNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1053,6 +1116,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::InsertSeries(nodes::InsertSeriesNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1062,6 +1126,7 @@ impl InstructionCompiler {
 						.input
 						.map(|i| Box::new(materialize_query_plan(BumpBox::into_inner(i)))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1069,6 +1134,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::Update(nodes::UpdateTableNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1076,6 +1142,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::UpdateRingBuffer(nodes::UpdateRingBufferNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1083,6 +1150,7 @@ impl InstructionCompiler {
 				self.emit(Instruction::UpdateSeries(nodes::UpdateSeriesNode {
 					input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))),
 					target: node.target,
+					returning: node.returning,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1174,7 +1242,7 @@ impl InstructionCompiler {
 					body_compiler.compile_plan(plan)?;
 				}
 				body_compiler.emit(Instruction::Halt);
-				let compiled_func = CompiledFunctionDef {
+				let compiled_func = CompiledFunction {
 					name: node.name,
 					parameters: node.parameters,
 					return_type: node.return_type,
@@ -1211,7 +1279,7 @@ impl InstructionCompiler {
 				}
 				body_compiler.emit(Instruction::Halt);
 				let captures = scan_free_variables(&body_compiler.instructions, &node.parameters);
-				let compiled_closure = CompiledClosureDef {
+				let compiled_closure = CompiledClosure {
 					parameters: node.parameters,
 					body: body_compiler.instructions,
 					captures,

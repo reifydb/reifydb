@@ -3,12 +3,14 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		id::{NamespaceId, ViewId},
-		view::{ViewDef, ViewKind},
+		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		series::SeriesKey,
+		view::{RingBufferView, SeriesView, TableView, View, ViewKind, ViewStorageKind},
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::sumtype::SumTypeId;
 
 use crate::{
 	CatalogStore, Result,
@@ -16,44 +18,31 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<ViewDef>> {
+	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
 		let Some(multi) = rx.get(&ViewKey::encoded(id))? else {
 			return Ok(None);
 		};
 
-		let row = multi.values;
-		let id = ViewId(view::SCHEMA.get_u64(&row, view::ID));
-		let namespace = NamespaceId(view::SCHEMA.get_u64(&row, view::NAMESPACE));
-		let name = view::SCHEMA.get_utf8(&row, view::NAME).to_string();
+		let row = multi.row;
+		let columns = Self::list_columns(rx, id)?;
+		let primary_key = Self::find_view_primary_key(rx, id)?;
+		let view = decode_view(&row, columns, primary_key)?;
 
-		let kind = match view::SCHEMA.get_u8(&row, view::KIND) {
-			0 => ViewKind::Deferred,
-			1 => ViewKind::Transactional,
-			_ => unimplemented!(),
-		};
-
-		Ok(Some(ViewDef {
-			id,
-			name,
-			namespace,
-			kind,
-			columns: Self::list_columns(rx, id)?,
-			primary_key: Self::find_view_primary_key(rx, id)?,
-		}))
+		Ok(Some(view))
 	}
 
 	pub(crate) fn find_view_by_name(
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<ViewDef>> {
+	) -> Result<Option<View>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace), 1024)?;
 
 		let mut found_view = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let view_name = view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME);
 			if name == view_name {
 				found_view = Some(ViewId(view_namespace::SCHEMA.get_u64(row, view_namespace::ID)));
@@ -71,10 +60,108 @@ impl CatalogStore {
 	}
 }
 
+use reifydb_core::{
+	encoded::row::EncodedRow,
+	interface::catalog::{column::Column, key::PrimaryKey},
+};
+use reifydb_type::{
+	error::{Diagnostic, Error},
+	fragment::Fragment,
+};
+
+pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
+	let id = ViewId(view::SCHEMA.get_u64(row, view::ID));
+	let namespace = NamespaceId(view::SCHEMA.get_u64(row, view::NAMESPACE));
+	let name = view::SCHEMA.get_utf8(row, view::NAME).to_string();
+
+	let kind_raw = view::SCHEMA.get_u8(row, view::KIND);
+	let kind = match kind_raw {
+		0 => ViewKind::Deferred,
+		1 => ViewKind::Transactional,
+		_ => {
+			return Err(Error(Diagnostic {
+				code: "CA_026".to_string(),
+				statement: None,
+				message: format!("unknown view kind: {}", kind_raw),
+				fragment: Fragment::None,
+				label: Some("invalid view kind value".to_string()),
+				help: Some("expected 0 (deferred) or 1 (transactional)".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			}));
+		}
+	};
+
+	let storage_kind = view::SCHEMA.get_u8(row, view::STORAGE_KIND);
+	let underlying_object_id = view::SCHEMA.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
+
+	Ok(match storage_kind {
+		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
+			id,
+			name,
+			namespace,
+			kind,
+			columns,
+			primary_key,
+			underlying: TableId(underlying_object_id),
+		}),
+		x if x == ViewStorageKind::RingBuffer as u8 => {
+			let capacity = view::SCHEMA.get_u64(row, view::CAPACITY);
+			let propagate_evictions = view::SCHEMA.get_u8(row, view::PROPAGATE_EVICTIONS) != 0;
+			View::RingBuffer(RingBufferView {
+				id,
+				name,
+				namespace,
+				kind,
+				columns,
+				primary_key,
+				underlying: RingBufferId(underlying_object_id),
+				capacity,
+				propagate_evictions,
+			})
+		}
+		x if x == ViewStorageKind::Series as u8 => {
+			let key_column = view::SCHEMA.get_utf8(row, view::KEY_COLUMN).to_string();
+			let key_kind_raw = view::SCHEMA.get_u8(row, view::KEY_KIND);
+			let precision_raw = view::SCHEMA.get_u8(row, view::PRECISION);
+			let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
+			let tag_raw = view::SCHEMA.get_u64(row, view::TAG_ID);
+			let tag = if tag_raw == 0 {
+				None
+			} else {
+				Some(SumTypeId(tag_raw))
+			};
+			View::Series(SeriesView {
+				id,
+				name,
+				namespace,
+				kind,
+				columns,
+				primary_key,
+				underlying: SeriesId(underlying_object_id),
+				key,
+				tag,
+			})
+		}
+		// Default to table for backwards compat during transition (storage_kind=0 from old data)
+		_ => View::Table(TableView {
+			id,
+			name,
+			namespace,
+			kind,
+			columns,
+			primary_key,
+			underlying: TableId(underlying_object_id),
+		}),
+	})
+}
+
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, ViewId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
@@ -101,9 +188,9 @@ pub mod tests {
 		)
 		.unwrap()
 		.unwrap();
-		assert_eq!(result.id, ViewId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
-		assert_eq!(result.name, "view_two");
+		assert_eq!(result.id(), ViewId(1026));
+		assert_eq!(result.namespace(), NamespaceId(1027));
+		assert_eq!(result.name(), "view_two");
 	}
 
 	#[test]

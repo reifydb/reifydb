@@ -6,10 +6,10 @@ use std::ptr;
 use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
-	pub fn set_identity_id(&self, row: &mut EncodedValues, index: usize, value: IdentityId) {
+impl RowSchema {
+	pub fn set_identity_id(&self, row: &mut EncodedRow, index: usize, value: IdentityId) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
@@ -23,7 +23,7 @@ impl Schema {
 		}
 	}
 
-	pub fn get_identity_id(&self, row: &EncodedValues, index: usize) -> IdentityId {
+	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::IdentityId);
@@ -37,7 +37,7 @@ impl Schema {
 		}
 	}
 
-	pub fn try_get_identity_id(&self, row: &EncodedValues, index: usize) -> Option<IdentityId> {
+	pub fn try_get_identity_id(&self, row: &EncodedRow, index: usize) -> Option<IdentityId> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::IdentityId {
 			Some(self.get_identity_id(row, index))
 		} else {
@@ -52,11 +52,11 @@ pub mod tests {
 
 	use reifydb_type::value::{identity::IdentityId, r#type::Type};
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_identity_id() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
@@ -66,7 +66,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_identity_id() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_identity_id(&row, 0), None);
@@ -78,7 +78,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_generations() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 
 		// Generate multiple Identity IDs and ensure they're different
 		let mut ids = Vec::new();
@@ -101,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7_properties() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
@@ -115,7 +115,7 @@ pub mod tests {
 
 	#[test]
 	fn test_timestamp_ordering() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs in sequence - they should be ordered by
 		// timestamp
@@ -140,7 +140,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
+		let schema = RowSchema::testing(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
 		let mut row = schema.allocate();
 
 		let id1 = IdentityId::generate();
@@ -159,7 +159,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::IdentityId, Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId, Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
@@ -174,7 +174,7 @@ pub mod tests {
 
 	#[test]
 	fn test_persistence() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
@@ -190,7 +190,7 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let original_id = IdentityId::generate();
@@ -206,7 +206,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = Schema::testing(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let id1 = IdentityId::generate();
@@ -229,7 +229,7 @@ pub mod tests {
 
 	#[test]
 	fn test_format_consistency() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
@@ -249,7 +249,7 @@ pub mod tests {
 
 	#[test]
 	fn test_byte_level_storage() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		let id = IdentityId::generate();
@@ -268,7 +268,7 @@ pub mod tests {
 
 	#[test]
 	fn test_time_based_properties() {
-		let schema = Schema::testing(&[Type::IdentityId]);
+		let schema = RowSchema::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs at different times
 		let id1 = IdentityId::generate();
@@ -291,7 +291,7 @@ pub mod tests {
 
 	#[test]
 	fn test_as_primary_key() {
-		let schema = Schema::testing(&[
+		let schema = RowSchema::testing(&[
 			Type::IdentityId, // Primary key
 			Type::Utf8,       // Name field
 			Type::Int4,       // Age field
@@ -314,7 +314,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_identity_id_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

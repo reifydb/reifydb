@@ -4,16 +4,21 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, ViewId},
+		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+		series::SeriesKey,
 		view::{
-			ViewDef, ViewKind,
+			View, ViewKind,
 			ViewKind::{Deferred, Transactional},
+			ViewStorageKind,
 		},
 	},
 	key::{namespace_view::NamespaceViewKey, view::ViewKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::{fragment::Fragment, value::constraint::TypeConstraint};
+use reifydb_type::{
+	fragment::Fragment,
+	value::{constraint::TypeConstraint, sumtype::SumTypeId},
+};
 
 use crate::{
 	CatalogStore, Result,
@@ -33,25 +38,48 @@ pub struct ViewColumnToCreate {
 }
 
 #[derive(Debug, Clone)]
+pub enum ViewStorageConfig {
+	Table {
+		underlying: TableId,
+	},
+	RingBuffer {
+		underlying: RingBufferId,
+		capacity: u64,
+		propagate_evictions: bool,
+	},
+	Series {
+		underlying: SeriesId,
+		key: SeriesKey,
+		tag: Option<SumTypeId>,
+	},
+}
+
+impl Default for ViewStorageConfig {
+	fn default() -> Self {
+		ViewStorageConfig::Table {
+			underlying: TableId(0),
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct ViewToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<ViewColumnToCreate>,
+	pub storage: ViewStorageConfig,
 }
 
 impl CatalogStore {
-	pub(crate) fn create_deferred_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<ViewDef> {
+	pub(crate) fn create_deferred_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		Self::create_view(txn, to_create, Deferred)
 	}
 
-	pub(crate) fn create_transactional_view(
-		txn: &mut AdminTransaction,
-		to_create: ViewToCreate,
-	) -> Result<ViewDef> {
+	pub(crate) fn create_transactional_view(txn: &mut AdminTransaction, to_create: ViewToCreate) -> Result<View> {
 		Self::create_view(txn, to_create, Transactional)
 	}
 
-	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<ViewDef> {
+	fn create_view(txn: &mut AdminTransaction, to_create: ViewToCreate, kind: ViewKind) -> Result<View> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(view) = CatalogStore::find_view_by_name(
@@ -63,7 +91,7 @@ impl CatalogStore {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::View,
 				namespace: namespace.name().to_string(),
-				name: view.name,
+				name: view.name().to_string(),
 				fragment: to_create.name.clone(),
 			}
 			.into());
@@ -97,7 +125,68 @@ impl CatalogStore {
 				Transactional => 1,
 			},
 		);
-		view::SCHEMA.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
+		view::SCHEMA.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
+
+		// Write storage kind and configuration
+		match &to_create.storage {
+			ViewStorageConfig::Table {
+				underlying,
+			} => {
+				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
+				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
+				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, "");
+				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, 0u8);
+				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
+				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
+			}
+			ViewStorageConfig::RingBuffer {
+				underlying,
+				capacity,
+				propagate_evictions,
+			} => {
+				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
+				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SCHEMA.set_u64(&mut row, view::CAPACITY, *capacity);
+				view::SCHEMA.set_u8(
+					&mut row,
+					view::PROPAGATE_EVICTIONS,
+					if *propagate_evictions {
+						1
+					} else {
+						0
+					},
+				);
+				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, "");
+				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, 0u8);
+				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
+				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
+			}
+			ViewStorageConfig::Series {
+				underlying,
+				key,
+				tag,
+			} => {
+				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
+				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
+				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, key.column());
+				let (key_kind_u8, precision_u8) = match key {
+					SeriesKey::DateTime {
+						precision,
+						..
+					} => (0u8, *precision as u8),
+					SeriesKey::Integer {
+						..
+					} => (1u8, 0u8),
+				};
+				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, key_kind_u8);
+				view::SCHEMA.set_u8(&mut row, view::PRECISION, precision_u8);
+				view::SCHEMA.set_u64(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
+			}
+		}
 
 		txn.set(&ViewKey::encoded(view), row)?;
 
@@ -128,7 +217,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace.name().to_string(),
-					primitive_name: to_create.name.text().to_string(),
+					schema_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: vec![],
@@ -148,9 +237,10 @@ pub mod tests {
 		interface::catalog::id::{NamespaceId, ViewId},
 		key::namespace_view::NamespaceViewKey,
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::fragment::Fragment;
 
+	use super::ViewStorageConfig;
 	use crate::{
 		CatalogStore,
 		store::view::{create::ViewToCreate, schema::view_namespace},
@@ -167,13 +257,14 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		// First creation should succeed
 		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, ViewId(1025));
-		assert_eq!(result.namespace, NamespaceId(1025));
-		assert_eq!(result.name, "test_view");
+		assert_eq!(result.id(), ViewId(1025));
+		assert_eq!(result.namespace(), NamespaceId(1025));
+		assert_eq!(result.name(), "test_view");
 
 		let err = CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
@@ -188,6 +279,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("test_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
@@ -196,6 +288,7 @@ pub mod tests {
 			namespace: namespace.id(),
 			name: Fragment::internal("another_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
@@ -208,12 +301,12 @@ pub mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1025);
 		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1026);
 		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "another_view");
 	}
@@ -226,6 +319,7 @@ pub mod tests {
 			namespace: NamespaceId(999), // Non-existent namespace
 			name: Fragment::internal("my_view"),
 			columns: vec![],
+			storage: ViewStorageConfig::default(),
 		};
 
 		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();

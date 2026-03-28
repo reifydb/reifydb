@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::column_properties::*, vtable::COLUMN_PROPERTIES};
 
 /// Returns the static definition for the system.column_properties virtual table
 /// This table exposes information about all column policies
-pub fn column_properties() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn column_properties() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: COLUMN_PROPERTIES,
 			namespace: NamespaceId::SYSTEM,
 			name: "column_properties".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ID,
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn column_properties() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: COLUMN_ID,
 					name: "column_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -41,7 +41,7 @@ pub fn column_properties() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: TYPE,
 					name: "type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
@@ -50,7 +50,7 @@ pub fn column_properties() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: VALUE,
 					name: "value".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),

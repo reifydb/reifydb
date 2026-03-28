@@ -5,43 +5,117 @@ use reifydb_core::{
 	error::CoreError,
 	value::column::{Column, data::ColumnData},
 };
-use reifydb_function::registry::Functions;
-use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
-use reifydb_runtime::clock::Clock;
+use reifydb_rql::expression::PrefixOperator;
 use reifydb_type::{
 	error::{LogicalOp, OperandCategory, TypeError},
+	fragment::Fragment,
 	value::{decimal::Decimal, int::Int, uint::Uint},
 };
 
-use super::eval::evaluate;
-use crate::{
-	Result,
-	expression::{context::EvalContext, option::unary_op_unwrap_option},
-};
+use crate::{Result, expression::option::unary_op_unwrap_option};
 
-pub(crate) fn prefix_eval(
-	ctx: &EvalContext,
-	prefix: &PrefixExpression,
-	functions: &Functions,
-	clock: &Clock,
-) -> Result<Column> {
-	let inner_ctx = EvalContext {
-		target: None,
-		columns: ctx.columns.clone(),
-		row_count: ctx.row_count,
-		take: ctx.take,
-		params: ctx.params,
-		symbol_table: ctx.symbol_table,
-		is_aggregate_context: ctx.is_aggregate_context,
-		functions: ctx.functions,
-		clock: ctx.clock,
-		arena: None,
-		identity: ctx.identity,
+/// Macro for signed integer prefix arms (Int1, Int2, Int4, Int8, Int16).
+/// Each arm negates with `-*val`, plus with `*val`, and Not returns an error.
+macro_rules! prefix_signed_int {
+	($column:expr, $container:expr, $operator:expr, $fragment:expr, $variant:ident) => {{
+		let mut result = Vec::with_capacity($container.data().len());
+		for (idx, val) in $container.data().iter().enumerate() {
+			if $container.is_defined(idx) {
+				result.push(match $operator {
+					PrefixOperator::Minus(_) => -*val,
+					PrefixOperator::Plus(_) => *val,
+					PrefixOperator::Not(_) => {
+						return Err(TypeError::LogicalOperatorNotApplicable {
+							operator: LogicalOp::Not,
+							operand_category: OperandCategory::Number,
+							fragment: $fragment,
+						}
+						.into());
+					}
+				});
+			} else {
+				result.push(0);
+			}
+		}
+		let new_data = ColumnData::$variant(result);
+		Ok($column.with_new_data(new_data))
+	}};
+}
+
+/// Macro for unsigned integer prefix arms (Uint1, Uint2, Uint4, Uint8, Uint16).
+/// Each arm converts to a signed type, then negates/plus, and Not returns an error.
+macro_rules! prefix_unsigned_int {
+	($column:expr, $container:expr, $operator:expr, $fragment:expr, $signed_ty:ty, $constructor:ident) => {{
+		let mut result = Vec::with_capacity($container.data().len());
+		for val in $container.data().iter() {
+			let signed = *val as $signed_ty;
+			result.push(match $operator {
+				PrefixOperator::Minus(_) => -signed,
+				PrefixOperator::Plus(_) => signed,
+				PrefixOperator::Not(_) => {
+					return Err(TypeError::LogicalOperatorNotApplicable {
+						operator: LogicalOp::Not,
+						operand_category: OperandCategory::Number,
+						fragment: $fragment,
+					}
+					.into());
+				}
+			});
+		}
+		let new_data = ColumnData::$constructor(result);
+		Ok($column.with_new_data(new_data))
+	}};
+}
+
+/// Macro for float prefix arms (Float4, Float8).
+/// Same pattern as signed ints but with float zero defaults.
+macro_rules! prefix_float {
+	($column:expr, $container:expr, $operator:expr, $fragment:expr, $zero:expr, $constructor:ident) => {{
+		let mut result = Vec::with_capacity($container.data().len());
+		for (idx, val) in $container.data().iter().enumerate() {
+			if $container.is_defined(idx) {
+				result.push(match $operator {
+					PrefixOperator::Minus(_) => -*val,
+					PrefixOperator::Plus(_) => *val,
+					PrefixOperator::Not(_) => {
+						return Err(TypeError::LogicalOperatorNotApplicable {
+							operator: LogicalOp::Not,
+							operand_category: OperandCategory::Number,
+							fragment: $fragment,
+						}
+						.into());
+					}
+				});
+			} else {
+				result.push($zero);
+			}
+		}
+		let new_data = ColumnData::$constructor(result);
+		Ok($column.with_new_data(new_data))
+	}};
+}
+
+/// Macro for types that only support `Not` returning an error and `unimplemented!()` for arithmetic.
+macro_rules! prefix_not_error {
+	($operator:expr, $fragment:expr, $category:expr) => {
+		match $operator {
+			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
+				operator: LogicalOp::Not,
+				operand_category: $category,
+				fragment: $fragment,
+			}
+			.into()),
+			_ => unimplemented!(),
+		}
 	};
-	let column = evaluate(&inner_ctx, &prefix.expression, functions, clock)?;
+}
 
-	unary_op_unwrap_option(&column, |column| match column.data() {
-		ColumnData::Bool(container) => match prefix.operator {
+/// Applies a prefix operator to an already-evaluated column, without re-evaluating
+/// the inner expression. This avoids recompilation when the column has already been
+/// computed.
+pub(crate) fn prefix_apply(column: &Column, operator: &PrefixOperator, fragment: &Fragment) -> Result<Column> {
+	unary_op_unwrap_option(column, |column| match column.data() {
+		ColumnData::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {
 				let mut result = Vec::with_capacity(container.data().len());
 				for (idx, val) in container.data().iter().enumerate() {
@@ -62,181 +136,41 @@ pub(crate) fn prefix_eval(
 		},
 
 		ColumnData::Float4(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(0.0f32);
-				}
-			}
-			let new_data = ColumnData::float4(result);
-			Ok(column.with_new_data(new_data))
+			prefix_float!(column, container, operator, fragment.clone(), 0.0f32, float4)
 		}
 
 		ColumnData::Float8(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(0.0f64);
-				}
-			}
-			let new_data = ColumnData::float8(result);
-			Ok(column.with_new_data(new_data))
+			prefix_float!(column, container, operator, fragment.clone(), 0.0f64, float8)
 		}
 
 		ColumnData::Int1(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int1(result);
-			Ok(column.with_new_data(new_data))
+			prefix_signed_int!(column, container, operator, fragment.clone(), int1)
 		}
 
 		ColumnData::Int2(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int2(result);
-			Ok(column.with_new_data(new_data))
+			prefix_signed_int!(column, container, operator, fragment.clone(), int2)
 		}
 
 		ColumnData::Int4(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int4(result);
-			Ok(column.with_new_data(new_data))
+			prefix_signed_int!(column, container, operator, fragment.clone(), int4)
 		}
 
 		ColumnData::Int8(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int8(result);
-			Ok(column.with_new_data(new_data))
+			prefix_signed_int!(column, container, operator, fragment.clone(), int8)
 		}
 
 		ColumnData::Int16(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for (idx, val) in container.data().iter().enumerate() {
-				if container.is_defined(idx) {
-					result.push(match prefix.operator {
-						PrefixOperator::Minus(_) => -*val,
-						PrefixOperator::Plus(_) => *val,
-						PrefixOperator::Not(_) => {
-							return Err(TypeError::LogicalOperatorNotApplicable {
-								operator: LogicalOp::Not,
-								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
-							}
-							.into());
-						}
-					});
-				} else {
-					result.push(0);
-				}
-			}
-			let new_data = ColumnData::int16(result);
-			Ok(column.with_new_data(new_data))
+			prefix_signed_int!(column, container, operator, fragment.clone(), int16)
 		}
 
 		ColumnData::Utf8 {
 			container: _,
 			..
-		} => match prefix.operator {
+		} => match operator {
 			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
 				operator: LogicalOp::Not,
 				operand_category: OperandCategory::Text,
-				fragment: prefix.full_fragment_owned(),
+				fragment: fragment.clone(),
 			}
 			.into()),
 			_ => Err(CoreError::FrameError {
@@ -246,175 +180,51 @@ pub(crate) fn prefix_eval(
 		},
 
 		ColumnData::Uint1(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i8;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return Err(TypeError::LogicalOperatorNotApplicable {
-							operator: LogicalOp::Not,
-							operand_category: OperandCategory::Number,
-							fragment: prefix.full_fragment_owned(),
-						}
-						.into());
-					}
-				});
-			}
-			let new_data = ColumnData::int1(result);
-			Ok(column.with_new_data(new_data))
+			prefix_unsigned_int!(column, container, operator, fragment.clone(), i8, int1)
 		}
 
 		ColumnData::Uint2(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i16;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return Err(TypeError::LogicalOperatorNotApplicable {
-							operator: LogicalOp::Not,
-							operand_category: OperandCategory::Number,
-							fragment: prefix.full_fragment_owned(),
-						}
-						.into());
-					}
-				});
-			}
-			let new_data = ColumnData::int2(result);
-			Ok(column.with_new_data(new_data))
+			prefix_unsigned_int!(column, container, operator, fragment.clone(), i16, int2)
 		}
 
 		ColumnData::Uint4(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i32;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return Err(TypeError::LogicalOperatorNotApplicable {
-							operator: LogicalOp::Not,
-							operand_category: OperandCategory::Number,
-							fragment: prefix.full_fragment_owned(),
-						}
-						.into());
-					}
-				});
-			}
-			let new_data = ColumnData::int4(result);
-			Ok(column.with_new_data(new_data))
+			prefix_unsigned_int!(column, container, operator, fragment.clone(), i32, int4)
 		}
 
 		ColumnData::Uint8(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i64;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return Err(TypeError::LogicalOperatorNotApplicable {
-							operator: LogicalOp::Not,
-							operand_category: OperandCategory::Number,
-							fragment: prefix.full_fragment_owned(),
-						}
-						.into());
-					}
-				});
-			}
-			let new_data = ColumnData::int8(result);
-			Ok(column.with_new_data(new_data))
+			prefix_unsigned_int!(column, container, operator, fragment.clone(), i64, int8)
 		}
+
 		ColumnData::Uint16(container) => {
-			let mut result = Vec::with_capacity(container.data().len());
-			for val in container.data().iter() {
-				let signed = *val as i128;
-				result.push(match prefix.operator {
-					PrefixOperator::Minus(_) => -signed,
-					PrefixOperator::Plus(_) => signed,
-					PrefixOperator::Not(_) => {
-						return Err(TypeError::LogicalOperatorNotApplicable {
-							operator: LogicalOp::Not,
-							operand_category: OperandCategory::Number,
-							fragment: prefix.full_fragment_owned(),
-						}
-						.into());
-					}
-				});
-			}
-			let new_data = ColumnData::int16(result);
-			Ok(column.with_new_data(new_data))
+			prefix_unsigned_int!(column, container, operator, fragment.clone(), i128, int16)
 		}
-		ColumnData::Date(_) => match prefix.operator {
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Temporal,
-				fragment: prefix.full_fragment_owned(),
-			}
-			.into()),
-			_ => unimplemented!(),
-		},
-		ColumnData::DateTime(_) => match prefix.operator {
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Temporal,
-				fragment: prefix.full_fragment_owned(),
-			}
-			.into()),
-			_ => unimplemented!(),
-		},
-		ColumnData::Time(_) => match prefix.operator {
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Temporal,
-				fragment: prefix.full_fragment_owned(),
-			}
-			.into()),
-			_ => unimplemented!(),
-		},
-		ColumnData::Duration(_) => match prefix.operator {
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Temporal,
-				fragment: prefix.full_fragment_owned(),
-			}
-			.into()),
-			_ => unimplemented!(),
-		},
-		ColumnData::IdentityId(_) => match prefix.operator {
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Uuid,
-				fragment: prefix.full_fragment_owned(),
-			}
-			.into()),
-			_ => unimplemented!(),
-		},
-		ColumnData::Uuid4(_) => match prefix.operator {
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Uuid,
-				fragment: prefix.full_fragment_owned(),
-			}
-			.into()),
-			_ => unimplemented!(),
-		},
-		ColumnData::Uuid7(_) => match prefix.operator {
-			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
-				operator: LogicalOp::Not,
-				operand_category: OperandCategory::Uuid,
-				fragment: prefix.full_fragment_owned(),
-			}
-			.into()),
-			_ => unimplemented!(),
-		},
+
+		ColumnData::Date(_) => {
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+		}
+		ColumnData::DateTime(_) => {
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+		}
+		ColumnData::Time(_) => {
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+		}
+		ColumnData::Duration(_) => {
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Temporal)
+		}
+		ColumnData::IdentityId(_) => {
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
+		}
+		ColumnData::Uuid4(_) => {
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
+		}
+		ColumnData::Uuid7(_) => {
+			prefix_not_error!(operator, fragment.clone(), OperandCategory::Uuid)
+		}
+
 		ColumnData::Blob {
 			container: _,
 			..
-		} => match prefix.operator {
+		} => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
 				message: "Cannot apply NOT operator to BLOB".to_string(),
 			}
@@ -431,14 +241,14 @@ pub(crate) fn prefix_eval(
 			let mut result = Vec::with_capacity(container.data().len());
 			for (idx, val) in container.data().iter().enumerate() {
 				if container.is_defined(idx) {
-					result.push(match prefix.operator {
+					result.push(match operator {
 						PrefixOperator::Minus(_) => Int(-val.0.clone()),
 						PrefixOperator::Plus(_) => val.clone(),
 						PrefixOperator::Not(_) => {
 							return Err(TypeError::LogicalOperatorNotApplicable {
 								operator: LogicalOp::Not,
 								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
+								fragment: fragment.clone(),
 							}
 							.into());
 						}
@@ -453,7 +263,7 @@ pub(crate) fn prefix_eval(
 		ColumnData::Uint {
 			container,
 			..
-		} => match prefix.operator {
+		} => match operator {
 			PrefixOperator::Minus(_) => {
 				let mut result = Vec::with_capacity(container.data().len());
 				for (idx, val) in container.data().iter().enumerate() {
@@ -482,7 +292,7 @@ pub(crate) fn prefix_eval(
 			PrefixOperator::Not(_) => Err(TypeError::LogicalOperatorNotApplicable {
 				operator: LogicalOp::Not,
 				operand_category: OperandCategory::Number,
-				fragment: prefix.full_fragment_owned(),
+				fragment: fragment.clone(),
 			}
 			.into()),
 		},
@@ -493,14 +303,14 @@ pub(crate) fn prefix_eval(
 			let mut result = Vec::with_capacity(container.data().len());
 			for (idx, val) in container.data().iter().enumerate() {
 				if container.is_defined(idx) {
-					result.push(match prefix.operator {
+					result.push(match operator {
 						PrefixOperator::Minus(_) => val.clone().negate(),
 						PrefixOperator::Plus(_) => val.clone(),
 						PrefixOperator::Not(_) => {
 							return Err(TypeError::LogicalOperatorNotApplicable {
 								operator: LogicalOp::Not,
 								operand_category: OperandCategory::Number,
-								fragment: prefix.full_fragment_owned(),
+								fragment: fragment.clone(),
 							}
 							.into());
 						}
@@ -512,7 +322,7 @@ pub(crate) fn prefix_eval(
 			let new_data = ColumnData::decimal(result);
 			Ok(column.with_new_data(new_data))
 		}
-		ColumnData::DictionaryId(_) => match prefix.operator {
+		ColumnData::DictionaryId(_) => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
 				message: "Cannot apply NOT operator to DictionaryId type".to_string(),
 			}
@@ -522,7 +332,7 @@ pub(crate) fn prefix_eval(
 			}
 			.into()),
 		},
-		ColumnData::Any(_) => match prefix.operator {
+		ColumnData::Any(_) => match operator {
 			PrefixOperator::Not(_) => Err(CoreError::FrameError {
 				message: "Cannot apply NOT operator to Any type".to_string(),
 			}

@@ -3,7 +3,7 @@
 
 use std::slice::from_ref;
 
-use reifydb_core::value::column::{Column, data::ColumnData};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{
 	error::{BinaryOp, Error, IntoDiagnostic, LogicalOp, OperandCategory, RuntimeErrorKind, TypeError},
@@ -21,14 +21,14 @@ use crate::{
 	expression::{
 		access::access_lookup,
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
-		call::call_eval,
+		call::call_eval_with_args,
 		cast::cast_column_data,
 		compare::{Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual, compare_columns},
 		constant::{constant_value, constant_value_of},
 		context::EvalContext,
 		lookup::column_lookup,
 		parameter::parameter_lookup,
-		prefix::prefix_eval,
+		prefix::prefix_apply,
 	},
 	vm::stack::Variable,
 };
@@ -90,6 +90,40 @@ impl CompiledExpr {
 	}
 }
 
+macro_rules! compile_arith {
+	($ctx:expr, $e:expr, $op_fn:path) => {{
+		let left = compile_expression($ctx, &$e.left)?;
+		let right = compile_expression($ctx, &$e.right)?;
+		let fragment = $e.full_fragment_owned();
+		CompiledExpr::new(move |ctx| {
+			let l = left.execute(ctx)?;
+			let r = right.execute(ctx)?;
+			$op_fn(ctx, &l, &r, || fragment.clone())
+		})
+	}};
+}
+
+macro_rules! compile_compare {
+	($ctx:expr, $e:expr, $cmp_type:ty, $binary_op:expr) => {{
+		let left = compile_expression($ctx, &$e.left)?;
+		let right = compile_expression($ctx, &$e.right)?;
+		let fragment = $e.full_fragment_owned();
+		CompiledExpr::new(move |ctx| {
+			let l = left.execute(ctx)?;
+			let r = right.execute(ctx)?;
+			compare_columns::<$cmp_type>(&l, &r, fragment.clone(), |f, l, r| {
+				TypeError::BinaryOperatorNotApplicable {
+					operator: $binary_op,
+					left: l,
+					right: r,
+					fragment: f,
+				}
+				.into_diagnostic()
+			})
+		})
+	}};
+}
+
 /// Compile an `Expression` into a `CompiledExpr`.
 ///
 /// All execution logic is baked into closures at compile time — no match dispatch at runtime.
@@ -129,7 +163,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					.into());
 				}
 
-				match ctx.symbol_table.get(variable_name) {
+				match ctx.symbols.get(variable_name) {
 					Some(Variable::Scalar(columns)) => {
 						let value = columns.scalar_value();
 						let mut data =
@@ -200,181 +234,20 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			})
 		}
 
-		Expression::Add(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				add_columns(ctx, &l, &r, || fragment.clone())
-			})
-		}
+		Expression::Add(e) => compile_arith!(_ctx, e, add_columns),
+		Expression::Sub(e) => compile_arith!(_ctx, e, sub_columns),
+		Expression::Mul(e) => compile_arith!(_ctx, e, mul_columns),
+		Expression::Div(e) => compile_arith!(_ctx, e, div_columns),
+		Expression::Rem(e) => compile_arith!(_ctx, e, rem_columns),
 
-		Expression::Sub(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				sub_columns(ctx, &l, &r, || fragment.clone())
-			})
-		}
-
-		Expression::Mul(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				mul_columns(ctx, &l, &r, || fragment.clone())
-			})
-		}
-
-		Expression::Div(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				div_columns(ctx, &l, &r, || fragment.clone())
-			})
-		}
-
-		Expression::Rem(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				rem_columns(ctx, &l, &r, || fragment.clone())
-			})
-		}
-
-		Expression::Equal(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				let result = compare_columns::<Equal>(&l, &r, fragment.clone(), |f, l, r| {
-					TypeError::BinaryOperatorNotApplicable {
-						operator: BinaryOp::Equal,
-						left: l,
-						right: r,
-						fragment: f,
-					}
-					.into_diagnostic()
-				});
-				result
-			})
-		}
-
-		Expression::NotEqual(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				let result = compare_columns::<NotEqual>(&l, &r, fragment.clone(), |f, l, r| {
-					TypeError::BinaryOperatorNotApplicable {
-						operator: BinaryOp::NotEqual,
-						left: l,
-						right: r,
-						fragment: f,
-					}
-					.into_diagnostic()
-				});
-				result
-			})
-		}
-
-		Expression::GreaterThan(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				let result = compare_columns::<GreaterThan>(&l, &r, fragment.clone(), |f, l, r| {
-					TypeError::BinaryOperatorNotApplicable {
-						operator: BinaryOp::GreaterThan,
-						left: l,
-						right: r,
-						fragment: f,
-					}
-					.into_diagnostic()
-				});
-				result
-			})
-		}
-
+		Expression::Equal(e) => compile_compare!(_ctx, e, Equal, BinaryOp::Equal),
+		Expression::NotEqual(e) => compile_compare!(_ctx, e, NotEqual, BinaryOp::NotEqual),
+		Expression::GreaterThan(e) => compile_compare!(_ctx, e, GreaterThan, BinaryOp::GreaterThan),
 		Expression::GreaterThanEqual(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				let result =
-					compare_columns::<GreaterThanEqual>(&l, &r, fragment.clone(), |f, l, r| {
-						TypeError::BinaryOperatorNotApplicable {
-							operator: BinaryOp::GreaterThanEqual,
-							left: l,
-							right: r,
-							fragment: f,
-						}
-						.into_diagnostic()
-					});
-				result
-			})
+			compile_compare!(_ctx, e, GreaterThanEqual, BinaryOp::GreaterThanEqual)
 		}
-
-		Expression::LessThan(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				let result = compare_columns::<LessThan>(&l, &r, fragment.clone(), |f, l, r| {
-					TypeError::BinaryOperatorNotApplicable {
-						operator: BinaryOp::LessThan,
-						left: l,
-						right: r,
-						fragment: f,
-					}
-					.into_diagnostic()
-				});
-				result
-			})
-		}
-
-		Expression::LessThanEqual(e) => {
-			let left = compile_expression(_ctx, &e.left)?;
-			let right = compile_expression(_ctx, &e.right)?;
-			let fragment = e.full_fragment_owned();
-			CompiledExpr::new(move |ctx| {
-				let l = left.execute(ctx)?;
-				let r = right.execute(ctx)?;
-				let result = compare_columns::<LessThanEqual>(&l, &r, fragment.clone(), |f, l, r| {
-					TypeError::BinaryOperatorNotApplicable {
-						operator: BinaryOp::LessThanEqual,
-						left: l,
-						right: r,
-						fragment: f,
-					}
-					.into_diagnostic()
-				});
-				result
-			})
-		}
+		Expression::LessThan(e) => compile_compare!(_ctx, e, LessThan, BinaryOp::LessThan),
+		Expression::LessThanEqual(e) => compile_compare!(_ctx, e, LessThanEqual, BinaryOp::LessThanEqual),
 
 		Expression::And(e) => {
 			let left = compile_expression(_ctx, &e.left)?;
@@ -383,8 +256,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = execute_and(&l, &r, &fragment);
-				result
+				execute_logical_op(&l, &r, &fragment, LogicalOp::And, |a, b| a && b)
 			})
 		}
 
@@ -395,8 +267,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = execute_or(&l, &r, &fragment);
-				result
+				execute_logical_op(&l, &r, &fragment, LogicalOp::Or, |a, b| a || b)
 			})
 		}
 
@@ -407,14 +278,18 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			CompiledExpr::new(move |ctx| {
 				let l = left.execute(ctx)?;
 				let r = right.execute(ctx)?;
-				let result = execute_xor(&l, &r, &fragment);
-				result
+				execute_logical_op(&l, &r, &fragment, LogicalOp::Xor, |a, b| a != b)
 			})
 		}
 
 		Expression::Prefix(e) => {
-			let expr = e.clone();
-			CompiledExpr::new(move |ctx| prefix_eval(ctx, &expr, ctx.functions, ctx.clock))
+			let inner = compile_expression(_ctx, &e.expression)?;
+			let operator = e.operator.clone();
+			let fragment = e.full_fragment_owned();
+			CompiledExpr::new(move |ctx| {
+				let column = inner.execute(ctx)?;
+				prefix_apply(&column, &operator, &fragment)
+			})
 		}
 
 		Expression::Type(e) => {
@@ -511,7 +386,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					fragment.clone(),
 					|f, l, r| {
 						TypeError::BinaryOperatorNotApplicable {
-							operator: BinaryOp::GreaterThanEqual,
+							operator: BinaryOp::Between,
 							left: l,
 							right: r,
 							fragment: f,
@@ -525,7 +400,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					fragment.clone(),
 					|f, l, r| {
 						TypeError::BinaryOperatorNotApplicable {
-							operator: BinaryOp::LessThanEqual,
+							operator: BinaryOp::Between,
 							left: l,
 							right: r,
 							fragment: f,
@@ -632,7 +507,9 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							.into_diagnostic()
 						},
 					)?;
-					result = or_columns(result, eq_result, fragment.clone())?;
+					result = combine_bool_columns(result, eq_result, fragment.clone(), |l, r| {
+						l || r
+					})?;
 				}
 
 				if negated {
@@ -675,7 +552,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				for list_expr in list.iter().skip(1) {
 					let list_col = list_expr.execute(ctx)?;
 					let element_result = list_contains_element(&value_col, &list_col, &fragment)?;
-					result = and_columns(result, element_result, fragment.clone())?;
+					result = combine_bool_columns(
+						result,
+						element_result,
+						fragment.clone(),
+						|l, r| l && r,
+					)?;
 				}
 
 				Ok(result)
@@ -750,17 +632,26 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 
 		Expression::Map(e) => {
 			let expressions = compile_expressions(_ctx, &e.expressions)?;
-			CompiledExpr::new_multi(move |ctx| execute_map_multi(ctx, &expressions))
+			CompiledExpr::new_multi(move |ctx| execute_projection_multi(ctx, &expressions))
 		}
 
 		Expression::Extend(e) => {
 			let expressions = compile_expressions(_ctx, &e.expressions)?;
-			CompiledExpr::new_multi(move |ctx| execute_extend_multi(ctx, &expressions))
+			CompiledExpr::new_multi(move |ctx| execute_projection_multi(ctx, &expressions))
 		}
 
 		Expression::Call(e) => {
+			let compiled_args: Vec<CompiledExpr> =
+				e.args.iter().map(|arg| compile_expression(_ctx, arg)).collect::<Result<Vec<_>>>()?;
 			let expr = e.clone();
-			CompiledExpr::new(move |ctx| call_eval(ctx, &expr, ctx.functions, ctx.clock))
+			CompiledExpr::new(move |ctx| {
+				let mut arg_columns = Vec::with_capacity(compiled_args.len());
+				for compiled_arg in &compiled_args {
+					arg_columns.push(compiled_arg.execute(ctx)?);
+				}
+				let arguments = Columns::new(arg_columns);
+				call_eval_with_args(ctx, &expr, arguments, ctx.functions)
+			})
 		}
 
 		Expression::SumTypeConstructor(_) => {
@@ -817,7 +708,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let object = compile_expression(_ctx, &e.object)?;
 			CompiledExpr::new(move |ctx| {
 				if let Some(ref variable_name) = var_name {
-					match ctx.symbol_table.get(variable_name) {
+					match ctx.symbols.get(variable_name) {
 						Some(Variable::Columns(columns)) => {
 							let col = columns
 								.columns
@@ -928,16 +819,20 @@ fn compile_expressions(ctx: &CompileContext, exprs: &[Expression]) -> Result<Vec
 	exprs.iter().map(|e| compile_expression(ctx, e)).collect()
 }
 
-// --- Helper functions (moved from execute.rs) ---
-
-fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> Result<Column> {
+fn execute_logical_op(
+	left: &Column,
+	right: &Column,
+	fragment: &Fragment,
+	logical_op: LogicalOp,
+	bool_fn: fn(bool, bool) -> bool,
+) -> Result<Column> {
 	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
 		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
 			let data: Vec<bool> = l_container
 				.data()
 				.iter()
 				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| l_val && r_val)
+				.map(|(l_val, r_val)| bool_fn(l_val, r_val))
 				.collect();
 
 			Ok(Column {
@@ -946,144 +841,33 @@ fn execute_and(left: &Column, right: &Column, fragment: &Fragment) -> Result<Col
 			})
 		}
 		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::And,
-					operand_category: OperandCategory::Number,
-					fragment: fragment.clone(),
-				}
-				.into());
+			let category = if l.is_number() || r.is_number() {
+				OperandCategory::Number
 			} else if l.is_text() || r.is_text() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::And,
-					operand_category: OperandCategory::Text,
-					fragment: fragment.clone(),
-				}
-				.into());
+				OperandCategory::Text
 			} else if l.is_temporal() || r.is_temporal() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::And,
-					operand_category: OperandCategory::Temporal,
-					fragment: fragment.clone(),
-				}
-				.into());
+				OperandCategory::Temporal
 			} else if l.is_uuid() || r.is_uuid() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::And,
-					operand_category: OperandCategory::Uuid,
-					fragment: fragment.clone(),
-				}
-				.into());
+				OperandCategory::Uuid
 			} else {
-				unimplemented!("{} and {}", l.get_type(), r.get_type());
+				unimplemented!("{} {:?} {}", l.get_type(), logical_op, r.get_type());
+			};
+			Err(TypeError::LogicalOperatorNotApplicable {
+				operator: logical_op.clone(),
+				operand_category: category,
+				fragment: fragment.clone(),
 			}
+			.into())
 		}
 	})
 }
 
-fn execute_or(left: &Column, right: &Column, fragment: &Fragment) -> Result<Column> {
-	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			let data: Vec<bool> = l_container
-				.data()
-				.iter()
-				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| l_val || r_val)
-				.collect();
-
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
-		}
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Or,
-					operand_category: OperandCategory::Number,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else if l.is_text() || r.is_text() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Or,
-					operand_category: OperandCategory::Text,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else if l.is_temporal() || r.is_temporal() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Or,
-					operand_category: OperandCategory::Temporal,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else if l.is_uuid() || r.is_uuid() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Or,
-					operand_category: OperandCategory::Uuid,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else {
-				unimplemented!("{} or {}", l.get_type(), r.get_type());
-			}
-		}
-	})
-}
-
-fn execute_xor(left: &Column, right: &Column, fragment: &Fragment) -> Result<Column> {
-	binary_op_unwrap_option(left, right, fragment.clone(), |left, right| match (&left.data(), &right.data()) {
-		(ColumnData::Bool(l_container), ColumnData::Bool(r_container)) => {
-			let data: Vec<bool> = l_container
-				.data()
-				.iter()
-				.zip(r_container.data().iter())
-				.map(|(l_val, r_val)| l_val != r_val)
-				.collect();
-
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool(data),
-			})
-		}
-		(l, r) => {
-			if l.is_number() || r.is_number() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Xor,
-					operand_category: OperandCategory::Number,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else if l.is_text() || r.is_text() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Xor,
-					operand_category: OperandCategory::Text,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else if l.is_temporal() || r.is_temporal() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Xor,
-					operand_category: OperandCategory::Temporal,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else if l.is_uuid() || r.is_uuid() {
-				return Err(TypeError::LogicalOperatorNotApplicable {
-					operator: LogicalOp::Xor,
-					operand_category: OperandCategory::Uuid,
-					fragment: fragment.clone(),
-				}
-				.into());
-			} else {
-				unimplemented!("{} xor {}", l.get_type(), r.get_type());
-			}
-		}
-	})
-}
-
-fn or_columns(left: Column, right: Column, fragment: Fragment) -> Result<Column> {
+fn combine_bool_columns(
+	left: Column,
+	right: Column,
+	fragment: Fragment,
+	combine_fn: fn(bool, bool) -> bool,
+) -> Result<Column> {
 	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
 		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
 			let len = l.len();
@@ -1097,7 +881,7 @@ fn or_columns(left: Column, right: Column, fragment: Fragment) -> Result<Column>
 				let r_val = r.data().get(i);
 
 				if l_defined && r_defined {
-					data.push(l_val || r_val);
+					data.push(combine_fn(l_val, r_val));
 					bitvec.push(true);
 				} else {
 					data.push(false);
@@ -1111,40 +895,7 @@ fn or_columns(left: Column, right: Column, fragment: Fragment) -> Result<Column>
 			})
 		}
 		_ => {
-			unreachable!("OR columns should only be called with boolean columns from equality comparisons")
-		}
-	})
-}
-
-fn and_columns(left: Column, right: Column, fragment: Fragment) -> Result<Column> {
-	binary_op_unwrap_option(&left, &right, fragment.clone(), |left, right| match (left.data(), right.data()) {
-		(ColumnData::Bool(l), ColumnData::Bool(r)) => {
-			let len = l.len();
-			let mut data = Vec::with_capacity(len);
-			let mut bitvec = Vec::with_capacity(len);
-
-			for i in 0..len {
-				let l_defined = l.is_defined(i);
-				let r_defined = r.is_defined(i);
-				let l_val = l.data().get(i);
-				let r_val = r.data().get(i);
-
-				if l_defined && r_defined {
-					data.push(l_val && r_val);
-					bitvec.push(true);
-				} else {
-					data.push(false);
-					bitvec.push(false);
-				}
-			}
-
-			Ok(Column {
-				name: fragment.clone(),
-				data: ColumnData::bool_with_bitvec(data, bitvec),
-			})
-		}
-		_ => {
-			unreachable!("AND columns should only be called with boolean columns")
+			unreachable!("combine_bool_columns should only be called with boolean columns")
 		}
 	})
 }
@@ -1355,22 +1106,7 @@ fn execute_multi_exprs(ctx: &EvalContext, exprs: &[CompiledExpr]) -> Result<Vec<
 	Ok(result)
 }
 
-fn execute_map_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> Result<Vec<Column>> {
-	let mut result = Vec::with_capacity(expressions.len());
-
-	for expr in expressions {
-		let column = expr.execute(ctx)?;
-		let name = column.name.text().to_string();
-		result.push(Column {
-			name: Fragment::internal(name),
-			data: column.data,
-		});
-	}
-
-	Ok(result)
-}
-
-fn execute_extend_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> Result<Vec<Column>> {
+fn execute_projection_multi(ctx: &EvalContext, expressions: &[CompiledExpr]) -> Result<Vec<Column>> {
 	let mut result = Vec::with_capacity(expressions.len());
 
 	for expr in expressions {

@@ -20,7 +20,7 @@ const MVCC_VERSION_SIZE: usize = 10;
 use std::ops::AddAssign;
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::store::SingleVersionStore,
 };
 use reifydb_type::{Result, util::cowvec::CowVec};
@@ -103,37 +103,37 @@ impl MultiStorageStats {
 	/// The old version moves from current to historical.
 	pub fn record_update(
 		&mut self,
-		new_key_bytes: u64,
-		new_value_bytes: u64,
-		old_key_bytes: u64,
-		old_value_bytes: u64,
+		post_key_bytes: u64,
+		post_value_bytes: u64,
+		pre_key_bytes: u64,
+		pre_value_bytes: u64,
 	) {
-		// Move old version from current to historical
-		self.current_key_bytes = self.current_key_bytes.saturating_sub(old_key_bytes);
-		self.current_value_bytes = self.current_value_bytes.saturating_sub(old_value_bytes);
+		// Move pre version from current to historical
+		self.current_key_bytes = self.current_key_bytes.saturating_sub(pre_key_bytes);
+		self.current_value_bytes = self.current_value_bytes.saturating_sub(pre_value_bytes);
 		self.current_count = self.current_count.saturating_sub(1);
 
-		self.historical_key_bytes += old_key_bytes;
-		self.historical_value_bytes += old_value_bytes;
+		self.historical_key_bytes += pre_key_bytes;
+		self.historical_value_bytes += pre_value_bytes;
 		self.historical_count += 1;
 
-		// Add new version to current
-		self.current_key_bytes += new_key_bytes;
-		self.current_value_bytes += new_value_bytes;
+		// Add post version to current
+		self.current_key_bytes += post_key_bytes;
+		self.current_value_bytes += post_value_bytes;
 		self.current_count += 1;
 	}
 
 	/// Record a delete (tombstone for existing key).
 	///
-	/// The old version moves to historical, tombstone key added to historical.
-	pub fn record_delete(&mut self, tombstone_key_bytes: u64, old_key_bytes: u64, old_value_bytes: u64) {
-		// Move old version from current to historical
-		self.current_key_bytes = self.current_key_bytes.saturating_sub(old_key_bytes);
-		self.current_value_bytes = self.current_value_bytes.saturating_sub(old_value_bytes);
+	/// The pre version moves to historical, tombstone key added to historical.
+	pub fn record_delete(&mut self, tombstone_key_bytes: u64, pre_key_bytes: u64, pre_value_bytes: u64) {
+		// Move pre version from current to historical
+		self.current_key_bytes = self.current_key_bytes.saturating_sub(pre_key_bytes);
+		self.current_value_bytes = self.current_value_bytes.saturating_sub(pre_value_bytes);
 		self.current_count = self.current_count.saturating_sub(1);
 
-		self.historical_key_bytes += old_key_bytes;
-		self.historical_value_bytes += old_value_bytes;
+		self.historical_key_bytes += pre_key_bytes;
+		self.historical_value_bytes += pre_value_bytes;
 		self.historical_count += 1;
 
 		// Tombstone goes to historical (key only, no value)
@@ -278,8 +278,8 @@ impl<S: SingleVersionStore> StorageStatsWriter<S> {
 		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
 
 		self.update(tier, id, |stats| {
-			if let Some(old_val) = pre_value_bytes {
-				stats.record_update(key_bytes, value_bytes, key_bytes, old_val);
+			if let Some(pre_val) = pre_value_bytes {
+				stats.record_update(key_bytes, value_bytes, key_bytes, pre_val);
 			} else {
 				stats.record_insert(key_bytes, value_bytes);
 			}
@@ -288,7 +288,7 @@ impl<S: SingleVersionStore> StorageStatsWriter<S> {
 
 	/// Record a delete operation.
 	///
-	/// If `pre_value_bytes` is provided, the old entry is moved to historical.
+	/// If `pre_value_bytes` is provided, the pre entry is moved to historical.
 	/// Otherwise only a tombstone is recorded. The key is always the same.
 	pub fn record_delete(&mut self, tier: Tier, key: &[u8], pre_value_bytes: Option<u64>) -> Result<()> {
 		let id = parse_id(key);
@@ -296,8 +296,8 @@ impl<S: SingleVersionStore> StorageStatsWriter<S> {
 		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
 
 		self.update(tier, id, |stats| {
-			if let Some(old_val) = pre_value_bytes {
-				stats.record_delete(key_bytes, key_bytes, old_val);
+			if let Some(pre_val) = pre_value_bytes {
+				stats.record_delete(key_bytes, key_bytes, pre_val);
 			} else {
 				// No pre info - just record the tombstone
 				stats.historical_key_bytes += key_bytes;
@@ -328,14 +328,14 @@ impl<S: SingleVersionStore> StorageStatsWriter<S> {
 		let mut stats = self
 			.storage
 			.get(&storage_key)?
-			.and_then(|v| decode_storage_stats(v.values.as_slice()))
+			.and_then(|v| decode_storage_stats(v.row.as_slice()))
 			.unwrap_or_default();
 
 		// Modify
 		f(&mut stats);
 
 		// Write back
-		self.storage.set(&storage_key, EncodedValues(CowVec::new(encode_storage_stats(&stats))))
+		self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_storage_stats(&stats))))
 	}
 }
 
@@ -356,7 +356,7 @@ impl<S: SingleVersionStore> StorageStatsReader<S> {
 	/// Get stats for a specific (tier, id) pair.
 	pub fn get(&self, tier: Tier, id: MetricId) -> Result<Option<MultiStorageStats>> {
 		let key = EncodedKey::new(encode_storage_stats_key(tier, id));
-		Ok(self.storage.get(&key)?.and_then(|v| decode_storage_stats(v.values.as_slice())))
+		Ok(self.storage.get(&key)?.and_then(|v| decode_storage_stats(v.row.as_slice())))
 	}
 
 	/// Scan all storage stats entries.
@@ -367,7 +367,7 @@ impl<S: SingleVersionStore> StorageStatsReader<S> {
 		let mut results = Vec::new();
 		for item in batch.items {
 			if let Some((tier, id)) = decode_storage_stats_key(item.key.as_slice()) {
-				if let Some(stats) = decode_storage_stats(item.values.as_slice()) {
+				if let Some(stats) = decode_storage_stats(item.row.as_slice()) {
 					results.push(((tier, id), stats));
 				}
 			}

@@ -27,8 +27,13 @@ use std::{
 
 #[cfg(reifydb_target = "native")]
 pub mod scheduler;
+#[cfg(reifydb_target = "wasi")]
+pub(crate) mod wasi;
 #[cfg(reifydb_target = "wasm")]
 pub(crate) mod wasm;
+
+#[cfg(reifydb_target = "wasi")]
+use wasi::drain_expired_timers as wasi_drain;
 
 /// Handle to a scheduled timer.
 ///
@@ -83,3 +88,16 @@ static TIMER_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub(crate) fn next_timer_id() -> u64 {
 	TIMER_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
+
+/// Drain expired timers, firing their callbacks synchronously.
+///
+/// Only meaningful on WASI where timers are queue-based. No-op on native
+/// (thread-based timers) and WASM (JavaScript event loop handles timers).
+#[cfg(reifydb_target = "wasi")]
+pub fn drain_expired_timers() {
+	wasi_drain();
+}
+
+/// Drain expired timers (no-op on this platform).
+#[cfg(not(reifydb_target = "wasi"))]
+pub fn drain_expired_timers() {}

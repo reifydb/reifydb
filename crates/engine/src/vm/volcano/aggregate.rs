@@ -10,7 +10,9 @@ use reifydb_core::{
 	error::CoreError,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_function::{AggregateFunction, AggregateFunctionContext, registry::Functions};
+use reifydb_routine::function::{
+	AggregateFunction, AggregateFunctionContext, error::FunctionError, registry::Functions,
+};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -240,11 +242,33 @@ fn parse_keys_and_aggregates<'a>(
 							function,
 						});
 					}
-					// _ => return
-					// Err(reifydb_type::error::Error::Unsupported("
-					// Aggregate args must be
-					// columns".into())),
-					_ => panic!("Aggregate args must be columns"),
+					None => {
+						return Err(FunctionError::ArityMismatch {
+							function: call.func.0.clone(),
+							expected: 1,
+							actual: 0,
+						}
+						.into());
+					}
+					Some(arg) => {
+						let actual_type = arg.infer_type().ok_or_else(|| {
+							FunctionError::ExecutionFailed {
+								function: call.func.0.clone(),
+								reason: "aggregate function arguments must be column references".to_string(),
+							}
+						})?;
+						let expected = functions
+							.get_aggregate(func)
+							.map(|f| f.accepted_types().expected_at(0).to_vec())
+							.unwrap_or_default();
+						return Err(FunctionError::InvalidArgumentType {
+							function: call.func.0.clone(),
+							argument_index: 0,
+							expected,
+							actual: actual_type,
+						}
+						.into());
+					}
 				}
 			}
 			// _ => return

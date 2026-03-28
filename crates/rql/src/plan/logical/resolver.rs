@@ -6,10 +6,10 @@ use reifydb_core::interface::{
 	catalog::{
 		id::NamespaceId,
 		view::ViewKind,
-		vtable::{VTableDef, VTableId},
+		vtable::{VTable, VTableId},
 	},
 	resolved::{
-		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema,
 		ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
@@ -17,14 +17,15 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
 
 use crate::{
-	ast::identifier::UnresolvedPrimitiveIdentifier,
-	error::{IdentifierError, PrimitiveNotFoundError},
+	ast::identifier::UnresolvedSchemaIdentifier,
+	error::{IdentifierError, SchemaNotFoundError},
 };
 
 pub enum ResolvedSource {
-	Primitive(ResolvedPrimitive),
+	Schema(ResolvedSchema),
 	Remote {
 		address: String,
+		token: Option<String>,
 		local_namespace: String,
 		remote_name: String,
 	},
@@ -35,11 +36,11 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 
 /// Resolve an unresolved source identifier to a ResolvedSource.
 /// Returns `ResolvedSource::Remote` for remote namespaces, or
-/// `ResolvedSource::Primitive` for local sources.
+/// `ResolvedSource::Schema` for local sources.
 pub fn resolve_unresolved_source(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	unresolved: &UnresolvedPrimitiveIdentifier,
+	unresolved: &UnresolvedSchemaIdentifier,
 ) -> Result<ResolvedSource> {
 	let namespace_str = if !unresolved.namespace.is_empty() {
 		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
@@ -59,6 +60,7 @@ pub fn resolve_unresolved_source(
 	if let Some(address) = ns_def.address() {
 		return Ok(ResolvedSource::Remote {
 			address: address.to_string(),
+			token: ns_def.token().map(|s| s.to_string()),
 			local_namespace: namespace_str.to_string(),
 			remote_name: name_str.to_string(),
 		});
@@ -71,7 +73,7 @@ pub fn resolve_unresolved_source(
 
 	// Check for user-defined virtual tables first (in any namespace)
 	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id(), name_str) {
-		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedSource::Schema(ResolvedSchema::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			(*virtual_def).clone(),
@@ -81,14 +83,14 @@ pub fn resolve_unresolved_source(
 	// Check if it's a system table (namespace = "system")
 	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
-		let def = VTableDef {
+		let def = VTable {
 			id: VTableId(0), // Placeholder ID - compile.rs handles actual lookup
 			namespace: NamespaceId::SYSTEM,
 			name: name_str.to_string(),
 			columns: vec![], // Columns are populated at execution time
 		};
 
-		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedSource::Schema(ResolvedSchema::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			def,
@@ -99,7 +101,7 @@ pub fn resolve_unresolved_source(
 	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id(), name_str)? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Table(ResolvedTable::new(
+		return Ok(ResolvedSource::Schema(ResolvedSchema::Table(ResolvedTable::new(
 			name_fragment,
 			namespace,
 			table,
@@ -110,7 +112,7 @@ pub fn resolve_unresolved_source(
 	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id(), name_str)? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::RingBuffer(ResolvedRingBuffer::new(
+		return Ok(ResolvedSource::Schema(ResolvedSchema::RingBuffer(ResolvedRingBuffer::new(
 			name_fragment,
 			namespace,
 			ringbuffer,
@@ -122,22 +124,22 @@ pub fn resolve_unresolved_source(
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		let primitive = match view.kind {
-			ViewKind::Deferred => ResolvedPrimitive::DeferredView(ResolvedDeferredView::new(
+		let schema = match view.kind() {
+			ViewKind::Deferred => {
+				ResolvedSchema::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
+			}
+			ViewKind::Transactional => ResolvedSchema::TransactionalView(ResolvedTransactionalView::new(
 				name_fragment,
 				namespace,
 				view,
 			)),
-			ViewKind::Transactional => ResolvedPrimitive::TransactionalView(
-				ResolvedTransactionalView::new(name_fragment, namespace, view),
-			),
 		};
-		return Ok(ResolvedSource::Primitive(primitive));
+		return Ok(ResolvedSource::Schema(schema));
 	}
 
 	// Try dictionaries
 	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Dictionary(ResolvedDictionary::new(
+		return Ok(ResolvedSource::Schema(ResolvedSchema::Dictionary(ResolvedDictionary::new(
 			name_fragment,
 			namespace,
 			dictionary,
@@ -146,7 +148,7 @@ pub fn resolve_unresolved_source(
 
 	// Try series
 	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Primitive(ResolvedPrimitive::Series(ResolvedSeries::new(
+		return Ok(ResolvedSource::Schema(ResolvedSchema::Series(ResolvedSeries::new(
 			name_fragment,
 			namespace,
 			series,
@@ -154,7 +156,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Not found
-	Err(IdentifierError::SourceNotFound(PrimitiveNotFoundError {
+	Err(IdentifierError::SourceNotFound(SchemaNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),
 		fragment: unresolved.name.to_owned(),

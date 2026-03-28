@@ -3,10 +3,10 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
-	interface::catalog::{key::PrimaryKeyDef, table::TableDef},
+	encoded::{row::EncodedRow, schema::RowSchema},
+	interface::catalog::{key::PrimaryKey, table::Table},
 	sort::SortDirection,
-	value::index::{encoded::EncodedIndexKey, layout::EncodedIndexLayout},
+	value::index::{encoded::EncodedIndexKey, schema::IndexSchema},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::r#type::Type;
@@ -15,17 +15,17 @@ use crate::Result;
 
 /// Extract primary key values from a encoded and encode them as an index key
 pub fn encode_primary_key(
-	pk_def: &PrimaryKeyDef,
-	row: &EncodedValues,
-	table: &TableDef,
-	schema: &Schema,
+	pk_def: &PrimaryKey,
+	row: &EncodedRow,
+	table: &Table,
+	schema: &RowSchema,
 ) -> Result<EncodedIndexKey> {
 	// Create index layout for PK columns
 	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
 	let directions = vec![SortDirection::Asc; types.len()];
-	let index_layout = EncodedIndexLayout::new(&types, &directions)?;
+	let index_schema = IndexSchema::new(&types, &directions)?;
 
-	let mut index_key = index_layout.allocate_key();
+	let mut index_key = index_schema.allocate_key();
 
 	// Extract values from encoded for each PK column
 	for (pk_idx, pk_column) in pk_def.columns.iter().enumerate() {
@@ -37,7 +37,7 @@ pub fn encode_primary_key(
 			.expect("Primary key column not found in table");
 
 		// Check if value is defined
-		// Note: EncodedRowLayout doesn't have is_defined for individual
+		// Note: RowSchema doesn't have is_defined for individual
 		// fields, so we'll check by trying to get the value and
 		// seeing if it's undefined For now, we'll assume all values
 		// are defined
@@ -46,55 +46,55 @@ pub fn encode_primary_key(
 		match pk_column.constraint.get_type() {
 			Type::Boolean => {
 				let val = schema.get_bool(row, table_idx);
-				index_layout.set_bool(&mut index_key, pk_idx, val);
+				index_schema.set_bool(&mut index_key, pk_idx, val);
 			}
 			Type::Int1 => {
 				let val = schema.get_i8(row, table_idx);
-				index_layout.set_i8(&mut index_key, pk_idx, val);
+				index_schema.set_i8(&mut index_key, pk_idx, val);
 			}
 			Type::Int2 => {
 				let val = schema.get_i16(row, table_idx);
-				index_layout.set_i16(&mut index_key, pk_idx, val);
+				index_schema.set_i16(&mut index_key, pk_idx, val);
 			}
 			Type::Int4 => {
 				let val = schema.get_i32(row, table_idx);
-				index_layout.set_i32(&mut index_key, pk_idx, val);
+				index_schema.set_i32(&mut index_key, pk_idx, val);
 			}
 			Type::Int8 => {
 				let val = schema.get_i64(row, table_idx);
-				index_layout.set_i64(&mut index_key, pk_idx, val);
+				index_schema.set_i64(&mut index_key, pk_idx, val);
 			}
 			Type::Int16 => {
 				let val = schema.get_i128(row, table_idx);
-				index_layout.set_i128(&mut index_key, pk_idx, val);
+				index_schema.set_i128(&mut index_key, pk_idx, val);
 			}
 			Type::Uint1 => {
 				let val = schema.get_u8(row, table_idx);
-				index_layout.set_u8(&mut index_key, pk_idx, val);
+				index_schema.set_u8(&mut index_key, pk_idx, val);
 			}
 			Type::Uint2 => {
 				let val = schema.get_u16(row, table_idx);
-				index_layout.set_u16(&mut index_key, pk_idx, val);
+				index_schema.set_u16(&mut index_key, pk_idx, val);
 			}
 			Type::Uint4 => {
 				let val = schema.get_u32(row, table_idx);
-				index_layout.set_u32(&mut index_key, pk_idx, val);
+				index_schema.set_u32(&mut index_key, pk_idx, val);
 			}
 			Type::Uint8 => {
 				let val = schema.get_u64(row, table_idx);
-				index_layout.set_u64(&mut index_key, pk_idx, val);
+				index_schema.set_u64(&mut index_key, pk_idx, val);
 			}
 			Type::Uint16 => {
 				let val = schema.get_u128(row, table_idx);
-				index_layout.set_u128(&mut index_key, pk_idx, val);
+				index_schema.set_u128(&mut index_key, pk_idx, val);
 			}
 			Type::Float4 => {
 				let val = schema.get_f32(row, table_idx);
-				index_layout.set_f32(&mut index_key, pk_idx, val);
+				index_schema.set_f32(&mut index_key, pk_idx, val);
 			}
 			Type::Float8 => {
 				let val = schema.get_f64(row, table_idx);
-				index_layout.set_f64(&mut index_key, pk_idx, val);
+				index_schema.set_f64(&mut index_key, pk_idx, val);
 			}
 			Type::Utf8 => {
 				// UTF8 strings can't be used in indexes
@@ -108,31 +108,31 @@ pub fn encode_primary_key(
 			}
 			Type::Date => {
 				let val = schema.get_date(row, table_idx);
-				index_layout.set_date(&mut index_key, pk_idx, val);
+				index_schema.set_date(&mut index_key, pk_idx, val);
 			}
 			Type::Time => {
 				let val = schema.get_time(row, table_idx);
-				index_layout.set_time(&mut index_key, pk_idx, val);
+				index_schema.set_time(&mut index_key, pk_idx, val);
 			}
 			Type::DateTime => {
 				let val = schema.get_datetime(row, table_idx);
-				index_layout.set_datetime(&mut index_key, pk_idx, val);
+				index_schema.set_datetime(&mut index_key, pk_idx, val);
 			}
 			Type::Duration => {
 				let val = schema.get_duration(row, table_idx);
-				index_layout.set_duration(&mut index_key, pk_idx, val);
+				index_schema.set_duration(&mut index_key, pk_idx, val);
 			}
 			Type::Uuid4 => {
 				let val = schema.get_uuid4(row, table_idx);
-				index_layout.set_uuid4(&mut index_key, pk_idx, val);
+				index_schema.set_uuid4(&mut index_key, pk_idx, val);
 			}
 			Type::Uuid7 => {
 				let val = schema.get_uuid7(row, table_idx);
-				index_layout.set_uuid7(&mut index_key, pk_idx, val);
+				index_schema.set_uuid7(&mut index_key, pk_idx, val);
 			}
 			Type::IdentityId => {
 				let val = schema.get_identity_id(row, table_idx);
-				index_layout.set_identity_id(&mut index_key, pk_idx, val);
+				index_schema.set_identity_id(&mut index_key, pk_idx, val);
 			}
 			Type::Int => {
 				// Int columns in primary keys not yet
@@ -154,7 +154,7 @@ pub fn encode_primary_key(
 			Type::Option(_) => {
 				// None values in primary key will be
 				// handled later with constraints
-				index_layout.set_none(&mut index_key, pk_idx);
+				index_schema.set_none(&mut index_key, pk_idx);
 			}
 			Type::DictionaryId => {
 				panic!("DictionaryId columns cannot be used in primary keys");
@@ -178,11 +178,7 @@ pub fn encode_primary_key(
 }
 
 /// Helper to load the primary key definition if the table has one
-pub fn get_primary_key(
-	catalog: &Catalog,
-	txn: &mut Transaction<'_>,
-	table: &TableDef,
-) -> Result<Option<PrimaryKeyDef>> {
+pub fn get_primary_key(catalog: &Catalog, txn: &mut Transaction<'_>, table: &Table) -> Result<Option<PrimaryKey>> {
 	if let Some(_pk_id) = catalog.get_table_pk_id(txn, table.id)? {
 		catalog.find_primary_key(txn, table.id)
 	} else {

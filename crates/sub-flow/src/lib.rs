@@ -5,6 +5,7 @@
 
 pub mod builder;
 pub(crate) mod catalog;
+pub mod connector;
 pub(crate) mod deferred;
 pub mod engine;
 #[cfg(reifydb_target = "native")]
@@ -12,7 +13,6 @@ pub mod ffi;
 #[allow(dead_code)]
 pub mod operator;
 pub mod subsystem;
-pub(crate) mod testing;
 pub mod transaction;
 
 pub(crate) use operator::Operator;

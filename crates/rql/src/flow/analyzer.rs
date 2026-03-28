@@ -15,7 +15,7 @@ use crate::flow::{flow::FlowDag, node::FlowNodeType};
 
 /// Represents a reference to a data source
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PrimitiveReference {
+pub enum SchemaReference {
 	Table(TableId),
 	View(ViewId),
 	RingBuffer(RingBufferId),
@@ -32,7 +32,7 @@ pub enum SinkReference {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowSummary {
 	pub id: FlowId,
-	pub sources: Vec<PrimitiveReference>,
+	pub sources: Vec<SchemaReference>,
 	pub sinks: Vec<SinkReference>,
 	pub node_count: usize,
 	pub edge_count: usize,
@@ -104,7 +104,7 @@ impl FlowGraphAnalyzer {
 		}
 	}
 
-	fn get_sources(flow: &FlowDag) -> Vec<PrimitiveReference> {
+	fn get_sources(flow: &FlowDag) -> Vec<SchemaReference> {
 		let mut sources = Vec::new();
 
 		for node_id in flow.get_node_ids() {
@@ -113,22 +113,22 @@ impl FlowGraphAnalyzer {
 					FlowNodeType::SourceTable {
 						table,
 					} => {
-						sources.push(PrimitiveReference::Table(*table));
+						sources.push(SchemaReference::Table(*table));
 					}
 					FlowNodeType::SourceView {
 						view,
 					} => {
-						sources.push(PrimitiveReference::View(*view));
+						sources.push(SchemaReference::View(*view));
 					}
 					FlowNodeType::SourceRingBuffer {
 						ringbuffer,
 					} => {
-						sources.push(PrimitiveReference::RingBuffer(*ringbuffer));
+						sources.push(SchemaReference::RingBuffer(*ringbuffer));
 					}
 					FlowNodeType::SourceSeries {
 						series,
 					} => {
-						sources.push(PrimitiveReference::Series(*series));
+						sources.push(SchemaReference::Series(*series));
 					}
 					_ => {}
 				}
@@ -143,10 +143,22 @@ impl FlowGraphAnalyzer {
 
 		for node_id in flow.get_node_ids() {
 			if let Some(node) = flow.get_node(&node_id) {
-				if let FlowNodeType::SinkView {
-					view,
-				} = &node.ty
-				{
+				let view = match &node.ty {
+					FlowNodeType::SinkTableView {
+						view,
+						..
+					}
+					| FlowNodeType::SinkRingBufferView {
+						view,
+						..
+					}
+					| FlowNodeType::SinkSeriesView {
+						view,
+						..
+					} => Some(view),
+					_ => None,
+				};
+				if let Some(view) = view {
 					sinks.push(SinkReference::View(*view));
 				}
 			}
@@ -175,16 +187,16 @@ impl FlowGraphAnalyzer {
 			// Track which flows use which tables as sources
 			for source in &summary.sources {
 				match source {
-					PrimitiveReference::Table(table_id) => {
+					SchemaReference::Table(table_id) => {
 						source_tables.entry(*table_id).or_default().push(flow.id());
 					}
-					PrimitiveReference::View(view_id) => {
+					SchemaReference::View(view_id) => {
 						source_views.entry(*view_id).or_default().push(flow.id());
 					}
-					PrimitiveReference::RingBuffer(rb_id) => {
+					SchemaReference::RingBuffer(rb_id) => {
 						source_ringbuffers.entry(*rb_id).or_default().push(flow.id());
 					}
-					PrimitiveReference::Series(series_id) => {
+					SchemaReference::Series(series_id) => {
 						source_series.entry(*series_id).or_default().push(flow.id());
 					}
 				}
@@ -226,7 +238,7 @@ impl FlowGraphAnalyzer {
 
 		for flow_summary in summaries {
 			for source in &flow_summary.sources {
-				if let PrimitiveReference::View(view_id) = source {
+				if let SchemaReference::View(view_id) = source {
 					// Check if this view is produced by another flow
 					if let Some(&producer_flow_id) = sink_views.get(view_id) {
 						// Don't create self-dependencies
@@ -350,7 +362,7 @@ impl Default for FlowGraphAnalyzer {
 
 #[cfg(test)]
 pub mod tests {
-	use FlowNodeType::{Filter, SinkView, SourceTable, SourceView};
+	use FlowNodeType::{Filter, SinkTableView, SourceTable, SourceView};
 	use reifydb_core::{
 		common::JoinType,
 		interface::catalog::{
@@ -386,8 +398,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -395,7 +408,7 @@ pub mod tests {
 		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(1));
-		assert_eq!(summary.sources, vec![PrimitiveReference::Table(TableId(100))]);
+		assert_eq!(summary.sources, vec![SchemaReference::Table(TableId(100))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(200))]);
 		assert_eq!(summary.node_count, 2);
 		assert_eq!(analyzer.flow_count(), 1);
@@ -414,8 +427,9 @@ pub mod tests {
 				Filter {
 					conditions: vec![],
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(400),
+					table: TableId(0),
 				},
 			],
 		);
@@ -423,7 +437,7 @@ pub mod tests {
 		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(2));
-		assert_eq!(summary.sources, vec![PrimitiveReference::View(ViewId(300))]);
+		assert_eq!(summary.sources, vec![SchemaReference::View(ViewId(300))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(400))]);
 		assert_eq!(summary.node_count, 3);
 		assert_eq!(analyzer.flow_count(), 1);
@@ -448,11 +462,13 @@ pub mod tests {
 					right: vec![],
 					alias: None,
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(700),
+					table: TableId(0),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(800),
+					table: TableId(0),
 				},
 			],
 		);
@@ -461,8 +477,8 @@ pub mod tests {
 
 		assert_eq!(summary.id, FlowId(3));
 		assert_eq!(summary.sources.len(), 2);
-		assert!(summary.sources.contains(&PrimitiveReference::Table(TableId(500))));
-		assert!(summary.sources.contains(&PrimitiveReference::View(ViewId(600))));
+		assert!(summary.sources.contains(&SchemaReference::Table(TableId(500))));
+		assert!(summary.sources.contains(&SchemaReference::View(ViewId(600))));
 		assert_eq!(summary.sinks.len(), 2);
 		assert!(summary.sinks.contains(&SinkReference::View(ViewId(700))));
 		assert!(summary.sinks.contains(&SinkReference::View(ViewId(800))));
@@ -489,8 +505,8 @@ pub mod tests {
 		let sources = FlowGraphAnalyzer::get_sources(&flow);
 
 		assert_eq!(sources.len(), 2);
-		assert!(sources.contains(&PrimitiveReference::Table(TableId(100))));
-		assert!(sources.contains(&PrimitiveReference::View(ViewId(200))));
+		assert!(sources.contains(&SchemaReference::Table(TableId(100))));
+		assert!(sources.contains(&SchemaReference::View(ViewId(200))));
 	}
 
 	#[test]
@@ -501,11 +517,13 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -527,8 +545,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -539,8 +558,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(200),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -573,8 +593,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -585,8 +606,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(101),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(201),
+					table: TableId(0),
 				},
 			],
 		);
@@ -600,8 +622,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(201),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -635,8 +658,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(100),
+					table: TableId(0),
 				},
 			],
 		);
@@ -658,8 +682,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -670,8 +695,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(201),
+					table: TableId(0),
 				},
 			],
 		);
@@ -682,8 +708,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(101),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(202),
+					table: TableId(0),
 				},
 			],
 		);
@@ -713,8 +740,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -725,8 +753,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(200),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(300),
+					table: TableId(0),
 				},
 			],
 		);
@@ -737,8 +766,9 @@ pub mod tests {
 				SourceView {
 					view: ViewId(300),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(400),
+					table: TableId(0),
 				},
 			],
 		);
@@ -766,8 +796,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(100),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(200),
+					table: TableId(0),
 				},
 			],
 		);
@@ -778,8 +809,9 @@ pub mod tests {
 				SourceTable {
 					table: TableId(101),
 				},
-				SinkView {
+				SinkTableView {
 					view: ViewId(201),
+					table: TableId(0),
 				},
 			],
 		);

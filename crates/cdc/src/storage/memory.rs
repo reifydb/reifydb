@@ -138,7 +138,7 @@ pub mod tests {
 	use std::thread;
 
 	use reifydb_core::{
-		encoded::{encoded::EncodedValues, key::EncodedKey},
+		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::cdc::SystemChange,
 	};
 	use reifydb_type::util::cowvec::CowVec;
@@ -152,7 +152,7 @@ pub mod tests {
 			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![1, 2, 3]),
-				post: EncodedValues(CowVec::new(vec![])),
+				post: EncodedRow(CowVec::new(vec![])),
 			}],
 		)
 	}
@@ -225,7 +225,7 @@ pub mod tests {
 			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![1]),
-				post: EncodedValues(CowVec::new(vec![])),
+				post: EncodedRow(CowVec::new(vec![])),
 			}],
 		);
 
@@ -236,11 +236,11 @@ pub mod tests {
 			vec![
 				SystemChange::Insert {
 					key: EncodedKey::new(vec![2]),
-					post: EncodedValues(CowVec::new(vec![])),
+					post: EncodedRow(CowVec::new(vec![])),
 				},
 				SystemChange::Insert {
 					key: EncodedKey::new(vec![3]),
-					post: EncodedValues(CowVec::new(vec![])),
+					post: EncodedRow(CowVec::new(vec![])),
 				},
 			],
 		);

@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections, fmt, time};
+use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
 	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, subscription::SubscriptionColumnToCreate,
 	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	common::{JoinType, WindowKind},
 	interface::{
 		catalog::{
 			id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
 			namespace::Namespace,
-			procedure::{ProcedureParamDef, ProcedureTrigger},
+			procedure::{ProcedureParam, ProcedureTrigger},
 			property::ColumnPropertyKind,
-			series::TimestampPrecision,
+			series::SeriesKey,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema,
 			ResolvedSequence, ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
@@ -26,7 +26,10 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, sumtype::SumTypeId, r#type::Type},
+	value::{
+		constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration, sumtype::SumTypeId,
+		r#type::Type,
+	},
 };
 
 use crate::{
@@ -36,7 +39,7 @@ use crate::{
 
 /// Owned primary key definition for physical plan nodes (materialized from bump-allocated logical plan)
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyDef {
+pub struct PrimaryKey {
 	pub columns: Vec<PrimaryKeyColumn>,
 }
 
@@ -137,11 +140,11 @@ pub enum PhysicalPlan {
 	// Auto-scalarization for 1x1 frames
 	Scalarize(ScalarizeNode),
 	// Auth/Permissions
-	CreateUser(CreateUserNode),
+	CreateIdentity(CreateIdentityNode),
 	CreateRole(CreateRoleNode),
 	Grant(GrantNode),
 	Revoke(RevokeNode),
-	DropUser(DropUserNode),
+	DropIdentity(DropIdentityNode),
 	DropRole(DropRoleNode),
 	CreateAuthentication(CreateAuthenticationNode),
 	DropAuthentication(DropAuthenticationNode),
@@ -151,12 +154,27 @@ pub enum PhysicalPlan {
 }
 
 #[derive(Debug, Clone)]
+pub enum CompiledViewStorageKind {
+	Table,
+	RingBuffer {
+		capacity: u64,
+		propagate_evictions: bool,
+		partition_by: Vec<String>,
+	},
+	Series {
+		key: SeriesKey,
+	},
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateDeferredViewNode {
 	pub namespace: Namespace, // FIXME REsolvedNamespace
 	pub view: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
+	pub storage_kind: CompiledViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -166,6 +184,8 @@ pub struct CreateTransactionalViewNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<QueryPlan>,
+	pub storage_kind: CompiledViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone)]
@@ -179,6 +199,7 @@ pub struct CreateRemoteNamespaceNode {
 	pub segments: Vec<Fragment>,
 	pub if_not_exists: bool,
 	pub grpc: Fragment,
+	pub token: Option<Fragment>,
 }
 
 #[derive(Debug, Clone)]
@@ -202,6 +223,7 @@ pub struct CreateRingBufferNode {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -280,7 +302,7 @@ pub struct CreatePrimaryKeyNode {
 pub struct CreateProcedureNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
-	pub params: Vec<ProcedureParamDef>,
+	pub params: Vec<ProcedureParam>,
 	pub body_source: String,
 	pub trigger: ProcedureTrigger,
 	pub is_test: bool,
@@ -293,7 +315,7 @@ pub struct CreateSeriesNode {
 	pub series: Fragment,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 }
 
 /// Physical node for CREATE EVENT
@@ -310,6 +332,53 @@ pub struct CreateTagNode {
 	pub namespace: Namespace,
 	pub name: Fragment,
 	pub variants: Vec<CreateSumTypeVariant>,
+}
+
+/// A resolved key-value config pair
+#[derive(Debug, Clone)]
+pub struct ConfigPair {
+	pub key: Fragment,
+	pub value: Fragment,
+}
+
+/// Physical node for CREATE SOURCE
+#[derive(Debug, Clone)]
+pub struct CreateSourceNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub connector: Fragment,
+	pub config: Vec<ConfigPair>,
+	pub target_namespace: Namespace,
+	pub target_name: Fragment,
+}
+
+/// Physical node for CREATE SINK
+#[derive(Debug, Clone)]
+pub struct CreateSinkNode {
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub source_namespace: Namespace,
+	pub source_name: Fragment,
+	pub connector: Fragment,
+	pub config: Vec<ConfigPair>,
+}
+
+/// Physical node for DROP SOURCE
+#[derive(Debug, Clone)]
+pub struct DropSourceNode {
+	pub if_exists: bool,
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub cascade: bool,
+}
+
+/// Physical node for DROP SINK
+#[derive(Debug, Clone)]
+pub struct DropSinkNode {
+	pub if_exists: bool,
+	pub namespace: Namespace,
+	pub name: Fragment,
+	pub cascade: bool,
 }
 
 // Assert Block node (multi-statement ASSERT or ASSERT ERROR)
@@ -483,48 +552,56 @@ pub struct GateNode {
 pub struct DeleteTableNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertTableNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedTable,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertRingBufferNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertDictionaryNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedDictionary,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateTableNode {
 	pub input: Box<QueryPlan>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeleteRingBufferNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateRingBufferNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdateSeriesNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
@@ -602,6 +679,7 @@ pub struct IndexScanNode {
 #[derive(Debug, Clone)]
 pub struct RemoteScanNode {
 	pub address: String,
+	pub token: Option<String>,
 	pub remote_rql: String,
 	pub local_namespace: String,
 	pub remote_name: String,
@@ -631,8 +709,8 @@ pub struct DictionaryScanNode {
 #[derive(Debug, Clone)]
 pub struct SeriesScanNode {
 	pub source: ResolvedSeries,
-	pub time_range_start: Option<i64>,
-	pub time_range_end: Option<i64>,
+	pub key_range_start: Option<u64>,
+	pub key_range_end: Option<u64>,
 	pub variant_tag: Option<u8>,
 }
 
@@ -640,12 +718,14 @@ pub struct SeriesScanNode {
 pub struct InsertSeriesNode {
 	pub input: Box<QueryPlan>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DeleteSeriesNode {
 	pub input: Option<Box<QueryPlan>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug, Clone)]
@@ -692,21 +772,17 @@ pub struct TakeNode {
 #[derive(Debug, Clone)]
 pub struct WindowNode {
 	pub input: Option<Box<QueryPlan>>,
-	pub window_type: WindowType,
-	pub size: WindowSize,
-	pub slide: Option<WindowSlide>,
+	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub min_events: usize,
-	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<time::Duration>,
+	pub ts: Option<String>,
 }
 
 /// O(1) point lookup by row number: `filter rownum == N`
 #[derive(Debug, Clone)]
 pub struct RowPointLookupNode {
 	/// The source to look up in (table, ring buffer, etc.)
-	pub source: ResolvedPrimitive,
+	pub source: ResolvedSchema,
 	/// The row number to fetch
 	pub row_number: u64,
 }
@@ -715,7 +791,7 @@ pub struct RowPointLookupNode {
 #[derive(Debug, Clone)]
 pub struct RowListLookupNode {
 	/// The source to look up in
-	pub source: ResolvedPrimitive,
+	pub source: ResolvedSchema,
 	/// The row numbers to fetch
 	pub row_numbers: Vec<u64>,
 }
@@ -724,7 +800,7 @@ pub struct RowListLookupNode {
 #[derive(Debug, Clone)]
 pub struct RowRangeScanNode {
 	/// The source to scan
-	pub source: ResolvedPrimitive,
+	pub source: ResolvedSchema,
 	/// Start of the range (inclusive)
 	pub start: u64,
 	/// End of the range (inclusive)
@@ -750,8 +826,6 @@ pub enum AppendPhysicalSource {
 	Statement(Vec<PhysicalPlan>),
 	Inline(InlineDataNode),
 }
-
-// --- Control flow and function nodes (owned, for PhysicalPlan enum) ---
 
 #[derive(Debug, Clone)]
 pub struct ConditionalNode {
@@ -804,8 +878,6 @@ pub struct CallFunctionNode {
 	pub arguments: Vec<Expression>,
 	pub is_procedure_call: bool,
 }
-
-// === Drop nodes ===
 
 #[derive(Debug, Clone)]
 pub struct DropNamespaceNode {
@@ -876,10 +948,8 @@ pub struct DropSeriesNode {
 	pub cascade: bool,
 }
 
-// === Auth/Permissions physical plan nodes ===
-
 #[derive(Debug, Clone)]
-pub struct CreateUserNode {
+pub struct CreateIdentityNode {
 	pub name: Fragment,
 }
 
@@ -901,7 +971,7 @@ pub struct RevokeNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct DropUserNode {
+pub struct DropIdentityNode {
 	pub name: Fragment,
 	pub if_exists: bool,
 }

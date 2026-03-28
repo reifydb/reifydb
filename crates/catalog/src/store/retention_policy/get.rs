@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
+	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
 	internal,
 	retention::RetentionPolicy,
 };
@@ -12,16 +12,16 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Get a retention policy for a source (table, view, or ring buffer)
+	/// Get a retention policy for a schema (table, view, or ring buffer)
 	/// Returns an error if no retention policy is set
-	pub(crate) fn get_primitive_retention_policy(
+	pub(crate) fn get_schema_retention_policy(
 		rx: &mut Transaction<'_>,
-		source: PrimitiveId,
+		schema: SchemaId,
 	) -> Result<RetentionPolicy> {
-		Self::find_primitive_retention_policy(rx, source)?.ok_or_else(|| {
+		Self::find_schema_retention_policy(rx, schema)?.ok_or_else(|| {
 			Error(internal!(
-				"Retention policy for source {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-				source
+				"Retention policy for schema {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				schema
 			))
 		})
 	}
@@ -47,34 +47,34 @@ pub mod tests {
 		interface::catalog::id::{RingBufferId, ViewId},
 		retention::{CleanupMode, RetentionPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_primitive_retention_policy,
+		_create_operator_retention_policy, create_schema_retention_policy,
 	};
 
 	#[test]
-	fn test_get_primitive_retention_policy_exists() {
+	fn test_get_schema_retention_policy_exists() {
 		let mut txn = create_test_admin_transaction();
-		let source = PrimitiveId::View(ViewId(100));
+		let schema = SchemaId::View(ViewId(100));
 
 		let policy = RetentionPolicy::KeepForever;
 
-		create_primitive_retention_policy(&mut txn, source, &policy).unwrap();
+		create_schema_retention_policy(&mut txn, schema, &policy).unwrap();
 
-		let retrieved = CatalogStore::get_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
-			.unwrap();
+		let retrieved =
+			CatalogStore::get_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema).unwrap();
 		assert_eq!(retrieved, policy);
 	}
 
 	#[test]
-	fn test_get_primitive_retention_policy_not_exists() {
+	fn test_get_schema_retention_policy_not_exists() {
 		let mut txn = create_test_admin_transaction();
-		let source = PrimitiveId::RingBuffer(RingBufferId(9999));
+		let schema = SchemaId::RingBuffer(RingBufferId(9999));
 
-		let err = CatalogStore::get_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
+		let err = CatalogStore::get_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema)
 			.unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");

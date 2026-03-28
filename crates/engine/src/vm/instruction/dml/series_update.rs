@@ -1,50 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
+		catalog::{policy::PolicyTargetType, schema::SchemaId},
 		change::{Change, ChangeOrigin, Diff},
-		evaluate::TargetColumn,
-		resolved::{ResolvedColumn, ResolvedPrimitive},
+		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedSeries},
 	},
-	key::{
-		EncodableKey,
-		series_row::{SeriesRowKey, SeriesRowKeyRange},
-	},
-	testing::TestingContext,
+	key::{EncodableKey, series_row::SeriesRowKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_rql::{
-	expression::{Expression, name::column_name_from_expression},
-	nodes::UpdateSeriesNode,
-	query::QueryPlan,
-};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_rql::nodes::UpdateSeriesNode;
+use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::cowvec::CowVec,
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
-use super::schema::get_or_create_series_schema;
+use super::returning::evaluate_returning;
 use crate::{
 	Result,
-	expression::{
-		cast::cast_column_data,
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
 	policy::PolicyEvaluator,
-	vm::{services::Services, stack::SymbolTable, volcano::scan::series::build_data_column},
+	vm::{
+		instruction::dml::schema::get_or_create_series_schema,
+		services::Services,
+		stack::SymbolTable,
+		volcano::{
+			compile::compile,
+			query::{QueryContext, QueryNode},
+		},
+	},
 };
 
 #[instrument(name = "mutate::series::update", level = "trace", skip_all)]
@@ -53,9 +47,7 @@ pub(crate) fn update_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateSeriesNode,
 	params: Params,
-	identity: IdentityId,
-	symbol_table_ref: &SymbolTable,
-	testing: &mut Option<TestingContext>,
+	symbols: &SymbolTable,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -63,405 +55,212 @@ pub(crate) fn update_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
+	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	let has_tag = series_def.tag.is_some();
+	let has_tag = series.tag.is_some();
 
-	// Extract filter conditions, patch assignments, and scan bounds from the plan.
-	// The physical plan optimizer may push timestamp/tag predicates into the
-	// SeriesScan node and remove the Filter node entirely. We need to recover
-	// those bounds so the scan is properly limited.
-	let (conditions, assignments, scan_start, scan_end, scan_tag) = match *plan.input {
-		QueryPlan::Patch(patch) => {
-			let (conditions, start, end, tag) = if let Some(input) = patch.input {
-				match *input {
-					QueryPlan::Filter(filter) => {
-						let (start, end, tag) = match *filter.input {
-							QueryPlan::SeriesScan(scan) => (
-								scan.time_range_start,
-								scan.time_range_end,
-								scan.variant_tag,
-							),
-							_ => (None, None, None),
-						};
-						(filter.conditions, start, end, tag)
-					}
-					QueryPlan::SeriesScan(scan) => {
-						(vec![], scan.time_range_start, scan.time_range_end, scan.variant_tag)
-					}
-					_ => (vec![], None, None, None),
-				}
-			} else {
-				(vec![], None, None, None)
-			};
-			(conditions, patch.assignments, start, end, tag)
-		}
-		_ => (vec![], vec![], None, None, None),
+	let namespace_ident = Fragment::internal(namespace.name());
+	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+	let series_ident = Fragment::internal(series.name.clone());
+	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
+	let resolved_source = Some(ResolvedSchema::Series(resolved_series));
+
+	let context = QueryContext {
+		services: services.clone(),
+		source: resolved_source,
+		batch_size: 1024,
+		params: params.clone(),
+		symbols: symbols.clone(),
+		identity: IdentityId::root(),
 	};
+
+	let mut input_node = compile(*plan.input, txn, Arc::new(context.clone()));
+	input_node.initialize(txn, &context)?;
 
 	let mut updated_count = 0u64;
-	let mut updates_to_apply: Vec<(EncodedKey, EncodedValues)> = Vec::new();
-	let mut updated_row_indices: Vec<usize> = Vec::new();
-	let mut pre_columns: Option<Columns> = None;
-	let mut post_columns: Option<Columns> = None;
-	let mut scanned_timestamps: Vec<i64> = Vec::new();
-	let mut scanned_sequences: Vec<u64> = Vec::new();
+	let mut returning_columns: Option<Columns> = None;
 
-	// Use bounded scan when time range or tag is available from predicate pushdown
-	let range = if scan_start.is_some() || scan_end.is_some() || scan_tag.is_some() {
-		SeriesRowKeyRange::scan_range(series_def.id, scan_tag, scan_start, scan_end, None)
-	} else {
-		SeriesRowKeyRange::full_scan(series_def.id, None)
-	};
-	let mut keys = Vec::new();
-	let mut timestamps = Vec::new();
-	let mut tags = Vec::new();
-	let mut data_rows: Vec<Vec<Value>> = Vec::new();
-
-	// Get the schema for decoding series values
-	let read_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
-
-	{
-		let mut stream = txn.range(range, 4096)?;
-		while let Some(entry) = stream.next() {
-			let entry = entry?;
-			if let Some(key) = SeriesRowKey::decode(&entry.key) {
-				keys.push(entry.key);
-				timestamps.push(key.timestamp);
-				scanned_sequences.push(key.sequence);
-				if has_tag {
-					tags.push(key.variant_tag.unwrap_or(0));
-				}
-				let mut values = Vec::with_capacity(series_def.columns.len());
-				for (i, _col) in series_def.columns.iter().enumerate() {
-					values.push(read_schema.get_value(&entry.values, i + 1));
-				}
-				data_rows.push(values);
-			}
-		}
-	}
-
-	if !keys.is_empty() {
-		scanned_timestamps = timestamps.clone();
-
-		// Build Columns from scanned data
-		let mut result_columns = Vec::new();
-		result_columns.push(Column {
-			name: Fragment::internal("timestamp"),
-			data: ColumnData::int8(timestamps),
-		});
-		if has_tag {
-			result_columns.push(Column {
-				name: Fragment::internal("tag"),
-				data: ColumnData::uint1(tags),
-			});
-		}
-		for (col_idx, col_def) in series_def.columns.iter().enumerate() {
-			let col_type = col_def.constraint.get_type();
-			let col_values: Vec<Value> = data_rows
-				.iter()
-				.map(|row| row.get(col_idx).cloned().unwrap_or(Value::none()))
-				.collect();
-			result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
-		}
-		let columns = Columns::new(result_columns);
+	let mut mutable_context = context.clone();
+	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		let row_count = columns.row_count();
-
-		// Compile filter conditions and patch assignments
-		let stack = SymbolTable::new();
-		let compile_ctx = CompileContext {
-			functions: &services.functions,
-			symbol_table: &stack,
-		};
-
-		// Evaluate filter to get mask of matching rows
-		let mut filter_mask = BitVec::repeat(row_count, true);
-		if !conditions.is_empty() {
-			let compiled_filters: Vec<CompiledExpr> = conditions
-				.iter()
-				.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-				.collect();
-
-			for compiled_expr in &compiled_filters {
-				let exec_ctx = EvalContext {
-					target: None,
-					columns: columns.clone(),
-					row_count,
-					take: None,
-					params: &params,
-					symbol_table: &stack,
-					is_aggregate_context: false,
-					functions: &services.functions,
-					clock: &services.clock,
-					arena: None,
-					identity: IdentityId::root(),
-				};
-
-				let result = compiled_expr.execute(&exec_ctx)?;
-				match result.data() {
-					ColumnData::Bool(container) => {
-						for i in 0..row_count {
-							if filter_mask.get(i) {
-								let valid = container.is_defined(i);
-								let filter_result = container.data().get(i);
-								filter_mask.set(i, valid & filter_result);
-							}
-						}
-					}
-					ColumnData::Option {
-						inner,
-						bitvec,
-					} => match inner.as_ref() {
-						ColumnData::Bool(container) => {
-							for i in 0..row_count {
-								if filter_mask.get(i) {
-									let defined = i < bitvec.len() && bitvec.get(i);
-									let valid = defined && container.is_defined(i);
-									let value = valid && container.data().get(i);
-									filter_mask.set(i, value);
-								}
-							}
-						}
-						_ => panic!("filter expression must evaluate to a boolean column"),
-					},
-					_ => panic!("filter expression must evaluate to a boolean column"),
-				}
-			}
+		if row_count == 0 {
+			continue;
 		}
 
-		// Apply patch assignments to matching rows
-		let compiled_patches: Vec<CompiledExpr> =
-			assignments.iter().map(|e| compile_expression(&compile_ctx, e).expect("compile")).collect();
+		PolicyEvaluator::new(services, symbols).enforce_write_policies(
+			txn,
+			namespace_name,
+			series_name,
+			"update",
+			&columns,
+			PolicyTargetType::Series,
+		)?;
 
-		let patch_names: Vec<Fragment> = assignments.iter().map(column_name_from_expression).collect();
+		let row_numbers = &columns.row_numbers;
 
-		// Build the resolved source for target column resolution
-		let resolved_source = ResolvedPrimitive::Series(plan.target.clone());
+		let mut updates_to_apply: Vec<(EncodedKey, EncodedRow, usize)> = Vec::new();
 
-		// Evaluate patch expressions on ALL rows (we'll only use results for matching ones)
-		let mut patch_columns = Vec::with_capacity(assignments.len());
-		for (expr, compiled_expr) in assignments.iter().zip(compiled_patches.iter()) {
-			let mut exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
-				params: &params,
-				symbol_table: &stack,
-				is_aggregate_context: false,
-				functions: &services.functions,
-				clock: &services.clock,
-				arena: None,
-				identity: IdentityId::root(),
+		for row_idx in 0..row_count {
+			let sequence = u64::from(row_numbers[row_idx]);
+
+			let key_value = columns
+				.iter()
+				.find(|c| c.name().text() == series.key.column())
+				.and_then(|c| series.key_to_u64(c.data().get_value(row_idx)))
+				.unwrap_or(0);
+
+			let variant_tag = if has_tag {
+				columns.iter()
+					.find(|c| c.name().text() == "tag")
+					.map(|c| match c.data().get_value(row_idx) {
+						Value::Uint1(v) => Some(v),
+						_ => None,
+					})
+					.flatten()
+			} else {
+				None
 			};
 
-			// Set target column for type coercion
-			if let Expression::Alias(alias_expr) = expr {
-				let alias_name = alias_expr.alias.name();
-				if let Some(table_column) =
-					resolved_source.columns().iter().find(|col| col.name == alias_name)
-				{
-					let column_ident = Fragment::internal(&table_column.name);
-					let resolved_column = ResolvedColumn::new(
-						column_ident,
-						resolved_source.clone(),
-						table_column.clone(),
-					);
-					exec_ctx.target = Some(TargetColumn::Resolved(resolved_column));
-				}
-			}
+			let key = SeriesRowKey {
+				series: series.id,
+				variant_tag,
+				key: key_value,
+				sequence,
+			};
+			let encoded_key = key.encode();
 
-			let mut column = compiled_expr.execute(&exec_ctx)?;
-
-			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
-				if column.data.get_type() != target_type {
-					let data = cast_column_data(
-						&exec_ctx,
-						&column.data,
-						target_type,
-						&expr.lazy_fragment(),
-					)?;
-					column = Column {
-						name: column.name,
-						data,
-					};
-				}
-			}
-
-			patch_columns.push(column);
-		}
-
-		// Save pre-columns for flow change tracking before consuming
-		pre_columns = Some(columns.clone());
-
-		// Build patched columns by merging originals with patches
-		let mut patched = Vec::new();
-		for original_col in columns.into_iter() {
-			let original_name = original_col.name().text();
-			if let Some(patch_idx) = patch_names.iter().position(|n| n.text() == original_name) {
-				patched.push(patch_columns[patch_idx].clone());
-			} else {
-				patched.push(original_col);
-			}
-		}
-		let patched_columns = Columns::new(patched);
-
-		// Enforce write policies only on rows that match the filter
-		let matching_count = (0..row_count).filter(|&i| filter_mask.get(i)).count();
-		if matching_count > 0 {
-			let mut filtered_cols = Vec::new();
-			for col in patched_columns.iter() {
-				let mut data = ColumnData::with_capacity(col.data().get_type(), matching_count);
-				for i in 0..row_count {
-					if filter_mask.get(i) {
-						data.push_value(col.data().get_value(i));
-					}
-				}
-				filtered_cols.push(Column {
-					name: col.name().clone(),
-					data,
-				});
-			}
-			let filtered = Columns::new(filtered_cols);
-			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
-				txn,
-				identity,
-				namespace_name,
-				series_name,
-				"update",
-				&filtered,
-				PolicyTargetType::Series,
-			)?;
-		}
-
-		// Write updated values back to storage for matching rows
-		for row_idx in 0..row_count {
-			if !filter_mask.get(row_idx) {
-				continue;
-			}
-
-			// Build new data column values from the patched row
-			let mut data_values = Vec::with_capacity(series_def.columns.len());
-			for col_def in &series_def.columns {
-				let value = if let Some(input_col) =
-					patched_columns.iter().find(|c| c.name().text() == col_def.name)
-				{
-					input_col.data().get_value(row_idx)
-				} else {
-					Value::none()
-				};
-				data_values.push(value);
-			}
-
-			let schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+			let schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
 			let mut row = schema.allocate();
-			// Get timestamp for this row
-			let ts = patched_columns
+
+			let key_col_value = columns
 				.iter()
-				.find(|c| c.name().text() == "timestamp")
+				.find(|c| c.name().text() == series.key.column())
 				.map(|c| c.data().get_value(row_idx))
 				.unwrap_or(Value::Int8(0));
-			schema.set_value(&mut row, 0, &ts);
-			for (i, value) in data_values.iter().enumerate() {
-				schema.set_value(&mut row, i + 1, value);
+			schema.set_value(&mut row, 0, &key_col_value);
+
+			for (i, col_def) in series.data_columns().enumerate() {
+				let value = columns
+					.iter()
+					.find(|c| c.name().text() == col_def.name)
+					.map(|c| c.data().get_value(row_idx))
+					.unwrap_or(Value::none());
+				schema.set_value(&mut row, i + 1, &value);
 			}
 
-			updates_to_apply.push((keys[row_idx].clone(), row));
-			updated_row_indices.push(row_idx);
+			updates_to_apply.push((encoded_key, row, row_idx));
 		}
 
-		post_columns = Some(patched_columns);
-	}
+		for (encoded_key, row, row_idx) in &updates_to_apply {
+			let pre_data = txn.get(encoded_key)?;
+			let pre_values = pre_data.map(|v| v.row);
 
-	// Apply all collected updates
-	for (key, row) in &updates_to_apply {
-		txn.set(key, row.clone())?;
-		updated_count += 1;
-	}
+			let key_value = columns
+				.iter()
+				.find(|c| c.name().text() == series.key.column())
+				.and_then(|c| series.key_to_u64(c.data().get_value(*row_idx)))
+				.unwrap_or(0);
 
-	// Track flow changes and testing mutations for updated rows
-	if let (Some(pre_cols), Some(post_cols)) = (&pre_columns, &post_columns) {
-		for &row_idx in &updated_row_indices {
-			let timestamp = scanned_timestamps[row_idx];
-			let row_number = RowNumber::from(scanned_sequences[row_idx]);
+			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
 
-			// Build pre columns (original values)
-			let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
-			pre_col_vec.push(Column {
-				name: Fragment::internal("timestamp"),
-				data: ColumnData::int8(vec![timestamp]),
-			});
-			for col in pre_cols.iter() {
-				if col.name().text() != "timestamp" && col.name().text() != "tag" {
-					let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
-					data.push_value(col.data().get_value(row_idx));
+			if let Some(ref pre_vals) = pre_values {
+				let read_schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
+				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
+				pre_col_vec.push(Column {
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![key_value]),
+				});
+				for (i, col_def) in series.data_columns().enumerate() {
+					let val = read_schema.get_value(pre_vals, i + 1);
+					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
+					data.push_value(val);
 					pre_col_vec.push(Column {
-						name: col.name().clone(),
+						name: Fragment::internal(&col_def.name),
 						data,
 					});
 				}
-			}
 
-			// Build post columns (updated values)
-			let mut post_col_vec = Vec::with_capacity(1 + series_def.columns.len());
-			post_col_vec.push(Column {
-				name: Fragment::internal("timestamp"),
-				data: ColumnData::int8(vec![timestamp]),
-			});
-			for col in post_cols.iter() {
-				if col.name().text() != "timestamp" && col.name().text() != "tag" {
-					let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
-					data.push_value(col.data().get_value(row_idx));
-					post_col_vec.push(Column {
-						name: col.name().clone(),
-						data,
-					});
+				let mut post_col_vec = Vec::with_capacity(1 + series.columns.len());
+				post_col_vec.push(Column {
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![key_value]),
+				});
+				for col in columns.iter() {
+					if col.name().text() != series.key.column() && col.name().text() != "tag" {
+						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
+						data.push_value(col.data().get_value(*row_idx));
+						post_col_vec.push(Column {
+							name: col.name().clone(),
+							data,
+						});
+					}
 				}
+
+				let pre = Columns {
+					row_numbers: CowVec::new(vec![row_number]),
+					columns: CowVec::new(pre_col_vec),
+				};
+				let post = Columns {
+					row_numbers: CowVec::new(vec![row_number]),
+					columns: CowVec::new(post_col_vec),
+				};
+				txn.track_flow_change(Change {
+					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
+					version: CommitVersion(0),
+					diffs: vec![Diff::Update {
+						pre,
+						post,
+					}],
+				});
 			}
 
-			if let Some(log) = testing.as_mut() {
-				let old = Columns::single_row(
-					iter::once(("timestamp", Value::Int8(timestamp))).chain(pre_cols
-						.iter()
-						.filter(|c| c.name().text() != "timestamp" && c.name().text() != "tag")
-						.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
-				);
-				let new = Columns::single_row(
-					iter::once(("timestamp", Value::Int8(timestamp))).chain(post_cols
-						.iter()
-						.filter(|c| c.name().text() != "timestamp" && c.name().text() != "tag")
-						.map(|c| (c.name().text(), c.data().get_value(row_idx)))),
-				);
-				let key = format!("series::{}::{}", namespace.name(), series_def.name);
-				log.record_update(key, old, new);
-			}
+			let pre_for_interceptor = pre_values.clone().unwrap_or_else(|| row.clone());
+			let row = SeriesRowInterceptor::pre_update(txn, &series, row.clone())?;
+			txn.set(encoded_key, row.clone())?;
+			SeriesRowInterceptor::post_update(txn, &series, &row, &pre_for_interceptor)?;
+			updated_count += 1;
+		}
 
-			let pre = Columns {
-				row_numbers: CowVec::new(vec![row_number]),
-				columns: CowVec::new(pre_col_vec),
-			};
-			let post = Columns {
-				row_numbers: CowVec::new(vec![row_number]),
-				columns: CowVec::new(post_col_vec),
-			};
-			txn.track_flow_change(Change {
-				origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
-				version: CommitVersion(0),
-				diffs: vec![Diff::Update {
-					pre,
-					post,
-				}],
+		if plan.returning.is_some() {
+			returning_columns = Some(match returning_columns {
+				Some(existing) => {
+					let mut cols = Vec::new();
+					for (i, col) in columns.iter().enumerate() {
+						if let Some(existing_col) = existing.iter().nth(i) {
+							let mut data = ColumnData::with_capacity(
+								col.data().get_type(),
+								existing_col.data().len() + col.data().len(),
+							);
+							for j in 0..existing_col.data().len() {
+								data.push_value(existing_col.data().get_value(j));
+							}
+							for j in 0..col.data().len() {
+								data.push_value(col.data().get_value(j));
+							}
+							cols.push(Column {
+								name: col.name().clone(),
+								data,
+							});
+						}
+					}
+					Columns::new(cols)
+				}
+				None => columns,
 			});
 		}
 	}
 
-	// Return summary
+	if let Some(returning_exprs) = &plan.returning {
+		let cols = returning_columns.unwrap_or_else(Columns::empty);
+		return evaluate_returning(services, symbols, returning_exprs, cols);
+	}
+
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(namespace.name().to_string())),
-		("series", Value::Utf8(series_def.name)),
+		("series", Value::Utf8(series.name)),
 		("updated", Value::Uint8(updated_count)),
 	]))
 }

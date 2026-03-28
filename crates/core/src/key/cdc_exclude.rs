@@ -48,6 +48,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::SubscriptionColumn
 			| KeyKind::SubscriptionRow
 			| KeyKind::Config
+			| KeyKind::Token
 	)
 }
 
@@ -88,7 +89,7 @@ pub mod tests {
 			KeyKind::RingBuffer => {}
 			KeyKind::NamespaceRingBuffer => {}
 			KeyKind::RingBufferMetadata => {}
-			KeyKind::PrimitiveRetentionPolicy => {}
+			KeyKind::SchemaRetentionPolicy => {}
 			KeyKind::OperatorRetentionPolicy => {}
 			KeyKind::Flow => {}
 			KeyKind::NamespaceFlow => {}
@@ -110,25 +111,31 @@ pub mod tests {
 			KeyKind::Schema => {}
 			KeyKind::SumType => {}
 			KeyKind::NamespaceSumType => {}
-			KeyKind::SchemaField => {}
+			KeyKind::RowSchemaField => {}
 			KeyKind::Handler => {}
 			KeyKind::NamespaceHandler => {}
 			KeyKind::VariantHandler => {}
 			KeyKind::Series => {}
 			KeyKind::NamespaceSeries => {}
 			KeyKind::SeriesMetadata => {}
-			KeyKind::User => {}
+			KeyKind::Identity => {}
 			KeyKind::Role => {}
-			KeyKind::UserRole => {}
+			KeyKind::GrantedRole => {}
 			KeyKind::Policy => {}
 			KeyKind::PolicyOp => {}
 			KeyKind::Migration => {}
-			KeyKind::UserAuthentication => {}
+			KeyKind::Authentication => {}
 			KeyKind::MigrationEvent => {}
-			KeyKind::Config => {} /* When adding a new variant, add it here.
-			                       * The compiler will error if you forget.
-			                       * Then add a test and update should_exclude_from_cdc() if
-			                       * needed. */
+			KeyKind::Config => {}
+			KeyKind::Token => {}
+			KeyKind::Source => {}
+			KeyKind::NamespaceSource => {}
+			KeyKind::Sink => {}
+			KeyKind::NamespaceSink => {}
+			KeyKind::SourceCheckpoint => {} /* When adding a new variant, add it here.
+			                                 * The compiler will error if you forget.
+			                                 * Then add a test and update should_exclude_from_cdc() if
+			                                 * needed. */
 		}
 	}
 
@@ -284,8 +291,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_source_retention_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::PrimitiveRetentionPolicy));
+	fn test_include_schema_retention_policy() {
+		assert!(!should_exclude_from_cdc(KeyKind::SchemaRetentionPolicy));
 	}
 
 	#[test]
@@ -375,7 +382,7 @@ pub mod tests {
 
 	#[test]
 	fn test_include_schema_field() {
-		assert!(!should_exclude_from_cdc(KeyKind::SchemaField));
+		assert!(!should_exclude_from_cdc(KeyKind::RowSchemaField));
 	}
 
 	#[test]
@@ -394,8 +401,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_user() {
-		assert!(!should_exclude_from_cdc(KeyKind::User));
+	fn test_include_identity() {
+		assert!(!should_exclude_from_cdc(KeyKind::Identity));
 	}
 
 	#[test]
@@ -404,13 +411,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_user_role() {
-		assert!(!should_exclude_from_cdc(KeyKind::UserRole));
+	fn test_include_granted_role() {
+		assert!(!should_exclude_from_cdc(KeyKind::GrantedRole));
 	}
 
 	#[test]
-	fn test_include_user_authentication() {
-		assert!(!should_exclude_from_cdc(KeyKind::UserAuthentication));
+	fn test_include_authentication() {
+		assert!(!should_exclude_from_cdc(KeyKind::Authentication));
 	}
 
 	#[test]

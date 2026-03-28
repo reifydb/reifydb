@@ -3,17 +3,18 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		flow::{FlowDef, FlowStatus},
+		flow::{Flow, FlowStatus},
 		id::NamespaceId,
 	},
 	key::{Key, flow::FlowKey},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::duration::Duration;
 
 use crate::{CatalogStore, Result, store::flow::schema::flow};
 
 impl CatalogStore {
-	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowDef>> {
+	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(FlowKey::full_scan(), 1024)?;
@@ -25,19 +26,27 @@ impl CatalogStore {
 					let flow_id = flow_key.flow;
 
 					let namespace_id =
-						NamespaceId(flow::SCHEMA.get_u64(&entry.values, flow::NAMESPACE));
-					let name = flow::SCHEMA.get_utf8(&entry.values, flow::NAME).to_string();
-					let status_u8 = flow::SCHEMA.get_u8(&entry.values, flow::STATUS);
+						NamespaceId(flow::SCHEMA.get_u64(&entry.row, flow::NAMESPACE));
+					let name = flow::SCHEMA.get_utf8(&entry.row, flow::NAME).to_string();
+					let status_u8 = flow::SCHEMA.get_u8(&entry.row, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 
-					let flow_def = FlowDef {
+					let tick_nanos = flow::SCHEMA.get_u64(&entry.row, flow::TICK_NANOS);
+					let tick = if tick_nanos > 0 {
+						Some(Duration::from_nanoseconds(tick_nanos as i64)?)
+					} else {
+						None
+					};
+
+					let flow = Flow {
 						id: flow_id,
 						namespace: namespace_id,
 						name,
 						status,
+						tick,
 					};
 
-					result.push(flow_def);
+					result.push(flow);
 				}
 			}
 		}
@@ -49,7 +58,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowStatus;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::fragment::Fragment;
 
@@ -124,6 +133,7 @@ pub mod tests {
 				name: Fragment::internal("paused_flow"),
 				namespace: namespace.id(),
 				status: FlowStatus::Paused,
+				tick: None,
 			},
 		)
 		.unwrap();

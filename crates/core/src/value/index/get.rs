@@ -16,10 +16,10 @@ use uuid::Uuid;
 
 use crate::{
 	sort::SortDirection,
-	value::index::{encoded::EncodedIndexKey, layout::EncodedIndexLayout},
+	value::index::{encoded::EncodedIndexKey, schema::IndexSchema},
 };
 
-impl EncodedIndexLayout {
+impl IndexSchema {
 	pub fn get_bool(&self, key: &EncodedIndexKey, index: usize) -> bool {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Boolean);
@@ -319,32 +319,18 @@ impl EncodedIndexLayout {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::DateTime);
 
-		let mut sec_bytes = [0u8; 8];
-		let mut nano_bytes = [0u8; 4];
+		let mut bytes = [0u8; 8];
 
 		unsafe {
-			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), sec_bytes.as_mut_ptr(), 8);
-			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 8), nano_bytes.as_mut_ptr(), 4);
+			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
 
-		match field.direction {
-			SortDirection::Asc => {
-				sec_bytes[0] ^= 0x80;
-			}
-			SortDirection::Desc => {
-				for b in sec_bytes.iter_mut() {
-					*b = !*b;
-				}
-				sec_bytes[0] ^= 0x80;
-				for b in nano_bytes.iter_mut() {
-					*b = !*b;
-				}
-			}
-		}
+		let nanos = match field.direction {
+			SortDirection::Asc => u64::from_be_bytes(bytes),
+			SortDirection::Desc => !u64::from_be_bytes(bytes),
+		};
 
-		let seconds = i64::from_be_bytes(sec_bytes);
-		let nanos = u32::from_be_bytes(nano_bytes);
-		DateTime::from_parts(seconds, nanos).unwrap()
+		DateTime::from_nanos(nanos)
 	}
 
 	pub fn get_time(&self, key: &EncodedIndexKey, index: usize) -> Time {
@@ -403,7 +389,7 @@ impl EncodedIndexLayout {
 		let months = i32::from_be_bytes(months_bytes);
 		let days = i32::from_be_bytes(days_bytes);
 		let nanos = i64::from_be_bytes(nanos_bytes);
-		Duration::new(months, days, nanos)
+		Duration::new(months, days, nanos).expect("stored duration must be valid")
 	}
 
 	pub fn get_uuid4(&self, key: &EncodedIndexKey, index: usize) -> Uuid4 {
@@ -469,14 +455,14 @@ impl EncodedIndexLayout {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+	use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 	mod bool {
 		use super::*;
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Boolean], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Boolean], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -490,7 +476,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Boolean], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Boolean], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -506,11 +492,11 @@ pub mod tests {
 	mod i8 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Int1], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Int1], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -528,7 +514,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Int1], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Int1], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -548,11 +534,11 @@ pub mod tests {
 	mod i32 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -570,7 +556,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Int4], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Int4], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -590,11 +576,11 @@ pub mod tests {
 	mod i64 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Int8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Int8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -612,7 +598,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Int8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Int8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -632,11 +618,11 @@ pub mod tests {
 	mod u8 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint1], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint1], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -654,7 +640,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint1], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint1], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -674,11 +660,11 @@ pub mod tests {
 	mod u32 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint4], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint4], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -696,7 +682,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint4], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint4], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -716,11 +702,11 @@ pub mod tests {
 	mod u64 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -738,7 +724,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -758,11 +744,11 @@ pub mod tests {
 	mod f32 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Float4], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Float4], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -780,7 +766,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Float4], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Float4], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -800,11 +786,11 @@ pub mod tests {
 	mod f64 {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Float8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Float8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -822,7 +808,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Float8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Float8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -842,11 +828,11 @@ pub mod tests {
 	mod date {
 		use reifydb_type::value::{date::Date, r#type::Type};
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Date], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Date], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -868,7 +854,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Date], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Date], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -892,11 +878,11 @@ pub mod tests {
 	mod row_number {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -914,7 +900,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -936,11 +922,11 @@ pub mod tests {
 
 		use reifydb_type::value::{identity::IdentityId, r#type::Type};
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -961,7 +947,7 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
+			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -982,7 +968,7 @@ pub mod tests {
 
 		#[test]
 		fn test_roundtrip() {
-			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
+			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 
 			let id = IdentityId::generate();
 			let mut key = layout.allocate_key();
@@ -997,11 +983,11 @@ pub mod tests {
 	mod composite {
 		use reifydb_type::value::r#type::Type;
 
-		use crate::{sort::SortDirection, value::index::layout::EncodedIndexLayout};
+		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
 		#[test]
 		fn test_mixed_directions() {
-			let layout = EncodedIndexLayout::new(
+			let layout = IndexSchema::new(
 				&[Type::Int4, Type::Uint8, Type::Uint8],
 				&[SortDirection::Desc, SortDirection::Asc, SortDirection::Asc],
 			)

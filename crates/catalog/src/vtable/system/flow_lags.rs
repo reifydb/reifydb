@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{catalog::vtable::VTableDef, flow::FlowLagsProvider},
+	interface::{catalog::vtable::VTable, flow::FlowLagsProvider},
 	util::ioc::IocContainer,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -14,29 +14,29 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes per-source lag for each flow.
 ///
 /// Each row shows how far behind a flow is for a specific source primitive.
-pub struct FlowLags {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemFlowLags {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 	ioc: IocContainer,
 }
 
-impl FlowLags {
+impl SystemFlowLags {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_lags_table_def().clone(),
+			definition: SystemCatalog::get_system_flow_lags_table().clone(),
 			exhausted: false,
 			ioc,
 		}
 	}
 }
 
-impl VTable for FlowLags {
+impl BaseVTable for SystemFlowLags {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -58,7 +58,7 @@ impl VTable for FlowLags {
 
 		for row in rows {
 			flow_ids.push(row.flow_id.0);
-			primitive_ids.push(row.primitive_id.as_u64());
+			primitive_ids.push(row.object_id.as_u64());
 			lags.push(row.lag);
 		}
 
@@ -68,7 +68,7 @@ impl VTable for FlowLags {
 				data: flow_ids,
 			},
 			Column {
-				name: Fragment::internal("primitive_id"),
+				name: Fragment::internal("object_id"),
 				data: primitive_ids,
 			},
 			Column {
@@ -83,7 +83,7 @@ impl VTable for FlowLags {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

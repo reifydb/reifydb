@@ -6,10 +6,10 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::{PrimaryKeyId, SubscriptionId},
-			key::PrimaryKeyDef,
-			subscription::SubscriptionDef,
+			key::PrimaryKey,
+			subscription::Subscription,
 		},
-		store::MultiVersionValues,
+		store::MultiVersionRow,
 	},
 	key::subscription::SubscriptionKey,
 };
@@ -31,20 +31,20 @@ pub(crate) fn load_subscriptions(rx: &mut Transaction<'_>, catalog: &Materialize
 
 		let pk_id = get_subscription_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let subscription_def = convert_subscription(multi, primary_key);
+		let subscription = convert_subscription(multi, primary_key);
 
-		catalog.set_subscription(subscription_def.id, version, Some(subscription_def));
+		catalog.set_subscription(subscription.id, version, Some(subscription));
 	}
 
 	Ok(())
 }
 
-fn convert_subscription(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> SubscriptionDef {
-	let row = multi.values;
+fn convert_subscription(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Subscription {
+	let row = multi.row;
 	let id = SubscriptionId(subscription::SCHEMA.get_u64(&row, ID));
 	let acknowledged_version = CommitVersion(subscription::SCHEMA.get_u64(&row, ACKNOWLEDGED_VERSION));
 
-	SubscriptionDef {
+	Subscription {
 		id,
 		columns: vec![],
 		primary_key,
@@ -52,8 +52,8 @@ fn convert_subscription(multi: MultiVersionValues, primary_key: Option<PrimaryKe
 	}
 }
 
-fn get_subscription_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
-	let pk_id_raw = subscription::SCHEMA.get_u64(&multi.values, PRIMARY_KEY);
+fn get_subscription_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
+	let pk_id_raw = subscription::SCHEMA.get_u64(&multi.row, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

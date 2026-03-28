@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ViewId, view::ViewDef},
+	interface::catalog::{id::ViewId, view::View},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> Result<ViewDef> {
+	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> Result<View> {
 		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
 			Error(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -24,7 +24,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, ViewId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
@@ -46,9 +46,9 @@ pub mod tests {
 
 		let result = CatalogStore::get_view(&mut Transaction::Admin(&mut txn), ViewId(1026)).unwrap();
 
-		assert_eq!(result.id, ViewId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
-		assert_eq!(result.name, "view_two");
+		assert_eq!(result.id(), ViewId(1026));
+		assert_eq!(result.namespace(), NamespaceId(1027));
+		assert_eq!(result.name(), "view_two");
 	}
 
 	#[test]

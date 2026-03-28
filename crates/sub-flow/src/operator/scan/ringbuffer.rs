@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
-		catalog::{flow::FlowNodeId, primitive::PrimitiveId, ringbuffer::RingBufferDef},
+		catalog::{flow::FlowNodeId, ringbuffer::RingBuffer, schema::SchemaId},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -16,11 +16,11 @@ use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::Fl
 
 pub struct PrimitiveRingBufferOperator {
 	node: FlowNodeId,
-	ringbuffer: RingBufferDef,
+	ringbuffer: RingBuffer,
 }
 
 impl PrimitiveRingBufferOperator {
-	pub fn new(node: FlowNodeId, ringbuffer: RingBufferDef) -> Self {
+	pub fn new(node: FlowNodeId, ringbuffer: RingBuffer) -> Self {
 		Self {
 			node,
 			ringbuffer,
@@ -78,7 +78,7 @@ impl Operator for PrimitiveRingBufferOperator {
 			return Ok(self.empty_columns());
 		}
 
-		let schema: Schema = (&self.ringbuffer.columns).into();
+		let schema: RowSchema = (&self.ringbuffer.columns).into();
 		let fields = schema.fields();
 
 		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
@@ -91,7 +91,7 @@ impl Operator for PrimitiveRingBufferOperator {
 		let mut row_numbers = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
-			let key = RowKey::encoded(PrimitiveId::ringbuffer(self.ringbuffer.id), *row_num);
+			let key = RowKey::encoded(SchemaId::ringbuffer(self.ringbuffer.id), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				for (i, _field) in fields.iter().enumerate() {

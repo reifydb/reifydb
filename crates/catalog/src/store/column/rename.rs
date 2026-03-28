@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ColumnId, primitive::PrimitiveId},
+	interface::catalog::{id::ColumnId, schema::SchemaId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -15,14 +15,14 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn rename_column(
 		txn: &mut AdminTransaction,
-		primitive: PrimitiveId,
+		object: SchemaId,
 		column_id: ColumnId,
 		new_name: &str,
 	) -> Result<()> {
 		// Update column definition (ColumnsKey)
 		// We must rebuild the row since set_utf8 cannot overwrite existing values
 		if let Some(multi) = txn.get(&ColumnsKey::encoded(column_id))? {
-			let old = multi.values;
+			let old = multi.row;
 			let mut row = column::SCHEMA.allocate();
 			column::SCHEMA.set_u64(&mut row, column::ID, column::SCHEMA.get_u64(&old, column::ID));
 			column::SCHEMA.set_u64(
@@ -51,9 +51,9 @@ impl CatalogStore {
 			txn.set(&ColumnsKey::encoded(column_id), row)?;
 		}
 
-		// Update primitive-column link (ColumnKey)
-		if let Some(multi) = txn.get(&ColumnKey::encoded(primitive, column_id))? {
-			let old = multi.values;
+		// Update object-column link (ColumnKey)
+		if let Some(multi) = txn.get(&ColumnKey::encoded(object, column_id))? {
+			let old = multi.row;
 			let mut row = primitive_column::SCHEMA.allocate();
 			primitive_column::SCHEMA.set_u64(
 				&mut row,
@@ -66,7 +66,7 @@ impl CatalogStore {
 				primitive_column::INDEX,
 				primitive_column::SCHEMA.get_u8(&old, primitive_column::INDEX),
 			);
-			txn.set(&ColumnKey::encoded(primitive, column_id), row)?;
+			txn.set(&ColumnKey::encoded(object, column_id), row)?;
 		}
 
 		Ok(())

@@ -4,14 +4,14 @@
 //! Helper functions for common test patterns
 
 use reifydb_core::encoded::{
-	encoded::EncodedValues,
 	key::{EncodedKey, IntoEncodedKey},
-	schema::Schema,
+	row::EncodedRow,
+	schema::RowSchema,
 };
 use reifydb_type::value::Value;
 
 /// Get all values from an encoded row using a schema
-pub fn get_values(schema: &Schema, row: &EncodedValues) -> Vec<Value> {
+pub fn get_values(schema: &RowSchema, row: &EncodedRow) -> Vec<Value> {
 	(0..schema.field_count()).map(|i| schema.get_value(row, i)).collect()
 }
 

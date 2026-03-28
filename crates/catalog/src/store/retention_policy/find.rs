@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, primitive::PrimitiveId},
-	key::retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey},
+	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
+	key::retention_policy::{OperatorRetentionPolicyKey, SchemaRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -12,14 +12,14 @@ use super::decode_retention_policy;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Find a retention policy for a source (table, view, or ring buffer)
+	/// Find a retention policy for a schema (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
-	pub(crate) fn find_primitive_retention_policy(
+	pub(crate) fn find_schema_retention_policy(
 		rx: &mut Transaction<'_>,
-		source: PrimitiveId,
+		schema: SchemaId,
 	) -> Result<Option<RetentionPolicy>> {
-		let value = rx.get(&PrimitiveRetentionPolicyKey::encoded(source))?;
-		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
+		let value = rx.get(&SchemaRetentionPolicyKey::encoded(schema))?;
+		Ok(value.and_then(|v| decode_retention_policy(&v.row)))
 	}
 
 	/// Find a retention policy for an operator
@@ -29,7 +29,7 @@ impl CatalogStore {
 		operator: FlowNodeId,
 	) -> Result<Option<RetentionPolicy>> {
 		let value = rx.get(&OperatorRetentionPolicyKey::encoded(operator))?;
-		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
+		Ok(value.and_then(|v| decode_retention_policy(&v.row)))
 	}
 }
 
@@ -39,38 +39,38 @@ pub mod tests {
 		interface::catalog::id::TableId,
 		retention::{CleanupMode, RetentionPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_primitive_retention_policy,
+		_create_operator_retention_policy, create_schema_retention_policy,
 	};
 
 	#[test]
-	fn test_find_primitive_retention_policy_exists() {
+	fn test_find_schema_retention_policy_exists() {
 		let mut txn = create_test_admin_transaction();
-		let source = PrimitiveId::Table(TableId(42));
+		let schema = SchemaId::Table(TableId(42));
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_primitive_retention_policy(&mut txn, source, &policy).unwrap();
+		create_schema_retention_policy(&mut txn, schema, &policy).unwrap();
 
-		let found = CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
-			.unwrap();
+		let found =
+			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema).unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
 	#[test]
-	fn test_find_primitive_retention_policy_not_exists() {
+	fn test_find_schema_retention_policy_not_exists() {
 		let mut txn = create_test_admin_transaction();
-		let source = PrimitiveId::Table(TableId(9999));
+		let schema = SchemaId::Table(TableId(9999));
 
-		let found = CatalogStore::find_primitive_retention_policy(&mut Transaction::Admin(&mut txn), source)
-			.unwrap();
+		let found =
+			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema).unwrap();
 		assert_eq!(found, None);
 	}
 

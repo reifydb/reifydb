@@ -12,26 +12,26 @@
 //! - **Native**: Uses `crossbeam-channel` for lock-free message passing between threads
 //! - **WASM**: Uses `Rc<RefCell>` processor for inline (synchronous) message handling
 
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 use std::cell::{Cell, RefCell};
 use std::fmt;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 use std::rc::Rc;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 use std::sync::Arc;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 use std::sync::atomic::AtomicBool;
 
 use cfg_if::cfg_if;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub(crate) mod native;
 
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(reifydb_target = "native")] {
+	if #[cfg(not(reifydb_single_threaded))] {
 		type ActorRefInnerImpl<M> = native::ActorRefInner<M>;
 	} else {
 		type ActorRefInnerImpl<M> = wasm::ActorRefInner<M>;
@@ -140,11 +140,11 @@ impl<M> fmt::Debug for ActorRef<M> {
 	}
 }
 
-// SAFETY: WASM is single-threaded, so Send and Sync are safe
-#[cfg(reifydb_target = "wasm")]
+// SAFETY: Single-threaded targets (WASM/WASI) don't have real concurrency
+#[cfg(reifydb_single_threaded)]
 unsafe impl<M> Send for ActorRef<M> {}
 
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 unsafe impl<M> Sync for ActorRef<M> {}
 
 impl<M> ActorRef<M> {
@@ -158,7 +158,7 @@ impl<M> ActorRef<M> {
 }
 
 // Native-specific methods (require M: Send)
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 impl<M: Send> ActorRef<M> {
 	/// Create a new ActorRef from a crossbeam sender (native only).
 	#[inline]
@@ -201,8 +201,8 @@ impl<M: Send> ActorRef<M> {
 	}
 }
 
-// WASM-specific methods (no Send bound needed)
-#[cfg(reifydb_target = "wasm")]
+// Single-threaded methods (no Send bound needed)
+#[cfg(reifydb_single_threaded)]
 impl<M> ActorRef<M> {
 	/// Create a new ActorRef with WASM components (WASM only).
 	#[inline]
@@ -269,12 +269,12 @@ impl<M> ActorRef<M> {
 }
 
 use std::error;
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 use std::sync;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 use crossbeam_channel::Sender;
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub(crate) use native::create_mailbox;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub(crate) use wasm::create_actor_ref;

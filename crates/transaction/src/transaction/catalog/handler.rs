@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackHandlerChangeOperations,
-	handler::HandlerDef,
+	handler::Handler,
 	id::{HandlerId, NamespaceId},
 };
 use reifydb_type::Result;
@@ -18,30 +18,30 @@ use crate::{
 };
 
 impl CatalogTrackHandlerChangeOperations for AdminTransaction {
-	fn track_handler_def_created(&mut self, handler: HandlerDef) -> Result<()> {
+	fn track_handler_created(&mut self, handler: Handler) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(handler),
 			op: Create,
 		};
-		self.changes.add_handler_def_change(change);
+		self.changes.add_handler_change(change);
 		Ok(())
 	}
 
-	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> Result<()> {
+	fn track_handler_deleted(&mut self, handler: Handler) -> Result<()> {
 		let change = Change {
 			pre: Some(handler),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_handler_def_change(change);
+		self.changes.add_handler_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalHandlerChanges for AdminTransaction {
-	fn find_handler_by_id(&self, id: HandlerId) -> Option<&HandlerDef> {
-		for change in self.changes.handler_def.iter().rev() {
+	fn find_handler_by_id(&self, id: HandlerId) -> Option<&Handler> {
+		for change in self.changes.handler.iter().rev() {
 			if let Some(handler) = &change.post {
 				if handler.id == id {
 					return Some(handler);
@@ -55,16 +55,16 @@ impl TransactionalHandlerChanges for AdminTransaction {
 		None
 	}
 
-	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&HandlerDef> {
+	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Handler> {
 		self.changes
-			.handler_def
+			.handler
 			.iter()
 			.rev()
 			.find_map(|change| change.post.as_ref().filter(|h| h.namespace == namespace && h.name == name))
 	}
 
 	fn is_handler_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.changes.handler_def.iter().rev().any(|change| {
+		self.changes.handler.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
@@ -76,21 +76,21 @@ impl TransactionalHandlerChanges for AdminTransaction {
 }
 
 impl CatalogTrackHandlerChangeOperations for SubscriptionTransaction {
-	fn track_handler_def_created(&mut self, handler: HandlerDef) -> Result<()> {
-		self.inner.track_handler_def_created(handler)
+	fn track_handler_created(&mut self, handler: Handler) -> Result<()> {
+		self.inner.track_handler_created(handler)
 	}
 
-	fn track_handler_def_deleted(&mut self, handler: HandlerDef) -> Result<()> {
-		self.inner.track_handler_def_deleted(handler)
+	fn track_handler_deleted(&mut self, handler: Handler) -> Result<()> {
+		self.inner.track_handler_deleted(handler)
 	}
 }
 
 impl TransactionalHandlerChanges for SubscriptionTransaction {
-	fn find_handler_by_id(&self, id: HandlerId) -> Option<&HandlerDef> {
+	fn find_handler_by_id(&self, id: HandlerId) -> Option<&Handler> {
 		self.inner.find_handler_by_id(id)
 	}
 
-	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&HandlerDef> {
+	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Handler> {
 		self.inner.find_handler_by_name(namespace, name)
 	}
 

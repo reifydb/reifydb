@@ -14,13 +14,13 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_function::registry::Functions;
+use reifydb_routine::function::registry::Functions;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	params::Params,
@@ -40,7 +40,7 @@ pub struct FilterOperator {
 	node: FlowNodeId,
 	compiled_conditions: Vec<CompiledExpr>,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl FilterOperator {
@@ -49,11 +49,11 @@ impl FilterOperator {
 		node: FlowNodeId,
 		conditions: Vec<Expression>,
 		functions: Functions,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 	) -> Self {
 		let compile_ctx = CompileContext {
 			functions: &functions,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 		let compiled_conditions: Vec<CompiledExpr> = conditions
 			.iter()
@@ -65,7 +65,7 @@ impl FilterOperator {
 			node,
 			compiled_conditions,
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
@@ -77,19 +77,16 @@ impl FilterOperator {
 			return Ok(Vec::new());
 		}
 
-		let exec_ctx = EvalContext {
-			target: None,
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let exec_ctx = session.eval(columns.clone(), row_count);
 
 		// Start with all rows passing
 		let mut mask = vec![true; row_count];

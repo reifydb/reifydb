@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowId, vtable::VTableDef},
+	interface::catalog::{flow::FlowId, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_metric::{
@@ -19,20 +19,20 @@ use reifydb_type::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes storage statistics for flows
-pub struct FlowStorageStats {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemFlowStorageStats {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 	stats_reader: MetricReader<SingleStore>,
 }
 
-impl FlowStorageStats {
+impl SystemFlowStorageStats {
 	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_storage_stats_table_def().clone(),
+			definition: SystemCatalog::get_system_flow_storage_stats_table().clone(),
 			exhausted: false,
 			stats_reader,
 		}
@@ -47,7 +47,7 @@ fn tier_to_str(tier: Tier) -> &'static str {
 	}
 }
 
-impl VTable for FlowStorageStats {
+impl BaseVTable for SystemFlowStorageStats {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -82,7 +82,7 @@ impl VTable for FlowStorageStats {
 		for ((flow_id, tier), stats) in aggregated {
 			// Look up namespace_id from catalog
 			let namespace_id = match CatalogStore::find_flow(txn, flow_id)? {
-				Some(flow_def) => flow_def.namespace.0,
+				Some(flow) => flow.namespace.0,
 				None => 0,
 			};
 
@@ -216,7 +216,7 @@ impl VTable for FlowStorageStats {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

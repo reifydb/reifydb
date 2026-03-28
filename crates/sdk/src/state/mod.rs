@@ -13,14 +13,14 @@ pub mod window;
 
 use std::ops::Bound;
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 
 use crate::{
 	error::Result,
 	operator::{FFIOperator, context::OperatorContext},
 };
 
-/// State manager providing state operations with EncodedKey and EncodedValues
+/// State manager providing state operations with EncodedKey and EncodedRow
 pub struct State<'a> {
 	ctx: &'a mut OperatorContext,
 }
@@ -34,12 +34,12 @@ impl<'a> State<'a> {
 	}
 
 	/// Get a value from state by key
-	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		ffi::raw_state_get(self.ctx, key)
 	}
 
 	/// Set a value in state by key
-	pub fn set(&mut self, key: &EncodedKey, value: &EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
 		ffi::raw_state_set(self.ctx, key, value)
 	}
 
@@ -59,7 +59,7 @@ impl<'a> State<'a> {
 	}
 
 	/// Scan state entries with a given key prefix
-	pub fn scan_prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+	pub fn scan_prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		ffi::raw_state_prefix(self.ctx, prefix)
 	}
 
@@ -74,7 +74,7 @@ impl<'a> State<'a> {
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+	) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		ffi::raw_state_range(self.ctx, start, end)
 	}
 }
@@ -98,12 +98,12 @@ impl<'a> State<'a> {
 /// ```
 pub trait FFIRawStatefulOperator: FFIOperator {
 	/// Get raw bytes for a key
-	fn state_get(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+	fn state_get(&self, ctx: &mut OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		ctx.state().get(key)
 	}
 
 	/// Set raw bytes for a key
-	fn state_set(&self, ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedValues) -> Result<()> {
+	fn state_set(&self, ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
 		ctx.state().set(key, value)
 	}
 
@@ -117,7 +117,7 @@ pub trait FFIRawStatefulOperator: FFIOperator {
 		&self,
 		ctx: &mut OperatorContext,
 		prefix: &EncodedKey,
-	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+	) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		ctx.state().scan_prefix(prefix)
 	}
 
@@ -142,7 +142,7 @@ pub trait FFIRawStatefulOperator: FFIOperator {
 		ctx: &mut OperatorContext,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+	) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 		ctx.state().range(start, end)
 	}
 }

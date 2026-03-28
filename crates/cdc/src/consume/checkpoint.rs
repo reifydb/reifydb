@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{common::CommitVersion, encoded::encoded::EncodedValues, key::cdc_consumer::ToConsumerKey};
+use reifydb_core::{common::CommitVersion, encoded::row::EncodedRow, key::cdc_consumer::ToConsumerKey};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
@@ -13,9 +13,9 @@ impl CdcCheckpoint {
 
 		txn.get(&key)?
 			.and_then(|multi| {
-				if multi.values.len() >= 8 {
+				if multi.row.len() >= 8 {
 					let mut buffer = [0u8; 8];
-					buffer.copy_from_slice(&multi.values[0..8]);
+					buffer.copy_from_slice(&multi.row[0..8]);
 					Some(CommitVersion(u64::from_be_bytes(buffer)))
 				} else {
 					None
@@ -32,6 +32,6 @@ impl CdcCheckpoint {
 	) -> Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.0.to_be_bytes().to_vec();
-		txn.set(&key, EncodedValues(CowVec::new(version_bytes)))
+		txn.set(&key, EncodedRow(CowVec::new(version_bytes)))
 	}
 }

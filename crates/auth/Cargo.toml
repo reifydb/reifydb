@@ -11,11 +11,16 @@ description = "Authentication and authorization module for ReifyDB"
 default = []
 
 [dependencies]
+reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
-rand = { workspace = true }
 argon2 = { workspace = true }
+ed25519-dalek = { workspace = true }
+bs58 = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]

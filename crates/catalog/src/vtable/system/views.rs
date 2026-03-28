@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -16,25 +16,25 @@ use reifydb_type::{
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system view information
-pub struct Views {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemViews {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Views {
+impl SystemViews {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_views_table_def().clone(),
+			definition: SystemCatalog::get_system_views_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Views {
+impl BaseVTable for SystemViews {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -53,11 +53,11 @@ impl VTable for Views {
 		let mut primary_keys = ColumnData::uint4_with_capacity(views.len());
 
 		for view in views {
-			ids.push(view.id.0);
-			namespaces.push(view.namespace.0);
-			names.push(view.name.as_str());
+			ids.push(view.id().0);
+			namespaces.push(view.namespace().0);
+			names.push(view.name());
 			primary_keys.push_value(
-				view.primary_key
+				view.primary_key()
 					.map(|pk| pk.id.0)
 					.map(Value::Uint8)
 					.unwrap_or(Value::none_of(Type::Uint8)),
@@ -89,7 +89,7 @@ impl VTable for Views {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

@@ -2,9 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::Column;
-use reifydb_function::registry::Functions;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::clock::Clock;
 
 use crate::{
 	Result,
@@ -15,10 +13,10 @@ use crate::{
 	},
 };
 
-pub fn evaluate(ctx: &EvalContext, expr: &Expression, _functions: &Functions, _clock: &Clock) -> Result<Column> {
+pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<Column> {
 	let compile_ctx = CompileContext {
 		functions: ctx.functions,
-		symbol_table: ctx.symbol_table,
+		symbols: ctx.symbols,
 	};
 	let compiled = compile_expression(&compile_ctx, expr)?;
 	let column = compiled.execute(ctx)?;

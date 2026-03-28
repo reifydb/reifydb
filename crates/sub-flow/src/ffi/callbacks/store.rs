@@ -19,7 +19,7 @@ use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::MultiVersionBatch,
 };
-use reifydb_engine::ffi::callbacks::memory::{host_alloc, host_free};
+use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 use reifydb_type::{error::Error, util::cowvec::CowVec};
 
 use super::store_iterator::{self, StoreIteratorHandle};
@@ -55,7 +55,7 @@ pub(super) extern "C" fn host_store_get(
 		match flow_txn.get(&key) {
 			Ok(Some(value)) => {
 				// Copy value to output buffer
-				let value_bytes = value.as_ref();
+				let value_bytes = value.as_slice();
 				let value_ptr = host_alloc(value_bytes.len());
 				if value_ptr.is_null() {
 					return FFI_ERROR_ALLOC;

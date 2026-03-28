@@ -3,8 +3,9 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{catalog::vtable::VTableDef, version::SystemVersion};
+use reifydb_core::interface::{catalog::vtable::VTable, version::SystemVersion};
 
+pub mod authentications;
 pub mod cdc_consumers;
 pub mod column_properties;
 pub mod columns;
@@ -22,7 +23,9 @@ pub mod flow_operator_inputs;
 pub mod flow_operator_outputs;
 pub mod flow_operators;
 pub mod flows;
+pub mod granted_roles;
 pub mod handlers;
+pub mod identities;
 pub mod migrations;
 pub mod namespaces;
 pub mod operator_retention_policies;
@@ -30,11 +33,11 @@ pub mod policies;
 pub mod policy_operations;
 pub mod primary_key_columns;
 pub mod primary_keys;
-pub mod primitive_retention_policies;
 pub mod procedures;
 pub mod ringbuffers;
 pub mod roles;
 pub mod schema_fields;
+pub mod schema_retention_policies;
 pub mod schemas;
 pub mod sequence;
 pub mod series;
@@ -50,13 +53,11 @@ pub mod tables_virtual;
 pub mod tag_variants;
 pub mod tags;
 pub mod types;
-pub mod user_authentications;
-pub mod user_roles;
-pub mod users;
 pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
 
+use authentications::authentications;
 use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
 use columns::columns;
@@ -74,7 +75,9 @@ use flow_operator_inputs::flow_operator_inputs;
 use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
 use flows::flows;
+use granted_roles::granted_roles;
 use handlers::handlers;
+use identities::identities;
 use migrations::migrations;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
@@ -82,10 +85,10 @@ use policies::policies;
 use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
-use primitive_retention_policies::primitive_retention_policies;
 use procedures::procedures;
 use roles::roles;
 use schema_fields::schema_fields;
+use schema_retention_policies::schema_retention_policies;
 use schemas::schemas;
 use sequence::sequences;
 use series::series;
@@ -101,9 +104,6 @@ use tables_virtual::virtual_tables;
 use tag_variants::tag_variants;
 use tags::tags;
 use types::types;
-use user_authentications::user_authentications;
-use user_roles::user_roles;
-use users::users;
 use versions::versions;
 use views::views;
 use virtual_table_columns::virtual_table_columns;
@@ -308,9 +308,10 @@ pub mod ids {
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TAG_ID: ColumnId = ColumnId(4);
-			pub const PRECISION: ColumnId = ColumnId(5);
+			pub const KEY_COLUMN: ColumnId = ColumnId(5);
+			pub const KEY_KIND: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, TAG_ID, PRECISION];
+			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, TAG_ID, KEY_COLUMN, KEY_KIND];
 		}
 
 		pub mod handlers {
@@ -413,7 +414,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod primitive_retention_policies {
+		pub mod schema_retention_policies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const PRIMITIVE_ID: ColumnId = ColumnId(1);
@@ -564,13 +565,13 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [ID, NAME];
 		}
 
-		pub mod user_roles {
+		pub mod granted_roles {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const USER_ID: ColumnId = ColumnId(1);
+			pub const IDENTITY_ID: ColumnId = ColumnId(1);
 			pub const ROLE_ID: ColumnId = ColumnId(2);
 
-			pub const ALL: [ColumnId; 2] = [USER_ID, ROLE_ID];
+			pub const ALL: [ColumnId; 2] = [IDENTITY_ID, ROLE_ID];
 		}
 
 		pub mod policies {
@@ -587,7 +588,7 @@ pub mod ids {
 				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
 		}
 
-		pub mod user_authentications {
+		pub mod authentications {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -638,10 +639,13 @@ pub mod ids {
 		pub const POLICY: SequenceId = SequenceId(13);
 		pub const MIGRATION: SequenceId = SequenceId(14);
 		pub const MIGRATION_EVENT: SequenceId = SequenceId(15);
-		pub const USER_AUTHENTICATION: SequenceId = SequenceId(16);
+		pub const AUTHENTICATION: SequenceId = SequenceId(16);
 		pub const TEST: SequenceId = SequenceId(17);
+		pub const TOKEN: SequenceId = SequenceId(18);
+		pub const SOURCE_CONNECTOR: SequenceId = SequenceId(19);
+		pub const SINK_CONNECTOR: SequenceId = SequenceId(20);
 
-		pub const ALL: [SequenceId; 17] = [
+		pub const ALL: [SequenceId; 20] = [
 			NAMESPACE,
 			SOURCE,
 			COLUMN,
@@ -657,8 +661,11 @@ pub mod ids {
 			POLICY,
 			MIGRATION,
 			MIGRATION_EVENT,
-			USER_AUTHENTICATION,
+			AUTHENTICATION,
 			TEST,
+			TOKEN,
+			SOURCE_CONNECTOR,
+			SINK_CONNECTOR,
 		];
 	}
 
@@ -704,13 +711,13 @@ pub mod ids {
 		pub const HANDLERS: VTableId = VTableId(37);
 		pub const TAGS: VTableId = VTableId(38);
 		pub const SERIES: VTableId = VTableId(39);
-		pub const USERS: VTableId = VTableId(40);
+		pub const IDENTITIES: VTableId = VTableId(40);
 		pub const ROLES: VTableId = VTableId(41);
-		pub const USER_ROLES: VTableId = VTableId(42);
+		pub const GRANTED_ROLES: VTableId = VTableId(42);
 		pub const POLICIES: VTableId = VTableId(43);
 		pub const POLICY_OPERATIONS: VTableId = VTableId(44);
 		pub const MIGRATIONS: VTableId = VTableId(45);
-		pub const USER_AUTHENTICATIONS: VTableId = VTableId(46);
+		pub const AUTHENTICATIONS: VTableId = VTableId(46);
 		pub const CONFIGS: VTableId = VTableId(47);
 		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(48);
 		pub const ENUM_VARIANTS: VTableId = VTableId(49);
@@ -757,13 +764,13 @@ pub mod ids {
 			HANDLERS,
 			TAGS,
 			SERIES,
-			USERS,
+			IDENTITIES,
 			ROLES,
-			USER_ROLES,
+			GRANTED_ROLES,
 			POLICIES,
 			POLICY_OPERATIONS,
 			MIGRATIONS,
-			USER_AUTHENTICATIONS,
+			AUTHENTICATIONS,
 			CONFIGS,
 			VIRTUAL_TABLE_COLUMNS,
 			ENUM_VARIANTS,
@@ -796,257 +803,257 @@ impl SystemCatalog {
 	}
 
 	/// Get the sequences virtual table definition
-	pub fn get_system_sequences_table_def() -> Arc<VTableDef> {
+	pub fn get_system_sequences_table() -> Arc<VTable> {
 		sequences()
 	}
 
 	/// Get the namespaces virtual table definition
-	pub fn get_system_namespaces_table_def() -> Arc<VTableDef> {
+	pub fn get_system_namespaces_table() -> Arc<VTable> {
 		namespaces()
 	}
 
 	/// Get the tables virtual table definition
-	pub fn get_system_tables_table_def() -> Arc<VTableDef> {
+	pub fn get_system_tables_table() -> Arc<VTable> {
 		tables()
 	}
 
 	/// Get the views virtual table definition
-	pub fn get_system_views_table_def() -> Arc<VTableDef> {
+	pub fn get_system_views_table() -> Arc<VTable> {
 		views()
 	}
 
 	/// Get the flows virtual table definition
-	pub fn get_system_flows_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flows_table() -> Arc<VTable> {
 		flows()
 	}
 
 	/// Get the flow_lags virtual table definition
-	pub fn get_system_flow_lags_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_lags_table() -> Arc<VTable> {
 		flow_lags()
 	}
 
 	/// Get the columns virtual table definition
-	pub fn get_system_columns_table_def() -> Arc<VTableDef> {
+	pub fn get_system_columns_table() -> Arc<VTable> {
 		columns()
 	}
 
 	/// Get the primary_keys virtual table definition
-	pub fn get_system_primary_keys_table_def() -> Arc<VTableDef> {
+	pub fn get_system_primary_keys_table() -> Arc<VTable> {
 		primary_keys()
 	}
 
 	/// Get the primary_key_columns virtual table definition
-	pub fn get_system_primary_key_columns_table_def() -> Arc<VTableDef> {
+	pub fn get_system_primary_key_columns_table() -> Arc<VTable> {
 		primary_key_columns()
 	}
 
 	/// Get the column_properties virtual table definition
-	pub fn get_system_column_properties_table_def() -> Arc<VTableDef> {
+	pub fn get_system_column_properties_table() -> Arc<VTable> {
 		column_properties()
 	}
 
 	/// Get the system versions virtual table definition
-	pub fn get_system_versions_table_def() -> Arc<VTableDef> {
+	pub fn get_system_versions_table() -> Arc<VTable> {
 		versions()
 	}
 
-	/// Get the primitive_retention_policies virtual table definition
-	pub fn get_system_primitive_retention_policies_table_def() -> Arc<VTableDef> {
-		primitive_retention_policies()
+	/// Get the schema_retention_policies virtual table definition
+	pub fn get_system_schema_retention_policies_table() -> Arc<VTable> {
+		schema_retention_policies()
 	}
 
 	/// Get the operator_retention_policies virtual table definition
-	pub fn get_system_operator_retention_policies_table_def() -> Arc<VTableDef> {
+	pub fn get_system_operator_retention_policies_table() -> Arc<VTable> {
 		operator_retention_policies()
 	}
 
 	/// Get the cdc_consumers virtual table definition
-	pub fn get_system_cdc_consumers_table_def() -> Arc<VTableDef> {
+	pub fn get_system_cdc_consumers_table() -> Arc<VTable> {
 		cdc_consumers()
 	}
 
 	/// Get the flow_operators virtual table definition
-	pub fn get_system_flow_operators_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_operators_table() -> Arc<VTable> {
 		flow_operators()
 	}
 
 	/// Get the flow_nodes virtual table definition
-	pub fn get_system_flow_nodes_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_nodes_table() -> Arc<VTable> {
 		flow_nodes()
 	}
 
 	/// Get the flow_edges virtual table definition
-	pub fn get_system_flow_edges_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_edges_table() -> Arc<VTable> {
 		flow_edges()
 	}
 
 	/// Get the dictionaries virtual table definition
-	pub fn get_system_dictionaries_table_def() -> Arc<VTableDef> {
+	pub fn get_system_dictionaries_table() -> Arc<VTable> {
 		dictionaries()
 	}
 
 	/// Get the virtual_tables virtual table definition
-	pub fn get_system_virtual_tables_table_def() -> Arc<VTableDef> {
+	pub fn get_system_virtual_tables_table() -> Arc<VTable> {
 		virtual_tables()
 	}
 
 	/// Get the types virtual table definition
-	pub fn get_system_types_table_def() -> Arc<VTableDef> {
+	pub fn get_system_types_table() -> Arc<VTable> {
 		types()
 	}
 
 	/// Get the flow_node_types virtual table definition
-	pub fn get_system_flow_node_types_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_node_types_table() -> Arc<VTable> {
 		flow_node_types()
 	}
 
 	/// Get the flow_operator_inputs virtual table definition
-	pub fn get_system_flow_operator_inputs_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_operator_inputs_table() -> Arc<VTable> {
 		flow_operator_inputs()
 	}
 
 	/// Get the flow_operator_outputs virtual table definition
-	pub fn get_system_flow_operator_outputs_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_operator_outputs_table() -> Arc<VTable> {
 		flow_operator_outputs()
 	}
 
 	/// Get the ringbuffers virtual table definition
-	pub fn get_system_ringbuffers_table_def() -> Arc<VTableDef> {
+	pub fn get_system_ringbuffers_table() -> Arc<VTable> {
 		ringbuffers()
 	}
 
 	/// Get the table_storage_stats virtual table definition
-	pub fn get_system_table_storage_stats_table_def() -> Arc<VTableDef> {
+	pub fn get_system_table_storage_stats_table() -> Arc<VTable> {
 		table_storage_stats()
 	}
 
 	/// Get the view_storage_stats virtual table definition
-	pub fn get_system_view_storage_stats_table_def() -> Arc<VTableDef> {
+	pub fn get_system_view_storage_stats_table() -> Arc<VTable> {
 		view_storage_stats()
 	}
 
 	/// Get the flow_storage_stats virtual table definition
-	pub fn get_system_flow_storage_stats_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_storage_stats_table() -> Arc<VTable> {
 		flow_storage_stats()
 	}
 
 	/// Get the flow_node_storage_stats virtual table definition
-	pub fn get_system_flow_node_storage_stats_table_def() -> Arc<VTableDef> {
+	pub fn get_system_flow_node_storage_stats_table() -> Arc<VTable> {
 		flow_node_storage_stats()
 	}
 
 	/// Get the index_storage_stats virtual table definition
-	pub fn get_system_index_storage_stats_table_def() -> Arc<VTableDef> {
+	pub fn get_system_index_storage_stats_table() -> Arc<VTable> {
 		index_storage_stats()
 	}
 
 	/// Get the ringbuffer_storage_stats virtual table definition
-	pub fn get_system_ringbuffer_storage_stats_table_def() -> Arc<VTableDef> {
+	pub fn get_system_ringbuffer_storage_stats_table() -> Arc<VTable> {
 		ringbuffer_storage_stats()
 	}
 
 	/// Get the dictionary_storage_stats virtual table definition
-	pub fn get_system_dictionary_storage_stats_table_def() -> Arc<VTableDef> {
+	pub fn get_system_dictionary_storage_stats_table() -> Arc<VTable> {
 		dictionary_storage_stats()
 	}
 
 	/// Get the schemas virtual table definition
-	pub fn get_system_schemas_table_def() -> Arc<VTableDef> {
+	pub fn get_system_schemas_table() -> Arc<VTable> {
 		schemas()
 	}
 
 	/// Get the schema_fields virtual table definition
-	pub fn get_system_schema_fields_table_def() -> Arc<VTableDef> {
+	pub fn get_system_schema_fields_table() -> Arc<VTable> {
 		schema_fields()
 	}
 
 	/// Get the enums virtual table definition
-	pub fn get_system_enums_table_def() -> Arc<VTableDef> {
+	pub fn get_system_enums_table() -> Arc<VTable> {
 		enums()
 	}
 
 	/// Get the enum_variants virtual table definition
-	pub fn get_system_enum_variants_table_def() -> Arc<VTableDef> {
+	pub fn get_system_enum_variants_table() -> Arc<VTable> {
 		enum_variants()
 	}
 
 	/// Get the events virtual table definition
-	pub fn get_system_events_table_def() -> Arc<VTableDef> {
+	pub fn get_system_events_table() -> Arc<VTable> {
 		events()
 	}
 
 	/// Get the event_variants virtual table definition
-	pub fn get_system_event_variants_table_def() -> Arc<VTableDef> {
+	pub fn get_system_event_variants_table() -> Arc<VTable> {
 		event_variants()
 	}
 
 	/// Get the procedures virtual table definition
-	pub fn get_system_procedures_table_def() -> Arc<VTableDef> {
+	pub fn get_system_procedures_table() -> Arc<VTable> {
 		procedures()
 	}
 
 	/// Get the handlers virtual table definition
-	pub fn get_system_handlers_table_def() -> Arc<VTableDef> {
+	pub fn get_system_handlers_table() -> Arc<VTable> {
 		handlers()
 	}
 
 	/// Get the tags virtual table definition
-	pub fn get_system_tags_table_def() -> Arc<VTableDef> {
+	pub fn get_system_tags_table() -> Arc<VTable> {
 		tags()
 	}
 
 	/// Get the tag_variants virtual table definition
-	pub fn get_system_tag_variants_table_def() -> Arc<VTableDef> {
+	pub fn get_system_tag_variants_table() -> Arc<VTable> {
 		tag_variants()
 	}
 
 	/// Get the series virtual table definition
-	pub fn get_system_series_table_def() -> Arc<VTableDef> {
+	pub fn get_system_series_table() -> Arc<VTable> {
 		series()
 	}
 
-	/// Get the users virtual table definition
-	pub fn get_system_users_table_def() -> Arc<VTableDef> {
-		users()
+	/// Get the identities virtual table definition
+	pub fn get_system_identities_table() -> Arc<VTable> {
+		identities()
 	}
 
 	/// Get the roles virtual table definition
-	pub fn get_system_roles_table_def() -> Arc<VTableDef> {
+	pub fn get_system_roles_table() -> Arc<VTable> {
 		roles()
 	}
 
-	/// Get the user_roles virtual table definition
-	pub fn get_system_user_roles_table_def() -> Arc<VTableDef> {
-		user_roles()
+	/// Get the granted_roles virtual table definition
+	pub fn get_system_granted_roles_table() -> Arc<VTable> {
+		granted_roles()
 	}
 
 	/// Get the policies virtual table definition
-	pub fn get_system_policies_table_def() -> Arc<VTableDef> {
+	pub fn get_system_policies_table() -> Arc<VTable> {
 		policies()
 	}
 
 	/// Get the policy_operations virtual table definition
-	pub fn get_system_policy_operations_table_def() -> Arc<VTableDef> {
+	pub fn get_system_policy_operations_table() -> Arc<VTable> {
 		policy_operations()
 	}
 
 	/// Get the migrations virtual table definition
-	pub fn get_system_migrations_table_def() -> Arc<VTableDef> {
+	pub fn get_system_migrations_table() -> Arc<VTable> {
 		migrations()
 	}
 
-	/// Get the user_authentications virtual table definition
-	pub fn get_system_user_authentications_table_def() -> Arc<VTableDef> {
-		user_authentications()
+	/// Get the authentications virtual table definition
+	pub fn get_system_authentications_table() -> Arc<VTable> {
+		authentications()
 	}
 
 	/// Get the configs virtual table definition
-	pub fn get_system_configs_table_def() -> Arc<VTableDef> {
+	pub fn get_system_configs_table() -> Arc<VTable> {
 		configs()
 	}
 
 	/// Get the virtual_table_columns virtual table definition
-	pub fn get_system_virtual_table_columns_table_def() -> Arc<VTableDef> {
+	pub fn get_system_virtual_table_columns_table() -> Arc<VTable> {
 		virtual_table_columns()
 	}
 }

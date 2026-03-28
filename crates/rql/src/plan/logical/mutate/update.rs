@@ -26,6 +26,16 @@ impl<'bump> Compiler<'bump> {
 		ast: AstUpdate<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
+		let returning = if let Some(returning_asts) = ast.returning {
+			let mut exprs = Vec::with_capacity(returning_asts.len());
+			for ast_node in returning_asts {
+				exprs.push(ExpressionCompiler::compile(ast_node)?);
+			}
+			Some(exprs)
+		} else {
+			None
+		};
+
 		// Build internal pipeline: FROM -> FILTER -> MAP
 
 		// 1. Create FROM scan from target
@@ -54,10 +64,28 @@ impl<'bump> Compiler<'bump> {
 		};
 		let patch_plan = self.compile_patch(patch_ast)?;
 
-		// 4. Build pipeline: FROM -> FILTER -> PATCH
-		let mut steps = BumpVec::with_capacity_in(3, self.bump);
+		// 4. Build pipeline: FROM -> FILTER -> [TAKE] -> PATCH
+		let take_plan = if let Some(take_box) = ast.take {
+			let take_ast = match BumpBox::into_inner(take_box) {
+				Ast::Take(t) => t,
+				_ => unreachable!("take should always be Ast::Take"),
+			};
+			Some(self.compile_take(take_ast)?)
+		} else {
+			None
+		};
+
+		let capacity = if take_plan.is_some() {
+			4
+		} else {
+			3
+		};
+		let mut steps = BumpVec::with_capacity_in(capacity, self.bump);
 		steps.push(from_plan);
 		steps.push(filter_plan);
+		if let Some(take) = take_plan {
+			steps.push(take);
+		}
 		steps.push(patch_plan);
 		let pipeline = LogicalPlan::Pipeline(PipelineNode {
 			steps,
@@ -82,6 +110,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::Update(UpdateTableNode {
 				target: Some(target),
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		};
 
@@ -94,6 +123,7 @@ impl<'bump> Compiler<'bump> {
 			Ok(LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}))
 		} else if self.catalog.find_series_by_name(tx, namespace_id, target_name)?.is_some() {
 			let mut target = MaybeQualifiedSeriesIdentifier::new(name);
@@ -103,6 +133,7 @@ impl<'bump> Compiler<'bump> {
 			Ok(LogicalPlan::UpdateSeries(UpdateSeriesNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}))
 		} else {
 			// Assume it's a table (will error during physical plan if not found)
@@ -113,6 +144,7 @@ impl<'bump> Compiler<'bump> {
 			Ok(LogicalPlan::Update(UpdateTableNode {
 				target: Some(target),
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}))
 		}
 	}

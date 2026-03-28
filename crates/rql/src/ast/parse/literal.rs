@@ -14,34 +14,24 @@ use crate::{
 };
 
 impl<'bump> Parser<'bump> {
+	pub(crate) fn parse_literal(&mut self, kind: Literal) -> Result<AstLiteral<'bump>> {
+		let token = self.consume_literal(kind)?;
+		Ok(match kind {
+			Literal::Number => AstLiteral::Number(AstLiteralNumber(token)),
+			Literal::Text => AstLiteral::Text(AstLiteralText(token)),
+			Literal::True | Literal::False => AstLiteral::Boolean(AstLiteralBoolean(token)),
+			Literal::None => AstLiteral::None(AstLiteralNone(token)),
+			Literal::Temporal => AstLiteral::Temporal(AstLiteralTemporal(token)),
+		})
+	}
+
+	// Keep individual methods as thin wrappers for callers outside primary.rs
 	pub(crate) fn parse_literal_number(&mut self) -> Result<AstLiteral<'bump>> {
-		let token = self.consume_literal(Literal::Number)?;
-		Ok(AstLiteral::Number(AstLiteralNumber(token)))
+		self.parse_literal(Literal::Number)
 	}
 
 	pub(crate) fn parse_literal_text(&mut self) -> Result<AstLiteral<'bump>> {
-		let token = self.consume_literal(Literal::Text)?;
-		Ok(AstLiteral::Text(AstLiteralText(token)))
-	}
-
-	pub(crate) fn parse_literal_true(&mut self) -> Result<AstLiteral<'bump>> {
-		let token = self.consume_literal(Literal::True)?;
-		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
-	}
-
-	pub(crate) fn parse_literal_false(&mut self) -> Result<AstLiteral<'bump>> {
-		let token = self.consume_literal(Literal::False)?;
-		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
-	}
-
-	pub(crate) fn parse_literal_none(&mut self) -> Result<AstLiteral<'bump>> {
-		let token = self.consume_literal(Literal::None)?;
-		Ok(AstLiteral::None(AstLiteralNone(token)))
-	}
-
-	pub(crate) fn parse_literal_temporal(&mut self) -> Result<AstLiteral<'bump>> {
-		let token = self.consume_literal(Literal::Temporal)?;
-		Ok(AstLiteral::Temporal(AstLiteralTemporal(token)))
+		self.parse_literal(Literal::Text)
 	}
 }
 

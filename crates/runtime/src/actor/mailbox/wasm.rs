@@ -17,6 +17,7 @@ use std::{
 };
 
 use super::{ActorRef, SendError};
+use crate::actor::timers::drain_expired_timers;
 
 /// WASM implementation of ActorRef inner.
 ///
@@ -106,6 +107,10 @@ impl<M> ActorRefInner<M> {
 		}
 
 		self.processing.set(false);
+
+		// Fire any WASI timers that have expired during processing.
+		drain_expired_timers();
+
 		Ok(())
 	}
 

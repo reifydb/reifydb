@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
 # Check that all `use` statements are at module level (not inside function bodies,
 # match arms, closures, or other code blocks).
 #
@@ -36,6 +38,7 @@ while IFS= read -r file; do
     BEGIN {
         depth = 0
         in_block_comment = 0
+        block_comment_re = "/[*][^*]*([*][^/][^*]*)*[*]/"
         # context_stack stores "mod" or "code" for each brace level
         # At depth 0, we are at file/module level (always OK)
     }
@@ -56,7 +59,7 @@ while IFS= read -r file; do
         }
 
         # Remove block comments that start and end on same line
-        while (match(line, /\/\*[^*]*(\*[^/][^*]*)*\*\//)) {
+        while (match(line, block_comment_re)) {
             line = substr(line, 1, RSTART - 1) substr(line, RSTART + RLENGTH)
         }
 

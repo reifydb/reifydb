@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::time::Duration;
+
 use reifydb_core::sort::SortDirection;
 use reifydb_type::{
 	error::{AstErrorKind, Error, TypeError},
@@ -16,8 +18,9 @@ use crate::{
 			AstCreateHandler, AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey,
 			AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries,
 			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
-			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKeyDef,
-			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariantDef,
+			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
+			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariant,
+			AstViewStorageKind,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -29,6 +32,7 @@ use crate::{
 		parse::{Parser, Precedence},
 	},
 	bump::BumpBox,
+	plan::logical::Compiler,
 	token::{
 		keyword::{
 			Keyword,
@@ -95,6 +99,16 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
+			// CREATE DEFERRED RINGBUFFER VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
+				self.consume_keyword(View)?;
+				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::RingBuffer);
+			}
+			// CREATE DEFERRED SERIES VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
+				self.consume_keyword(View)?;
+				return self.parse_deferred_view_with_storage(token, ViewStorageKindHint::Series);
+			}
 			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_deferred_view(token);
 			}
@@ -102,6 +116,17 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Transactional))?).is_some() {
+			// CREATE TRANSACTIONAL RINGBUFFER VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
+				self.consume_keyword(View)?;
+				return self
+					.parse_transactional_view_with_storage(token, ViewStorageKindHint::RingBuffer);
+			}
+			// CREATE TRANSACTIONAL SERIES VIEW ...
+			if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
+				self.consume_keyword(View)?;
+				return self.parse_transactional_view_with_storage(token, ViewStorageKindHint::Series);
+			}
 			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_transactional_view(token);
 			}
@@ -188,7 +213,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {
-			return self.parse_create_user(token);
+			return self.parse_create_identity(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Role))?).is_some() {
@@ -212,6 +237,14 @@ impl<'bump> Parser<'bump> {
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Migration))?).is_some() {
 			return self.parse_migration(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Source))?).is_some() {
+			return self.parse_source(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Keyword::Sink))?).is_some() {
+			return self.parse_sink(token);
 		}
 
 		if self.peek_is_index_creation()? {
@@ -526,6 +559,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut grpc = None;
+		let mut remote_token = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -542,15 +576,19 @@ impl<'bump> Parser<'bump> {
 					let value = self.consume_literal(Literal::Text)?;
 					grpc = Some(value.fragment);
 				}
+				"token" => {
+					let value = self.consume_literal(Literal::Text)?;
+					remote_token = Some(value.fragment);
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'grpc'".to_string(),
+							expected: "'grpc' or 'token'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'grpc'",
+							"'grpc' or 'token'",
 							fragment.text()
 						),
 						fragment,
@@ -586,6 +624,7 @@ impl<'bump> Parser<'bump> {
 			namespace,
 			if_not_exists,
 			grpc,
+			token_value: remote_token,
 		}))
 	}
 
@@ -597,8 +636,9 @@ impl<'bump> Parser<'bump> {
 
 		let series = MaybeQualifiedSeriesIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH block
+		// Parse required WITH block
 		let mut tag = None;
+		let mut key_field = None;
 		let mut precision = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
@@ -611,7 +651,7 @@ impl<'bump> Parser<'bump> {
 					break;
 				}
 
-				let key = {
+				let with_key = {
 					let current = self.current()?;
 					match current.kind {
 						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
@@ -625,10 +665,11 @@ impl<'bump> Parser<'bump> {
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'tag' or 'precision'".to_string(),
+									expected: "'key', 'tag', or 'precision'"
+										.to_string(),
 								},
 								message: format!(
-									"expected 'tag' or 'precision', found `{}`",
+									"expected 'key', 'tag', or 'precision', found `{}`",
 									current.fragment.text()
 								),
 								fragment: current.fragment.to_owned(),
@@ -638,7 +679,11 @@ impl<'bump> Parser<'bump> {
 				};
 				self.consume_operator(Operator::Colon)?;
 
-				match key.fragment.text() {
+				match with_key.fragment.text() {
+					"key" => {
+						let key_token = self.consume(TokenKind::Identifier)?;
+						key_field = Some(key_token.fragment);
+					}
 					"tag" => {
 						let mut tag_segments =
 							self.parse_double_colon_separated_identifiers()?;
@@ -651,6 +696,7 @@ impl<'bump> Parser<'bump> {
 					"precision" => {
 						let prec_token = self.consume(TokenKind::Identifier)?;
 						precision = Some(match prec_token.fragment.text() {
+							"second" => AstTimestampPrecision::Second,
 							"millisecond" => AstTimestampPrecision::Millisecond,
 							"microsecond" => AstTimestampPrecision::Microsecond,
 							"nanosecond" => AstTimestampPrecision::Nanosecond,
@@ -658,12 +704,12 @@ impl<'bump> Parser<'bump> {
 								let fragment = prec_token.fragment.to_owned();
 								return Err(Error::from(TypeError::Ast {
 									kind: AstErrorKind::UnexpectedToken {
-										expected: "'millisecond', 'microsecond', or 'nanosecond'"
+										expected: "'second', 'millisecond', 'microsecond', or 'nanosecond'"
 											.to_string(),
 									},
 									message: format!(
 										"Unexpected token: expected {}, got {}",
-										"'millisecond', 'microsecond', or 'nanosecond'",
+										"'second', 'millisecond', 'microsecond', or 'nanosecond'",
 										fragment.text()
 									),
 									fragment,
@@ -672,14 +718,14 @@ impl<'bump> Parser<'bump> {
 						});
 					}
 					_other => {
-						let fragment = key.fragment.to_owned();
+						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'tag' or 'precision'".to_string(),
+								expected: "'key', 'tag', or 'precision'".to_string(),
 							},
 							message: format!(
 								"Unexpected token: expected {}, got {}",
-								"'tag' or 'precision'",
+								"'key', 'tag', or 'precision'",
 								fragment.text()
 							),
 							fragment,
@@ -701,11 +747,26 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::CloseCurly)?;
 		}
 
+		// key is required
+		let key_fragment = match key_field {
+			Some(k) => Some(k),
+			None => {
+				return Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: "WITH block containing 'key' field".to_string(),
+					},
+					message: "CREATE SERIES requires a WITH block with a 'key' field specifying the ordering column".to_string(),
+					fragment: token.fragment.to_owned(),
+				}));
+			}
+		};
+
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
 			series,
 			columns,
 			tag,
+			key: key_fragment,
 			precision,
 		}))
 	}
@@ -813,6 +874,14 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
+		// Parse optional WITH clause for tick configuration
+		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+			self.advance()?;
+			self.parse_view_tick_with_clause()?
+		} else {
+			None
+		};
+
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
 			// Expect opening curly brace
@@ -858,6 +927,35 @@ impl<'bump> Parser<'bump> {
 			view,
 			columns,
 			as_clause,
+			storage_kind: AstViewStorageKind::Table,
+			tick,
+		}))
+	}
+
+	fn parse_deferred_view_with_storage(
+		&mut self,
+		token: Token<'bump>,
+		hint: ViewStorageKindHint,
+	) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let columns = self.parse_columns()?;
+
+		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
+
+		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
+
+		// Parse optional AS clause
+		let as_clause = self.parse_view_as_clause()?;
+
+		Ok(AstCreate::DeferredView(AstCreateDeferredView {
+			token,
+			view,
+			columns,
+			as_clause,
+			storage_kind,
+			tick,
 		}))
 	}
 
@@ -868,6 +966,14 @@ impl<'bump> Parser<'bump> {
 		let columns = self.parse_columns()?;
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
+
+		// Parse optional WITH clause for tick configuration
+		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+			self.advance()?;
+			self.parse_view_tick_with_clause()?
+		} else {
+			None
+		};
 
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -914,6 +1020,35 @@ impl<'bump> Parser<'bump> {
 			view,
 			columns,
 			as_clause,
+			storage_kind: AstViewStorageKind::Table,
+			tick,
+		}))
+	}
+
+	fn parse_transactional_view_with_storage(
+		&mut self,
+		token: Token<'bump>,
+		hint: ViewStorageKindHint,
+	) -> Result<AstCreate<'bump>> {
+		let mut segments = self.parse_double_colon_separated_identifiers()?;
+		let name = segments.pop().unwrap().into_fragment();
+		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
+		let columns = self.parse_columns()?;
+
+		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
+
+		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
+
+		// Parse optional AS clause
+		let as_clause = self.parse_view_as_clause()?;
+
+		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
+			token,
+			view,
+			columns,
+			as_clause,
+			storage_kind,
+			tick,
 		}))
 	}
 
@@ -952,6 +1087,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut capacity: Option<u64> = None;
+		let mut partition_by: Vec<String> = Vec::new();
 
 		loop {
 			self.skip_new_line()?;
@@ -974,10 +1110,10 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'tag' or 'precision'".to_string(),
+								expected: "'capacity' or 'partition_by'".to_string(),
 							},
 							message: format!(
-								"expected 'tag' or 'precision', found `{}`",
+								"expected 'capacity' or 'partition_by', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -1006,15 +1142,30 @@ impl<'bump> Parser<'bump> {
 							})
 						})?);
 				}
+				"partition_by" => {
+					self.consume_operator(Operator::OpenCurly)?;
+					loop {
+						self.skip_new_line()?;
+						if self.current()?.is_operator(Operator::CloseCurly) {
+							break;
+						}
+						let col = self.consume(TokenKind::Identifier)?;
+						partition_by.push(col.fragment.text().to_string());
+						if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+							break;
+						}
+					}
+					self.consume_operator(Operator::CloseCurly)?;
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity'".to_string(),
+							expected: "'capacity' or 'partition_by'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'capacity'",
+							"'capacity' or 'partition_by'",
 							fragment.text()
 						),
 						fragment,
@@ -1061,12 +1212,13 @@ impl<'bump> Parser<'bump> {
 			ringbuffer,
 			columns,
 			capacity,
+			partition_by,
 		}))
 	}
 
 	/// Parse primary key definition: {col1: DESC, col2: ASC}
 	/// Defaults to DESC when sort order is not specified
-	fn parse_primary_key_definition(&mut self) -> Result<AstPrimaryKeyDef<'bump>> {
+	fn parse_primary_keyinition(&mut self) -> Result<AstPrimaryKey<'bump>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -1132,7 +1284,7 @@ impl<'bump> Parser<'bump> {
 			}));
 		}
 
-		Ok(AstPrimaryKeyDef {
+		Ok(AstPrimaryKey {
 			columns,
 		})
 	}
@@ -1146,7 +1298,7 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
-		let pk_def = self.parse_primary_key_definition()?;
+		let pk_def = self.parse_primary_keyinition()?;
 
 		Ok(AstCreate::PrimaryKey(AstCreatePrimaryKey {
 			token,
@@ -1290,7 +1442,7 @@ impl<'bump> Parser<'bump> {
 				Vec::new()
 			};
 
-			variants.push(AstVariantDef {
+			variants.push(AstVariant {
 				name: variant_name,
 				columns,
 			});
@@ -1562,7 +1714,7 @@ impl<'bump> Parser<'bump> {
 				Vec::new()
 			};
 
-			variants.push(AstVariantDef {
+			variants.push(AstVariant {
 				name: variant_name,
 				columns,
 			});
@@ -1611,7 +1763,7 @@ impl<'bump> Parser<'bump> {
 				Vec::new()
 			};
 
-			variants.push(AstVariantDef {
+			variants.push(AstVariant {
 				name: variant_name,
 				columns,
 			});
@@ -1823,6 +1975,288 @@ impl<'bump> Parser<'bump> {
 			rollback_body_source,
 		}))
 	}
+
+	fn parse_view_as_clause(&mut self) -> Result<Option<AstStatement<'bump>>> {
+		if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			let mut query_nodes = Vec::new();
+			let mut has_pipes = false;
+
+			loop {
+				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let node = self.parse_node(Precedence::None)?;
+				query_nodes.push(node);
+
+				if !self.is_eof() && self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?;
+					has_pipes = true;
+				} else {
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+
+			Ok(Some(AstStatement {
+				nodes: query_nodes,
+				has_pipes,
+				is_output: false,
+			}))
+		} else {
+			Ok(None)
+		}
+	}
+
+	fn parse_view_storage_with_clause(
+		&mut self,
+		hint: ViewStorageKindHint,
+	) -> Result<(AstViewStorageKind, Option<Duration>)> {
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut tick: Option<Duration> = None;
+
+		match hint {
+			ViewStorageKindHint::RingBuffer => {
+				let mut capacity: Option<u64> = None;
+				let mut propagate_evictions: Option<bool> = None;
+				let mut partition_by: Vec<String> = Vec::new();
+
+				loop {
+					self.skip_new_line()?;
+					if self.current()?.is_operator(Operator::CloseCurly) {
+						break;
+					}
+
+					let key = self.consume(TokenKind::Identifier)?;
+					self.consume_operator(Operator::Colon)?;
+
+					match key.fragment.text() {
+						"capacity" => {
+							let token =
+								self.consume(TokenKind::Literal(Literal::Number))?;
+							capacity =
+								Some(token.fragment.text().parse::<u64>().map_err(
+									|_| {
+										let fragment =
+											token.fragment.to_owned();
+										Error::from(TypeError::Ast {
+									kind: AstErrorKind::UnexpectedToken {
+										expected: "valid capacity number".to_string(),
+									},
+									message: format!("expected valid capacity number, got {}", fragment.text()),
+									fragment,
+								})
+									},
+								)?);
+						}
+						"propagate_evictions" => {
+							let token = self.consume(TokenKind::Identifier)?;
+							propagate_evictions =
+								Some(match token.fragment.text() {
+									"true" => true,
+									"false" => false,
+									_ => {
+										let fragment =
+											token.fragment.to_owned();
+										return Err(Error::from(TypeError::Ast {
+										kind: AstErrorKind::UnexpectedToken {
+											expected: "true or false".to_string(),
+										},
+										message: format!("expected true or false, got {}", fragment.text()),
+										fragment,
+									}));
+									}
+								});
+						}
+						"partition_by" => {
+							self.consume_operator(Operator::OpenCurly)?;
+							loop {
+								self.skip_new_line()?;
+								if self.current()?.is_operator(Operator::CloseCurly) {
+									break;
+								}
+								let col = self.consume(TokenKind::Identifier)?;
+								partition_by.push(col.fragment.text().to_string());
+								if self.consume_if(TokenKind::Separator(Comma))?
+									.is_none()
+								{
+									break;
+								}
+							}
+							self.consume_operator(Operator::CloseCurly)?;
+						}
+						"tick" => {
+							tick = Some(self.parse_tick_duration()?);
+						}
+						other => {
+							let fragment = key.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'capacity', 'propagate_evictions', 'partition_by', or 'tick'"
+										.to_string(),
+								},
+								message: format!(
+									"unexpected key '{}' in WITH clause",
+									other
+								),
+								fragment,
+							}));
+						}
+					}
+
+					self.consume_if(TokenKind::Separator(Comma))?;
+				}
+
+				self.consume_operator(Operator::CloseCurly)?;
+
+				let capacity = capacity.ok_or_else(|| {
+					Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "capacity".to_string(),
+						},
+						message: "ringbuffer view requires 'capacity' in WITH clause"
+							.to_string(),
+						fragment: Fragment::internal("".to_string()),
+					})
+				})?;
+
+				Ok((
+					AstViewStorageKind::RingBuffer {
+						capacity,
+						propagate_evictions,
+						partition_by,
+					},
+					tick,
+				))
+			}
+			ViewStorageKindHint::Series => {
+				let mut key_column: Option<String> = None;
+				let mut precision: Option<AstTimestampPrecision> = None;
+
+				loop {
+					self.skip_new_line()?;
+					if self.current()?.is_operator(Operator::CloseCurly) {
+						break;
+					}
+
+					let key = self.consume(TokenKind::Identifier)?;
+					self.consume_operator(Operator::Colon)?;
+
+					match key.fragment.text() {
+						"key" => {
+							let token = self.consume(TokenKind::Identifier)?;
+							key_column = Some(token.fragment.text().to_string());
+						}
+						"precision" => {
+							let token = self.consume(TokenKind::Identifier)?;
+							precision = Some(match token.fragment.text() {
+								"second" => AstTimestampPrecision::Second,
+								"millisecond" => AstTimestampPrecision::Millisecond,
+								"microsecond" => AstTimestampPrecision::Microsecond,
+								"nanosecond" => AstTimestampPrecision::Nanosecond,
+								_ => {
+									let fragment = token.fragment.to_owned();
+									return Err(Error::from(TypeError::Ast {
+										kind: AstErrorKind::UnexpectedToken {
+											expected: "second, millisecond, microsecond, or nanosecond".to_string(),
+										},
+										message: format!("unexpected precision '{}'", fragment.text()),
+										fragment,
+									}));
+								}
+							});
+						}
+						"tick" => {
+							tick = Some(self.parse_tick_duration()?);
+						}
+						other => {
+							let fragment = key.fragment.to_owned();
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'key', 'precision', or 'tick'"
+										.to_string(),
+								},
+								message: format!(
+									"unexpected key '{}' in WITH clause",
+									other
+								),
+								fragment,
+							}));
+						}
+					}
+
+					self.consume_if(TokenKind::Separator(Comma))?;
+				}
+
+				self.consume_operator(Operator::CloseCurly)?;
+
+				let key_column = key_column.unwrap_or_default();
+				Ok((
+					AstViewStorageKind::Series {
+						key_column,
+						precision,
+					},
+					tick,
+				))
+			}
+		}
+	}
+
+	/// Parse a WITH clause containing only `tick` for table-backed views.
+	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m" }`.
+	fn parse_view_tick_with_clause(&mut self) -> Result<Option<Duration>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut tick: Option<Duration> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"tick" => {
+					tick = Some(self.parse_tick_duration()?);
+				}
+				other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'tick'".to_string(),
+						},
+						message: format!("unexpected key '{}' in WITH clause", other),
+						fragment,
+					}));
+				}
+			}
+
+			self.consume_if(TokenKind::Separator(Comma))?;
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(tick)
+	}
+
+	/// Parse a tick duration value (a string literal like "5m", "1h", "30s").
+	fn parse_tick_duration(&mut self) -> Result<Duration> {
+		let token = self.consume(TokenKind::Literal(Literal::Text))?;
+		let duration_str = token.fragment.text();
+		Compiler::parse_duration(duration_str)
+	}
+}
+
+enum ViewStorageKindHint {
+	RingBuffer,
+	Series,
 }
 
 #[cfg(test)]
@@ -2167,7 +2601,7 @@ pub mod tests {
 	fn test_create_series() {
 		let bump = Bump::new();
 		let source = r#"
-            create series test::metrics{value: Int2}
+            create series test::metrics{ts: datetime, value: Int2} WITH { key: ts }
         "#;
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
@@ -2181,21 +2615,33 @@ pub mod tests {
 			AstCreate::Series(AstCreateSeries {
 				series,
 				columns,
+				key,
 				..
 			}) => {
 				assert_eq!(series.namespace[0].text(), "test");
 				assert_eq!(series.name.text(), "metrics");
 
-				assert_eq!(columns.len(), 1);
+				assert_eq!(columns.len(), 2);
 
-				assert_eq!(columns[0].name.text(), "value");
+				assert_eq!(columns[0].name.text(), "ts");
 				match &columns[0].ty {
+					AstType::Unconstrained(ident) => {
+						assert_eq!(ident.text(), "datetime")
+					}
+					_ => panic!("Expected simple type"),
+				}
+
+				assert_eq!(columns[1].name.text(), "value");
+				match &columns[1].ty {
 					AstType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "Int2")
 					}
 					_ => panic!("Expected simple type"),
 				}
-				assert!(columns[0].properties.is_empty());
+				assert!(columns[1].properties.is_empty());
+
+				assert!(key.is_some());
+				assert_eq!(key.as_ref().unwrap().text(), "ts");
 			}
 			_ => unreachable!(),
 		}

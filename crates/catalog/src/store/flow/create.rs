@@ -3,13 +3,13 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		flow::{FlowDef, FlowId, FlowStatus},
+		flow::{Flow, FlowId, FlowStatus},
 		id::NamespaceId,
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	CatalogStore, Result,
@@ -25,10 +25,11 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
+	pub tick: Option<Duration>,
 }
 
 impl CatalogStore {
-	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<FlowDef> {
+	pub(crate) fn create_flow(txn: &mut AdminTransaction, to_create: FlowToCreate) -> Result<Flow> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
@@ -60,7 +61,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		flow_id: FlowId,
 		to_create: FlowToCreate,
-	) -> Result<FlowDef> {
+	) -> Result<Flow> {
 		let namespace_id = to_create.namespace;
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
@@ -79,6 +80,8 @@ impl CatalogStore {
 		flow::SCHEMA.set_u64(&mut row, flow::NAMESPACE, namespace);
 		flow::SCHEMA.set_utf8(&mut row, flow::NAME, to_create.name.text());
 		flow::SCHEMA.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
+		let tick_nanos = to_create.tick.map(|d| d.get_nanos() as u64).unwrap_or(0);
+		flow::SCHEMA.set_u64(&mut row, flow::TICK_NANOS, tick_nanos);
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row)?;
@@ -110,7 +113,7 @@ pub mod tests {
 		},
 		key::namespace_flow::NamespaceFlowKey,
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::fragment::Fragment;
 
 	use crate::{
@@ -128,6 +131,7 @@ pub mod tests {
 			name: Fragment::internal("test_flow"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
+			tick: None,
 		};
 
 		// First creation should succeed
@@ -152,6 +156,7 @@ pub mod tests {
 			name: Fragment::internal("flow_one"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
+			tick: None,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -159,6 +164,7 @@ pub mod tests {
 			name: Fragment::internal("flow_two"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Paused,
+			tick: None,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -175,7 +181,7 @@ pub mod tests {
 		let mut found_flow_two = false;
 
 		for link in &links {
-			let row = &link.values;
+			let row = &link.row;
 			let id = flow_namespace::SCHEMA.get_u64(row, flow_namespace::ID);
 			let name = flow_namespace::SCHEMA.get_utf8(row, flow_namespace::NAME);
 
@@ -207,6 +213,7 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
 			status: FlowStatus::Active,
+			tick: None,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -215,6 +222,7 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),
 			status: FlowStatus::Active,
+			tick: None,
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
 		assert_eq!(result.name, "shared_name");

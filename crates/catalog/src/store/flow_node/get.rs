@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::{FlowNodeDef, FlowNodeId},
+	interface::catalog::flow::{FlowNode, FlowNodeId},
 	internal,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -11,7 +11,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<FlowNodeDef> {
+	pub(crate) fn get_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<FlowNode> {
 		CatalogStore::find_flow_node(rx, node_id)?.ok_or_else(|| {
 			Error(internal!(
 				"Flow node with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -24,7 +24,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowNodeId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{
@@ -44,7 +44,7 @@ pub mod tests {
 		assert_eq!(result.id, node.id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.node_type, 1);
-		assert_eq!(result.data.as_ref(), &[0x01, 0x02, 0x03]);
+		assert_eq!(result.data.as_bytes(), &[0x01, 0x02, 0x03]);
 	}
 
 	#[test]

@@ -59,13 +59,10 @@ Map     => "MAP",
 Extend  => "EXTEND",
 By         => "BY",
 From       => "FROM",
-Where      => "WHERE",
 Aggregate  => "AGGREGATE",
-Having     => "HAVING",
 Sort      => "SORT",
 Distinct   => "DISTINCT",
 Take      => "TAKE",
-Offset     => "OFFSET",
 
 Left       => "LEFT",
 Inner      => "INNER",
@@ -73,11 +70,8 @@ Natural    => "NATURAL",
 Join       => "JOIN",
 On         => "ON",
 Using      => "USING",
-Intersect  => "INTERSECT",
-Except     => "EXCEPT",
 
 Insert     => "INSERT",
-Into       => "INTO",
 Update     => "UPDATE",
 Set        => "SET",
 Delete     => "DELETE",
@@ -85,7 +79,6 @@ Delete     => "DELETE",
 Let        => "LET",
 If         => "IF",
 Else       => "ELSE",
-End        => "END",
 Loop       => "LOOP",
 While      => "WHILE",
 Break      => "BREAK",
@@ -98,19 +91,16 @@ Apply      => "APPLY",
 Cast       => "CAST",
 
 Describe   => "DESCRIBE",
-Show       => "SHOW",
 Create     => "CREATE",
 Alter      => "ALTER",
 Drop       => "DROP",
 Filter     => "FILTER",
 Gate       => "GATE",
-Flow       => "FLOW",
 Window     => "WINDOW",
 
 
 In         => "IN",
 Between    => "BETWEEN",
-Like       => "LIKE",
 Is         => "IS",
 With       => "WITH",
 
@@ -133,8 +123,6 @@ Primary => "PRIMARY",
 Key => "KEY",
 Asc => "ASC",
 Desc => "DESC",
-Auto => "AUTO",
-Increment => "INCREMENT",
 Value => "VALUE",
 
 Exists => "EXISTS",
@@ -142,9 +130,6 @@ Replace => "REPLACE",
 Cascade => "CASCADE",
 Restrict => "RESTRICT",
 To => "TO",
-Pause => "PAUSE",
-Resume => "RESUME",
-Query => "QUERY",
 Rename => "RENAME",
 Rownum => "ROWNUM",
 Dictionary => "DICTIONARY",
@@ -167,11 +152,7 @@ User => "USER",
 Role => "ROLE",
 Grant => "GRANT",
 Revoke => "REVOKE",
-Password => "PASSWORD",
 Require => "REQUIRE",
-Execute => "EXECUTE",
-Access => "ACCESS",
-Subscribe => "SUBSCRIBE",
 Enable => "ENABLE",
 Disable => "DISABLE",
 Function => "FUNCTION",
@@ -181,14 +162,13 @@ Add => "ADD",
 Migration => "MIGRATION",
 Migrate => "MIGRATE",
 Rollback => "ROLLBACK",
-Diff => "DIFF",
-Version => "VERSION",
-Current => "CURRENT",
-Pending => "PENDING",
 Authentication => "AUTHENTICATION",
 Contains => "CONTAINS",
 Remote => "REMOTE",
 Error => "ERROR",
+Returning => "RETURNING",
+Source => "SOURCE",
+Sink => "SINK",
 }
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
@@ -198,30 +178,23 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("EXTEND", Keyword::Extend);
 	map.insert("BY", Keyword::By);
 	map.insert("FROM", Keyword::From);
-	map.insert("WHERE", Keyword::Where);
 	map.insert("AGGREGATE", Keyword::Aggregate);
-	map.insert("HAVING", Keyword::Having);
 	map.insert("SORT", Keyword::Sort);
 	map.insert("DISTINCT", Keyword::Distinct);
 	map.insert("TAKE", Keyword::Take);
-	map.insert("OFFSET", Keyword::Offset);
 	map.insert("LEFT", Keyword::Left);
 	map.insert("INNER", Keyword::Inner);
 	map.insert("NATURAL", Keyword::Natural);
 	map.insert("JOIN", Keyword::Join);
 	map.insert("ON", Keyword::On);
 	map.insert("USING", Keyword::Using);
-	map.insert("INTERSECT", Keyword::Intersect);
-	map.insert("EXCEPT", Keyword::Except);
 	map.insert("INSERT", Keyword::Insert);
-	map.insert("INTO", Keyword::Into);
 	map.insert("UPDATE", Keyword::Update);
 	map.insert("SET", Keyword::Set);
 	map.insert("DELETE", Keyword::Delete);
 	map.insert("LET", Keyword::Let);
 	map.insert("IF", Keyword::If);
 	map.insert("ELSE", Keyword::Else);
-	map.insert("END", Keyword::End);
 	map.insert("LOOP", Keyword::Loop);
 	map.insert("WHILE", Keyword::While);
 	map.insert("BREAK", Keyword::Break);
@@ -231,17 +204,14 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("CALL", Keyword::Call);
 	map.insert("CAST", Keyword::Cast);
 	map.insert("DESCRIBE", Keyword::Describe);
-	map.insert("SHOW", Keyword::Show);
 	map.insert("CREATE", Keyword::Create);
 	map.insert("ALTER", Keyword::Alter);
 	map.insert("DROP", Keyword::Drop);
 	map.insert("FILTER", Keyword::Filter);
 	map.insert("GATE", Keyword::Gate);
-	map.insert("FLOW", Keyword::Flow);
 	map.insert("WINDOW", Keyword::Window);
 	map.insert("IN", Keyword::In);
 	map.insert("BETWEEN", Keyword::Between);
-	map.insert("LIKE", Keyword::Like);
 	map.insert("IS", Keyword::Is);
 	map.insert("WITH", Keyword::With);
 	map.insert("NAMESPACE", Keyword::Namespace);
@@ -262,17 +232,12 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("KEY", Keyword::Key);
 	map.insert("ASC", Keyword::Asc);
 	map.insert("DESC", Keyword::Desc);
-	map.insert("AUTO", Keyword::Auto);
-	map.insert("INCREMENT", Keyword::Increment);
 	map.insert("VALUE", Keyword::Value);
 	map.insert("EXISTS", Keyword::Exists);
 	map.insert("REPLACE", Keyword::Replace);
 	map.insert("CASCADE", Keyword::Cascade);
 	map.insert("RESTRICT", Keyword::Restrict);
 	map.insert("TO", Keyword::To);
-	map.insert("PAUSE", Keyword::Pause);
-	map.insert("RESUME", Keyword::Resume);
-	map.insert("QUERY", Keyword::Query);
 	map.insert("RENAME", Keyword::Rename);
 	map.insert("ROWNUM", Keyword::Rownum);
 	map.insert("DICTIONARY", Keyword::Dictionary);
@@ -295,11 +260,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ROLE", Keyword::Role);
 	map.insert("GRANT", Keyword::Grant);
 	map.insert("REVOKE", Keyword::Revoke);
-	map.insert("PASSWORD", Keyword::Password);
 	map.insert("REQUIRE", Keyword::Require);
-	map.insert("EXECUTE", Keyword::Execute);
-	map.insert("ACCESS", Keyword::Access);
-	map.insert("SUBSCRIBE", Keyword::Subscribe);
 	map.insert("ENABLE", Keyword::Enable);
 	map.insert("DISABLE", Keyword::Disable);
 	map.insert("FUNCTION", Keyword::Function);
@@ -309,18 +270,17 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("MIGRATION", Keyword::Migration);
 	map.insert("MIGRATE", Keyword::Migrate);
 	map.insert("ROLLBACK", Keyword::Rollback);
-	map.insert("DIFF", Keyword::Diff);
-	map.insert("VERSION", Keyword::Version);
-	map.insert("CURRENT", Keyword::Current);
-	map.insert("PENDING", Keyword::Pending);
 	map.insert("AUTHENTICATION", Keyword::Authentication);
 	map.insert("CONTAINS", Keyword::Contains);
 	map.insert("REMOTE", Keyword::Remote);
 	map.insert("ERROR", Keyword::Error);
+	map.insert("RETURNING", Keyword::Returning);
+	map.insert("SOURCE", Keyword::Source);
+	map.insert("SINK", Keyword::Sink);
 	map
 });
 
-/// Scan for a keyword token  
+/// Scan for a keyword token
 pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	// Keywords must start with a letter, so check that first
 	let first_char = cursor.peek()?;
@@ -413,14 +373,10 @@ pub mod tests {
 	test_keyword_apply => (Apply, "APPLY"),
 	test_keyword_by => (By, "BY"),
 	test_keyword_from => (From, "FROM"),
-	test_keyword_where => (Where, "WHERE"),
 	test_keyword_aggregate => (Aggregate, "AGGREGATE"),
-	test_keyword_having => (Having, "HAVING"),
 	test_keyword_sort => (Sort, "SORT"),
 	test_keyword_take => (Take, "TAKE"),
-	test_keyword_offset => (Offset, "OFFSET"),
 	test_keyword_insert => (Insert, "INSERT"),
-	test_keyword_into => (Into, "INTO"),
 	test_keyword_update => (Update, "UPDATE"),
 	test_keyword_set => (Set, "SET"),
 	test_keyword_delete => (Delete, "DELETE"),
@@ -430,12 +386,9 @@ pub mod tests {
 	test_keyword_join => (Join, "JOIN"),
 	test_keyword_on => (On, "ON"),
 	test_keyword_using => (Using, "USING"),
-	test_keyword_intersect => (Intersect, "INTERSECT"),
-	test_keyword_except => (Except, "EXCEPT"),
 	test_keyword_let => (Let, "LET"),
 	test_keyword_if => (If, "IF"),
 	test_keyword_else => (Else, "ELSE"),
-	test_keyword_end => (End, "END"),
 	test_keyword_loop => (Loop, "LOOP"),
 	test_keyword_while => (While, "WHILE"),
 	test_keyword_break => (Break, "BREAK"),
@@ -444,12 +397,10 @@ pub mod tests {
 	test_keyword_fun => (Fun, "FUN"),
 	test_keyword_call => (Call, "CALL"),
 	test_keyword_describe => (Describe, "DESCRIBE"),
-	test_keyword_show => (Show, "SHOW"),
 	test_keyword_create => (Create, "CREATE"),
 	test_keyword_drop => (Drop, "DROP"),
 	test_keyword_in => (In, "IN"),
 	test_keyword_between => (Between, "BETWEEN"),
-	test_keyword_like => (Like, "LIKE"),
 	test_keyword_is => (Is, "IS"),
 	test_keyword_with => (With, "WITH"),
 	test_keyword_is_in => (Filter, "FILTER"),
@@ -473,20 +424,14 @@ pub mod tests {
 	test_keyword_key => (Key, "KEY"),
 	test_keyword_asc => (Asc, "ASC"),
 	test_keyword_desc => (Desc, "DESC"),
-	test_keyword_auto => (Auto, "AUTO"),
-	test_keyword_increment => (Increment, "INCREMENT"),
 	test_keyword_sequence => (Sequence, "SEQUENCE"),
 	test_keyword_alter => (Alter, "ALTER"),
 	test_keyword_value => (Value, "VALUE"),
-	test_keyword_flow => (Flow, "FLOW"),
 	test_keyword_exists => (Exists, "EXISTS"),
 	test_keyword_replace => (Replace, "REPLACE"),
 	test_keyword_cascade => (Cascade, "CASCADE"),
 	test_keyword_restrict => (Restrict, "RESTRICT"),
 	test_keyword_to => (To, "TO"),
-	test_keyword_pause => (Pause, "PAUSE"),
-	test_keyword_resume => (Resume, "RESUME"),
-	test_keyword_query => (Query, "QUERY"),
 	test_keyword_rename => (Rename, "RENAME"),
 	test_keyword_rownum => (Rownum, "ROWNUM"),
 	test_keyword_dictionary => (Dictionary, "DICTIONARY"),
@@ -502,11 +447,7 @@ pub mod tests {
 	test_keyword_role => (Role, "ROLE"),
 	test_keyword_grant => (Grant, "GRANT"),
 	test_keyword_revoke => (Revoke, "REVOKE"),
-	test_keyword_password => (Password, "PASSWORD"),
 	test_keyword_require => (Require, "REQUIRE"),
-	test_keyword_execute => (Execute, "EXECUTE"),
-	test_keyword_access => (Access, "ACCESS"),
-	test_keyword_subscribe => (Subscribe, "SUBSCRIBE"),
 	test_keyword_enable => (Enable, "ENABLE"),
 	test_keyword_disable => (Disable, "DISABLE"),
 	test_keyword_function => (Function, "FUNCTION"),
@@ -517,6 +458,8 @@ pub mod tests {
 	test_keyword_test => (Test, "TEST"),
 	test_keyword_tests => (Tests, "TESTS"),
 	test_keyword_run => (Run, "RUN"),
+	test_keyword_source => (Source, "SOURCE"),
+	test_keyword_sink => (Sink, "SINK"),
 	}
 
 	fn check_no_keyword(repr: &str) {
@@ -576,14 +519,10 @@ pub mod tests {
 	test_not_keyword_apply => ( "apply"),
 	test_not_keyword_by => ( "by"),
 	test_not_keyword_from => ( "from"),
-	test_not_keyword_where => ( "where"),
 	test_not_keyword_aggregate => ( "aggregate"),
-	test_not_keyword_having => ( "having"),
 	test_not_keyword_sort => ( "sort"),
 	test_not_keyword_take => ( "take"),
-	test_not_keyword_offset => ( "offset"),
 	test_not_keyword_insert => ( "insert"),
-	test_not_keyword_into => ( "into"),
 	test_not_keyword_update => ( "update"),
 	test_not_keyword_set => ( "set"),
 	test_not_keyword_delete => ( "delete"),
@@ -593,12 +532,9 @@ pub mod tests {
 	test_not_keyword_join => ( "join"),
 	test_not_keyword_on => ( "on"),
 	test_not_keyword_using => ( "using"),
-	test_not_keyword_intersect => ( "intersect"),
-	test_not_keyword_except => ( "except"),
 	test_not_keyword_let => ( "let"),
 	test_not_keyword_if => ( "if"),
 	test_not_keyword_else => ( "else"),
-	test_not_keyword_end => ( "end"),
 	test_not_keyword_loop => ( "loop"),
 	test_not_keyword_while => ( "while"),
 	test_not_keyword_break => ( "break"),
@@ -607,12 +543,10 @@ pub mod tests {
 	test_not_keyword_fun => ( "fun"),
 	test_not_keyword_call => ( "call"),
 	test_not_keyword_describe => ( "describe"),
-	test_not_keyword_show => ( "show"),
 	test_not_keyword_create => ( "create"),
 	test_not_keyword_drop => ( "drop"),
 	test_not_keyword_in => ( "in"),
 	test_not_keyword_between => ( "between"),
-	test_not_keyword_like => ( "like"),
 	test_not_keyword_is => ( "is"),
 	test_not_keyword_with => ( "with"),
 	test_not_keyword_filter => ( "filter"),
@@ -634,20 +568,14 @@ pub mod tests {
 	test_not_keyword_key => ("key"),
 	test_not_keyword_asc => ("asc"),
 	test_not_keyword_desc => ( "desc"),
-	test_not_keyword_auto => ( "auto"),
-	test_not_keyword_increment => ( "increment"),
 	test_not_keyword_sequence => ( "sequence"),
 	test_not_keyword_alter => ( "alter"),
 	test_not_keyword_value => ( "value"),
-	test_not_keyword_flow => ( "flow"),
 	test_not_keyword_exists => ( "exists"),
 	test_not_keyword_replace => ( "replace"),
 	test_not_keyword_cascade => ( "cascade"),
 	test_not_keyword_restrict => ( "restrict"),
 	test_not_keyword_to => ( "to"),
-	test_not_keyword_pause => ( "pause"),
-	test_not_keyword_resume => ( "resume"),
-	test_not_keyword_query => ( "query"),
 	test_not_keyword_rename => ( "rename"),
 	test_not_keyword_rownum => ( "rownum"),
 	test_not_keyword_dictionary => ( "dictionary"),
@@ -663,11 +591,7 @@ pub mod tests {
 	test_not_keyword_role => ( "role"),
 	test_not_keyword_grant => ( "grant"),
 	test_not_keyword_revoke => ( "revoke"),
-	test_not_keyword_password => ( "password"),
 	test_not_keyword_require => ( "require"),
-	test_not_keyword_execute => ( "execute"),
-	test_not_keyword_access => ( "access"),
-	test_not_keyword_subscribe => ( "subscribe"),
 	test_not_keyword_enable => ( "enable"),
 	test_not_keyword_disable => ( "disable"),
 	test_not_keyword_function => ( "function"),
@@ -678,6 +602,8 @@ pub mod tests {
 	test_not_keyword_test => ( "test"),
 	test_not_keyword_tests => ( "tests"),
 	test_not_keyword_run => ( "run"),
+	test_not_keyword_source => ( "source"),
+	test_not_keyword_sink => ( "sink"),
 	}
 
 	#[test]

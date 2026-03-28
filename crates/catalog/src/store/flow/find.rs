@@ -3,12 +3,13 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		flow::{FlowDef, FlowId, FlowStatus},
+		flow::{Flow, FlowId, FlowStatus},
 		id::NamespaceId,
 	},
 	key::{flow::FlowKey, namespace_flow::NamespaceFlowKey},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_type::value::duration::Duration;
 
 use crate::{
 	CatalogStore, Result,
@@ -16,23 +17,31 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<FlowDef>> {
+	pub(crate) fn find_flow(rx: &mut Transaction<'_>, id: FlowId) -> Result<Option<Flow>> {
 		let Some(multi) = rx.get(&FlowKey::encoded(id))? else {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = FlowId(flow::SCHEMA.get_u64(&row, flow::ID));
 		let namespace = NamespaceId(flow::SCHEMA.get_u64(&row, flow::NAMESPACE));
 		let name = flow::SCHEMA.get_utf8(&row, flow::NAME).to_string();
 		let status_u8 = flow::SCHEMA.get_u8(&row, flow::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
-		Ok(Some(FlowDef {
+		let tick_nanos = flow::SCHEMA.get_u64(&row, flow::TICK_NANOS);
+		let tick = if tick_nanos > 0 {
+			Some(Duration::from_nanoseconds(tick_nanos as i64)?)
+		} else {
+			None
+		};
+
+		Ok(Some(Flow {
 			id,
 			name,
 			namespace,
 			status,
+			tick,
 		}))
 	}
 
@@ -40,14 +49,14 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<FlowDef>> {
+	) -> Result<Option<Flow>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
 
 		let mut found_flow = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let flow_name = flow_namespace::SCHEMA.get_utf8(row, flow_namespace::NAME);
 			if name == flow_name {
 				found_flow = Some(FlowId(flow_namespace::SCHEMA.get_u64(row, flow_namespace::ID)));
@@ -67,7 +76,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{

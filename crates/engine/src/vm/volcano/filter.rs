@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::dictionary::DictionaryDef, resolved::ResolvedPrimitive},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedSchema},
 	value::{
 		batch::lazy::LazyBatch,
 		column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
 	},
 };
+use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{util::bitvec::BitVec, value::constraint::Constraint};
@@ -21,9 +22,8 @@ use crate::{
 	Result,
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
-	transform::{Transform, context::TransformContext},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -48,7 +48,7 @@ impl QueryNode for FilterNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		let compile_ctx = CompileContext {
 			functions: &ctx.services.functions,
-			symbol_table: &ctx.stack,
+			symbols: &ctx.symbols,
 		};
 		let compiled = self
 			.expressions
@@ -81,7 +81,7 @@ impl QueryNode for FilterNode {
 				}
 
 				// Save dictionary metadata before consuming the lazy batch
-				let dictionaries: Vec<Option<DictionaryDef>> =
+				let dictionaries: Vec<Option<Dictionary>> =
 					lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
 
 				// Materialize surviving rows
@@ -97,7 +97,7 @@ impl QueryNode for FilterNode {
 			if let Some(columns) = self.input.next(rx, ctx)? {
 				let transform_ctx = TransformContext {
 					functions: &stored_ctx.services.functions,
-					clock: &stored_ctx.services.clock,
+					runtime_context: &stored_ctx.services.runtime_context,
 					params: &stored_ctx.params,
 				};
 				let columns = self.apply(&transform_ctx, columns)?;
@@ -121,6 +121,7 @@ impl Transform for FilterNode {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
+		let session = EvalSession::from_transform(ctx, stored_ctx);
 		let mut columns = input;
 		let mut row_count = columns.row_count();
 
@@ -129,19 +130,7 @@ impl Transform for FilterNode {
 				break;
 			}
 
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
-				params: ctx.params,
-				symbol_table: &stored_ctx.stack,
-				is_aggregate_context: false,
-				functions: ctx.functions,
-				clock: ctx.clock,
-				arena: None,
-				identity: stored_ctx.identity,
-			};
+			let exec_ctx = session.eval(columns.clone(), row_count);
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 
@@ -196,7 +185,7 @@ impl FilterNode {
 	) -> Result<Option<BitVec>> {
 		// Materialize to columns for column-oriented evaluation,
 		// then decode dictionary columns so filters can compare actual values.
-		let dictionaries: Vec<Option<DictionaryDef>> =
+		let dictionaries: Vec<Option<Dictionary>> =
 			lazy_batch.column_metas().iter().map(|m| m.dictionary.clone()).collect();
 		let mut columns = lazy_batch.clone().into_columns();
 		decode_dictionary_columns(&mut columns, &dictionaries, rx)?;
@@ -206,22 +195,11 @@ impl FilterNode {
 			return Ok(Some(BitVec::empty()));
 		}
 
+		let session = EvalSession::from_query(ctx);
 		let mut mask = BitVec::repeat(row_count, true);
 
 		for compiled_expr in compiled {
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
-				params: &ctx.params,
-				symbol_table: &ctx.stack,
-				is_aggregate_context: false,
-				functions: &ctx.services.functions,
-				clock: &ctx.services.clock,
-				arena: None,
-				identity: ctx.identity,
-			};
+			let exec_ctx = session.eval(columns.clone(), row_count);
 
 			let result = compiled_expr.execute(&exec_ctx)?;
 
@@ -261,7 +239,7 @@ impl FilterNode {
 
 pub(crate) fn resolve_is_variant_tags(
 	expr: &mut Expression,
-	source: &ResolvedPrimitive,
+	source: &ResolvedSchema,
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 ) -> Result<()> {

@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackPolicyChangeOperations,
-	policy::{PolicyDef, PolicyId, PolicyOperationDef, PolicyToCreate},
+	policy::{Policy, PolicyId, PolicyOperation, PolicyToCreate},
 };
 use reifydb_transaction::{
 	change::TransactionalPolicyChanges,
@@ -20,7 +20,7 @@ use crate::{
 
 impl Catalog {
 	#[instrument(name = "catalog::policy::find_by_name", level = "trace", skip(self, txn))]
-	pub fn find_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<PolicyDef>> {
+	pub fn find_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
 		match txn.reborrow() {
 			Transaction::Admin(admin) => {
 				// 1. Check transactional changes first
@@ -103,6 +103,23 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(mut t) => {
+				if let Some(policy) = TransactionalPolicyChanges::find_policy_by_name(t.inner, name) {
+					return Ok(Some(policy.clone()));
+				}
+
+				if TransactionalPolicyChanges::is_policy_deleted_by_name(t.inner, name) {
+					return Ok(None);
+				}
+
+				if let Some(policy) =
+					CatalogStore::find_policy_by_name(&mut Transaction::Test(t.reborrow()), name)?
+				{
+					return Ok(Some(policy));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -111,9 +128,9 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: PolicyToCreate,
-	) -> Result<(PolicyDef, Vec<PolicyOperationDef>)> {
+	) -> Result<(Policy, Vec<PolicyOperation>)> {
 		let (policy, ops) = CatalogStore::create_policy(txn, to_create)?;
-		txn.track_policy_def_created(policy.clone())?;
+		txn.track_policy_created(policy.clone())?;
 		self.materialized.set_policy_operations(policy.id, ops.clone());
 		Ok((policy, ops))
 	}
@@ -129,7 +146,7 @@ impl Catalog {
 		let post = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)?;
 
 		if let (Some(pre), Some(post)) = (pre, post) {
-			txn.track_policy_def_updated(pre, post)?;
+			txn.track_policy_updated(pre, post)?;
 		}
 
 		Ok(())
@@ -140,7 +157,7 @@ impl Catalog {
 		// Get the policy def before dropping for change tracking
 		if let Some(policy) = CatalogStore::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
 			CatalogStore::drop_policy(txn, policy_id)?;
-			txn.track_policy_def_deleted(policy)?;
+			txn.track_policy_deleted(policy)?;
 		} else {
 			CatalogStore::drop_policy(txn, policy_id)?;
 		}
@@ -148,7 +165,7 @@ impl Catalog {
 		Ok(())
 	}
 
-	pub fn get_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<PolicyDef> {
+	pub fn get_policy_by_name(&self, txn: &mut Transaction<'_>, name: &str) -> Result<Policy> {
 		self.find_policy_by_name(txn, name)?.ok_or_else(|| {
 			CatalogError::NotFound {
 				kind: CatalogObjectKind::Policy,
@@ -160,7 +177,12 @@ impl Catalog {
 		})
 	}
 
-	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<PolicyDef>> {
+	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<Policy>> {
+		if let Transaction::Test(t) = txn {
+			let mut policies = CatalogStore::list_all_policies(&mut Transaction::Test(t.reborrow()))?;
+			policies.sort_by_key(|p| p.id);
+			return Ok(policies);
+		}
 		let cached = self.materialized.list_all_policies_at(txn.version());
 		if !cached.is_empty() {
 			return Ok(cached);
@@ -172,7 +194,7 @@ impl Catalog {
 		&self,
 		txn: &mut Transaction<'_>,
 		policy_id: PolicyId,
-	) -> Result<Vec<PolicyOperationDef>> {
+	) -> Result<Vec<PolicyOperation>> {
 		if let Some(ops) = self.materialized.list_policy_operations(policy_id) {
 			return Ok(ops);
 		}

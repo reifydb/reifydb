@@ -5,41 +5,75 @@ use std::mem;
 
 use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{common::CommitVersion, interface::change::Change, testing::TestingContext};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{
+		catalog::schema::SchemaId,
+		change::{Change, ChangeOrigin, Diff},
+	},
+};
 use reifydb_transaction::{
+	change_accumulator::ChangeAccumulator,
 	interceptor::{
 		WithInterceptors,
+		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
 		chain::InterceptorChain as Chain,
+		dictionary::{
+			DictionaryPostCreateInterceptor, DictionaryPostUpdateInterceptor,
+			DictionaryPreDeleteInterceptor, DictionaryPreUpdateInterceptor,
+		},
+		dictionary_row::{
+			DictionaryRowPostDeleteInterceptor, DictionaryRowPostInsertInterceptor,
+			DictionaryRowPostUpdateInterceptor, DictionaryRowPreDeleteInterceptor,
+			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
+		},
+		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
+		identity::{
+			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
+			IdentityPreUpdateInterceptor,
+		},
 		interceptors::Interceptors,
 		namespace::{
 			NamespacePostCreateInterceptor, NamespacePostUpdateInterceptor, NamespacePreDeleteInterceptor,
 			NamespacePreUpdateInterceptor,
 		},
 		ringbuffer::{
-			RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
-			RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
-			RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor,
+			RingBufferPostCreateInterceptor, RingBufferPostUpdateInterceptor,
+			RingBufferPreDeleteInterceptor, RingBufferPreUpdateInterceptor,
 		},
-		ringbuffer_def::{
-			RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
-			RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor,
+		ringbuffer_row::{
+			RingBufferRowPostDeleteInterceptor, RingBufferRowPostInsertInterceptor,
+			RingBufferRowPostUpdateInterceptor, RingBufferRowPreDeleteInterceptor,
+			RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
+		},
+		role::{
+			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
+			RolePreUpdateInterceptor,
+		},
+		series::{
+			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
+			SeriesPreUpdateInterceptor,
+		},
+		series_row::{
+			SeriesRowPostDeleteInterceptor, SeriesRowPostInsertInterceptor, SeriesRowPostUpdateInterceptor,
+			SeriesRowPreDeleteInterceptor, SeriesRowPreInsertInterceptor, SeriesRowPreUpdateInterceptor,
 		},
 		table::{
-			TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
-			TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+			TablePostCreateInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+			TablePreUpdateInterceptor,
 		},
-		table_def::{
-			TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
-			TableDefPreUpdateInterceptor,
+		table_row::{
+			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
+			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
 		transaction::{PostCommitInterceptor, PreCommitInterceptor},
 		view::{
-			ViewPostDeleteInterceptor, ViewPostInsertInterceptor, ViewPostUpdateInterceptor,
-			ViewPreDeleteInterceptor, ViewPreInsertInterceptor, ViewPreUpdateInterceptor,
+			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
+			ViewPreUpdateInterceptor,
 		},
-		view_def::{
-			ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-			ViewDefPreUpdateInterceptor,
+		view_row::{
+			ViewRowPostDeleteInterceptor, ViewRowPostInsertInterceptor, ViewRowPostUpdateInterceptor,
+			ViewRowPreDeleteInterceptor, ViewRowPreInsertInterceptor, ViewRowPreUpdateInterceptor,
 		},
 	},
 	multi::transaction::read::MultiReadTransaction,
@@ -52,6 +86,17 @@ pub mod range;
 pub mod read;
 pub mod state;
 pub mod write;
+
+/// Shared fields between Deferred and Transactional variants.
+pub struct FlowTransactionInner {
+	pub version: CommitVersion,
+	pub pending: Pending,
+	pub primitive_query: MultiReadTransaction,
+	pub state_query: MultiReadTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub accumulator: ChangeAccumulator,
+}
 
 /// A transaction wrapper for flow processing with dual-version read semantics.
 ///
@@ -107,31 +152,45 @@ pub enum FlowTransaction {
 	/// CDC-driven async flow processing.
 	/// Reads only from committed storage + flow pending writes.
 	Deferred {
-		version: CommitVersion,
-		pending: Pending,
-		primitive_query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
-		testing: Option<TestingContext>,
+		inner: FlowTransactionInner,
 	},
 
 	/// Inline flow processing within a committing transaction.
 	/// Can additionally read uncommitted writes from the parent transaction.
 	Transactional {
-		version: CommitVersion,
-		pending: Pending,
+		inner: FlowTransactionInner,
 		/// Read-only snapshot of the committing transaction's KV writes.
 		base_pending: Pending,
-		primitive_query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
-		testing: Option<TestingContext>,
 	},
 }
 
 impl FlowTransaction {
+	fn inner(&self) -> &FlowTransactionInner {
+		match self {
+			Self::Deferred {
+				inner,
+				..
+			}
+			| Self::Transactional {
+				inner,
+				..
+			} => inner,
+		}
+	}
+
+	fn inner_mut(&mut self) -> &mut FlowTransactionInner {
+		match self {
+			Self::Deferred {
+				inner,
+				..
+			}
+			| Self::Transactional {
+				inner,
+				..
+			} => inner,
+		}
+	}
+
 	/// Create a deferred (CDC) FlowTransaction from a parent transaction.
 	///
 	/// Used by the async worker path. Reads only from committed storage +
@@ -148,13 +207,15 @@ impl FlowTransaction {
 
 		let state_query = parent.multi.begin_query().unwrap();
 		Self::Deferred {
-			version,
-			pending: Pending::new(),
-			primitive_query,
-			state_query,
-			catalog,
-			interceptors,
-			testing: None,
+			inner: FlowTransactionInner {
+				version,
+				pending: Pending::new(),
+				primitive_query,
+				state_query,
+				catalog,
+				interceptors,
+				accumulator: ChangeAccumulator::new(),
+			},
 		}
 	}
 
@@ -170,13 +231,15 @@ impl FlowTransaction {
 		interceptors: Interceptors,
 	) -> Self {
 		Self::Deferred {
-			version,
-			pending,
-			primitive_query,
-			state_query,
-			catalog,
-			interceptors,
-			testing: None,
+			inner: FlowTransactionInner {
+				version,
+				pending,
+				primitive_query,
+				state_query,
+				catalog,
+				interceptors,
+				accumulator: ChangeAccumulator::new(),
+			},
 		}
 	}
 
@@ -193,198 +256,112 @@ impl FlowTransaction {
 		state_query: MultiReadTransaction,
 		catalog: Catalog,
 		interceptors: Interceptors,
-		testing: Option<TestingContext>,
 	) -> Self {
 		Self::Transactional {
-			version,
-			pending,
+			inner: FlowTransactionInner {
+				version,
+				pending,
+				primitive_query,
+				state_query,
+				catalog,
+				interceptors,
+				accumulator: ChangeAccumulator::new(),
+			},
 			base_pending,
-			primitive_query,
-			state_query,
-			catalog,
-			interceptors,
-			testing,
 		}
 	}
 
 	/// Get the transaction version.
 	pub fn version(&self) -> CommitVersion {
-		match self {
-			Self::Deferred {
-				version,
-				..
-			} => *version,
-			Self::Transactional {
-				version,
-				..
-			} => *version,
-		}
+		self.inner().version
 	}
 
 	/// Extract pending writes, replacing them with an empty buffer.
 	pub fn take_pending(&mut self) -> Pending {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => mem::take(pending),
-			Self::Transactional {
-				pending,
-				..
-			} => mem::take(pending),
+		mem::take(&mut self.inner_mut().pending)
+	}
+
+	/// Track a view-level flow change in this transaction's accumulator.
+	pub fn track_flow_change(&mut self, change: Change) {
+		if let ChangeOrigin::Schema(id) = change.origin {
+			for diff in change.diffs {
+				self.inner_mut().accumulator.track(id, diff);
+			}
 		}
+	}
+
+	/// Drain the accumulator entries collected during flow processing.
+	pub fn take_accumulator_entries(&mut self) -> Vec<(SchemaId, Diff)> {
+		let acc = &mut self.inner_mut().accumulator;
+		let entries: Vec<_> = acc.entries_from(0).to_vec();
+		acc.clear();
+		entries
 	}
 
 	/// Get a reference to the pending writes.
 	#[cfg(test)]
 	pub fn pending(&self) -> &Pending {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending,
-			Self::Transactional {
-				pending,
-				..
-			} => pending,
-		}
-	}
-
-	/// Drain all generated view changes, returning them.
-	pub fn take_view_changes(&mut self) -> pending::ViewChanges {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending.take_view_changes(),
-			Self::Transactional {
-				pending,
-				..
-			} => pending.take_view_changes(),
-		}
-	}
-
-	/// Append a view change (used by `SinkViewOperator`).
-	pub fn push_view_change(&mut self, change: Change) {
-		match self {
-			Self::Deferred {
-				pending,
-				..
-			} => pending.push_view_change(change),
-			Self::Transactional {
-				pending,
-				..
-			} => pending.push_view_change(change),
-		}
+		&self.inner().pending
 	}
 
 	/// Update the transaction to read at a new version
 	pub fn update_version(&mut self, new_version: CommitVersion) {
-		match self {
-			Self::Deferred {
-				version,
-				primitive_query,
-				..
-			} => {
-				*version = new_version;
-				primitive_query.read_as_of_version_inclusive(new_version);
-			}
-			Self::Transactional {
-				version,
-				primitive_query,
-				..
-			} => {
-				*version = new_version;
-				primitive_query.read_as_of_version_inclusive(new_version);
-			}
-		}
+		let inner = self.inner_mut();
+		inner.version = new_version;
+		inner.primitive_query.read_as_of_version_inclusive(new_version);
 	}
 
 	/// Get access to the catalog for reading metadata
 	pub fn catalog(&self) -> &Catalog {
-		match self {
-			Self::Deferred {
-				catalog,
-				..
-			} => catalog,
-			Self::Transactional {
-				catalog,
-				..
-			} => catalog,
-		}
-	}
-
-	/// Get mutable access to the testing context (if active).
-	pub fn testing_mut(&mut self) -> Option<&mut TestingContext> {
-		match self {
-			Self::Deferred {
-				testing,
-				..
-			} => testing.as_mut(),
-			Self::Transactional {
-				testing,
-				..
-			} => testing.as_mut(),
-		}
-	}
-
-	/// Extract the testing context, replacing it with `None`.
-	pub fn take_testing(&mut self) -> Option<TestingContext> {
-		match self {
-			Self::Deferred {
-				testing,
-				..
-			} => testing.take(),
-			Self::Transactional {
-				testing,
-				..
-			} => testing.take(),
-		}
+		&self.inner().catalog
 	}
 }
 
 macro_rules! interceptor_method {
 	($method:ident, $field:ident, $trait_name:ident) => {
 		fn $method(&mut self) -> &mut Chain<dyn $trait_name + Send + Sync> {
-			match self {
-				Self::Deferred {
-					interceptors,
-					..
-				} => &mut interceptors.$field,
-				Self::Transactional {
-					interceptors,
-					..
-				} => &mut interceptors.$field,
-			}
+			&mut self.inner_mut().interceptors.$field
 		}
 	};
 }
 
 impl WithInterceptors for FlowTransaction {
-	interceptor_method!(table_pre_insert_interceptors, table_pre_insert, TablePreInsertInterceptor);
-	interceptor_method!(table_post_insert_interceptors, table_post_insert, TablePostInsertInterceptor);
-	interceptor_method!(table_pre_update_interceptors, table_pre_update, TablePreUpdateInterceptor);
-	interceptor_method!(table_post_update_interceptors, table_post_update, TablePostUpdateInterceptor);
-	interceptor_method!(table_pre_delete_interceptors, table_pre_delete, TablePreDeleteInterceptor);
-	interceptor_method!(table_post_delete_interceptors, table_post_delete, TablePostDeleteInterceptor);
+	interceptor_method!(table_row_pre_insert_interceptors, table_row_pre_insert, TableRowPreInsertInterceptor);
+	interceptor_method!(table_row_post_insert_interceptors, table_row_post_insert, TableRowPostInsertInterceptor);
+	interceptor_method!(table_row_pre_update_interceptors, table_row_pre_update, TableRowPreUpdateInterceptor);
+	interceptor_method!(table_row_post_update_interceptors, table_row_post_update, TableRowPostUpdateInterceptor);
+	interceptor_method!(table_row_pre_delete_interceptors, table_row_pre_delete, TableRowPreDeleteInterceptor);
+	interceptor_method!(table_row_post_delete_interceptors, table_row_post_delete, TableRowPostDeleteInterceptor);
 
-	interceptor_method!(ringbuffer_pre_insert_interceptors, ringbuffer_pre_insert, RingBufferPreInsertInterceptor);
 	interceptor_method!(
-		ringbuffer_post_insert_interceptors,
-		ringbuffer_post_insert,
-		RingBufferPostInsertInterceptor
+		ringbuffer_row_pre_insert_interceptors,
+		ringbuffer_row_pre_insert,
+		RingBufferRowPreInsertInterceptor
 	);
-	interceptor_method!(ringbuffer_pre_update_interceptors, ringbuffer_pre_update, RingBufferPreUpdateInterceptor);
 	interceptor_method!(
-		ringbuffer_post_update_interceptors,
-		ringbuffer_post_update,
-		RingBufferPostUpdateInterceptor
+		ringbuffer_row_post_insert_interceptors,
+		ringbuffer_row_post_insert,
+		RingBufferRowPostInsertInterceptor
 	);
-	interceptor_method!(ringbuffer_pre_delete_interceptors, ringbuffer_pre_delete, RingBufferPreDeleteInterceptor);
 	interceptor_method!(
-		ringbuffer_post_delete_interceptors,
-		ringbuffer_post_delete,
-		RingBufferPostDeleteInterceptor
+		ringbuffer_row_pre_update_interceptors,
+		ringbuffer_row_pre_update,
+		RingBufferRowPreUpdateInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_row_post_update_interceptors,
+		ringbuffer_row_post_update,
+		RingBufferRowPostUpdateInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_row_pre_delete_interceptors,
+		ringbuffer_row_pre_delete,
+		RingBufferRowPreDeleteInterceptor
+	);
+	interceptor_method!(
+		ringbuffer_row_post_delete_interceptors,
+		ringbuffer_row_post_delete,
+		RingBufferRowPostDeleteInterceptor
 	);
 
 	interceptor_method!(pre_commit_interceptors, pre_commit, PreCommitInterceptor);
@@ -395,41 +372,129 @@ impl WithInterceptors for FlowTransaction {
 	interceptor_method!(namespace_post_update_interceptors, namespace_post_update, NamespacePostUpdateInterceptor);
 	interceptor_method!(namespace_pre_delete_interceptors, namespace_pre_delete, NamespacePreDeleteInterceptor);
 
-	interceptor_method!(table_def_post_create_interceptors, table_def_post_create, TableDefPostCreateInterceptor);
-	interceptor_method!(table_def_pre_update_interceptors, table_def_pre_update, TableDefPreUpdateInterceptor);
-	interceptor_method!(table_def_post_update_interceptors, table_def_post_update, TableDefPostUpdateInterceptor);
-	interceptor_method!(table_def_pre_delete_interceptors, table_def_pre_delete, TableDefPreDeleteInterceptor);
+	interceptor_method!(table_post_create_interceptors, table_post_create, TablePostCreateInterceptor);
+	interceptor_method!(table_pre_update_interceptors, table_pre_update, TablePreUpdateInterceptor);
+	interceptor_method!(table_post_update_interceptors, table_post_update, TablePostUpdateInterceptor);
+	interceptor_method!(table_pre_delete_interceptors, table_pre_delete, TablePreDeleteInterceptor);
 
-	interceptor_method!(view_pre_insert_interceptors, view_pre_insert, ViewPreInsertInterceptor);
-	interceptor_method!(view_post_insert_interceptors, view_post_insert, ViewPostInsertInterceptor);
+	interceptor_method!(view_row_pre_insert_interceptors, view_row_pre_insert, ViewRowPreInsertInterceptor);
+	interceptor_method!(view_row_post_insert_interceptors, view_row_post_insert, ViewRowPostInsertInterceptor);
+	interceptor_method!(view_row_pre_update_interceptors, view_row_pre_update, ViewRowPreUpdateInterceptor);
+	interceptor_method!(view_row_post_update_interceptors, view_row_post_update, ViewRowPostUpdateInterceptor);
+	interceptor_method!(view_row_pre_delete_interceptors, view_row_pre_delete, ViewRowPreDeleteInterceptor);
+	interceptor_method!(view_row_post_delete_interceptors, view_row_post_delete, ViewRowPostDeleteInterceptor);
+
+	interceptor_method!(view_post_create_interceptors, view_post_create, ViewPostCreateInterceptor);
 	interceptor_method!(view_pre_update_interceptors, view_pre_update, ViewPreUpdateInterceptor);
 	interceptor_method!(view_post_update_interceptors, view_post_update, ViewPostUpdateInterceptor);
 	interceptor_method!(view_pre_delete_interceptors, view_pre_delete, ViewPreDeleteInterceptor);
-	interceptor_method!(view_post_delete_interceptors, view_post_delete, ViewPostDeleteInterceptor);
-
-	interceptor_method!(view_def_post_create_interceptors, view_def_post_create, ViewDefPostCreateInterceptor);
-	interceptor_method!(view_def_pre_update_interceptors, view_def_pre_update, ViewDefPreUpdateInterceptor);
-	interceptor_method!(view_def_post_update_interceptors, view_def_post_update, ViewDefPostUpdateInterceptor);
-	interceptor_method!(view_def_pre_delete_interceptors, view_def_pre_delete, ViewDefPreDeleteInterceptor);
 
 	interceptor_method!(
-		ringbuffer_def_post_create_interceptors,
-		ringbuffer_def_post_create,
-		RingBufferDefPostCreateInterceptor
+		ringbuffer_post_create_interceptors,
+		ringbuffer_post_create,
+		RingBufferPostCreateInterceptor
+	);
+	interceptor_method!(ringbuffer_pre_update_interceptors, ringbuffer_pre_update, RingBufferPreUpdateInterceptor);
+	interceptor_method!(
+		ringbuffer_post_update_interceptors,
+		ringbuffer_post_update,
+		RingBufferPostUpdateInterceptor
+	);
+	interceptor_method!(ringbuffer_pre_delete_interceptors, ringbuffer_pre_delete, RingBufferPreDeleteInterceptor);
+
+	interceptor_method!(
+		dictionary_row_pre_insert_interceptors,
+		dictionary_row_pre_insert,
+		DictionaryRowPreInsertInterceptor
 	);
 	interceptor_method!(
-		ringbuffer_def_pre_update_interceptors,
-		ringbuffer_def_pre_update,
-		RingBufferDefPreUpdateInterceptor
+		dictionary_row_post_insert_interceptors,
+		dictionary_row_post_insert,
+		DictionaryRowPostInsertInterceptor
 	);
 	interceptor_method!(
-		ringbuffer_def_post_update_interceptors,
-		ringbuffer_def_post_update,
-		RingBufferDefPostUpdateInterceptor
+		dictionary_row_pre_update_interceptors,
+		dictionary_row_pre_update,
+		DictionaryRowPreUpdateInterceptor
 	);
 	interceptor_method!(
-		ringbuffer_def_pre_delete_interceptors,
-		ringbuffer_def_pre_delete,
-		RingBufferDefPreDeleteInterceptor
+		dictionary_row_post_update_interceptors,
+		dictionary_row_post_update,
+		DictionaryRowPostUpdateInterceptor
+	);
+	interceptor_method!(
+		dictionary_row_pre_delete_interceptors,
+		dictionary_row_pre_delete,
+		DictionaryRowPreDeleteInterceptor
+	);
+	interceptor_method!(
+		dictionary_row_post_delete_interceptors,
+		dictionary_row_post_delete,
+		DictionaryRowPostDeleteInterceptor
+	);
+
+	interceptor_method!(
+		dictionary_post_create_interceptors,
+		dictionary_post_create,
+		DictionaryPostCreateInterceptor
+	);
+	interceptor_method!(dictionary_pre_update_interceptors, dictionary_pre_update, DictionaryPreUpdateInterceptor);
+	interceptor_method!(
+		dictionary_post_update_interceptors,
+		dictionary_post_update,
+		DictionaryPostUpdateInterceptor
+	);
+	interceptor_method!(dictionary_pre_delete_interceptors, dictionary_pre_delete, DictionaryPreDeleteInterceptor);
+
+	interceptor_method!(series_row_pre_insert_interceptors, series_row_pre_insert, SeriesRowPreInsertInterceptor);
+	interceptor_method!(
+		series_row_post_insert_interceptors,
+		series_row_post_insert,
+		SeriesRowPostInsertInterceptor
+	);
+	interceptor_method!(series_row_pre_update_interceptors, series_row_pre_update, SeriesRowPreUpdateInterceptor);
+	interceptor_method!(
+		series_row_post_update_interceptors,
+		series_row_post_update,
+		SeriesRowPostUpdateInterceptor
+	);
+	interceptor_method!(series_row_pre_delete_interceptors, series_row_pre_delete, SeriesRowPreDeleteInterceptor);
+	interceptor_method!(
+		series_row_post_delete_interceptors,
+		series_row_post_delete,
+		SeriesRowPostDeleteInterceptor
+	);
+
+	interceptor_method!(series_post_create_interceptors, series_post_create, SeriesPostCreateInterceptor);
+	interceptor_method!(series_pre_update_interceptors, series_pre_update, SeriesPreUpdateInterceptor);
+	interceptor_method!(series_post_update_interceptors, series_post_update, SeriesPostUpdateInterceptor);
+	interceptor_method!(series_pre_delete_interceptors, series_pre_delete, SeriesPreDeleteInterceptor);
+	interceptor_method!(identity_post_create_interceptors, identity_post_create, IdentityPostCreateInterceptor);
+	interceptor_method!(identity_pre_update_interceptors, identity_pre_update, IdentityPreUpdateInterceptor);
+	interceptor_method!(identity_post_update_interceptors, identity_post_update, IdentityPostUpdateInterceptor);
+	interceptor_method!(identity_pre_delete_interceptors, identity_pre_delete, IdentityPreDeleteInterceptor);
+	interceptor_method!(role_post_create_interceptors, role_post_create, RolePostCreateInterceptor);
+	interceptor_method!(role_pre_update_interceptors, role_pre_update, RolePreUpdateInterceptor);
+	interceptor_method!(role_post_update_interceptors, role_post_update, RolePostUpdateInterceptor);
+	interceptor_method!(role_pre_delete_interceptors, role_pre_delete, RolePreDeleteInterceptor);
+	interceptor_method!(
+		granted_role_post_create_interceptors,
+		granted_role_post_create,
+		GrantedRolePostCreateInterceptor
+	);
+	interceptor_method!(
+		granted_role_pre_delete_interceptors,
+		granted_role_pre_delete,
+		GrantedRolePreDeleteInterceptor
+	);
+	interceptor_method!(
+		authentication_post_create_interceptors,
+		authentication_post_create,
+		AuthenticationPostCreateInterceptor
+	);
+	interceptor_method!(
+		authentication_pre_delete_interceptors,
+		authentication_pre_delete,
+		AuthenticationPreDeleteInterceptor
 	);
 }

@@ -29,12 +29,12 @@ pub use reifydb_core::event::EventBus;
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
 pub use reifydb_engine as engine;
-pub use reifydb_function as function;
+pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::ActorSystem,
-	clock::{Clock, MockClock},
+	context::clock::{Clock, MockClock},
 };
 pub use reifydb_store_multi as multi_storage;
 pub use reifydb_store_multi::hot::{sqlite::config::SqliteConfig, storage::HotStorage};
@@ -54,6 +54,11 @@ pub use reifydb_sub_flow::{
 };
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
+#[cfg(feature = "sub_server")]
+pub use reifydb_sub_server::interceptor::{
+	Operation, Protocol, RequestContext, RequestInterceptor, RequestInterceptorChain, RequestMetadata,
+	ResponseContext,
+};
 #[cfg(feature = "sub_server_admin")]
 pub use reifydb_sub_server_admin as sub_server_admin;
 #[cfg(feature = "sub_server_grpc")]
@@ -94,4 +99,4 @@ pub use reifydb_type::{
 	},
 };
 pub mod test;
-pub use session::{Backoff, CommandSession, IntoCommandSession, QuerySession, RetryPolicy, Session};
+pub use session::{Backoff, RetryPolicy, Session};

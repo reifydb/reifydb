@@ -9,7 +9,7 @@ use reifydb_type::value::Value;
 /// `default_value`, `description`, and `requires_restart` are compile-time constants
 /// provided at registration time — they are never stored to disk.
 #[derive(Debug, Clone)]
-pub struct ConfigDef {
+pub struct Config {
 	/// SCREAMING_SNAKE_CASE key, e.g. "ORACLE_WINDOW_SIZE"
 	pub key: String,
 	/// Currently active value (persisted override or default)

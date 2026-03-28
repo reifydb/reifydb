@@ -5,7 +5,7 @@
 //!
 //! Provides static methods for reading, converting, and deleting subscription rows.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use reifydb_catalog::find_subscription;
 use reifydb_core::{
@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::Error, fragment::Fragment};
+use reifydb_type::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
 use tracing::{debug, warn};
 
 /// Static methods for consuming subscription data.
@@ -36,7 +36,7 @@ impl SubscriptionConsumer {
 		last_consumed_key: Option<&EncodedKey>,
 		batch_size: usize,
 	) -> Result<(Columns, Vec<EncodedKey>)> {
-		let mut cmd_txn = engine.begin_command()?;
+		let mut cmd_txn = engine.begin_command(IdentityId::system())?;
 
 		// Get subscription definition using catalog function
 		let _sub_def = match find_subscription(&mut Transaction::Command(&mut cmd_txn), db_subscription_id)? {
@@ -49,7 +49,7 @@ impl SubscriptionConsumer {
 
 		// Get schema registry for resolving per-row schemas
 		let catalog = engine.catalog();
-		let schema_registry = &catalog.schema;
+		let row_schema_registry = &catalog.schema;
 
 		// Create range for scanning rows
 		let range = if let Some(last_key) = last_consumed_key {
@@ -70,6 +70,7 @@ impl SubscriptionConsumer {
 
 		let mut row_numbers = Vec::new();
 		let mut row_keys = Vec::new();
+		let mut row_count: usize = 0;
 
 		// Process collected entries
 		for entry in entries {
@@ -79,10 +80,10 @@ impl SubscriptionConsumer {
 				row_keys.push(entry.key.clone());
 
 				// Extract schema fingerprint from the encoded row
-				let fingerprint = entry.values.fingerprint();
+				let fingerprint = entry.row.fingerprint();
 
-				// Resolve schema using SchemaRegistry
-				let schema = schema_registry
+				// Resolve schema using RowSchemaRegistry
+				let schema = row_schema_registry
 					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
 					.ok_or_else(|| {
 						Error(internal(format!(
@@ -91,18 +92,38 @@ impl SubscriptionConsumer {
 						)))
 					})?;
 
+				let mut seen_in_this_entry = HashSet::new();
+
 				// Decode each field using the resolved schema
 				for (idx, field) in schema.fields().iter().enumerate() {
-					let value = schema.get_value(&entry.values, idx);
+					let value = schema.get_value(&entry.row, idx);
+					seen_in_this_entry.insert(field.name.clone());
 
 					// Get or create column data for this field
 					column_data
 						.entry(field.name.clone())
 						.or_insert_with(|| {
-							ColumnData::with_capacity(field.constraint.get_type(), 0)
+							// New column — backfill with None for all prior rows
+							let mut cd = ColumnData::with_capacity(
+								field.constraint.get_type(),
+								0,
+							);
+							for _ in 0..row_count {
+								cd.push_none();
+							}
+							cd
 						})
 						.push_value(value);
 				}
+
+				// Pad columns not seen in this entry with None
+				for (name, col) in column_data.iter_mut() {
+					if !seen_in_this_entry.contains(name) {
+						col.push_none();
+					}
+				}
+
+				row_count += 1;
 			}
 		}
 
@@ -124,7 +145,7 @@ impl SubscriptionConsumer {
 			return Ok(());
 		}
 
-		let mut delete_txn = engine.begin_command()?;
+		let mut delete_txn = engine.begin_command(IdentityId::system())?;
 
 		for key in row_keys {
 			delete_txn.remove(key)?;

@@ -9,7 +9,7 @@ describe('useCommandExecutor Hook', () => {
     beforeAll(async () => {
         await waitForDatabase();
         // Ensure we're connected before tests
-        const conn = getConnection();
+        const conn = getConnection({token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 

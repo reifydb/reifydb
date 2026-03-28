@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time;
-
 use reifydb_core::{
-	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	common::{JoinType, WindowKind},
 	interface::catalog::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
+		series::SeriesKey,
 	},
 	sort::SortKey,
 };
@@ -69,21 +68,29 @@ pub enum FlowNodeType {
 		operator: String,
 		expressions: Vec<Expression>,
 	},
-	SinkView {
+	SinkTableView {
 		view: ViewId,
+		table: TableId,
+	},
+	SinkRingBufferView {
+		view: ViewId,
+		ringbuffer: RingBufferId,
+		capacity: u64,
+		propagate_evictions: bool,
+	},
+	SinkSeriesView {
+		view: ViewId,
+		series: SeriesId,
+		key: SeriesKey,
 	},
 	SinkSubscription {
 		subscription: SubscriptionId,
 	},
 	Window {
-		window_type: WindowType,
-		size: WindowSize,
-		slide: Option<WindowSlide>,
+		kind: WindowKind,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
-		min_events: usize,
-		max_window_count: Option<usize>,
-		max_window_age: Option<time::Duration>,
+		ts: Option<String>,
 	},
 }
 
@@ -137,9 +144,15 @@ impl FlowNodeType {
 			FlowNodeType::Apply {
 				..
 			} => 13,
-			FlowNodeType::SinkView {
+			FlowNodeType::SinkTableView {
 				..
-			} => 14,
+			} => 20,
+			FlowNodeType::SinkRingBufferView {
+				..
+			} => 21,
+			FlowNodeType::SinkSeriesView {
+				..
+			} => 22,
 			FlowNodeType::SinkSubscription {
 				..
 			} => 15,

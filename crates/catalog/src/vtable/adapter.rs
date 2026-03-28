@@ -6,28 +6,28 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{Batch, VTableDef},
+	interface::{Batch, VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::Value};
 
-use super::{VTable, VTableContext};
+use super::{BaseVTable, VTableContext};
 use crate::vtable::user::{
-	UserVTable, UserVTableColumnDef, UserVTableIterator, UserVTablePushdownContext,
+	UserVTable, UserVTableColumn, UserVTableIterator, UserVTablePushdownContext,
 };
 use crate::Result;
 
 /// Adapter that wraps a `UserVTable` into the internal `VTable` trait.
 pub struct UserVTableAdapter<U: UserVTable> {
 	user_table: U,
-	definition: Arc<VTableDef>,
+	definition: Arc<VTable>,
 	exhausted: bool,
 }
 
 impl<U: UserVTable> UserVTableAdapter<U> {
 	/// Create a new adapter wrapping the user table.
-	pub fn new(user_table: U, definition: Arc<VTableDef>) -> Self {
+	pub fn new(user_table: U, definition: Arc<VTable>) -> Self {
 		Self {
 			user_table,
 			definition,
@@ -63,7 +63,7 @@ impl<U: UserVTable> VTable for UserVTableAdapter<U> {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }
@@ -71,7 +71,7 @@ impl<U: UserVTable> VTable for UserVTableAdapter<U> {
 /// Adapter that wraps a `UserVTableIterator` into the internal `VTable` trait.
 pub struct UserVTableIteratorAdapter<U: UserVTableIterator> {
 	user_iter: U,
-	definition: Arc<VTableDef>,
+	definition: Arc<VTable>,
 	batch_size: usize,
 	initialized: bool,
 }
@@ -79,7 +79,7 @@ pub struct UserVTableIteratorAdapter<U: UserVTableIterator> {
 impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 	/// Create a new adapter wrapping the user iterator.
 	#[allow(dead_code)]
-	pub fn new(user_iter: U, definition: Arc<VTableDef>) -> Self {
+	pub fn new(user_iter: U, definition: Arc<VTable>) -> Self {
 		Self {
 			user_iter,
 			definition,
@@ -129,14 +129,14 @@ impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 		}
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }
 
 /// Convert user row-oriented data to column-oriented data.
 pub(super) fn convert_rows_to_columns(
-	user_columns: &[UserVTableColumnDef],
+	user_columns: &[UserVTableColumn],
 	rows: Vec<Vec<Value>>,
 ) -> Vec<Column> {
 	let num_rows = rows.len();

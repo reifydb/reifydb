@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::user::RoleDef, key::role::RoleKey};
+use reifydb_core::{interface::catalog::identity::Role, key::role::RoleKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
 
@@ -15,7 +15,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_role(txn: &mut AdminTransaction, name: &str) -> Result<RoleDef> {
+	pub(crate) fn create_role(txn: &mut AdminTransaction, name: &str) -> Result<Role> {
 		if let Some(_) = Self::find_role_by_name(&mut Transaction::Admin(&mut *txn), name)? {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Role,
@@ -34,7 +34,7 @@ impl CatalogStore {
 
 		txn.set(&RoleKey::encoded(role_id), row)?;
 
-		Ok(RoleDef {
+		Ok(Role {
 			id: role_id,
 			name: name.to_string(),
 		})
@@ -43,7 +43,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 
 	use crate::CatalogStore;
 

@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use postcard::to_stdvec;
 use reifydb_core::{
 	common::JoinType,
-	encoded::{key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, schema::RowSchema},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
@@ -19,14 +19,14 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::{executor::Executor, stack::SymbolTable},
 };
-use reifydb_function::registry::Functions;
+use reifydb_routine::function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
-	clock::Clock,
+	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_type::{
@@ -66,11 +66,11 @@ pub struct JoinOperator {
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
-	schema: Schema,
+	schema: RowSchema,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl JoinOperator {
@@ -93,7 +93,7 @@ impl JoinOperator {
 		// Create compile context with empty symbol table
 		let compile_ctx = CompileContext {
 			functions: &executor.functions,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 
 		// Compile expressions at construction time
@@ -109,9 +109,9 @@ impl JoinOperator {
 			.collect::<Result<Vec<_>>>()
 			.expect("Failed to compile right expressions");
 
-		// Extract Functions and Clock from executor
+		// Extract Functions and RuntimeContext from executor
 		let functions = executor.functions.clone();
-		let clock = executor.clock.clone();
+		let runtime_context = executor.runtime_context.clone();
 
 		Self {
 			left_parent,
@@ -129,12 +129,12 @@ impl JoinOperator {
 			row_number_provider,
 			executor,
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
-	fn state_schema() -> Schema {
-		Schema::testing(&[Type::Blob])
+	fn state_schema() -> RowSchema {
+		RowSchema::testing(&[Type::Blob])
 	}
 
 	/// Compute join keys for all rows in Columns
@@ -149,19 +149,16 @@ impl JoinOperator {
 			return Ok(Vec::new());
 		}
 
-		let exec_ctx = EvalContext {
-			target: None,
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let exec_ctx = session.eval(columns.clone(), row_count);
 
 		// Evaluate all compiled expressions on the entire batch
 		let mut expr_columns = Vec::with_capacity(compiled_exprs.len());
@@ -461,7 +458,7 @@ impl JoinOperator {
 impl RawStatefulOperator for JoinOperator {}
 
 impl SingleStateful for JoinOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.schema.clone()
 	}
 }
@@ -586,26 +583,26 @@ impl Operator for JoinOperator {
 					post,
 				} => {
 					// Compute keys for pre and post
-					let old_keys = self.compute_join_keys(&pre, compiled_exprs)?;
-					let new_keys = self.compute_join_keys(&post, compiled_exprs)?;
+					let pre_keys = self.compute_join_keys(&pre, compiled_exprs)?;
+					let post_keys = self.compute_join_keys(&post, compiled_exprs)?;
 					let row_count = post.row_count();
 
-					// Group updates by (old_key, new_key) pair
+					// Group updates by (pre_key, post_key) pair
 					// Only updates with same key pair can be batched
 					let mut updates_by_key: IndexMap<(Hash128, Hash128), Vec<usize>> =
 						IndexMap::new();
 					let mut updates_undefined: Vec<usize> = Vec::new();
 
 					for row_idx in 0..row_count {
-						match (old_keys[row_idx], new_keys[row_idx]) {
-							(Some(old_key), Some(new_key)) => {
+						match (pre_keys[row_idx], post_keys[row_idx]) {
+							(Some(pre_key), Some(post_key)) => {
 								updates_by_key
-									.entry((old_key, new_key))
+									.entry((pre_key, post_key))
 									.or_default()
 									.push(row_idx);
 							}
 							_ => {
-								// Any undefined key (old or new) is processed
+								// Any undefined key (pre or post) is processed
 								// individually
 								updates_undefined.push(row_idx);
 							}
@@ -613,15 +610,15 @@ impl Operator for JoinOperator {
 					}
 
 					// Process updates with defined keys (batched by key pair)
-					for ((old_key, new_key), indices) in updates_by_key {
+					for ((pre_key, post_key), indices) in updates_by_key {
 						let diffs = self.strategy.handle_update(
 							txn,
 							&pre,
 							&post,
 							&indices,
 							side,
-							&old_key,
-							&new_key,
+							&pre_key,
+							&post_key,
 							&mut state,
 							self,
 							change.version,

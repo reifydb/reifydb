@@ -17,7 +17,7 @@ pub struct ResponseColumn {
 	pub name: String,
 	#[serde(rename = "type")]
 	pub r#type: Type,
-	pub data: Vec<String>,
+	pub payload: Vec<String>,
 }
 
 /// Convert database result frames to response frames.
@@ -48,7 +48,7 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 			columns.push(ResponseColumn {
 				name: column.name.clone(),
 				r#type: column.data.get_type(),
-				data: column_data,
+				payload: column_data,
 			});
 		}
 

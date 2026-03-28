@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::RingBufferId,
-		ringbuffer::{RingBufferDef, RingBufferMetadata},
+		ringbuffer::{RingBuffer, RingBufferMetadata},
 	},
 	internal,
 };
@@ -14,7 +14,7 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_ringbuffer(rx: &mut Transaction<'_>, ringbuffer: RingBufferId) -> Result<RingBufferDef> {
+	pub(crate) fn get_ringbuffer(rx: &mut Transaction<'_>, ringbuffer: RingBufferId) -> Result<RingBuffer> {
 		Self::find_ringbuffer(rx, ringbuffer)?.ok_or_else(|| {
 			Error(internal!(
 				"Ring buffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -39,7 +39,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::RingBufferId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_ringbuffer};

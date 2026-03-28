@@ -18,7 +18,7 @@ pub(crate) fn drop_authentication(
 
 	// Find the user
 	let user = if plan.if_exists {
-		match services.catalog.find_user_by_name(&mut Transaction::Admin(&mut *txn), user_name)? {
+		match services.catalog.find_identity_by_name(&mut Transaction::Admin(&mut *txn), user_name)? {
 			Some(u) => u,
 			None => {
 				return Ok(Columns::single_row([
@@ -29,11 +29,11 @@ pub(crate) fn drop_authentication(
 			}
 		}
 	} else {
-		services.catalog.get_user_by_name(&mut Transaction::Admin(&mut *txn), user_name)?
+		services.catalog.get_identity_by_name(&mut Transaction::Admin(&mut *txn), user_name)?
 	};
 
 	// Drop the authentication
-	services.catalog.drop_user_authentication(txn, user.id, method)?;
+	services.catalog.drop_authentication(txn, user.id, method)?;
 
 	Ok(Columns::single_row([
 		("user", Value::Utf8(user_name.to_string())),

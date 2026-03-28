@@ -17,9 +17,9 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::schema::{Schema, SchemaField},
+	encoded::schema::{RowSchema, RowSchemaField},
 	interface::{
-		catalog::{table::TableDef, view::ViewDef},
+		catalog::{table::Table, view::View},
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	},
 	row::Row,
@@ -321,29 +321,12 @@ impl Columns {
 		}
 	}
 
-	pub fn from_table(table: &ResolvedTable) -> Self {
-		let _source = table.clone();
-
-		let columns: Vec<Column> = table
-			.columns()
-			.iter()
-			.map(|col| {
-				let column_ident = Fragment::internal(&col.name);
-				Column {
-					name: column_ident,
-					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
-				}
-			})
-			.collect();
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
+	pub fn from_resolved_table(table: &ResolvedTable) -> Self {
+		Self::from_table(table.def())
 	}
 
-	/// Create empty Columns (0 rows) with schema from a TableDef
-	pub fn from_table_def(table: &TableDef) -> Self {
+	/// Create empty Columns (0 rows) with schema from a Table
+	pub fn from_table(table: &Table) -> Self {
 		let columns: Vec<Column> = table
 			.columns
 			.iter()
@@ -359,10 +342,10 @@ impl Columns {
 		}
 	}
 
-	/// Create empty Columns (0 rows) with schema from a ViewDef
-	pub fn from_view_def(view: &ViewDef) -> Self {
+	/// Create empty Columns (0 rows) with schema from a View
+	pub fn from_view(view: &View) -> Self {
 		let columns: Vec<Column> = view
-			.columns
+			.columns()
 			.iter()
 			.map(|col| Column {
 				name: Fragment::internal(&col.name),
@@ -397,25 +380,8 @@ impl Columns {
 		}
 	}
 
-	pub fn from_view(view: &ResolvedView) -> Self {
-		let _source = view.clone();
-
-		let columns: Vec<Column> = view
-			.columns()
-			.iter()
-			.map(|col| {
-				let column_ident = Fragment::internal(&col.name);
-				Column {
-					name: column_ident,
-					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
-				}
-			})
-			.collect();
-
-		Self {
-			row_numbers: CowVec::new(Vec::new()),
-			columns: CowVec::new(columns),
-		}
+	pub fn from_resolved_view(view: &ResolvedView) -> Self {
+		Self::from_view(view.def())
 	}
 }
 
@@ -452,6 +418,24 @@ impl Columns {
 	/// Extract a single row by index, returning a new Columns with 1 row
 	pub fn extract_row(&self, index: usize) -> Columns {
 		self.extract_by_indices(&[index])
+	}
+
+	/// Project to a subset of columns by name, preserving the order of the provided names.
+	/// Columns not found in self are silently skipped.
+	pub fn project_by_names(&self, names: &[String]) -> Columns {
+		let new_columns: Vec<Column> = names
+			.iter()
+			.filter_map(|name| self.columns.iter().find(|c| c.name().text() == name.as_str()).cloned())
+			.collect();
+
+		if new_columns.is_empty() {
+			return Columns::empty();
+		}
+
+		Columns {
+			row_numbers: self.row_numbers.clone(),
+			columns: CowVec::new(new_columns),
+		}
 	}
 
 	/// Partition Columns into groups based on keys (one key per row).
@@ -499,7 +483,7 @@ impl Columns {
 				}
 			}
 
-			let name = row.schema.get_field_name(idx).expect("Schema missing name for field");
+			let name = row.schema.get_field_name(idx).expect("RowSchema missing name for field");
 
 			columns.push(Column {
 				name: Fragment::internal(name),
@@ -527,13 +511,13 @@ impl Columns {
 		let row_number = self.row_numbers.first().unwrap().clone();
 
 		// Build schema fields for the layout
-		let fields: Vec<SchemaField> = self
+		let fields: Vec<RowSchemaField> = self
 			.columns
 			.iter()
-			.map(|col| SchemaField::unconstrained(col.name().text().to_string(), col.data().get_type()))
+			.map(|col| RowSchemaField::unconstrained(col.name().text().to_string(), col.data().get_type()))
 			.collect();
 
-		let layout = Schema::new(fields);
+		let layout = RowSchema::new(fields);
 		let mut encoded = layout.allocate();
 
 		// Get values and set them
@@ -559,7 +543,7 @@ pub mod tests {
 		let date = Date::from_ymd(2025, 1, 15).unwrap();
 		let datetime = DateTime::from_timestamp(1642694400).unwrap();
 		let time = Time::from_hms(14, 30, 45).unwrap();
-		let duration = Duration::from_days(30);
+		let duration = Duration::from_days(30).unwrap();
 
 		let columns = Columns::single_row([
 			("date_col", Value::Date(date.clone())),

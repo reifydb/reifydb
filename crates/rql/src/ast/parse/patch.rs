@@ -4,29 +4,18 @@
 use crate::{
 	Result,
 	ast::{ast::AstPatch, parse::Parser},
-	error::{OperationKind, RqlError},
+	error::OperationKind,
 	token::keyword::Keyword,
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_patch(&mut self) -> Result<AstPatch<'bump>> {
-		let start = self.current()?.fragment.offset();
-		let token = self.consume_keyword(Keyword::Patch)?;
-
-		let (nodes, has_braces) = self.parse_expressions(true, false)?;
-
-		if !has_braces {
-			return Err(RqlError::OperatorMissingBraces {
-				kind: OperationKind::Patch,
-				fragment: token.fragment.to_owned(),
-			}
-			.into());
-		}
-
+		let (token, assignments, rql) =
+			self.parse_keyword_with_braced_expressions(Keyword::Patch, OperationKind::Patch)?;
 		Ok(AstPatch {
 			token,
-			assignments: nodes,
-			rql: self.source_since(start),
+			assignments,
+			rql,
 		})
 	}
 }

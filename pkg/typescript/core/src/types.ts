@@ -35,7 +35,7 @@ export interface Diagnostic {
 export interface Column {
     name: string;
     type: Type;
-    data: string[];
+    payload: string[];
 }
 
 export interface ErrorResponse {

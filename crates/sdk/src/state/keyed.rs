@@ -7,7 +7,7 @@
 //! multiple state values indexed by keys, such as group-by aggregations.
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::value::{Value, r#type::Type};
@@ -26,9 +26,9 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// Get or create the schema for state rows
 	///
 	/// This defines the structure of each state value associated with a key.
-	fn schema(&self) -> Schema;
+	fn schema(&self) -> RowSchema;
 
-	/// Schema for keys - defines the types of the key components
+	/// RowSchema for keys - defines the types of the key components
 	///
 	/// Keys can be composite (multiple values). For example, grouping by
 	/// (customer_id, product_id) would return `&[Type::Int32, Type::Int32]`.
@@ -60,7 +60,7 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// Create a new state encoded with default values
 	///
 	/// Allocates a new state row based on the schema, initialized with default values.
-	fn create_state(&self) -> EncodedValues {
+	fn create_state(&self) -> EncodedRow {
 		let schema = self.schema();
 		schema.allocate()
 	}
@@ -77,7 +77,7 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// # Returns
 	///
 	/// The loaded or newly created state for this key
-	fn load_state(&self, ctx: &mut OperatorContext, key_values: &[Value]) -> Result<EncodedValues> {
+	fn load_state(&self, ctx: &mut OperatorContext, key_values: &[Value]) -> Result<EncodedRow> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(ctx, &key, &self.schema())
 	}
@@ -89,7 +89,7 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// * `ctx` - The operator context
 	/// * `key_values` - The values that form the key
 	/// * `row` - The state to save
-	fn save_state(&self, ctx: &mut OperatorContext, key_values: &[Value], row: &EncodedValues) -> Result<()> {
+	fn save_state(&self, ctx: &mut OperatorContext, key_values: &[Value], row: &EncodedRow) -> Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(ctx, &key, row)
 	}
@@ -109,9 +109,9 @@ pub trait FFIKeyedStateful: FFIRawStatefulOperator {
 	/// # Returns
 	///
 	/// The updated state after applying the function
-	fn update_state<F>(&self, ctx: &mut OperatorContext, key_values: &[Value], f: F) -> Result<EncodedValues>
+	fn update_state<F>(&self, ctx: &mut OperatorContext, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedValues) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.schema();
 		let mut row = self.load_state(ctx, key_values)?;

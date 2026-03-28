@@ -24,13 +24,10 @@ pub(crate) fn alter_remote_namespace(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_type::{
-		params::Params,
-		value::{Value, identity::IdentityId},
-	};
+	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
-		test_utils::create_test_admin_transaction,
+		test_harness::create_test_admin_transaction,
 		vm::{Admin, executor::Executor},
 	};
 
@@ -38,7 +35,6 @@ pub mod tests {
 	fn test_alter_remote_namespace() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
-		let identity = IdentityId::root();
 
 		// First create a remote namespace
 		instance.admin(
@@ -46,7 +42,6 @@ pub mod tests {
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
 				params: Params::default(),
-				identity,
 			},
 		)
 		.unwrap();
@@ -58,7 +53,6 @@ pub mod tests {
 				Admin {
 					rql: "ALTER REMOTE NAMESPACE remote_ns WITH { grpc: 'newhost:50051' }",
 					params: Params::default(),
-					identity,
 				},
 			)
 			.unwrap();

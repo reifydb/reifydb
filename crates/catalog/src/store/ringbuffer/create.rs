@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{NamespaceId, RingBufferId},
 		property::ColumnPropertyKind,
-		ringbuffer::RingBufferDef,
+		ringbuffer::RingBuffer,
 	},
 	key::{
 		namespace_ringbuffer::NamespaceRingBufferKey,
@@ -45,13 +45,14 @@ pub struct RingBufferToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 impl CatalogStore {
 	pub(crate) fn create_ringbuffer(
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
-	) -> Result<RingBufferDef> {
+	) -> Result<RingBuffer> {
 		let namespace_id = to_create.namespace;
 
 		if let Some(ringbuffer) = CatalogStore::find_ringbuffer_by_name(
@@ -75,9 +76,12 @@ impl CatalogStore {
 		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
 
 		let capacity = to_create.capacity;
+		let is_partitioned = !to_create.partition_by.is_empty();
 
 		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
-		Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+		if !is_partitioned {
+			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+		}
 
 		Ok(Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)?)
 	}
@@ -95,6 +99,7 @@ impl CatalogStore {
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
 		// Initialize with no primary key
 		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
+		ringbuffer::SCHEMA.set_utf8(&mut row, ringbuffer::PARTITION_BY, &to_create.partition_by.join(","));
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 
@@ -128,7 +133,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
-					primitive_name: String::new(),
+					schema_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint,
 					properties: col.properties,
@@ -150,8 +155,8 @@ impl CatalogStore {
 		let mut row = ringbuffer_metadata::SCHEMA.allocate();
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::HEAD, 0u64);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, 0u64);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::HEAD, 1u64);
+		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, 1u64);
 		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
 
 		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
@@ -163,7 +168,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
@@ -200,6 +205,7 @@ pub mod tests {
 					dictionary_id: None,
 				},
 			],
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -224,6 +230,7 @@ pub mod tests {
 			name: Fragment::internal("empty_buffer"),
 			capacity: 100,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -245,6 +252,7 @@ pub mod tests {
 			name: Fragment::internal("test_ringbuffer"),
 			capacity: 50,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		// First creation should succeed
@@ -268,6 +276,7 @@ pub mod tests {
 			name: Fragment::internal("buffer1"),
 			capacity: 10,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -277,6 +286,7 @@ pub mod tests {
 			name: Fragment::internal("buffer2"),
 			capacity: 20,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -291,14 +301,14 @@ pub mod tests {
 
 		// Check first link (descending order, so buffer2 comes first)
 		let link = &links[0];
-		let row = &link.values;
+		let row = &link.row;
 		let id2 = ringbuffer_namespace::SCHEMA.get_u64(row, ringbuffer_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME), "buffer2");
 
 		// Check second link (buffer1 comes second)
 		let link = &links[1];
-		let row = &link.values;
+		let row = &link.row;
 		let id1 = ringbuffer_namespace::SCHEMA.get_u64(row, ringbuffer_namespace::ID);
 		assert!(id2 > id1);
 		assert_eq!(ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME), "buffer1");
@@ -314,6 +324,7 @@ pub mod tests {
 			name: Fragment::internal("metadata_buffer"),
 			capacity: 500,
 			columns: vec![],
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -326,8 +337,8 @@ pub mod tests {
 		assert_eq!(metadata.id, result.id);
 		assert_eq!(metadata.capacity, 500);
 		assert_eq!(metadata.count, 0);
-		assert_eq!(metadata.head, 0);
-		assert_eq!(metadata.tail, 0);
+		assert_eq!(metadata.head, 1);
+		assert_eq!(metadata.tail, 1);
 	}
 
 	#[test]
@@ -341,6 +352,7 @@ pub mod tests {
 			name: Fragment::internal("small_buffer"),
 			capacity: 10,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
@@ -351,6 +363,7 @@ pub mod tests {
 			name: Fragment::internal("medium_buffer"),
 			capacity: 1000,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
@@ -361,6 +374,7 @@ pub mod tests {
 			name: Fragment::internal("large_buffer"),
 			capacity: 1000000,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
@@ -408,6 +422,7 @@ pub mod tests {
 			name: Fragment::internal("ordered_buffer"),
 			capacity: 100,
 			columns: columns.clone(),
+			partition_by: vec![],
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

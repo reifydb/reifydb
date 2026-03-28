@@ -24,8 +24,8 @@ use reifydb_core::{
 	delta::Delta,
 	encoded::key::{EncodedKey, EncodedKeyRange},
 	interface::store::{
-		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionStore,
-		MultiVersionValues,
+		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
+		MultiVersionStore,
 	},
 };
 use reifydb_type::util::cowvec::CowVec;
@@ -86,7 +86,7 @@ impl MultiStore {
 
 impl MultiVersionGet for MultiStore {
 	#[inline]
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionGet::get(store, key, version),
 		}
@@ -117,7 +117,7 @@ impl MultiVersionGetPrevious for MultiStore {
 		&self,
 		key: &EncodedKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionValues>> {
+	) -> Result<Option<MultiVersionRow>> {
 		match self {
 			MultiStore::Standard(store) => store.get_previous_version(key, before_version),
 		}
@@ -125,7 +125,7 @@ impl MultiVersionGetPrevious for MultiStore {
 }
 
 /// Iterator type for multi-version range results.
-pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionValues>> + Send + 'a>;
+pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>;
 
 impl MultiStore {
 	/// Create an iterator for forward range queries.

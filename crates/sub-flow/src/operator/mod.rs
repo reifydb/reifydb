@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::FlowNodeId, value::column::columns::Columns};
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::transaction::FlowTransaction;
 
@@ -36,7 +39,10 @@ use scan::{
 	flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator, series::PrimitiveSeriesOperator,
 	table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 };
-use sink::{subscription::SinkSubscriptionOperator, view::SinkViewOperator};
+use sink::{
+	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
+	subscription::SinkSubscriptionOperator, view::SinkTableViewOperator,
+};
 use sort::SortOperator;
 use take::TakeOperator;
 use window::WindowOperator;
@@ -45,6 +51,12 @@ pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
+
+	/// Periodic tick for time-based maintenance (e.g., window eviction).
+	/// Returns Some(Change) with diffs if maintenance produced changes.
+	fn tick(&self, _txn: &mut FlowTransaction, _timestamp: DateTime) -> Result<Option<Change>> {
+		Ok(None)
+	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns>;
 }
@@ -67,7 +79,9 @@ pub enum Operators {
 	Distinct(DistinctOperator),
 	Append(AppendOperator),
 	Apply(ApplyOperator),
-	SinkView(SinkViewOperator),
+	SinkTableView(SinkTableViewOperator),
+	SinkRingBufferView(SinkRingBufferViewOperator),
+	SinkSeriesView(SinkSeriesViewOperator),
 	SinkSubscription(SinkSubscriptionOperator),
 	Window(WindowOperator),
 	Custom(BoxedOperator),
@@ -86,7 +100,9 @@ impl Operators {
 			Operators::Distinct(op) => op.apply(txn, change),
 			Operators::Append(op) => op.apply(txn, change),
 			Operators::Apply(op) => op.apply(txn, change),
-			Operators::SinkView(op) => op.apply(txn, change),
+			Operators::SinkTableView(op) => op.apply(txn, change),
+			Operators::SinkRingBufferView(op) => op.apply(txn, change),
+			Operators::SinkSeriesView(op) => op.apply(txn, change),
 			Operators::SinkSubscription(op) => op.apply(txn, change),
 			Operators::Window(op) => op.apply(txn, change),
 			Operators::SourceTable(op) => op.apply(txn, change),
@@ -95,6 +111,15 @@ impl Operators {
 			Operators::SourceRingBuffer(op) => op.apply(txn, change),
 			Operators::SourceSeries(op) => op.apply(txn, change),
 			Operators::Custom(op) => op.apply(txn, change),
+		}
+	}
+
+	pub fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
+		match self {
+			Operators::Window(op) => op.tick(txn, timestamp),
+			Operators::Custom(op) => op.tick(txn, timestamp),
+			Operators::Apply(op) => op.tick(txn, timestamp),
+			_ => Ok(None),
 		}
 	}
 
@@ -110,7 +135,9 @@ impl Operators {
 			Operators::Distinct(op) => op.pull(txn, rows),
 			Operators::Append(op) => op.pull(txn, rows),
 			Operators::Apply(op) => op.pull(txn, rows),
-			Operators::SinkView(op) => op.pull(txn, rows),
+			Operators::SinkTableView(op) => op.pull(txn, rows),
+			Operators::SinkRingBufferView(op) => op.pull(txn, rows),
+			Operators::SinkSeriesView(op) => op.pull(txn, rows),
 			Operators::SinkSubscription(op) => op.pull(txn, rows),
 			Operators::Window(op) => op.pull(txn, rows),
 			Operators::SourceTable(op) => op.pull(txn, rows),

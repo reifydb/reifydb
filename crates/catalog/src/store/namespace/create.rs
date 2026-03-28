@@ -12,7 +12,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		namespace::schema::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SCHEMA},
+		namespace::schema::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SCHEMA, TOKEN},
 		sequence::system::SystemSequence,
 	},
 };
@@ -24,6 +24,7 @@ pub struct NamespaceToCreate {
 	pub local_name: String,
 	pub parent_id: NamespaceId,
 	pub grpc: Option<String>,
+	pub token: Option<String>,
 }
 
 impl CatalogStore {
@@ -49,6 +50,9 @@ impl CatalogStore {
 		if let Some(ref grpc) = to_create.grpc {
 			SCHEMA.set_utf8(&mut row, GRPC, grpc);
 		}
+		if let Some(ref token) = to_create.token {
+			SCHEMA.set_utf8(&mut row, TOKEN, token);
+		}
 		SCHEMA.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
@@ -60,7 +64,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 
 	use crate::{CatalogStore, store::namespace::create::NamespaceToCreate};
 
@@ -74,6 +78,7 @@ pub mod tests {
 			local_name: "test_namespace".to_string(),
 			parent_id: NamespaceId(0),
 			grpc: None,
+			token: None,
 		};
 
 		// First creation should succeed

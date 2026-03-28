@@ -10,7 +10,7 @@ use reifydb_rql::{
 	expression::ExpressionCompiler,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_type::Result;
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
 
@@ -23,7 +23,6 @@ use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policie
 pub fn enforce_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: IdentityId,
 	target_namespace: &str,
 	target_object: &str,
 	operation: &str,
@@ -31,16 +30,16 @@ pub fn enforce_write_policies(
 	target_type: PolicyTargetType,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
+	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(());
 	}
 
 	let target_type_str = target_type.as_str().to_string();
-	let policies =
-		resolve_write_policies(catalog, tx, identity, target_namespace, target_object, operation, target_type)?;
+	let policies = resolve_write_policies(catalog, tx, target_namespace, target_object, operation, target_type)?;
 
 	if policies.is_empty() {
-		return Err(PolicyError::NoPolicyDefined {
+		return Err(PolicyError::NoPolicyined {
 			operation: operation.to_string(),
 			target: format!("{}::{}", target_namespace, target_object),
 			target_type: target_type_str,
@@ -109,16 +108,16 @@ pub fn enforce_write_policies(
 pub fn enforce_session_policy(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: IdentityId,
 	session_type: &str,
 	default_deny: bool,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
+	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(());
 	}
 
-	let policies = resolve_write_policies(catalog, tx, identity, "", "", session_type, PolicyTargetType::Session)?;
+	let policies = resolve_write_policies(catalog, tx, "", "", session_type, PolicyTargetType::Session)?;
 
 	if policies.is_empty() {
 		if default_deny {
@@ -177,23 +176,22 @@ pub fn enforce_session_policy(
 pub fn enforce_identity_policy(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	identity: IdentityId,
 	target_namespace: &str,
 	target_object: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
+	let identity = tx.identity();
 	if identity.is_privileged() {
 		return Ok(());
 	}
 
 	let target_type_str = target_type.as_str().to_string();
-	let policies =
-		resolve_write_policies(catalog, tx, identity, target_namespace, target_object, operation, target_type)?;
+	let policies = resolve_write_policies(catalog, tx, target_namespace, target_object, operation, target_type)?;
 
 	if policies.is_empty() {
-		return Err(PolicyError::NoPolicyDefined {
+		return Err(PolicyError::NoPolicyined {
 			operation: operation.to_string(),
 			target: format!("{}::{}", target_namespace, target_object),
 			target_type: target_type_str,

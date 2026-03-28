@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the Apache-2.0, see license.md file
 
-ast 'window { count(*) } with { interval: "5s" }'
+ast 'window tumbling { count(*) } with { interval: "5s" }'
 ---
 > └── Window @ line 1, column 1 — "window"
 >

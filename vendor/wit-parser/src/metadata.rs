@@ -15,11 +15,15 @@
 //! format to store this information inline.
 
 use crate::{
-    Docs, Function, InterfaceId, PackageId, Resolve, Stability, TypeDefKind, TypeId, WorldId,
-    WorldItem, WorldKey,
+    Docs, Function, IndexMap, InterfaceId, PackageId, Resolve, Stability, TypeDefKind, TypeId,
+    WorldId, WorldItem, WorldKey,
 };
+use alloc::string::{String, ToString};
+#[cfg(feature = "serde")]
+use alloc::vec;
+#[cfg(feature = "serde")]
+use alloc::vec::Vec;
 use anyhow::{Result, bail};
-use indexmap::IndexMap;
 #[cfg(feature = "serde")]
 use serde_derive::{Deserialize, Serialize};
 
@@ -298,7 +302,7 @@ impl WorldMetadata {
                         let prev = map.insert(name.to_string(), data);
                         assert!(prev.is_none());
                     }
-                    WorldItem::Type(id) => {
+                    WorldItem::Type { id, .. } => {
                         let data = TypeMetadata::extract(resolve, *id);
                         if !data.is_empty() {
                             types.insert(name.to_string(), data);
@@ -378,7 +382,7 @@ impl WorldMetadata {
                     None => world.exports.get_mut(&key),
                 }
             };
-            let Some(WorldItem::Interface { id, stability }) = item else {
+            let Some(WorldItem::Interface { id, stability, .. }) = item else {
                 bail!("missing interface {name:?}");
             };
             *stability = data.stability.clone();
@@ -389,7 +393,7 @@ impl WorldMetadata {
         // Process all types, which are always imported, for this world.
         for (name, data) in &self.types {
             let key = WorldKey::Name(name.to_string());
-            let Some(WorldItem::Type(id)) = resolve.worlds[id].imports.get(&key) else {
+            let Some(WorldItem::Type { id, .. }) = resolve.worlds[id].imports.get(&key) else {
                 bail!("missing type {name:?}");
             };
             data.inject(resolve, *id)?;
@@ -739,7 +743,7 @@ impl TypeMetadata {
         Ok(())
     }
 
-    fn inject_items<T: std::fmt::Debug>(
+    fn inject_items<T: core::fmt::Debug>(
         &self,
         items: &mut [T],
         f: impl Fn(&mut T) -> (&String, &mut Docs),

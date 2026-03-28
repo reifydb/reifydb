@@ -1,12 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time;
-
-use reifydb_core::{
-	common::{WindowSize, WindowSlide, WindowType},
-	interface::catalog::flow::FlowNodeId,
-};
+use reifydb_core::{common::WindowKind, interface::catalog::flow::FlowNodeId};
 use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Window, nodes::WindowNode, query::QueryPlan};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::Result;
@@ -15,35 +10,26 @@ use crate::flow::compiler::{CompileOperator, FlowCompiler};
 
 pub(crate) struct WindowCompiler {
 	pub input: Option<Box<QueryPlan>>,
-	pub window_type: WindowType,
-	pub size: WindowSize,
-	pub slide: Option<WindowSlide>,
+	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub min_events: usize,
-	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<time::Duration>,
+	pub ts: Option<String>,
 }
 
 impl From<WindowNode> for WindowCompiler {
 	fn from(node: WindowNode) -> Self {
 		Self {
 			input: node.input,
-			window_type: node.window_type,
-			size: node.size,
-			slide: node.slide,
+			kind: node.kind,
 			group_by: node.group_by,
 			aggregations: node.aggregations,
-			min_events: node.min_events,
-			max_window_count: node.max_window_count,
-			max_window_age: node.max_window_age,
+			ts: node.ts,
 		}
 	}
 }
 
 impl CompileOperator for WindowCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
-		// Compile input first if present
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
 		} else {
@@ -53,18 +39,13 @@ impl CompileOperator for WindowCompiler {
 		let node_id = compiler.add_node(
 			txn,
 			Window {
-				window_type: self.window_type,
-				size: self.size,
-				slide: self.slide,
+				kind: self.kind,
 				group_by: self.group_by,
 				aggregations: self.aggregations,
-				min_events: self.min_events,
-				max_window_count: self.max_window_count,
-				max_window_age: self.max_window_age,
+				ts: self.ts,
 			},
 		)?;
 
-		// Add input edge if we have one
 		if let Some(input_node) = input_node {
 			compiler.add_edge(txn, &input_node, &node_id)?;
 		}

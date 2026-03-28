@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::dictionary::DictionaryDef, return_internal_error};
+use reifydb_core::{interface::catalog::dictionary::Dictionary, return_internal_error};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::dictionary::DictionaryId;
 
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_dictionary(rx: &mut Transaction<'_>, dictionary: DictionaryId) -> Result<DictionaryDef> {
+	pub(crate) fn get_dictionary(rx: &mut Transaction<'_>, dictionary: DictionaryId) -> Result<Dictionary> {
 		match Self::find_dictionary(rx, dictionary)? {
 			Some(dict) => Ok(dict),
 			None => return_internal_error!(
@@ -21,7 +21,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,

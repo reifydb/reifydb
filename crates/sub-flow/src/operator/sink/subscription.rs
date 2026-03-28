@@ -8,7 +8,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
-		schema::{Schema, SchemaField},
+		schema::{RowSchema, RowSchemaField},
 	},
 	interface::{
 		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
@@ -76,7 +76,7 @@ impl Operator for SinkSubscriptionOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let subscription_def = self.subscription.def().clone();
+		let subscription = self.subscription.def().clone();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -101,7 +101,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_number,
 						);
 
-						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
 					}
 				}
@@ -127,7 +127,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_number,
 						);
 
-						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
 					}
 				}
@@ -152,7 +152,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_number,
 						);
 
-						let key = SubscriptionRowKey::encoded(subscription_def.id, row_number);
+						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
 					}
 				}
@@ -168,10 +168,10 @@ impl Operator for SinkSubscriptionOperator {
 }
 
 /// Create and persist a schema from actual column data
-fn create_schema_from_columns(columns: &Columns, catalog: &Catalog) -> Result<Schema> {
-	let fields: Vec<SchemaField> = columns
+fn create_schema_from_columns(columns: &Columns, catalog: &Catalog) -> Result<RowSchema> {
+	let fields: Vec<RowSchemaField> = columns
 		.iter()
-		.map(|col| SchemaField::unconstrained(col.name.to_string(), col.data().get_type()))
+		.map(|col| RowSchemaField::unconstrained(col.name.to_string(), col.data().get_type()))
 		.collect();
 
 	catalog.schema.get_or_create(fields)

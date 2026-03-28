@@ -6,17 +6,26 @@
 //! This crate provides JavaScript-compatible bindings for running ReifyDB
 //! queries in a browser or Node.js environment with in-memory storage.
 
-use std::{collections::HashMap, fmt::Write};
+use std::{
+	cell::{Cell, RefCell},
+	collections::HashMap,
+	fmt::Write,
+	sync::Arc,
+};
 
-use reifydb_auth::AuthVersion;
+use reifydb_auth::{
+	AuthVersion,
+	registry::AuthenticationRegistry,
+	service::{AuthResponse, AuthService, AuthServiceConfig},
+};
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
-		bootstrap_config_defaults, bootstrap_system_procedures, load_materialized_catalog, load_schema_registry,
+		bootstrap_configaults, bootstrap_system_procedures, load_materialized_catalog, load_schema_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::SchemaRegistry,
+	schema::RowSchemaRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -31,12 +40,8 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{
-	EngineVersion,
-	engine::StandardEngine,
-	procedure::{registry::Procedures, system::set_config::SetConfigProcedure},
-};
-use reifydb_function::registry::Functions;
+use reifydb_engine::{EngineVersion, engine::StandardEngine};
+use reifydb_routine::{function::default_functions, procedure::default_procedures};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_store_multi::{
@@ -60,6 +65,28 @@ mod error;
 mod utils;
 
 pub use error::JsError;
+use reifydb_extension::transform::registry::Transforms;
+use reifydb_runtime::context::RuntimeContext;
+
+/// Result of a successful login, returned to JavaScript.
+#[wasm_bindgen]
+pub struct LoginResult {
+	token: String,
+	identity: String,
+}
+
+#[wasm_bindgen]
+impl LoginResult {
+	#[wasm_bindgen(getter)]
+	pub fn token(&self) -> String {
+		self.token.clone()
+	}
+
+	#[wasm_bindgen(getter)]
+	pub fn identity(&self) -> String {
+		self.identity.clone()
+	}
+}
 
 // Debug helper to log to browser console
 fn console_log(msg: &str) {
@@ -70,10 +97,44 @@ fn console_log(msg: &str) {
 ///
 /// Provides an in-memory query engine that runs entirely in the browser.
 /// All data is stored in memory and lost when the page is closed.
+struct WasmSession {
+	token: RefCell<Option<String>>,
+	identity: Cell<Option<IdentityId>>,
+}
+
+impl WasmSession {
+	fn new() -> Self {
+		Self {
+			token: RefCell::new(None),
+			identity: Cell::new(None),
+		}
+	}
+
+	fn current_identity(&self) -> IdentityId {
+		self.identity.get().unwrap_or_else(IdentityId::root)
+	}
+
+	fn set(&self, identity: IdentityId, token: String) {
+		self.identity.set(Some(identity));
+		*self.token.borrow_mut() = Some(token);
+	}
+
+	fn clear(&self) {
+		self.identity.set(None);
+		*self.token.borrow_mut() = None;
+	}
+
+	fn take_token(&self) -> Option<String> {
+		self.token.borrow().clone()
+	}
+}
+
 #[wasm_bindgen]
 pub struct WasmDB {
 	inner: StandardEngine,
 	flow_subsystem: FlowSubsystem,
+	auth_service: AuthService,
+	session: WasmSession,
 }
 
 #[wasm_bindgen]
@@ -101,7 +162,7 @@ impl WasmDB {
 				.async_threads(1)
 				.compute_threads(1)
 				.compute_max_in_flight(8)
-				.mock_clock(0),
+				.deterministic_testing(0),
 		);
 
 		// Create actor system at the top level - this will be shared by
@@ -155,21 +216,19 @@ impl WasmDB {
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
-		// Create SchemaRegistry for bootstrap
-		let schema_registry = SchemaRegistry::new(single.clone());
+		// Create RowSchemaRegistry for bootstrap
+		let schema_registry = RowSchemaRegistry::new(single.clone());
 
 		// Run shared bootstrap: load catalog, config defaults, system procedures, schemas
 		load_materialized_catalog(&multi, &single, &materialized_catalog)
 			.map_err(|e| JsError::from_error(&e))?;
-		bootstrap_config_defaults(&multi, &single, &materialized_catalog, &eventbus)
+		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &schema_registry, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 		load_schema_registry(&multi, &single, &schema_registry).map_err(|e| JsError::from_error(&e))?;
 
-		// Build procedures with system::config::set native procedure
-		let procedures =
-			Procedures::builder().with_procedure("system::config::set", SetConfigProcedure::new).build();
+		let procedures = default_procedures().build();
 
 		// Build engine with bootstrap-initialized catalog
 		let eventbus_clone = eventbus.clone();
@@ -179,10 +238,10 @@ impl WasmDB {
 			eventbus,
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, schema_registry),
-			runtime.clock().clone(),
-			Functions::defaults().build(),
+			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+			default_functions().build(),
 			procedures,
-			reifydb_engine::transform::registry::Transforms::empty(),
+			Transforms::empty(),
 			ioc,
 			#[cfg(not(target_arch = "wasm32"))]
 			None,
@@ -209,6 +268,7 @@ impl WasmDB {
 			operators_dir: None, // No FFI operators in WASM
 			num_workers: 1,      // Single-threaded for WASM
 			custom_operators: HashMap::new(),
+			connector_registry: Default::default(),
 		};
 		console_log("[WASM] Creating FlowSubsystem...");
 		let mut flow_subsystem = FlowSubsystem::new(flow_config, inner.clone(), &ioc_ref);
@@ -237,9 +297,19 @@ impl WasmDB {
 
 		ioc_ref.register_service(SystemCatalog::new(all_versions));
 
+		let auth_service = AuthService::new(
+			Arc::new(inner.clone()),
+			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
+			runtime.rng().clone(),
+			runtime.clock().clone(),
+			AuthServiceConfig::default(),
+		);
+
 		Ok(WasmDB {
 			inner,
 			flow_subsystem,
+			auth_service,
+			session: WasmSession::new(),
 		})
 	}
 
@@ -256,7 +326,7 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen]
 	pub fn query(&self, rql: &str) -> Result<JsValue, JsValue> {
-		let identity = IdentityId::root();
+		let identity = self.session.current_identity();
 		let params = Params::None;
 
 		// Execute query
@@ -283,7 +353,7 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen]
 	pub fn admin(&self, rql: &str) -> Result<JsValue, JsValue> {
-		let identity = IdentityId::root();
+		let identity = self.session.current_identity();
 		let params = Params::None;
 
 		let frames = self.inner.admin_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
@@ -297,7 +367,7 @@ impl WasmDB {
 	/// For DDL operations (CREATE, ALTER), use `admin()` instead.
 	#[wasm_bindgen]
 	pub fn command(&self, rql: &str) -> Result<JsValue, JsValue> {
-		let identity = IdentityId::root();
+		let identity = self.session.current_identity();
 		let params = Params::None;
 
 		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
@@ -317,7 +387,7 @@ impl WasmDB {
 	/// ```
 	#[wasm_bindgen(js_name = queryWithParams)]
 	pub fn query_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
-		let identity = IdentityId::root();
+		let identity = self.session.current_identity();
 
 		// Parse JavaScript params to Rust Params
 		let params = utils::parse_params(params_js)?;
@@ -330,7 +400,7 @@ impl WasmDB {
 	/// Execute admin with JSON parameters
 	#[wasm_bindgen(js_name = adminWithParams)]
 	pub fn admin_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
-		let identity = IdentityId::root();
+		let identity = self.session.current_identity();
 
 		let params = utils::parse_params(params_js)?;
 
@@ -342,7 +412,7 @@ impl WasmDB {
 	/// Execute command with JSON parameters
 	#[wasm_bindgen(js_name = commandWithParams)]
 	pub fn command_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
-		let identity = IdentityId::root();
+		let identity = self.session.current_identity();
 
 		let params = utils::parse_params(params_js)?;
 
@@ -356,7 +426,7 @@ impl WasmDB {
 	pub fn command_text(&self, rql: &str) -> Result<String, JsValue> {
 		let frames = self
 			.inner
-			.command_as(IdentityId::root(), rql, Params::None)
+			.command_as(self.session.current_identity(), rql, Params::None)
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
 		for frame in &frames {
@@ -370,7 +440,7 @@ impl WasmDB {
 	pub fn admin_text(&self, rql: &str) -> Result<String, JsValue> {
 		let frames = self
 			.inner
-			.admin_as(IdentityId::root(), rql, Params::None)
+			.admin_as(self.session.current_identity(), rql, Params::None)
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
 		for frame in &frames {
@@ -384,13 +454,79 @@ impl WasmDB {
 	pub fn query_text(&self, rql: &str) -> Result<String, JsValue> {
 		let frames = self
 			.inner
-			.query_as(IdentityId::root(), rql, Params::None)
+			.query_as(self.session.current_identity(), rql, Params::None)
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
 		for frame in &frames {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
 		}
 		Ok(output)
+	}
+
+	/// Authenticate with a password and return a session token.
+	#[wasm_bindgen(js_name = loginWithPassword)]
+	pub fn login_with_password(&self, identifier: &str, password: &str) -> Result<LoginResult, JsValue> {
+		let mut credentials = HashMap::new();
+		credentials.insert("identifier".to_string(), identifier.to_string());
+		credentials.insert("password".to_string(), password.to_string());
+
+		let response =
+			self.auth_service.authenticate("password", credentials).map_err(|e| JsError::from_error(&e))?;
+
+		self.handle_auth_response(response)
+	}
+
+	/// Authenticate with a token credential and return a session token.
+	#[wasm_bindgen(js_name = loginWithToken)]
+	pub fn login_with_token(&self, token: &str) -> Result<LoginResult, JsValue> {
+		let mut credentials = HashMap::new();
+		credentials.insert("token".to_string(), token.to_string());
+
+		let response =
+			self.auth_service.authenticate("token", credentials).map_err(|e| JsError::from_error(&e))?;
+
+		self.handle_auth_response(response)
+	}
+
+	/// Logout and revoke the current session token.
+	#[wasm_bindgen]
+	pub fn logout(&self) -> Result<(), JsValue> {
+		let token = self.session.take_token();
+		match token {
+			Some(t) => {
+				let revoked = self.auth_service.revoke_token(&t);
+				self.session.clear();
+				if revoked {
+					Ok(())
+				} else {
+					Err(JsError::from_str("Failed to revoke session token"))
+				}
+			}
+			None => Ok(()),
+		}
+	}
+}
+
+impl WasmDB {
+	fn handle_auth_response(&self, response: AuthResponse) -> Result<LoginResult, JsValue> {
+		match response {
+			AuthResponse::Authenticated {
+				identity,
+				token,
+			} => {
+				self.session.set(identity, token.clone());
+				Ok(LoginResult {
+					token,
+					identity: identity.to_string(),
+				})
+			}
+			AuthResponse::Failed {
+				reason,
+			} => Err(JsError::from_str(&format!("Authentication failed: {}", reason))),
+			AuthResponse::Challenge {
+				..
+			} => Err(JsError::from_str("Challenge-response authentication is not supported in WASM mode")),
+		}
 	}
 }
 

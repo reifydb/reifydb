@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			change::CatalogTrackSubscriptionChangeOperations, id::SubscriptionId,
-			subscription::SubscriptionDef,
+			subscription::Subscription,
 		},
 		resolved::ResolvedSubscription,
 	},
@@ -55,11 +55,7 @@ impl From<SubscriptionToCreate> for StoreSubscriptionToCreate {
 impl Catalog {
 	/// Find a subscription by ID
 	#[instrument(name = "catalog::subscription::find", level = "trace", skip(self, txn))]
-	pub fn find_subscription(
-		&self,
-		txn: &mut Transaction<'_>,
-		id: SubscriptionId,
-	) -> Result<Option<SubscriptionDef>> {
+	pub fn find_subscription(&self, txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<Option<Subscription>> {
 		match txn.reborrow() {
 			Transaction::Command(cmd) => {
 				// 1. Check MaterializedCatalog
@@ -137,12 +133,21 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Test(mut t) => {
+				if let Some(subscription) =
+					CatalogStore::find_subscription(&mut Transaction::Test(t.reborrow()), id)?
+				{
+					return Ok(Some(subscription));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
 	/// Get a subscription by ID, error if not found
 	#[instrument(name = "catalog::subscription::get", level = "trace", skip(self, txn))]
-	pub fn get_subscription(&self, txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<SubscriptionDef> {
+	pub fn get_subscription(&self, txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<Subscription> {
 		self.find_subscription(txn, id)?.ok_or_else(|| {
 			error!(internal!(
 				"Subscription with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -158,11 +163,11 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		subscription_id: SubscriptionId,
 	) -> Result<ResolvedSubscription> {
-		let subscription_def = self.get_subscription(txn, subscription_id)?;
+		let subscription = self.get_subscription(txn, subscription_id)?;
 		// Use subscription ID as identifier since subscriptions don't have names
 		let subscription_ident = Fragment::internal(format!("subscription_{}", subscription_id.0));
 
-		Ok(ResolvedSubscription::new(subscription_ident, subscription_def))
+		Ok(ResolvedSubscription::new(subscription_ident, subscription))
 	}
 
 	#[instrument(name = "catalog::subscription::create", level = "debug", skip(self, txn, to_create))]
@@ -170,21 +175,21 @@ impl Catalog {
 		&self,
 		txn: &mut AdminTransaction,
 		to_create: SubscriptionToCreate,
-	) -> Result<SubscriptionDef> {
+	) -> Result<Subscription> {
 		let subscription = CatalogStore::create_subscription(txn, to_create.into())?;
-		txn.track_subscription_def_created(subscription.clone())?;
+		txn.track_subscription_created(subscription.clone())?;
 		Ok(subscription)
 	}
 
 	#[instrument(name = "catalog::subscription::drop", level = "debug", skip(self, txn))]
-	pub fn drop_subscription(&self, txn: &mut AdminTransaction, subscription: SubscriptionDef) -> Result<()> {
+	pub fn drop_subscription(&self, txn: &mut AdminTransaction, subscription: Subscription) -> Result<()> {
 		CatalogStore::drop_subscription(txn, subscription.id)?;
-		txn.track_subscription_def_deleted(subscription)?;
+		txn.track_subscription_deleted(subscription)?;
 		Ok(())
 	}
 
 	#[instrument(name = "catalog::subscription::list_all", level = "debug", skip(self, txn))]
-	pub fn list_subscriptions_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<SubscriptionDef>> {
+	pub fn list_subscriptions_all(&self, txn: &mut Transaction<'_>) -> Result<Vec<Subscription>> {
 		CatalogStore::list_subscriptions_all(txn)
 	}
 }

@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock};
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::schema::RowSchema,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -17,14 +17,14 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_function::registry::Functions;
+use reifydb_routine::function::registry::Functions;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::{
-	clock::Clock,
+	context::RuntimeContext,
 	hash::{Hash128, xxh3_128},
 };
 use reifydb_type::{
@@ -173,9 +173,9 @@ pub struct DistinctOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	compiled_expressions: Vec<CompiledExpr>,
-	schema: Schema,
+	schema: RowSchema,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl DistinctOperator {
@@ -184,12 +184,12 @@ impl DistinctOperator {
 		node: FlowNodeId,
 		expressions: Vec<Expression>,
 		functions: Functions,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 	) -> Self {
-		let symbol_table = SymbolTable::new();
+		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
 			functions: &functions,
-			symbol_table: &symbol_table,
+			symbols: &symbols,
 		};
 		let compiled_expressions: Vec<CompiledExpr> = expressions
 			.iter()
@@ -201,9 +201,9 @@ impl DistinctOperator {
 			parent,
 			node,
 			compiled_expressions,
-			schema: Schema::testing(&[Type::Blob]),
+			schema: RowSchema::testing(&[Type::Blob]),
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
@@ -228,19 +228,16 @@ impl DistinctOperator {
 			}
 			Ok(hashes)
 		} else {
-			let exec_ctx = EvalContext {
-				target: None,
-				columns: columns.clone(),
-				row_count,
-				take: None,
+			let session = EvalSession {
 				params: &EMPTY_PARAMS,
-				symbol_table: &EMPTY_SYMBOL_TABLE,
-				is_aggregate_context: false,
+				symbols: &EMPTY_SYMBOL_TABLE,
 				functions: &self.functions,
-				clock: &self.clock,
+				runtime_context: &self.runtime_context,
 				arena: None,
 				identity: IdentityId::root(),
+				is_aggregate_context: false,
 			};
+			let exec_ctx = session.eval(columns.clone(), row_count);
 			let mut expr_columns = Vec::new();
 			for compiled_expr in &self.compiled_expressions {
 				let col = compiled_expr.execute(&exec_ctx)?;
@@ -279,12 +276,13 @@ impl DistinctOperator {
 	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> Result<()> {
 		let serialized =
 			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
-
-		let mut state_row = self.schema.allocate();
 		let blob = Blob::from(serialized);
-		self.schema.set_blob(&mut state_row, 0, &blob);
 
-		self.save_state(txn, state_row)
+		self.update_state(txn, |schema, row| {
+			schema.set_blob(row, 0, &blob);
+			Ok(())
+		})?;
+		Ok(())
 	}
 
 	/// Process inserts - operates directly on Columns without Row conversion
@@ -466,7 +464,7 @@ impl DistinctOperator {
 impl RawStatefulOperator for DistinctOperator {}
 
 impl SingleStateful for DistinctOperator {
-	fn layout(&self) -> Schema {
+	fn layout(&self) -> RowSchema {
 		self.schema.clone()
 	}
 }

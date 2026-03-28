@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,27 +14,27 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes field information for all registered schemas
-pub struct SchemaFields {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemSchemaFields {
+	pub(crate) definition: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl SchemaFields {
+impl SystemSchemaFields {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_schema_fields_table_def().clone(),
+			definition: SystemCatalog::get_system_schema_fields_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for SchemaFields {
+impl BaseVTable for SystemSchemaFields {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -128,7 +128,7 @@ impl VTable for SchemaFields {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

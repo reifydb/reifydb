@@ -10,11 +10,11 @@ use std::{
 use reifydb_core::{
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::EventBus,
-	interface::store::SingleVersionValues,
+	interface::store::SingleVersionRow,
 };
 use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
 use reifydb_type::util::{cowvec::CowVec, hex};
@@ -82,12 +82,12 @@ impl StandardSingleStore {
 
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
 		if let Some(hot) = &self.hot {
 			if let Some(value) = hot.get(key.as_ref())? {
-				return Ok(Some(SingleVersionValues {
+				return Ok(Some(SingleVersionRow {
 					key: key.clone(),
-					values: EncodedValues(value),
+					row: EncodedRow(value),
 				}));
 			}
 		}
@@ -123,8 +123,8 @@ impl SingleVersionCommit for StandardSingleStore {
 			.map(|delta| match delta {
 				Delta::Set {
 					key,
-					values,
-				} => (CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(values.as_ref().to_vec()))),
+					row,
+				} => (CowVec::new(key.as_ref().to_vec()), Some(CowVec::new(row.as_ref().to_vec()))),
 				Delta::Unset {
 					key,
 					..
@@ -173,13 +173,13 @@ impl SingleVersionRange for StandardSingleStore {
 			}
 		}
 
-		// Convert to SingleVersionValues, filtering out tombstones
-		let items: Vec<SingleVersionValues> = all_entries
+		// Convert to SingleVersionRow, filtering out tombstones
+		let items: Vec<SingleVersionRow> = all_entries
 			.into_iter()
 			.filter_map(|(key_bytes, value)| {
-				value.map(|val| SingleVersionValues {
+				value.map(|val| SingleVersionRow {
 					key: EncodedKey(key_bytes),
-					values: EncodedValues(val),
+					row: EncodedRow(val),
 				})
 			})
 			.take(batch_size as usize)
@@ -223,14 +223,14 @@ impl SingleVersionRangeRev for StandardSingleStore {
 			}
 		}
 
-		// Convert to SingleVersionValues in reverse order, filtering out tombstones
-		let items: Vec<SingleVersionValues> = all_entries
+		// Convert to SingleVersionRow in reverse order, filtering out tombstones
+		let items: Vec<SingleVersionRow> = all_entries
 			.into_iter()
 			.rev() // Reverse for descending order
 			.filter_map(|(key_bytes, value)| {
-				value.map(|val| SingleVersionValues {
+				value.map(|val| SingleVersionRow {
 					key: EncodedKey(key_bytes),
-					values: EncodedValues(val),
+					row: EncodedRow(val),
 				})
 			})
 			.take(batch_size as usize)

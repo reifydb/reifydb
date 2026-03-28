@@ -2,13 +2,13 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, view::group_by::GroupByView};
-use reifydb_function::{AggregateFunction, AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
+use reifydb_routine::function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
 use reifydb_rql::{
-	expression::{CallExpression, Expression},
-	instruction::{CompiledFunctionDef, Instruction, ScopeType},
+	expression::CallExpression,
+	instruction::{CompiledFunction, Instruction, ScopeType},
 	query::QueryPlan,
 };
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
@@ -20,7 +20,7 @@ use super::eval::evaluate;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::context::EvalContext,
+	expression::context::{EvalContext, EvalSession},
 	vm::{
 		scalar,
 		stack::{SymbolTable, Variable},
@@ -49,28 +49,52 @@ fn column_data_from_values(values: &[Value]) -> ColumnData {
 	data
 }
 
-pub(crate) fn call_eval(
+/// Evaluate a call expression with pre-evaluated arguments (avoids re-compiling argument expressions).
+pub(crate) fn call_eval_with_args(
 	ctx: &EvalContext,
 	call: &CallExpression,
+	arguments: Columns,
 	functions: &Functions,
-	clock: &Clock,
 ) -> Result<Column> {
 	let function_name = call.func.0.text();
 
 	// Check if we're in aggregation context and if function exists as aggregate
-	// FIXME this is a quick hack - this should be derived from a call stack
 	if ctx.is_aggregate_context {
-		if let Some(aggregate_fn) = functions.get_aggregate(function_name) {
-			return handle_aggregate_function(ctx, call, aggregate_fn, functions, clock);
+		if let Some(mut aggregate_fn) = functions.get_aggregate(function_name) {
+			let column = if call.args.is_empty() {
+				Column {
+					name: Fragment::internal("dummy"),
+					data: ColumnData::with_capacity(Type::Int4, ctx.row_count),
+				}
+			} else {
+				arguments[0].clone()
+			};
+
+			let mut group_view = GroupByView::new();
+			let all_indices: Vec<usize> = (0..ctx.row_count).collect();
+			group_view.insert(Vec::<Value>::new(), all_indices);
+
+			let agg_fragment = call.func.0.clone();
+			aggregate_fn
+				.aggregate(AggregateFunctionContext {
+					fragment: agg_fragment.clone(),
+					column: &column,
+					groups: &group_view,
+				})
+				.map_err(|e| e.with_context(agg_fragment.clone()))?;
+
+			let (_keys, result_data) = aggregate_fn.finalize().map_err(|e| e.with_context(agg_fragment))?;
+
+			return Ok(Column {
+				name: call.full_fragment_owned(),
+				data: result_data,
+			});
 		}
 	}
 
-	// Evaluate arguments first (needed for both user-defined and built-in functions)
-	let arguments = evaluate_arguments(ctx, &call.args, functions, clock)?;
-
 	// Try user-defined function from symbol table first
-	if let Some(func_def) = ctx.symbol_table.get_function(function_name) {
-		return call_user_defined_function(ctx, call, func_def.clone(), &arguments, functions, clock);
+	if let Some(func_def) = ctx.symbols.get_function(function_name) {
+		return call_user_defined_function(ctx, call, func_def.clone(), &arguments, functions);
 	}
 
 	// Fall back to built-in scalar function handling
@@ -84,13 +108,16 @@ pub(crate) fn call_eval(
 
 	let row_count = ctx.row_count;
 
-	let final_data = functor.scalar(ScalarFunctionContext {
-		fragment: call.func.0.clone(),
-		columns: &arguments,
-		row_count,
-		clock,
-		identity: ctx.identity,
-	})?;
+	let fn_fragment = call.func.0.clone();
+	let final_data = functor
+		.scalar(ScalarFunctionContext {
+			fragment: fn_fragment.clone(),
+			columns: &arguments,
+			row_count,
+			runtime_context: ctx.runtime_context,
+			identity: ctx.identity,
+		})
+		.map_err(|e| e.with_context(fn_fragment))?;
 
 	Ok(Column {
 		name: call.full_fragment_owned(),
@@ -102,10 +129,9 @@ pub(crate) fn call_eval(
 fn call_user_defined_function(
 	ctx: &EvalContext,
 	call: &CallExpression,
-	func_def: CompiledFunctionDef,
+	func_def: CompiledFunction,
 	arguments: &Columns,
 	functions: &Functions,
-	clock: &Clock,
 ) -> Result<Column> {
 	let row_count = ctx.row_count;
 	let mut results: Vec<Value> = Vec::with_capacity(row_count);
@@ -113,32 +139,32 @@ fn call_user_defined_function(
 	// Function body is already pre-compiled
 	let body_instructions = &func_def.body;
 
-	let mut func_symbol_table = ctx.symbol_table.clone();
+	let mut func_symbols = ctx.symbols.clone();
 
 	// For each row, execute the function
 	for row_idx in 0..row_count {
-		let base_depth = func_symbol_table.scope_depth();
-		func_symbol_table.enter_scope(ScopeType::Function);
+		let base_depth = func_symbols.scope_depth();
+		func_symbols.enter_scope(ScopeType::Function);
 
 		// Bind arguments to parameters
 		for (param, arg_col) in func_def.parameters.iter().zip(arguments.iter()) {
 			let param_name = strip_dollar_prefix(param.name.text());
 			let value = arg_col.data().get_value(row_idx);
-			func_symbol_table.set(param_name, Variable::scalar(value), true)?;
+			func_symbols.set(param_name, Variable::scalar(value), true)?;
 		}
 
 		// Execute function body instructions and get result
 		let result = execute_function_body_for_scalar(
 			&body_instructions,
-			&mut func_symbol_table,
+			&mut func_symbols,
 			ctx.params,
 			functions,
-			clock,
+			ctx.runtime_context,
 			ctx.identity,
 		)?;
 
-		while func_symbol_table.scope_depth() > base_depth {
-			let _ = func_symbol_table.exit_scope();
+		while func_symbols.scope_depth() > base_depth {
+			let _ = func_symbols.exit_scope();
 		}
 
 		results.push(result);
@@ -156,10 +182,10 @@ fn call_user_defined_function(
 /// Uses a simple stack-based interpreter matching the new bytecode ISA.
 fn execute_function_body_for_scalar(
 	instructions: &[Instruction],
-	symbol_table: &mut SymbolTable,
+	symbols: &mut SymbolTable,
 	params: &Params,
 	functions: &Functions,
-	clock: &Clock,
+	runtime_context: &RuntimeContext,
 	identity: IdentityId,
 ) -> Result<Value> {
 	let mut ip = 0;
@@ -170,7 +196,6 @@ fn execute_function_body_for_scalar(
 			Instruction::Halt => break,
 			Instruction::Nop => {}
 
-			// === Stack ===
 			Instruction::PushConst(v) => stack.push(v.clone()),
 			Instruction::PushNone => stack.push(Value::none()),
 			Instruction::Pop => {
@@ -182,10 +207,9 @@ fn execute_function_body_for_scalar(
 				}
 			}
 
-			// === Variables ===
 			Instruction::LoadVar(name) => {
 				let var_name = strip_dollar_prefix(name.text());
-				let val = symbol_table
+				let val = symbols
 					.get(&var_name)
 					.map(|v| match v {
 						Variable::Scalar(c) => c.scalar_value(),
@@ -197,15 +221,14 @@ fn execute_function_body_for_scalar(
 			Instruction::StoreVar(name) => {
 				let val = stack.pop().unwrap_or(Value::none());
 				let var_name = strip_dollar_prefix(name.text());
-				symbol_table.set(var_name, Variable::scalar(val), true)?;
+				symbols.set(var_name, Variable::scalar(val), true)?;
 			}
 			Instruction::DeclareVar(name) => {
 				let val = stack.pop().unwrap_or(Value::none());
 				let var_name = strip_dollar_prefix(name.text());
-				symbol_table.set(var_name, Variable::scalar(val), true)?;
+				symbols.set(var_name, Variable::scalar(val), true)?;
 			}
 
-			// === Arithmetic ===
 			Instruction::Add => {
 				let r = stack.pop().unwrap_or(Value::none());
 				let l = stack.pop().unwrap_or(Value::none());
@@ -232,7 +255,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_rem(l, r)?);
 			}
 
-			// === Unary ===
 			Instruction::Negate => {
 				let v = stack.pop().unwrap_or(Value::none());
 				stack.push(scalar::scalar_negate(v)?);
@@ -242,7 +264,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_not(&v));
 			}
 
-			// === Comparison ===
 			Instruction::CmpEq => {
 				let r = stack.pop().unwrap_or(Value::none());
 				let l = stack.pop().unwrap_or(Value::none());
@@ -274,7 +295,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_ge(&l, &r));
 			}
 
-			// === Logic ===
 			Instruction::LogicAnd => {
 				let r = stack.pop().unwrap_or(Value::none());
 				let l = stack.pop().unwrap_or(Value::none());
@@ -291,7 +311,6 @@ fn execute_function_body_for_scalar(
 				stack.push(scalar::scalar_xor(&l, &r));
 			}
 
-			// === Compound ===
 			Instruction::Cast(target) => {
 				let v = stack.pop().unwrap_or(Value::none());
 				stack.push(scalar::scalar_cast(v, target.clone())?);
@@ -336,7 +355,6 @@ fn execute_function_body_for_scalar(
 				}
 			}
 
-			// === Control flow ===
 			Instruction::Jump(addr) => {
 				ip = *addr;
 				continue;
@@ -357,13 +375,12 @@ fn execute_function_body_for_scalar(
 			}
 
 			Instruction::EnterScope(scope_type) => {
-				symbol_table.enter_scope(scope_type.clone());
+				symbols.enter_scope(scope_type.clone());
 			}
 			Instruction::ExitScope => {
-				let _ = symbol_table.exit_scope();
+				let _ = symbols.exit_scope();
 			}
 
-			// === Return ===
 			Instruction::ReturnValue => {
 				let v = stack.pop().unwrap_or(Value::none());
 				return Ok(v);
@@ -372,29 +389,20 @@ fn execute_function_body_for_scalar(
 				return Ok(Value::none());
 			}
 
-			// === Query ===
 			Instruction::Query(plan) => match plan {
 				QueryPlan::Map(map_node) => {
 					if map_node.input.is_none() && !map_node.map.is_empty() {
-						let evaluation_context = EvalContext {
-							target: None,
-							columns: Columns::empty(),
-							row_count: 1,
-							take: None,
+						let call_session = EvalSession {
 							params,
-							symbol_table,
-							is_aggregate_context: false,
+							symbols,
 							functions,
-							clock,
+							runtime_context,
 							arena: None,
 							identity,
+							is_aggregate_context: false,
 						};
-						let result_column = evaluate(
-							&evaluation_context,
-							&map_node.map[0],
-							functions,
-							clock,
-						)?;
+						let evaluation_context = call_session.eval_empty();
+						let result_column = evaluate(&evaluation_context, &map_node.map[0])?;
 						if result_column.data.len() > 0 {
 							stack.push(result_column.data.get_value(0));
 						}
@@ -409,7 +417,6 @@ fn execute_function_body_for_scalar(
 				// Emit in function body context - the stack top is the result
 			}
 
-			// === Function calls within function body ===
 			Instruction::Call {
 				name,
 				arity,
@@ -423,28 +430,24 @@ fn execute_function_body_for_scalar(
 				args.reverse();
 
 				// Try user-defined function
-				if let Some(func_def) = symbol_table.get_function(name.text()) {
+				if let Some(func_def) = symbols.get_function(name.text()) {
 					let func_def = func_def.clone();
-					let base_depth = symbol_table.scope_depth();
-					symbol_table.enter_scope(ScopeType::Function);
+					let base_depth = symbols.scope_depth();
+					symbols.enter_scope(ScopeType::Function);
 					for (param, arg_val) in func_def.parameters.iter().zip(args.iter()) {
 						let param_name = strip_dollar_prefix(param.name.text());
-						symbol_table.set(
-							param_name,
-							Variable::scalar(arg_val.clone()),
-							true,
-						)?;
+						symbols.set(param_name, Variable::scalar(arg_val.clone()), true)?;
 					}
 					let result = execute_function_body_for_scalar(
 						&func_def.body,
-						symbol_table,
+						symbols,
 						params,
 						functions,
-						clock,
+						runtime_context,
 						identity,
 					)?;
-					while symbol_table.scope_depth() > base_depth {
-						let _ = symbol_table.exit_scope();
+					while symbols.scope_depth() > base_depth {
+						let _ = symbols.exit_scope();
 					}
 					stack.push(result);
 				} else if let Some(functor) = functions.get_scalar(name.text()) {
@@ -455,13 +458,16 @@ fn execute_function_body_for_scalar(
 						arg_cols.push(Column::new("_", data));
 					}
 					let columns = Columns::new(arg_cols);
-					let result_data = functor.scalar(ScalarFunctionContext {
-						fragment: name.clone(),
-						columns: &columns,
-						row_count: 1,
-						clock,
-						identity,
-					})?;
+					let fn_fragment = name.clone();
+					let result_data = functor
+						.scalar(ScalarFunctionContext {
+							fragment: fn_fragment.clone(),
+							columns: &columns,
+							row_count: 1,
+							runtime_context,
+							identity,
+						})
+						.map_err(|e| e.with_context(fn_fragment))?;
 					if result_data.len() > 0 {
 						stack.push(result_data.get_value(0));
 					} else {
@@ -471,7 +477,7 @@ fn execute_function_body_for_scalar(
 			}
 
 			Instruction::DefineFunction(func_def) => {
-				symbol_table.define_function(func_def.name.text().to_string(), func_def.clone());
+				symbols.define_function(func_def.name.text().to_string(), func_def.clone());
 			}
 
 			_ => {
@@ -483,81 +489,4 @@ fn execute_function_body_for_scalar(
 
 	// Return top of stack or Undefined
 	Ok(stack.pop().unwrap_or(Value::none()))
-}
-
-fn handle_aggregate_function(
-	ctx: &EvalContext,
-	call: &CallExpression,
-	mut aggregate_fn: Box<dyn AggregateFunction>,
-	functions: &Functions,
-	clock: &Clock,
-) -> Result<Column> {
-	// Create a single group containing all row indices for aggregation
-	let mut group_view = GroupByView::new();
-	let all_indices: Vec<usize> = (0..ctx.row_count).collect();
-	group_view.insert(Vec::<Value>::new(), all_indices); // Empty group key for single group
-
-	// Determine which column to aggregate over
-	let column = if call.args.is_empty() {
-		// For count() with no arguments, create a dummy column
-		Column {
-			name: Fragment::internal("dummy"),
-			data: ColumnData::int4_with_capacity(ctx.row_count),
-		}
-	} else {
-		// For functions with arguments like sum(amount), use the first argument column
-		let arguments = evaluate_arguments(ctx, &call.args, functions, clock)?;
-		arguments[0].clone()
-	};
-
-	// Call the aggregate function
-	aggregate_fn.aggregate(AggregateFunctionContext {
-		fragment: call.func.0.clone(),
-		column: &column,
-		groups: &group_view,
-	})?;
-
-	// Finalize and get results
-	let (_keys, result_data) = aggregate_fn.finalize()?;
-
-	Ok(Column {
-		name: call.full_fragment_owned(),
-		data: result_data,
-	})
-}
-
-fn evaluate_arguments(
-	ctx: &EvalContext,
-	expressions: &Vec<Expression>,
-	functions: &Functions,
-	clock: &Clock,
-) -> Result<Columns> {
-	let inner_ctx = EvalContext {
-		target: None,
-		columns: ctx.columns.clone(),
-		row_count: ctx.row_count,
-		take: ctx.take,
-		params: ctx.params,
-		symbol_table: ctx.symbol_table,
-		is_aggregate_context: ctx.is_aggregate_context,
-		functions: ctx.functions,
-		clock: ctx.clock,
-		arena: None,
-		identity: ctx.identity,
-	};
-	let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
-
-	for expression in expressions {
-		match expression {
-			Expression::Type(type_expr) => {
-				let values: Vec<Box<Value>> = (0..ctx.row_count)
-					.map(|_| Box::new(Value::Type(type_expr.ty.clone())))
-					.collect();
-				result.push(Column::new(type_expr.fragment.text(), ColumnData::any(values)));
-			}
-			_ => result.push(evaluate(&inner_ctx, expression, functions, clock)?),
-		}
-	}
-
-	Ok(Columns::new(result))
 }

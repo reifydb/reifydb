@@ -130,7 +130,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
@@ -152,6 +152,7 @@ pub mod tests {
 				local_name: "test_ns".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
+				token: None,
 			},
 		)
 		.unwrap();

@@ -13,6 +13,8 @@ pub mod procedure;
 pub mod property;
 pub mod ringbuffer;
 pub mod series;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
@@ -26,7 +28,7 @@ use crate::{
 	Result,
 	ast::ast::AstCreate,
 	plan::logical::{
-		Compiler, CreateAuthenticationNode, CreatePolicyNode, CreateRoleNode, CreateUserNode, LogicalPlan,
+		Compiler, CreateAuthenticationNode, CreateIdentityNode, CreatePolicyNode, CreateRoleNode, LogicalPlan,
 	},
 };
 
@@ -54,7 +56,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Event(node) => self.compile_create_event(node),
 			AstCreate::Tag(node) => self.compile_create_tag(node),
 			AstCreate::Handler(node) => self.compile_create_handler(node),
-			AstCreate::User(node) => Ok(LogicalPlan::CreateUser(CreateUserNode {
+			AstCreate::Identity(node) => Ok(LogicalPlan::CreateIdentity(CreateIdentityNode {
 				name: node.name,
 			})),
 			AstCreate::Authentication(node) => {
@@ -74,6 +76,8 @@ impl<'bump> Compiler<'bump> {
 			})),
 			AstCreate::Migration(node) => self.compile_create_migration(node),
 			AstCreate::Test(node) => self.compile_create_test(node),
+			AstCreate::Source(node) => self.compile_create_source(node),
+			AstCreate::Sink(node) => self.compile_create_sink(node),
 		}
 	}
 }

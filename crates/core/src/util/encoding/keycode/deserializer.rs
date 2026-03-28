@@ -11,6 +11,7 @@ use reifydb_type::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
 		int::Int,
@@ -18,6 +19,7 @@ use reifydb_type::{
 		ordered_f64::OrderedF64,
 		row_number::RowNumber,
 		time::Time,
+		r#type::Type,
 		uint::Uint,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -25,7 +27,7 @@ use reifydb_type::{
 use uuid::Uuid;
 
 use super::{catalog, deserialize};
-use crate::interface::catalog::{id::IndexId, primitive::PrimitiveId};
+use crate::interface::catalog::{id::IndexId, schema::SchemaId};
 
 pub struct KeyDeserializer<'a> {
 	buffer: &'a [u8],
@@ -188,9 +190,9 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_primitive_id(&mut self) -> Result<PrimitiveId> {
+	pub fn read_schema_id(&mut self) -> Result<SchemaId> {
 		let bytes = self.read_exact(9)?;
-		catalog::deserialize_primitive_id(bytes)
+		catalog::deserialize_schema_id(bytes)
 	}
 
 	pub fn read_index_id(&mut self) -> Result<IndexId> {
@@ -211,8 +213,8 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_datetime(&mut self) -> Result<DateTime> {
-		let nanos = self.read_i64()?;
-		Ok(DateTime::from_nanos_since_epoch(nanos))
+		let nanos = self.read_u64()?;
+		Ok(DateTime::from_nanos(nanos))
 	}
 
 	pub fn read_time(&mut self) -> Result<Time> {
@@ -228,8 +230,10 @@ impl<'a> KeyDeserializer<'a> {
 	}
 
 	pub fn read_duration(&mut self) -> Result<Duration> {
+		let months = self.read_i32()?;
+		let days = self.read_i32()?;
 		let nanos = self.read_i64()?;
-		Ok(Duration::from_nanoseconds(nanos))
+		Ok(Duration::new(months, days, nanos)?)
 	}
 
 	pub fn read_row_number(&mut self) -> Result<RowNumber> {
@@ -315,11 +319,41 @@ impl<'a> KeyDeserializer<'a> {
 
 		match type_marker {
 			0x00 => {
-				if self.remaining() > 0 && self.buffer[self.position] == 0x00 {
-					Ok(Value::Boolean(true))
-				} else {
-					Ok(Value::none())
+				if self.remaining() < 1 {
+					return Ok(Value::none());
 				}
+				let inner_marker = self.buffer[self.position];
+				self.position += 1;
+				let inner = match inner_marker {
+					0x01 => Type::Boolean,
+					0x02 => Type::Float4,
+					0x03 => Type::Float8,
+					0x04 => Type::Int1,
+					0x05 => Type::Int2,
+					0x06 => Type::Int4,
+					0x07 => Type::Int8,
+					0x08 => Type::Int16,
+					0x09 => Type::Utf8,
+					0x0a => Type::Uint1,
+					0x0b => Type::Uint2,
+					0x0c => Type::Uint4,
+					0x0d => Type::Uint8,
+					0x0e => Type::Uint16,
+					0x0f => Type::Date,
+					0x10 => Type::DateTime,
+					0x11 => Type::Time,
+					0x12 => Type::Duration,
+					0x14 => Type::IdentityId,
+					0x15 => Type::Uuid4,
+					0x16 => Type::Uuid7,
+					0x17 => Type::Blob,
+					0x18 => Type::Int,
+					0x19 => Type::Uint,
+					0x1a => Type::Decimal,
+					0x1b => Type::DictionaryId,
+					_ => Type::Any,
+				};
+				Ok(Value::none_of(inner))
 			}
 			0x01 => {
 				let b = self.read_bool()?;
@@ -431,6 +465,23 @@ impl<'a> KeyDeserializer<'a> {
 				let d = self.read_decimal()?;
 				Ok(Value::Decimal(d))
 			}
+			0x1b => {
+				let sub = self.read_exact(1)?[0];
+				match sub {
+					0x00 => Ok(Value::DictionaryId(DictionaryEntryId::U1(self.read_u8()?))),
+					0x01 => Ok(Value::DictionaryId(DictionaryEntryId::U2(self.read_u16()?))),
+					0x02 => Ok(Value::DictionaryId(DictionaryEntryId::U4(self.read_u32()?))),
+					0x03 => Ok(Value::DictionaryId(DictionaryEntryId::U8(self.read_u64()?))),
+					0x04 => Ok(Value::DictionaryId(DictionaryEntryId::U16(self.read_u128()?))),
+					_ => Err(Error::from(TypeError::SerdeKeycode {
+						message: format!(
+							"unknown DictionaryEntryId sub-marker 0x{:02x} at position {}",
+							sub,
+							self.position - 1
+						),
+					})),
+				}
+			}
 			_ => Err(Error::from(TypeError::SerdeKeycode {
 				message: format!(
 					"unknown value type marker 0x{:02x} at position {}",
@@ -455,7 +506,7 @@ pub mod tests {
 	};
 
 	use crate::{
-		interface::catalog::{id::IndexId, primitive::PrimitiveId},
+		interface::catalog::{id::IndexId, schema::SchemaId},
 		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	};
 
@@ -574,13 +625,71 @@ pub mod tests {
 	#[test]
 	fn test_read_duration() {
 		let mut ser = KeySerializer::new();
-		let duration = Duration::from_nanoseconds(1000000);
+		let duration = Duration::from_nanoseconds(1000000).unwrap();
 		ser.extend_duration(&duration);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
 		assert_eq!(de.read_duration().unwrap(), duration);
 		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_keycode_roundtrip_with_months_and_days() {
+		let mut ser = KeySerializer::new();
+		let duration = Duration::new(12, 5, 1_000_000_000).unwrap();
+		ser.extend_duration(&duration);
+		let bytes = ser.finish();
+
+		let mut de = KeyDeserializer::from_bytes(&bytes);
+		assert_eq!(de.read_duration().unwrap(), duration);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_keycode_different_durations_produce_different_keys() {
+		let d1 = Duration::new(12, 0, 0).unwrap();
+		let d2 = Duration::zero();
+
+		let mut s1 = KeySerializer::new();
+		s1.extend_duration(&d1);
+		let b1 = s1.finish();
+
+		let mut s2 = KeySerializer::new();
+		s2.extend_duration(&d2);
+		let b2 = s2.finish();
+
+		assert_ne!(b1, b2);
+	}
+
+	#[test]
+	fn test_keycode_duration_ordering_preserved() {
+		// Keycode encoding is descending: larger Duration → smaller bytes
+		let durations = vec![
+			Duration::new(0, 0, 0).unwrap(),
+			Duration::new(0, 0, 1_000_000_000).unwrap(),
+			Duration::new(0, 1, 0).unwrap(),
+			Duration::new(1, 0, 0).unwrap(),
+			Duration::new(12, 30, 0).unwrap(),
+		];
+
+		let keys: Vec<Vec<u8>> = durations
+			.iter()
+			.map(|d| {
+				let mut ser = KeySerializer::new();
+				ser.extend_duration(d);
+				ser.finish()
+			})
+			.collect();
+
+		for i in 0..keys.len() - 1 {
+			assert!(
+				keys[i] > keys[i + 1],
+				"Key ordering broken: {:?} key should be > {:?} key (descending encoding)",
+				durations[i],
+				durations[i + 1]
+			);
+		}
 	}
 
 	#[test]
@@ -596,14 +705,14 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_read_primitive_id() {
+	fn test_read_schema_id() {
 		let mut ser = KeySerializer::new();
-		let primitive = PrimitiveId::table(42);
-		ser.extend_primitive_id(primitive);
+		let primitive = SchemaId::table(42);
+		ser.extend_schema_id(primitive);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
-		assert_eq!(de.read_primitive_id().unwrap(), primitive);
+		assert_eq!(de.read_schema_id().unwrap(), primitive);
 		assert!(de.is_empty());
 	}
 

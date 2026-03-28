@@ -30,6 +30,11 @@ pub enum TransactionError {
 	KeyOutOfScope {
 		key: String,
 	},
+
+	#[error("Transaction was poisoned by a prior error")]
+	Poisoned {
+		cause: Diagnostic,
+	},
 }
 
 impl IntoDiagnostic for TransactionError {
@@ -126,6 +131,19 @@ impl IntoDiagnostic for TransactionError {
 				),
 				notes: vec![],
 				cause: None,
+				operator_chain: None,
+			},
+
+			TransactionError::Poisoned { cause } => Diagnostic {
+				code: "TXN_011".to_string(),
+				statement: None,
+				message: "Transaction was poisoned by a prior error".to_string(),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("A previous statement failed, invalidating this transaction. Start a new transaction.".to_string()),
+				notes: vec![],
+				cause: Some(Box::new(cause)),
 				operator_chain: None,
 			},
 		}

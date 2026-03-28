@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::policy::{PolicyDef, PolicyId, PolicyOperationDef},
+	interface::catalog::policy::{Policy, PolicyId, PolicyOperation},
 	key::{policy::PolicyKey, policy_op::PolicyOpKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,7 +13,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_all_policies(rx: &mut Transaction<'_>) -> Result<Vec<PolicyDef>> {
+	pub(crate) fn list_all_policies(rx: &mut Transaction<'_>) -> Result<Vec<Policy>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(PolicyKey::full_scan(), 1024)?;
 
@@ -29,7 +29,7 @@ impl CatalogStore {
 	pub(crate) fn list_policy_operations(
 		rx: &mut Transaction<'_>,
 		policy: PolicyId,
-	) -> Result<Vec<PolicyOperationDef>> {
+	) -> Result<Vec<PolicyOperation>> {
 		let mut result = Vec::new();
 		let range = PolicyOpKey::policy_scan(policy);
 		let mut stream = rx.range(range, 1024)?;
@@ -42,7 +42,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub(crate) fn list_all_policy_operations(rx: &mut Transaction<'_>) -> Result<Vec<PolicyOperationDef>> {
+	pub(crate) fn list_all_policy_operations(rx: &mut Transaction<'_>) -> Result<Vec<PolicyOperation>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(PolicyOpKey::full_scan(), 1024)?;
 
@@ -58,7 +58,7 @@ impl CatalogStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::catalog::policy::{PolicyOpToCreate, PolicyTargetType, PolicyToCreate};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::CatalogStore;

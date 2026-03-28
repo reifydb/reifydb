@@ -21,23 +21,25 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
 		id::{TableId, ViewId},
-		primitive::PrimitiveId,
+		schema::SchemaId,
 	},
 };
 use reifydb_engine::vm::executor::Executor;
+#[cfg(reifydb_target = "native")]
+use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
 };
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 #[cfg(reifydb_target = "native")]
 use reifydb_type::{Result, error::Error, value::Value};
 use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
-use crate::ffi::loader::ffi_operator_loader;
-#[cfg(reifydb_target = "native")]
 use crate::operator::BoxedOperator;
+#[cfg(reifydb_target = "native")]
+use crate::operator::ffi::FFIOperator;
 use crate::{builder::OperatorFactory, operator::Operators};
 
 pub struct FlowEngine {
@@ -45,13 +47,13 @@ pub struct FlowEngine {
 	pub(crate) executor: Executor,
 	pub(crate) operators: BTreeMap<FlowNodeId, Arc<Operators>>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
-	pub(crate) sources: BTreeMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: BTreeMap<PrimitiveId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sources: BTreeMap<SchemaId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sinks: BTreeMap<SchemaId, Vec<(FlowId, FlowNodeId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
-	pub(crate) clock: Clock,
+	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: Arc<HashMap<String, OperatorFactory>>,
 }
 
@@ -59,13 +61,13 @@ impl FlowEngine {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(catalog, executor, event_bus, clock, custom_operators)
+		skip(catalog, executor, event_bus, runtime_context, custom_operators)
 	)]
 	pub fn new(
 		catalog: Catalog,
 		executor: Executor,
 		event_bus: EventBus,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 		custom_operators: Arc<HashMap<String, OperatorFactory>>,
 	) -> Self {
 		Self {
@@ -78,7 +80,7 @@ impl FlowEngine {
 			analyzer: FlowGraphAnalyzer::new(),
 			event_bus,
 			flow_creation_versions: BTreeMap::new(),
-			clock,
+			runtime_context,
 			custom_operators,
 		}
 	}
@@ -99,11 +101,11 @@ impl FlowEngine {
 		let config_bytes = to_stdvec(config)
 			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
 
-		let operator = loader_write
-			.create_operator_by_name(operator, node_id, &config_bytes, self.executor.clone())
+		let (descriptor, instance) = loader_write
+			.create_operator_by_name(operator, node_id, &config_bytes)
 			.map_err(|e| Error(internal!("Failed to create FFI operator: {:?}", e)))?;
 
-		Ok(Box::new(operator))
+		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))
 	}
 
 	/// Check if an operator name corresponds to an FFI operator

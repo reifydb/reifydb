@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::flow::{FlowDef, FlowNodeId},
+		catalog::flow::{Flow, FlowNodeId},
 		change::Change,
 	},
 	value::column::columns::Columns,
@@ -15,11 +15,11 @@ use crate::{Operator, transaction::FlowTransaction};
 pub struct PrimitiveFlowOperator {
 	node: FlowNodeId,
 	#[allow(dead_code)]
-	flow: FlowDef,
+	flow: Flow,
 }
 
 impl PrimitiveFlowOperator {
-	pub fn new(node: FlowNodeId, flow: FlowDef) -> Self {
+	pub fn new(node: FlowNodeId, flow: Flow) -> Self {
 		Self {
 			node,
 			flow,

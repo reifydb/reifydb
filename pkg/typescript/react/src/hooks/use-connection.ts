@@ -5,10 +5,10 @@ import {useContext, useEffect, useState} from 'react';
 import {ConnectionConfig} from '../connection/connection';
 import {getConnection} from '../connection/connection-pool';
 import {ConnectionContext} from '../connection/connection-context';
-import {WsClient} from '@reifydb/client';
+import {WsClient, HttpClient, JsonHttpClient, JsonWebsocketClient} from '@reifydb/client';
 
 interface ConnectionState {
-    client: WsClient | null;
+    client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient | null;
     isConnected: boolean;
     isConnecting: boolean;
     connectionError: string | null;
@@ -22,7 +22,10 @@ export function useConnection(overrideConfig?: ConnectionConfig) {
         if (overrideConfig) {
             return getConnection(overrideConfig);
         }
-        return contextConnection || getConnection();
+        if (contextConnection) {
+            return contextConnection;
+        }
+        return getConnection();
     });
 
     const [state, setState] = useState<ConnectionState>(() => connection.getState());

@@ -1,11 +1,39 @@
+#![no_std]
+
+extern crate alloc;
+
+#[cfg(feature = "std")]
+extern crate std;
+
 use crate::abi::AbiVariant;
-use anyhow::{Context, Result, bail};
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+#[cfg(feature = "std")]
+use anyhow::Context;
+use anyhow::{Result, bail};
 use id_arena::{Arena, Id};
-use indexmap::IndexMap;
 use semver::Version;
-use std::borrow::Cow;
-use std::fmt;
-use std::hash::{Hash, Hasher};
+
+#[cfg(feature = "std")]
+pub type IndexMap<K, V> = indexmap::IndexMap<K, V, std::hash::RandomState>;
+#[cfg(feature = "std")]
+pub type IndexSet<T> = indexmap::IndexSet<T, std::hash::RandomState>;
+#[cfg(not(feature = "std"))]
+pub type IndexMap<K, V> = indexmap::IndexMap<K, V, hashbrown::DefaultHashBuilder>;
+#[cfg(not(feature = "std"))]
+pub type IndexSet<T> = indexmap::IndexSet<T, hashbrown::DefaultHashBuilder>;
+
+#[cfg(feature = "std")]
+pub(crate) use std::collections::{HashMap, HashSet};
+
+#[cfg(not(feature = "std"))]
+pub(crate) use hashbrown::{HashMap, HashSet};
+
+use alloc::borrow::Cow;
+use core::fmt;
+use core::hash::{Hash, Hasher};
+#[cfg(feature = "std")]
 use std::path::Path;
 
 #[cfg(feature = "decoding")]
@@ -18,7 +46,7 @@ pub use metadata::PackageMetadata;
 pub mod abi;
 mod ast;
 pub use ast::SourceMap;
-use ast::lex::Span;
+pub use ast::lex::Span;
 pub use ast::{ParsedUsePath, parse_use_path};
 mod sizealign;
 pub use sizealign::*;
@@ -108,13 +136,42 @@ pub struct UnresolvedPackage {
     /// Doc comments for this package.
     pub docs: Docs,
 
+    #[cfg_attr(not(feature = "std"), allow(dead_code))]
     package_name_span: Span,
     unknown_type_spans: Vec<Span>,
-    interface_spans: Vec<InterfaceSpan>,
-    world_spans: Vec<WorldSpan>,
-    type_spans: Vec<Span>,
     foreign_dep_spans: Vec<Span>,
     required_resource_types: Vec<(TypeId, Span)>,
+}
+
+impl UnresolvedPackage {
+    /// Adjusts all spans in this package by adding the given byte offset.
+    ///
+    /// This is used when merging source maps to update spans to point to the
+    /// correct location in the combined source map.
+    pub(crate) fn adjust_spans(&mut self, offset: u32) {
+        // Adjust parallel vec spans
+        self.package_name_span.adjust(offset);
+        for span in &mut self.unknown_type_spans {
+            span.adjust(offset);
+        }
+        for span in &mut self.foreign_dep_spans {
+            span.adjust(offset);
+        }
+        for (_, span) in &mut self.required_resource_types {
+            span.adjust(offset);
+        }
+
+        // Adjust spans on arena items
+        for (_, world) in self.worlds.iter_mut() {
+            world.adjust_spans(offset);
+        }
+        for (_, iface) in self.interfaces.iter_mut() {
+            iface.adjust_spans(offset);
+        }
+        for (_, ty) in self.types.iter_mut() {
+            ty.adjust_spans(offset);
+        }
+    }
 }
 
 /// Tracks a set of packages, all pulled from the same group of WIT source files.
@@ -131,20 +188,6 @@ pub struct UnresolvedPackageGroup {
 
     /// A set of processed source files from which these packages have been parsed.
     pub source_map: SourceMap,
-}
-
-#[derive(Clone)]
-struct WorldSpan {
-    span: Span,
-    imports: Vec<Span>,
-    exports: Vec<Span>,
-    includes: Vec<Span>,
-}
-
-#[derive(Clone)]
-struct InterfaceSpan {
-    span: Span,
-    funcs: Vec<Span>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -265,6 +308,13 @@ impl Error {
             highlighted: None,
         }
     }
+
+    /// Highlights this error using the given source map, if the span is known.
+    fn highlight(&mut self, source_map: &ast::SourceMap) {
+        if self.highlighted.is_none() {
+            self.highlighted = source_map.highlight_span(self.span, &self.msg);
+        }
+    }
 }
 
 impl fmt::Display for Error {
@@ -273,7 +323,7 @@ impl fmt::Display for Error {
     }
 }
 
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
 
 #[derive(Debug)]
 struct PackageNotFoundError {
@@ -290,6 +340,13 @@ impl PackageNotFoundError {
             requested,
             known,
             highlighted: None,
+        }
+    }
+
+    /// Highlights this error using the given source map, if the span is known.
+    fn highlight(&mut self, source_map: &ast::SourceMap) {
+        if self.highlighted.is_none() {
+            self.highlighted = source_map.highlight_span(self.span, &format!("{self}"));
         }
     }
 }
@@ -319,7 +376,7 @@ impl fmt::Display for PackageNotFoundError {
     }
 }
 
-impl std::error::Error for PackageNotFoundError {}
+impl core::error::Error for PackageNotFoundError {}
 
 impl UnresolvedPackageGroup {
     /// Parses the given string as a wit document.
@@ -327,9 +384,23 @@ impl UnresolvedPackageGroup {
     /// The `path` argument is used for error reporting. The `contents` provided
     /// are considered to be the contents of `path`. This function does not read
     /// the filesystem.
+    #[cfg(feature = "std")]
     pub fn parse(path: impl AsRef<Path>, contents: &str) -> Result<UnresolvedPackageGroup> {
+        let path = path
+            .as_ref()
+            .to_str()
+            .ok_or_else(|| anyhow::anyhow!("path is not valid utf-8: {:?}", path.as_ref()))?;
+        Self::parse_str(path, contents)
+    }
+
+    /// Parses the given string as a wit document.
+    ///
+    /// The `path` argument is used for error reporting. The `contents` provided
+    /// are considered to be the contents of `path`. This function does not read
+    /// the filesystem.
+    pub fn parse_str(path: &str, contents: &str) -> Result<UnresolvedPackageGroup> {
         let mut map = SourceMap::default();
-        map.push(path.as_ref(), contents);
+        map.push_str(path, contents);
         map.parse()
     }
 
@@ -338,6 +409,7 @@ impl UnresolvedPackageGroup {
     /// The path provided is inferred whether it's a file or a directory. A file
     /// is parsed with [`UnresolvedPackageGroup::parse_file`] and a directory is
     /// parsed with [`UnresolvedPackageGroup::parse_dir`].
+    #[cfg(feature = "std")]
     pub fn parse_path(path: impl AsRef<Path>) -> Result<UnresolvedPackageGroup> {
         let path = path.as_ref();
         if path.is_dir() {
@@ -351,6 +423,7 @@ impl UnresolvedPackageGroup {
     ///
     /// The return value represents all packages found in the WIT file which
     /// might be either one or multiple depending on the syntax used.
+    #[cfg(feature = "std")]
     pub fn parse_file(path: impl AsRef<Path>) -> Result<UnresolvedPackageGroup> {
         let path = path.as_ref();
         let contents = std::fs::read_to_string(path)
@@ -364,6 +437,7 @@ impl UnresolvedPackageGroup {
     /// `*.wit` files are parsed and assumed to be part of the same package
     /// grouping. This is useful when a WIT package is split across multiple
     /// files.
+    #[cfg(feature = "std")]
     pub fn parse_dir(path: impl AsRef<Path>) -> Result<UnresolvedPackageGroup> {
         let path = path.as_ref();
         let mut map = SourceMap::default();
@@ -420,13 +494,26 @@ pub struct World {
     )]
     pub stability: Stability,
 
-    /// All the included worlds from this world. Empty if this is fully resolved
+    /// All the included worlds from this world. Empty if this is fully resolved.
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub includes: Vec<(Stability, WorldId)>,
+    pub includes: Vec<WorldInclude>,
 
-    /// All the included worlds names. Empty if this is fully resolved
+    /// Source span for this world.
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub include_names: Vec<Vec<IncludeName>>,
+    pub span: Span,
+}
+
+impl World {
+    /// Adjusts all spans in this world by adding the given byte offset.
+    pub(crate) fn adjust_spans(&mut self, offset: u32) {
+        self.span.adjust(offset);
+        for item in self.imports.values_mut().chain(self.exports.values_mut()) {
+            item.adjust_spans(offset);
+        }
+        for include in &mut self.includes {
+            include.span.adjust(offset);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -436,6 +523,23 @@ pub struct IncludeName {
 
     /// The name to be replaced with
     pub as_: String,
+}
+
+/// An entry in the `includes` list of a world, representing an `include`
+/// statement in WIT.
+#[derive(Debug, Clone)]
+pub struct WorldInclude {
+    /// The stability annotation on this include.
+    pub stability: Stability,
+
+    /// The world being included.
+    pub id: WorldId,
+
+    /// Names being renamed as part of this include.
+    pub names: Vec<IncludeName>,
+
+    /// Source span for this include statement.
+    pub span: Span,
 }
 
 /// The key to the import/export maps of a world. Either a kebab-name or a
@@ -510,6 +614,8 @@ pub enum WorldItem {
             serde(skip_serializing_if = "Stability::is_unknown")
         )]
         stability: Stability,
+        #[cfg_attr(feature = "serde", serde(skip))]
+        span: Span,
     },
 
     /// A function is being directly imported or exported from this world.
@@ -518,8 +624,8 @@ pub enum WorldItem {
     /// A type is being exported from this world.
     ///
     /// Note that types are never imported into worlds at this time.
-    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_id"))]
-    Type(TypeId),
+    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_id_ignore_span"))]
+    Type { id: TypeId, span: Span },
 }
 
 impl WorldItem {
@@ -527,7 +633,23 @@ impl WorldItem {
         match self {
             WorldItem::Interface { stability, .. } => stability,
             WorldItem::Function(f) => &f.stability,
-            WorldItem::Type(id) => &resolve.types[*id].stability,
+            WorldItem::Type { id, .. } => &resolve.types[*id].stability,
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        match self {
+            WorldItem::Interface { span, .. } => *span,
+            WorldItem::Function(f) => f.span,
+            WorldItem::Type { span, .. } => *span,
+        }
+    }
+
+    pub(crate) fn adjust_spans(&mut self, offset: u32) {
+        match self {
+            WorldItem::Function(f) => f.adjust_spans(offset),
+            WorldItem::Interface { span, .. } => span.adjust(offset),
+            WorldItem::Type { span, .. } => span.adjust(offset),
         }
     }
 }
@@ -564,6 +686,32 @@ pub struct Interface {
     /// The package that owns this interface.
     #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_optional_id"))]
     pub package: Option<PackageId>,
+
+    /// Source span for this interface.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
+
+    /// The interface that this one was cloned from, if any.
+    ///
+    /// Applicable for [`Resolve::generate_nominal_type_ids`].
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            skip_serializing_if = "Option::is_none",
+            serialize_with = "serialize_optional_id",
+        )
+    )]
+    pub clone_of: Option<InterfaceId>,
+}
+
+impl Interface {
+    /// Adjusts all spans in this interface by adding the given byte offset.
+    pub(crate) fn adjust_spans(&mut self, offset: u32) {
+        self.span.adjust(offset);
+        for func in self.functions.values_mut() {
+            func.adjust_spans(offset);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -580,6 +728,42 @@ pub struct TypeDef {
         serde(skip_serializing_if = "Stability::is_unknown")
     )]
     pub stability: Stability,
+    /// Source span for this type.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
+}
+
+impl TypeDef {
+    /// Adjusts all spans in this type definition by adding the given byte offset.
+    ///
+    /// This is used when merging source maps to update spans to point to the
+    /// correct location in the combined source map.
+    pub(crate) fn adjust_spans(&mut self, offset: u32) {
+        self.span.adjust(offset);
+        match &mut self.kind {
+            TypeDefKind::Record(r) => {
+                for field in &mut r.fields {
+                    field.span.adjust(offset);
+                }
+            }
+            TypeDefKind::Variant(v) => {
+                for case in &mut v.cases {
+                    case.span.adjust(offset);
+                }
+            }
+            TypeDefKind::Enum(e) => {
+                for case in &mut e.cases {
+                    case.span.adjust(offset);
+                }
+            }
+            TypeDefKind::Flags(f) => {
+                for flag in &mut f.flags {
+                    flag.span.adjust(offset);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -597,7 +781,7 @@ pub enum TypeDefKind {
     Result(Result_),
     List(Type),
     Map(Type, Type),
-    FixedSizeList(Type, u32),
+    FixedLengthList(Type, u32),
     Future(Option<Type>),
     Stream(Option<Type>),
     Type(Type),
@@ -627,7 +811,7 @@ impl TypeDefKind {
             TypeDefKind::Result(_) => "result",
             TypeDefKind::List(_) => "list",
             TypeDefKind::Map(_, _) => "map",
-            TypeDefKind::FixedSizeList(..) => "fixed size list",
+            TypeDefKind::FixedLengthList(..) => "fixed-length list",
             TypeDefKind::Future(_) => "future",
             TypeDefKind::Stream(_) => "stream",
             TypeDefKind::Type(_) => "type",
@@ -662,7 +846,7 @@ pub enum Handle {
     Borrow(TypeId),
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Clone)]
 pub enum Type {
     Bool,
     U8,
@@ -703,6 +887,9 @@ pub struct Field {
     pub ty: Type,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Docs::is_empty"))]
     pub docs: Docs,
+    /// Source span for this field.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, Eq)]
@@ -717,6 +904,9 @@ pub struct Flag {
     pub name: String,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Docs::is_empty"))]
     pub docs: Docs,
+    /// Source span for this flag.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -767,6 +957,9 @@ pub struct Case {
     pub ty: Option<Type>,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Docs::is_empty"))]
     pub docs: Docs,
+    /// Source span for this variant case.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
 }
 
 impl Variant {
@@ -787,6 +980,9 @@ pub struct EnumCase {
     pub name: String,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Docs::is_empty"))]
     pub docs: Docs,
+    /// Source span for this enum case.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
 }
 
 impl Enum {
@@ -827,11 +1023,21 @@ impl Docs {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct Param {
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "String::is_empty"))]
+    pub name: String,
+    #[cfg_attr(feature = "serde", serde(rename = "type"))]
+    pub ty: Type,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Function {
     pub name: String,
     pub kind: FunctionKind,
-    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_params"))]
-    pub params: Vec<(String, Type)>,
+    pub params: Vec<Param>,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub result: Option<Type>,
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Docs::is_empty"))]
@@ -842,6 +1048,10 @@ pub struct Function {
         serde(skip_serializing_if = "Stability::is_unknown")
     )]
     pub stability: Stability,
+
+    /// Source span for this function.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -982,7 +1192,7 @@ pub enum Mangling {
     Legacy,
 }
 
-impl std::str::FromStr for Mangling {
+impl core::str::FromStr for Mangling {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Mangling> {
@@ -1105,6 +1315,14 @@ impl ManglingAndAbi {
 }
 
 impl Function {
+    /// Adjusts all spans in this function by adding the given byte offset.
+    pub(crate) fn adjust_spans(&mut self, offset: u32) {
+        self.span.adjust(offset);
+        for param in &mut self.params {
+            param.span.adjust(offset);
+        }
+    }
+
     pub fn item_name(&self) -> &str {
         match &self.kind {
             FunctionKind::Freestanding | FunctionKind::AsyncFreestanding => &self.name,
@@ -1121,7 +1339,7 @@ impl Function {
     /// Note that this iterator is not transitive, it only iterates over the
     /// direct references to types that this function has.
     pub fn parameter_and_result_types(&self) -> impl Iterator<Item = Type> + '_ {
-        self.params.iter().map(|(_, t)| *t).chain(self.result)
+        self.params.iter().map(|p| p.ty).chain(self.result)
     }
 
     /// Gets the core export name for this function.
@@ -1166,8 +1384,8 @@ impl Function {
     /// indicate a call to `stream.new` for `stream<u8>`.
     pub fn find_futures_and_streams(&self, resolve: &Resolve) -> Vec<TypeId> {
         let mut results = Vec::new();
-        for (_, ty) in self.params.iter() {
-            find_futures_and_streams(resolve, *ty, &mut results);
+        for param in self.params.iter() {
+            find_futures_and_streams(resolve, param.ty, &mut results);
         }
         if let Some(ty) = self.result {
             find_futures_and_streams(resolve, ty, &mut results);
@@ -1216,7 +1434,11 @@ impl Function {
         func_tmp.params = Vec::new();
         func_tmp.result = None;
         if let Some(ty) = self.result {
-            func_tmp.params.push(("x".to_string(), ty));
+            func_tmp.params.push(Param {
+                name: "x".to_string(),
+                ty,
+                span: Default::default(),
+            });
         }
         let sig = resolve.wasm_signature(AbiVariant::GuestImport, &func_tmp);
         (module, name, sig)
@@ -1254,7 +1476,7 @@ fn find_futures_and_streams(resolve: &Resolve, ty: Type, results: &mut Vec<TypeI
         }
         TypeDefKind::Option(ty)
         | TypeDefKind::List(ty)
-        | TypeDefKind::FixedSizeList(ty, ..)
+        | TypeDefKind::FixedLengthList(ty, ..)
         | TypeDefKind::Type(ty) => {
             find_futures_and_streams(resolve, *ty, results);
         }
@@ -1359,6 +1581,7 @@ impl Default for Stability {
 #[cfg(test)]
 mod test {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn test_discriminant_type() {
@@ -1381,6 +1604,7 @@ mod test {
             owner: TypeOwner::None,
             docs: Docs::default(),
             stability: Stability::Unknown,
+            span: Default::default(),
         });
         let t1 = resolve.types.alloc(TypeDef {
             name: None,
@@ -1388,6 +1612,7 @@ mod test {
             owner: TypeOwner::None,
             docs: Docs::default(),
             stability: Stability::Unknown,
+            span: Default::default(),
         });
         let t2 = resolve.types.alloc(TypeDef {
             name: None,
@@ -1395,14 +1620,27 @@ mod test {
             owner: TypeOwner::None,
             docs: Docs::default(),
             stability: Stability::Unknown,
+            span: Default::default(),
         });
         let found = Function {
             name: "foo".into(),
             kind: FunctionKind::Freestanding,
-            params: vec![("p1".into(), Type::Id(t1)), ("p2".into(), Type::U32)],
+            params: vec![
+                Param {
+                    name: "p1".into(),
+                    ty: Type::Id(t1),
+                    span: Default::default(),
+                },
+                Param {
+                    name: "p2".into(),
+                    ty: Type::U32,
+                    span: Default::default(),
+                },
+            ],
             result: Some(Type::Id(t2)),
             docs: Docs::default(),
             stability: Stability::Unknown,
+            span: Default::default(),
         }
         .find_futures_and_streams(&resolve);
         assert_eq!(3, found.len());

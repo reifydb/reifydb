@@ -7,7 +7,7 @@ use indexmap::{
 };
 use reifydb_core::{
 	delta::Delta,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 };
 use reifydb_type::util::cowvec::CowVec;
 
@@ -16,11 +16,11 @@ use reifydb_type::util::cowvec::CowVec;
 enum OptimizedDeltaState {
 	/// Key should be set to this value (Insert or Update)
 	Set {
-		values: EncodedValues,
+		row: EncodedRow,
 	},
 	/// Key should be unset, preserving the deleted values for CDC/metrics
 	Unset {
-		values: EncodedValues,
+		row: EncodedRow,
 	},
 	/// Key should be removed without preserving values
 	Remove,
@@ -53,7 +53,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 			}
 			Delta::Set {
 				key,
-				values,
+				row,
 			} => {
 				// Check if this key has been seen before in this transaction
 				let key_bytes = key.as_ref().to_vec();
@@ -64,10 +64,10 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 						let (state, _) = occ.get_mut();
 						match state {
 							OptimizedDeltaState::Set {
-								values: old_values,
+								row: old_row,
 							} => {
 								// Update + Update = coalesce to final Update
-								*old_values = values;
+								*old_row = row;
 							}
 							OptimizedDeltaState::Unset {
 								..
@@ -75,13 +75,13 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 							| OptimizedDeltaState::Remove => {
 								// Delete + Insert in same transaction = Set
 								*state = OptimizedDeltaState::Set {
-									values,
+									row,
 								};
 							}
 							OptimizedDeltaState::Cancelled => {
 								// After complete cancellation, treat as new Insert
 								*state = OptimizedDeltaState::Set {
-									values,
+									row,
 								};
 							}
 						}
@@ -91,7 +91,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 						// First time seeing this key in transaction
 						vac.insert((
 							OptimizedDeltaState::Set {
-								values,
+								row,
 							},
 							idx,
 						));
@@ -100,7 +100,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 			}
 			Delta::Unset {
 				key,
-				values,
+				row,
 			} => {
 				// Check if this key has been seen before in this transaction
 				let key_bytes = key.as_ref().to_vec();
@@ -126,7 +126,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 							OptimizedDeltaState::Cancelled => {
 								// After cancellation, an unset means unset it
 								*state = OptimizedDeltaState::Unset {
-									values,
+									row,
 								};
 							}
 						}
@@ -136,7 +136,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 						// First time seeing this key in transaction - it's an unset
 						vac.insert((
 							OptimizedDeltaState::Unset {
-								values,
+								row,
 							},
 							idx,
 						));
@@ -192,24 +192,24 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>) -> Vec<Delta> {
 	for (key_bytes, (state, idx)) in key_states {
 		match state {
 			OptimizedDeltaState::Set {
-				values,
+				row,
 			} => {
 				result.push((
 					idx,
 					Delta::Set {
 						key: EncodedKey(CowVec::new(key_bytes)),
-						values,
+						row,
 					},
 				));
 			}
 			OptimizedDeltaState::Unset {
-				values,
+				row,
 			} => {
 				result.push((
 					idx,
 					Delta::Unset {
 						key: EncodedKey(CowVec::new(key_bytes)),
-						values,
+						row,
 					},
 				));
 			}
@@ -242,8 +242,8 @@ pub mod tests {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn make_values(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_row(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]
@@ -251,11 +251,11 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 			Delta::Unset {
 				key: make_key("key_a"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 		];
 
@@ -270,15 +270,15 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_a"),
-				values: make_values("value2"),
+				row: make_row("value2"),
 			},
 			Delta::Set {
 				key: make_key("key_a"),
-				values: make_values("value3"),
+				row: make_row("value3"),
 			},
 		];
 
@@ -289,10 +289,10 @@ pub mod tests {
 		match &optimized[0] {
 			Delta::Set {
 				key,
-				values,
+				row,
 			} => {
 				assert_eq!(key.as_ref(), b"key_a");
-				assert_eq!(values.0.as_slice(), b"value3");
+				assert_eq!(row.0.as_slice(), b"value3");
 			}
 			_ => panic!("Expected Set delta"),
 		}
@@ -303,15 +303,15 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_a"),
-				values: make_values("value2"),
+				row: make_row("value2"),
 			},
 			Delta::Unset {
 				key: make_key("key_a"),
-				values: make_values("value2"),
+				row: make_row("value2"),
 			},
 		];
 
@@ -326,19 +326,19 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_b"),
-				values: make_values("value2"),
+				row: make_row("value2"),
 			},
 			Delta::Unset {
 				key: make_key("key_a"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_c"),
-				values: make_values("value3"),
+				row: make_row("value3"),
 			},
 		];
 

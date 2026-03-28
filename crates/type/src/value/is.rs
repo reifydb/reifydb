@@ -9,14 +9,16 @@ use crate::value::{
 	datetime::DateTime,
 	decimal::Decimal,
 	duration::Duration,
+	identity::IdentityId,
 	time::Time,
+	to_value::ToValue,
 	r#type::get::GetType,
 	uuid::{Uuid4, Uuid7},
 };
 
-pub trait IsNumber: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
-pub trait IsTemporal: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
-pub trait IsUuid: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + 'static {}
+pub trait IsNumber: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + ToValue + 'static {}
+pub trait IsTemporal: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + ToValue + 'static {}
+pub trait IsUuid: Display + Clone + Debug + PartialEq + PartialOrd + GetType + Default + ToValue + 'static {}
 
 pub trait IsFloat: IsNumber {}
 
@@ -86,3 +88,4 @@ impl IsTemporal for Duration {}
 
 impl IsUuid for Uuid4 {}
 impl IsUuid for Uuid7 {}
+impl IsUuid for IdentityId {}

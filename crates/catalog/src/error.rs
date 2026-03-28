@@ -26,10 +26,13 @@ pub enum CatalogObjectKind {
 	Handler,
 	Series,
 	Tag,
-	User,
+	Identity,
 	Role,
 	Policy,
 	Migration,
+	Column,
+	Source,
+	Sink,
 }
 
 impl Display for CatalogObjectKind {
@@ -47,10 +50,13 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::Handler => f.write_str("handler"),
 			CatalogObjectKind::Series => f.write_str("series"),
 			CatalogObjectKind::Tag => f.write_str("tag"),
-			CatalogObjectKind::User => f.write_str("user"),
+			CatalogObjectKind::Identity => f.write_str("identity"),
 			CatalogObjectKind::Role => f.write_str("role"),
 			CatalogObjectKind::Policy => f.write_str("policy"),
 			CatalogObjectKind::Migration => f.write_str("migration"),
+			CatalogObjectKind::Column => f.write_str("column"),
+			CatalogObjectKind::Source => f.write_str("source"),
+			CatalogObjectKind::Sink => f.write_str("sink"),
 		}
 	}
 }
@@ -261,10 +267,10 @@ impl IntoDiagnostic for CatalogError {
 						"tag",
 						"choose a different name or drop the existing tag first",
 					),
-					CatalogObjectKind::User => (
+					CatalogObjectKind::Identity => (
 						"CA_040",
-						"user",
-						"choose a different name or drop the existing user first",
+						"identity",
+						"choose a different name or drop the existing identity first",
 					),
 					CatalogObjectKind::Role => (
 						"CA_041",
@@ -279,6 +285,19 @@ impl IntoDiagnostic for CatalogError {
 					CatalogObjectKind::Migration => {
 						("CA_046", "migration", "choose a different name for the migration")
 					}
+					CatalogObjectKind::Column => {
+						("CA_003", "column", "ensure the column exists in the definition")
+					}
+					CatalogObjectKind::Source => (
+						"CA_060",
+						"source",
+						"choose a different name, drop the existing source or create source in a different namespace",
+					),
+					CatalogObjectKind::Sink => (
+						"CA_061",
+						"sink",
+						"choose a different name, drop the existing sink or create sink in a different namespace",
+					),
 				};
 				let message = if matches!(
 					kind,
@@ -369,10 +388,10 @@ impl IntoDiagnostic for CatalogError {
 						"tag",
 						format!("create the tag first with `CREATE TAG {}.{} {{ ... }}`", namespace, name),
 					),
-					CatalogObjectKind::User => (
+					CatalogObjectKind::Identity => (
 						"CA_043",
-						"user",
-						"ensure the user exists or create it first using `CREATE USER`".to_string(),
+						"identity",
+						"ensure the identity exists or create it first using `CREATE IDENTITY`".to_string(),
 					),
 					CatalogObjectKind::Role => (
 						"CA_044",
@@ -388,6 +407,21 @@ impl IntoDiagnostic for CatalogError {
 						"CA_047",
 						"migration",
 						"ensure the migration exists or create it first using `CREATE MIGRATION`".to_string(),
+					),
+					CatalogObjectKind::Column => (
+						"CA_004",
+						"column",
+						"ensure the column exists in the definition".to_string(),
+					),
+					CatalogObjectKind::Source => (
+						"CA_062",
+						"source",
+						"ensure the source exists or create it first using `CREATE SOURCE`".to_string(),
+					),
+					CatalogObjectKind::Sink => (
+						"CA_063",
+						"sink",
+						"ensure the sink exists or create it first using `CREATE SINK`".to_string(),
 					),
 				};
 				let message = match kind {

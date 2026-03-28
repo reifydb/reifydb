@@ -1,22 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::Value;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{
-	column::ColumnDef,
+	column::Column,
 	id::{NamespaceId, RingBufferId},
-	key::PrimaryKeyDef,
+	key::PrimaryKey,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RingBufferDef {
+pub struct RingBuffer {
 	pub id: RingBufferId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub columns: Vec<ColumnDef>,
+	pub columns: Vec<Column>,
 	pub capacity: u64,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub primary_key: Option<PrimaryKey>,
+	pub partition_by: Vec<String>,
+}
+
+impl RingBuffer {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -26,6 +34,12 @@ pub struct RingBufferMetadata {
 	pub count: u64,
 	pub head: u64, // Position of oldest entry
 	pub tail: u64, // Position for next insert
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartitionedMetadata {
+	pub metadata: RingBufferMetadata,
+	pub partition_values: Vec<Value>,
 }
 
 impl RingBufferMetadata {

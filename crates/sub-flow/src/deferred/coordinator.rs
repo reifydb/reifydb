@@ -8,7 +8,7 @@
 //! - [`CoordinatorMsg`]: Messages (Consume, PoolReply)
 //! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
 
-use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc};
+use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc, time::Duration};
 
 use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, consumer::CdcConsume},
@@ -18,7 +18,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
 	interface::{
-		catalog::{flow::FlowId, primitive::PrimitiveId},
+		catalog::{flow::FlowId, schema::SchemaId},
 		cdc::{Cdc, CdcBatch, SystemChange},
 		change::{Change, ChangeOrigin},
 	},
@@ -34,17 +34,21 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	clock::{Clock, Instant},
+	context::clock::{Clock, Instant},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, error::Error};
+use reifydb_type::{
+	Result,
+	error::Error,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 use tracing::{Span, debug, field, info, instrument, warn};
 
 use super::{
 	instruction::{FlowInstruction, WorkerBatch},
 	pool::{PoolMsg, PoolResponse},
 	state::FlowStates,
-	tracker::PrimitiveVersionTracker,
+	tracker::SchemaVersionTracker,
 };
 use crate::{
 	catalog::FlowCatalog,
@@ -93,6 +97,8 @@ pub enum CoordinatorMsg {
 	},
 	/// Async reply from PoolActor
 	PoolReply(PoolResponse),
+	/// Periodic tick for time-based maintenance
+	Tick,
 }
 
 /// Context needed to resume processing after an async pool reply.
@@ -112,6 +118,8 @@ struct ConsumeContext {
 	/// These flows will have new CDC events in the next cycle from view changes,
 	/// so their checkpoints should NOT be advanced yet.
 	downstream_flows: collections::HashSet<FlowId>,
+	/// View changes accumulated from flow workers for cascading to transactional flows.
+	view_changes: Vec<Change>,
 }
 
 enum Phase {
@@ -131,6 +139,13 @@ enum Phase {
 		flows: Vec<FlowId>,
 		ctx: ConsumeContext,
 	},
+	/// Waiting for tick results from pool
+	Ticking,
+}
+
+struct TickSchedule {
+	tick: Duration,
+	last_tick: Instant,
 }
 
 /// Helper to create an error result for coordinator replies.
@@ -143,7 +158,7 @@ pub struct CoordinatorActor {
 	engine: StandardEngine,
 	catalog: FlowCatalog,
 	pool: ActorRef<PoolMsg>,
-	tracker: Arc<PrimitiveVersionTracker>,
+	tracker: Arc<SchemaVersionTracker>,
 	cdc_store: CdcStore,
 	num_workers: usize,
 	clock: Clock,
@@ -154,7 +169,7 @@ impl CoordinatorActor {
 		engine: StandardEngine,
 		catalog: FlowCatalog,
 		pool_ref: ActorRef<PoolMsg>,
-		tracker: Arc<PrimitiveVersionTracker>,
+		tracker: Arc<SchemaVersionTracker>,
 		cdc_store: CdcStore,
 		num_workers: usize,
 		clock: Clock,
@@ -176,17 +191,21 @@ pub struct CoordinatorState {
 	states: FlowStates,
 	analyzer: FlowGraphAnalyzer,
 	phase: Phase,
+	tick_schedules: BTreeMap<FlowId, TickSchedule>,
 }
 
 impl Actor for CoordinatorActor {
 	type State = CoordinatorState;
 	type Message = CoordinatorMsg;
 
-	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
+		ctx.schedule_once(Duration::from_secs(1), || CoordinatorMsg::Tick);
+
 		CoordinatorState {
 			states: FlowStates::new(),
 			analyzer: FlowGraphAnalyzer::new(),
 			phase: Phase::Idle,
+			tick_schedules: BTreeMap::new(),
 		}
 	}
 
@@ -202,6 +221,12 @@ impl Actor for CoordinatorActor {
 			}
 			CoordinatorMsg::PoolReply(response) => {
 				self.handle_pool_reply(state, ctx, response);
+			}
+			CoordinatorMsg::Tick => {
+				if matches!(state.phase, Phase::Idle) {
+					self.handle_tick(state, ctx);
+				}
+				ctx.schedule_once(Duration::from_secs(1), || CoordinatorMsg::Tick);
 			}
 		}
 		Directive::Continue
@@ -248,7 +273,7 @@ impl CoordinatorActor {
 		let latest_version = cdcs.last().map(|c| c.version);
 
 		// Get state_version from a read-only query
-		let state_version = match self.engine.begin_query() {
+		let state_version = match self.engine.begin_query(IdentityId::system()) {
 			Ok(q) => q.version(),
 			Err(e) => {
 				(reply)(coordinator_error(e));
@@ -263,7 +288,7 @@ impl CoordinatorActor {
 
 			// Update tracker for lag calculation
 			for change in &cdc.changes {
-				if let ChangeOrigin::Primitive(source) = &change.origin {
+				if let ChangeOrigin::Schema(source) = &change.origin {
 					self.tracker.update(*source, version);
 				}
 			}
@@ -282,13 +307,14 @@ impl CoordinatorActor {
 			all_changes,
 			latest_version,
 			downstream_flows: collections::HashSet::new(),
+			view_changes: Vec::new(),
 		};
 
 		// Discover and load new flows from CDC events using engine.begin_query()
 		let new_flow_ids = extract_new_flow_ids(&cdcs);
 		let mut new_flows = Vec::new();
 		if !new_flow_ids.is_empty() {
-			let mut query = match self.engine.begin_query() {
+			let mut query = match self.engine.begin_query(IdentityId::system()) {
 				Ok(q) => q,
 				Err(e) => {
 					(consume_ctx.original_reply)(coordinator_error(e));
@@ -336,6 +362,7 @@ impl CoordinatorActor {
 			let flow_id = flow.id;
 
 			state.analyzer.add(flow.clone());
+			self.maybe_register_tick_schedule(state, &flow);
 			if flow.is_subscription() {
 				state.states.register_active(flow_id, consume_ctx.current_version);
 				debug!(flow_id = flow_id.0, "registered new subscription flow as active");
@@ -402,6 +429,7 @@ impl CoordinatorActor {
 					let flow_id = flow.id;
 
 					state.analyzer.add(flow.clone());
+					self.maybe_register_tick_schedule(state, &flow);
 					if flow.is_subscription() {
 						state.states.register_active(flow_id, consume_ctx.current_version);
 						debug!(
@@ -444,8 +472,10 @@ impl CoordinatorActor {
 				match response {
 					PoolResponse::Success {
 						pending,
+						view_changes,
 					} => {
 						consume_ctx.combined = pending;
+						consume_ctx.view_changes.extend(view_changes);
 					}
 					PoolResponse::RegisterSuccess => {
 						// unexpected but not an error
@@ -476,9 +506,10 @@ impl CoordinatorActor {
 				// Collect result from previous backfill worker submission
 				match response {
 					PoolResponse::Success {
-						mut pending,
+						pending,
+						view_changes,
 					} => {
-						consume_ctx.combined.extend_view_changes(pending.take_view_changes());
+						consume_ctx.view_changes.extend(view_changes);
 						for (key, value) in pending.iter_sorted() {
 							match value {
 								PendingWrite::Set(v) => {
@@ -501,6 +532,18 @@ impl CoordinatorActor {
 
 				self.advance_next_backfill_flow(state, ctx, remaining_flow_ids, consume_ctx);
 			}
+			Phase::Ticking => match response {
+				PoolResponse::Success {
+					pending,
+					..
+				} => {
+					self.commit_tick_writes(pending);
+				}
+				PoolResponse::Error(e) => {
+					warn!(error = %e, "tick processing failed");
+				}
+				_ => {}
+			},
 			Phase::Idle => {}
 		}
 	}
@@ -658,7 +701,7 @@ impl CoordinatorActor {
 			}
 
 			// Get current checkpoint for this flow
-			let from_version = match self.engine.begin_query() {
+			let from_version = match self.engine.begin_query(IdentityId::system()) {
 				Ok(mut query) => CdcCheckpoint::fetch(&mut Transaction::Query(&mut query), &flow_id)
 					.unwrap_or(CommitVersion(0)),
 				Err(e) => {
@@ -796,13 +839,13 @@ impl CoordinatorActor {
 	}
 
 	/// Complete the consume operation: commit writes and checkpoints directly.
-	fn finish_consume(&self, state: &mut CoordinatorState, mut consume_ctx: ConsumeContext) {
+	fn finish_consume(&self, state: &mut CoordinatorState, consume_ctx: ConsumeContext) {
 		Span::current().record("elapsed_us", consume_ctx.consume_start.elapsed().as_micros() as u64);
 
 		state.phase = Phase::Idle;
 
 		// Begin a command transaction to apply all writes and checkpoints
-		let mut transaction = match self.engine.begin_command() {
+		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,
 			Err(e) => {
 				(consume_ctx.original_reply)(coordinator_error(e));
@@ -819,7 +862,7 @@ impl CoordinatorActor {
 					// downstream deferred flows that source from views.
 					if matches!(Key::kind(key), Some(KeyKind::Row)) {
 						match transaction.get(key) {
-							Ok(Some(existing)) => transaction.unset(key, existing.values),
+							Ok(Some(existing)) => transaction.unset(key, existing.row),
 							Ok(None) => transaction.remove(key),
 							Err(e) => {
 								let _ = transaction.rollback();
@@ -837,6 +880,11 @@ impl CoordinatorActor {
 				(consume_ctx.original_reply)(coordinator_error(e));
 				return;
 			}
+		}
+
+		// Feed view changes to cascading transactional flows
+		for change in consume_ctx.view_changes {
+			transaction.track_flow_change(change);
 		}
 
 		// Persist per-flow checkpoints
@@ -859,12 +907,6 @@ impl CoordinatorActor {
 			}
 		}
 
-		// Track view changes so that transactional flows sourcing those views
-		// are triggered by the TransactionalFlowPreCommitInterceptor in the same commit.
-		for change in consume_ctx.combined.take_view_changes() {
-			transaction.track_flow_change(change);
-		}
-
 		// Commit the transaction
 		match transaction.commit() {
 			Ok(_) => {
@@ -885,12 +927,12 @@ impl CoordinatorActor {
 		let dependency_graph = state.analyzer.get_dependency_graph();
 
 		// Get all sources this flow depends on
-		let mut flow_sources: collections::HashSet<PrimitiveId> = collections::HashSet::new();
+		let mut flow_sources: collections::HashSet<SchemaId> = collections::HashSet::new();
 
 		// Add table sources
 		for (table_id, flow_ids) in &dependency_graph.source_tables {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::Table(*table_id));
+				flow_sources.insert(SchemaId::Table(*table_id));
 			}
 		}
 
@@ -898,7 +940,7 @@ impl CoordinatorActor {
 		let mut view_sources = Vec::new();
 		for (view_id, flow_ids) in &dependency_graph.source_views {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::View(*view_id));
+				flow_sources.insert(SchemaId::View(*view_id));
 				view_sources.push(*view_id);
 			}
 		}
@@ -906,14 +948,14 @@ impl CoordinatorActor {
 		// Add ringbuffer sources
 		for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::RingBuffer(*rb_id));
+				flow_sources.insert(SchemaId::RingBuffer(*rb_id));
 			}
 		}
 
 		// Add series sources
 		for (series_id, flow_ids) in &dependency_graph.source_series {
 			if flow_ids.contains(&flow_id) {
-				flow_sources.insert(PrimitiveId::Series(*series_id));
+				flow_sources.insert(SchemaId::Series(*series_id));
 			}
 		}
 
@@ -931,22 +973,27 @@ impl CoordinatorActor {
 				// producer is tracked here, wait for its view CDC instead of
 				// routing its primitive-source CDC to this consumer.
 				if state.states.contains(producer_flow_id) {
+					// Deferred producer writes to the view's underlying primitive.
+					// Resolve it on demand and add to sources so CDC matches.
+					if let Some(view) = self.catalog.find_view(view_id) {
+						flow_sources.insert(view.underlying_id());
+					}
 					continue;
 				}
 
 				for (table_id, flow_ids) in &dependency_graph.source_tables {
 					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(PrimitiveId::Table(*table_id));
+						flow_sources.insert(SchemaId::Table(*table_id));
 					}
 				}
 				for (rb_id, flow_ids) in &dependency_graph.source_ringbuffers {
 					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(PrimitiveId::RingBuffer(*rb_id));
+						flow_sources.insert(SchemaId::RingBuffer(*rb_id));
 					}
 				}
 				for (series_id, flow_ids) in &dependency_graph.source_series {
 					if flow_ids.contains(producer_flow_id) {
-						flow_sources.insert(PrimitiveId::Series(*series_id));
+						flow_sources.insert(SchemaId::Series(*series_id));
 					}
 				}
 			}
@@ -956,7 +1003,7 @@ impl CoordinatorActor {
 		let result: Vec<Change> = changes
 			.iter()
 			.filter(|change| {
-				if let ChangeOrigin::Primitive(source) = change.origin {
+				if let ChangeOrigin::Schema(source) = change.origin {
 					flow_sources.contains(&source)
 				} else {
 					true
@@ -1005,6 +1052,98 @@ impl CoordinatorActor {
 		Span::current().record("batches", worker_batches.len());
 		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 		worker_batches
+	}
+
+	/// Register a tick schedule for a flow if it has a tick duration configured.
+	fn maybe_register_tick_schedule(&self, state: &mut CoordinatorState, flow: &FlowDag) {
+		if let Some(tick) = flow.tick() {
+			state.tick_schedules.insert(
+				flow.id(),
+				TickSchedule {
+					tick,
+					last_tick: self.clock.instant(),
+				},
+			);
+			debug!(
+				flow_id = flow.id().0,
+				tick_nanos = tick.as_nanos(),
+				"registered tick schedule for flow"
+			);
+		}
+	}
+
+	fn handle_tick(&self, state: &mut CoordinatorState, ctx: &Context<CoordinatorMsg>) {
+		let now = self.clock.instant();
+		let timestamp = DateTime::from_timestamp_millis(self.clock.now_millis()).unwrap();
+
+		let mut due_flows: BTreeMap<usize, Vec<FlowId>> = BTreeMap::new();
+
+		for (flow_id, schedule) in &mut state.tick_schedules {
+			let tick_std = Duration::from_nanos(schedule.tick.as_nanos() as u64);
+			if now.duration_since(schedule.last_tick.clone()) >= tick_std {
+				let worker_id = (flow_id.0 as usize) % self.num_workers;
+				due_flows.entry(worker_id).or_default().push(*flow_id);
+				schedule.last_tick = now.clone();
+			}
+		}
+
+		if due_flows.is_empty() {
+			return;
+		}
+
+		let state_version = match self.engine.begin_query(IdentityId::system()) {
+			Ok(q) => q.version(),
+			Err(e) => {
+				warn!(error = %e, "failed to begin query for tick");
+				return;
+			}
+		};
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(CoordinatorMsg::PoolReply(resp));
+		});
+
+		if self.pool
+			.send(PoolMsg::Tick {
+				ticks: due_flows,
+				timestamp,
+				state_version,
+				reply: callback,
+			})
+			.is_err()
+		{
+			warn!("failed to send tick to pool");
+			return;
+		}
+
+		state.phase = Phase::Ticking;
+	}
+
+	fn commit_tick_writes(&self, pending: Pending) {
+		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
+			Ok(t) => t,
+			Err(e) => {
+				warn!(error = %e, "failed to begin command for tick commit");
+				return;
+			}
+		};
+
+		for (key, pw) in pending.iter_sorted() {
+			let result = match pw {
+				PendingWrite::Set(value) => transaction.set(key, value.clone()),
+				PendingWrite::Remove => transaction.remove(key),
+			};
+			if let Err(e) = result {
+				let _ = transaction.rollback();
+				warn!(error = %e, "failed to apply tick write");
+				return;
+			}
+		}
+
+		if let Err(e) = transaction.commit() {
+			warn!(error = %e, "failed to commit tick writes");
+		}
 	}
 }
 

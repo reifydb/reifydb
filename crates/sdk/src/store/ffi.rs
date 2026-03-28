@@ -10,7 +10,7 @@ use reifydb_abi::{
 	context::iterators::StoreIteratorFFI,
 	data::buffer::BufferFFI,
 };
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, instrument};
 
@@ -19,7 +19,7 @@ use crate::{
 	operator::context::OperatorContext,
 };
 
-pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -39,7 +39,7 @@ pub(super) fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
 				// Free the buffer allocated by host
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
-				Ok(Some(EncodedValues(CowVec::new(value_bytes))))
+				Ok(Some(EncodedRow(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
 			// Key not found
@@ -78,7 +78,7 @@ pub(super) fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) ->
 #[instrument(name = "flow::operator::store::raw::prefix", level = "trace", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
-pub(super) fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+pub(super) fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
@@ -109,7 +109,7 @@ pub(super) fn raw_store_range(
 	ctx: &OperatorContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
-) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
 	unsafe {
@@ -158,7 +158,7 @@ pub(super) fn raw_store_range(
 pub(super) unsafe fn collect_iterator_results(
 	ctx: &OperatorContext,
 	iterator: *mut StoreIteratorFFI,
-) -> Result<Vec<(EncodedKey, EncodedValues)>> {
+) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	if iterator.is_null() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -199,9 +199,9 @@ pub(super) unsafe fn collect_iterator_results(
 
 			let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
 				let value_bytes = unsafe { from_raw_parts(value_buf.ptr, value_buf.len) }.to_vec();
-				EncodedValues(CowVec::new(value_bytes))
+				EncodedRow(CowVec::new(value_bytes))
 			} else {
-				EncodedValues(CowVec::new(Vec::new()))
+				EncodedRow(CowVec::new(Vec::new()))
 			};
 
 			// Free buffers allocated by host

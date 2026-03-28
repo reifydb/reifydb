@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
-		ringbuffer::RingBufferDef,
+		ringbuffer::RingBuffer,
 	},
 	key::{Key, ringbuffer::RingBufferKey},
 };
@@ -13,11 +13,11 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer};
 
 impl CatalogStore {
-	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBufferDef>> {
+	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
 		let mut result = Vec::new();
 
 		// Collect ringbuffer data first to avoid holding stream borrow
-		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64)> = Vec::new();
+		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>)> = Vec::new();
 		{
 			let mut stream = rx.range(RingBufferKey::full_scan(), 1024)?;
 
@@ -28,38 +28,52 @@ impl CatalogStore {
 						let ringbuffer_id = ringbuffer_key.ringbuffer;
 
 						let namespace_id = NamespaceId(
-							ringbuffer::SCHEMA
-								.get_u64(&entry.values, ringbuffer::NAMESPACE),
+							ringbuffer::SCHEMA.get_u64(&entry.row, ringbuffer::NAMESPACE),
 						);
 
 						let name = ringbuffer::SCHEMA
-							.get_utf8(&entry.values, ringbuffer::NAME)
+							.get_utf8(&entry.row, ringbuffer::NAME)
 							.to_string();
 
 						let capacity =
-							ringbuffer::SCHEMA.get_u64(&entry.values, ringbuffer::CAPACITY);
+							ringbuffer::SCHEMA.get_u64(&entry.row, ringbuffer::CAPACITY);
 
-						ringbuffer_data.push((ringbuffer_id, namespace_id, name, capacity));
+						let partition_by_str = ringbuffer::SCHEMA
+							.get_utf8(&entry.row, ringbuffer::PARTITION_BY);
+						let partition_by = if partition_by_str.is_empty() {
+							vec![]
+						} else {
+							partition_by_str.split(',').map(|s| s.to_string()).collect()
+						};
+
+						ringbuffer_data.push((
+							ringbuffer_id,
+							namespace_id,
+							name,
+							capacity,
+							partition_by,
+						));
 					}
 				}
 			}
 		}
 
 		// Now fetch additional details for each ringbuffer
-		for (ringbuffer_id, namespace_id, name, capacity) in ringbuffer_data {
+		for (ringbuffer_id, namespace_id, name, capacity, partition_by) in ringbuffer_data {
 			let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
 			let columns = Self::list_columns(rx, ringbuffer_id)?;
 
-			let ringbuffer_def = RingBufferDef {
+			let ringbuffer = RingBuffer {
 				id: ringbuffer_id,
 				namespace: namespace_id,
 				name,
 				capacity,
 				columns,
 				primary_key,
+				partition_by,
 			};
 
-			result.push(ringbuffer_def);
+			result.push(ringbuffer);
 		}
 
 		Ok(result)
@@ -69,7 +83,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::fragment::Fragment;
 
@@ -100,6 +114,7 @@ pub mod tests {
 			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -109,6 +124,7 @@ pub mod tests {
 			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
@@ -133,6 +149,7 @@ pub mod tests {
 				local_name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
+				token: None,
 			},
 		)
 		.unwrap();
@@ -143,6 +160,7 @@ pub mod tests {
 			name: Fragment::internal("buffer1"),
 			capacity: 100,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -152,6 +170,7 @@ pub mod tests {
 			name: Fragment::internal("buffer2"),
 			capacity: 200,
 			columns: vec![],
+			partition_by: vec![],
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 

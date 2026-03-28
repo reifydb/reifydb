@@ -2,21 +2,21 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::migration::{MigrationDef, MigrationEvent},
+	interface::catalog::migration::{Migration, MigrationEvent},
 	key::{migration::MigrationKey, migration_event::MigrationEventKey},
 };
 use reifydb_transaction::transaction::Transaction;
 
-use super::{migration_def_from_row, migration_event_from_row};
+use super::{migration_event_from_row, migration_from_row};
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn list_migrations(txn: &mut Transaction<'_>) -> Result<Vec<MigrationDef>> {
+	pub(crate) fn list_migrations(txn: &mut Transaction<'_>) -> Result<Vec<Migration>> {
 		let range = MigrationKey::full_scan();
 		let mut results = Vec::new();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			results.push(migration_def_from_row(&entry.values));
+			results.push(migration_from_row(&entry.row));
 		}
 		Ok(results)
 	}
@@ -26,7 +26,7 @@ impl CatalogStore {
 		let mut results = Vec::new();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			results.push(migration_event_from_row(&entry.values));
+			results.push(migration_event_from_row(&entry.row));
 		}
 		Ok(results)
 	}

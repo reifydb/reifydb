@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
 # Check for internal pub use re-exports in the codebase
 #
 # This script checks ALL files (not just staged) for internal re-exports.
@@ -13,7 +15,11 @@ REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # Third-party crates that are OK to re-export (whitelist)
 ALLOWED=(
     "native::"
+    "stub::"
     "wasm::"
+    "wasi::"
+    "wasmtime;"
+    "wasmtime_wasi;"
 )
 
 echo "Checking for internal pub use re-exports in /crates/..."
@@ -25,7 +31,8 @@ crates_files=$(find "$REPO_ROOT/crates" -name "*.rs" \
     -not -path "*/test_utils/*" \
     -not -path "*/vendor/*" \
     -not -path "*/generated/*" \
-    -not -name "prelude.rs" 2>/dev/null || true)
+    -not -name "prelude.rs" \
+    -not -name "test_prelude.rs" 2>/dev/null || true)
 
 if [ -z "$crates_files" ]; then
     echo "No Rust files found in /crates/"

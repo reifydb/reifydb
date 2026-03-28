@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{evaluate::TargetColumn, resolved::ResolvedPrimitive},
+	interface::{evaluate::TargetColumn, resolved::ResolvedSchema},
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
@@ -20,7 +20,7 @@ use reifydb_type::{
 
 use crate::{
 	Result,
-	expression::{cast::cast_column_data, context::EvalContext, eval::evaluate},
+	expression::{cast::cast_column_data, context::EvalSession, eval::evaluate},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -39,7 +39,7 @@ impl InlineDataNode {
 			let mut layout = Self::create_columns_layout_from_source(source);
 			// For series, include extra columns from input (e.g., timestamp, tag)
 			// that aren't part of the schema but are needed by the insert executor.
-			if matches!(source, ResolvedPrimitive::Series(_)) {
+			if matches!(source, ResolvedSchema::Series(_)) {
 				let existing: HashSet<String> =
 					layout.columns.iter().map(|c| c.text().to_string()).collect();
 				for row in &rows {
@@ -62,7 +62,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn create_columns_layout_from_source(source: &ResolvedPrimitive) -> ColumnHeaders {
+	fn create_columns_layout_from_source(source: &ResolvedSchema) -> ColumnHeaders {
 		ColumnHeaders {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		}
@@ -111,7 +111,7 @@ impl InlineDataNode {
 							unreachable!()
 						};
 
-						let sumtype_def = if is_unresolved {
+						let sumtype = if is_unresolved {
 							// Resolve from column constraint in table schema
 							let tag_col_name = format!("{}_tag", col_name);
 							let source = ctx
@@ -130,8 +130,8 @@ impl InlineDataNode {
 									)
 								};
 								ctx.services.catalog.get_sumtype(txn, *id)?
-							} else if let ResolvedPrimitive::Series(series) = source {
-								// For series, the tag is stored as SeriesDef.tag, not
+							} else if let ResolvedSchema::Series(series) = source {
+								// For series, the tag is stored as Series.tag, not
 								// as a column
 								let tag_id =
 									series.def().tag.expect("series tag expected");
@@ -155,7 +155,7 @@ impl InlineDataNode {
 						};
 
 						let variant_name_lower = ctor.variant_name.text().to_lowercase();
-						let variant = sumtype_def
+						let variant = sumtype
 							.variants
 							.iter()
 							.find(|v| v.name == variant_name_lower)
@@ -204,13 +204,13 @@ impl InlineDataNode {
 								if let Some(Constraint::SumType(id)) =
 									tag_col.constraint.constraint()
 								{
-									let sumtype_def = ctx
+									let sumtype = ctx
 										.services
 										.catalog
 										.get_sumtype(txn, *id)?;
 									let variant_name_lower =
 										col.0.name.text().to_lowercase();
-									let maybe_tag = sumtype_def
+									let maybe_tag = sumtype
 										.variants
 										.iter()
 										.find(|v| {
@@ -219,23 +219,23 @@ impl InlineDataNode {
 										})
 										.map(|v| v.tag);
 									if let Some(tag) = maybe_tag {
-										Some((sumtype_def, tag))
+										Some((sumtype, tag))
 									} else {
 										None
 									}
 								} else {
 									None
 								}
-							} else if let ResolvedPrimitive::Series(series) = source {
-								// For series, the tag is stored as SeriesDef.tag
+							} else if let ResolvedSchema::Series(series) = source {
+								// For series, the tag is stored as Series.tag
 								if let Some(tag_id) = series.def().tag {
-									let sumtype_def = ctx
+									let sumtype = ctx
 										.services
 										.catalog
 										.get_sumtype(txn, tag_id)?;
 									let variant_name_lower =
 										col.0.name.text().to_lowercase();
-									let maybe_tag = sumtype_def
+									let maybe_tag = sumtype
 										.variants
 										.iter()
 										.find(|v| {
@@ -244,7 +244,7 @@ impl InlineDataNode {
 										})
 										.map(|v| v.tag);
 									if let Some(tag) = maybe_tag {
-										Some((sumtype_def, tag))
+										Some((sumtype, tag))
 									} else {
 										None
 									}
@@ -258,7 +258,7 @@ impl InlineDataNode {
 							None
 						};
 
-						if let Some((sumtype_def, tag)) = resolved {
+						if let Some((sumtype, tag)) = resolved {
 							let fragment = alias_expr.fragment.clone();
 							// Expand unit variant: tag column
 							expanded.push(AliasExpression {
@@ -277,7 +277,7 @@ impl InlineDataNode {
 							});
 							// None for all variant fields (INSERT fills missing columns
 							// with None)
-							for v in &sumtype_def.variants {
+							for v in &sumtype.variants {
 								for field in &v.fields {
 									let phys_col_name = format!(
 										"{}_{}_{}",
@@ -421,6 +421,8 @@ impl<'a> InlineDataNode {
 			rows_data.push(row_map);
 		}
 
+		let session = EvalSession::from_query(ctx);
+
 		// Create columns - start with wide types
 		let mut columns = Vec::new();
 
@@ -435,26 +437,9 @@ impl<'a> InlineDataNode {
 					if column_fragment.is_none() {
 						column_fragment = Some(alias_expr.fragment.clone());
 					}
-					let ctx = EvalContext {
-						target: None,
-						columns: Columns::empty(),
-						row_count: 1,
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let eval_ctx = session.eval_empty();
 
-					let evaluated = evaluate(
-						&ctx,
-						&alias_expr.expression,
-						&self.context.as_ref().unwrap().services.functions,
-						&self.context.as_ref().unwrap().services.clock,
-					)?;
+					let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
 
 					// Take the first value from the
 					// evaluated result
@@ -507,22 +492,10 @@ impl<'a> InlineDataNode {
 					} else {
 						// Cast to the wide type
 						let temp_data = ColumnData::from(value.clone());
-						let ctx = EvalContext {
-							target: None,
-							columns: Columns::empty(),
-							row_count: 1,
-							take: None,
-							params: &ctx.params,
-							symbol_table: &ctx.stack,
-							is_aggregate_context: false,
-							functions: &self.context.as_ref().unwrap().services.functions,
-							clock: &self.context.as_ref().unwrap().services.clock,
-							arena: None,
-							identity: self.context.as_ref().unwrap().identity,
-						};
+						let eval_ctx = session.eval_empty();
 
 						match cast_column_data(
-							&ctx,
+							&eval_ctx,
 							&temp_data,
 							wide_type.clone().unwrap(),
 							|| Fragment::none(),
@@ -550,23 +523,12 @@ impl<'a> InlineDataNode {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
 					// Demote to the optimal type
-					let ctx = EvalContext {
-						target: None,
-						columns: Columns::empty(),
-						row_count: column_data.len(),
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let eval_ctx = session.eval(Columns::empty(), column_data.len());
 
 					if let Ok(demoted) =
-						cast_column_data(&ctx, &column_data, optimal_type, || Fragment::none())
-					{
+						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
+							Fragment::none()
+						}) {
 						column_data = demoted;
 					}
 				}
@@ -589,6 +551,7 @@ impl<'a> InlineDataNode {
 	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
 		let source = ctx.source.as_ref().unwrap(); // Safe because headers is Some
 		let headers = self.headers.as_ref().unwrap(); // Safe because we're in this path
+		let session = EvalSession::from_query(ctx);
 
 		// Convert rows to HashMap for easier column lookup
 		let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
@@ -622,35 +585,19 @@ impl<'a> InlineDataNode {
 					if column_fragment.is_none() {
 						column_fragment = Some(alias_expr.fragment.clone());
 					}
-					let eval_ctx = EvalContext {
-						target: table_column.map(|tc| TargetColumn::Partial {
-							source_name: Some(source.identifier().text().to_string()),
-							column_name: Some(tc.name.clone()),
-							column_type: tc.constraint.get_type(),
-							properties: tc
-								.properties
-								.iter()
-								.map(|cp| cp.property.clone())
-								.collect(),
-						}),
-						columns: Columns::empty(),
-						row_count: 1,
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let mut eval_ctx = session.eval_empty();
+					eval_ctx.target = table_column.map(|tc| TargetColumn::Partial {
+						source_name: Some(source.identifier().text().to_string()),
+						column_name: Some(tc.name.clone()),
+						column_type: tc.constraint.get_type(),
+						properties: tc
+							.properties
+							.iter()
+							.map(|cp| cp.property.clone())
+							.collect(),
+					});
 
-					let evaluated = evaluate(
-						&eval_ctx,
-						&alias_expr.expression,
-						&self.context.as_ref().unwrap().services.functions,
-						&self.context.as_ref().unwrap().services.clock,
-					)?;
+					let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
 
 					// Ensure we always add exactly one
 					// value
@@ -707,19 +654,7 @@ impl<'a> InlineDataNode {
 			if table_column.is_none() {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
-					let eval_ctx = EvalContext {
-						target: None,
-						columns: Columns::empty(),
-						row_count: column_data.len(),
-						take: None,
-						params: &ctx.params,
-						symbol_table: &ctx.stack,
-						is_aggregate_context: false,
-						functions: &self.context.as_ref().unwrap().services.functions,
-						clock: &self.context.as_ref().unwrap().services.clock,
-						arena: None,
-						identity: self.context.as_ref().unwrap().identity,
-					};
+					let eval_ctx = session.eval(Columns::empty(), column_data.len());
 					if let Ok(demoted) =
 						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
 							Fragment::none()

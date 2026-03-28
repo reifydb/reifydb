@@ -8,31 +8,35 @@ use reifydb_catalog::{
 	vtable::{
 		VTableContext,
 		system::{
-			cdc_consumers::CdcConsumers, column_properties::ColumnProperties, columns::ColumnsTable,
-			configs::Configs, dictionaries::Dictionaries, dictionary_storage_stats::DictionaryStorageStats,
-			enum_variants::EnumVariants, enums::Enums, event_variants::EventVariants, events::Events,
-			flow_edges::FlowEdges, flow_lags::FlowLags, flow_node_storage_stats::FlowNodeStorageStats,
-			flow_node_types::FlowNodeTypes, flow_nodes::FlowNodes,
-			flow_operator_inputs::FlowOperatorInputs, flow_operator_outputs::FlowOperatorOutputs,
-			flow_operators::FlowOperators, flow_storage_stats::FlowStorageStats, flows::Flows,
-			handlers::Handlers, index_storage_stats::IndexStorageStats, migrations::Migrations,
-			namespaces::Namespaces, operator_retention_policies::OperatorRetentionPolicies,
-			policies::Policies, policy_operations::PolicyOperations,
-			primary_key_columns::PrimaryKeyColumns, primary_keys::PrimaryKeys,
-			primitive_retention_policies::PrimitiveRetentionPolicies, procedures::Procedures,
-			ringbuffer_storage_stats::RingBufferStorageStats, ringbuffers::RingBuffers, roles::Roles,
-			schema_fields::SchemaFields, schemas::Schemas, sequences::Sequences, series::Series,
-			table_storage_stats::TableStorageStats, tables::Tables, tables_virtual::TablesVirtual,
-			tag_variants::TagVariants, tags::Tags, types::Types, user_roles::UserRoles, users::Users,
-			versions::Versions, view_storage_stats::ViewStorageStats, views::Views,
-			virtual_table_columns::VirtualTableColumns,
+			cdc_consumers::SystemCdcConsumers, column_properties::SystemColumnProperties,
+			columns::SystemColumnsTable, configs::SystemConfigs, dictionaries::SystemDictionaries,
+			dictionary_storage_stats::SystemDictionaryStorageStats, enum_variants::SystemEnumVariants,
+			enums::SystemEnums, event_variants::SystemEventVariants, events::SystemEvents,
+			flow_edges::SystemFlowEdges, flow_lags::SystemFlowLags,
+			flow_node_storage_stats::SystemFlowNodeStorageStats, flow_node_types::SystemFlowNodeTypes,
+			flow_nodes::SystemFlowNodes, flow_operator_inputs::SystemFlowOperatorInputs,
+			flow_operator_outputs::SystemFlowOperatorOutputs, flow_operators::SystemFlowOperators,
+			flow_storage_stats::SystemFlowStorageStats, flows::SystemFlows,
+			granted_roles::SystemGrantedRoles, handlers::SystemHandlers, identities::SystemIdentities,
+			index_storage_stats::SystemIndexStorageStats, migrations::SystemMigrations,
+			namespaces::SystemNamespaces, operator_retention_policies::SystemOperatorRetentionPolicies,
+			policies::SystemPolicies, policy_operations::SystemPolicyOperations,
+			primary_key_columns::SystemPrimaryKeyColumns, primary_keys::SystemPrimaryKeys,
+			procedures::SystemProcedures, ringbuffer_storage_stats::SystemRingBufferStorageStats,
+			ringbuffers::SystemRingBuffers, roles::SystemRoles, schema_fields::SystemSchemaFields,
+			schema_retention_policies::SystemSchemaRetentionPolicies, schemas::SystemSchemas,
+			sequences::SystemSequences, series::SystemSeries, table_storage_stats::SystemTableStorageStats,
+			tables::SystemTables, tables_virtual::SystemTablesVirtual, tag_variants::SystemTagVariants,
+			tags::SystemTags, types::SystemTypes, versions::SystemVersions,
+			view_storage_stats::SystemViewStorageStats, views::SystemViews,
+			virtual_table_columns::SystemVirtualTableColumns,
 		},
 		tables::VTables,
 	},
 };
 use reifydb_core::interface::{
 	catalog::id::{IndexId, NamespaceId},
-	resolved::ResolvedPrimitive,
+	resolved::ResolvedSchema,
 };
 use reifydb_rql::{
 	expression::{AliasExpression, ConstantExpression, Expression, IdentExpression},
@@ -51,10 +55,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, value::constraint::Constraint};
 use tracing::instrument;
 
-use super::{
-	apply_transform::ApplyTransformNode, call_function::CallFunctionQueryNode, filter::resolve_is_variant_tags,
-	run_tests::RunTestsQueryNode,
-};
+use super::{apply_transform::ApplyTransformNode, filter::resolve_is_variant_tags, run_tests::RunTestsQueryNode};
 use crate::vm::{
 	stack::Variable,
 	volcano::{
@@ -92,7 +93,7 @@ use crate::vm::{
 fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	match plan {
 		RqlQueryPlan::TableScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
-		RqlQueryPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
+		RqlQueryPlan::ViewScan(node) => Some(Fragment::internal(node.source.def().name().to_string())),
 		RqlQueryPlan::RingBufferScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::DictionaryScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
 		RqlQueryPlan::SeriesScan(node) => Some(Fragment::internal(node.source.def().name.clone())),
@@ -106,13 +107,13 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	}
 }
 
-pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPrimitive> {
+pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedSchema> {
 	match plan {
-		RqlQueryPlan::TableScan(node) => Some(ResolvedPrimitive::Table(node.source.clone())),
-		RqlQueryPlan::ViewScan(node) => Some(ResolvedPrimitive::View(node.source.clone())),
-		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedPrimitive::RingBuffer(node.source.clone())),
-		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedPrimitive::Dictionary(node.source.clone())),
-		RqlQueryPlan::SeriesScan(node) => Some(ResolvedPrimitive::Series(node.source.clone())),
+		RqlQueryPlan::TableScan(node) => Some(ResolvedSchema::Table(node.source.clone())),
+		RqlQueryPlan::ViewScan(node) => Some(ResolvedSchema::View(node.source.clone())),
+		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedSchema::RingBuffer(node.source.clone())),
+		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedSchema::Dictionary(node.source.clone())),
+		RqlQueryPlan::SeriesScan(node) => Some(ResolvedSchema::Series(node.source.clone())),
 		RqlQueryPlan::RemoteScan(_) => None,
 		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
@@ -128,7 +129,7 @@ pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedPri
 /// only replaces columns that appear in the assignments.
 fn expand_patch_sumtype_assignments(
 	assignments: Vec<Expression>,
-	source: &ResolvedPrimitive,
+	source: &ResolvedSchema,
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 ) -> Vec<Expression> {
@@ -153,7 +154,7 @@ fn expand_patch_sumtype_assignments(
 			}
 		});
 
-		let Some((sumtype_def, _)) = sumtype_info else {
+		let Some((sumtype, _)) = sumtype_info else {
 			expanded.push(expr);
 			continue;
 		};
@@ -163,7 +164,7 @@ fn expand_patch_sumtype_assignments(
 		match alias_expr.expression.as_ref() {
 			Expression::SumTypeConstructor(ctor) => {
 				let variant_name_lower = ctor.variant_name.text().to_lowercase();
-				let variant = sumtype_def
+				let variant = sumtype
 					.variants
 					.iter()
 					.find(|v| v.name.to_lowercase() == variant_name_lower)
@@ -186,7 +187,7 @@ fn expand_patch_sumtype_assignments(
 					.collect();
 
 				// All variant fields: active variant gets values, others get None
-				for v in &sumtype_def.variants {
+				for v in &sumtype.variants {
 					for field in &v.fields {
 						let phys_col_name = format!(
 							"{}_{}_{}",
@@ -218,10 +219,8 @@ fn expand_patch_sumtype_assignments(
 			Expression::Column(col) => {
 				// Check if bare identifier matches a unit variant
 				let variant_name_lower = col.0.name.text().to_lowercase();
-				if let Some(variant) = sumtype_def
-					.variants
-					.iter()
-					.find(|v| v.name.to_lowercase() == variant_name_lower)
+				if let Some(variant) =
+					sumtype.variants.iter().find(|v| v.name.to_lowercase() == variant_name_lower)
 				{
 					// Tag column
 					expanded.push(Expression::Alias(AliasExpression {
@@ -235,7 +234,7 @@ fn expand_patch_sumtype_assignments(
 					}));
 
 					// All variant fields set to None
-					for v in &sumtype_def.variants {
+					for v in &sumtype.variants {
 						for field in &v.fields {
 							let phys_col_name = format!(
 								"{}_{}_{}",
@@ -326,7 +325,7 @@ pub(crate) fn compile<'a>(
 			let limit = match take {
 				TakeLimit::Literal(n) => n,
 				TakeLimit::Variable(ref name) => context
-					.stack
+					.symbols
 					.get(name)
 					.and_then(|var| match var {
 						Variable::Scalar(cols) | Variable::Columns(cols) => {
@@ -509,8 +508,8 @@ pub(crate) fn compile<'a>(
 		RqlQueryPlan::SeriesScan(node) => Box::new(
 			VolcanoSeriesScanNode::new(
 				node.source.clone(),
-				node.time_range_start,
-				node.time_range_end,
+				node.key_range_start,
+				node.key_range_end,
 				node.variant_tag,
 				context,
 			)
@@ -531,89 +530,105 @@ pub(crate) fn compile<'a>(
 			} else if namespace.id() == NamespaceId::SYSTEM {
 				// Built-in system virtual tables
 				match table.name.as_str() {
-					"sequences" => VTables::Sequences(Sequences::new()),
-					"namespaces" => VTables::Namespaces(Namespaces::new()),
-					"tables" => VTables::Tables(Tables::new()),
-					"views" => VTables::Views(Views::new()),
-					"flows" => VTables::Flows(Flows::new()),
-					"flow_lags" => VTables::FlowLags(FlowLags::new(context.services.ioc.clone())),
-					"flow_nodes" => VTables::FlowNodes(FlowNodes::new()),
-					"flow_edges" => VTables::FlowEdges(FlowEdges::new()),
-					"columns" => VTables::Columns(ColumnsTable::new()),
-					"primary_keys" => VTables::PrimaryKeys(PrimaryKeys::new()),
-					"primary_key_columns" => VTables::PrimaryKeyColumns(PrimaryKeyColumns::new()),
-					"column_properties" => VTables::ColumnProperties(ColumnProperties::new()),
-					"versions" => VTables::Versions(Versions::new(context.services.ioc.clone())),
-					"primitive_retention_policies" => {
-						VTables::PrimitiveRetentionPolicies(PrimitiveRetentionPolicies::new())
+					"sequences" => VTables::Sequences(SystemSequences::new()),
+					"namespaces" => VTables::Namespaces(SystemNamespaces::new()),
+					"tables" => VTables::Tables(SystemTables::new()),
+					"views" => VTables::Views(SystemViews::new()),
+					"flows" => VTables::Flows(SystemFlows::new()),
+					"flow_lags" => {
+						VTables::FlowLags(SystemFlowLags::new(context.services.ioc.clone()))
 					}
-					"operator_retention_policies" => {
-						VTables::OperatorRetentionPolicies(OperatorRetentionPolicies::new())
+					"flow_nodes" => VTables::FlowNodes(SystemFlowNodes::new()),
+					"flow_edges" => VTables::FlowEdges(SystemFlowEdges::new()),
+					"columns" => VTables::Columns(SystemColumnsTable::new()),
+					"primary_keys" => VTables::PrimaryKeys(SystemPrimaryKeys::new()),
+					"primary_key_columns" => {
+						VTables::PrimaryKeyColumns(SystemPrimaryKeyColumns::new())
 					}
-					"cdc_consumers" => VTables::CdcConsumers(CdcConsumers::new()),
-					"flow_operators" => VTables::FlowOperators(FlowOperators::new(
+					"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
+					"versions" => {
+						VTables::Versions(SystemVersions::new(context.services.ioc.clone()))
+					}
+					"schema_retention_policies" => {
+						VTables::SchemaRetentionPolicies(SystemSchemaRetentionPolicies::new())
+					}
+					"operator_retention_policies" => VTables::OperatorRetentionPolicies(
+						SystemOperatorRetentionPolicies::new(),
+					),
+					"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
+					"flow_operators" => VTables::FlowOperators(SystemFlowOperators::new(
 						context.services.flow_operator_store.clone(),
 					)),
-					"dictionaries" => VTables::Dictionaries(Dictionaries::new()),
-					"virtual_tables" => VTables::TablesVirtual(TablesVirtual::new(
+					"dictionaries" => VTables::Dictionaries(SystemDictionaries::new()),
+					"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(
 						context.services.catalog.clone(),
 					)),
-					"types" => VTables::Types(Types::new()),
-					"flow_node_types" => VTables::FlowNodeTypes(FlowNodeTypes::new()),
-					"flow_operator_inputs" => VTables::FlowOperatorInputs(FlowOperatorInputs::new(
-						context.services.flow_operator_store.clone(),
-					)),
-					"flow_operator_outputs" => VTables::FlowOperatorOutputs(
-						FlowOperatorOutputs::new(context.services.flow_operator_store.clone()),
+					"types" => VTables::Types(SystemTypes::new()),
+					"flow_node_types" => VTables::FlowNodeTypes(SystemFlowNodeTypes::new()),
+					"flow_operator_inputs" => {
+						VTables::FlowOperatorInputs(SystemFlowOperatorInputs::new(
+							context.services.flow_operator_store.clone(),
+						))
+					}
+					"flow_operator_outputs" => {
+						VTables::FlowOperatorOutputs(SystemFlowOperatorOutputs::new(
+							context.services.flow_operator_store.clone(),
+						))
+					}
+					"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
+					"table_storage_stats" => VTables::TableStorageStats(
+						SystemTableStorageStats::new(context.services.stats_reader.clone()),
 					),
-					"ringbuffers" => VTables::RingBuffers(RingBuffers::new()),
-					"table_storage_stats" => VTables::TableStorageStats(TableStorageStats::new(
+					"view_storage_stats" => VTables::ViewStorageStats(SystemViewStorageStats::new(
 						context.services.stats_reader.clone(),
 					)),
-					"view_storage_stats" => VTables::ViewStorageStats(ViewStorageStats::new(
-						context.services.stats_reader.clone(),
-					)),
-					"flow_storage_stats" => VTables::FlowStorageStats(FlowStorageStats::new(
+					"flow_storage_stats" => VTables::FlowStorageStats(SystemFlowStorageStats::new(
 						context.services.stats_reader.clone(),
 					)),
 					"flow_node_storage_stats" => VTables::FlowNodeStorageStats(
-						FlowNodeStorageStats::new(context.services.stats_reader.clone()),
+						SystemFlowNodeStorageStats::new(context.services.stats_reader.clone()),
 					),
-					"index_storage_stats" => VTables::IndexStorageStats(IndexStorageStats::new(
-						context.services.stats_reader.clone(),
-					)),
-					"ringbuffer_storage_stats" => VTables::RingBufferStorageStats(
-						RingBufferStorageStats::new(context.services.stats_reader.clone()),
+					"index_storage_stats" => VTables::IndexStorageStats(
+						SystemIndexStorageStats::new(context.services.stats_reader.clone()),
 					),
-					"dictionary_storage_stats" => VTables::DictionaryStorageStats(
-						DictionaryStorageStats::new(context.services.stats_reader.clone()),
-					),
-					"schemas" => VTables::Schemas(Schemas::new(context.services.catalog.clone())),
-					"schema_fields" => VTables::SchemaFields(SchemaFields::new(
+					"ringbuffer_storage_stats" => {
+						VTables::RingBufferStorageStats(SystemRingBufferStorageStats::new(
+							context.services.stats_reader.clone(),
+						))
+					}
+					"dictionary_storage_stats" => {
+						VTables::DictionaryStorageStats(SystemDictionaryStorageStats::new(
+							context.services.stats_reader.clone(),
+						))
+					}
+					"schemas" => {
+						VTables::Schemas(SystemSchemas::new(context.services.catalog.clone()))
+					}
+					"schema_fields" => VTables::SchemaFields(SystemSchemaFields::new(
 						context.services.catalog.clone(),
 					)),
-					"enums" => VTables::Enums(Enums::new()),
-					"enum_variants" => VTables::EnumVariants(EnumVariants::new()),
-					"events" => VTables::Events(Events::new()),
-					"event_variants" => VTables::EventVariants(EventVariants::new()),
-					"procedures" => {
-						VTables::Procedures(Procedures::new(context.services.catalog.clone()))
-					}
+					"enums" => VTables::Enums(SystemEnums::new()),
+					"enum_variants" => VTables::EnumVariants(SystemEnumVariants::new()),
+					"events" => VTables::Events(SystemEvents::new()),
+					"event_variants" => VTables::EventVariants(SystemEventVariants::new()),
+					"procedures" => VTables::Procedures(SystemProcedures::new(
+						context.services.catalog.clone(),
+					)),
 					"handlers" => {
-						VTables::Handlers(Handlers::new(context.services.catalog.clone()))
+						VTables::Handlers(SystemHandlers::new(context.services.catalog.clone()))
 					}
-					"tags" => VTables::Tags(Tags::new()),
-					"tag_variants" => VTables::TagVariants(TagVariants::new()),
-					"series" => VTables::Series(Series::new()),
-					"users" => VTables::Users(Users::new()),
-					"roles" => VTables::Roles(Roles::new()),
-					"user_roles" => VTables::UserRoles(UserRoles::new()),
-					"policies" => VTables::Policies(Policies::new()),
-					"policy_operations" => VTables::PolicyOperations(PolicyOperations::new()),
-					"migrations" => VTables::Migrations(Migrations::new()),
-					"configs" => VTables::Configs(Configs::new(context.services.ioc.clone())),
+					"tags" => VTables::Tags(SystemTags::new()),
+					"tag_variants" => VTables::TagVariants(SystemTagVariants::new()),
+					"series" => VTables::Series(SystemSeries::new()),
+					"identities" => VTables::Identities(SystemIdentities::new()),
+					"roles" => VTables::Roles(SystemRoles::new()),
+					"granted_roles" => VTables::GrantedRoles(SystemGrantedRoles::new()),
+					"policies" => VTables::Policies(SystemPolicies::new()),
+					"policy_operations" => VTables::PolicyOperations(SystemPolicyOperations::new()),
+					"migrations" => VTables::Migrations(SystemMigrations::new()),
+					"configs" => VTables::Configs(SystemConfigs::new(context.services.ioc.clone())),
 					"virtual_table_columns" => VTables::VirtualTableColumns(
-						VirtualTableColumns::new(context.services.catalog.clone()),
+						SystemVirtualTableColumns::new(context.services.catalog.clone()),
 					),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
@@ -636,7 +651,7 @@ pub(crate) fn compile<'a>(
 		}
 
 		RqlQueryPlan::RemoteScan(node) => {
-			Box::new(RemoteFetchNode::new(node.address, node.remote_rql, node.variables))
+			Box::new(RemoteFetchNode::new(node.address, node.token, node.remote_rql, node.variables))
 		}
 
 		RqlQueryPlan::Variable(var_node) => Box::new(VariableNode::new(var_node.variable_expr)),
@@ -678,16 +693,14 @@ pub(crate) fn compile<'a>(
 
 		RqlQueryPlan::RunTests(node) => Box::new(RunTestsQueryNode::new(node, context.clone())),
 
-		RqlQueryPlan::CallFunction(node) => {
-			Box::new(CallFunctionQueryNode::new(node.name, node.arguments, context.clone()))
-		}
+		RqlQueryPlan::CallFunction(node) => Box::new(GeneratorNode::new(node.name, node.arguments)),
 
 		// Row-number optimized access nodes
 		RqlQueryPlan::RowPointLookup(RqlRowPointLookupNode {
 			source,
 			row_number,
 		}) => {
-			let resolved_source = ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedSchema::from(source);
 			Box::new(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
@@ -697,7 +710,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_numbers,
 		}) => {
-			let resolved_source = ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedSchema::from(source);
 			Box::new(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
@@ -708,7 +721,7 @@ pub(crate) fn compile<'a>(
 			start,
 			end,
 		}) => {
-			let resolved_source = ResolvedPrimitive::from(source);
+			let resolved_source = ResolvedSchema::from(source);
 			Box::new(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),

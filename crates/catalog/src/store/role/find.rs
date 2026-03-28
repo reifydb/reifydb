@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::user::{RoleDef, RoleId},
+	interface::catalog::identity::{Role, RoleId},
 	key::role::RoleKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,16 +14,16 @@ use crate::{
 
 impl CatalogStore {
 	#[allow(dead_code)]
-	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<RoleDef>> {
+	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<Role>> {
 		Ok(rx.get(&RoleKey::encoded(id))?.map(convert_role))
 	}
 
-	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<RoleDef>> {
+	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
 		let mut stream = rx.range(RoleKey::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let role_name = role::SCHEMA.get_utf8(&multi.values, role::NAME);
+			let role_name = role::SCHEMA.get_utf8(&multi.row, role::NAME);
 			if name == role_name {
 				return Ok(Some(convert_role(multi)));
 			}
@@ -35,7 +35,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::CatalogStore;

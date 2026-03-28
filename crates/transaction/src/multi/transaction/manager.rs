@@ -14,7 +14,7 @@ use core::mem;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 };
 use reifydb_type::util::hex;
 use tracing::instrument;
@@ -194,17 +194,17 @@ where
 	L: VersionProvider,
 {
 	/// Set a key-value pair to the transaction.
-	#[instrument(name = "transaction::command::set", level = "debug", skip(self, values), fields(
+	#[instrument(name = "transaction::command::set", level = "debug", skip(self, row), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref()),
-		value_len = values.as_ref().len()
+		value_len = row.as_ref().len()
 	))]
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		if self.discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 
-		self.set_internal(key, values)
+		self.set_internal(key, row)
 	}
 
 	/// Removes a key.
@@ -213,20 +213,20 @@ where
 	/// timestamp.  Any reads happening before this timestamp would be
 	/// unaffected. Any reads after this commit would see the deletion.
 	///
-	/// The `values` parameter contains the deleted values for CDC and metrics.
-	#[instrument(name = "transaction::command::unset", level = "debug", skip(self, values), fields(
+	/// The `row` parameter contains the deleted row for CDC and metrics.
+	#[instrument(name = "transaction::command::unset", level = "debug", skip(self, row), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref()),
-		value_len = values.len()
+		value_len = row.len()
 	))]
-	pub fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	pub fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		if self.discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(Pending {
 			delta: Delta::Unset {
 				key: key.clone(),
-				values,
+				row,
 			},
 			version: self.base_version(),
 		})
@@ -302,10 +302,10 @@ where
 
 		if let Some(v) = self.pending_writes.get(key) {
 			Ok(Some(Pending {
-				delta: match v.values() {
-					Some(values) => Delta::Set {
+				delta: match v.row() {
+					Some(row) => Delta::Set {
 						key: key.clone(),
-						values: values.clone(),
+						row: row.clone(),
 					},
 					None => Delta::Remove {
 						key: key.clone(),
@@ -324,11 +324,11 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(name = "transaction::command::set_internal", level = "trace", skip(self, values), fields(
+	#[instrument(name = "transaction::command::set_internal", level = "trace", skip(self, row), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref())
 	))]
-	fn set_internal(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	fn set_internal(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		if self.discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -336,7 +336,7 @@ where
 		self.modify(Pending {
 			delta: Delta::Set {
 				key: key.clone(),
-				values,
+				row,
 			},
 			version: self.base_version(),
 		})
@@ -372,16 +372,16 @@ where
 		// versions. For same versions, we will overwrite the existing
 		// entry.
 		let key = pending.key();
-		let values = pending.values();
+		let row = pending.row();
 		let version = pending.version;
 
 		if let Some((old_key, old_value)) = pending_writes.remove_entry(key) {
 			if old_value.version != version {
 				self.duplicates.push(Pending {
-					delta: match values {
-						Some(values) => Delta::Set {
+					delta: match row {
+						Some(row) => Delta::Set {
 							key: old_key,
-							values: values.clone(),
+							row: row.clone(),
 						},
 						None => Delta::Remove {
 							key: old_key,

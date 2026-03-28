@@ -17,6 +17,7 @@ pub mod variable;
 use std::{
 	fmt,
 	fmt::{Display, Formatter},
+	time::Duration,
 };
 
 use query::window::WindowNode;
@@ -27,8 +28,8 @@ use reifydb_catalog::catalog::{
 use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
-		catalog::{property::ColumnPropertyKind, series::TimestampPrecision},
-		resolved::{ResolvedColumn, ResolvedIndex, ResolvedPrimitive},
+		catalog::{property::ColumnPropertyKind, series::SeriesKey},
+		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSchema},
 	},
 	sort::{SortDirection, SortKey},
 };
@@ -40,18 +41,18 @@ use crate::{
 	Result,
 	ast::{
 		ast::{
-			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstInfix, AstPolicyOperationEntry,
-			AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests, AstStatement, AstType,
-			AstVariantDef, InfixOperator,
+			Ast, AstAlterPolicyAction, AstAuthenticationEntry, AstConfigPair, AstInfix,
+			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam, AstRunTests,
+			AstStatement, AstType, AstVariant, AstViewStorageKind, InfixOperator,
 		},
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedIndexIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedIdentifier, MaybeQualifiedIndexIdentifier,
 			MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
 			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
-			MaybeQualifiedViewIdentifier,
+			MaybeQualifiedSeriesIdentifier, MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier,
+			MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier,
 		},
 	},
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
@@ -403,6 +404,8 @@ pub enum LogicalPlan<'bump> {
 	CreateSeries(CreateSeriesNode<'bump>),
 	CreateEvent(CreateEventNode<'bump>),
 	CreateTag(CreateTagNode<'bump>),
+	CreateSource(CreateSourceNode<'bump>),
+	CreateSink(CreateSinkNode<'bump>),
 
 	CreateMigration(CreateMigrationNode),
 	Migrate(MigrateNode),
@@ -417,6 +420,8 @@ pub enum LogicalPlan<'bump> {
 	DropSumType(DropSumTypeNode<'bump>),
 	DropSubscription(DropSubscriptionNode<'bump>),
 	DropSeries(DropSeriesNode<'bump>),
+	DropSource(DropSourceNode<'bump>),
+	DropSink(DropSinkNode<'bump>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'bump>),
 	AlterTable(AlterTableNode<'bump>),
@@ -460,7 +465,7 @@ pub enum LogicalPlan<'bump> {
 	Patch(PatchNode),
 	Apply(ApplyNode<'bump>),
 	InlineData(InlineDataNode),
-	PrimitiveScan(PrimitiveScanNode),
+	PrimitiveScan(SchemaScanNode),
 	RemoteScan(RemoteScanNode),
 	Window(WindowNode),
 	Generator(GeneratorNode<'bump>),
@@ -477,11 +482,11 @@ pub enum LogicalPlan<'bump> {
 	// Closures
 	DefineClosure(DefineClosureNode<'bump>),
 	// Auth/Permissions
-	CreateUser(CreateUserNode<'bump>),
+	CreateIdentity(CreateIdentityNode<'bump>),
 	CreateRole(CreateRoleNode<'bump>),
 	Grant(GrantNode<'bump>),
 	Revoke(RevokeNode<'bump>),
-	DropUser(DropUserNode<'bump>),
+	DropIdentity(DropIdentityNode<'bump>),
 	DropRole(DropRoleNode<'bump>),
 	CreateAuthentication(CreateAuthenticationNode<'bump>),
 	DropAuthentication(DropAuthenticationNode<'bump>),
@@ -578,7 +583,7 @@ pub struct ForNode<'bump> {
 }
 
 #[derive(Debug, Clone)]
-pub struct PrimaryKeyDef<'bump> {
+pub struct PrimaryKey<'bump> {
 	pub columns: Vec<PrimaryKeyColumn<'bump>>,
 }
 
@@ -594,6 +599,8 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -602,6 +609,8 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -615,6 +624,7 @@ pub struct CreateRemoteNamespaceNode<'bump> {
 	pub segments: Vec<BumpFragment<'bump>>,
 	pub if_not_exists: bool,
 	pub grpc: BumpFragment<'bump>,
+	pub token: Option<BumpFragment<'bump>>,
 }
 
 #[derive(Debug)]
@@ -642,6 +652,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -656,7 +667,7 @@ pub struct CreateDictionaryNode<'bump> {
 pub struct CreateSumTypeNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
 	pub if_not_exists: bool,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 #[derive(Debug)]
@@ -691,60 +702,70 @@ pub struct IndexColumn<'bump> {
 pub struct DeleteTableNode<'bump> {
 	pub target: Option<MaybeQualifiedTableIdentifier<'bump>>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertTableNode<'bump> {
 	pub target: MaybeQualifiedTableIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertDictionaryNode<'bump> {
 	pub target: MaybeQualifiedDictionaryIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertSeriesNode<'bump> {
 	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub source: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteSeriesNode<'bump> {
 	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateTableNode<'bump> {
 	pub target: Option<MaybeQualifiedTableIdentifier<'bump>>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateRingBufferNode<'bump> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateSeriesNode<'bump> {
 	pub target: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub input: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
@@ -852,8 +873,8 @@ pub struct InlineDataNode {
 }
 
 #[derive(Debug)]
-pub struct PrimitiveScanNode {
-	pub source: ResolvedPrimitive,
+pub struct SchemaScanNode {
+	pub source: ResolvedSchema,
 	pub columns: Option<Vec<ResolvedColumn>>,
 	pub index: Option<ResolvedIndex>,
 }
@@ -861,6 +882,7 @@ pub struct PrimitiveScanNode {
 #[derive(Debug)]
 pub struct RemoteScanNode {
 	pub address: String,
+	pub token: Option<String>,
 	pub local_namespace: String,
 	pub remote_name: String,
 }
@@ -941,8 +963,6 @@ pub enum RunTestsNode<'bump> {
 	Single(MaybeQualifiedTestIdentifier<'bump>),
 }
 
-// === Drop nodes ===
-
 #[derive(Debug)]
 pub struct DropNamespaceNode<'bump> {
 	pub segments: Vec<BumpFragment<'bump>>,
@@ -992,10 +1012,8 @@ pub struct DropSubscriptionNode<'bump> {
 	pub cascade: bool,
 }
 
-// === Auth/Permissions logical plan nodes ===
-
 #[derive(Debug)]
-pub struct CreateUserNode<'bump> {
+pub struct CreateIdentityNode<'bump> {
 	pub name: BumpFragment<'bump>,
 }
 
@@ -1017,7 +1035,7 @@ pub struct RevokeNode<'bump> {
 }
 
 #[derive(Debug)]
-pub struct DropUserNode<'bump> {
+pub struct DropIdentityNode<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
 }
@@ -1075,19 +1093,49 @@ pub struct CreateSeriesNode<'bump> {
 	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
-	pub precision: TimestampPrecision,
+	pub key: SeriesKey,
 }
 
 #[derive(Debug)]
 pub struct CreateEventNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 #[derive(Debug)]
 pub struct CreateTagNode<'bump> {
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct CreateSourceNode<'bump> {
+	pub name: MaybeQualifiedSourceIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+	pub target: MaybeQualifiedIdentifier<'bump>,
+}
+
+#[derive(Debug)]
+pub struct CreateSinkNode<'bump> {
+	pub name: MaybeQualifiedSinkIdentifier<'bump>,
+	pub source: MaybeQualifiedIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct DropSourceNode<'bump> {
+	pub source: MaybeQualifiedSourceIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct DropSinkNode<'bump> {
+	pub sink: MaybeQualifiedSinkIdentifier<'bump>,
+	pub if_exists: bool,
+	pub cascade: bool,
 }
 
 #[derive(Debug)]

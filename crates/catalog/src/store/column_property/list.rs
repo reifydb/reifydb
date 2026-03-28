@@ -22,7 +22,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = multi.values;
+			let row = multi.row;
 			let id = ColumnPropertyId(column_property::SCHEMA.get_u64(&row, column_property::ID));
 			let column = ColumnId(column_property::SCHEMA.get_u64(&row, column_property::COLUMN));
 
@@ -64,7 +64,7 @@ pub mod tests {
 		id::{ColumnId, TableId},
 		property::{ColumnPropertyKind, ColumnSaturationPolicy},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -81,7 +81,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],

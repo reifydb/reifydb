@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
+
 # =============================================================================
 # TypeScript Package Testing
 # =============================================================================
@@ -31,6 +34,7 @@ start-testcontainer:
 	@docker run -d \
 		--name reifydb-test \
 		-p 8090:8090 \
+		-p 8091:8091 \
 		reifydb/testcontainer
 
 # Alias for backward compatibility

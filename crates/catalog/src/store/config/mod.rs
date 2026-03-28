@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::store::MultiVersionValues,
+	interface::store::MultiVersionRow,
 	key::{EncodableKey, config::ConfigKey},
 };
 use reifydb_type::value::Value;
@@ -13,10 +13,10 @@ pub mod get;
 pub mod schema;
 pub mod set;
 
-pub(crate) fn convert_config(multi: MultiVersionValues) -> (String, Value) {
+pub(crate) fn convert_config(multi: MultiVersionRow) -> (String, Value) {
 	let config_key = ConfigKey::decode(&multi.key).map(|k| k.key).unwrap_or_default();
 
-	let value = match SCHEMA.get_value(&multi.values, VALUE) {
+	let value = match SCHEMA.get_value(&multi.row, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

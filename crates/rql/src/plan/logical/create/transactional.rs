@@ -48,6 +48,8 @@ impl<'bump> Compiler<'bump> {
 			if_not_exists: false,
 			columns,
 			as_clause: with,
+			storage_kind: ast.storage_kind,
+			tick: ast.tick,
 		}))
 	}
 }

@@ -34,7 +34,7 @@ fn main() {
 
 	let mut db = embedded::memory()
 		.intercept()
-		.table("test::users")
+		.table_row("test::users")
 			.pre_insert(|ctx| {
 				info!("[TABLE INTERCEPTOR] Pre-insert into: {}", ctx.table.name);
 				Ok(())

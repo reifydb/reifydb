@@ -1,0 +1,35 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the MIT
+
+# Regression test: complex expression with multiple operations in filter
+# Tests that (base + multiplier) * 2 > 40 does not panic
+admin 'create namespace test'
+admin 'create table test::expressions { id: int4, base: int4, multiplier: int4, name: utf8 }'
+command 'INSERT test::expressions [{ id: 1, base: 10, multiplier: 2, name: "first" }, { id: 2, base: 15, multiplier: 3, name: "second" }, { id: 3, base: 20, multiplier: 1, name: "third" }, { id: 4, base: 5, multiplier: 4, name: "fourth" }, { id: 5, base: 25, multiplier: 2, name: "fifth" }]'
+query 'from test::expressions filter (base + multiplier) * 2 > 40'
+---
+> +--------+-------------+-----------+
+> |   id   |  namespace  |  created  |
+> +--------+-------------+-----------+
+> |  1026  |    test     |   true    |
+> +--------+-------------+-----------+
+>
+> +--------+-------------+---------------+-----------+
+> |   id   |  namespace  |     table     |  created  |
+> +--------+-------------+---------------+-----------+
+> |  1025  |    test     |  expressions  |   true    |
+> +--------+-------------+---------------+-----------+
+>
+> +-------------+---------------+------------+
+> |  namespace  |     table     |  inserted  |
+> +-------------+---------------+------------+
+> |    test     |  expressions  |     5      |
+> +-------------+---------------+------------+
+>
+> +----------+------+--------+--------------+---------+
+> |  rownum  |  id  |  base  |  multiplier  |  name   |
+> +----------+------+--------+--------------+---------+
+> |    5     |  5   |   25   |      2       |  fifth  |
+> |    3     |  3   |   20   |      1       |  third  |
+> +----------+------+--------+--------------+---------+
+>

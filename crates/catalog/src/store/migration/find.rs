@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::migration::MigrationDef, key::migration::MigrationKey};
+use reifydb_core::{interface::catalog::migration::Migration, key::migration::MigrationKey};
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::migration::migration_def_from_row};
+use crate::{CatalogStore, Result, store::migration::migration_from_row};
 
 impl CatalogStore {
-	pub(crate) fn find_migration_by_name(txn: &mut Transaction<'_>, name: &str) -> Result<Option<MigrationDef>> {
+	pub(crate) fn find_migration_by_name(txn: &mut Transaction<'_>, name: &str) -> Result<Option<Migration>> {
 		// Scan all migrations and find by name
 		let range = MigrationKey::full_scan();
 		for entry in txn.range(range, 1024)? {
 			let entry = entry?;
-			let def = migration_def_from_row(&entry.values);
+			let def = migration_from_row(&entry.row);
 			if def.name == name {
 				return Ok(Some(def));
 			}

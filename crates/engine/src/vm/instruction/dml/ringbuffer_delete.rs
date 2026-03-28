@@ -4,16 +4,16 @@
 use std::{collections, sync::Arc};
 
 use reifydb_core::{
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
 	},
 	interface::{
 		catalog::policy::PolicyTargetType,
-		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer},
+		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
 	},
 	key::row::RowKey,
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::DeleteRingBufferNode;
@@ -25,7 +25,10 @@ use reifydb_type::{
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 
-use super::schema::get_or_create_ringbuffer_schema;
+use super::{
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_ringbuffer_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -45,9 +48,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteRingBufferNode,
 	params: Params,
-	identity: IdentityId,
-	symbol_table: &SymbolTable,
-	testing: &mut Option<TestingContext>,
+	symbols: &SymbolTable,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -60,25 +61,31 @@ pub(crate) fn delete_ringbuffer<'a>(
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
 
-	// Get current metadata
-	let Some(mut metadata) = services.catalog.find_ringbuffer_metadata(txn, ringbuffer.id)? else {
-		let fragment = Fragment::internal(plan.target.name());
-		return_error!(ringbuffer_not_found(fragment, namespace_name, ringbuffer_name));
-	};
-
 	// Create resolved source for the ring buffer
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedPrimitive::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
 
+	// Resolve partition column indices once (empty vec for global)
+	let partition_col_indices: Vec<usize> = ringbuffer
+		.partition_by
+		.iter()
+		.map(|pb_col| ringbuffer.columns.iter().position(|c| c.name == *pb_col).unwrap())
+		.collect();
+
+	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
 	let mut deleted_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	if let Some(input_plan) = plan.input {
-		// Delete specific rows based on input plan
-		// Collect row numbers to delete from the filter
+		// Filtered delete: collect row numbers to delete from the filter
 		let mut row_numbers_to_delete = collections::HashSet::new();
 
 		{
@@ -90,9 +97,8 @@ pub(crate) fn delete_ringbuffer<'a>(
 					source: resolved_source.clone(),
 					batch_size: 1024,
 					params: params.clone(),
-					stack: SymbolTable::new(),
+					symbols: symbols.clone(),
 					identity: IdentityId::root(),
-					testing: None,
 				}),
 			);
 
@@ -101,20 +107,16 @@ pub(crate) fn delete_ringbuffer<'a>(
 				source: None,
 				batch_size: 1024,
 				params: params.clone(),
-				stack: SymbolTable::new(),
+				symbols: symbols.clone(),
 				identity: IdentityId::root(),
-				testing: None,
 			};
 
-			// Initialize the operator before execution
 			input_node.initialize(txn, &context)?;
 
 			let mut mutable_context = context.clone();
 			while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
-				// Enforce write policies before processing rows
-				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
+				PolicyEvaluator::new(services, symbols).enforce_write_policies(
 					txn,
-					identity,
 					&namespace.name(),
 					&ringbuffer.name,
 					"delete",
@@ -122,112 +124,116 @@ pub(crate) fn delete_ringbuffer<'a>(
 					PolicyTargetType::RingBuffer,
 				)?;
 
-				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
 				}
 
-				// Extract RowNumber data
-				let row_numbers = &columns.row_numbers;
-
-				row_numbers_to_delete.extend(row_numbers.iter().copied());
+				row_numbers_to_delete.extend(columns.row_numbers.iter().copied());
 			}
 		}
 
-		// With monotonically increasing row numbers, we only delete the specified rows
-		// and update head to the minimum remaining row number
+		// Load all partitions and process each
+		let partitions = services.catalog.list_ringbuffer_partitions(txn, &ringbuffer)?;
 
-		// Delete the specified rows and track remaining items
-		let mut min_remaining_row: Option<u64> = None;
+		for partition_info in partitions {
+			let partition_key = partition_info.partition_values.clone();
+			let mut partition = partition_info.metadata;
+			let mut min_remaining_row: Option<u64> = None;
+			let mut partition_deleted = 0u64;
 
-		// Iterate from head to tail-1 (the range of row numbers in the buffer)
-		for row_num_value in metadata.head..metadata.tail {
-			let row_num = RowNumber(row_num_value);
-			let key = RowKey::encoded(ringbuffer.id, row_num);
+			for row_num_value in partition.head..partition.tail {
+				let row_num = RowNumber(row_num_value);
+				let key = RowKey::encoded(ringbuffer.id, row_num);
 
-			if txn.contains_key(&key)? {
-				if row_numbers_to_delete.contains(&row_num) {
-					if let Some(log) = testing.as_mut() {
-						let schema = get_or_create_ringbuffer_schema(
-							&services.catalog,
-							&ringbuffer,
-							txn,
-						)?;
-						if let Some(old_row_data) = txn.get(&key)? {
-							let old = columns_from_encoded(
-								&ringbuffer.columns,
-								&schema,
-								&old_row_data.values,
-							);
-							let mutation_key = format!(
-								"ringbuffers::{}::{}",
-								namespace.name(),
-								ringbuffer.name
-							);
-							log.record_delete(mutation_key, old);
-						}
+				if let Some(row_data) = txn.get(&key)? {
+					// Skip rows that don't belong to this partition
+					if !partition_col_indices.is_empty()
+						&& !row_matches_partition(
+							&schema,
+							&row_data.row,
+							&partition_col_indices,
+							&partition_key,
+						) {
+						continue;
 					}
 
-					// Delete this row
-					txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
-					deleted_count += 1;
-				} else {
-					// Track minimum remaining row number
-					min_remaining_row =
-						Some(min_remaining_row.map_or(row_num_value, |m| m.min(row_num_value)));
+					if row_numbers_to_delete.contains(&row_num) {
+						let deleted_values =
+							txn.remove_from_ringbuffer(&ringbuffer, row_num)?;
+						if plan.returning.is_some() {
+							returned_rows.push((row_num, deleted_values));
+						}
+						partition_deleted += 1;
+						deleted_count += 1;
+					} else {
+						min_remaining_row = Some(min_remaining_row
+							.map_or(row_num_value, |m: u64| m.min(row_num_value)));
+					}
 				}
 			}
-		}
 
-		// Update metadata
-		let remaining_count = metadata.count.saturating_sub(deleted_count as u64);
-		if remaining_count == 0 {
-			metadata.count = 0;
-			// Empty buffer: set head = tail (RowSequence will provide next row number)
-			metadata.head = metadata.tail;
-		} else {
-			metadata.count = remaining_count;
-			metadata.head = min_remaining_row.unwrap();
-			// tail stays the same - next row number comes from RowSequence
+			if partition_deleted > 0 {
+				let remaining_count = partition.count.saturating_sub(partition_deleted);
+				if remaining_count == 0 {
+					partition.count = 0;
+					partition.head = partition.tail;
+				} else {
+					partition.count = remaining_count;
+					partition.head = min_remaining_row.unwrap();
+				}
+
+				services.catalog.save_partition_metadata(
+					txn,
+					&ringbuffer,
+					&partition_key,
+					&partition,
+				)?;
+			}
 		}
 	} else {
-		// Delete all entries in the row number range
-		for row_num_value in metadata.head..metadata.tail {
-			let row_number = RowNumber(row_num_value);
-			let row_key = RowKey::encoded(ringbuffer.id, row_number);
+		// Delete all entries across all partitions
+		let partitions = services.catalog.list_ringbuffer_partitions(txn, &ringbuffer)?;
 
-			// Only delete if the entry exists
-			if txn.contains_key(&row_key)? {
-				if let Some(log) = testing.as_mut() {
-					let schema =
-						get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
-					if let Some(old_row_data) = txn.get(&row_key)? {
-						let old = columns_from_encoded(
-							&ringbuffer.columns,
+		for partition_info in partitions {
+			let partition_key = partition_info.partition_values.clone();
+			let mut partition = partition_info.metadata;
+
+			for row_num_value in partition.head..partition.tail {
+				let row_number = RowNumber(row_num_value);
+				let row_key = RowKey::encoded(ringbuffer.id, row_number);
+
+				if let Some(row_data) = txn.get(&row_key)? {
+					// Skip rows that don't belong to this partition
+					if !partition_col_indices.is_empty()
+						&& !row_matches_partition(
 							&schema,
-							&old_row_data.values,
-						);
-						let mutation_key = format!(
-							"ringbuffers::{}::{}",
-							namespace.name(),
-							ringbuffer.name
-						);
-						log.record_delete(mutation_key, old);
+							&row_data.row,
+							&partition_col_indices,
+							&partition_key,
+						) {
+						continue;
 					}
+
+					let deleted_values = txn.remove_from_ringbuffer(&ringbuffer, row_number)?;
+					if plan.returning.is_some() {
+						returned_rows.push((row_number, deleted_values));
+					}
+					deleted_count += 1;
 				}
-
-				txn.remove_from_ringbuffer(&ringbuffer, row_number)?;
-				deleted_count += 1;
 			}
-		}
 
-		// Reset metadata - empty buffer: head = tail
-		metadata.count = 0;
-		metadata.head = metadata.tail;
+			// Reset metadata — empty buffer: head = tail
+			partition.count = 0;
+			partition.head = partition.tail;
+			services.catalog.save_partition_metadata(txn, &ringbuffer, &partition_key, &partition)?;
+		}
 	}
 
-	// Save updated metadata
-	services.catalog.update_ringbuffer_metadata_txn(txn, metadata)?;
+	// If RETURNING clause is present, evaluate expressions against deleted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
+	}
 
 	// Return summary
 	Ok(Columns::single_row([
@@ -235,4 +241,16 @@ pub(crate) fn delete_ringbuffer<'a>(
 		("ringbuffer", Value::Utf8(ringbuffer.name)),
 		("deleted", Value::Uint8(deleted_count as u64)),
 	]))
+}
+
+fn row_matches_partition(
+	schema: &RowSchema,
+	row: &EncodedRow,
+	partition_col_indices: &[usize],
+	expected_values: &[Value],
+) -> bool {
+	partition_col_indices
+		.iter()
+		.zip(expected_values)
+		.all(|(&idx, expected)| schema.get_value(row, idx) == *expected)
 }

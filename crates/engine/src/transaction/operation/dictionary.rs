@@ -3,16 +3,24 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
-	interface::catalog::dictionary::DictionaryDef,
+	common::CommitVersion,
+	encoded::row::EncodedRow,
+	interface::{
+		catalog::{dictionary::Dictionary, schema::SchemaId},
+		change::{Change, ChangeOrigin, Diff},
+	},
 	internal_error,
 	key::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionarySequenceKey},
 	},
+	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::xxh3_128;
-use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
+use reifydb_transaction::{
+	interceptor::dictionary_row::DictionaryRowInterceptor,
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
+};
 use reifydb_type::{
 	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId},
@@ -25,40 +33,38 @@ pub(crate) trait DictionaryOperations {
 	/// If the value already exists, returns the existing ID.
 	/// If the value is new, assigns a new ID and stores it.
 	/// The returned ID type matches the dictionary's `id_type`.
-	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId>;
+	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId>;
 
 	/// Get a value from the dictionary by its ID.
 	/// Returns None if the ID doesn't exist.
-	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>>;
+	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
 
 	/// Find the ID of a value in the dictionary without inserting.
 	/// Returns the ID if the value exists, None otherwise.
 	/// The returned ID type matches the dictionary's `id_type`.
-	fn find_in_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> Result<Option<DictionaryEntryId>>;
+	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
 }
 
 impl DictionaryOperations for CommandTransaction {
-	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
+	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
+		let value = DictionaryRowInterceptor::pre_insert(self, dictionary, value.clone())?;
+
 		// 1. Serialize value and compute hash
-		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		// 2. Check if value already exists (lookup by hash)
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		if let Some(existing) = self.get(&entry_key)? {
 			// Value exists, return existing ID
-			let id = u128::from_be_bytes(existing.values[..16].try_into().unwrap());
+			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
 			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
 		// 3. Value doesn't exist - get next ID from sequence
 		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
 		let next_id = match self.get(&seq_key)? {
-			Some(v) => u128::from_be_bytes(v.values[..16].try_into().unwrap()) + 1,
+			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
 			None => 1, // First entry
 		};
 
@@ -69,26 +75,28 @@ impl DictionaryOperations for CommandTransaction {
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&value_bytes);
-		self.set(&entry_key, EncodedValues(CowVec::new(entry_value)))?;
+		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
 
 		// 6. Store reverse index (id -> value_bytes)
 		// Note: DictionaryEntryIndexKey currently uses u64, so we truncate
 		// This limits practical dictionary size to u64::MAX entries
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
-		self.set(&index_key, EncodedValues(CowVec::new(value_bytes)))?;
+		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
 
 		// 7. Update sequence
-		self.set(&seq_key, EncodedValues(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+
+		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
 
 		Ok(entry_id)
 	}
 
-	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>> {
+	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
 		// Note: DictionaryEntryIndexKey currently uses u64, so we truncate
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = from_bytes(&v.values)
+				let value: Value = from_bytes(&v.row)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -96,18 +104,14 @@ impl DictionaryOperations for CommandTransaction {
 		}
 	}
 
-	fn find_in_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> Result<Option<DictionaryEntryId>> {
+	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.get(&entry_key)? {
 			Some(v) => {
-				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
+				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
 				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
@@ -117,23 +121,25 @@ impl DictionaryOperations for CommandTransaction {
 }
 
 impl DictionaryOperations for AdminTransaction {
-	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
+	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
+		let value = DictionaryRowInterceptor::pre_insert(self, dictionary, value.clone())?;
+
 		// 1. Serialize value and compute hash
-		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let value_bytes = to_stdvec(&value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		// 2. Check if value already exists (lookup by hash)
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		if let Some(existing) = self.get(&entry_key)? {
 			// Value exists, return existing ID
-			let id = u128::from_be_bytes(existing.values[..16].try_into().unwrap());
+			let id = u128::from_be_bytes(existing.row[..16].try_into().unwrap());
 			return DictionaryEntryId::from_u128(id, dictionary.id_type.clone());
 		}
 
 		// 3. Value doesn't exist - get next ID from sequence
 		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
 		let next_id = match self.get(&seq_key)? {
-			Some(v) => u128::from_be_bytes(v.values[..16].try_into().unwrap()) + 1,
+			Some(v) => u128::from_be_bytes(v.row[..16].try_into().unwrap()) + 1,
 			None => 1, // First entry
 		};
 
@@ -144,23 +150,34 @@ impl DictionaryOperations for AdminTransaction {
 		let mut entry_value = Vec::with_capacity(16 + value_bytes.len());
 		entry_value.extend_from_slice(&next_id.to_be_bytes());
 		entry_value.extend_from_slice(&value_bytes);
-		self.set(&entry_key, EncodedValues(CowVec::new(entry_value)))?;
+		self.set(&entry_key, EncodedRow(CowVec::new(entry_value)))?;
 
 		// 6. Store reverse index (id -> value_bytes)
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
-		self.set(&index_key, EncodedValues(CowVec::new(value_bytes)))?;
+		self.set(&index_key, EncodedRow(CowVec::new(value_bytes)))?;
 
 		// 7. Update sequence
-		self.set(&seq_key, EncodedValues(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
+
+		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
+
+		// Track for testing::dictionaries::changed()
+		self.track_flow_change(Change {
+			origin: ChangeOrigin::Schema(SchemaId::Dictionary(dictionary.id)),
+			version: CommitVersion(0),
+			diffs: vec![Diff::Insert {
+				post: Columns::single_row([("value", value)]),
+			}],
+		});
 
 		Ok(entry_id)
 	}
 
-	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>> {
+	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
 		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = from_bytes(&v.values)
+				let value: Value = from_bytes(&v.row)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -168,18 +185,14 @@ impl DictionaryOperations for AdminTransaction {
 		}
 	}
 
-	fn find_in_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> Result<Option<DictionaryEntryId>> {
+	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.get(&entry_key)? {
 			Some(v) => {
-				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
+				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
 				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
@@ -191,24 +204,25 @@ impl DictionaryOperations for AdminTransaction {
 /// Implementation for Transaction (both Command and Query)
 /// This provides read-only access to dictionaries for query operations.
 impl DictionaryOperations for Transaction<'_> {
-	fn insert_into_dictionary(&mut self, dictionary: &DictionaryDef, value: &Value) -> Result<DictionaryEntryId> {
+	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
 		// Only command and admin transactions can insert
 		match self {
 			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
 			Transaction::Admin(admin) => admin.insert_into_dictionary(dictionary, value),
 			Transaction::Subscription(sub) => sub.as_admin_mut().insert_into_dictionary(dictionary, value),
+			Transaction::Test(t) => t.inner.insert_into_dictionary(dictionary, value),
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction").into())
 			}
 		}
 	}
 
-	fn get_from_dictionary(&mut self, dictionary: &DictionaryDef, id: DictionaryEntryId) -> Result<Option<Value>> {
+	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
 		// Both command and query transactions can read
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
 		match self.get(&index_key)? {
 			Some(v) => {
-				let value: Value = from_bytes(&v.values)
+				let value: Value = from_bytes(&v.row)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -216,11 +230,7 @@ impl DictionaryOperations for Transaction<'_> {
 		}
 	}
 
-	fn find_in_dictionary(
-		&mut self,
-		dictionary: &DictionaryDef,
-		value: &Value,
-	) -> Result<Option<DictionaryEntryId>> {
+	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		// Both command and query transactions can read
 		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
@@ -228,7 +238,7 @@ impl DictionaryOperations for Transaction<'_> {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.get(&entry_key)? {
 			Some(v) => {
-				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
+				let id = u128::from_be_bytes(v.row[..16].try_into().unwrap());
 				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?;
 				Ok(Some(entry_id))
 			}
@@ -239,7 +249,7 @@ impl DictionaryOperations for Transaction<'_> {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{dictionary::DictionaryDef, id::NamespaceId};
+	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
 	use reifydb_type::value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -247,10 +257,10 @@ pub mod tests {
 	};
 
 	use super::DictionaryOperations;
-	use crate::test_utils::create_test_admin_transaction;
+	use crate::test_harness::create_test_admin_transaction;
 
-	fn test_dictionary() -> DictionaryDef {
-		DictionaryDef {
+	fn test_dictionary() -> Dictionary {
+		Dictionary {
 			id: DictionaryId(1),
 			namespace: NamespaceId::SYSTEM,
 			name: "test_dict".to_string(),
@@ -348,7 +358,7 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_with_uint1_id() {
 		let mut txn = create_test_admin_transaction();
-		let dict = DictionaryDef {
+		let dict = Dictionary {
 			id: DictionaryId(2),
 			namespace: NamespaceId::SYSTEM,
 			name: "dict_u1".to_string(),
@@ -364,7 +374,7 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_with_uint2_id() {
 		let mut txn = create_test_admin_transaction();
-		let dict = DictionaryDef {
+		let dict = Dictionary {
 			id: DictionaryId(3),
 			namespace: NamespaceId::SYSTEM,
 			name: "dict_u2".to_string(),
@@ -380,7 +390,7 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_with_uint4_id() {
 		let mut txn = create_test_admin_transaction();
-		let dict = DictionaryDef {
+		let dict = Dictionary {
 			id: DictionaryId(4),
 			namespace: NamespaceId::SYSTEM,
 			name: "dict_u4".to_string(),

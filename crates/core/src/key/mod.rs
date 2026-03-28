@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use authentication::AuthenticationKey;
 use cdc_consumer::CdcConsumerKey;
 use column::ColumnKey;
 use column_sequence::ColumnSequenceKey;
@@ -9,7 +10,9 @@ use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey, Dic
 use flow::FlowKey;
 use flow_node_internal_state::FlowNodeInternalStateKey;
 use flow_node_state::FlowNodeStateKey;
+use granted_role::GrantedRoleKey;
 use handler::HandlerKey;
+use identity::IdentityKey;
 use index::IndexKey;
 use index_entry::IndexEntryKey;
 use kind::KeyKind;
@@ -19,6 +22,8 @@ use namespace_flow::NamespaceFlowKey;
 use namespace_handler::NamespaceHandlerKey;
 use namespace_ringbuffer::NamespaceRingBufferKey;
 use namespace_series::NamespaceSeriesKey;
+use namespace_sink::NamespaceSinkKey;
+use namespace_source::NamespaceSourceKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
@@ -26,12 +31,14 @@ use policy::PolicyKey;
 use policy_op::PolicyOpKey;
 use primary_key::PrimaryKeyKey;
 use property::ColumnPropertyKey;
-use retention_policy::{OperatorRetentionPolicyKey, PrimitiveRetentionPolicyKey};
+use retention_policy::{OperatorRetentionPolicyKey, SchemaRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
 use row::RowKey;
 use row_sequence::RowSequenceKey;
 use series::{SeriesKey, SeriesMetadataKey};
+use sink::SinkKey;
+use source::SourceKey;
 use subscription::SubscriptionKey;
 use subscription_column::SubscriptionColumnKey;
 use subscription_row::SubscriptionRowKey;
@@ -39,10 +46,8 @@ use sumtype::SumTypeKey;
 use system_sequence::SystemSequenceKey;
 use system_version::SystemVersionKey;
 use table::TableKey;
+use token::TokenKey;
 use transaction_version::TransactionVersionKey;
-use user::UserKey;
-use user_authentication::UserAuthenticationKey;
-use user_role::UserRoleKey;
 use view::ViewKey;
 
 use crate::{
@@ -50,6 +55,7 @@ use crate::{
 	util::encoding::keycode,
 };
 
+pub mod authentication;
 pub mod cdc_consumer;
 pub mod cdc_exclude;
 pub mod column;
@@ -63,7 +69,9 @@ pub mod flow_node;
 pub mod flow_node_internal_state;
 pub mod flow_node_state;
 pub mod flow_version;
+pub mod granted_role;
 pub mod handler;
+pub mod identity;
 pub mod index;
 pub mod index_entry;
 pub mod kind;
@@ -75,6 +83,8 @@ pub mod namespace_flow;
 pub mod namespace_handler;
 pub mod namespace_ringbuffer;
 pub mod namespace_series;
+pub mod namespace_sink;
+pub mod namespace_source;
 pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
@@ -90,6 +100,8 @@ pub mod row_sequence;
 pub mod schema;
 pub mod series;
 pub mod series_row;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod subscription_column;
 pub mod subscription_row;
@@ -97,10 +109,8 @@ pub mod sumtype;
 pub mod system_sequence;
 pub mod system_version;
 pub mod table;
+pub mod token;
 pub mod transaction_version;
-pub mod user;
-pub mod user_authentication;
-pub mod user_role;
 pub mod variant_handler;
 pub mod view;
 #[derive(Debug)]
@@ -130,7 +140,7 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
-	PrimitiveRetentionPolicy(PrimitiveRetentionPolicyKey),
+	SchemaRetentionPolicy(SchemaRetentionPolicyKey),
 	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
@@ -147,12 +157,17 @@ pub enum Key {
 	Series(SeriesKey),
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
-	User(UserKey),
-	UserAuthentication(UserAuthenticationKey),
+	Identity(IdentityKey),
+	Authentication(AuthenticationKey),
 	Role(RoleKey),
-	UserRole(UserRoleKey),
+	GrantedRole(GrantedRoleKey),
 	Policy(PolicyKey),
 	PolicyOp(PolicyOpKey),
+	Token(TokenKey),
+	Source(SourceKey),
+	NamespaceSource(NamespaceSourceKey),
+	Sink(SinkKey),
+	NamespaceSink(NamespaceSinkKey),
 }
 
 impl Key {
@@ -183,7 +198,7 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
-			Key::PrimitiveRetentionPolicy(key) => key.encode(),
+			Key::SchemaRetentionPolicy(key) => key.encode(),
 			Key::OperatorRetentionPolicy(key) => key.encode(),
 			Key::Dictionary(key) => key.encode(),
 			Key::DictionaryEntry(key) => key.encode(),
@@ -200,12 +215,17 @@ impl Key {
 			Key::Series(key) => key.encode(),
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
-			Key::User(key) => key.encode(),
-			Key::UserAuthentication(key) => key.encode(),
+			Key::Identity(key) => key.encode(),
+			Key::Authentication(key) => key.encode(),
 			Key::Role(key) => key.encode(),
-			Key::UserRole(key) => key.encode(),
+			Key::GrantedRole(key) => key.encode(),
 			Key::Policy(key) => key.encode(),
 			Key::PolicyOp(key) => key.encode(),
+			Key::Token(key) => key.encode(),
+			Key::Source(key) => key.encode(),
+			Key::NamespaceSource(key) => key.encode(),
+			Key::Sink(key) => key.encode(),
+			Key::NamespaceSink(key) => key.encode(),
 		}
 	}
 }
@@ -282,8 +302,8 @@ impl Key {
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(&key).map(Self::NamespaceRingBuffer)
 			}
-			KeyKind::PrimitiveRetentionPolicy => {
-				PrimitiveRetentionPolicyKey::decode(&key).map(Self::PrimitiveRetentionPolicy)
+			KeyKind::SchemaRetentionPolicy => {
+				SchemaRetentionPolicyKey::decode(&key).map(Self::SchemaRetentionPolicy)
 			}
 			KeyKind::OperatorRetentionPolicy => {
 				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
@@ -324,27 +344,34 @@ impl Key {
 				SubscriptionColumnKey::decode(&key).map(Self::SubscriptionColumn)
 			}
 			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(&key).map(Self::SubscriptionRow),
-			KeyKind::Schema | KeyKind::SchemaField => {
+			KeyKind::Schema | KeyKind::RowSchemaField => {
 				// Schema keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 			KeyKind::Series => SeriesKey::decode(&key).map(Self::Series),
 			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(&key).map(Self::NamespaceSeries),
 			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(&key).map(Self::SeriesMetadata),
-			KeyKind::User => UserKey::decode(&key).map(Self::User),
-			KeyKind::UserAuthentication => {
-				UserAuthenticationKey::decode(&key).map(Self::UserAuthentication)
-			}
+			KeyKind::Identity => IdentityKey::decode(&key).map(Self::Identity),
+			KeyKind::Authentication => AuthenticationKey::decode(&key).map(Self::Authentication),
 			KeyKind::Role => RoleKey::decode(&key).map(Self::Role),
-			KeyKind::UserRole => UserRoleKey::decode(&key).map(Self::UserRole),
+			KeyKind::GrantedRole => GrantedRoleKey::decode(&key).map(Self::GrantedRole),
 			KeyKind::Policy => PolicyKey::decode(&key).map(Self::Policy),
 			KeyKind::PolicyOp => PolicyOpKey::decode(&key).map(Self::PolicyOp),
 			KeyKind::Migration | KeyKind::MigrationEvent => {
 				// Migration keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
+			KeyKind::Token => TokenKey::decode(&key).map(Self::Token),
 			KeyKind::Config => {
 				// Config keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
+			KeyKind::Source
+			| KeyKind::NamespaceSource
+			| KeyKind::Sink
+			| KeyKind::NamespaceSink
+			| KeyKind::SourceCheckpoint => {
+				// Source/Sink keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 		}
@@ -359,7 +386,7 @@ pub mod tests {
 		interface::catalog::{
 			flow::FlowNodeId,
 			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, SequenceId, TableId},
-			primitive::PrimitiveId,
+			schema::SchemaId,
 		},
 		key::{
 			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
@@ -391,7 +418,7 @@ pub mod tests {
 	#[test]
 	fn test_column() {
 		let key = Key::Column(ColumnKey {
-			primitive: PrimitiveId::table(1),
+			object: SchemaId::table(1),
 			column: ColumnId(42),
 		});
 
@@ -400,7 +427,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Column(decoded_inner) => {
-				assert_eq!(decoded_inner.primitive, PrimitiveId::table(1));
+				assert_eq!(decoded_inner.object, SchemaId::table(1));
 				assert_eq!(decoded_inner.column, 42);
 			}
 			_ => unreachable!(),
@@ -499,7 +526,7 @@ pub mod tests {
 	#[test]
 	fn test_index() {
 		let key = Key::Index(IndexKey {
-			primitive: PrimitiveId::table(42),
+			object: SchemaId::table(42),
 			index: IndexId::primary(999_999),
 		});
 
@@ -508,7 +535,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Index(decoded_inner) => {
-				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
+				assert_eq!(decoded_inner.object, SchemaId::table(42));
 				assert_eq!(decoded_inner.index, 999_999);
 			}
 			_ => unreachable!(),
@@ -518,7 +545,7 @@ pub mod tests {
 	#[test]
 	fn test_row() {
 		let key = Key::Row(RowKey {
-			primitive: PrimitiveId::table(42),
+			object: SchemaId::table(42),
 			row: RowNumber(999_999),
 		});
 
@@ -527,7 +554,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Row(decoded_inner) => {
-				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
+				assert_eq!(decoded_inner.object, SchemaId::table(42));
 				assert_eq!(decoded_inner.row, 999_999);
 			}
 			_ => unreachable!(),
@@ -537,7 +564,7 @@ pub mod tests {
 	#[test]
 	fn test_row_sequence() {
 		let key = Key::RowSequence(RowSequenceKey {
-			primitive: PrimitiveId::table(42),
+			object: SchemaId::table(42),
 		});
 
 		let encoded = key.encode();
@@ -545,7 +572,7 @@ pub mod tests {
 
 		match decoded {
 			Key::RowSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
+				assert_eq!(decoded_inner.object, SchemaId::table(42));
 			}
 			_ => unreachable!(),
 		}
@@ -554,7 +581,7 @@ pub mod tests {
 	#[test]
 	fn test_column_sequence() {
 		let key = Key::TableColumnSequence(ColumnSequenceKey {
-			primitive: PrimitiveId::table(42),
+			object: SchemaId::table(42),
 			column: ColumnId(123),
 		});
 
@@ -563,7 +590,7 @@ pub mod tests {
 
 		match decoded {
 			Key::TableColumnSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.primitive, PrimitiveId::table(42));
+				assert_eq!(decoded_inner.object, SchemaId::table(42));
 				assert_eq!(decoded_inner.column, 123);
 			}
 			_ => unreachable!(),

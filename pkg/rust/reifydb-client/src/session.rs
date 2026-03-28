@@ -90,7 +90,7 @@ fn convert_envelope_response(body: serde_json::Value) -> Vec<Frame> {
 		_ => None,
 	};
 
-	let ws_frames: Vec<crate::WebsocketFrame> = match frames_value {
+	let ws_frames: Vec<crate::ClientFrame> = match frames_value {
 		Some(v) => serde_json::from_value(v.clone()).unwrap_or_default(),
 		None => return Vec::new(),
 	};
@@ -102,7 +102,7 @@ fn convert_envelope_response(body: serde_json::Value) -> Vec<Frame> {
 			.into_iter()
 			.map(|col| FrameColumn {
 				name: col.name,
-				data: convert_column_to_data(col.r#type, col.data),
+				data: convert_column_to_data(col.r#type, col.payload),
 			})
 			.collect();
 

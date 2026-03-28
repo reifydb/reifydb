@@ -16,7 +16,7 @@ pub enum PolicyError {
 	},
 
 	#[error("No {operation} policy defined on {target}")]
-	NoPolicyDefined {
+	NoPolicyined {
 		operation: String,
 		target: String,
 		target_type: String,
@@ -47,7 +47,7 @@ impl IntoDiagnostic for PolicyError {
 				cause: None,
 				operator_chain: None,
 			},
-			PolicyError::NoPolicyDefined {
+			PolicyError::NoPolicyined {
 				operation,
 				target,
 				target_type,

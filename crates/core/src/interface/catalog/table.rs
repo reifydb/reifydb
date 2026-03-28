@@ -4,16 +4,22 @@
 use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::{
-	column::ColumnDef,
+	column::Column,
 	id::{NamespaceId, TableId},
-	key::PrimaryKeyDef,
+	key::PrimaryKey,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TableDef {
+pub struct Table {
 	pub id: TableId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub columns: Vec<ColumnDef>,
-	pub primary_key: Option<PrimaryKeyDef>,
+	pub columns: Vec<Column>,
+	pub primary_key: Option<PrimaryKey>,
+}
+
+impl Table {
+	pub fn name(&self) -> &str {
+		&self.name
+	}
 }

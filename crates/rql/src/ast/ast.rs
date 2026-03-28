@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::ops::Index;
+use std::{ops::Index, time::Duration};
 
 use reifydb_core::{
 	common::{IndexType, JoinType},
@@ -11,12 +11,12 @@ use reifydb_core::{
 use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
-		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedProcedureIdentifier,
 		MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedSeriesIdentifier,
-		MaybeQualifiedSumTypeIdentifier, MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier,
-		MaybeQualifiedTransactionalViewIdentifier, MaybeQualifiedViewIdentifier, UnqualifiedIdentifier,
-		UnresolvedPrimitiveIdentifier,
+		MaybeQualifiedSinkIdentifier, MaybeQualifiedSourceIdentifier, MaybeQualifiedSumTypeIdentifier,
+		MaybeQualifiedTableIdentifier, MaybeQualifiedTestIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+		MaybeQualifiedViewIdentifier, UnqualifiedIdentifier, UnresolvedSchemaIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
 	token::token::{Literal, Token, TokenKind},
@@ -239,6 +239,36 @@ impl<'bump> Ast<'bump> {
 	}
 }
 
+macro_rules! ast_accessor {
+	($variant:ident, $type:ty, $fn_is:ident, $fn_as:ident, $label:expr) => {
+		pub fn $fn_is(&self) -> bool {
+			matches!(self, Ast::$variant(_))
+		}
+		pub fn $fn_as(&self) -> &$type {
+			if let Ast::$variant(result) = self {
+				result
+			} else {
+				panic!(concat!("not ", $label))
+			}
+		}
+	};
+}
+
+macro_rules! ast_literal_accessor {
+	($lit_variant:ident, $type:ty, $fn_is:ident, $fn_as:ident, $label:expr) => {
+		pub fn $fn_is(&self) -> bool {
+			matches!(self, Ast::Literal(AstLiteral::$lit_variant(_)))
+		}
+		pub fn $fn_as(&self) -> &$type {
+			if let Ast::Literal(AstLiteral::$lit_variant(result)) = self {
+				result
+			} else {
+				panic!(concat!("not literal ", $label))
+			}
+		}
+	};
+}
+
 impl<'bump> Ast<'bump> {
 	/// Returns true if this AST node is a DDL statement (CREATE, ALTER, DROP).
 	pub fn is_ddl(&self) -> bool {
@@ -258,61 +288,48 @@ impl<'bump> Ast<'bump> {
 		matches!(self, Ast::Create(AstCreate::Subscription(_)) | Ast::Drop(AstDrop::Subscription(_)))
 	}
 
-	pub fn is_dispatch(&self) -> bool {
-		matches!(self, Ast::Dispatch(_))
-	}
-	pub fn as_dispatch(&self) -> &AstDispatch<'bump> {
-		if let Ast::Dispatch(result) = self {
-			result
-		} else {
-			panic!("not dispatch")
-		}
-	}
+	ast_accessor!(Dispatch, AstDispatch<'bump>, is_dispatch, as_dispatch, "dispatch");
+	ast_accessor!(Assert, AstAssert<'bump>, is_assert, as_assert, "assert");
+	ast_accessor!(Aggregate, AstAggregate<'bump>, is_aggregate, as_aggregate, "aggregate");
+	ast_accessor!(Between, AstBetween<'bump>, is_between, as_between, "between");
+	ast_accessor!(CallFunction, AstCallFunction<'bump>, is_call_function, as_call_function, "call function");
+	ast_accessor!(Cast, AstCast<'bump>, is_cast, as_cast, "cast");
+	ast_accessor!(Create, AstCreate<'bump>, is_create, as_create, "create");
+	ast_accessor!(Alter, AstAlter<'bump>, is_alter, as_alter, "alter");
+	ast_accessor!(Describe, AstDescribe<'bump>, is_describe, as_describe, "describe");
+	ast_accessor!(Filter, AstFilter<'bump>, is_filter, as_filter, "filter");
+	ast_accessor!(From, AstFrom<'bump>, is_from, as_from, "from");
+	ast_accessor!(Identifier, UnqualifiedIdentifier<'bump>, is_identifier, as_identifier, "identifier");
+	ast_accessor!(If, AstIf<'bump>, is_if, as_if, "if");
+	ast_accessor!(Infix, AstInfix<'bump>, is_infix, as_infix, "infix");
+	ast_accessor!(Let, AstLet<'bump>, is_let, as_let, "let");
+	ast_accessor!(Variable, AstVariable<'bump>, is_variable, as_variable, "variable");
+	ast_accessor!(Delete, AstDelete<'bump>, is_delete, as_delete, "delete");
+	ast_accessor!(Insert, AstInsert<'bump>, is_insert, as_insert, "insert");
+	ast_accessor!(Update, AstUpdate<'bump>, is_update, as_update, "update");
+	ast_accessor!(Join, AstJoin<'bump>, is_join, as_join, "join");
+	ast_accessor!(Take, AstTake<'bump>, is_take, as_take, "take");
+	ast_accessor!(List, AstList<'bump>, is_list, as_list, "list");
+	ast_accessor!(Literal, AstLiteral<'bump>, is_literal, as_literal, "literal");
+	ast_accessor!(Sort, AstSort<'bump>, is_sort, as_sort, "sort");
+	ast_accessor!(Inline, AstInline<'bump>, is_inline, as_inline, "inline");
+	ast_accessor!(Prefix, AstPrefix<'bump>, is_prefix, as_prefix, "prefix");
+	ast_accessor!(Map, AstMap<'bump>, is_map, as_map, "map");
+	ast_accessor!(Generator, AstGenerator<'bump>, is_generator, as_generator, "generator");
+	ast_accessor!(Patch, AstPatch<'bump>, is_patch, as_patch, "patch");
+	ast_accessor!(Tuple, AstTuple<'bump>, is_tuple, as_tuple, "tuple");
+	ast_accessor!(Window, AstWindow<'bump>, is_window, as_window, "window");
+	ast_accessor!(
+		StatementExpression,
+		AstStatementExpression<'bump>,
+		is_statement_expression,
+		as_statement_expression,
+		"statement expression"
+	);
+	ast_accessor!(Rownum, AstRownum<'bump>, is_rownum, as_rownum, "rownum");
+	ast_accessor!(Match, AstMatch<'bump>, is_match, as_match, "match");
 
-	pub fn is_assert(&self) -> bool {
-		matches!(self, Ast::Assert(_))
-	}
-	pub fn as_assert(&self) -> &AstAssert<'bump> {
-		if let Ast::Assert(result) = self {
-			result
-		} else {
-			panic!("not assert")
-		}
-	}
-
-	pub fn is_aggregate(&self) -> bool {
-		matches!(self, Ast::Aggregate(_))
-	}
-	pub fn as_aggregate(&self) -> &AstAggregate<'bump> {
-		if let Ast::Aggregate(result) = self {
-			result
-		} else {
-			panic!("not aggregate")
-		}
-	}
-
-	pub fn is_between(&self) -> bool {
-		matches!(self, Ast::Between(_))
-	}
-	pub fn as_between(&self) -> &AstBetween<'bump> {
-		if let Ast::Between(result) = self {
-			result
-		} else {
-			panic!("not between")
-		}
-	}
-
-	pub fn is_call_function(&self) -> bool {
-		matches!(self, Ast::CallFunction(_))
-	}
-	pub fn as_call_function(&self) -> &AstCallFunction<'bump> {
-		if let Ast::CallFunction(result) = self {
-			result
-		} else {
-			panic!("not call function")
-		}
-	}
-
+	// Keep is_block/as_block as aliases for Inline (backwards compat semantics)
 	pub fn is_block(&self) -> bool {
 		matches!(self, Ast::Inline(_))
 	}
@@ -321,329 +338,6 @@ impl<'bump> Ast<'bump> {
 			result
 		} else {
 			panic!("not block")
-		}
-	}
-
-	pub fn is_cast(&self) -> bool {
-		matches!(self, Ast::Cast(_))
-	}
-	pub fn as_cast(&self) -> &AstCast<'bump> {
-		if let Ast::Cast(result) = self {
-			result
-		} else {
-			panic!("not cast")
-		}
-	}
-
-	pub fn is_create(&self) -> bool {
-		matches!(self, Ast::Create(_))
-	}
-	pub fn as_create(&self) -> &AstCreate<'bump> {
-		if let Ast::Create(result) = self {
-			result
-		} else {
-			panic!("not create")
-		}
-	}
-
-	pub fn is_alter(&self) -> bool {
-		matches!(self, Ast::Alter(_))
-	}
-	pub fn as_alter(&self) -> &AstAlter<'bump> {
-		if let Ast::Alter(result) = self {
-			result
-		} else {
-			panic!("not alter")
-		}
-	}
-
-	pub fn is_describe(&self) -> bool {
-		matches!(self, Ast::Describe(_))
-	}
-	pub fn as_describe(&self) -> &AstDescribe<'bump> {
-		if let Ast::Describe(result) = self {
-			result
-		} else {
-			panic!("not describe")
-		}
-	}
-
-	pub fn is_filter(&self) -> bool {
-		matches!(self, Ast::Filter(_))
-	}
-	pub fn as_filter(&self) -> &AstFilter<'bump> {
-		if let Ast::Filter(result) = self {
-			result
-		} else {
-			panic!("not filter")
-		}
-	}
-
-	pub fn is_from(&self) -> bool {
-		matches!(self, Ast::From(_))
-	}
-	pub fn as_from(&self) -> &AstFrom<'bump> {
-		if let Ast::From(result) = self {
-			result
-		} else {
-			panic!("not from")
-		}
-	}
-
-	pub fn is_identifier(&self) -> bool {
-		matches!(self, Ast::Identifier(_))
-	}
-	pub fn as_identifier(&self) -> &UnqualifiedIdentifier<'bump> {
-		if let Ast::Identifier(result) = self {
-			result
-		} else {
-			panic!("not identifier")
-		}
-	}
-
-	pub fn is_if(&self) -> bool {
-		matches!(self, Ast::If(_))
-	}
-	pub fn as_if(&self) -> &AstIf<'bump> {
-		if let Ast::If(result) = self {
-			result
-		} else {
-			panic!("not if")
-		}
-	}
-
-	pub fn is_infix(&self) -> bool {
-		matches!(self, Ast::Infix(_))
-	}
-	pub fn as_infix(&self) -> &AstInfix<'bump> {
-		if let Ast::Infix(result) = self {
-			result
-		} else {
-			panic!("not infix")
-		}
-	}
-
-	pub fn is_let(&self) -> bool {
-		matches!(self, Ast::Let(_))
-	}
-	pub fn as_let(&self) -> &AstLet<'bump> {
-		if let Ast::Let(result) = self {
-			result
-		} else {
-			panic!("not let")
-		}
-	}
-
-	pub fn is_variable(&self) -> bool {
-		matches!(self, Ast::Variable(_))
-	}
-	pub fn as_variable(&self) -> &AstVariable<'bump> {
-		if let Ast::Variable(result) = self {
-			result
-		} else {
-			panic!("not variable")
-		}
-	}
-
-	pub fn as_environment(&self) -> &AstEnvironment<'bump> {
-		if let Ast::Environment(result) = self {
-			result
-		} else {
-			panic!("not environment")
-		}
-	}
-
-	pub fn is_delete(&self) -> bool {
-		matches!(self, Ast::Delete(_))
-	}
-	pub fn as_delete(&self) -> &AstDelete<'bump> {
-		if let Ast::Delete(result) = self {
-			result
-		} else {
-			panic!("not delete")
-		}
-	}
-
-	pub fn is_insert(&self) -> bool {
-		matches!(self, Ast::Insert(_))
-	}
-	pub fn as_insert(&self) -> &AstInsert<'bump> {
-		if let Ast::Insert(result) = self {
-			result
-		} else {
-			panic!("not insert")
-		}
-	}
-
-	pub fn is_update(&self) -> bool {
-		matches!(self, Ast::Update(_))
-	}
-	pub fn as_update(&self) -> &AstUpdate<'bump> {
-		if let Ast::Update(result) = self {
-			result
-		} else {
-			panic!("not update")
-		}
-	}
-
-	pub fn is_join(&self) -> bool {
-		matches!(self, Ast::Join(_))
-	}
-	pub fn as_join(&self) -> &AstJoin<'bump> {
-		if let Ast::Join(result) = self {
-			result
-		} else {
-			panic!("not join")
-		}
-	}
-
-	pub fn is_take(&self) -> bool {
-		matches!(self, Ast::Take(_))
-	}
-	pub fn as_take(&self) -> &AstTake<'bump> {
-		if let Ast::Take(result) = self {
-			result
-		} else {
-			panic!("not take")
-		}
-	}
-
-	pub fn is_list(&self) -> bool {
-		matches!(self, Ast::List(_))
-	}
-	pub fn as_list(&self) -> &AstList<'bump> {
-		if let Ast::List(result) = self {
-			result
-		} else {
-			panic!("not list")
-		}
-	}
-
-	pub fn is_literal(&self) -> bool {
-		matches!(self, Ast::Literal(_))
-	}
-
-	pub fn as_literal(&self) -> &AstLiteral<'bump> {
-		if let Ast::Literal(result) = self {
-			result
-		} else {
-			panic!("not literal")
-		}
-	}
-
-	pub fn is_literal_boolean(&self) -> bool {
-		matches!(self, Ast::Literal(AstLiteral::Boolean(_)))
-	}
-
-	pub fn as_literal_boolean(&self) -> &AstLiteralBoolean<'bump> {
-		if let Ast::Literal(AstLiteral::Boolean(result)) = self {
-			result
-		} else {
-			panic!("not literal boolean")
-		}
-	}
-
-	pub fn is_literal_number(&self) -> bool {
-		matches!(self, Ast::Literal(AstLiteral::Number(_)))
-	}
-
-	pub fn as_literal_number(&self) -> &AstLiteralNumber<'bump> {
-		if let Ast::Literal(AstLiteral::Number(result)) = self {
-			result
-		} else {
-			panic!("not literal number")
-		}
-	}
-
-	pub fn is_literal_temporal(&self) -> bool {
-		matches!(self, Ast::Literal(AstLiteral::Temporal(_)))
-	}
-
-	pub fn as_literal_temporal(&self) -> &AstLiteralTemporal<'bump> {
-		if let Ast::Literal(AstLiteral::Temporal(result)) = self {
-			result
-		} else {
-			panic!("not literal temporal")
-		}
-	}
-
-	pub fn is_literal_text(&self) -> bool {
-		matches!(self, Ast::Literal(AstLiteral::Text(_)))
-	}
-
-	pub fn as_literal_text(&self) -> &AstLiteralText<'bump> {
-		if let Ast::Literal(AstLiteral::Text(result)) = self {
-			result
-		} else {
-			panic!("not literal text")
-		}
-	}
-
-	pub fn is_literal_none(&self) -> bool {
-		matches!(self, Ast::Literal(AstLiteral::None(_)))
-	}
-
-	pub fn as_literal_none(&self) -> &AstLiteralNone<'bump> {
-		if let Ast::Literal(AstLiteral::None(result)) = self {
-			result
-		} else {
-			panic!("not literal none")
-		}
-	}
-
-	pub fn is_sort(&self) -> bool {
-		matches!(self, Ast::Sort(_))
-	}
-	pub fn as_sort(&self) -> &AstSort<'bump> {
-		if let Ast::Sort(result) = self {
-			result
-		} else {
-			panic!("not sort")
-		}
-	}
-	pub fn is_inline(&self) -> bool {
-		matches!(self, Ast::Inline(_))
-	}
-	pub fn as_inline(&self) -> &AstInline<'bump> {
-		if let Ast::Inline(result) = self {
-			result
-		} else {
-			panic!("not inline")
-		}
-	}
-
-	pub fn is_prefix(&self) -> bool {
-		matches!(self, Ast::Prefix(_))
-	}
-	pub fn as_prefix(&self) -> &AstPrefix<'bump> {
-		if let Ast::Prefix(result) = self {
-			result
-		} else {
-			panic!("not prefix")
-		}
-	}
-
-	pub fn is_map(&self) -> bool {
-		matches!(self, Ast::Map(_))
-	}
-
-	pub fn as_map(&self) -> &AstMap<'bump> {
-		if let Ast::Map(result) = self {
-			result
-		} else {
-			panic!("not map")
-		}
-	}
-
-	pub fn is_generator(&self) -> bool {
-		matches!(self, Ast::Generator(_))
-	}
-
-	pub fn as_generator(&self) -> &AstGenerator<'bump> {
-		if let Ast::Generator(result) = self {
-			result
-		} else {
-			panic!("not generator")
 		}
 	}
 
@@ -663,77 +357,17 @@ impl<'bump> Ast<'bump> {
 		}
 	}
 
-	pub fn is_patch(&self) -> bool {
-		matches!(self, Ast::Patch(_))
-	}
-
-	pub fn as_patch(&self) -> &AstPatch<'bump> {
-		if let Ast::Patch(result) = self {
-			result
-		} else {
-			panic!("not patch")
-		}
-	}
-
-	pub fn is_tuple(&self) -> bool {
-		matches!(self, Ast::Tuple(_))
-	}
-
-	pub fn as_tuple(&self) -> &AstTuple<'bump> {
-		if let Ast::Tuple(result) = self {
-			result
-		} else {
-			panic!("not tuple")
-		}
-	}
-
-	pub fn is_window(&self) -> bool {
-		matches!(self, Ast::Window(_))
-	}
-
-	pub fn as_window(&self) -> &AstWindow<'bump> {
-		if let Ast::Window(result) = self {
-			result
-		} else {
-			panic!("not window")
-		}
-	}
-
-	pub fn is_statement_expression(&self) -> bool {
-		matches!(self, Ast::StatementExpression(_))
-	}
-
-	pub fn as_statement_expression(&self) -> &AstStatementExpression<'bump> {
-		if let Ast::StatementExpression(result) = self {
-			result
-		} else {
-			panic!("not statement expression")
-		}
-	}
-
-	pub fn is_rownum(&self) -> bool {
-		matches!(self, Ast::Rownum(_))
-	}
-
-	pub fn as_rownum(&self) -> &AstRownum<'bump> {
-		if let Ast::Rownum(result) = self {
-			result
-		} else {
-			panic!("not rownum")
-		}
-	}
-
-	pub fn is_match(&self) -> bool {
-		matches!(self, Ast::Match(_))
-	}
-
-	pub fn as_match(&self) -> &AstMatch<'bump> {
-		if let Ast::Match(result) = self {
-			result
-		} else {
-			panic!("not match")
-		}
-	}
+	ast_literal_accessor!(Boolean, AstLiteralBoolean<'bump>, is_literal_boolean, as_literal_boolean, "boolean");
+	ast_literal_accessor!(Number, AstLiteralNumber<'bump>, is_literal_number, as_literal_number, "number");
+	ast_literal_accessor!(
+		Temporal,
+		AstLiteralTemporal<'bump>,
+		is_literal_temporal,
+		as_literal_temporal,
+		"temporal"
+	);
+	ast_literal_accessor!(Text, AstLiteralText<'bump>, is_literal_text, as_literal_text, "text");
+	ast_literal_accessor!(None, AstLiteralNone<'bump>, is_literal_none, as_literal_none, "none");
 }
 
 #[derive(Debug)]
@@ -827,12 +461,14 @@ pub enum AstCreate<'bump> {
 	Event(AstCreateEvent<'bump>),
 	Tag(AstCreateTag<'bump>),
 	Handler(AstCreateHandler<'bump>),
-	User(AstCreateUser<'bump>),
+	Identity(AstCreateIdentity<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
 	Policy(AstCreatePolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
 	Test(AstCreateTest<'bump>),
+	Source(AstCreateSource<'bump>),
+	Sink(AstCreateSink<'bump>),
 }
 
 #[derive(Debug)]
@@ -874,10 +510,12 @@ pub enum AstDrop<'bump> {
 	Enum(AstDropSumType<'bump>),
 	Subscription(AstDropSubscription<'bump>),
 	Series(AstDropSeries<'bump>),
-	User(AstDropUser<'bump>),
+	Identity(AstDropIdentity<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
 	Policy(AstDropPolicy<'bump>),
+	Source(AstDropSource<'bump>),
+	Sink(AstDropSink<'bump>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -945,6 +583,46 @@ pub struct AstDropSubscription<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSource<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub source: MaybeQualifiedSourceIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropSink<'bump> {
+	pub token: Token<'bump>,
+	pub if_exists: bool,
+	pub sink: MaybeQualifiedSinkIdentifier<'bump>,
+	pub cascade: bool,
+}
+
+#[derive(Debug)]
+pub struct AstConfigPair<'bump> {
+	pub key: BumpFragment<'bump>,
+	pub value: Ast<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateSource<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedSourceIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+	pub target: MaybeQualifiedIdentifier<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateSink<'bump> {
+	pub token: Token<'bump>,
+	pub name: MaybeQualifiedSinkIdentifier<'bump>,
+	pub source: MaybeQualifiedIdentifier<'bump>,
+	pub connector: BumpFragment<'bump>,
+	pub config: Vec<AstConfigPair<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstAlterSequence<'bump> {
 	pub token: Token<'bump>,
 	pub sequence: MaybeQualifiedSequenceIdentifier<'bump>,
@@ -959,11 +637,35 @@ pub struct AstSubQuery<'bump> {
 }
 
 #[derive(Debug)]
+pub enum AstViewStorageKind {
+	Table,
+	RingBuffer {
+		capacity: u64,
+		propagate_evictions: Option<bool>,
+		partition_by: Vec<String>,
+	},
+	Series {
+		key_column: String,
+		precision: Option<AstTimestampPrecision>,
+	},
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AstTimestampPrecision {
+	Second,
+	Millisecond,
+	Microsecond,
+	Nanosecond,
+}
+
+#[derive(Debug)]
 pub struct AstCreateDeferredView<'bump> {
 	pub token: Token<'bump>,
 	pub view: MaybeQualifiedDeferredViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
+	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -972,6 +674,8 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub as_clause: Option<AstStatement<'bump>>,
+	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -987,6 +691,7 @@ pub struct AstCreateRemoteNamespace<'bump> {
 	pub namespace: MaybeQualifiedNamespaceIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub grpc: BumpFragment<'bump>,
+	pub token_value: Option<BumpFragment<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1002,14 +707,8 @@ pub struct AstCreateSeries<'bump> {
 	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
+	pub key: Option<BumpFragment<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum AstTimestampPrecision {
-	Millisecond,
-	Microsecond,
-	Nanosecond,
 }
 
 #[derive(Debug)]
@@ -1091,6 +790,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
+	pub partition_by: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1107,11 +807,11 @@ pub struct AstCreateSumType<'bump> {
 	pub token: Token<'bump>,
 	pub if_not_exists: bool,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 #[derive(Debug)]
-pub struct AstVariantDef<'bump> {
+pub struct AstVariant<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 }
@@ -1210,186 +910,75 @@ pub struct AstIndexColumn<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstPrimaryKeyDef<'bump> {
+pub struct AstPrimaryKey<'bump> {
 	pub columns: Vec<AstIndexColumn<'bump>>,
 }
 
-impl<'bump> AstCreate<'bump> {
-	pub fn token(&self) -> &Token<'bump> {
-		match self {
-			AstCreate::DeferredView(AstCreateDeferredView {
-				token,
-				..
-			}) => token,
-			AstCreate::TransactionalView(AstCreateTransactionalView {
-				token,
-				..
-			}) => token,
-			AstCreate::Namespace(AstCreateNamespace {
-				token,
-				..
-			}) => token,
-			AstCreate::RemoteNamespace(AstCreateRemoteNamespace {
-				token,
-				..
-			}) => token,
-			AstCreate::Series(AstCreateSeries {
-				token,
-				..
-			}) => token,
-			AstCreate::Table(AstCreateTable {
-				token,
-				..
-			}) => token,
-			AstCreate::RingBuffer(AstCreateRingBuffer {
-				token,
-				..
-			}) => token,
-			AstCreate::Dictionary(AstCreateDictionary {
-				token,
-				..
-			}) => token,
-			AstCreate::Enum(AstCreateSumType {
-				token,
-				..
-			}) => token,
-			AstCreate::Index(AstCreateIndex {
-				token,
-				..
-			}) => token,
-			AstCreate::Subscription(AstCreateSubscription {
-				token,
-				..
-			}) => token,
-			AstCreate::PrimaryKey(AstCreatePrimaryKey {
-				token,
-				..
-			}) => token,
-			AstCreate::ColumnProperty(AstCreateColumnProperty {
-				token,
-				..
-			}) => token,
-			AstCreate::Procedure(AstCreateProcedure {
-				token,
-				..
-			}) => token,
-			AstCreate::Event(AstCreateEvent {
-				token,
-				..
-			}) => token,
-			AstCreate::Tag(AstCreateTag {
-				token,
-				..
-			}) => token,
-			AstCreate::Handler(AstCreateHandler {
-				token,
-				..
-			}) => token,
-			AstCreate::User(AstCreateUser {
-				token,
-				..
-			}) => token,
-			AstCreate::Role(AstCreateRole {
-				token,
-				..
-			}) => token,
-			AstCreate::Authentication(AstCreateAuthentication {
-				token,
-				..
-			}) => token,
-			AstCreate::Policy(AstCreatePolicy {
-				token,
-				..
-			}) => token,
-			AstCreate::Migration(AstCreateMigration {
-				token,
-				..
-			}) => token,
-			AstCreate::Test(AstCreateTest {
-				token,
-				..
-			}) => token,
+/// Generates a `fn token()` method for an enum where every variant contains
+/// a struct with a `token` field.
+macro_rules! impl_token_for_enum {
+	($enum_type:ident, $lt:lifetime, $( $variant:ident($inner:ty) ),+ $(,)?) => {
+		impl<$lt> $enum_type<$lt> {
+			pub fn token(&self) -> &Token<$lt> {
+				match self {
+					$( $enum_type::$variant(inner) => &inner.token, )+
+				}
+			}
 		}
-	}
+	};
 }
 
-impl<'bump> AstAlter<'bump> {
-	pub fn token(&self) -> &Token<'bump> {
-		match self {
-			AstAlter::Sequence(AstAlterSequence {
-				token,
-				..
-			}) => token,
-			AstAlter::Policy(AstAlterPolicy {
-				token,
-				..
-			}) => token,
-			AstAlter::Table(AstAlterTable {
-				token,
-				..
-			}) => token,
-			AstAlter::RemoteNamespace(AstAlterRemoteNamespace {
-				token,
-				..
-			}) => token,
-		}
-	}
-}
+impl_token_for_enum!(AstCreate, 'bump,
+	DeferredView(AstCreateDeferredView<'bump>),
+	TransactionalView(AstCreateTransactionalView<'bump>),
+	Namespace(AstCreateNamespace<'bump>),
+	RemoteNamespace(AstCreateRemoteNamespace<'bump>),
+	Series(AstCreateSeries<'bump>),
+	Table(AstCreateTable<'bump>),
+	RingBuffer(AstCreateRingBuffer<'bump>),
+	Dictionary(AstCreateDictionary<'bump>),
+	Enum(AstCreateSumType<'bump>),
+	Index(AstCreateIndex<'bump>),
+	Subscription(AstCreateSubscription<'bump>),
+	PrimaryKey(AstCreatePrimaryKey<'bump>),
+	ColumnProperty(AstCreateColumnProperty<'bump>),
+	Procedure(AstCreateProcedure<'bump>),
+	Event(AstCreateEvent<'bump>),
+	Tag(AstCreateTag<'bump>),
+	Handler(AstCreateHandler<'bump>),
+	Identity(AstCreateIdentity<'bump>),
+	Role(AstCreateRole<'bump>),
+	Authentication(AstCreateAuthentication<'bump>),
+	Policy(AstCreatePolicy<'bump>),
+	Migration(AstCreateMigration<'bump>),
+	Test(AstCreateTest<'bump>),
+	Source(AstCreateSource<'bump>),
+	Sink(AstCreateSink<'bump>),
+);
 
-impl<'bump> AstDrop<'bump> {
-	pub fn token(&self) -> &Token<'bump> {
-		match self {
-			AstDrop::Table(AstDropTable {
-				token,
-				..
-			}) => token,
-			AstDrop::View(AstDropView {
-				token,
-				..
-			}) => token,
-			AstDrop::RingBuffer(AstDropRingBuffer {
-				token,
-				..
-			}) => token,
-			AstDrop::Namespace(AstDropNamespace {
-				token,
-				..
-			}) => token,
-			AstDrop::Dictionary(AstDropDictionary {
-				token,
-				..
-			}) => token,
-			AstDrop::Enum(AstDropSumType {
-				token,
-				..
-			}) => token,
-			AstDrop::Subscription(AstDropSubscription {
-				token,
-				..
-			}) => token,
-			AstDrop::Series(AstDropSeries {
-				token,
-				..
-			}) => token,
-			AstDrop::User(AstDropUser {
-				token,
-				..
-			}) => token,
-			AstDrop::Role(AstDropRole {
-				token,
-				..
-			}) => token,
-			AstDrop::Authentication(AstDropAuthentication {
-				token,
-				..
-			}) => token,
-			AstDrop::Policy(AstDropPolicy {
-				token,
-				..
-			}) => token,
-		}
-	}
-}
+impl_token_for_enum!(AstAlter, 'bump,
+	Sequence(AstAlterSequence<'bump>),
+	Policy(AstAlterPolicy<'bump>),
+	Table(AstAlterTable<'bump>),
+	RemoteNamespace(AstAlterRemoteNamespace<'bump>),
+);
+
+impl_token_for_enum!(AstDrop, 'bump,
+	Table(AstDropTable<'bump>),
+	View(AstDropView<'bump>),
+	RingBuffer(AstDropRingBuffer<'bump>),
+	Namespace(AstDropNamespace<'bump>),
+	Dictionary(AstDropDictionary<'bump>),
+	Enum(AstDropSumType<'bump>),
+	Subscription(AstDropSubscription<'bump>),
+	Series(AstDropSeries<'bump>),
+	Identity(AstDropIdentity<'bump>),
+	Role(AstDropRole<'bump>),
+	Authentication(AstDropAuthentication<'bump>),
+	Policy(AstDropPolicy<'bump>),
+	Source(AstDropSource<'bump>),
+	Sink(AstDropSink<'bump>),
+);
 
 #[derive(Debug)]
 pub struct AstFilter<'bump> {
@@ -1409,7 +998,7 @@ pub struct AstGate<'bump> {
 pub enum AstFrom<'bump> {
 	Source {
 		token: Token<'bump>,
-		source: UnresolvedPrimitiveIdentifier<'bump>,
+		source: UnresolvedSchemaIdentifier<'bump>,
 		index_name: Option<BumpFragment<'bump>>,
 	},
 	Variable {
@@ -1561,23 +1150,28 @@ pub struct AstLet<'bump> {
 #[derive(Debug)]
 pub struct AstDelete<'bump> {
 	pub token: Token<'bump>,
-	pub target: UnresolvedPrimitiveIdentifier<'bump>,
+	pub target: UnresolvedSchemaIdentifier<'bump>,
 	pub filter: BumpBox<'bump, Ast<'bump>>,
+	pub take: Option<BumpBox<'bump, Ast<'bump>>>,
+	pub returning: Option<Vec<Ast<'bump>>>,
 }
 
 #[derive(Debug)]
 pub struct AstInsert<'bump> {
 	pub token: Token<'bump>,
-	pub target: UnresolvedPrimitiveIdentifier<'bump>,
+	pub target: UnresolvedSchemaIdentifier<'bump>,
 	pub source: BumpBox<'bump, Ast<'bump>>,
+	pub returning: Option<Vec<Ast<'bump>>>,
 }
 
 #[derive(Debug)]
 pub struct AstUpdate<'bump> {
 	pub token: Token<'bump>,
-	pub target: UnresolvedPrimitiveIdentifier<'bump>,
+	pub target: UnresolvedSchemaIdentifier<'bump>,
 	pub assignments: Vec<Ast<'bump>>,
 	pub filter: BumpBox<'bump, Ast<'bump>>,
+	pub take: Option<BumpBox<'bump, Ast<'bump>>>,
+	pub returning: Option<Vec<Ast<'bump>>>,
 }
 
 /// Connector between join condition pairs
@@ -1878,10 +1472,8 @@ pub struct AstRequire<'bump> {
 	pub body: BumpBox<'bump, Ast<'bump>>,
 }
 
-// === User/Role/Grant AST nodes ===
-
 #[derive(Debug)]
-pub struct AstCreateUser<'bump> {
+pub struct AstCreateIdentity<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
 }
@@ -1907,7 +1499,7 @@ pub struct AstRevoke<'bump> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstDropUser<'bump> {
+pub struct AstDropIdentity<'bump> {
 	pub token: Token<'bump>,
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
@@ -1919,8 +1511,6 @@ pub struct AstDropRole<'bump> {
 	pub name: BumpFragment<'bump>,
 	pub if_exists: bool,
 }
-
-// === Authentication AST nodes ===
 
 #[derive(Debug)]
 pub struct AstAuthenticationEntry<'bump> {
@@ -1942,8 +1532,6 @@ pub struct AstDropAuthentication<'bump> {
 	pub if_exists: bool,
 	pub method: BumpFragment<'bump>,
 }
-
-// === Security Policy AST nodes ===
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AstPolicyTargetType {
@@ -2093,9 +1681,19 @@ pub struct AstElseIf<'bump> {
 	pub then_block: AstBlock<'bump>,
 }
 
+/// Window kind, parsed from the mandatory keyword after `window`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AstWindowKind {
+	Tumbling,
+	Sliding,
+	Rolling,
+	Session,
+}
+
 #[derive(Debug)]
 pub struct AstWindow<'bump> {
 	pub token: Token<'bump>,
+	pub kind: AstWindowKind,
 	pub config: Vec<AstWindowConfig<'bump>>,
 	pub aggregations: Vec<Ast<'bump>>,
 	pub group_by: Vec<Ast<'bump>>,
@@ -2240,7 +1838,7 @@ pub struct AstClosure<'bump> {
 pub struct AstCreateEvent<'bump> {
 	pub token: Token<'bump>,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 /// CREATE TAG — declares a tag type (a sum type with SumTypeKind::Tag)
@@ -2248,7 +1846,7 @@ pub struct AstCreateEvent<'bump> {
 pub struct AstCreateTag<'bump> {
 	pub token: Token<'bump>,
 	pub name: MaybeQualifiedSumTypeIdentifier<'bump>,
-	pub variants: Vec<AstVariantDef<'bump>>,
+	pub variants: Vec<AstVariant<'bump>>,
 }
 
 /// CREATE HANDLER — registers a computation handler for a specific event variant

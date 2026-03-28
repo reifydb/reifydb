@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::encoded::EncodedValues,
+	encoded::row::EncodedRow,
 	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	key::namespace::NamespaceKey,
 };
@@ -33,7 +33,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row: &EncodedValues = &multi.values;
+			let row: &EncodedRow = &multi.row;
 			let namespace_name = namespace::SCHEMA.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
 				return Ok(Some(convert_namespace(multi)));
@@ -59,7 +59,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::namespace::NamespaceId, test_utils::create_namespace};

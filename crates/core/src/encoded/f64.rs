@@ -5,10 +5,10 @@ use std::{f64, ptr};
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
-	pub fn set_f64(&self, row: &mut EncodedValues, index: usize, value: impl Into<f64>) {
+impl RowSchema {
+	pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float8);
@@ -21,14 +21,14 @@ impl Schema {
 		}
 	}
 
-	pub fn get_f64(&self, row: &EncodedValues, index: usize) -> f64 {
+	pub fn get_f64(&self, row: &EncodedRow, index: usize) -> f64 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Float8);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const f64).read_unaligned() }
 	}
 
-	pub fn try_get_f64(&self, row: &EncodedValues, index: usize) -> Option<f64> {
+	pub fn try_get_f64(&self, row: &EncodedRow, index: usize) -> Option<f64> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Float8 {
 			Some(self.get_f64(row, index))
 		} else {
@@ -44,11 +44,11 @@ pub mod tests {
 
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_f64() {
-		let schema = Schema::testing(&[Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Float8]);
 		let mut row = schema.allocate();
 		schema.set_f64(&mut row, 0, 2.5f64);
 		assert_eq!(schema.get_f64(&row, 0), 2.5f64);
@@ -56,7 +56,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_f64() {
-		let schema = Schema::testing(&[Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Float8]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_f64(&row, 0), None);
@@ -67,7 +67,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_values() {
-		let schema = Schema::testing(&[Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Float8]);
 		let mut row = schema.allocate();
 
 		// Test zero
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extreme_values() {
-		let schema = Schema::testing(&[Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Float8]);
 		let mut row = schema.allocate();
 
 		schema.set_f64(&mut row, 0, f64::MAX);
@@ -114,7 +114,7 @@ pub mod tests {
 
 	#[test]
 	fn test_high_precision() {
-		let schema = Schema::testing(&[Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Float8]);
 		let mut row = schema.allocate();
 
 		let pi = PI;
@@ -129,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Float8, Type::Int8, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Float8, Type::Int8, Type::Float8]);
 		let mut row = schema.allocate();
 
 		schema.set_f64(&mut row, 0, 3.14159265359);
@@ -143,7 +143,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Float8, Type::Float8]);
+		let schema = RowSchema::testing(&[Type::Float8, Type::Float8]);
 		let mut row = schema.allocate();
 
 		schema.set_f64(&mut row, 0, 2.718281828459045);
@@ -157,7 +157,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_f64_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

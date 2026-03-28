@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::{FlowId, FlowNodeDef, FlowNodeId},
+	interface::catalog::flow::{FlowId, FlowNode, FlowNodeId},
 	key::{
 		EncodableKey,
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
@@ -16,7 +16,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNodeDef>> {
+	pub(crate) fn list_flow_nodes_by_flow(rx: &mut Transaction<'_>, flow_id: FlowId) -> Result<Vec<FlowNode>> {
 		// First collect all node IDs to avoid holding stream borrow
 		let mut node_ids = Vec::new();
 		{
@@ -24,7 +24,7 @@ impl CatalogStore {
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
-					flow_node_by_flow::SCHEMA.get_u64(&multi.values, flow_node_by_flow::ID),
+					flow_node_by_flow::SCHEMA.get_u64(&multi.row, flow_node_by_flow::ID),
 				));
 			}
 		}
@@ -40,7 +40,7 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowNodeDef>> {
+	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowNode>> {
 		let mut result = Vec::new();
 
 		let mut stream = rx.range(FlowNodeKey::full_scan(), 1024)?;
@@ -49,11 +49,11 @@ impl CatalogStore {
 			let entry = entry?;
 			if let Some(flow_node_key) = FlowNodeKey::decode(&entry.key) {
 				let node_id = flow_node_key.node;
-				let flow_id = FlowId(flow_node::SCHEMA.get_u64(&entry.values, flow_node::FLOW));
-				let node_type = flow_node::SCHEMA.get_u8(&entry.values, flow_node::TYPE);
-				let data = flow_node::SCHEMA.get_blob(&entry.values, flow_node::DATA).clone();
+				let flow_id = FlowId(flow_node::SCHEMA.get_u64(&entry.row, flow_node::FLOW));
+				let node_type = flow_node::SCHEMA.get_u8(&entry.row, flow_node::TYPE);
+				let data = flow_node::SCHEMA.get_blob(&entry.row, flow_node::DATA).clone();
 
-				let node_def = FlowNodeDef {
+				let node_def = FlowNode {
 					id: node_id,
 					flow: flow_id,
 					node_type,
@@ -70,7 +70,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{

@@ -1,7 +1,9 @@
+#[cfg(test)]
+use alloc::{vec, vec::Vec};
 use anyhow::{Result, bail};
-use std::char;
-use std::fmt;
-use std::str;
+use core::char;
+use core::fmt;
+use core::str;
 use unicode_xid::UnicodeXID;
 
 use self::Token::*;
@@ -11,7 +13,6 @@ pub struct Tokenizer<'a> {
     input: &'a str,
     span_offset: u32,
     chars: CrlfFold<'a>,
-    require_f32_f64: bool,
 }
 
 #[derive(Clone)]
@@ -20,12 +21,71 @@ struct CrlfFold<'a> {
 }
 
 /// A span, designating a range of bytes where a token is located.
-#[derive(Eq, PartialEq, Debug, Clone, Copy)]
+///
+/// Uses `u32::MAX` as a sentinel value to represent unknown spans (e.g.,
+/// decoded from binary).
+#[derive(Eq, PartialEq, Debug, Clone, Copy, Hash)]
 pub struct Span {
-    /// The start of the range.
-    pub start: u32,
-    /// The end of the range (exclusive).
-    pub end: u32,
+    start: u32,
+    end: u32,
+}
+
+impl Default for Span {
+    fn default() -> Span {
+        Span {
+            start: u32::MAX,
+            end: u32::MAX,
+        }
+    }
+}
+
+impl Span {
+    pub fn new(start: u32, end: u32) -> Span {
+        let span = Span { start, end };
+        assert!(span.is_known(), "cannot create a span with u32::MAX");
+        span
+    }
+
+    /// Adjusts this span by adding the given byte offset to both start and end.
+    pub fn adjust(&mut self, offset: u32) {
+        if self.is_known() {
+            self.start += offset;
+            self.end += offset;
+        }
+    }
+
+    /// Returns the start offset, panicking if this is an unknown span.
+    pub fn start(&self) -> u32 {
+        assert!(self.is_known(), "cannot get start of unknown span");
+        self.start
+    }
+
+    /// Returns the end offset, panicking if this is an unknown span.
+    pub fn end(&self) -> u32 {
+        assert!(self.is_known(), "cannot get end of unknown span");
+        self.end
+    }
+
+    /// Sets the end offset. If this is unknown, converts to a zero-width span at that position.
+    pub fn set_end(&mut self, new_end: u32) {
+        if !self.is_known() {
+            self.start = new_end;
+        }
+        self.end = new_end;
+    }
+
+    /// Sets the start offset. If this is unknown, converts to a zero-width span at that position.
+    pub fn set_start(&mut self, new_start: u32) {
+        if !self.is_known() {
+            self.end = new_start;
+        }
+        self.start = new_start;
+    }
+
+    /// Returns true if this span has a known source location.
+    pub fn is_known(&self) -> bool {
+        self.start != u32::MAX && self.end != u32::MAX
+    }
 }
 
 #[derive(Eq, PartialEq, Debug, Copy, Clone)]
@@ -118,15 +178,8 @@ pub enum Error {
     },
 }
 
-// NB: keep in sync with `crates/wit-component/src/printing.rs`.
-const REQUIRE_F32_F64_BY_DEFAULT: bool = true;
-
 impl<'a> Tokenizer<'a> {
-    pub fn new(
-        input: &'a str,
-        span_offset: u32,
-        require_f32_f64: Option<bool>,
-    ) -> Result<Tokenizer<'a>> {
+    pub fn new(input: &'a str, span_offset: u32) -> Result<Tokenizer<'a>> {
         detect_invalid_input(input)?;
 
         let mut t = Tokenizer {
@@ -135,12 +188,6 @@ impl<'a> Tokenizer<'a> {
             chars: CrlfFold {
                 chars: input.char_indices(),
             },
-            require_f32_f64: require_f32_f64.unwrap_or_else(|| {
-                match std::env::var("WIT_REQUIRE_F32_F64") {
-                    Ok(s) => s == "1",
-                    Err(_) => REQUIRE_F32_F64_BY_DEFAULT,
-                }
-            }),
         };
         // Eat utf-8 BOM
         t.eatc('\u{feff}');
@@ -153,21 +200,21 @@ impl<'a> Tokenizer<'a> {
     }
 
     pub fn get_span(&self, span: Span) -> &'a str {
-        let start = usize::try_from(span.start - self.span_offset).unwrap();
-        let end = usize::try_from(span.end - self.span_offset).unwrap();
+        let start = usize::try_from(span.start() - self.span_offset).unwrap();
+        let end = usize::try_from(span.end() - self.span_offset).unwrap();
         &self.input[start..end]
     }
 
     pub fn parse_id(&self, span: Span) -> Result<&'a str> {
         let ret = self.get_span(span);
-        validate_id(span.start, &ret)?;
+        validate_id(span.start(), &ret)?;
         Ok(ret)
     }
 
     pub fn parse_explicit_id(&self, span: Span) -> Result<&'a str> {
         let token = self.get_span(span);
         let id_part = token.strip_prefix('%').unwrap();
-        validate_id(span.start, id_part)?;
+        validate_id(span.start(), id_part)?;
         Ok(id_part)
     }
 
@@ -284,8 +331,6 @@ impl<'a> Tokenizer<'a> {
                     "s64" => S64,
                     "f32" => F32,
                     "f64" => F64,
-                    "float32" if !self.require_f32_f64 => F32,
-                    "float64" if !self.require_f32_f64 => F64,
                     "char" => Char,
                     "resource" => Resource,
                     "own" => Own,
@@ -341,7 +386,7 @@ impl<'a> Tokenizer<'a> {
         };
 
         let end = self.span_offset + u32::try_from(end).unwrap();
-        Ok(Some((Span { start, end }, token)))
+        Ok(Some((Span::new(start, end), token)))
     }
 
     pub fn eat(&mut self, expected: Token) -> Result<bool, Error> {
@@ -363,7 +408,7 @@ impl<'a> Tokenizer<'a> {
                     Ok(span)
                 } else {
                     Err(Error::Wanted {
-                        at: span.start,
+                        at: span.start(),
                         expected: expected.describe(),
                         found: found.describe(),
                     })
@@ -390,7 +435,7 @@ impl<'a> Tokenizer<'a> {
 
     pub fn eof_span(&self) -> Span {
         let end = self.span_offset + u32::try_from(self.input.len()).unwrap();
-        Span { start: end, end }
+        Span::new(end, end)
     }
 }
 
@@ -588,7 +633,7 @@ impl Token {
     }
 }
 
-impl std::error::Error for Error {}
+impl core::error::Error for Error {}
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -668,7 +713,7 @@ fn test_validate_id() {
 #[test]
 fn test_tokenizer() {
     fn collect(s: &str) -> Result<Vec<Token>> {
-        let mut t = Tokenizer::new(s, 0, None)?;
+        let mut t = Tokenizer::new(s, 0)?;
         let mut tokens = Vec::new();
         while let Some(token) = t.next()? {
             tokens.push(token.1);

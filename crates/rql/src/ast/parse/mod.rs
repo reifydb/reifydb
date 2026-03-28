@@ -26,6 +26,7 @@ pub mod from;
 pub mod gate;
 pub mod grant;
 pub mod identifier;
+pub mod identity;
 pub mod infix;
 pub mod inline;
 pub mod insert;
@@ -41,12 +42,13 @@ pub mod patch;
 pub mod policy;
 pub mod prefix;
 pub mod primary;
+pub mod sink;
 pub mod sort;
+pub mod source;
 pub mod sub_query;
 pub mod take;
 pub mod tuple;
 pub mod update;
-pub mod user;
 pub mod window;
 
 use std::cmp::PartialOrd;
@@ -65,6 +67,7 @@ use crate::{
 	},
 	bump::{Bump, BumpBox},
 	diagnostic::AstError,
+	error::{OperationKind, RqlError},
 	token::{
 		keyword::Keyword,
 		operator::Operator,
@@ -73,7 +76,7 @@ use crate::{
 	},
 };
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub(crate) enum Precedence {
 	None,
 	Assignment,
@@ -488,21 +491,6 @@ impl<'bump> Parser<'bump> {
 		}
 	}
 
-	pub(crate) fn consume_keyword_as_ident(&mut self) -> Result<Token<'bump>> {
-		let token = self.advance()?;
-		if matches!(token.kind, TokenKind::Keyword(_)) {
-			Ok(Token {
-				kind: TokenKind::Identifier,
-				..token
-			})
-		} else {
-			Err(AstError::ExpectedIdentifier {
-				fragment: token.fragment.to_owned(),
-			}
-			.into())
-		}
-	}
-
 	pub(crate) fn current(&self) -> Result<Token<'bump>> {
 		if self.position >= self.tokens.len() {
 			return Err(AstError::UnexpectedEof.into());
@@ -704,11 +692,18 @@ impl<'bump> Parser<'bump> {
 		&mut self,
 		allow_colon_alias: bool,
 		allow_as_keyword: bool,
+		break_on: Option<Keyword>,
 	) -> Result<(Vec<Ast<'bump>>, bool)> {
 		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
 			self.advance()?; // consume opening brace
+		}
+
+		// Handle empty braces
+		if has_braces && !self.is_eof() && self.current()?.is_operator(Operator::CloseCurly) {
+			self.advance()?;
+			return Ok((Vec::new(), true));
 		}
 
 		// When allow_as_keyword is false, use Assignment precedence to stop at AS
@@ -721,14 +716,21 @@ impl<'bump> Parser<'bump> {
 
 		let mut nodes = Vec::with_capacity(4);
 		loop {
+			// Break on keyword before parsing next expression
+			if let Some(kw) = break_on {
+				if !self.is_eof() && self.current()?.is_keyword(kw) {
+					break;
+				}
+			}
+
 			if allow_colon_alias {
-				if let Ok(alias_expr) = self.try_parse_colon_alias() {
-					nodes.push(alias_expr);
+				if let Some(result) = self.try_parse_colon_alias() {
+					nodes.push(result?);
 				} else {
-					nodes.push(self.parse_node(precedence.clone())?);
+					nodes.push(self.parse_node(precedence)?);
 				}
 			} else {
-				nodes.push(self.parse_node(precedence.clone())?);
+				nodes.push(self.parse_node(precedence)?);
 			}
 
 			if self.is_eof() {
@@ -750,43 +752,85 @@ impl<'bump> Parser<'bump> {
 		Ok((nodes, has_braces))
 	}
 
-	/// Try to parse "key: expression" syntax and convert it to
-	/// "expression AS key" where key can be identifier, keyword, or string literal
-	pub(crate) fn try_parse_colon_alias(&mut self) -> Result<Ast<'bump>> {
-		// Check if we have enough tokens from current position
-		if self.position + 1 >= self.tokens.len() {
-			return Err(AstError::UnsupportedToken {
-				fragment: self.current()?.fragment.to_owned(),
+	/// Parse a keyword followed by braced, comma-separated expressions.
+	/// Used by MAP, EXTEND, PATCH and similar operators that require `{ expr, ... }`.
+	/// Returns `(keyword_token, parsed_expressions, rql_source)`.
+	pub(crate) fn parse_keyword_with_braced_expressions(
+		&mut self,
+		keyword: Keyword,
+		op: OperationKind,
+	) -> Result<(Token<'bump>, Vec<Ast<'bump>>, &'bump str)> {
+		let start = self.current()?.fragment.offset();
+		let token = self.consume_keyword(keyword)?;
+
+		let (nodes, has_braces) = self.parse_expressions(true, false, None)?;
+
+		if !has_braces {
+			return Err(RqlError::OperatorMissingBraces {
+				kind: op,
+				fragment: token.fragment.to_owned(),
 			}
 			.into());
 		}
 
-		// Check if current token is identifier, keyword, or string literal (all can be used as field names)
+		Ok((token, nodes, self.source_since(start)))
+	}
+
+	/// Parse a keyword followed by an optional-braces single expression.
+	/// Used by FILTER, GATE and similar operators that accept `keyword { expr }` or `keyword expr`.
+	/// Returns `(keyword_token, parsed_node, rql_source)`.
+	pub(crate) fn parse_keyword_with_optional_braces_single(
+		&mut self,
+		keyword: Keyword,
+	) -> Result<(Token<'bump>, BumpBox<'bump, Ast<'bump>>, &'bump str)> {
+		let start = self.current()?.fragment.offset();
+		let token = self.consume_keyword(keyword)?;
+
+		let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
+		if has_braces {
+			self.advance()?;
+		}
+
+		let node = if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
+			Ast::Nop
+		} else {
+			self.parse_node(Precedence::None)?
+		};
+
+		if has_braces {
+			self.consume_operator(Operator::CloseCurly)?;
+		}
+
+		Ok((token, BumpBox::new_in(node, self.bump()), self.source_since(start)))
+	}
+
+	/// Fast lookahead: is the current position a `key:` colon-alias pattern?
+	fn is_colon_alias(&self) -> bool {
+		if self.position + 1 >= self.tokens.len() {
+			return false;
+		}
 		let is_valid_key = self.tokens[self.position].is_identifier()
 			|| matches!(self.tokens[self.position].kind, TokenKind::Keyword(_))
 			|| matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text));
+		is_valid_key && self.tokens[self.position + 1].is_operator(Operator::Colon)
+	}
 
-		if !is_valid_key {
-			return Err(AstError::UnsupportedToken {
-				fragment: self.current()?.fragment.to_owned(),
-			}
-			.into());
+	/// Try to parse "key: expression" syntax and convert it to
+	/// "expression AS key" where key can be identifier, keyword, or string literal.
+	/// Returns `None` if the current position is not a colon-alias pattern (no error constructed).
+	pub(crate) fn try_parse_colon_alias(&mut self) -> Option<Result<Ast<'bump>>> {
+		if !self.is_colon_alias() {
+			return None;
 		}
 
-		// Check if next token is colon
-		if !self.tokens[self.position + 1].is_operator(Operator::Colon) {
-			return Err(AstError::UnsupportedToken {
-				fragment: self.current()?.fragment.to_owned(),
-			}
-			.into());
-		}
+		Some(self.parse_colon_alias_inner())
+	}
 
+	fn parse_colon_alias_inner(&mut self) -> Result<Ast<'bump>> {
 		// Parse the key (identifier, keyword, or string literal)
 		let key = if matches!(self.tokens[self.position].kind, TokenKind::Literal(Literal::Text)) {
-			// For string literals, parse as literal and keep the AST node
 			Ast::Literal(self.parse_literal_text()?)
 		} else {
-			// For identifiers/keywords, parse as identifier
 			Ast::Identifier(self.parse_as_identifier()?)
 		};
 		let colon_token = self.advance()?; // consume colon

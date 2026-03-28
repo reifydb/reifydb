@@ -5,9 +5,9 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			id::NamespaceId,
-			sumtype::{SumTypeDef, SumTypeKind, VariantDef},
+			sumtype::{SumType, SumTypeKind, Variant},
 		},
-		store::MultiVersionValues,
+		store::MultiVersionRow,
 	},
 	key::sumtype::SumTypeKey,
 };
@@ -36,13 +36,13 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &MaterializedCata
 	Ok(())
 }
 
-fn convert_sumtype(multi: MultiVersionValues) -> SumTypeDef {
-	let row = multi.values;
+fn convert_sumtype(multi: MultiVersionRow) -> SumType {
+	let row = multi.row;
 	let id = SumTypeId(SCHEMA.get_u64(&row, ID));
 	let namespace = NamespaceId(SCHEMA.get_u64(&row, NAMESPACE));
 	let name = SCHEMA.get_utf8(&row, NAME).to_string();
 	let variants_json = SCHEMA.get_utf8(&row, VARIANTS_JSON);
-	let variants: Vec<VariantDef> = from_str(variants_json).unwrap_or_else(|e| {
+	let variants: Vec<Variant> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
@@ -53,7 +53,7 @@ fn convert_sumtype(multi: MultiVersionValues) -> SumTypeDef {
 		SumTypeKind::Enum
 	};
 
-	SumTypeDef {
+	SumType {
 		id,
 		namespace,
 		name,

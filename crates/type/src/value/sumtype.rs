@@ -13,6 +13,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct SumTypeId(pub u64);
 
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
+pub struct VariantRef {
+	pub sumtype_id: SumTypeId,
+	pub variant_tag: u8,
+}
+
 impl Display for SumTypeId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(&self.0, f)

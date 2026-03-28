@@ -1,44 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, primitive::PrimitiveId},
+		catalog::{policy::PolicyTargetType, schema::SchemaId},
 		change::{Change, ChangeOrigin, Diff},
+		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedSeries},
 	},
 	key::{
 		EncodableKey,
 		series_row::{SeriesRowKey, SeriesRowKeyRange},
 	},
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
-use reifydb_transaction::transaction::Transaction;
+use reifydb_rql::nodes::DeleteSeriesNode;
+use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::cowvec::CowVec,
 	value::{Value, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
+use super::returning::{decode_rows_to_columns, evaluate_returning};
 use crate::{
 	Result,
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::schema::get_or_create_series_schema, services::Services, stack::SymbolTable,
-		volcano::scan::series::build_data_column,
+		instruction::dml::schema::get_or_create_series_schema,
+		services::Services,
+		stack::SymbolTable,
+		volcano::{
+			compile::compile,
+			query::{QueryContext, QueryNode},
+		},
 	},
 };
 
@@ -48,9 +50,7 @@ pub(crate) fn delete_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: DeleteSeriesNode,
 	params: Params,
-	identity: IdentityId,
-	symbol_table: &SymbolTable,
-	testing: &mut Option<TestingContext>,
+	symbols: &SymbolTable,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -58,283 +58,187 @@ pub(crate) fn delete_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
+	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	// Get current metadata
-	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series_def.id)? else {
+	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	let has_tag = series_def.tag.is_some();
+	let has_tag = series.tag.is_some();
 	let mut deleted_count = 0u64;
+	let mut returning_columns: Option<Columns> = None;
 
 	if let Some(input_plan) = plan.input {
-		// Extract filter conditions and scan bounds from the plan.
-		// The physical plan optimizer may push timestamp/tag predicates into the
-		// SeriesScan node and remove the Filter node entirely. We need to recover
-		// those bounds so the scan is properly limited.
-		let (conditions, scan_start, scan_end, scan_tag) = match *input_plan {
-			QueryPlan::Filter(filter) => {
-				let (start, end, tag) = match *filter.input {
-					QueryPlan::SeriesScan(scan) => {
-						(scan.time_range_start, scan.time_range_end, scan.variant_tag)
-					}
-					_ => (None, None, None),
-				};
-				(filter.conditions, start, end, tag)
-			}
-			QueryPlan::SeriesScan(scan) => {
-				(vec![], scan.time_range_start, scan.time_range_end, scan.variant_tag)
-			}
-			_ => (vec![], None, None, None),
+		let namespace_ident = Fragment::internal(namespace.name());
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+		let series_ident = Fragment::internal(series.name.clone());
+		let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
+		let resolved_source = Some(ResolvedSchema::Series(resolved_series));
+
+		let context = QueryContext {
+			services: services.clone(),
+			source: resolved_source,
+			batch_size: 1024,
+			params: params.clone(),
+			symbols: symbols.clone(),
+			identity: IdentityId::root(),
 		};
 
-		// Use bounded scan when time range or tag is available from predicate pushdown
-		let range = if scan_start.is_some() || scan_end.is_some() || scan_tag.is_some() {
-			SeriesRowKeyRange::scan_range(series_def.id, scan_tag, scan_start, scan_end, None)
-		} else {
-			SeriesRowKeyRange::full_scan(series_def.id, None)
-		};
-		let mut keys = Vec::new();
-		let mut encoded_values = Vec::new();
-		let mut timestamps = Vec::new();
-		let mut sequences = Vec::new();
-		let mut tags = Vec::new();
-		let mut data_rows: Vec<Vec<Value>> = Vec::new();
+		let mut input_node = compile(*input_plan, txn, Arc::new(context.clone()));
+		input_node.initialize(txn, &context)?;
 
-		// Get the schema for decoding series values
-		let read_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
-
-		{
-			let mut stream = txn.range(range, 4096)?;
-			while let Some(entry) = stream.next() {
-				let entry = entry?;
-				if let Some(key) = SeriesRowKey::decode(&entry.key) {
-					keys.push(entry.key);
-					timestamps.push(key.timestamp);
-					sequences.push(key.sequence);
-					if has_tag {
-						tags.push(key.variant_tag.unwrap_or(0));
-					}
-					let mut values = Vec::with_capacity(series_def.columns.len());
-					for (i, _col) in series_def.columns.iter().enumerate() {
-						values.push(read_schema.get_value(&entry.values, i + 1));
-					}
-					data_rows.push(values);
-					encoded_values.push(entry.values);
-				}
-			}
-		}
-
-		if !keys.is_empty() {
-			// Build Columns from scanned data
-			let mut result_columns = Vec::new();
-			result_columns.push(Column {
-				name: Fragment::internal("timestamp"),
-				data: ColumnData::int8(timestamps),
-			});
-			if has_tag {
-				result_columns.push(Column {
-					name: Fragment::internal("tag"),
-					data: ColumnData::uint1(tags),
-				});
-			}
-			for (col_idx, col_def) in series_def.columns.iter().enumerate() {
-				let col_type = col_def.constraint.get_type();
-				let col_values: Vec<Value> = data_rows
-					.iter()
-					.map(|row| row.get(col_idx).cloned().unwrap_or(Value::none()))
-					.collect();
-				result_columns.push(build_data_column(&col_def.name, &col_values, col_type)?);
-			}
-			let columns = Columns::new(result_columns);
+		let mut mutable_context = context.clone();
+		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			let row_count = columns.row_count();
+			if row_count == 0 {
+				continue;
+			}
 
-			// Compile and evaluate filter conditions
-			let stack = SymbolTable::new();
-			let compile_ctx = CompileContext {
-				functions: &services.functions,
-				symbol_table: &stack,
-			};
-			let compiled_exprs: Vec<CompiledExpr> = conditions
-				.iter()
-				.map(|e| compile_expression(&compile_ctx, e).expect("compile"))
-				.collect();
+			PolicyEvaluator::new(services, symbols).enforce_write_policies(
+				txn,
+				namespace_name,
+				series_name,
+				"delete",
+				&columns,
+				PolicyTargetType::Series,
+			)?;
 
-			let mut filter_mask = BitVec::repeat(row_count, true);
-			for compiled_expr in &compiled_exprs {
-				let exec_ctx = EvalContext {
-					target: None,
-					columns: columns.clone(),
-					row_count,
-					take: None,
-					params: &params,
-					symbol_table: &stack,
-					is_aggregate_context: false,
-					functions: &services.functions,
-					clock: &services.clock,
-					arena: None,
-					identity: IdentityId::root(),
+			let row_numbers = &columns.row_numbers;
+
+			for row_idx in 0..row_count {
+				let sequence = u64::from(row_numbers[row_idx]);
+
+				let key_value = columns
+					.iter()
+					.find(|c| c.name().text() == series.key.column())
+					.and_then(|c| series.key_to_u64(c.data().get_value(row_idx)))
+					.unwrap_or(0);
+
+				let variant_tag = if has_tag {
+					columns.iter()
+						.find(|c| c.name().text() == "tag")
+						.map(|c| match c.data().get_value(row_idx) {
+							Value::Uint1(v) => Some(v),
+							_ => None,
+						})
+						.flatten()
+				} else {
+					None
 				};
 
-				let result = compiled_expr.execute(&exec_ctx)?;
-				match result.data() {
-					ColumnData::Bool(container) => {
-						for i in 0..row_count {
-							if filter_mask.get(i) {
-								let valid = container.is_defined(i);
-								let filter_result = container.data().get(i);
-								filter_mask.set(i, valid & filter_result);
-							}
-						}
-					}
-					ColumnData::Option {
-						inner,
-						bitvec,
-					} => match inner.as_ref() {
-						ColumnData::Bool(container) => {
-							for i in 0..row_count {
-								if filter_mask.get(i) {
-									let defined = i < bitvec.len() && bitvec.get(i);
-									let valid = defined && container.is_defined(i);
-									let value = valid && container.data().get(i);
-									filter_mask.set(i, value);
-								}
-							}
-						}
-						_ => panic!("filter expression must evaluate to a boolean column"),
-					},
-					_ => panic!("filter expression must evaluate to a boolean column"),
-				}
-			}
+				let key = SeriesRowKey {
+					series: series.id,
+					variant_tag,
+					key: key_value,
+					sequence,
+				};
+				let encoded_key = key.encode();
 
-			// Enforce write policies only on rows that match the filter
-			let matching_count = (0..row_count).filter(|&i| filter_mask.get(i)).count();
-			if matching_count > 0 {
-				let mut filtered_cols = Vec::new();
+				let Some(pre_entry) = txn.get(&encoded_key)? else {
+					continue;
+				};
+				let encoded_row = pre_entry.row;
+
+				let row_number = RowNumber::from(sequence);
+				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
+				pre_col_vec.push(Column {
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![key_value]),
+				});
 				for col in columns.iter() {
-					let mut data = ColumnData::with_capacity(col.data().get_type(), matching_count);
-					for i in 0..row_count {
-						if filter_mask.get(i) {
-							data.push_value(col.data().get_value(i));
-						}
-					}
-					filtered_cols.push(Column {
-						name: col.name().clone(),
-						data,
-					});
-				}
-				let filtered = Columns::new(filtered_cols);
-				PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
-					txn,
-					identity,
-					namespace_name,
-					series_name,
-					"delete",
-					&filtered,
-					PolicyTargetType::Series,
-				)?;
-			}
-
-			// Delete matching rows
-			for (i, key) in keys.iter().enumerate() {
-				if filter_mask.get(i) {
-					// Track flow change for deleted row before removing
-					let row_number = RowNumber::from(sequences[i]);
-					let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
-					// Get timestamp from the columns Columns struct
-					if let Some(ts_col) = columns.iter().find(|c| c.name().text() == "timestamp") {
-						let mut data = ColumnData::with_capacity(ts_col.data().get_type(), 1);
-						data.push_value(ts_col.data().get_value(i));
+					if col.name().text() != series.key.column() && col.name().text() != "tag" {
+						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
+						data.push_value(col.data().get_value(row_idx));
 						pre_col_vec.push(Column {
-							name: Fragment::internal("timestamp"),
+							name: col.name().clone(),
 							data,
 						});
 					}
-					for col in columns.iter() {
-						if col.name().text() != "timestamp" && col.name().text() != "tag" {
-							let mut data =
-								ColumnData::with_capacity(col.data().get_type(), 1);
-							data.push_value(col.data().get_value(i));
-							pre_col_vec.push(Column {
-								name: col.name().clone(),
-								data,
-							});
-						}
-					}
-					let pre = Columns {
-						row_numbers: CowVec::new(vec![row_number]),
-						columns: CowVec::new(pre_col_vec),
-					};
-					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
-						version: CommitVersion(0),
-						diffs: vec![Diff::Remove {
-							pre,
-						}],
-					});
-
-					if let Some(log) = testing.as_mut() {
-						let old = Columns::single_row(
-							iter::once((
-								"timestamp",
-								columns.iter()
-									.find(|c| c.name().text() == "timestamp")
-									.map(|c| c.data().get_value(i))
-									.unwrap_or(Value::Int8(0)),
-							))
-							.chain(columns
-								.iter()
-								.filter(|c| {
-									c.name().text() != "timestamp"
-										&& c.name().text() != "tag"
-								})
-								.map(|c| (c.name().text(), c.data().get_value(i)))),
-						);
-						let mutation_key =
-							format!("series::{}::{}", namespace.name(), series_def.name);
-						log.record_delete(mutation_key, old);
-					}
-
-					txn.unset(key, encoded_values[i].clone())?;
-					deleted_count += 1;
 				}
+				let pre = Columns {
+					row_numbers: CowVec::new(vec![row_number]),
+					columns: CowVec::new(pre_col_vec),
+				};
+				txn.track_flow_change(Change {
+					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
+					version: CommitVersion(0),
+					diffs: vec![Diff::Remove {
+						pre,
+					}],
+				});
+
+				SeriesRowInterceptor::pre_delete(txn, &series)?;
+				txn.unset(&encoded_key, encoded_row.clone())?;
+				SeriesRowInterceptor::post_delete(txn, &series, &encoded_row)?;
+				deleted_count += 1;
 			}
+
+			if plan.returning.is_some() {
+				returning_columns = Some(match returning_columns {
+					Some(existing) => {
+						let mut cols = Vec::new();
+						for (i, col) in columns.iter().enumerate() {
+							if let Some(existing_col) = existing.iter().nth(i) {
+								let mut data = ColumnData::with_capacity(
+									col.data().get_type(),
+									existing_col.data().len() + col.data().len(),
+								);
+								for j in 0..existing_col.data().len() {
+									data.push_value(
+										existing_col.data().get_value(j),
+									);
+								}
+								for j in 0..col.data().len() {
+									data.push_value(col.data().get_value(j));
+								}
+								cols.push(Column {
+									name: col.name().clone(),
+									data,
+								});
+							}
+						}
+						Columns::new(cols)
+					}
+					None => columns,
+				});
+			}
+		}
+
+		if plan.returning.is_some() && returning_columns.is_none() {
+			returning_columns = Some(Columns::empty());
 		}
 	} else {
 		// Delete all rows - scan the full range and delete
-		let range = SeriesRowKeyRange::full_scan(series_def.id, None);
-		let mut entries_to_delete: Vec<(EncodedKey, EncodedValues)> = Vec::new();
+		let range = SeriesRowKeyRange::full_scan(series.id, None);
+		let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
 		let mut stream = txn.range(range, 4096)?;
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
-			entries_to_delete.push((entry.key, entry.values));
+			entries_to_delete.push((entry.key, entry.row));
 		}
 		drop(stream);
 
-		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
 
-		for (key, encoded_values) in entries_to_delete.iter() {
-			// Track flow change before removing
+		for (key, encoded_row) in entries_to_delete.iter() {
 			if let Some(decoded_key) = SeriesRowKey::decode(key) {
 				let row_number = RowNumber::from(decoded_key.sequence);
-				let data_values: Vec<Value> = series_def
-					.columns
-					.iter()
+				let data_values: Vec<Value> = series
+					.data_columns()
 					.enumerate()
-					.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
+					.map(|(i, _)| delete_all_schema.get_value(encoded_row, i + 1))
 					.collect();
-				let mut pre_col_vec = Vec::with_capacity(1 + series_def.columns.len());
+				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 				pre_col_vec.push(Column {
-					name: Fragment::internal("timestamp"),
-					data: ColumnData::int8(vec![decoded_key.timestamp]),
+					name: Fragment::internal(series.key.column()),
+					data: series.key_column_data(vec![decoded_key.key]),
 				});
-				for (col_idx, col_def) in series_def.columns.iter().enumerate() {
+				for (col_idx, col_def) in series.data_columns().enumerate() {
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(data_values.get(col_idx).cloned().unwrap_or(Value::none()));
 					pre_col_vec.push(Column {
@@ -347,7 +251,7 @@ pub(crate) fn delete_series<'a>(
 					columns: CowVec::new(pre_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Remove {
 						pre,
@@ -355,44 +259,40 @@ pub(crate) fn delete_series<'a>(
 				});
 			}
 
-			if let Some(log) = testing.as_mut() {
+			SeriesRowInterceptor::pre_delete(txn, &series)?;
+			txn.unset(key, encoded_row.clone())?;
+			SeriesRowInterceptor::post_delete(txn, &series, encoded_row)?;
+			deleted_count += 1;
+		}
+
+		if plan.returning.is_some() {
+			let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
+			for (key, encoded) in entries_to_delete.iter() {
 				if let Some(decoded_key) = SeriesRowKey::decode(key) {
-					let data_values: Vec<Value> = series_def
-						.columns
-						.iter()
-						.enumerate()
-						.map(|(i, _)| delete_all_schema.get_value(encoded_values, i + 1))
-						.collect();
-					let old = Columns::single_row(
-						iter::once(("timestamp", Value::Int8(decoded_key.timestamp))).chain(
-							series_def.columns.iter().enumerate().map(|(i, col)| {
-								(col.name.as_str(), data_values[i].clone())
-							}),
-						),
-					);
-					let mutation_key = format!("series::{}::{}", namespace.name(), series_def.name);
-					log.record_delete(mutation_key, old);
+					returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));
 				}
 			}
-
-			txn.unset(key, encoded_values.clone())?;
-			deleted_count += 1;
+			let columns = decode_rows_to_columns(&delete_all_schema, &returned_rows);
+			returning_columns = Some(columns);
 		}
 	}
 
-	// Update metadata
 	metadata.row_count = metadata.row_count.saturating_sub(deleted_count);
 	if metadata.row_count == 0 {
-		metadata.oldest_timestamp = 0;
-		metadata.newest_timestamp = 0;
+		metadata.oldest_key = 0;
+		metadata.newest_key = 0;
 	}
 
 	services.catalog.update_series_metadata_txn(txn, metadata)?;
 
-	// Return summary
+	if let Some(returning_exprs) = &plan.returning {
+		let cols = returning_columns.unwrap_or_else(Columns::empty);
+		return evaluate_returning(services, symbols, returning_exprs, cols);
+	}
+
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(namespace.name().to_string())),
-		("series", Value::Utf8(series_def.name)),
+		("series", Value::Utf8(series.name)),
 		("deleted", Value::Uint8(deleted_count)),
 	]))
 }

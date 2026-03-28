@@ -5,6 +5,8 @@
 //!
 //! These types define the JSON message format for WebSocket client-server communication.
 
+use std::collections::HashMap;
+
 use reifydb_sub_server::wire::WireParams;
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +38,7 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
+	Logout,
 }
 
 /// Admin (DDL + DML + Query) request payload.
@@ -54,8 +57,9 @@ pub struct AdminRequest {
 /// Authentication request payload.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthRequest {
-	/// Bearer token for authentication.
 	pub token: Option<String>,
+	pub method: Option<String>,
+	pub credentials: Option<HashMap<String, String>>,
 }
 
 /// Command (write) request payload.

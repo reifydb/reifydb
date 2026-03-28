@@ -1,8 +1,5 @@
-/**
- * MIT License
- * Copyright (c) 2025 ReifyDB
- * See license.md file for full license text
- */
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
@@ -11,13 +8,13 @@ import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from 'react';
 
-const TEST_NAMESPACE = `test_schema_${Date.now()}`;
+const TEST_NAMESPACE = `test_schema_${crypto.randomUUID().replace(/-/g, '')}`;
 
 describe('useSchema Hook', () => {
     let setupClient: Awaited<ReturnType<typeof Client.connect_ws>> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
-        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children} />
+        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children} />
     );
 
     beforeAll(async () => {
@@ -25,7 +22,7 @@ describe('useSchema Hook', () => {
 
         // Create test namespace and tables
         const url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
-        setupClient = await Client.connect_ws(url, {timeoutMs: 10000});
+        setupClient = await Client.connect_ws(url, {timeoutMs: 10000, token: process.env.REIFYDB_TOKEN});
 
         // Create namespace
         await setupClient.admin(`CREATE NAMESPACE ${TEST_NAMESPACE}`, {}, []);

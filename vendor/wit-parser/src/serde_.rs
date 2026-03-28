@@ -1,6 +1,6 @@
-use crate::Type;
+use crate::{IndexMap, Span, Type};
+use alloc::string::{String, ToString};
 use id_arena::{Arena, Id};
-use indexmap::IndexMap;
 use semver::Version;
 use serde::ser::{SerializeMap, SerializeSeq, Serializer};
 use serde::{Deserialize, Serialize, de::Error};
@@ -29,6 +29,19 @@ where
     S: Serializer,
 {
     serializer.serialize_u64(id.index() as u64)
+}
+
+/// Variant-level serialize_with for struct variants that have an id and a
+/// skipped span, preserving the old newtype serialization format.
+pub fn serialize_id_ignore_span<T, S>(
+    id: &Id<T>,
+    _span: &Span,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    serialize_id(id, serializer)
 }
 
 pub fn serialize_optional_id<T, S>(id: &Option<Id<T>>, serializer: S) -> Result<S::Ok, S::Error>
@@ -76,29 +89,6 @@ impl Serialize for Type {
             Type::Id(type_id) => serializer.serialize_u64(type_id.index() as u64),
         }
     }
-}
-
-pub fn serialize_params<S>(params: &[(String, Type)], serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    let mut seq = serializer.serialize_seq(Some(params.len()))?;
-    for (name, typ) in params.iter() {
-        let param = Param {
-            name: name.to_string(),
-            typ: *typ,
-        };
-        seq.serialize_element(&param)?;
-    }
-    seq.end()
-}
-
-#[derive(Debug, Clone, PartialEq, serde_derive::Serialize)]
-struct Param {
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub name: String,
-    #[serde(rename = "type")]
-    pub typ: Type,
 }
 
 pub fn serialize_version<S>(version: &Version, serializer: S) -> Result<S::Ok, S::Error>

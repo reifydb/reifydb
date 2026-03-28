@@ -10,6 +10,7 @@ use std::{
 	time::Duration,
 };
 
+use reifydb_auth::service::AuthService;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
@@ -37,15 +38,13 @@ use crate::{
 	Migration,
 	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
-	session::{
-		AdminSession, CommandSession, IntoAdminSession, IntoCommandSession, IntoQuerySession, QuerySession,
-		RetryPolicy, Session,
-	},
+	session::{RetryPolicy, Session},
 	subsystem::Subsystems,
 };
 
 pub struct Database {
 	engine: StandardEngine,
+	auth_service: AuthService,
 	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
@@ -87,6 +86,7 @@ impl Database {
 impl Database {
 	pub(crate) fn new(
 		engine: StandardEngine,
+		auth_service: AuthService,
 		subsystem_manager: Subsystems,
 		health_monitor: Arc<HealthMonitor>,
 		shared_runtime: SharedRuntime,
@@ -95,6 +95,7 @@ impl Database {
 	) -> Self {
 		Self {
 			engine: engine.clone(),
+			auth_service,
 			bootloader: Bootloader::new(engine),
 			subsystems: subsystem_manager,
 			health_monitor,
@@ -107,6 +108,10 @@ impl Database {
 
 	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
+	}
+
+	pub fn auth_service(&self) -> &AuthService {
+		&self.auth_service
 	}
 
 	pub fn shared_runtime(&self) -> &SharedRuntime {
@@ -442,16 +447,14 @@ impl Drop for Database {
 	}
 }
 
-impl Session for Database {
-	fn admin_session(&self, session: impl IntoAdminSession) -> Result<AdminSession> {
-		session.into_admin_session(self.engine.clone())
+impl Database {
+	/// Create a session for the given identity.
+	pub fn session(&self, identity: IdentityId) -> Session {
+		Session::trusted(self.engine.clone(), identity)
 	}
 
-	fn command_session(&self, session: impl IntoCommandSession) -> Result<CommandSession> {
-		session.into_command_session(self.engine.clone())
-	}
-
-	fn query_session(&self, session: impl IntoQuerySession) -> Result<QuerySession> {
-		session.into_query_session(self.engine.clone())
+	/// Create a session as the root user.
+	pub fn root_session(&self) -> Session {
+		Session::trusted(self.engine.clone(), IdentityId::root())
 	}
 }

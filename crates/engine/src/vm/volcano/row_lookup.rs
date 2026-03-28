@@ -11,8 +11,8 @@
 use std::{iter, sync::Arc};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
-	interface::{catalog::primitive::PrimitiveId, resolved::ResolvedPrimitive},
+	encoded::{row::EncodedRow, schema::RowSchema},
+	interface::{catalog::schema::SchemaId, resolved::ResolvedSchema},
 	internal_err, internal_error,
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
@@ -31,16 +31,16 @@ use crate::{
 
 /// O(1) point lookup by row number
 pub(crate) struct RowPointLookupNode {
-	source: ResolvedPrimitive,
+	source: ResolvedSchema,
 	row_number: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	exhausted: bool,
 }
 
 impl<'a> RowPointLookupNode {
-	pub fn new(source: ResolvedPrimitive, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedSchema, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -53,7 +53,7 @@ impl<'a> RowPointLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -63,7 +63,7 @@ impl<'a> RowPointLookupNode {
 		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
 		let schema =
 			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-				internal_error!("Schema with fingerprint {:?} not found", fingerprint)
+				internal_error!("RowSchema with fingerprint {:?} not found", fingerprint)
 			})?;
 
 		self.schema = Some(schema.clone());
@@ -85,18 +85,14 @@ impl QueryNode for RowPointLookupNode {
 		}
 		self.exhausted = true;
 
-		let source_id = get_primitive_id(&self.source)?;
+		let source_id = get_object_id(&self.source)?;
 		let encoded_key = RowKey::encoded(source_id, RowNumber(self.row_number));
 
 		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
-			let mut columns = columns_from_primitive(&self.source);
-			let schema = self.get_or_load_schema(rx, &multi_values.values)?;
-			columns.append_rows(
-				&schema,
-				iter::once(multi_values.values),
-				vec![RowNumber(self.row_number)],
-			)?;
+			let mut columns = columns_from_schema(&self.source);
+			let schema = self.get_or_load_schema(rx, &multi_values.row)?;
+			columns.append_rows(&schema, iter::once(multi_values.row), vec![RowNumber(self.row_number)])?;
 
 			Ok(Some(columns))
 		} else {
@@ -112,16 +108,16 @@ impl QueryNode for RowPointLookupNode {
 
 /// O(k) list lookup by row numbers
 pub(crate) struct RowListLookupNode {
-	source: ResolvedPrimitive,
+	source: ResolvedSchema,
 	row_numbers: Vec<u64>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	current_index: usize,
 }
 
 impl<'a> RowListLookupNode {
-	pub fn new(source: ResolvedPrimitive, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedSchema, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -134,7 +130,7 @@ impl<'a> RowListLookupNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -144,7 +140,7 @@ impl<'a> RowListLookupNode {
 		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
 		let schema =
 			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-				internal_error!("Schema with fingerprint {:?} not found", fingerprint)
+				internal_error!("RowSchema with fingerprint {:?} not found", fingerprint)
 			})?;
 
 		self.schema = Some(schema.clone());
@@ -168,7 +164,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let source_id = get_primitive_id(&self.source)?;
+		let source_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -180,7 +176,7 @@ impl QueryNode for RowListLookupNode {
 
 			// O(1) point lookup for each row
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.values);
+				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 			// Skip rows that don't exist
@@ -196,7 +192,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_primitive(&self.source);
+		let mut columns = columns_from_schema(&self.source);
 		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
 		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
 
@@ -210,19 +206,19 @@ impl QueryNode for RowListLookupNode {
 
 /// Range scan by row numbers (start..=end)
 pub(crate) struct RowRangeScanNode {
-	source: ResolvedPrimitive,
+	source: ResolvedSchema,
 	#[allow(dead_code)]
 	start: u64,
 	end: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 	current_row: u64,
 	exhausted: bool,
 }
 
 impl<'a> RowRangeScanNode {
-	pub fn new(source: ResolvedPrimitive, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedSchema, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -237,7 +233,7 @@ impl<'a> RowRangeScanNode {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedValues) -> Result<Schema> {
+	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
 		if let Some(schema) = &self.schema {
 			return Ok(schema.clone());
 		}
@@ -247,7 +243,7 @@ impl<'a> RowRangeScanNode {
 		let stored_ctx = self.context.as_ref().expect("RowRangeScanNode context not set");
 		let schema =
 			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-				internal_error!("Schema with fingerprint {:?} not found", fingerprint)
+				internal_error!("RowSchema with fingerprint {:?} not found", fingerprint)
 			})?;
 
 		self.schema = Some(schema.clone());
@@ -271,7 +267,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let source_id = get_primitive_id(&self.source)?;
+		let source_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -282,7 +278,7 @@ impl QueryNode for RowRangeScanNode {
 			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.values);
+				batch_rows.push(multi_values.row);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 			// Skip rows that don't exist (sparse storage)
@@ -301,7 +297,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_primitive(&self.source);
+		let mut columns = columns_from_schema(&self.source);
 		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
 		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
 
@@ -315,11 +311,11 @@ impl QueryNode for RowRangeScanNode {
 
 // Helper functions
 
-fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> Result<(ColumnHeaders, Vec<Type>)> {
+fn build_headers_and_storage_types<'a>(source: &ResolvedSchema) -> Result<(ColumnHeaders, Vec<Type>)> {
 	let columns = match source {
-		ResolvedPrimitive::Table(table) => table.columns(),
-		ResolvedPrimitive::View(view) => view.columns(),
-		ResolvedPrimitive::RingBuffer(rb) => rb.columns(),
+		ResolvedSchema::Table(table) => table.columns(),
+		ResolvedSchema::View(view) => view.columns(),
+		ResolvedSchema::RingBuffer(rb) => rb.columns(),
 		_ => {
 			unreachable!("Row lookup not supported for this source type");
 		}
@@ -334,20 +330,20 @@ fn build_headers_and_storage_types<'a>(source: &ResolvedPrimitive) -> Result<(Co
 	Ok((headers, storage_types))
 }
 
-fn get_primitive_id(source: &ResolvedPrimitive) -> Result<PrimitiveId> {
+fn get_object_id(source: &ResolvedSchema) -> Result<SchemaId> {
 	match source {
-		ResolvedPrimitive::Table(table) => Ok(table.def().id.into()),
-		ResolvedPrimitive::View(view) => Ok(view.def().id.into()),
-		ResolvedPrimitive::RingBuffer(rb) => Ok(rb.def().id.into()),
+		ResolvedSchema::Table(table) => Ok(table.def().id.into()),
+		ResolvedSchema::View(view) => Ok(view.def().underlying_id()),
+		ResolvedSchema::RingBuffer(rb) => Ok(rb.def().id.into()),
 		_ => internal_err!("Row lookup not supported for this source type"),
 	}
 }
 
-fn columns_from_primitive<'a>(source: &ResolvedPrimitive) -> Columns {
+fn columns_from_schema<'a>(source: &ResolvedSchema) -> Columns {
 	match source {
-		ResolvedPrimitive::Table(table) => Columns::from_table(table),
-		ResolvedPrimitive::View(view) => Columns::from_view(view),
-		ResolvedPrimitive::RingBuffer(rb) => Columns::from_ringbuffer(rb),
+		ResolvedSchema::Table(table) => Columns::from_resolved_table(table),
+		ResolvedSchema::View(view) => Columns::from_resolved_view(view),
+		ResolvedSchema::RingBuffer(rb) => Columns::from_ringbuffer(rb),
 		_ => Columns::empty(),
 	}
 }

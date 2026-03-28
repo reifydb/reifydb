@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+pub mod ringbuffer_view;
+pub mod series_view;
 pub mod subscription;
 pub mod view;
 
@@ -8,13 +10,13 @@ use std::sync::LazyLock;
 
 use postcard::from_bytes;
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
 		catalog::{
-			column::ColumnDef,
-			dictionary::DictionaryDef,
+			column::Column as CatalogColumn,
+			dictionary::Dictionary,
 			property::{ColumnPropertyKind, ColumnSaturationPolicy},
-			subscription::SubscriptionColumnDef,
+			subscription::SubscriptionColumn,
 		},
 		evaluate::TargetColumn,
 	},
@@ -22,11 +24,11 @@ use reifydb_core::{
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_engine::{
-	expression::{cast::cast_column_data, context::EvalContext},
+	expression::{cast::cast_column_data, context::EvalSession},
 	vm::stack::SymbolTable,
 };
-use reifydb_function::registry::Functions;
-use reifydb_runtime::clock::Clock;
+use reifydb_routine::function::registry::Functions;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	fragment::Fragment,
@@ -37,15 +39,15 @@ use reifydb_type::{
 use crate::transaction::FlowTransaction;
 // All types are accessed directly from their submodules:
 // - crate::operator::sink::subscription::SinkSubscriptionOperator
-// - crate::operator::sink::view::SinkViewOperator
+// - crate::operator::sink::view::SinkTableViewOperator
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
-static DEFAULT_CLOCK: LazyLock<Clock> = LazyLock::new(Clock::default);
+static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(RuntimeContext::default);
 
 /// Coerce columns to match target schema types
-pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) -> Result<Columns> {
+pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
@@ -64,24 +66,22 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 		// Create context with Undefined saturation policy for this column
 		// This ensures overflow during cast produces undefined instead of errors
 		// FIXME how to handle failing views ?!
-		let ctx = EvalContext {
-			target: Some(TargetColumn::Partial {
-				source_name: None,
-				column_name: Some(target_col.name.clone()),
-				column_type: target_type.clone(),
-				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
-			}),
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
-			clock: &DEFAULT_CLOCK,
+			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let mut ctx = session.eval(columns.clone(), row_count);
+		ctx.target = Some(TargetColumn::Partial {
+			source_name: None,
+			column_name: Some(target_col.name.clone()),
+			column_type: target_type.clone(),
+			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
+		});
 
 		if let Some(source_col) = columns.column(&target_col.name) {
 			// Cast to target type
@@ -109,11 +109,8 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[ColumnDef]) ->
 	Ok(Columns::with_row_numbers(result_columns, row_numbers))
 }
 
-/// Coerce columns to match subscription schema types (simpler than ColumnDef)
-pub(crate) fn coerce_subscription_columns(
-	columns: &Columns,
-	target_columns: &[SubscriptionColumnDef],
-) -> Result<Columns> {
+/// Coerce columns to match subscription schema types (simpler than Column)
+pub(crate) fn coerce_subscription_columns(columns: &Columns, target_columns: &[SubscriptionColumn]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
@@ -131,24 +128,22 @@ pub(crate) fn coerce_subscription_columns(
 		let target_type = target_col.ty.clone();
 
 		// Create context with Undefined saturation policy for this column
-		let ctx = EvalContext {
-			target: Some(TargetColumn::Partial {
-				source_name: None,
-				column_name: Some(target_col.name.clone()),
-				column_type: target_type.clone(),
-				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
-			}),
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &EMPTY_FUNCTIONS,
-			clock: &DEFAULT_CLOCK,
+			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let mut ctx = session.eval(columns.clone(), row_count);
+		ctx.target = Some(TargetColumn::Partial {
+			source_name: None,
+			column_name: Some(target_col.name.clone()),
+			column_type: target_type.clone(),
+			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
+		});
 
 		if let Some(source_col) = columns.column(&target_col.name) {
 			// Cast to target type
@@ -180,9 +175,9 @@ pub(crate) fn coerce_subscription_columns(
 pub(crate) fn encode_row_at_index(
 	columns: &Columns,
 	row_idx: usize,
-	schema: &Schema,
+	schema: &RowSchema,
 	row_number: RowNumber,
-) -> (RowNumber, EncodedValues) {
+) -> (RowNumber, EncodedRow) {
 	// Use row_number parameter instead of columns.row_numbers[row_idx]
 
 	// Collect values in SCHEMA FIELD ORDER by matching column names
@@ -210,11 +205,11 @@ pub(crate) fn encode_row_at_index(
 /// Decode dictionary columns in-place using FlowTransaction for lookups.
 ///
 /// For columns that store `DictionaryId` values, reads the embedded `dictionary_id`
-/// from the container metadata, looks up the `DictionaryDef` in the catalog,
+/// from the container metadata, looks up the `Dictionary` in the catalog,
 /// then resolves each dictionary entry ID to its actual value.
 pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> Result<()> {
-	// Collect (col_pos, DictionaryDef) for every DictionaryId column that carries a dictionary_id
-	let dict_columns: Vec<(usize, DictionaryDef)> = {
+	// Collect (col_pos, Dictionary) for every DictionaryId column that carries a dictionary_id
+	let dict_columns: Vec<(usize, Dictionary)> = {
 		let catalog = txn.catalog();
 		columns.iter()
 			.enumerate()

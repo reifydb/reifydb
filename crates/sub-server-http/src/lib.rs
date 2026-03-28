@@ -12,7 +12,7 @@
 //! # Features
 //!
 //! - REST API for query and command execution
-//! - Bearer token and API key authentication
+//! - Bearer token and auth token authentication
 //! - Request timeouts and connection limits
 //! - Graceful shutdown support
 //! - Health check endpoint
@@ -34,7 +34,7 @@
 //! let runtime = SharedRuntime::new(4);
 //!
 //! // Create application state
-//! let state = AppState::new(pool, engine, QueryConfig::default());
+//! let state = AppState::new(pool, engine, QueryConfig::default(), RequestInterceptorChain::empty());
 //!
 //! // Create and start HTTP subsystem
 //! let mut http = HttpSubsystem::new(

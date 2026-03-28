@@ -191,8 +191,8 @@ impl InnerHashJoin {
 		post: &Columns,
 		indices: &[usize],
 		side: JoinSide,
-		old_key: &Hash128,
-		new_key: &Hash128,
+		pre_key: &Hash128,
+		post_key: &Hash128,
 		state: &mut JoinState,
 		operator: &JoinOperator,
 		version: CommitVersion,
@@ -203,11 +203,11 @@ impl InnerHashJoin {
 
 		let mut result = Vec::new();
 
-		if old_key == new_key {
+		if pre_key == post_key {
 			// Key didn't change, update in place
 			for &row_idx in indices {
-				let old_row_number = pre.row_numbers[row_idx];
-				let new_row_number = post.row_numbers[row_idx];
+				let pre_row_number = pre.row_numbers[row_idx];
+				let post_row_number = post.row_numbers[row_idx];
 
 				match side {
 					JoinSide::Left => {
@@ -215,9 +215,9 @@ impl InnerHashJoin {
 						if update_row_in_entry(
 							txn,
 							&mut state.left,
-							old_key,
-							old_row_number,
-							new_row_number,
+							pre_key,
+							pre_row_number,
+							post_row_number,
 						)? {
 							// Emit updates for all joined rows (only if right rows exist)
 							if let Some(diff) = emit_update_joined_columns(
@@ -227,7 +227,7 @@ impl InnerHashJoin {
 								row_idx,
 								JoinSide::Left,
 								&state.right,
-								old_key,
+								pre_key,
 								operator,
 								&operator.right_parent,
 							)? {
@@ -240,9 +240,9 @@ impl InnerHashJoin {
 						if update_row_in_entry(
 							txn,
 							&mut state.right,
-							old_key,
-							old_row_number,
-							new_row_number,
+							pre_key,
+							pre_row_number,
+							post_row_number,
 						)? {
 							// Emit updates for all joined rows (only if left rows exist)
 							if let Some(diff) = emit_update_joined_columns(
@@ -252,7 +252,7 @@ impl InnerHashJoin {
 								row_idx,
 								JoinSide::Right,
 								&state.left,
-								old_key,
+								pre_key,
 								operator,
 								&operator.left_parent,
 							)? {
@@ -265,10 +265,10 @@ impl InnerHashJoin {
 		} else {
 			// Key changed - treat as remove + insert
 			let remove_diffs =
-				self.handle_remove(txn, pre, indices, side, old_key, state, operator, version)?;
+				self.handle_remove(txn, pre, indices, side, pre_key, state, operator, version)?;
 			result.extend(remove_diffs);
 
-			let insert_diffs = self.handle_insert(txn, post, indices, side, new_key, state, operator)?;
+			let insert_diffs = self.handle_insert(txn, post, indices, side, post_key, state, operator)?;
 			result.extend(insert_diffs);
 		}
 

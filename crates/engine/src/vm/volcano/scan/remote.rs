@@ -4,6 +4,8 @@
 #[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
 use std::collections::VecDeque;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
@@ -22,6 +24,7 @@ use crate::{
 #[allow(dead_code)]
 pub(crate) struct RemoteFetchNode {
 	address: String,
+	token: Option<String>,
 	remote_rql: String,
 	variable_names: Vec<String>,
 	batches: VecDeque<Columns>,
@@ -29,9 +32,10 @@ pub(crate) struct RemoteFetchNode {
 }
 
 impl RemoteFetchNode {
-	pub fn new(address: String, remote_rql: String, variable_names: Vec<String>) -> Self {
+	pub fn new(address: String, token: Option<String>, remote_rql: String, variable_names: Vec<String>) -> Self {
 		Self {
 			address,
+			token,
 			remote_rql,
 			variable_names,
 			batches: VecDeque::new(),
@@ -48,7 +52,7 @@ impl QueryNode for RemoteFetchNode {
 				// Resolve local variables for remote execution
 				let mut named_params: HashMap<String, Value> = HashMap::new();
 				for var_name in &self.variable_names {
-					if let Some(Variable::Scalar(columns)) = _ctx.stack.get(var_name) {
+					if let Some(Variable::Scalar(columns)) = _ctx.symbols.get(var_name) {
 						named_params.insert(var_name.clone(), columns.scalar_value().clone());
 					}
 				}
@@ -60,16 +64,21 @@ impl QueryNode for RemoteFetchNode {
 					// Merge: existing named params take precedence
 					if let Params::Named(ref existing) = _ctx.params {
 						let mut merged = named_params;
-						for (k, v) in existing {
+						for (k, v) in existing.iter() {
 							merged.insert(k.clone(), v.clone());
 						}
-						Params::Named(merged)
+						Params::Named(Arc::new(merged))
 					} else {
-						Params::Named(named_params)
+						Params::Named(Arc::new(named_params))
 					}
 				};
 
-				let frames = registry.forward_query(&self.address, &self.remote_rql, params)?;
+				let frames = registry.forward_query(
+					&self.address,
+					&self.remote_rql,
+					params,
+					self.token.as_deref(),
+				)?;
 
 				for frame in frames {
 					let cols: Columns = frame.into();

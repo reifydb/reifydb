@@ -6,25 +6,25 @@ pub mod create;
 pub mod drop;
 pub mod mutate;
 
-use std::{collections, fmt, iter::once, marker, time};
+use std::{collections, fmt, iter::once, marker, time::Duration};
 
 use reifydb_catalog::catalog::{
 	Catalog, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{JoinType, WindowSize, WindowSlide, WindowType},
+	common::{JoinType, WindowKind},
 	error::diagnostic::catalog::{
 		dictionary_not_found, namespace_not_found, ringbuffer_not_found, series_not_found, table_not_found,
 	},
 	interface::{
 		catalog::{
-			column::{ColumnDef, ColumnIndex},
+			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
-			table::TableDef,
+			table::Table,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedPrimitive, ResolvedRingBuffer,
+			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema,
 			ResolvedSeries, ResolvedTable, ResolvedView,
 		},
 	},
@@ -40,7 +40,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	ast::ast::{AstAlterPolicyAction, AstPolicyScope},
+	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
 	bump::{Bump, BumpBox, FragmentInterner},
 	error::RqlError,
 	expression::{
@@ -85,6 +85,8 @@ pub enum PhysicalPlan<'bump> {
 
 	CreateSeries(nodes::CreateSeriesNode),
 	CreateTag(nodes::CreateTagNode),
+	CreateSource(nodes::CreateSourceNode),
+	CreateSink(nodes::CreateSinkNode),
 	CreateTest(nodes::CreateTestNode),
 	RunTests(nodes::RunTestsNode),
 	CreateMigration(nodes::CreateMigrationNode),
@@ -100,6 +102,8 @@ pub enum PhysicalPlan<'bump> {
 	DropSumType(nodes::DropSumTypeNode),
 	DropSubscription(nodes::DropSubscriptionNode),
 	DropSeries(nodes::DropSeriesNode),
+	DropSource(nodes::DropSourceNode),
+	DropSink(nodes::DropSinkNode),
 	// Alter
 	AlterSequence(AlterSequenceNode),
 	AlterTable(AlterTableNode<'bump>),
@@ -167,11 +171,11 @@ pub enum PhysicalPlan<'bump> {
 	Window(WindowNode<'bump>),
 	Scalarize(ScalarizeNode<'bump>),
 	// Auth/Permissions
-	CreateUser(nodes::CreateUserNode),
+	CreateIdentity(nodes::CreateIdentityNode),
 	CreateRole(nodes::CreateRoleNode),
 	Grant(nodes::GrantNode),
 	Revoke(nodes::RevokeNode),
-	DropUser(nodes::DropUserNode),
+	DropIdentity(nodes::DropIdentityNode),
 	DropRole(nodes::DropRoleNode),
 	CreateAuthentication(nodes::CreateAuthenticationNode),
 	DropAuthentication(nodes::DropAuthenticationNode),
@@ -180,8 +184,6 @@ pub enum PhysicalPlan<'bump> {
 	DropPolicy(nodes::DropPolicyNode),
 }
 
-// --- Nodes with recursive children (bump-allocated) ---
-
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'bump> {
 	pub namespace: Namespace,
@@ -189,6 +191,8 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -198,6 +202,8 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub storage_kind: AstViewStorageKind,
+	pub tick: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -232,60 +238,70 @@ pub enum AlterTableAction {
 pub struct DeleteTableNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteRingBufferNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertTableNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedTable,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertRingBufferNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertDictionaryNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedDictionary,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct InsertSeriesNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteSeriesNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateTableNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: Option<ResolvedTable>,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateRingBufferNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedRingBuffer,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateSeriesNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub target: ResolvedSeries,
+	pub returning: Option<Vec<Expression>>,
 }
 
 #[derive(Debug)]
@@ -511,14 +527,10 @@ pub struct ApplyNode<'bump> {
 #[derive(Debug)]
 pub struct WindowNode<'bump> {
 	pub input: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
-	pub window_type: WindowType,
-	pub size: WindowSize,
-	pub slide: Option<WindowSlide>,
+	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
-	pub min_events: usize,
-	pub max_window_count: Option<usize>,
-	pub max_window_age: Option<time::Duration>,
+	pub ts: Option<String>,
 }
 
 #[derive(Debug)]
@@ -731,6 +743,14 @@ impl<'bump> Compiler<'bump> {
 					stack.push(self.compile_create_tag(rx, create)?);
 				}
 
+				LogicalPlan::CreateSource(create) => {
+					stack.push(self.compile_create_source(rx, create)?);
+				}
+
+				LogicalPlan::CreateSink(create) => {
+					stack.push(self.compile_create_sink(rx, create)?);
+				}
+
 				LogicalPlan::CreateMigration(create) => {
 					stack.push(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
 						name: create.name,
@@ -796,10 +816,16 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::DropSeries(drop) => {
 					stack.push(self.compile_drop_series(rx, drop)?);
 				}
+				LogicalPlan::DropSource(drop) => {
+					stack.push(self.compile_drop_source(rx, drop)?);
+				}
+				LogicalPlan::DropSink(drop) => {
+					stack.push(self.compile_drop_sink(rx, drop)?);
+				}
 
 				// Auth/Permissions - pass through logical to physical directly
-				LogicalPlan::CreateUser(node) => {
-					stack.push(PhysicalPlan::CreateUser(nodes::CreateUserNode {
+				LogicalPlan::CreateIdentity(node) => {
+					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
 					}));
 				}
@@ -820,8 +846,8 @@ impl<'bump> Compiler<'bump> {
 						user: self.interner.intern_fragment(&node.user),
 					}));
 				}
-				LogicalPlan::DropUser(node) => {
-					stack.push(PhysicalPlan::DropUser(nodes::DropUserNode {
+				LogicalPlan::DropIdentity(node) => {
+					stack.push(PhysicalPlan::DropIdentity(nodes::DropIdentityNode {
 						name: self.interner.intern_fragment(&node.name),
 						if_exists: node.if_exists,
 					}));
@@ -996,13 +1022,13 @@ impl<'bump> Compiler<'bump> {
 						// Check if input is a scan node we can optimize
 						let source = match &input {
 							PhysicalPlan::TableScan(scan) => {
-								Some(ResolvedPrimitive::Table(scan.source.clone()))
+								Some(ResolvedSchema::Table(scan.source.clone()))
 							}
 							PhysicalPlan::ViewScan(scan) => {
-								Some(ResolvedPrimitive::View(scan.source.clone()))
+								Some(ResolvedSchema::View(scan.source.clone()))
 							}
 							PhysicalPlan::RingBufferScan(scan) => {
-								Some(ResolvedPrimitive::RingBuffer(scan.source.clone()))
+								Some(ResolvedSchema::RingBuffer(scan.source.clone()))
 							}
 							_ => None,
 						};
@@ -1044,15 +1070,16 @@ impl<'bump> Compiler<'bump> {
 						}
 					}
 
-					// Try to push down timestamp/tag predicates into SeriesScan
+					// Try to push down key/tag predicates into SeriesScan
 					if let PhysicalPlan::SeriesScan(ref scan) = input {
-						if let Some(sp) = extract_series_predicate(&filter.condition) {
+						let key_col_name = scan.source.def().key.column();
+						if let Some(sp) =
+							extract_series_predicate(&filter.condition, key_col_name)
+						{
 							let rewritten = PhysicalPlan::SeriesScan(SeriesScanNode {
 								source: scan.source.clone(),
-								time_range_start: sp
-									.time_start
-									.or(scan.time_range_start),
-								time_range_end: sp.time_end.or(scan.time_range_end),
+								key_range_start: sp.key_start.or(scan.key_range_start),
+								key_range_end: sp.key_end.or(scan.key_range_end),
 								variant_tag: sp.variant_tag.or(scan.variant_tag),
 							});
 							if sp.remaining.is_empty() {
@@ -1155,6 +1182,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Delete(DeleteTableNode {
 						input,
 						target,
+						returning: delete.returning,
 					}))
 				}
 
@@ -1211,6 +1239,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
 						input,
 						target,
+						returning: delete.returning,
 					}))
 				}
 
@@ -1261,6 +1290,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert.returning,
 					}))
 				}
 
@@ -1312,6 +1342,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert_rb.returning,
 					}))
 				}
 
@@ -1363,6 +1394,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertDictionary(InsertDictionaryNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert_dict.returning,
 					}))
 				}
 
@@ -1414,6 +1446,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::InsertSeries(InsertSeriesNode {
 						input: self.bump_box(input),
 						target,
+						returning: insert_series.returning,
 					}))
 				}
 
@@ -1470,6 +1503,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::DeleteSeries(DeleteSeriesNode {
 						input,
 						target,
+						returning: delete_series.returning,
 					}))
 				}
 
@@ -1530,6 +1564,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::Update(UpdateTableNode {
 						input,
 						target,
+						returning: update.returning,
 					}))
 				}
 
@@ -1586,6 +1621,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
 						input,
 						target,
+						returning: update_rb.returning,
 					}))
 				}
 
@@ -1642,6 +1678,7 @@ impl<'bump> Compiler<'bump> {
 					stack.push(PhysicalPlan::UpdateSeries(UpdateSeriesNode {
 						input,
 						target,
+						returning: update_series.returning,
 					}))
 				}
 
@@ -1764,7 +1801,7 @@ impl<'bump> Compiler<'bump> {
 							},
 						);
 
-						let table_def = TableDef {
+						let table_def = Table {
 							id: TableId(1),
 							namespace: NamespaceId::SYSTEM,
 							name: "_context".to_string(),
@@ -1778,9 +1815,9 @@ impl<'bump> Compiler<'bump> {
 							table_def,
 						);
 
-						let resolved_source = ResolvedPrimitive::Table(resolved_table);
+						let resolved_source = ResolvedSchema::Table(resolved_table);
 
-						let column_def = ColumnDef {
+						let column_def = Column {
 							id: ColumnId(1),
 							name: col.name.text().to_string(),
 							constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -1905,7 +1942,7 @@ impl<'bump> Compiler<'bump> {
 				}
 
 				LogicalPlan::PrimitiveScan(scan) => match &scan.source {
-					ResolvedPrimitive::Table(resolved_table) => {
+					ResolvedSchema::Table(resolved_table) => {
 						if let Some(index) = &scan.index {
 							stack.push(PhysicalPlan::IndexScan(IndexScanNode {
 								source: resolved_table.clone(),
@@ -1917,7 +1954,7 @@ impl<'bump> Compiler<'bump> {
 							}));
 						}
 					}
-					ResolvedPrimitive::View(resolved_view) => {
+					ResolvedSchema::View(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -1925,7 +1962,7 @@ impl<'bump> Compiler<'bump> {
 							source: resolved_view.clone(),
 						}));
 					}
-					ResolvedPrimitive::DeferredView(resolved_view) => {
+					ResolvedSchema::DeferredView(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -1938,7 +1975,7 @@ impl<'bump> Compiler<'bump> {
 							source: view,
 						}));
 					}
-					ResolvedPrimitive::TransactionalView(resolved_view) => {
+					ResolvedSchema::TransactionalView(resolved_view) => {
 						if scan.index.is_some() {
 							unimplemented!("views do not support indexes yet");
 						}
@@ -1952,7 +1989,7 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 
-					ResolvedPrimitive::TableVirtual(resolved_virtual) => {
+					ResolvedSchema::TableVirtual(resolved_virtual) => {
 						if scan.index.is_some() {
 							unimplemented!("virtual tables do not support indexes yet");
 						}
@@ -1961,7 +1998,7 @@ impl<'bump> Compiler<'bump> {
 							pushdown_context: None,
 						}));
 					}
-					ResolvedPrimitive::RingBuffer(resolved_ringbuffer) => {
+					ResolvedSchema::RingBuffer(resolved_ringbuffer) => {
 						if scan.index.is_some() {
 							unimplemented!("ring buffers do not support indexes yet");
 						}
@@ -1970,7 +2007,7 @@ impl<'bump> Compiler<'bump> {
 						}));
 					}
 
-					ResolvedPrimitive::Dictionary(resolved_dictionary) => {
+					ResolvedSchema::Dictionary(resolved_dictionary) => {
 						if scan.index.is_some() {
 							unimplemented!("dictionaries do not support indexes");
 						}
@@ -1978,14 +2015,14 @@ impl<'bump> Compiler<'bump> {
 							source: resolved_dictionary.clone(),
 						}));
 					}
-					ResolvedPrimitive::Series(resolved_series) => {
+					ResolvedSchema::Series(resolved_series) => {
 						if scan.index.is_some() {
 							unimplemented!("series do not support indexes");
 						}
 						stack.push(PhysicalPlan::SeriesScan(SeriesScanNode {
 							source: resolved_series.clone(),
-							time_range_start: None,
-							time_range_end: None,
+							key_range_start: None,
+							key_range_end: None,
 							variant_tag: None,
 						}));
 					}
@@ -1994,6 +2031,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::RemoteScan(scan) => {
 					stack.push(PhysicalPlan::RemoteScan(nodes::RemoteScanNode {
 						address: scan.address,
+						token: scan.token,
 						remote_rql: format!(
 							"FROM {}::{}",
 							scan.local_namespace, scan.remote_name
@@ -2024,14 +2062,10 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::Window(window) => {
 					let input = stack.pop().map(|p| self.bump_box(p));
 					stack.push(PhysicalPlan::Window(WindowNode {
-						window_type: window.window_type,
-						size: window.size,
-						slide: window.slide,
+						kind: window.kind,
 						group_by: window.group_by,
 						aggregations: window.aggregations,
-						min_events: window.min_events,
-						max_window_count: window.max_window_count,
-						max_window_age: window.max_window_age,
+						ts: window.ts,
 						input,
 					}));
 				}

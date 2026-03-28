@@ -121,7 +121,7 @@ pub struct DeleteStatement {
 pub struct CreateTableStatement {
 	pub table: String,
 	pub schema: Option<String>,
-	pub columns: Vec<ColumnDef>,
+	pub columns: Vec<Column>,
 	pub primary_key: Vec<String>,
 	pub if_not_exists: bool,
 }
@@ -149,7 +149,7 @@ pub struct DropTableStatement {
 }
 
 #[derive(Debug, Clone)]
-pub struct ColumnDef {
+pub struct Column {
 	pub name: String,
 	pub data_type: SqlType,
 	pub nullable: bool,

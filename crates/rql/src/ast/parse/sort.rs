@@ -42,7 +42,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		loop {
-			columns.push(self.parse_column_identifier_or_keyword()?);
+			columns.push(self.parse_column_identifier()?);
 
 			// Check for direction specifier
 			if !self.is_eof()

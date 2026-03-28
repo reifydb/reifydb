@@ -7,7 +7,7 @@ use ptr::null;
 use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema},
+	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::EncodableKey,
 	value::column::columns::Columns,
@@ -85,7 +85,7 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	{
 		let encoded_key = key.encode();
 		let store = self.state();
-		let schema = Schema::testing(&[expected.get_type()]);
+		let schema = RowSchema::testing(&[expected.get_type()]);
 
 		store.assert_value(&encoded_key, &[expected], &schema);
 	}
@@ -101,12 +101,12 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 	}
 
 	/// Take a snapshot of the current state
-	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedValues> {
+	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedRow> {
 		self.state().snapshot()
 	}
 
 	/// Restore state from a snapshot
-	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedValues>) {
+	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedRow>) {
 		(*self.context).clear_state();
 		for (k, v) in snapshot {
 			(*self.context).set_state(k, v.0.to_vec());
@@ -161,7 +161,7 @@ pub struct TestHarnessBuilder<T: FFIOperator> {
 	config: HashMap<String, Value>,
 	node_id: FlowNodeId,
 	version: CommitVersion,
-	initial_state: HashMap<EncodedKey, EncodedValues>,
+	initial_state: HashMap<EncodedKey, EncodedRow>,
 	_phantom: PhantomData<T>,
 }
 
@@ -210,7 +210,7 @@ impl<T: FFIOperator> TestHarnessBuilder<T> {
 	where
 		K: EncodableKey,
 	{
-		self.initial_state.insert(key.encode(), EncodedValues(CowVec::new(value)));
+		self.initial_state.insert(key.encode(), EncodedRow(CowVec::new(value)));
 		self
 	}
 
@@ -283,7 +283,7 @@ pub mod tests {
 	use reifydb_abi::operator::capabilities::CAPABILITY_ALL_STANDARD;
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::{key::IntoEncodedKey, schema::Schema},
+		encoded::{key::IntoEncodedKey, schema::RowSchema},
 		interface::{
 			catalog::flow::FlowNodeId,
 			change::{Change, Diff},
@@ -294,7 +294,7 @@ pub mod tests {
 
 	use super::{super::helpers::encode_key, *};
 	use crate::{
-		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumnDef, context::OperatorContext},
+		operator::{FFIOperator, FFIOperatorMetadata, column::OperatorColumn, context::OperatorContext},
 		testing::builders::TestChangeBuilder,
 	};
 
@@ -309,8 +309,8 @@ pub mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Simple pass-through test operator";
-		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 
@@ -340,8 +340,8 @@ pub mod tests {
 		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
-		const INPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
-		const OUTPUT_COLUMNS: &'static [OperatorColumnDef] = &[];
+		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
+		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 		const CAPABILITIES: u32 = CAPABILITY_ALL_STANDARD;
 	}
 
@@ -375,7 +375,7 @@ pub mod tests {
 					let first_value = row.schema.get_value(&row.encoded, 0);
 
 					// Encode the value and store in state
-					let schema = Schema::testing(&[Type::Int8]);
+					let schema = RowSchema::testing(&[Type::Int8]);
 					let mut encoded = schema.allocate();
 					schema.set_values(&mut encoded, &[first_value]);
 
@@ -432,7 +432,7 @@ pub mod tests {
 
 		// Verify the operator stored state correctly via FFI callbacks
 		let state = harness.state();
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 		let key = encode_key("row_1");
 
 		// Assert the state was set through the FFI bridge
@@ -462,7 +462,7 @@ pub mod tests {
 
 		// Verify all three values were stored
 		let state = harness.state();
-		let schema = Schema::testing(&[Type::Int8]);
+		let schema = RowSchema::testing(&[Type::Int8]);
 
 		state.assert_value(&encode_key("row_1"), &[Value::Int8(10i64)], &schema);
 		state.assert_value(&encode_key("row_2"), &[Value::Int8(20i64)], &schema);

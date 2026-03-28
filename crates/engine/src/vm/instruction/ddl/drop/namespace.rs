@@ -100,7 +100,7 @@ pub(crate) fn drop_namespace(
 	let table_ids: HashSet<_> =
 		all_tables.iter().filter(|t| descendant_ids.contains(&t.namespace)).map(|t| t.id).collect();
 	let view_ids: HashSet<_> =
-		all_views.iter().filter(|v| descendant_ids.contains(&v.namespace)).map(|v| v.id).collect();
+		all_views.iter().filter(|v| descendant_ids.contains(&v.namespace())).map(|v| v.id()).collect();
 	let ringbuffer_ids: HashSet<_> =
 		all_ringbuffers.iter().filter(|r| descendant_ids.contains(&r.namespace)).map(|r| r.id).collect();
 
@@ -135,7 +135,7 @@ pub(crate) fn drop_namespace(
 			&flows,
 			|node_type| {
 				matches!(node_type, FlowNodeType::SourceView { view } if view_ids.contains(view))
-					|| matches!(node_type, FlowNodeType::SinkView { view } if view_ids.contains(view))
+					|| matches!(node_type, FlowNodeType::SinkTableView { view, .. } | FlowNodeType::SinkRingBufferView { view, .. } | FlowNodeType::SinkSeriesView { view, .. } if view_ids.contains(view))
 			},
 		)?);
 

@@ -60,7 +60,7 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		return extract_column_data(col, ctx);
 	}
 
-	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbol_table.get(name) {
+	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbols.get(name) {
 		if let Some(col) = scalar_cols.columns.first() {
 			return extract_column_data(col, ctx);
 		}
@@ -148,16 +148,16 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Res
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::identifier::{ColumnIdentifier, ColumnPrimitive},
+		interface::identifier::{ColumnIdentifier, ColumnSchema},
 		value::column::{Column, columns::Columns, data::ColumnData},
 	};
-	use reifydb_function::registry::Functions;
+	use reifydb_routine::function::registry::Functions;
 	use reifydb_rql::expression::ColumnExpression;
-	use reifydb_runtime::clock::Clock;
+	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 	use super::column_lookup;
-	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};
+	use crate::{expression::context::EvalSession, vm::stack::SymbolTable};
 
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
@@ -165,25 +165,22 @@ pub mod tests {
 		let columns =
 			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
 
-		let ctx = EvalContext {
-			target: None,
-			columns,
-			row_count: 5,
-			take: None,
+		let session = EvalSession {
 			params: &Params::None,
-			symbol_table: &SymbolTable::new(),
-			is_aggregate_context: false,
+			symbols: &SymbolTable::new(),
 			functions: &Functions::empty(),
-			clock: &Clock::default(),
+			runtime_context: &RuntimeContext::default(),
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let ctx = session.eval(columns, 5);
 
 		// Try to access a column that doesn't exist
 		let result = column_lookup(
 			&ctx,
 			&ColumnExpression(ColumnIdentifier {
-				primitive: ColumnPrimitive::Alias(Fragment::internal("nonexistent_col")),
+				schema: ColumnSchema::Alias(Fragment::internal("nonexistent_col")),
 				name: Fragment::internal("nonexistent_col"),
 			}),
 		)

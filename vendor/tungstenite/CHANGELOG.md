@@ -1,3 +1,8 @@
+# 0.29.0
+
+* Update MSRV to `1.71` due to `syn` (the dependency of `thiserror`) requiring it.
+* Allow users to send headers with non-visible ASCII values (as long as they constitute a correct `HeaderValue`).
+
 # 0.28.0
 * Reduce `Error` size 136 -> **32** by boxing internals of `Error::Http`, `Error::WriteBufferFull`,
   `ProtocolError::InvalidHeader`, `TlsError::Native`, `TlsError::Rustls`.

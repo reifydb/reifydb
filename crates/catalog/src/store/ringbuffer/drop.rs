@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::primitive::drop::drop_primitive_metadata};
+use crate::{CatalogStore, Result, store::schema::drop::drop_schema_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<()> {
@@ -26,7 +26,7 @@ impl CatalogStore {
 		};
 
 		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
-		drop_primitive_metadata(txn, ringbuffer.into(), pk_id)?;
+		drop_schema_metadata(txn, ringbuffer.into(), pk_id)?;
 
 		// Remove the ringbuffer metadata
 		txn.remove(&RingBufferMetadataKey::encoded(ringbuffer))?;
@@ -41,10 +41,10 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{id::RingBufferId, primitive::PrimitiveId},
+		interface::catalog::{id::RingBufferId, schema::SchemaId},
 		retention::RetentionPolicy,
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
@@ -54,7 +54,7 @@ pub mod tests {
 	use crate::{
 		CatalogStore,
 		store::{
-			retention_policy::create::create_primitive_retention_policy,
+			retention_policy::create::create_schema_retention_policy,
 			ringbuffer::create::RingBufferColumnToCreate,
 		},
 		test_utils::{create_ringbuffer, ensure_test_namespace, ensure_test_ringbuffer},
@@ -119,21 +119,17 @@ pub mod tests {
 		);
 
 		// Add retention policy
-		create_primitive_retention_policy(
-			&mut txn,
-			PrimitiveId::RingBuffer(rb.id),
-			&RetentionPolicy::KeepForever,
-		)
-		.unwrap();
+		create_schema_retention_policy(&mut txn, SchemaId::RingBuffer(rb.id), &RetentionPolicy::KeepForever)
+			.unwrap();
 
 		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Verify retention policy exists before drop
-		let policy = CatalogStore::find_primitive_retention_policy(
+		let policy = CatalogStore::find_schema_retention_policy(
 			&mut Transaction::Admin(&mut txn),
-			PrimitiveId::RingBuffer(rb.id),
+			SchemaId::RingBuffer(rb.id),
 		)
 		.unwrap();
 		assert!(policy.is_some());
@@ -146,9 +142,9 @@ pub mod tests {
 		assert!(columns.is_empty());
 
 		// Verify retention policy is cleaned up
-		let policy = CatalogStore::find_primitive_retention_policy(
+		let policy = CatalogStore::find_schema_retention_policy(
 			&mut Transaction::Admin(&mut txn),
-			PrimitiveId::RingBuffer(rb.id),
+			SchemaId::RingBuffer(rb.id),
 		)
 		.unwrap();
 		assert!(policy.is_none());

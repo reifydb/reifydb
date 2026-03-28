@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_core::interface::catalog::{
 	id::NamespaceId,
-	vtable::{VTableDef, VTableId},
+	vtable::{VTable, VTableId},
 };
 
 use crate::vtable::tables::{UserVTableDataFunction, VTables};
@@ -18,7 +18,7 @@ use crate::vtable::tables::{UserVTableDataFunction, VTables};
 /// Entry in the user virtual table registry.
 #[derive(Clone)]
 pub struct UserVTableEntry {
-	pub def: Arc<VTableDef>,
+	pub def: Arc<VTable>,
 	pub data_fn: UserVTableDataFunction,
 }
 
@@ -113,7 +113,7 @@ impl UserVTableRegistry {
 	}
 
 	/// List all registered definitions.
-	pub fn list_definitions(&self) -> Vec<Arc<VTableDef>> {
+	pub fn list_definitions(&self) -> Vec<Arc<VTable>> {
 		let inner = self.inner.read().unwrap();
 		inner.entries.values().map(|e| e.def.clone()).collect()
 	}

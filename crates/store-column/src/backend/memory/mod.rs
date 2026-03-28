@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	common::CommitVersion,
-	value::column::{columns::Columns, compressed::CompressedColumn, data::ColumnData},
+	value::column::{compressed::CompressedColumn, data::ColumnData},
 };
 use reifydb_type::Result;
 
@@ -24,55 +24,6 @@ impl MemoryColumnBackend {
 		}
 	}
 
-	/// Compress columns using the appropriate compressor for each column type
-	pub fn compress_columns(&self, _columns: &Columns) -> Result<Vec<CompressedColumn>> {
-		// let mut result = Vec::new();
-		//
-		// for column in columns.columns {
-		// 	let compressor = select_compressor(column.data());
-		// 	result.push(compressor.compress(column.data())?);
-		// }
-		//
-		// Ok(result)
-		todo!()
-	}
-
-	/// Decompress columns
-	pub fn decompress_columns(&self, _compressed: &[CompressedColumn]) -> Result<Vec<ColumnData>> {
-		// compressed
-		// 	.iter()
-		// 	.map(|col| {
-		// 		// Select appropriate decompressor based on compression type
-		// 		match col.compression {
-		// 			reifydb_compression::CompressionType::Dictionary => {
-		// 				let decompressor = DictionaryCompressor::new();
-		// 				decompressor.decompress(col)
-		// 			}
-		// 			reifydb_compression::CompressionType::Delta => {
-		// 				let decompressor = DeltaCompressor::new();
-		// 				decompressor.decompress(col)
-		// 			}
-		// 			reifydb_compression::CompressionType::RunLength => {
-		// 				let decompressor = RleCompressor::new();
-		// 				decompressor.decompress(col)
-		// 			}
-		// 			reifydb_compression::CompressionType::BitPacking => {
-		// 				let decompressor = BitPackCompressor::new();
-		// 				decompressor.decompress(col)
-		// 			}
-		// 			reifydb_compression::CompressionType::Zstd => {
-		// 				let decompressor = reifydb_compression::zstd::ZstdCompressor::new(3);
-		// 				decompressor.decompress(col)
-		// 			}
-		// 			_ => {
-		// 				unimplemented!()
-		// 			}
-		// 		}
-		// 	})
-		// 	.collect()
-		todo!()
-	}
-
 	pub fn insert(&self, version: CommitVersion, columns: Vec<CompressedColumn>) -> Result<()> {
 		let key = PartitionKey::new(0, version);
 		let partition = Partition::new(key.clone(), columns);
@@ -81,16 +32,11 @@ impl MemoryColumnBackend {
 		Ok(())
 	}
 
-	pub fn scan(&self, version: CommitVersion, column_indices: &[usize]) -> Result<Vec<ColumnData>> {
+	pub fn scan(&self, version: CommitVersion, _column_indices: &[usize]) -> Result<Vec<ColumnData>> {
 		let key = PartitionKey::new(0, version);
 
-		if let Some(entry) = self.partitions.get(&key) {
-			let partition = entry.value();
-
-			let selected_columns: Vec<_> =
-				column_indices.iter().filter_map(|&idx| partition.columns.get(idx)).cloned().collect();
-
-			self.decompress_columns(&selected_columns)
+		if let Some(_entry) = self.partitions.get(&key) {
+			todo!("decompress columns")
 		} else {
 			// No data for this version
 			Ok(vec![])

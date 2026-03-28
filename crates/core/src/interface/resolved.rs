@@ -11,16 +11,16 @@ use reifydb_type::{
 use serde::{Deserialize, Serialize};
 
 use super::catalog::{
-	column::ColumnDef,
-	dictionary::DictionaryDef,
+	column::Column,
+	dictionary::Dictionary,
 	namespace::Namespace,
 	property::ColumnPropertyKind,
-	ringbuffer::RingBufferDef,
-	series::SeriesDef,
-	subscription::{SubscriptionColumnDef, SubscriptionDef},
-	table::TableDef,
-	view::ViewDef,
-	vtable::VTableDef,
+	ringbuffer::RingBuffer,
+	series::Series,
+	subscription::{Subscription, SubscriptionColumn},
+	table::Table,
+	view::View,
+	vtable::VTable,
 };
 
 /// Resolved namespace with both identifier and definition
@@ -96,11 +96,11 @@ pub struct ResolvedTable(Arc<ResolvedTableInner>);
 struct ResolvedTableInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: TableDef,
+	pub def: Table,
 }
 
 impl ResolvedTable {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: TableDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: Table) -> Self {
 		Self(Arc::new(ResolvedTableInner {
 			identifier,
 			namespace,
@@ -114,7 +114,7 @@ impl ResolvedTable {
 	}
 
 	/// Get the table def
-	pub fn def(&self) -> &TableDef {
+	pub fn def(&self) -> &Table {
 		&self.0.def
 	}
 
@@ -134,12 +134,12 @@ impl ResolvedTable {
 	}
 
 	/// Get columns
-	pub fn columns(&self) -> &[ColumnDef] {
+	pub fn columns(&self) -> &[Column] {
 		&self.0.def.columns
 	}
 
 	/// Find a column by name
-	pub fn find_column(&self, name: &str) -> Option<&ColumnDef> {
+	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.0.def.columns.iter().find(|c| c.name == name)
 	}
 
@@ -161,11 +161,11 @@ pub struct ResolvedTableVirtual(Arc<ResolvedTableVirtualInner>);
 struct ResolvedTableVirtualInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: VTableDef,
+	pub def: VTable,
 }
 
 impl ResolvedTableVirtual {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: VTableDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: VTable) -> Self {
 		Self(Arc::new(ResolvedTableVirtualInner {
 			identifier,
 			namespace,
@@ -177,7 +177,7 @@ impl ResolvedTableVirtual {
 		&self.0.def.name
 	}
 
-	pub fn def(&self) -> &VTableDef {
+	pub fn def(&self) -> &VTable {
 		&self.0.def
 	}
 
@@ -189,7 +189,7 @@ impl ResolvedTableVirtual {
 		&self.0.identifier
 	}
 
-	pub fn columns(&self) -> &[ColumnDef] {
+	pub fn columns(&self) -> &[Column] {
 		&self.0.def.columns
 	}
 
@@ -211,11 +211,11 @@ pub struct ResolvedRingBuffer(Arc<ResolvedRingBufferInner>);
 struct ResolvedRingBufferInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: RingBufferDef,
+	pub def: RingBuffer,
 }
 
 impl ResolvedRingBuffer {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: RingBufferDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: RingBuffer) -> Self {
 		Self(Arc::new(ResolvedRingBufferInner {
 			identifier,
 			namespace,
@@ -229,7 +229,7 @@ impl ResolvedRingBuffer {
 	}
 
 	/// Get the ring buffer def
-	pub fn def(&self) -> &RingBufferDef {
+	pub fn def(&self) -> &RingBuffer {
 		&self.0.def
 	}
 
@@ -249,12 +249,12 @@ impl ResolvedRingBuffer {
 	}
 
 	/// Get columns
-	pub fn columns(&self) -> &[ColumnDef] {
+	pub fn columns(&self) -> &[Column] {
 		&self.0.def.columns
 	}
 
 	/// Find a column by name
-	pub fn find_column(&self, name: &str) -> Option<&ColumnDef> {
+	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.0.def.columns.iter().find(|c| c.name == name)
 	}
 
@@ -276,11 +276,11 @@ pub struct ResolvedDictionary(Arc<ResolvedDictionaryInner>);
 struct ResolvedDictionaryInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: DictionaryDef,
+	pub def: Dictionary,
 }
 
 impl ResolvedDictionary {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: DictionaryDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: Dictionary) -> Self {
 		Self(Arc::new(ResolvedDictionaryInner {
 			identifier,
 			namespace,
@@ -294,7 +294,7 @@ impl ResolvedDictionary {
 	}
 
 	/// Get the dictionary def
-	pub fn def(&self) -> &DictionaryDef {
+	pub fn def(&self) -> &Dictionary {
 		&self.0.def
 	}
 
@@ -331,11 +331,11 @@ pub struct ResolvedSeries(Arc<ResolvedSeriesInner>);
 struct ResolvedSeriesInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: SeriesDef,
+	pub def: Series,
 }
 
 impl ResolvedSeries {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: SeriesDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: Series) -> Self {
 		Self(Arc::new(ResolvedSeriesInner {
 			identifier,
 			namespace,
@@ -349,7 +349,7 @@ impl ResolvedSeries {
 	}
 
 	/// Get the series def
-	pub fn def(&self) -> &SeriesDef {
+	pub fn def(&self) -> &Series {
 		&self.0.def
 	}
 
@@ -369,12 +369,12 @@ impl ResolvedSeries {
 	}
 
 	/// Get columns
-	pub fn columns(&self) -> &[ColumnDef] {
+	pub fn columns(&self) -> &[Column] {
 		&self.0.def.columns
 	}
 
 	/// Find a column by name
-	pub fn find_column(&self, name: &str) -> Option<&ColumnDef> {
+	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.0.def.columns.iter().find(|c| c.name == name)
 	}
 
@@ -395,11 +395,11 @@ pub struct ResolvedSubscription(Arc<ResolvedSubscriptionInner>);
 #[derive(Debug)]
 struct ResolvedSubscriptionInner {
 	pub identifier: Fragment,
-	pub def: SubscriptionDef,
+	pub def: Subscription,
 }
 
 impl ResolvedSubscription {
-	pub fn new(identifier: Fragment, def: SubscriptionDef) -> Self {
+	pub fn new(identifier: Fragment, def: Subscription) -> Self {
 		Self(Arc::new(ResolvedSubscriptionInner {
 			identifier,
 			def,
@@ -412,7 +412,7 @@ impl ResolvedSubscription {
 	}
 
 	/// Get the subscription def
-	pub fn def(&self) -> &SubscriptionDef {
+	pub fn def(&self) -> &Subscription {
 		&self.0.def
 	}
 
@@ -422,12 +422,12 @@ impl ResolvedSubscription {
 	}
 
 	/// Get columns
-	pub fn columns(&self) -> &[SubscriptionColumnDef] {
+	pub fn columns(&self) -> &[SubscriptionColumn] {
 		&self.0.def.columns
 	}
 
 	/// Find a column by name
-	pub fn find_column(&self, name: &str) -> Option<&SubscriptionColumnDef> {
+	pub fn find_column(&self, name: &str) -> Option<&SubscriptionColumn> {
 		self.0.def.columns.iter().find(|c| c.name == name)
 	}
 
@@ -448,11 +448,11 @@ pub struct ResolvedView(Arc<ResolvedViewInner>);
 struct ResolvedViewInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: ViewDef,
+	pub def: View,
 }
 
 impl ResolvedView {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: ViewDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: View) -> Self {
 		Self(Arc::new(ResolvedViewInner {
 			identifier,
 			namespace,
@@ -461,10 +461,10 @@ impl ResolvedView {
 	}
 
 	pub fn name(&self) -> &str {
-		&self.0.def.name
+		self.0.def.name()
 	}
 
-	pub fn def(&self) -> &ViewDef {
+	pub fn def(&self) -> &View {
 		&self.0.def
 	}
 
@@ -476,8 +476,8 @@ impl ResolvedView {
 		&self.0.identifier
 	}
 
-	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
+	pub fn columns(&self) -> &[Column] {
+		self.0.def.columns()
 	}
 
 	pub fn fully_qualified_name(&self) -> String {
@@ -501,11 +501,11 @@ pub struct ResolvedDeferredView(Arc<ResolvedDeferredViewInner>);
 struct ResolvedDeferredViewInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: ViewDef,
+	pub def: View,
 }
 
 impl ResolvedDeferredView {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: ViewDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: View) -> Self {
 		Self(Arc::new(ResolvedDeferredViewInner {
 			identifier,
 			namespace,
@@ -514,10 +514,10 @@ impl ResolvedDeferredView {
 	}
 
 	pub fn name(&self) -> &str {
-		&self.0.def.name
+		self.0.def.name()
 	}
 
-	pub fn def(&self) -> &ViewDef {
+	pub fn def(&self) -> &View {
 		&self.0.def
 	}
 
@@ -529,8 +529,8 @@ impl ResolvedDeferredView {
 		&self.0.identifier
 	}
 
-	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
+	pub fn columns(&self) -> &[Column] {
+		self.0.def.columns()
 	}
 
 	/// Convert to owned version with 'static lifetime
@@ -550,11 +550,11 @@ pub struct ResolvedTransactionalView(Arc<ResolvedTransactionalViewInner>);
 struct ResolvedTransactionalViewInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: ViewDef,
+	pub def: View,
 }
 
 impl ResolvedTransactionalView {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: ViewDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: View) -> Self {
 		Self(Arc::new(ResolvedTransactionalViewInner {
 			identifier,
 			namespace,
@@ -563,10 +563,10 @@ impl ResolvedTransactionalView {
 	}
 
 	pub fn name(&self) -> &str {
-		&self.0.def.name
+		self.0.def.name()
 	}
 
-	pub fn def(&self) -> &ViewDef {
+	pub fn def(&self) -> &View {
 		&self.0.def
 	}
 
@@ -578,8 +578,8 @@ impl ResolvedTransactionalView {
 		&self.0.identifier
 	}
 
-	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
+	pub fn columns(&self) -> &[Column] {
+		self.0.def.columns()
 	}
 
 	/// Convert to owned version with 'static lifetime
@@ -599,11 +599,11 @@ pub struct ResolvedSequence(Arc<ResolvedSequenceInner>);
 struct ResolvedSequenceInner {
 	pub identifier: Fragment,
 	pub namespace: ResolvedNamespace,
-	pub def: SequenceDef,
+	pub def: Sequence,
 }
 
 impl ResolvedSequence {
-	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: SequenceDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: ResolvedNamespace, def: Sequence) -> Self {
 		Self(Arc::new(ResolvedSequenceInner {
 			identifier,
 			namespace,
@@ -619,7 +619,7 @@ impl ResolvedSequence {
 		&self.0.namespace
 	}
 
-	pub fn def(&self) -> &SequenceDef {
+	pub fn def(&self) -> &Sequence {
 		&self.0.def
 	}
 }
@@ -631,11 +631,11 @@ pub struct ResolvedIndex(Arc<ResolvedIndexInner>);
 struct ResolvedIndexInner {
 	pub identifier: Fragment,
 	pub table: ResolvedTable,
-	pub def: IndexDef,
+	pub def: Index,
 }
 
 impl ResolvedIndex {
-	pub fn new(identifier: Fragment, table: ResolvedTable, def: IndexDef) -> Self {
+	pub fn new(identifier: Fragment, table: ResolvedTable, def: Index) -> Self {
 		Self(Arc::new(ResolvedIndexInner {
 			identifier,
 			table,
@@ -651,7 +651,7 @@ impl ResolvedIndex {
 		&self.0.table
 	}
 
-	pub fn def(&self) -> &IndexDef {
+	pub fn def(&self) -> &Index {
 		&self.0.def
 	}
 }
@@ -663,11 +663,11 @@ pub struct ResolvedFunction(Arc<ResolvedFunctionInner>);
 struct ResolvedFunctionInner {
 	pub identifier: Fragment,
 	pub namespace: Vec<ResolvedNamespace>,
-	pub def: FunctionDef,
+	pub def: Function,
 }
 
 impl ResolvedFunction {
-	pub fn new(identifier: Fragment, namespace: Vec<ResolvedNamespace>, def: FunctionDef) -> Self {
+	pub fn new(identifier: Fragment, namespace: Vec<ResolvedNamespace>, def: Function) -> Self {
 		Self(Arc::new(ResolvedFunctionInner {
 			identifier,
 			namespace,
@@ -683,13 +683,13 @@ impl ResolvedFunction {
 		&self.0.namespace
 	}
 
-	pub fn def(&self) -> &FunctionDef {
+	pub fn def(&self) -> &Function {
 		&self.0.def
 	}
 }
-/// Unified enum for any resolved primitive type
+/// Unified enum for any resolved schema type
 #[derive(Debug, Clone)]
-pub enum ResolvedPrimitive {
+pub enum ResolvedSchema {
 	Table(ResolvedTable),
 	TableVirtual(ResolvedTableVirtual),
 	View(ResolvedView),
@@ -700,7 +700,7 @@ pub enum ResolvedPrimitive {
 	Series(ResolvedSeries),
 }
 
-impl ResolvedPrimitive {
+impl ResolvedSchema {
 	/// Get the identifier fragment
 	pub fn identifier(&self) -> &Fragment {
 		match self {
@@ -715,7 +715,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Get the primitive name
+	/// Get the schema name
 	pub fn name(&self) -> &str {
 		match self {
 			Self::Table(t) => t.name(),
@@ -729,7 +729,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Get the namespace if this primitive has one
+	/// Get the namespace if this schema has one
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		match self {
 			Self::Table(t) => Some(t.namespace()),
@@ -743,18 +743,18 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Check if this primitive supports indexes
+	/// Check if this schema supports indexes
 	pub fn supports_indexes(&self) -> bool {
 		matches!(self, Self::Table(_))
 	}
 
-	/// Check if this primitive supports mutations
+	/// Check if this schema supports mutations
 	pub fn supports_mutations(&self) -> bool {
 		matches!(self, Self::Table(_) | Self::RingBuffer(_) | Self::Series(_))
 	}
 
-	/// Get columns for this primitive
-	pub fn columns(&self) -> &[ColumnDef] {
+	/// Get columns for this schema
+	pub fn columns(&self) -> &[Column] {
 		match self {
 			Self::Table(t) => t.columns(),
 			Self::TableVirtual(t) => t.columns(),
@@ -768,11 +768,11 @@ impl ResolvedPrimitive {
 	}
 
 	/// Find a column by name
-	pub fn find_column(&self, name: &str) -> Option<&ColumnDef> {
+	pub fn find_column(&self, name: &str) -> Option<&Column> {
 		self.columns().iter().find(|c| c.name == name)
 	}
 
-	/// Get the primitive kind name for error messages
+	/// Get the schema kind name for error messages
 	pub fn kind_name(&self) -> &'static str {
 		match self {
 			Self::Table(_) => "table",
@@ -800,7 +800,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a table if this is a table primitive
+	/// Convert to a table if this is a table schema
 	pub fn as_table(&self) -> Option<&ResolvedTable> {
 		match self {
 			Self::Table(t) => Some(t),
@@ -808,7 +808,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a view if this is a view primitive
+	/// Convert to a view if this is a view schema
 	pub fn as_view(&self) -> Option<&ResolvedView> {
 		match self {
 			Self::View(v) => Some(v),
@@ -816,7 +816,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a ring buffer if this is a ring buffer primitive
+	/// Convert to a ring buffer if this is a ring buffer schema
 	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
@@ -824,7 +824,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a dictionary if this is a dictionary primitive
+	/// Convert to a dictionary if this is a dictionary schema
 	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary> {
 		match self {
 			Self::Dictionary(d) => Some(d),
@@ -832,7 +832,7 @@ impl ResolvedPrimitive {
 		}
 	}
 
-	/// Convert to a series if this is a series primitive
+	/// Convert to a series if this is a series schema
 	pub fn as_series(&self) -> Option<&ResolvedSeries> {
 		match self {
 			Self::Series(s) => Some(s),
@@ -841,7 +841,7 @@ impl ResolvedPrimitive {
 	}
 }
 
-/// Column with its resolved primitive
+/// Column with its resolved schema
 #[derive(Debug, Clone)]
 pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 
@@ -849,17 +849,17 @@ pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 struct ResolvedColumnInner {
 	/// Original identifier with fragments
 	pub identifier: Fragment,
-	/// The resolved primitive this column belongs to
-	pub primitive: ResolvedPrimitive,
+	/// The resolved schema this column belongs to
+	pub schema: ResolvedSchema,
 	/// The column definition
-	pub def: ColumnDef,
+	pub def: Column,
 }
 
 impl ResolvedColumn {
-	pub fn new(identifier: Fragment, primitive: ResolvedPrimitive, def: ColumnDef) -> Self {
+	pub fn new(identifier: Fragment, schema: ResolvedSchema, def: Column) -> Self {
 		Self(Arc::new(ResolvedColumnInner {
 			identifier,
-			primitive,
+			schema,
 			def,
 		}))
 	}
@@ -870,7 +870,7 @@ impl ResolvedColumn {
 	}
 
 	/// Get the column def
-	pub fn def(&self) -> &ColumnDef {
+	pub fn def(&self) -> &Column {
 		&self.0.def
 	}
 
@@ -879,9 +879,9 @@ impl ResolvedColumn {
 		&self.0.identifier
 	}
 
-	/// Get the primitive
-	pub fn primitive(&self) -> &ResolvedPrimitive {
-		&self.0.primitive
+	/// Get the schema
+	pub fn schema(&self) -> &ResolvedSchema {
+		&self.0.schema
 	}
 
 	/// Get the type constraint of this column
@@ -906,16 +906,16 @@ impl ResolvedColumn {
 
 	/// Get the namespace this column belongs to
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
-		self.0.primitive.namespace()
+		self.0.schema.namespace()
 	}
 
 	/// Get fully qualified name
 	pub fn qualified_name(&self) -> String {
-		match self.0.primitive.fully_qualified_name() {
-			Some(primitive_name) => {
-				format!("{}.{}", primitive_name, self.name())
+		match self.0.schema.fully_qualified_name() {
+			Some(schema_name) => {
+				format!("{}.{}", schema_name, self.name())
 			}
-			None => format!("{}.{}", self.0.primitive.identifier().text(), self.name()),
+			None => format!("{}.{}", self.0.schema.identifier().text(), self.name()),
 		}
 	}
 
@@ -928,7 +928,7 @@ impl ResolvedColumn {
 	pub fn to_static(&self) -> ResolvedColumn {
 		ResolvedColumn(Arc::new(ResolvedColumnInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
-			primitive: self.0.primitive.clone(),
+			schema: self.0.schema.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -937,29 +937,29 @@ impl ResolvedColumn {
 // Helper function to convert ResolvedColumn to NumberOutOfRangeDescriptor
 // This is used in evaluation context for error reporting
 pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOutOfRangeDescriptor {
-	let (namespace, table) = match column.primitive() {
-		ResolvedPrimitive::Table(table) => {
+	let (namespace, table) = match column.schema() {
+		ResolvedSchema::Table(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedPrimitive::TableVirtual(table) => {
+		ResolvedSchema::TableVirtual(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedPrimitive::RingBuffer(rb) => {
+		ResolvedSchema::RingBuffer(rb) => {
 			(Some(rb.namespace().name().to_string()), Some(rb.name().to_string()))
 		}
-		ResolvedPrimitive::View(view) => {
+		ResolvedSchema::View(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedPrimitive::DeferredView(view) => {
+		ResolvedSchema::DeferredView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedPrimitive::TransactionalView(view) => {
+		ResolvedSchema::TransactionalView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedPrimitive::Dictionary(dict) => {
+		ResolvedSchema::Dictionary(dict) => {
 			(Some(dict.namespace().name().to_string()), Some(dict.name().to_string()))
 		}
-		ResolvedPrimitive::Series(series) => {
+		ResolvedSchema::Series(series) => {
 			(Some(series.namespace().name().to_string()), Some(series.name().to_string()))
 		}
 	};
@@ -974,21 +974,21 @@ pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOu
 
 // Placeholder types - these will be defined properly in catalog
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SequenceDef {
+pub struct Sequence {
 	pub name: String,
 	pub current_value: i64,
 	pub increment: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IndexDef {
+pub struct Index {
 	pub name: String,
 	pub columns: Vec<String>,
 	pub unique: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FunctionDef {
+pub struct Function {
 	pub name: String,
 	pub parameters: Vec<String>,
 	pub return_type: String,
@@ -1016,13 +1016,13 @@ pub mod tests {
 		}
 	}
 
-	fn test_table_def() -> TableDef {
-		TableDef {
+	fn test_table() -> Table {
+		Table {
 			id: TableId(1),
 			namespace: NamespaceId::SYSTEM,
 			name: "users".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: ColumnId(1),
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Int8),
@@ -1031,7 +1031,7 @@ pub mod tests {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: ColumnId(2),
 					name: "name".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -1061,7 +1061,7 @@ pub mod tests {
 		let namespace = ResolvedNamespace::new(namespace_ident, test_namespace_def());
 
 		let table_ident = Fragment::testing("users");
-		let table = ResolvedTable::new(table_ident, namespace.clone(), test_table_def());
+		let table = ResolvedTable::new(table_ident, namespace.clone(), test_table());
 
 		assert_eq!(table.name(), "users");
 		assert_eq!(table.fully_qualified_name(), "public::users");
@@ -1071,33 +1071,33 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_resolved_primitive_enum() {
+	fn test_resolved_schema_enum() {
 		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
-		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table_def());
+		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let primitive = ResolvedPrimitive::Table(table);
+		let schema = ResolvedSchema::Table(table);
 
-		assert!(primitive.supports_indexes());
-		assert!(primitive.supports_mutations());
-		assert_eq!(primitive.kind_name(), "table");
+		assert!(schema.supports_indexes());
+		assert!(schema.supports_mutations());
+		assert_eq!(schema.kind_name(), "table");
 		// effective_name removed - use identifier().text() instead
-		assert_eq!(primitive.fully_qualified_name(), Some("public::users".to_string()));
-		assert!(primitive.as_table().is_some());
-		assert!(primitive.as_view().is_none());
+		assert_eq!(schema.fully_qualified_name(), Some("public::users".to_string()));
+		assert!(schema.as_table().is_some());
+		assert!(schema.as_view().is_none());
 	}
 
 	#[test]
 	fn test_resolved_column() {
 		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
-		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table_def());
+		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let primitive = ResolvedPrimitive::Table(table);
+		let schema = ResolvedSchema::Table(table);
 
 		let column_ident = Fragment::testing("id");
 
-		let column_def = ColumnDef {
+		let column = Column {
 			id: ColumnId(1),
 			name: "id".to_string(),
 			constraint: TypeConstraint::unconstrained(Type::Int8),
@@ -1107,7 +1107,7 @@ pub mod tests {
 			dictionary_id: None,
 		};
 
-		let column = ResolvedColumn::new(column_ident, primitive, column_def);
+		let column = ResolvedColumn::new(column_ident, schema, column);
 
 		assert_eq!(column.name(), "id");
 		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));

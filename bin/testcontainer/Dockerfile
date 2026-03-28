@@ -1,4 +1,4 @@
-FROM rust:1.85.1-slim AS builder
+FROM rust:1.92.0-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /build
 
 # Copy workspace root files
-COPY Cargo.toml Cargo.lock rust-toolchain ./
+COPY Cargo.toml Cargo.lock ./
 
 # Copy vendor directory and cargo config for offline builds
 COPY vendor ./vendor
@@ -23,6 +23,10 @@ WORKDIR /build
 RUN cargo build --release --offline --package testcontainer
 
 FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.title="ReifyDB Test Container"
+LABEL org.opencontainers.image.source="https://github.com/reifydb/reifydb"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 ENV PATH="/usr/local/bin:$PATH"
 ENV RUST_BACKTRACE=1
@@ -45,4 +49,5 @@ RUN chown root:root /usr/local/bin/testcontainer && \
 USER reifydb
 
 EXPOSE 8090
+EXPOSE 8091
 CMD ["testcontainer"]

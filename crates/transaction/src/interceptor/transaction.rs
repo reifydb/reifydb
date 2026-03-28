@@ -3,20 +3,20 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
-	interface::change::Change,
-	testing::TestingContext,
+	encoded::{key::EncodedKey, row::EncodedRow},
+	interface::{
+		catalog::schema::SchemaId,
+		change::{Change, Diff},
+	},
 };
 use reifydb_type::Result;
 
 use crate::{
 	TransactionId,
-	change::{RowChange, TransactionalDefChanges},
+	change::{RowChange, TransactionalCatalogChanges},
 	interceptor::chain::InterceptorChain,
 };
 
-/// Context for pre-commit interceptors.
-///
 /// `flow_changes` carries the table-level changes accumulated during the transaction
 /// (input for transactional flow interceptors).
 /// `pending_writes` is populated by interceptors with view writes to be merged
@@ -26,12 +26,13 @@ pub struct PreCommitContext {
 	pub flow_changes: Vec<Change>,
 	/// View writes produced by flow interceptors to merge back into the transaction.
 	/// `Some(value)` = set the key, `None` = remove the key.
-	pub pending_writes: Vec<(EncodedKey, Option<EncodedValues>)>,
+	pub pending_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
 	/// Snapshot of the committing transaction's pending KV writes (read-only base for flow processing).
 	/// `Some(value)` = set the key, `None` = remove the key.
-	pub transaction_writes: Vec<(EncodedKey, Option<EncodedValues>)>,
-	/// Testing audit log. Threaded through flow processing so view mutations are captured.
-	pub testing: Option<TestingContext>,
+	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
+	/// View-level accumulator entries produced by flow interceptors.
+	/// Used by test infrastructure to feed view diffs back into the change accumulator.
+	pub view_entries: Vec<(SchemaId, Diff)>,
 }
 
 impl PreCommitContext {
@@ -40,16 +41,7 @@ impl PreCommitContext {
 			flow_changes: Vec::new(),
 			pending_writes: Vec::new(),
 			transaction_writes: Vec::new(),
-			testing: None,
-		}
-	}
-
-	pub fn new_with_flow_changes(flow_changes: Vec<Change>) -> Self {
-		Self {
-			flow_changes,
-			pending_writes: Vec::new(),
-			transaction_writes: Vec::new(),
-			testing: None,
+			view_entries: Vec::new(),
 		}
 	}
 }
@@ -120,11 +112,10 @@ where
 	ClosurePreCommitInterceptor::new(f)
 }
 
-/// Context for post-commit interceptors
 pub struct PostCommitContext {
 	pub id: TransactionId,
 	pub version: CommitVersion,
-	pub changes: TransactionalDefChanges,
+	pub changes: TransactionalCatalogChanges,
 	pub row_changes: Vec<RowChange>,
 }
 
@@ -132,7 +123,7 @@ impl PostCommitContext {
 	pub fn new(
 		id: TransactionId,
 		version: CommitVersion,
-		changes: TransactionalDefChanges,
+		changes: TransactionalCatalogChanges,
 		row_changes: Vec<RowChange>,
 	) -> Self {
 		Self {

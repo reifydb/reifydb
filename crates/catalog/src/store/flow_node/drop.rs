@@ -61,11 +61,11 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		encoded::encoded::EncodedValues,
+		encoded::row::EncodedRow,
 		interface::catalog::flow::FlowNodeId,
 		key::{flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::util::cowvec::CowVec;
 
@@ -151,7 +151,7 @@ pub mod tests {
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
 		// Write state entries
-		let dummy_value = EncodedValues(CowVec::new(vec![42u8]));
+		let dummy_value = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&FlowNodeStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
 		txn.set(&FlowNodeInternalStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
 

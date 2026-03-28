@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 ReifyDB
 # Check for inline qualified paths (crate::, super::, reifydb_*::, std::, or
 # vendored crate paths) that should be top-level `use` imports instead.
 #
@@ -71,8 +73,13 @@ while IFS= read -r file; do
         }
 
         # Remove block comments that start and end on same line
-        while (match(line, /\/\*[^*]*(\*[^/][^*]*)*\*\//)) {
-            line = substr(line, 1, RSTART - 1) substr(line, RSTART + RLENGTH)
+        while (1) {
+            cs = index(line, "/*")
+            if (cs == 0) break
+            rest = substr(line, cs + 2)
+            ce = index(rest, "*/")
+            if (ce == 0) break
+            line = substr(line, 1, cs - 1) substr(rest, ce + 2)
         }
 
         # Check if a block comment starts but does not end on this line

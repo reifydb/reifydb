@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 };
 use reifydb_type::util::cowvec::CowVec;
 
@@ -17,7 +17,7 @@ use crate::operator::context::OperatorContext;
 /// Mock implementation of OperatorContext for testing
 #[derive(Clone)]
 pub struct TestContext {
-	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedValues>>>,
+	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedRow>>>,
 	version: CommitVersion,
 	logs: Arc<Mutex<Vec<String>>>,
 }
@@ -38,7 +38,7 @@ impl TestContext {
 	}
 
 	/// Get a reference to the internal state store for inspection
-	pub fn state_store(&self) -> &Arc<Mutex<HashMap<EncodedKey, EncodedValues>>> {
+	pub fn state_store(&self) -> &Arc<Mutex<HashMap<EncodedKey, EncodedRow>>> {
 		&self.state_store
 	}
 
@@ -69,7 +69,7 @@ impl TestContext {
 
 	/// Set state value
 	pub fn set_state(&self, key: EncodedKey, value: Vec<u8>) {
-		self.state_store.lock().unwrap().insert(key, EncodedValues(CowVec::new(value)));
+		self.state_store.lock().unwrap().insert(key, EncodedRow(CowVec::new(value)));
 	}
 
 	/// Remove state value

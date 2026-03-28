@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{primitive::PrimitiveId, property::ColumnPropertyKind},
+	interface::catalog::{property::ColumnPropertyKind, schema::SchemaId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -43,7 +43,7 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 	}
 }
 
-use reifydb_core::interface::catalog::column::{ColumnDef, ColumnIndex};
+use reifydb_core::interface::catalog::column::{Column, ColumnIndex};
 
 use crate::{
 	CatalogStore, Result,
@@ -61,7 +61,7 @@ use crate::{
 pub(crate) struct ColumnToCreate {
 	pub fragment: Option<Fragment>,
 	pub namespace_name: String,
-	pub primitive_name: String, // FIXME refactor to source_name
+	pub schema_name: String, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
 	pub properties: Vec<ColumnPropertyKind>,
@@ -73,19 +73,19 @@ pub(crate) struct ColumnToCreate {
 impl CatalogStore {
 	pub(crate) fn create_column(
 		txn: &mut AdminTransaction,
-		source: impl Into<PrimitiveId>,
+		schema: impl Into<SchemaId>,
 		column_to_create: ColumnToCreate,
-	) -> Result<ColumnDef> {
-		let source = source.into();
+	) -> Result<Column> {
+		let schema = schema.into();
 
 		// FIXME policies
 		if let Some(column) =
-			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), source, &column_to_create.column)?
+			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), schema, &column_to_create.column)?
 		{
 			return Err(CatalogError::ColumnAlreadyExists {
 				kind: CatalogObjectKind::Table,
 				namespace: column_to_create.namespace_name.clone(),
-				name: column_to_create.primitive_name.clone(),
+				name: column_to_create.schema_name.clone(),
 				column: column.name,
 				fragment: Fragment::None,
 			}
@@ -117,7 +117,7 @@ impl CatalogStore {
 
 		let mut row = column::SCHEMA.allocate();
 		column::SCHEMA.set_u64(&mut row, ID, id);
-		column::SCHEMA.set_u64(&mut row, PRIMITIVE, source);
+		column::SCHEMA.set_u64(&mut row, PRIMITIVE, schema);
 		column::SCHEMA.set_utf8(&mut row, NAME, &column_to_create.column);
 		column::SCHEMA.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
 		column::SCHEMA.set_u8(&mut row, INDEX, column_to_create.index);
@@ -138,13 +138,13 @@ impl CatalogStore {
 		primitive_column::SCHEMA.set_u64(&mut row, primitive_column::ID, id);
 		primitive_column::SCHEMA.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
 		primitive_column::SCHEMA.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
-		txn.set(&ColumnKey::encoded(source, id), row)?;
+		txn.set(&ColumnKey::encoded(schema, id), row)?;
 
 		for policy in column_to_create.properties {
 			Self::create_column_property(txn, id, policy)?;
 		}
 
-		Ok(ColumnDef {
+		Ok(Column {
 			id,
 			name: column_to_create.column,
 			constraint: column_to_create.constraint,
@@ -162,7 +162,7 @@ pub mod test {
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
 	};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -179,7 +179,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],
@@ -196,7 +196,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "col_2".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				properties: vec![],
@@ -233,7 +233,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -265,7 +265,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "name".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Utf8),
 				properties: vec![],
@@ -287,7 +287,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "is_active".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],
@@ -307,7 +307,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "price".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Float8),
 				properties: vec![],
@@ -332,7 +332,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],
@@ -350,7 +350,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				primitive_name: "test_table".to_string(),
+				schema_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],

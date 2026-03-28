@@ -4,37 +4,37 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::fragment::Fragment;
 
-use super::flow_operator_store::FlowOperatorStore;
+use super::flow_operator_store::SystemFlowOperatorStore;
 use crate::{
 	Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes output column definitions for FFI operators
-pub struct FlowOperatorOutputs {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemFlowOperatorOutputs {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
-	flow_operator_store: FlowOperatorStore,
+	flow_operator_store: SystemFlowOperatorStore,
 }
 
-impl FlowOperatorOutputs {
-	pub fn new(flow_operator_store: FlowOperatorStore) -> Self {
+impl SystemFlowOperatorOutputs {
+	pub fn new(flow_operator_store: SystemFlowOperatorStore) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_operator_outputs_table_def().clone(),
+			definition: SystemCatalog::get_system_flow_operator_outputs_table().clone(),
 			exhausted: false,
 			flow_operator_store,
 		}
 	}
 }
 
-impl VTable for FlowOperatorOutputs {
+impl BaseVTable for SystemFlowOperatorOutputs {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -93,7 +93,7 @@ impl VTable for FlowOperatorOutputs {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

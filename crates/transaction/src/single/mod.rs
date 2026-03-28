@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	delta::Delta,
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	event::EventBus,
 	interface::WithEventBus,
 };
@@ -158,8 +158,8 @@ pub mod tests {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	fn create_test_svl() -> SingleTransaction {
@@ -274,8 +274,8 @@ pub mod tests {
 			let result2 = tx.get(&key2).unwrap();
 			assert!(result1.is_some());
 			assert!(result2.is_some());
-			assert_eq!(result1.unwrap().values, value1);
-			assert_eq!(result2.unwrap().values, value2);
+			assert_eq!(result1.unwrap().row, value1);
+			assert_eq!(result2.unwrap().row, value2);
 		}
 	}
 
@@ -324,7 +324,7 @@ pub mod tests {
 				let mut tx = svl_clone.begin_query(vec![&key_clone]).unwrap();
 				let result = tx.get(&key_clone).unwrap();
 				assert!(result.is_some());
-				assert_eq!(result.unwrap().values, value_clone);
+				assert_eq!(result.unwrap().row, value_clone);
 			});
 			handles.push(handle);
 		}
@@ -367,7 +367,7 @@ pub mod tests {
 			let mut tx = svl.begin_query(vec![&key]).unwrap();
 			let result = tx.get(&key).unwrap();
 			assert!(result.is_some());
-			assert_eq!(result.unwrap().values, expected_value);
+			assert_eq!(result.unwrap().row, expected_value);
 		}
 	}
 
@@ -398,7 +398,7 @@ pub mod tests {
 				let mut tx = svl_clone.begin_query(vec![&key_clone]).unwrap();
 				let result = tx.get(&key_clone).unwrap();
 				assert!(result.is_some());
-				assert_eq!(result.unwrap().values, value_clone);
+				assert_eq!(result.unwrap().row, value_clone);
 			});
 			handles.push(handle);
 		}
@@ -497,7 +497,7 @@ pub mod tests {
 		let mut tx = svl.begin_query(vec![&key]).unwrap();
 		let result = tx.get(&key).unwrap();
 		assert!(result.is_some());
-		assert_eq!(result.unwrap().values, make_value("value2"));
+		assert_eq!(result.unwrap().row, make_value("value2"));
 	}
 
 	#[test]
@@ -548,7 +548,7 @@ pub mod tests {
 
 			// Should see the updated value after blocking
 			assert!(result.is_some());
-			assert_eq!(result.unwrap().values, make_value("updated"));
+			assert_eq!(result.unwrap().row, make_value("updated"));
 		});
 
 		handle1.join().unwrap();
@@ -585,7 +585,7 @@ pub mod tests {
 				// All should be able to read concurrently
 				let result = tx.get(&key_clone).unwrap();
 				assert!(result.is_some());
-				assert_eq!(result.unwrap().values, make_value("shared"));
+				assert_eq!(result.unwrap().row, make_value("shared"));
 
 				// Hold for a bit to ensure overlap
 				thread::sleep(Duration::from_millis(50));
@@ -732,6 +732,6 @@ pub mod tests {
 		let mut tx = svl.begin_query(vec![&key]).unwrap();
 		let result = tx.get(&key).unwrap();
 		assert!(result.is_some());
-		assert_eq!(result.unwrap().values, make_value("success"));
+		assert_eq!(result.unwrap().row, make_value("success"));
 	}
 }

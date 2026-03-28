@@ -15,17 +15,17 @@ use reifydb_core::{
 	common::CommitVersion,
 	config::SystemConfig,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::EventBus,
-	interface::store::MultiVersionValues,
+	interface::store::MultiVersionRow,
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
+use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript::{
@@ -178,13 +178,13 @@ impl<'a> Runner for MvccRunner {
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let values = EncodedValues(decode_binary(&kv.value));
+					let row = EncodedRow(decode_binary(&kv.value));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call unset on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.unset(&key, values).unwrap();
+							tx.unset(&key, row).unwrap();
 						}
 					}
 				}
@@ -212,12 +212,12 @@ impl<'a> Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(&arg.value));
 
 					let value = match &mut t {
-						TransactionHandle::Read(rx) => rx
-							.get(&key)
-							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
-						TransactionHandle::Write(tx) => tx
-							.get(&key)
-							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
+						TransactionHandle::Read(rx) => {
+							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
+						}
+						TransactionHandle::Write(tx) => {
+							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
+						}
 					}
 					.unwrap();
 
@@ -237,11 +237,11 @@ impl<'a> Runner for MvccRunner {
 
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let values = EncodedValues(decode_binary(&kv.value));
-					if values.is_empty() {
+					let row = EncodedRow(decode_binary(&kv.value));
+					if row.is_empty() {
 						tx.remove(&key).unwrap();
 					} else {
-						tx.set(&key, values).unwrap();
+						tx.set(&key, row).unwrap();
 					}
 				}
 				args.reject_rest()?;
@@ -280,7 +280,7 @@ impl<'a> Runner for MvccRunner {
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
-							kvs.push((multi.key.clone(), multi.values.to_vec()));
+							kvs.push((multi.key.clone(), multi.row.to_vec()));
 						}
 					}
 					TransactionHandle::Write(tx) => {
@@ -289,7 +289,7 @@ impl<'a> Runner for MvccRunner {
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
-							kvs.push((item.key.clone(), item.values.to_vec()));
+							kvs.push((item.key.clone(), item.row.to_vec()));
 						}
 					}
 				}
@@ -389,13 +389,13 @@ impl<'a> Runner for MvccRunner {
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let values = EncodedValues(decode_binary(&kv.value));
+					let row = EncodedRow(decode_binary(&kv.value));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call set on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.set(&key, values).unwrap();
+							tx.set(&key, row).unwrap();
 						}
 					}
 				}
@@ -463,10 +463,10 @@ impl<'a> Runner for MvccRunner {
 
 fn print_rx<I>(output: &mut String, mut iter: I)
 where
-	I: Iterator<Item = MultiVersionValues>,
+	I: Iterator<Item = MultiVersionRow>,
 {
 	while let Some(sv) = iter.next() {
-		let fmtkv = Raw::key_value(&sv.key, sv.values.as_slice());
+		let fmtkv = Raw::key_value(&sv.key, sv.row.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, series::SeriesDef},
+		catalog::{flow::FlowNodeId, series::Series},
 		change::Change,
 	},
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -19,11 +19,11 @@ use crate::{Operator, transaction::FlowTransaction};
 
 pub struct PrimitiveSeriesOperator {
 	node: FlowNodeId,
-	series: SeriesDef,
+	series: Series,
 }
 
 impl PrimitiveSeriesOperator {
-	pub fn new(node: FlowNodeId, series: SeriesDef) -> Self {
+	pub fn new(node: FlowNodeId, series: Series) -> Self {
 		Self {
 			node,
 			series,

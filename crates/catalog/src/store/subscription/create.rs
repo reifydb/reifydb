@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{SubscriptionColumnId, SubscriptionId},
-		subscription::{SubscriptionColumnDef, SubscriptionDef},
+		subscription::{Subscription, SubscriptionColumn},
 	},
 	key::{subscription::SubscriptionKey, subscription_column::SubscriptionColumnKey},
 };
@@ -34,7 +34,7 @@ impl CatalogStore {
 	pub(crate) fn create_subscription(
 		txn: &mut AdminTransaction,
 		to_create: SubscriptionToCreate,
-	) -> Result<SubscriptionDef> {
+	) -> Result<Subscription> {
 		// Use the flow sequence to generate subscription ID (FlowId == SubscriptionId for subscription flows)
 		let flow_id = next_flow_id(txn)?;
 		let subscription_id = SubscriptionId(flow_id.0);
@@ -84,20 +84,20 @@ impl CatalogStore {
 	pub(crate) fn list_subscription_columns(
 		txn: &mut Transaction<'_>,
 		subscription: SubscriptionId,
-	) -> Result<Vec<SubscriptionColumnDef>> {
+	) -> Result<Vec<SubscriptionColumn>> {
 		let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
 
 		let mut columns = Vec::new();
 		while let Some(result) = stream.next() {
 			let multi = result?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let id =
 				SubscriptionColumnId(subscription_column::SCHEMA.get_u64(row, subscription_column::ID));
 			let name = subscription_column::SCHEMA.get_utf8(row, subscription_column::NAME).to_string();
 			let ty_u8 = subscription_column::SCHEMA.get_u8(row, subscription_column::TYPE);
 			let ty = Type::from_u8(ty_u8);
 
-			columns.push(SubscriptionColumnDef {
+			columns.push(SubscriptionColumn {
 				id,
 				name,
 				ty,
@@ -114,7 +114,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::SubscriptionColumnId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_type::value::r#type::Type;
 
 	use crate::{

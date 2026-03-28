@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{dictionary::DictionaryDef, id::NamespaceId},
+	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -17,19 +17,19 @@ impl CatalogStore {
 	pub(crate) fn find_dictionary(
 		rx: &mut Transaction<'_>,
 		dictionary_id: DictionaryId,
-	) -> Result<Option<DictionaryDef>> {
+	) -> Result<Option<Dictionary>> {
 		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = DictionaryId(dictionary::SCHEMA.get_u64(&row, dictionary::ID));
 		let namespace = NamespaceId(dictionary::SCHEMA.get_u64(&row, dictionary::NAMESPACE));
 		let name = dictionary::SCHEMA.get_utf8(&row, dictionary::NAME).to_string();
 		let value_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::VALUE_TYPE);
 		let id_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::ID_TYPE);
 
-		Ok(Some(DictionaryDef {
+		Ok(Some(Dictionary {
 			id,
 			namespace,
 			name,
@@ -42,14 +42,14 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<DictionaryDef>> {
+	) -> Result<Option<Dictionary>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 
 		let mut found_dictionary_id = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let dictionary_name = dictionary_namespace::SCHEMA.get_utf8(row, dictionary_namespace::NAME);
 			if name == dictionary_name {
 				found_dictionary_id = Some(DictionaryId(
@@ -72,7 +72,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::NamespaceId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::{
 		fragment::Fragment,
@@ -177,6 +177,7 @@ pub mod tests {
 				local_name: "namespace2".to_string(),
 				parent_id: NamespaceId::ROOT,
 				grpc: None,
+				token: None,
 			},
 		)
 		.unwrap();

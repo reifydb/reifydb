@@ -26,6 +26,16 @@ impl<'bump> Compiler<'bump> {
 		ast: AstDelete<'bump>,
 		tx: &mut Transaction<'_>,
 	) -> Result<LogicalPlan<'bump>> {
+		let returning = if let Some(returning_asts) = ast.returning {
+			let mut exprs = Vec::with_capacity(returning_asts.len());
+			for ast_node in returning_asts {
+				exprs.push(ExpressionCompiler::compile(ast_node)?);
+			}
+			Some(exprs)
+		} else {
+			None
+		};
+
 		// Build internal pipeline: FROM -> FILTER
 
 		// 1. Create FROM scan from target
@@ -46,10 +56,28 @@ impl<'bump> Compiler<'bump> {
 			rql: filter_ast.rql.to_string(),
 		});
 
-		// 3. Build pipeline: FROM -> FILTER
-		let mut steps = BumpVec::with_capacity_in(2, self.bump);
+		// 3. Build pipeline: FROM -> FILTER -> [TAKE]
+		let take_plan = if let Some(take_box) = ast.take {
+			let take_ast = match BumpBox::into_inner(take_box) {
+				Ast::Take(t) => t,
+				_ => unreachable!("take should always be Ast::Take"),
+			};
+			Some(self.compile_take(take_ast)?)
+		} else {
+			None
+		};
+
+		let capacity = if take_plan.is_some() {
+			3
+		} else {
+			2
+		};
+		let mut steps = BumpVec::with_capacity_in(capacity, self.bump);
 		steps.push(from_plan);
 		steps.push(filter_plan);
+		if let Some(take) = take_plan {
+			steps.push(take);
+		}
 		let pipeline = LogicalPlan::Pipeline(PipelineNode {
 			steps,
 		});
@@ -73,6 +101,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::DeleteTable(DeleteTableNode {
 				target: Some(target),
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		};
 
@@ -85,6 +114,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		}
 
@@ -97,6 +127,7 @@ impl<'bump> Compiler<'bump> {
 			return Ok(LogicalPlan::DeleteSeries(DeleteSeriesNode {
 				target,
 				input: Some(BumpBox::new_in(pipeline, self.bump)),
+				returning,
 			}));
 		}
 
@@ -108,6 +139,7 @@ impl<'bump> Compiler<'bump> {
 		Ok(LogicalPlan::DeleteTable(DeleteTableNode {
 			target: Some(target),
 			input: Some(BumpBox::new_in(pipeline, self.bump)),
+			returning,
 		}))
 	}
 }

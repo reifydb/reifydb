@@ -12,12 +12,15 @@ use reifydb_core::{
 		transaction::PostCommitEvent,
 	},
 	interface::{
-		catalog::primitive::PrimitiveId,
+		catalog::schema::SchemaId,
 		cdc::{Cdc, SystemChange},
 		change::{Change, Diff},
 		store::MultiVersionGetPrevious,
 	},
-	key::{EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey},
+	key::{
+		EncodableKey, Key, cdc_exclude::should_exclude_from_cdc, kind::KeyKind, row::RowKey,
+		series_row::SeriesRowKey,
+	},
 };
 use reifydb_runtime::{
 	actor::{
@@ -27,10 +30,10 @@ use reifydb_runtime::{
 		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
-	clock::Clock,
+	context::clock::Clock,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::Result;
+use reifydb_type::{Result, value::row_number::RowNumber};
 use tracing::{debug, error, trace};
 
 use super::decode::{build_insert_diff, build_remove_diff, build_update_diff};
@@ -81,9 +84,9 @@ where
 	}
 
 	fn process(&self, version: CommitVersion, timestamp: u64, deltas: Vec<Delta>) {
-		let mut diffs_by_primitive: BTreeMap<PrimitiveId, Vec<Diff>> = BTreeMap::new();
+		let mut diffs_by_object: BTreeMap<SchemaId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
-		let registry = self.host.schema_registry();
+		let registry = self.host.row_schema_registry();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -98,11 +101,63 @@ where
 
 				// Row deltas → try to decode into columnar Diff, fall back to SystemChange
 				if kind == KeyKind::Row {
+					// Try series key first (more specific encoding)
+					if let Some(series_key) = SeriesRowKey::decode(&key) {
+						let object = SchemaId::Series(series_key.series);
+						let row_number = RowNumber::from(series_key.sequence);
+						let decoded = match &delta {
+							Delta::Set {
+								key,
+								row,
+							} => {
+								let pre = self
+									.transaction_store
+									.get_previous_version(key, version)
+									.ok()
+									.flatten();
+								if let Some(prev) = pre {
+									build_update_diff(
+										registry,
+										row_number,
+										prev.row,
+										row.clone(),
+									)
+								} else {
+									build_insert_diff(
+										registry,
+										row_number,
+										row.clone(),
+									)
+								}
+							}
+							Delta::Unset {
+								row,
+								..
+							} => {
+								if !row.is_empty() {
+									build_remove_diff(
+										registry,
+										row_number,
+										row.clone(),
+									)
+								} else {
+									None
+								}
+							}
+							_ => None,
+						};
+						if let Some(diff) = decoded {
+							diffs_by_object.entry(object).or_default().push(diff);
+							continue;
+						}
+					}
+
+					// Table/view/ringbuffer row key
 					if let Some(row_key) = RowKey::decode(&key) {
 						let decoded = match &delta {
 							Delta::Set {
 								key,
-								values,
+								row,
 							} => {
 								let pre = self
 									.transaction_store
@@ -113,26 +168,26 @@ where
 									build_update_diff(
 										registry,
 										row_key.row,
-										prev.values,
-										values.clone(),
+										prev.row,
+										row.clone(),
 									)
 								} else {
 									build_insert_diff(
 										registry,
 										row_key.row,
-										values.clone(),
+										row.clone(),
 									)
 								}
 							}
 							Delta::Unset {
-								values,
+								row,
 								..
 							} => {
-								if !values.is_empty() {
+								if !row.is_empty() {
 									build_remove_diff(
 										registry,
 										row_key.row,
-										values.clone(),
+										row.clone(),
 									)
 								} else {
 									None
@@ -142,10 +197,7 @@ where
 						};
 
 						if let Some(diff) = decoded {
-							diffs_by_primitive
-								.entry(row_key.primitive)
-								.or_default()
-								.push(diff);
+							diffs_by_object.entry(row_key.object).or_default().push(diff);
 							continue;
 						}
 					}
@@ -157,7 +209,7 @@ where
 			let change = match delta {
 				Delta::Set {
 					key,
-					values,
+					row,
 				} => {
 					let pre = self
 						.transaction_store
@@ -168,24 +220,24 @@ where
 					if let Some(prev_values) = pre {
 						SystemChange::Update {
 							key,
-							pre: prev_values.values,
-							post: values,
+							pre: prev_values.row,
+							post: row,
 						}
 					} else {
 						SystemChange::Insert {
 							key,
-							post: values,
+							post: row,
 						}
 					}
 				}
 				Delta::Unset {
 					key,
-					values,
+					row,
 				} => {
-					let pre = if values.is_empty() {
+					let pre = if row.is_empty() {
 						None
 					} else {
-						Some(values)
+						Some(row)
 					};
 					SystemChange::Delete {
 						key,
@@ -205,11 +257,11 @@ where
 			system_changes.push(change);
 		}
 
-		// Merge diffs by (PrimitiveId, DiffKind) into batched Changes
+		// Merge diffs by (SchemaId, DiffKind) into batched Changes
 		let mut changes: Vec<Change> = Vec::new();
-		for (primitive, diffs) in diffs_by_primitive {
+		for (object, diffs) in diffs_by_object {
 			let merged = merge_diffs(diffs);
-			changes.push(Change::from_primitive(primitive, version, merged));
+			changes.push(Change::from_schema(object, version, merged));
 		}
 
 		if !changes.is_empty() || !system_changes.is_empty() {
@@ -453,12 +505,12 @@ where
 pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
-	use reifydb_catalog::schema::SchemaRegistry;
+	use reifydb_catalog::schema::RowSchemaRegistry;
 	use reifydb_core::{
 		config::SystemConfig,
-		encoded::{encoded::EncodedValues, key::EncodedKey},
+		encoded::{key::EncodedKey, row::EncodedRow},
 	};
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, clock::Clock};
+	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
@@ -467,7 +519,7 @@ pub mod tests {
 		single::SingleTransaction,
 		transaction::{command::CommandTransaction, query::QueryTransaction},
 	};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
 	use crate::storage::memory::MemoryCdcStorage;
@@ -476,8 +528,8 @@ pub mod tests {
 		EncodedKey(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn make_values(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_row(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[derive(Clone)]
@@ -485,7 +537,7 @@ pub mod tests {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		schema_registry: SchemaRegistry,
+		row_schema_registry: RowSchemaRegistry,
 	}
 
 	impl TestCdcHost {
@@ -510,7 +562,7 @@ pub mod tests {
 				multi,
 				single,
 				event_bus,
-				schema_registry: SchemaRegistry::testing(),
+				row_schema_registry: RowSchemaRegistry::testing(),
 			}
 		}
 	}
@@ -522,11 +574,12 @@ pub mod tests {
 				self.single.clone(),
 				self.event_bus.clone(),
 				Interceptors::new(),
+				IdentityId::system(),
 			)
 		}
 
 		fn begin_query(&self) -> Result<QueryTransaction> {
-			Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone()))
+			Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), IdentityId::system()))
 		}
 
 		fn current_version(&self) -> Result<CommitVersion> {
@@ -541,8 +594,8 @@ pub mod tests {
 			true
 		}
 
-		fn schema_registry(&self) -> &SchemaRegistry {
-			&self.schema_registry
+		fn row_schema_registry(&self) -> &RowSchemaRegistry {
+			&self.row_schema_registry
 		}
 	}
 
@@ -558,7 +611,7 @@ pub mod tests {
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
-			values: make_values("test_value"),
+			row: make_row("test_value"),
 		}];
 
 		handle.actor_ref()
@@ -603,7 +656,7 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key1"),
-				values: make_values("value1"),
+				row: make_row("value1"),
 			},
 			Delta::Drop {
 				key: make_key("key2"),

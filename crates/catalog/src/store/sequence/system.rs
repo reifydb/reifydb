@@ -5,13 +5,14 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	encoded::key::EncodedKey,
 	interface::catalog::{
+		authentication::AuthenticationId,
 		id::{
 			ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
 			PrimaryKeyId, ProcedureId, RingBufferId, SeriesId, TableId, TestId, ViewId,
 		},
+		identity::RoleId,
 		policy::PolicyId,
-		user::{RoleId, UserId},
-		user_authentication::UserAuthenticationId,
+		token::TokenId,
 	},
 	key::system_sequence::SystemSequenceKey,
 };
@@ -22,8 +23,8 @@ use crate::{
 	Result,
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION, MIGRATION_EVENT, NAMESPACE,
-		POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, USER, USER_AUTHENTICATION,
+		AUTHENTICATION, COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER, MIGRATION,
+		MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE, SOURCE, TEST, TOKEN,
 	},
 };
 
@@ -47,8 +48,6 @@ static PROCEDURE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded
 
 static HANDLER_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(HANDLER));
 
-static USER_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(USER));
-
 static ROLE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(ROLE));
 
 static POLICY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(POLICY));
@@ -57,9 +56,11 @@ static MIGRATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded
 
 static MIGRATION_EVENT_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(MIGRATION_EVENT));
 
-static USER_AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(USER_AUTHENTICATION));
+static AUTHENTICATION_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(AUTHENTICATION));
 
 static TEST_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TEST));
+
+static TOKEN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TOKEN));
 
 pub(crate) struct SystemSequence {}
 
@@ -112,10 +113,6 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(SeriesId)
 	}
 
-	pub(crate) fn next_user_id(txn: &mut AdminTransaction) -> Result<UserId> {
-		GeneratorU64::next(txn, &USER_KEY, Some(1025)).map(|v| v)
-	}
-
 	pub(crate) fn next_role_id(txn: &mut AdminTransaction) -> Result<RoleId> {
 		GeneratorU64::next(txn, &ROLE_KEY, Some(1025)).map(|v| v)
 	}
@@ -132,11 +129,15 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &MIGRATION_EVENT_KEY, None).map(MigrationEventId)
 	}
 
-	pub(crate) fn next_user_authentication_id(txn: &mut AdminTransaction) -> Result<UserAuthenticationId> {
-		GeneratorU64::next(txn, &USER_AUTHENTICATION_KEY, None).map(|v| v)
+	pub(crate) fn next_authentication_id(txn: &mut AdminTransaction) -> Result<AuthenticationId> {
+		GeneratorU64::next(txn, &AUTHENTICATION_KEY, None).map(|v| v)
 	}
 
 	pub(crate) fn next_test_id(txn: &mut AdminTransaction) -> Result<TestId> {
 		GeneratorU64::next(txn, &TEST_KEY, None).map(TestId)
+	}
+
+	pub(crate) fn next_token_id(txn: &mut AdminTransaction) -> Result<TokenId> {
+		GeneratorU64::next(txn, &TOKEN_KEY, None).map(|v| v)
 	}
 }

@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{
-	encoded::{encoded::EncodedValues, key::EncodedKey},
+	encoded::{key::EncodedKey, row::EncodedRow},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -14,13 +14,13 @@ use reifydb_core::{
 use reifydb_engine::{
 	expression::{
 		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::{CompileContext, EvalSession},
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_function::registry::Functions;
+use reifydb_routine::function::registry::Functions;
 use reifydb_rql::expression::Expression;
-use reifydb_runtime::clock::Clock;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::{
 	Result,
 	params::Params,
@@ -37,14 +37,14 @@ static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
 /// A sentinel value stored to mark a row as "visible" (latch open).
-static VISIBLE_MARKER: LazyLock<EncodedValues> = LazyLock::new(|| EncodedValues(CowVec::new(vec![1])));
+static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
 
 pub struct GateOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	compiled_conditions: Vec<CompiledExpr>,
 	functions: Functions,
-	clock: Clock,
+	runtime_context: RuntimeContext,
 }
 
 impl GateOperator {
@@ -53,11 +53,11 @@ impl GateOperator {
 		node: FlowNodeId,
 		conditions: Vec<Expression>,
 		functions: Functions,
-		clock: Clock,
+		runtime_context: RuntimeContext,
 	) -> Self {
 		let compile_ctx = CompileContext {
 			functions: &functions,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
+			symbols: &EMPTY_SYMBOL_TABLE,
 		};
 		let compiled_conditions: Vec<CompiledExpr> = conditions
 			.iter()
@@ -69,7 +69,7 @@ impl GateOperator {
 			node,
 			compiled_conditions,
 			functions,
-			clock,
+			runtime_context,
 		}
 	}
 
@@ -81,19 +81,16 @@ impl GateOperator {
 			return Ok(Vec::new());
 		}
 
-		let exec_ctx = EvalContext {
-			target: None,
-			columns: columns.clone(),
-			row_count,
-			take: None,
+		let session = EvalSession {
 			params: &EMPTY_PARAMS,
-			symbol_table: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
+			symbols: &EMPTY_SYMBOL_TABLE,
 			functions: &self.functions,
-			clock: &self.clock,
+			runtime_context: &self.runtime_context,
 			arena: None,
 			identity: IdentityId::root(),
+			is_aggregate_context: false,
 		};
+		let exec_ctx = session.eval(columns.clone(), row_count);
 
 		let mut mask = vec![true; row_count];
 

@@ -1,20 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
+use reifydb_auth::{
+	registry::AuthenticationRegistry,
+	service::{AuthService, AuthServiceConfig},
+};
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_sub_server::state::{AppState, StateConfig};
+use reifydb_sub_server::{
+	interceptor::RequestInterceptorChain,
+	state::{AppState, StateConfig},
+};
 use reifydb_type::Result;
 
 use crate::subsystem::GrpcSubsystem;
 
 #[derive(Clone, Debug)]
 pub struct GrpcConfig {
-	pub bind_addr: String,
+	pub bind_addr: Option<String>,
+	/// Address to bind the admin gRPC server to.
+	/// When set, admin operations are only available on this port.
+	/// When not set, admin operations are not available.
+	pub admin_bind_addr: Option<String>,
 	pub max_connections: usize,
 	pub query_timeout: Duration,
 	pub request_timeout: Duration,
@@ -26,7 +37,8 @@ pub struct GrpcConfig {
 impl Default for GrpcConfig {
 	fn default() -> Self {
 		Self {
-			bind_addr: "0.0.0.0:50051".to_string(),
+			bind_addr: None,
+			admin_bind_addr: None,
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
@@ -43,7 +55,14 @@ impl GrpcConfig {
 	}
 
 	pub fn bind_addr(mut self, addr: impl Into<String>) -> Self {
-		self.bind_addr = addr.into();
+		self.bind_addr = Some(addr.into());
+		self
+	}
+
+	/// Set the admin bind address.
+	/// When set, admin operations are served on this separate port.
+	pub fn admin_bind_addr(mut self, addr: impl Into<String>) -> Self {
+		self.admin_bind_addr = Some(addr.into());
 		self
 	}
 
@@ -100,11 +119,28 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			.request_timeout(self.config.request_timeout)
 			.max_connections(self.config.max_connections);
 
+		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
 
-		let state = AppState::new(runtime.actor_system(), engine, query_config);
+		let auth_service = AuthService::new(
+			Arc::new(engine.clone()),
+			Arc::new(AuthenticationRegistry::new(runtime.clock().clone())),
+			runtime.rng().clone(),
+			runtime.clock().clone(),
+			AuthServiceConfig::default(),
+		);
+
+		let state = AppState::new(
+			runtime.actor_system(),
+			engine,
+			auth_service,
+			query_config,
+			interceptors,
+			runtime.clock().clone(),
+		);
 		let subsystem = GrpcSubsystem::new(
 			self.config.bind_addr.clone(),
+			self.config.admin_bind_addr.clone(),
 			state,
 			runtime,
 			self.config.poll_interval,

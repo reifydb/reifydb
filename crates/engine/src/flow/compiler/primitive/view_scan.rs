@@ -27,7 +27,7 @@ impl CompileOperator for ViewScanCompiler {
 		compiler.add_node(
 			txn,
 			SourceView {
-				view: self.view_scan.source.def().id,
+				view: self.view_scan.source.def().id(),
 			},
 		)
 	}

@@ -4,18 +4,17 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::schema::Schema,
+	encoded::{row::EncodedRow, schema::RowSchema},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedPrimitive, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
-	testing::{TestingContext, columns_from_encoded},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateTableNode;
@@ -24,10 +23,14 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, r#type::Type},
+	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
-use super::{primary_key, schema::get_or_create_table_schema};
+use super::{
+	primary_key,
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_table_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -48,9 +51,7 @@ pub(crate) fn update_table<'a>(
 	txn: &mut Transaction<'_>,
 	plan: UpdateTableNode,
 	params: Params,
-	identity: IdentityId,
-	symbol_table_ref: &SymbolTable,
-	testing: &mut Option<TestingContext>,
+	symbols: &SymbolTable,
 ) -> Result<Columns> {
 	// Get table from plan or infer from input pipeline
 	let (namespace, table) = if let Some(target) = &plan.target {
@@ -79,19 +80,23 @@ pub(crate) fn update_table<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedPrimitive::Table(resolved_table));
+	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
 
 	let context = QueryContext {
 		services: services.clone(),
 		source: resolved_source,
 		batch_size: 1024,
 		params: params.clone(),
-		stack: SymbolTable::new(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	};
 
 	let mut updated_count = 0;
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
+		Vec::new()
+	} else {
+		Vec::new()
+	};
 
 	{
 		let mut input_node = compile(*plan.input, txn, Arc::new(context.clone()));
@@ -101,9 +106,8 @@ pub(crate) fn update_table<'a>(
 		let mut mutable_context = context.clone();
 		while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 			// Enforce write policies before processing rows
-			PolicyEvaluator::new(services, symbol_table_ref).enforce_write_policies(
+			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
-				identity,
 				&namespace.name(),
 				&table.name,
 				"update",
@@ -181,49 +185,48 @@ pub(crate) fn update_table<'a>(
 				let row_key = RowKey::encoded(table.id, row_number);
 
 				if let Some(pk_def) = primary_key::get_primary_key(&services.catalog, txn, &table)? {
-					if let Some(old_row_data) = txn.get(&row_key)? {
-						let old_row = old_row_data.values;
-						let old_key = primary_key::encode_primary_key(
-							&pk_def, &old_row, &table, &schema,
+					if let Some(pre_row_data) = txn.get(&row_key)? {
+						let pre_row = pre_row_data.row;
+						let pre_key = primary_key::encode_primary_key(
+							&pk_def, &pre_row, &table, &schema,
 						)?;
 
 						txn.remove(&IndexEntryKey::new(
 							table.id,
 							IndexId::primary(pk_def.id),
-							old_key,
+							pre_key,
 						)
 						.encode())?;
 					}
 
-					let new_key = primary_key::encode_primary_key(&pk_def, &row, &table, &schema)?;
+					let post_key = primary_key::encode_primary_key(&pk_def, &row, &table, &schema)?;
 
-					let row_number_schema = Schema::testing(&[Type::Uint8]);
+					let row_number_schema = RowSchema::testing(&[Type::Uint8]);
 					let mut row_number_encoded = row_number_schema.allocate();
 					row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 					txn.set(
-						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), new_key)
+						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key)
 							.encode(),
 						row_number_encoded,
 					)?;
 				}
 
-				if let Some(log) = testing.as_mut() {
-					let old = if let Some(old_row_data) = txn.get(&row_key)? {
-						columns_from_encoded(&table.columns, &schema, &old_row_data.values)
-					} else {
-						Columns::empty()
-					};
-					let new = columns_from_encoded(&table.columns, &schema, &row);
-					let key = format!("tables::{}::{}", namespace.name(), table.name);
-					log.record_update(key, old, new);
-				}
+				let stored_row = txn.update_table(table.clone(), row_number, row)?;
 
-				txn.update_table(table.clone(), row_number, row)?;
+				if plan.returning.is_some() {
+					returned_rows.push((row_number, stored_row));
+				}
 
 				updated_count += 1;
 			}
 		}
+	}
+
+	// If RETURNING clause is present, evaluate expressions against updated rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
 	Ok(Columns::single_row([

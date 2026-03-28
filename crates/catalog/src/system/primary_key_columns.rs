@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::catalog::{
-	column::{ColumnDef, ColumnIndex},
+	column::{Column, ColumnIndex},
 	id::NamespaceId,
-	vtable::VTableDef,
+	vtable::VTable,
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -14,16 +14,16 @@ use super::ids::{columns::primary_key_columns::*, vtable::PRIMARY_KEY_COLUMNS};
 
 /// Returns the static definition for the system.primary_key_columns virtual
 /// table This table exposes information about columns in primary keys
-pub fn primary_key_columns() -> Arc<VTableDef> {
-	static INSTANCE: OnceLock<Arc<VTableDef>> = OnceLock::new();
+pub fn primary_key_columns() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
-		Arc::new(VTableDef {
+		Arc::new(VTable {
 			id: PRIMARY_KEY_COLUMNS,
 			namespace: NamespaceId::SYSTEM,
 			name: "primary_key_columns".to_string(),
 			columns: vec![
-				ColumnDef {
+				Column {
 					id: PRIMARY_KEY_ID,
 					name: "primary_key_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -32,7 +32,7 @@ pub fn primary_key_columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: COLUMN_ID,
 					name: "column_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -41,7 +41,7 @@ pub fn primary_key_columns() -> Arc<VTableDef> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				ColumnDef {
+				Column {
 					id: POSITION,
 					name: "position".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint4),

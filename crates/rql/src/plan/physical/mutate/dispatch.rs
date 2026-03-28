@@ -41,7 +41,7 @@ impl<'bump> Compiler<'bump> {
 
 		// Look up event sumtype by name
 		let event_name = dispatch.on_event.name.text();
-		let Some(sumtype_def) = self.catalog.find_sumtype_by_name(rx, namespace.id(), event_name)? else {
+		let Some(sumtype) = self.catalog.find_sumtype_by_name(rx, namespace.id(), event_name)? else {
 			return Err(CatalogError::NotFound {
 				kind: CatalogObjectKind::Event,
 				namespace: ns_name.clone(),
@@ -51,7 +51,7 @@ impl<'bump> Compiler<'bump> {
 			.into());
 		};
 
-		if sumtype_def.kind != SumTypeKind::Event {
+		if sumtype.kind != SumTypeKind::Event {
 			return Err(internal_error!("'{}' is not an EVENT type", event_name));
 		}
 
@@ -60,7 +60,7 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(PhysicalPlan::Dispatch(DispatchNode {
 			namespace,
-			on_sumtype_id: sumtype_def.id,
+			on_sumtype_id: sumtype.id,
 			variant_name: dispatch.variant.text().to_string(),
 			fields,
 		}))

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::{VTableDef, VTableId},
+	interface::catalog::vtable::{VTable, VTableId},
 	sort::SortKey,
 	value::column::columns::Columns,
 };
@@ -47,7 +47,7 @@ pub enum VTableContext {
 }
 
 /// Trait for virtual table instances that follow the volcano iterator pattern
-pub trait VTable: Send + Sync {
+pub trait BaseVTable: Send + Sync {
 	/// Initialize the virtual table iterator with context
 	/// Called once before iteration begins
 	fn initialize(&mut self, txn: &mut Transaction<'_>, ctx: VTableContext) -> Result<()>;
@@ -56,7 +56,7 @@ pub trait VTable: Send + Sync {
 	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>>;
 
 	/// Get the table definition
-	fn definition(&self) -> &VTableDef;
+	fn definition(&self) -> &VTable;
 }
 
 /// Registry for virtual tables (definitions only)
@@ -65,122 +65,118 @@ pub struct VTableRegistry;
 impl VTableRegistry {
 	/// Find a virtual table by its ID
 	/// Returns None if the virtual table doesn't exist
-	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> Result<Option<Arc<VTableDef>>> {
+	pub fn find_vtable(_rx: &mut Transaction<'_>, id: VTableId) -> Result<Option<Arc<VTable>>> {
 		Ok(match id {
-			SEQUENCES => Some(SystemCatalog::get_system_sequences_table_def()),
-			NAMESPACES => Some(SystemCatalog::get_system_namespaces_table_def()),
-			TABLES => Some(SystemCatalog::get_system_tables_table_def()),
-			VIEWS => Some(SystemCatalog::get_system_views_table_def()),
-			COLUMNS => Some(SystemCatalog::get_system_columns_table_def()),
-			COLUMN_PROPERTIES => Some(SystemCatalog::get_system_column_properties_table_def()),
-			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table_def()),
-			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table_def()),
-			VERSIONS => Some(SystemCatalog::get_system_versions_table_def()),
+			SEQUENCES => Some(SystemCatalog::get_system_sequences_table()),
+			NAMESPACES => Some(SystemCatalog::get_system_namespaces_table()),
+			TABLES => Some(SystemCatalog::get_system_tables_table()),
+			VIEWS => Some(SystemCatalog::get_system_views_table()),
+			COLUMNS => Some(SystemCatalog::get_system_columns_table()),
+			COLUMN_PROPERTIES => Some(SystemCatalog::get_system_column_properties_table()),
+			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table()),
+			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
+			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
 			PRIMITIVE_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_primitive_retention_policies_table_def())
+				Some(SystemCatalog::get_system_schema_retention_policies_table())
 			}
 			OPERATOR_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_operator_retention_policies_table_def())
+				Some(SystemCatalog::get_system_operator_retention_policies_table())
 			}
-			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table_def()),
-			FLOWS => Some(SystemCatalog::get_system_flows_table_def()),
-			FLOW_OPERATORS => Some(SystemCatalog::get_system_flow_operators_table_def()),
-			FLOW_NODES => Some(SystemCatalog::get_system_flow_nodes_table_def()),
-			FLOW_EDGES => Some(SystemCatalog::get_system_flow_edges_table_def()),
-			FLOW_NODE_TYPES => Some(SystemCatalog::get_system_flow_node_types_table_def()),
-			FLOW_OPERATOR_INPUTS => Some(SystemCatalog::get_system_flow_operator_inputs_table_def()),
-			FLOW_OPERATOR_OUTPUTS => Some(SystemCatalog::get_system_flow_operator_outputs_table_def()),
-			DICTIONARIES => Some(SystemCatalog::get_system_dictionaries_table_def()),
-			RINGBUFFERS => Some(SystemCatalog::get_system_ringbuffers_table_def()),
-			SCHEMAS => Some(SystemCatalog::get_system_schemas_table_def()),
-			SCHEMA_FIELDS => Some(SystemCatalog::get_system_schema_fields_table_def()),
-			ENUMS => Some(SystemCatalog::get_system_enums_table_def()),
-			ENUM_VARIANTS => Some(SystemCatalog::get_system_enum_variants_table_def()),
-			EVENTS => Some(SystemCatalog::get_system_events_table_def()),
-			EVENT_VARIANTS => Some(SystemCatalog::get_system_event_variants_table_def()),
-			HANDLERS => Some(SystemCatalog::get_system_handlers_table_def()),
-			TAGS => Some(SystemCatalog::get_system_tags_table_def()),
-			TAG_VARIANTS => Some(SystemCatalog::get_system_tag_variants_table_def()),
-			SERIES => Some(SystemCatalog::get_system_series_table_def()),
-			USERS => Some(SystemCatalog::get_system_users_table_def()),
-			ROLES => Some(SystemCatalog::get_system_roles_table_def()),
-			USER_ROLES => Some(SystemCatalog::get_system_user_roles_table_def()),
-			POLICIES => Some(SystemCatalog::get_system_policies_table_def()),
-			POLICY_OPERATIONS => Some(SystemCatalog::get_system_policy_operations_table_def()),
-			VIRTUAL_TABLES => Some(SystemCatalog::get_system_virtual_tables_table_def()),
-			VIRTUAL_TABLE_COLUMNS => Some(SystemCatalog::get_system_virtual_table_columns_table_def()),
-			TYPES => Some(SystemCatalog::get_system_types_table_def()),
-			TABLE_STORAGE_STATS => Some(SystemCatalog::get_system_table_storage_stats_table_def()),
-			VIEW_STORAGE_STATS => Some(SystemCatalog::get_system_view_storage_stats_table_def()),
-			FLOW_STORAGE_STATS => Some(SystemCatalog::get_system_flow_storage_stats_table_def()),
-			FLOW_NODE_STORAGE_STATS => Some(SystemCatalog::get_system_flow_node_storage_stats_table_def()),
-			INDEX_STORAGE_STATS => Some(SystemCatalog::get_system_index_storage_stats_table_def()),
-			RINGBUFFER_STORAGE_STATS => {
-				Some(SystemCatalog::get_system_ringbuffer_storage_stats_table_def())
-			}
-			DICTIONARY_STORAGE_STATS => {
-				Some(SystemCatalog::get_system_dictionary_storage_stats_table_def())
-			}
-			MIGRATIONS => Some(SystemCatalog::get_system_migrations_table_def()),
-			USER_AUTHENTICATIONS => Some(SystemCatalog::get_system_user_authentications_table_def()),
-			CONFIGS => Some(SystemCatalog::get_system_configs_table_def()),
+			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table()),
+			FLOWS => Some(SystemCatalog::get_system_flows_table()),
+			FLOW_OPERATORS => Some(SystemCatalog::get_system_flow_operators_table()),
+			FLOW_NODES => Some(SystemCatalog::get_system_flow_nodes_table()),
+			FLOW_EDGES => Some(SystemCatalog::get_system_flow_edges_table()),
+			FLOW_NODE_TYPES => Some(SystemCatalog::get_system_flow_node_types_table()),
+			FLOW_OPERATOR_INPUTS => Some(SystemCatalog::get_system_flow_operator_inputs_table()),
+			FLOW_OPERATOR_OUTPUTS => Some(SystemCatalog::get_system_flow_operator_outputs_table()),
+			DICTIONARIES => Some(SystemCatalog::get_system_dictionaries_table()),
+			RINGBUFFERS => Some(SystemCatalog::get_system_ringbuffers_table()),
+			SCHEMAS => Some(SystemCatalog::get_system_schemas_table()),
+			SCHEMA_FIELDS => Some(SystemCatalog::get_system_schema_fields_table()),
+			ENUMS => Some(SystemCatalog::get_system_enums_table()),
+			ENUM_VARIANTS => Some(SystemCatalog::get_system_enum_variants_table()),
+			EVENTS => Some(SystemCatalog::get_system_events_table()),
+			EVENT_VARIANTS => Some(SystemCatalog::get_system_event_variants_table()),
+			HANDLERS => Some(SystemCatalog::get_system_handlers_table()),
+			TAGS => Some(SystemCatalog::get_system_tags_table()),
+			TAG_VARIANTS => Some(SystemCatalog::get_system_tag_variants_table()),
+			SERIES => Some(SystemCatalog::get_system_series_table()),
+			IDENTITIES => Some(SystemCatalog::get_system_identities_table()),
+			ROLES => Some(SystemCatalog::get_system_roles_table()),
+			GRANTED_ROLES => Some(SystemCatalog::get_system_granted_roles_table()),
+			POLICIES => Some(SystemCatalog::get_system_policies_table()),
+			POLICY_OPERATIONS => Some(SystemCatalog::get_system_policy_operations_table()),
+			VIRTUAL_TABLES => Some(SystemCatalog::get_system_virtual_tables_table()),
+			VIRTUAL_TABLE_COLUMNS => Some(SystemCatalog::get_system_virtual_table_columns_table()),
+			TYPES => Some(SystemCatalog::get_system_types_table()),
+			TABLE_STORAGE_STATS => Some(SystemCatalog::get_system_table_storage_stats_table()),
+			VIEW_STORAGE_STATS => Some(SystemCatalog::get_system_view_storage_stats_table()),
+			FLOW_STORAGE_STATS => Some(SystemCatalog::get_system_flow_storage_stats_table()),
+			FLOW_NODE_STORAGE_STATS => Some(SystemCatalog::get_system_flow_node_storage_stats_table()),
+			INDEX_STORAGE_STATS => Some(SystemCatalog::get_system_index_storage_stats_table()),
+			RINGBUFFER_STORAGE_STATS => Some(SystemCatalog::get_system_ringbuffer_storage_stats_table()),
+			DICTIONARY_STORAGE_STATS => Some(SystemCatalog::get_system_dictionary_storage_stats_table()),
+			MIGRATIONS => Some(SystemCatalog::get_system_migrations_table()),
+			AUTHENTICATIONS => Some(SystemCatalog::get_system_authentications_table()),
+			CONFIGS => Some(SystemCatalog::get_system_configs_table()),
 			_ => None,
 		})
 	}
 
 	/// List all virtual tables
-	pub fn list_vtables(_rx: &mut Transaction<'_>) -> Result<Vec<Arc<VTableDef>>> {
+	pub fn list_vtables(_rx: &mut Transaction<'_>) -> Result<Vec<Arc<VTable>>> {
 		// Return all registered virtual tables
 		Ok(vec![
-			SystemCatalog::get_system_sequences_table_def(),
-			SystemCatalog::get_system_namespaces_table_def(),
-			SystemCatalog::get_system_tables_table_def(),
-			SystemCatalog::get_system_views_table_def(),
-			SystemCatalog::get_system_columns_table_def(),
-			SystemCatalog::get_system_column_properties_table_def(),
-			SystemCatalog::get_system_primary_keys_table_def(),
-			SystemCatalog::get_system_primary_key_columns_table_def(),
-			SystemCatalog::get_system_versions_table_def(),
-			SystemCatalog::get_system_primitive_retention_policies_table_def(),
-			SystemCatalog::get_system_operator_retention_policies_table_def(),
-			SystemCatalog::get_system_cdc_consumers_table_def(),
-			SystemCatalog::get_system_flows_table_def(),
-			SystemCatalog::get_system_flow_operators_table_def(),
-			SystemCatalog::get_system_flow_nodes_table_def(),
-			SystemCatalog::get_system_flow_edges_table_def(),
-			SystemCatalog::get_system_flow_node_types_table_def(),
-			SystemCatalog::get_system_flow_operator_inputs_table_def(),
-			SystemCatalog::get_system_flow_operator_outputs_table_def(),
-			SystemCatalog::get_system_dictionaries_table_def(),
-			SystemCatalog::get_system_ringbuffers_table_def(),
-			SystemCatalog::get_system_schemas_table_def(),
-			SystemCatalog::get_system_schema_fields_table_def(),
-			SystemCatalog::get_system_enums_table_def(),
-			SystemCatalog::get_system_enum_variants_table_def(),
-			SystemCatalog::get_system_events_table_def(),
-			SystemCatalog::get_system_event_variants_table_def(),
-			SystemCatalog::get_system_handlers_table_def(),
-			SystemCatalog::get_system_tags_table_def(),
-			SystemCatalog::get_system_tag_variants_table_def(),
-			SystemCatalog::get_system_series_table_def(),
-			SystemCatalog::get_system_users_table_def(),
-			SystemCatalog::get_system_roles_table_def(),
-			SystemCatalog::get_system_user_roles_table_def(),
-			SystemCatalog::get_system_policies_table_def(),
-			SystemCatalog::get_system_policy_operations_table_def(),
-			SystemCatalog::get_system_virtual_tables_table_def(),
-			SystemCatalog::get_system_virtual_table_columns_table_def(),
-			SystemCatalog::get_system_types_table_def(),
-			SystemCatalog::get_system_table_storage_stats_table_def(),
-			SystemCatalog::get_system_view_storage_stats_table_def(),
-			SystemCatalog::get_system_flow_storage_stats_table_def(),
-			SystemCatalog::get_system_flow_node_storage_stats_table_def(),
-			SystemCatalog::get_system_index_storage_stats_table_def(),
-			SystemCatalog::get_system_ringbuffer_storage_stats_table_def(),
-			SystemCatalog::get_system_dictionary_storage_stats_table_def(),
-			SystemCatalog::get_system_migrations_table_def(),
-			SystemCatalog::get_system_user_authentications_table_def(),
-			SystemCatalog::get_system_configs_table_def(),
+			SystemCatalog::get_system_sequences_table(),
+			SystemCatalog::get_system_namespaces_table(),
+			SystemCatalog::get_system_tables_table(),
+			SystemCatalog::get_system_views_table(),
+			SystemCatalog::get_system_columns_table(),
+			SystemCatalog::get_system_column_properties_table(),
+			SystemCatalog::get_system_primary_keys_table(),
+			SystemCatalog::get_system_primary_key_columns_table(),
+			SystemCatalog::get_system_versions_table(),
+			SystemCatalog::get_system_schema_retention_policies_table(),
+			SystemCatalog::get_system_operator_retention_policies_table(),
+			SystemCatalog::get_system_cdc_consumers_table(),
+			SystemCatalog::get_system_flows_table(),
+			SystemCatalog::get_system_flow_operators_table(),
+			SystemCatalog::get_system_flow_nodes_table(),
+			SystemCatalog::get_system_flow_edges_table(),
+			SystemCatalog::get_system_flow_node_types_table(),
+			SystemCatalog::get_system_flow_operator_inputs_table(),
+			SystemCatalog::get_system_flow_operator_outputs_table(),
+			SystemCatalog::get_system_dictionaries_table(),
+			SystemCatalog::get_system_ringbuffers_table(),
+			SystemCatalog::get_system_schemas_table(),
+			SystemCatalog::get_system_schema_fields_table(),
+			SystemCatalog::get_system_enums_table(),
+			SystemCatalog::get_system_enum_variants_table(),
+			SystemCatalog::get_system_events_table(),
+			SystemCatalog::get_system_event_variants_table(),
+			SystemCatalog::get_system_handlers_table(),
+			SystemCatalog::get_system_tags_table(),
+			SystemCatalog::get_system_tag_variants_table(),
+			SystemCatalog::get_system_series_table(),
+			SystemCatalog::get_system_identities_table(),
+			SystemCatalog::get_system_roles_table(),
+			SystemCatalog::get_system_granted_roles_table(),
+			SystemCatalog::get_system_policies_table(),
+			SystemCatalog::get_system_policy_operations_table(),
+			SystemCatalog::get_system_virtual_tables_table(),
+			SystemCatalog::get_system_virtual_table_columns_table(),
+			SystemCatalog::get_system_types_table(),
+			SystemCatalog::get_system_table_storage_stats_table(),
+			SystemCatalog::get_system_view_storage_stats_table(),
+			SystemCatalog::get_system_flow_storage_stats_table(),
+			SystemCatalog::get_system_flow_node_storage_stats_table(),
+			SystemCatalog::get_system_index_storage_stats_table(),
+			SystemCatalog::get_system_ringbuffer_storage_stats_table(),
+			SystemCatalog::get_system_dictionary_storage_stats_table(),
+			SystemCatalog::get_system_migrations_table(),
+			SystemCatalog::get_system_authentications_table(),
+			SystemCatalog::get_system_configs_table(),
 		])
 	}
 }

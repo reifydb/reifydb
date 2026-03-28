@@ -8,8 +8,11 @@
 
 use std::time::Duration;
 
+use reifydb_auth::service::AuthService;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+
+use crate::interceptor::RequestInterceptorChain;
 
 /// Configuration for query execution.
 #[derive(Debug, Clone)]
@@ -23,6 +26,8 @@ pub struct StateConfig {
 	/// Maximum concurrent connections allowed.
 	/// New connections beyond this limit will be rejected.
 	pub max_connections: usize,
+	/// Whether admin (DDL) operations are enabled on this listener.
+	pub admin_enabled: bool,
 }
 
 impl Default for StateConfig {
@@ -31,6 +36,7 @@ impl Default for StateConfig {
 			query_timeout: Duration::from_secs(30),
 			request_timeout: Duration::from_secs(60),
 			max_connections: 10_000,
+			admin_enabled: false,
 		}
 	}
 }
@@ -58,6 +64,12 @@ impl StateConfig {
 		self.max_connections = max;
 		self
 	}
+
+	/// Set whether admin operations are enabled.
+	pub fn admin_enabled(mut self, enabled: bool) -> Self {
+		self.admin_enabled = enabled;
+		self
+	}
 }
 
 /// Shared application state passed to all request handler.
@@ -68,7 +80,7 @@ impl StateConfig {
 /// # Example
 ///
 /// ```ignore
-/// let state = AppState::new(actor_system, engine, QueryConfig::default());
+/// let state = AppState::new(actor_system, engine, QueryConfig::default(), interceptors);
 ///
 /// // In an axum handler:
 /// async fn handle_query(State(state): State<AppState>, ...) {
@@ -81,16 +93,43 @@ impl StateConfig {
 pub struct AppState {
 	actor_system: ActorSystem,
 	engine: StandardEngine,
+	auth_service: AuthService,
 	config: StateConfig,
+	request_interceptors: RequestInterceptorChain,
+	clock: Clock,
 }
 
 impl AppState {
-	/// Create a new AppState with the given actor system, engine, and configuration.
-	pub fn new(actor_system: ActorSystem, engine: StandardEngine, config: StateConfig) -> Self {
+	/// Create a new AppState with the given actor system, engine, configuration,
+	/// and request interceptor chain.
+	pub fn new(
+		actor_system: ActorSystem,
+		engine: StandardEngine,
+		auth_service: AuthService,
+		config: StateConfig,
+		request_interceptors: RequestInterceptorChain,
+		clock: Clock,
+	) -> Self {
 		Self {
 			actor_system,
 			engine,
+			auth_service,
 			config,
+			request_interceptors,
+			clock,
+		}
+	}
+
+	/// Clone this state with a different configuration, preserving the
+	/// interceptor chain and other shared resources.
+	pub fn clone_with_config(&self, config: StateConfig) -> Self {
+		Self {
+			actor_system: self.actor_system.clone(),
+			engine: self.engine.clone(),
+			auth_service: self.auth_service.clone(),
+			config,
+			request_interceptors: self.request_interceptors.clone(),
+			clock: self.clock.clone(),
 		}
 	}
 
@@ -139,6 +178,30 @@ impl AppState {
 	pub fn max_connections(&self) -> usize {
 		self.config.max_connections
 	}
+
+	/// Get whether admin operations are enabled.
+	#[inline]
+	pub fn admin_enabled(&self) -> bool {
+		self.config.admin_enabled
+	}
+
+	/// Get a reference to the request interceptor chain.
+	#[inline]
+	pub fn request_interceptors(&self) -> &RequestInterceptorChain {
+		&self.request_interceptors
+	}
+
+	/// Get a reference to the clock.
+	#[inline]
+	pub fn clock(&self) -> &Clock {
+		&self.clock
+	}
+
+	/// Get a reference to the authentication service.
+	#[inline]
+	pub fn auth_service(&self) -> &AuthService {
+		&self.auth_service
+	}
 }
 
 #[cfg(test)]
@@ -146,7 +209,7 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_query_config_defaults() {
+	fn test_query_configaults() {
 		let config = StateConfig::default();
 		assert_eq!(config.query_timeout, Duration::from_secs(30));
 		assert_eq!(config.request_timeout, Duration::from_secs(60));

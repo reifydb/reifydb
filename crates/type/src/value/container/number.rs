@@ -2,9 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::{
-	any::TypeId,
 	fmt::{self, Debug},
-	mem::{forget, transmute_copy},
 	ops::Deref,
 	result::Result as StdResult,
 };
@@ -15,17 +13,7 @@ use crate::{
 	Result,
 	storage::{Cow, DataBitVec, DataVec, Storage},
 	util::cowvec::CowVec,
-	value::{
-		Value,
-		Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16},
-		decimal::Decimal,
-		int::Int,
-		is::IsNumber,
-		ordered_f32::OrderedF32,
-		ordered_f64::OrderedF64,
-		r#type::Type,
-		uint::Uint,
-	},
+	value::{Value, is::IsNumber},
 };
 
 pub struct NumberContainer<T, S: Storage = Cow>
@@ -184,68 +172,9 @@ where
 		}
 	}
 
-	pub fn get_value(&self, index: usize) -> Value
-	where
-		T: 'static,
-	{
+	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() {
-			let value = self.data[index].clone();
-
-			if TypeId::of::<T>() == TypeId::of::<f32>() {
-				let f_val = unsafe { transmute_copy::<T, f32>(&value) };
-				OrderedF32::try_from(f_val).map(Value::Float4).unwrap_or(Value::None {
-					inner: Type::Float4,
-				})
-			} else if TypeId::of::<T>() == TypeId::of::<f64>() {
-				let f_val = unsafe { transmute_copy::<T, f64>(&value) };
-				OrderedF64::try_from(f_val).map(Value::Float8).unwrap_or(Value::None {
-					inner: Type::Float8,
-				})
-			} else if TypeId::of::<T>() == TypeId::of::<i8>() {
-				let i_val = unsafe { transmute_copy::<T, i8>(&value) };
-				Int1(i_val)
-			} else if TypeId::of::<T>() == TypeId::of::<i16>() {
-				let i_val = unsafe { transmute_copy::<T, i16>(&value) };
-				Int2(i_val)
-			} else if TypeId::of::<T>() == TypeId::of::<i32>() {
-				let i_val = unsafe { transmute_copy::<T, i32>(&value) };
-				Int4(i_val)
-			} else if TypeId::of::<T>() == TypeId::of::<i64>() {
-				let i_val = unsafe { transmute_copy::<T, i64>(&value) };
-				Int8(i_val)
-			} else if TypeId::of::<T>() == TypeId::of::<i128>() {
-				let i_val = unsafe { transmute_copy::<T, i128>(&value) };
-				Int16(i_val)
-			} else if TypeId::of::<T>() == TypeId::of::<u8>() {
-				let u_val = unsafe { transmute_copy::<T, u8>(&value) };
-				Uint1(u_val)
-			} else if TypeId::of::<T>() == TypeId::of::<u16>() {
-				let u_val = unsafe { transmute_copy::<T, u16>(&value) };
-				Uint2(u_val)
-			} else if TypeId::of::<T>() == TypeId::of::<u32>() {
-				let u_val = unsafe { transmute_copy::<T, u32>(&value) };
-				Uint4(u_val)
-			} else if TypeId::of::<T>() == TypeId::of::<u64>() {
-				let u_val = unsafe { transmute_copy::<T, u64>(&value) };
-				Uint8(u_val)
-			} else if TypeId::of::<T>() == TypeId::of::<u128>() {
-				let u_val = unsafe { transmute_copy::<T, u128>(&value) };
-				Uint16(u_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Decimal>() {
-				let d_val = unsafe { transmute_copy::<T, Decimal>(&value) };
-				forget(value);
-				Value::Decimal(d_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Int>() {
-				let i_val = unsafe { transmute_copy::<T, Int>(&value) };
-				forget(value);
-				Value::Int(i_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Uint>() {
-				let u_val = unsafe { transmute_copy::<T, Uint>(&value) };
-				forget(value);
-				Value::Uint(u_val)
-			} else {
-				Value::none()
-			}
+			self.data[index].to_value()
 		} else {
 			Value::none()
 		}

@@ -3,18 +3,14 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{id::PrimaryKeyId, key::PrimaryKeyDef},
+	interface::catalog::{id::PrimaryKeyId, key::PrimaryKey},
 };
 
-use crate::materialized::{MaterializedCatalog, MultiVersionPrimaryKeyDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionPrimaryKey};
 
 impl MaterializedCatalog {
 	/// Find a primary key by ID at a specific version
-	pub fn find_primary_key_at(
-		&self,
-		primary_key_id: PrimaryKeyId,
-		version: CommitVersion,
-	) -> Option<PrimaryKeyDef> {
+	pub fn find_primary_key_at(&self, primary_key_id: PrimaryKeyId, version: CommitVersion) -> Option<PrimaryKey> {
 		self.primary_keys.get(&primary_key_id).and_then(|entry| {
 			let multi = entry.value();
 			multi.get(version)
@@ -22,7 +18,7 @@ impl MaterializedCatalog {
 	}
 
 	/// Find a primary key by ID (returns latest version)
-	pub fn find_primary_key(&self, primary_key_id: PrimaryKeyId) -> Option<PrimaryKeyDef> {
+	pub fn find_primary_key(&self, primary_key_id: PrimaryKeyId) -> Option<PrimaryKey> {
 		self.primary_keys.get(&primary_key_id).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -30,9 +26,9 @@ impl MaterializedCatalog {
 	}
 
 	/// Set or update a primary key at a specific version
-	pub fn set_primary_key(&self, id: PrimaryKeyId, version: CommitVersion, primary_key: Option<PrimaryKeyDef>) {
+	pub fn set_primary_key(&self, id: PrimaryKeyId, version: CommitVersion, primary_key: Option<PrimaryKey>) {
 		// Update the multi primary key
-		let multi = self.primary_keys.get_or_insert_with(id, MultiVersionPrimaryKeyDef::new);
+		let multi = self.primary_keys.get_or_insert_with(id, MultiVersionPrimaryKey::new);
 		if let Some(new) = primary_key {
 			multi.value().insert(version, new);
 		} else {
@@ -46,7 +42,7 @@ pub mod tests {
 	use reifydb_core::{
 		config::SystemConfig,
 		interface::catalog::{
-			column::{ColumnDef, ColumnIndex},
+			column::{Column, ColumnIndex},
 			id::{ColumnId, PrimaryKeyId},
 		},
 	};
@@ -55,10 +51,10 @@ pub mod tests {
 	use super::*;
 	use crate::materialized::MaterializedCatalog;
 
-	fn create_test_primary_key(id: PrimaryKeyId) -> PrimaryKeyDef {
-		PrimaryKeyDef {
+	fn create_test_primary_key(id: PrimaryKeyId) -> PrimaryKey {
+		PrimaryKey {
 			id,
-			columns: vec![ColumnDef {
+			columns: vec![Column {
 				id: ColumnId(1),
 				name: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int4),
@@ -104,7 +100,7 @@ pub mod tests {
 
 		// Update primary key with two columns
 		let mut pk_v2 = pk_v1.clone();
-		pk_v2.columns.push(ColumnDef {
+		pk_v2.columns.push(Column {
 			id: ColumnId(2),
 			name: "name".to_string(),
 			constraint: TypeConstraint::unconstrained(Type::Utf8),

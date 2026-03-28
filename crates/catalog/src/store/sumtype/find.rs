@@ -2,36 +2,36 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::NamespaceId, sumtype::SumTypeDef},
+	interface::catalog::{id::NamespaceId, sumtype::SumType},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
 
-use super::sumtype_def_from_row;
+use super::sumtype_from_row;
 use crate::{CatalogStore, Result, store::sumtype::schema::sumtype_namespace};
 
 impl CatalogStore {
-	pub(crate) fn find_sumtype(rx: &mut Transaction<'_>, sumtype_id: SumTypeId) -> Result<Option<SumTypeDef>> {
+	pub(crate) fn find_sumtype(rx: &mut Transaction<'_>, sumtype_id: SumTypeId) -> Result<Option<SumType>> {
 		let Some(multi) = rx.get(&SumTypeKey::encoded(sumtype_id))? else {
 			return Ok(None);
 		};
 
-		Ok(Some(sumtype_def_from_row(&multi.values)))
+		Ok(Some(sumtype_from_row(&multi.row)))
 	}
 
 	pub(crate) fn find_sumtype_by_name(
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<SumTypeDef>> {
+	) -> Result<Option<SumType>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), 1024)?;
 
 		let mut found_id = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let entry_name = sumtype_namespace::SCHEMA.get_utf8(row, sumtype_namespace::NAME);
 			if name == entry_name {
 				found_id =
@@ -53,7 +53,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::{id::NamespaceId, sumtype::SumTypeKind};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::sumtype::SumTypeId;
 

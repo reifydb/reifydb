@@ -7,7 +7,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	value::{
 		r#type::Type,
-		uuid::parse::{parse_uuid4, parse_uuid7},
+		uuid::parse::{parse_identity_id, parse_uuid4, parse_uuid7},
 	},
 };
 
@@ -27,6 +27,7 @@ impl UuidParser {
 		match target {
 			Type::Uuid4 => Self::parse_uuid4(fragment, row_count),
 			Type::Uuid7 => Self::parse_uuid7(fragment, row_count),
+			Type::IdentityId => Self::parse_identity_id(fragment, row_count),
 			_ => {
 				return Err(TypeError::UnsupportedCast {
 					from: Type::Utf8,
@@ -61,6 +62,21 @@ impl UuidParser {
 				return Err(CastError::InvalidUuid {
 					fragment,
 					target: Type::Uuid7,
+					cause: err.diagnostic(),
+				}
+				.into());
+			}
+		}
+	}
+
+	fn parse_identity_id<'a>(fragment: impl Into<Fragment>, row_count: usize) -> Result<ColumnData> {
+		let fragment = fragment.into();
+		match parse_identity_id(fragment.clone()) {
+			Ok(id) => Ok(ColumnData::identity_id(vec![id; row_count])),
+			Err(err) => {
+				return Err(CastError::InvalidUuid {
+					fragment,
+					target: Type::IdentityId,
 					cause: err.diagnostic(),
 				}
 				.into());

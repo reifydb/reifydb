@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::migration::{MigrationAction, MigrationDef, MigrationEvent},
+	interface::catalog::migration::{Migration, MigrationAction, MigrationEvent},
 	key::{migration::MigrationKey, migration_event::MigrationEventKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -24,10 +24,7 @@ pub struct MigrationToCreate {
 }
 
 impl CatalogStore {
-	pub(crate) fn create_migration(
-		txn: &mut AdminTransaction,
-		to_create: MigrationToCreate,
-	) -> Result<MigrationDef> {
+	pub(crate) fn create_migration(txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
 		// Check for duplicate name
 		if let Some(_existing) =
 			CatalogStore::find_migration_by_name(&mut Transaction::Admin(&mut *txn), &to_create.name)?
@@ -55,7 +52,7 @@ impl CatalogStore {
 
 		txn.set(&MigrationKey::encoded(migration_id), row)?;
 
-		Ok(MigrationDef {
+		Ok(Migration {
 			id: migration_id,
 			name: to_create.name,
 			body: to_create.body,
@@ -65,7 +62,7 @@ impl CatalogStore {
 
 	pub(crate) fn create_migration_event(
 		txn: &mut AdminTransaction,
-		migration: &MigrationDef,
+		migration: &Migration,
 		action: MigrationAction,
 	) -> Result<MigrationEvent> {
 		let event_id = SystemSequence::next_migration_event_id(txn)?;

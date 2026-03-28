@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::config::ConfigDef;
+use reifydb_core::interface::catalog::config::Config;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::{Value, r#type::Type};
 
@@ -35,7 +35,7 @@ impl Catalog {
 		Ok(())
 	}
 
-	pub fn list_configs(&self) -> Vec<ConfigDef> {
+	pub fn list_configs(&self) -> Vec<Config> {
 		self.materialized.list_configs()
 	}
 }

@@ -43,12 +43,12 @@
 
 use std::{collections::VecDeque, marker::PhantomData};
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 use crossbeam_channel::unbounded;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 use crate::actor::mailbox::ActorRef;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 use crate::actor::mailbox::create_actor_ref;
 use crate::{
 	SharedRuntimeConfig,
@@ -232,13 +232,13 @@ impl<M: Send + 'static> TestContext<M> {
 	/// messages in tests. Use `harness.send()` instead.
 	fn to_context(&self) -> Context<M> {
 		// Create a dummy actor ref using platform-specific implementation
-		#[cfg(reifydb_target = "native")]
+		#[cfg(not(reifydb_single_threaded))]
 		let actor_ref = {
 			let (tx, _rx) = unbounded();
 			ActorRef::new(tx)
 		};
 
-		#[cfg(reifydb_target = "wasm")]
+		#[cfg(reifydb_single_threaded)]
 		let actor_ref = create_actor_ref();
 
 		// Create an actor system for testing

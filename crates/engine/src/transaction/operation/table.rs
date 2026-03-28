@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{encoded::EncodedValues, schema::Schema},
+	encoded::{row::EncodedRow, schema::RowSchema},
 	interface::{
-		catalog::{primitive::PrimitiveId, table::TableDef},
+		catalog::{schema::SchemaId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
@@ -13,14 +13,14 @@ use reifydb_core::{
 };
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
-	interceptor::table::TableInterceptor,
+	interceptor::table_row::TableRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
 
 use crate::Result;
 
-fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &EncodedValues) -> Columns {
+fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
 	let fields = schema.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
@@ -41,14 +41,9 @@ fn build_encoded_columns(schema: &Schema, row_number: RowNumber, encoded: &Encod
 	}
 }
 
-fn build_table_insert_change(
-	table: &TableDef,
-	schema: &Schema,
-	row_number: RowNumber,
-	encoded: &EncodedValues,
-) -> Change {
+fn build_table_insert_change(table: &Table, schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Change {
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::Table(table.id)),
+		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Insert {
 			post: build_encoded_columns(schema, row_number, encoded),
@@ -56,27 +51,22 @@ fn build_table_insert_change(
 	}
 }
 
-fn build_table_update_change(
-	table: &TableDef,
-	row_number: RowNumber,
-	old: &EncodedValues,
-	new: &EncodedValues,
-) -> Change {
-	let schema: Schema = (&table.columns).into();
+fn build_table_update_change(table: &Table, row_number: RowNumber, pre: &EncodedRow, post: &EncodedRow) -> Change {
+	let schema: RowSchema = (&table.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::Table(table.id)),
+		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Update {
-			pre: build_encoded_columns(&schema, row_number, old),
-			post: build_encoded_columns(&schema, row_number, new),
+			pre: build_encoded_columns(&schema, row_number, pre),
+			post: build_encoded_columns(&schema, row_number, post),
 		}],
 	}
 }
 
-fn build_table_remove_change(table: &TableDef, row_number: RowNumber, encoded: &EncodedValues) -> Change {
-	let schema: Schema = (&table.columns).into();
+fn build_table_remove_change(table: &Table, row_number: RowNumber, encoded: &EncodedRow) -> Change {
+	let schema: RowSchema = (&table.columns).into();
 	Change {
-		origin: ChangeOrigin::Primitive(PrimitiveId::Table(table.id)),
+		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Remove {
 			pre: build_encoded_columns(&schema, row_number, encoded),
@@ -87,30 +77,30 @@ fn build_table_remove_change(table: &TableDef, row_number: RowNumber, encoded: &
 pub(crate) trait TableOperations {
 	fn insert_table(
 		&mut self,
-		table: &TableDef,
-		schema: &Schema,
-		row: EncodedValues,
+		table: &Table,
+		schema: &RowSchema,
+		row: EncodedRow,
 		row_number: RowNumber,
-	) -> Result<()>;
+	) -> Result<EncodedRow>;
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()>;
+	fn update_table(&mut self, table: Table, id: RowNumber, row: EncodedRow) -> Result<EncodedRow>;
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()>;
+	fn remove_from_table(&mut self, table: Table, id: RowNumber) -> Result<EncodedRow>;
 }
 
 impl TableOperations for CommandTransaction {
 	fn insert_table(
 		&mut self,
-		table: &TableDef,
-		schema: &Schema,
-		row: EncodedValues,
+		table: &Table,
+		schema: &RowSchema,
+		row: EncodedRow,
 		row_number: RowNumber,
-	) -> Result<()> {
-		TableInterceptor::pre_insert(self, table, row_number, &row)?;
+	) -> Result<EncodedRow> {
+		let row = TableRowInterceptor::pre_insert(self, table, row_number, row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
 
-		TableInterceptor::post_insert(self, table, row_number, &row)?;
+		TableRowInterceptor::post_insert(self, table, row_number, &row)?;
 
 		// Track insertion for post-commit event emission
 		self.track_row_change(RowChange::TableInsert(TableRowInsertion {
@@ -122,57 +112,61 @@ impl TableOperations for CommandTransaction {
 		// Track flow change for transactional view pre-commit processing
 		self.track_flow_change(build_table_insert_change(table, schema, row_number, &row));
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_table(&mut self, table: Table, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
-		let old_values = match self.get(&key)? {
-			Some(v) => v.values,
-			None => return Ok(()),
+		let pre = match self.get(&key)? {
+			Some(v) => v.row,
+			None => return Ok(row),
 		};
 
-		TableInterceptor::pre_update(self, &table, id, &row)?;
+		let row = TableRowInterceptor::pre_update(self, &table, id, row)?;
 
 		self.set(&key, row.clone())?;
 
-		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
+		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
 
-		Ok(())
+		self.track_flow_change(build_table_update_change(&table, id, &pre, &row));
+
+		Ok(row)
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
+	fn remove_from_table(&mut self, table: Table, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
 		let deleted_values = match self.get(&key)? {
-			Some(v) => v.values,
-			None => return Ok(()),
+			Some(v) => v.row,
+			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
 
-		TableInterceptor::pre_delete(self, &table, id)?;
+		TableRowInterceptor::pre_delete(self, &table, id)?;
 
 		self.unset(&key, deleted_values.clone())?;
 
+		TableRowInterceptor::post_delete(self, &table, id, &deleted_values)?;
+
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 
-		Ok(())
+		Ok(deleted_values)
 	}
 }
 
 impl TableOperations for AdminTransaction {
 	fn insert_table(
 		&mut self,
-		table: &TableDef,
-		schema: &Schema,
-		row: EncodedValues,
+		table: &Table,
+		schema: &RowSchema,
+		row: EncodedRow,
 		row_number: RowNumber,
-	) -> Result<()> {
-		TableInterceptor::pre_insert(self, table, row_number, &row)?;
+	) -> Result<EncodedRow> {
+		let row = TableRowInterceptor::pre_insert(self, table, row_number, row)?;
 
 		self.set(&RowKey::encoded(table.id, row_number), row.clone())?;
 
-		TableInterceptor::post_insert(self, table, row_number, &row)?;
+		TableRowInterceptor::post_insert(self, table, row_number, &row)?;
 
 		// Track insertion for post-commit event emission
 		self.track_row_change(RowChange::TableInsert(TableRowInsertion {
@@ -184,76 +178,83 @@ impl TableOperations for AdminTransaction {
 		// Track flow change for transactional view pre-commit processing
 		self.track_flow_change(build_table_insert_change(table, schema, row_number, &row));
 
-		Ok(())
+		Ok(row)
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_table(&mut self, table: Table, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
-		let old_values = match self.get(&key)? {
-			Some(v) => v.values,
-			None => return Ok(()),
+		let pre = match self.get(&key)? {
+			Some(v) => v.row,
+			None => return Ok(row),
 		};
 
-		TableInterceptor::pre_update(self, &table, id, &row)?;
+		let row = TableRowInterceptor::pre_update(self, &table, id, row)?;
 
 		self.set(&key, row.clone())?;
 
-		self.track_flow_change(build_table_update_change(&table, id, &old_values, &row));
+		TableRowInterceptor::post_update(self, &table, id, &row, &pre)?;
 
-		Ok(())
+		self.track_flow_change(build_table_update_change(&table, id, &pre, &row));
+
+		Ok(row)
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
+	fn remove_from_table(&mut self, table: Table, id: RowNumber) -> Result<EncodedRow> {
 		let key = RowKey::encoded(table.id, id);
 
 		let deleted_values = match self.get(&key)? {
-			Some(v) => v.values,
-			None => return Ok(()),
+			Some(v) => v.row,
+			None => return Ok(EncodedRow(CowVec::new(vec![]))),
 		};
 
-		TableInterceptor::pre_delete(self, &table, id)?;
+		TableRowInterceptor::pre_delete(self, &table, id)?;
 
 		self.unset(&key, deleted_values.clone())?;
 
+		TableRowInterceptor::post_delete(self, &table, id, &deleted_values)?;
+
 		self.track_flow_change(build_table_remove_change(&table, id, &deleted_values));
 
-		Ok(())
+		Ok(deleted_values)
 	}
 }
 
 impl TableOperations for Transaction<'_> {
 	fn insert_table(
 		&mut self,
-		table: &TableDef,
-		schema: &Schema,
-		row: EncodedValues,
+		table: &Table,
+		schema: &RowSchema,
+		row: EncodedRow,
 		row_number: RowNumber,
-	) -> Result<()> {
+	) -> Result<EncodedRow> {
 		match self {
 			Transaction::Command(txn) => txn.insert_table(table, schema, row, row_number),
 			Transaction::Admin(txn) => txn.insert_table(table, schema, row, row_number),
 			Transaction::Subscription(txn) => {
 				txn.as_admin_mut().insert_table(table, schema, row, row_number)
 			}
+			Transaction::Test(t) => t.inner.insert_table(table, schema, row, row_number),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> Result<()> {
+	fn update_table(&mut self, table: Table, id: RowNumber, row: EncodedRow) -> Result<EncodedRow> {
 		match self {
 			Transaction::Command(txn) => txn.update_table(table, id, row),
 			Transaction::Admin(txn) => txn.update_table(table, id, row),
 			Transaction::Subscription(txn) => txn.as_admin_mut().update_table(table, id, row),
+			Transaction::Test(t) => t.inner.update_table(table, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
 
-	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> Result<()> {
+	fn remove_from_table(&mut self, table: Table, id: RowNumber) -> Result<EncodedRow> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_table(table, id),
 			Transaction::Admin(txn) => txn.remove_from_table(table, id),
 			Transaction::Subscription(txn) => txn.as_admin_mut().remove_from_table(table, id),
+			Transaction::Test(t) => t.inner.remove_from_table(table, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

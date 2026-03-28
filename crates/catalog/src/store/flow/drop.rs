@@ -32,9 +32,9 @@ impl CatalogStore {
 
 	pub(crate) fn drop_flow(txn: &mut AdminTransaction, flow_id: FlowId) -> Result<()> {
 		// Get the flow to find namespace for index deletion
-		let flow_def = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
+		let flow = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
-		if let Some(flow) = flow_def {
+		if let Some(flow) = flow {
 			// Step 1: Drop all nodes for this flow
 			let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 			for node in nodes {
@@ -65,7 +65,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::FlowId;
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{

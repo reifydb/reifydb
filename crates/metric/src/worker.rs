@@ -232,7 +232,7 @@ impl MetricsWorker {
 											)
 											.ok()
 											.flatten()
-											.map(|v| v.values.len() as u64)
+											.map(|v| v.row.len() as u64)
 										};
 
 										if let Err(e) = storage_writer

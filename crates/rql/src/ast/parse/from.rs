@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstGenerator, AstList, AstVariable},
-		identifier::UnresolvedPrimitiveIdentifier,
+		identifier::UnresolvedSchemaIdentifier,
 		parse::Parser,
 	},
 	diagnostic::AstError,
@@ -85,7 +85,7 @@ impl<'bump> Parser<'bump> {
 			if is_generatortion {
 				// Parse as generator function
 				let function_name = first_identifier;
-				let (nodes, _has_braces) = self.parse_expressions(true, false)?;
+				let (nodes, _has_braces) = self.parse_expressions(true, false, None)?;
 
 				return Ok(AstFrom::Generator(AstGenerator {
 					token,
@@ -114,7 +114,7 @@ impl<'bump> Parser<'bump> {
 				let name = segments.pop().unwrap().into_fragment();
 				let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-				let mut source = UnresolvedPrimitiveIdentifier::new(namespace, name);
+				let mut source = UnresolvedSchemaIdentifier::new(namespace, name);
 
 				if !self.is_eof() && self.current()?.is_identifier() {
 					let alias_token = self.consume(TokenKind::Identifier)?;
@@ -124,7 +124,7 @@ impl<'bump> Parser<'bump> {
 				source
 			} else {
 				let mut source =
-					UnresolvedPrimitiveIdentifier::new(vec![], first_identifier.into_fragment());
+					UnresolvedSchemaIdentifier::new(vec![], first_identifier.into_fragment());
 
 				if !self.is_eof() && self.current()?.is_identifier() {
 					let alias_token = self.consume(TokenKind::Identifier)?;

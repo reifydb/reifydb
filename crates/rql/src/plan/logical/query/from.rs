@@ -10,8 +10,8 @@ use crate::{
 	bump::BumpBox,
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
-		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, PrimitiveScanNode,
-		RemoteScanNode, VariableSourceNode,
+		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, RemoteScanNode, SchemaScanNode,
+		VariableSourceNode,
 		resolver::{self, ResolvedSource},
 	},
 };
@@ -29,15 +29,17 @@ impl<'bump> Compiler<'bump> {
 				match resolved_source {
 					ResolvedSource::Remote {
 						address,
+						token,
 						local_namespace,
 						remote_name,
 					} => Ok(LogicalPlan::RemoteScan(RemoteScanNode {
 						address,
+						token,
 						local_namespace,
 						remote_name,
 					})),
-					ResolvedSource::Primitive(resolved) => {
-						Ok(LogicalPlan::PrimitiveScan(PrimitiveScanNode {
+					ResolvedSource::Schema(resolved) => {
+						Ok(LogicalPlan::PrimitiveScan(SchemaScanNode {
 							source: resolved,
 							columns: None,
 							index: None,

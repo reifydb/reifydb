@@ -5,8 +5,8 @@ use reifydb_core::{
 	error::diagnostic::{catalog::table_not_found, query::column_not_found},
 	interface::catalog::{
 		change::{CatalogTrackSeriesChangeOperations, CatalogTrackTableChangeOperations},
-		primitive::PrimitiveId,
-		table::TableDef,
+		schema::SchemaId,
+		table::Table,
 	},
 	value::column::columns::Columns,
 };
@@ -35,7 +35,7 @@ pub(crate) fn create_column_property(
 		let column_name = plan.column.text();
 		let Some(column) = services.catalog.find_column_by_name(
 			&mut Transaction::Admin(txn),
-			PrimitiveId::Table(table.id),
+			SchemaId::Table(table.id),
 			column_name,
 		)?
 		else {
@@ -48,13 +48,13 @@ pub(crate) fn create_column_property(
 		}
 
 		// Re-read columns from the KV store to get updated properties, then track the
-		// table_def change so the MaterializedCatalogInterceptor refreshes its cache.
+		// table change so the MaterializedCatalogInterceptor refreshes its cache.
 		let updated_columns = services.catalog.list_columns(&mut Transaction::Admin(txn), pre_table.id)?;
-		let post_table = TableDef {
+		let post_table = Table {
 			columns: updated_columns,
 			..pre_table.clone()
 		};
-		txn.track_table_def_updated(pre_table, post_table)?;
+		txn.track_table_updated(pre_table, post_table)?;
 
 		Ok(Columns::single_row([
 			("operation", Value::Utf8("CREATE COLUMN PROPERTY".to_string())),
@@ -75,7 +75,7 @@ pub(crate) fn create_column_property(
 		let column_name = plan.column.text();
 		let Some(column) = services.catalog.find_column_by_name(
 			&mut Transaction::Admin(txn),
-			PrimitiveId::Series(series.id),
+			SchemaId::Series(series.id),
 			column_name,
 		)?
 		else {
@@ -88,7 +88,7 @@ pub(crate) fn create_column_property(
 
 		// Re-read series def to get updated column properties
 		let post_series = services.catalog.get_series(&mut Transaction::Admin(txn), series.id)?;
-		txn.track_series_def_updated(pre_series, post_series)?;
+		txn.track_series_updated(pre_series, post_series)?;
 
 		Ok(Columns::single_row([
 			("operation", Value::Utf8("CREATE COLUMN PROPERTY".to_string())),

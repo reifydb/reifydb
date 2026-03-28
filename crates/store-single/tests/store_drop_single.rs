@@ -6,13 +6,13 @@ use std::{error::Error as StdError, fmt::Write, path::Path};
 use reifydb_core::{
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 	event::EventBus,
 	interface::store::{
 		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionValues,
+		SingleVersionRangeRev, SingleVersionRow,
 	},
 	util::encoding::{
 		binary::decode_binary,
@@ -80,8 +80,8 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let value: Option<SingleVersionValues> = self.store.get(&key)?.into();
-				let value = value.map(|sv| sv.values.to_vec());
+				let value: Option<SingleVersionRow> = self.store.get(&key)?.into();
+				let value = value.map(|sv| sv.row.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 			// contains KEY
@@ -148,13 +148,13 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let values = EncodedValues(decode_binary(&kv.value));
+				let row = EncodedRow(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				self.store.commit(cow_vec![
 					(Delta::Set {
 						key,
-						values
+						row
 					})
 				])?
 			}
@@ -177,13 +177,13 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let values = EncodedValues(decode_binary(&kv.value));
+				let row = EncodedRow(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				self.store.commit(cow_vec![
 					(Delta::Unset {
 						key,
-						values
+						row
 					})
 				])?
 			}
@@ -211,9 +211,9 @@ impl testscript::runner::Runner for Runner {
 	}
 }
 
-fn print<I: Iterator<Item = SingleVersionValues>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = SingleVersionRow>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = Raw::key_value(&item.key, item.values.as_slice());
+		let fmtkv = Raw::key_value(&item.key, item.row.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

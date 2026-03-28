@@ -3,15 +3,15 @@
 
 //! Flow lag tracking interface for virtual table support.
 
-use crate::interface::catalog::{flow::FlowId, primitive::PrimitiveId};
+use crate::interface::catalog::{flow::FlowId, schema::SchemaId};
 
 /// A row in the system.flow_lags virtual table.
 #[derive(Debug, Clone)]
 pub struct FlowLagRow {
 	/// The flow ID.
 	pub flow_id: FlowId,
-	/// The primitive this flow subscribes to.
-	pub primitive_id: PrimitiveId,
+	/// The schema this flow subscribes to.
+	pub object_id: SchemaId,
 	/// The lag: how many versions behind the flow is for this source.
 	pub lag: u64,
 }

@@ -6,7 +6,7 @@
 //! This module provides the `FFIWindowStateful` trait for operators that use
 //! time-based or count-based windowing with state.
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey, schema::Schema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
 
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
@@ -25,12 +25,12 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	/// Get or create the schema for state rows
 	///
 	/// This defines the structure of each window's state.
-	fn schema(&self) -> Schema;
+	fn schema(&self) -> RowSchema;
 
 	/// Create a new state encoded with default values
 	///
 	/// Allocates a new window state row based on the schema, initialized with default values.
-	fn create_state(&self) -> EncodedValues {
+	fn create_state(&self) -> EncodedRow {
 		let schema = self.schema();
 		schema.allocate()
 	}
@@ -47,7 +47,7 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	/// # Returns
 	///
 	/// The loaded or newly created state for this window
-	fn load_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey) -> Result<EncodedValues> {
+	fn load_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey) -> Result<EncodedRow> {
 		utils::load_or_create_row(ctx, window_key, &self.schema())
 	}
 
@@ -58,7 +58,7 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	/// * `ctx` - The operator context
 	/// * `window_key` - The key identifying the window
 	/// * `row` - The state to save
-	fn save_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, row: &EncodedValues) -> Result<()> {
+	fn save_state(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		utils::save_row(ctx, window_key, row)
 	}
 
@@ -89,9 +89,9 @@ pub trait FFIWindowStateful: FFIRawStatefulOperator {
 	/// # Returns
 	///
 	/// The updated state after applying the function
-	fn update_window<F>(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, f: F) -> Result<EncodedValues>
+	fn update_window<F>(&self, ctx: &mut OperatorContext, window_key: &EncodedKey, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&Schema, &mut EncodedValues) -> Result<()>,
+		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
 	{
 		let schema = self.schema();
 		let mut row = self.load_state(ctx, window_key)?;

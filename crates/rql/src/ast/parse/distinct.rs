@@ -36,7 +36,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		loop {
-			identifiers.push(self.parse_column_identifier_or_keyword()?);
+			identifiers.push(self.parse_column_identifier()?);
 
 			if self.is_eof() {
 				break;

@@ -16,7 +16,7 @@ use std::{
 use crossbeam_skiplist::SkipMap;
 use reifydb_type::value::Value;
 
-use crate::{common::CommitVersion, interface::catalog::config::ConfigDef, util::multi::MultiVersionContainer};
+use crate::{common::CommitVersion, interface::catalog::config::Config, util::multi::MultiVersionContainer};
 
 /// A single configuration entry in the registry.
 pub struct ConfigEntry {
@@ -142,11 +142,11 @@ impl SystemConfig {
 	}
 
 	/// List all registered configuration entries with their latest values.
-	pub fn list_all(&self) -> Vec<ConfigDef> {
+	pub fn list_all(&self) -> Vec<Config> {
 		self.0.entries
 			.iter()
 			.filter_map(|entry| {
-				entry.value().versions.get_latest().map(|current| ConfigDef {
+				entry.value().versions.get_latest().map(|current| Config {
 					key: entry.key().clone(),
 					value: current,
 					default_value: entry.value().default_value.clone(),
@@ -158,11 +158,11 @@ impl SystemConfig {
 	}
 
 	/// List all registered configuration entries with values as of a specific snapshot version.
-	pub fn list_all_at(&self, version: CommitVersion) -> Vec<ConfigDef> {
+	pub fn list_all_at(&self, version: CommitVersion) -> Vec<Config> {
 		self.0.entries
 			.iter()
 			.filter_map(|entry| {
-				entry.value().versions.get(version).map(|current| ConfigDef {
+				entry.value().versions.get(version).map(|current| Config {
 					key: entry.key().clone(),
 					value: current,
 					default_value: entry.value().default_value.clone(),

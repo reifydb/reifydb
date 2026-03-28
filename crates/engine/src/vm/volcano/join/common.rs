@@ -11,7 +11,7 @@ use reifydb_type::{fragment::Fragment, value::Value};
 
 use crate::{
 	Result,
-	expression::{compile::CompiledExpr, context::EvalContext},
+	expression::{compile::CompiledExpr, context::EvalSession},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
@@ -213,19 +213,8 @@ pub(crate) fn eval_join_condition(
 		return true;
 	}
 	let eval_columns = build_eval_columns(left_columns, right_columns, left_row, right_row, alias);
-	let exec_ctx = EvalContext {
-		target: None,
-		columns: Columns::new(eval_columns),
-		row_count: 1,
-		take: Some(1),
-		params: &ctx.params,
-		symbol_table: &ctx.stack,
-		is_aggregate_context: false,
-		functions: &ctx.services.functions,
-		clock: &ctx.services.clock,
-		arena: None,
-		identity: ctx.identity,
-	};
+	let session = EvalSession::from_query(ctx);
+	let exec_ctx = session.eval_join(Columns::new(eval_columns));
 	compiled.iter().all(|compiled_expr| {
 		let col = compiled_expr.execute(&exec_ctx).unwrap();
 		matches!(col.data().get_value(0), Value::Boolean(true))

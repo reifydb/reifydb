@@ -1,22 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::row::EncodedRow,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, primitive::PrimitiveId, series::TimestampPrecision},
+		catalog::{
+			policy::PolicyTargetType,
+			schema::SchemaId,
+			series::{SeriesKey, TimestampPrecision},
+		},
 		change::{Change, ChangeOrigin, Diff},
-		resolved::{ResolvedNamespace, ResolvedPrimitive, ResolvedSeries},
+		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedSeries},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
-	testing::TestingContext,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::nodes::InsertSeriesNode;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
@@ -26,7 +30,10 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-use super::schema::get_or_create_series_schema;
+use super::{
+	returning::{decode_rows_to_columns, evaluate_returning},
+	schema::get_or_create_series_schema,
+};
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
@@ -46,9 +53,7 @@ pub(crate) fn insert_series<'a>(
 	txn: &mut Transaction<'_>,
 	plan: InsertSeriesNode,
 	params: Params,
-	identity: IdentityId,
-	symbol_table: &SymbolTable,
-	testing: &mut Option<TestingContext>,
+	symbols: &SymbolTable,
 ) -> Result<Columns> {
 	let namespace_name = plan.target.namespace().name();
 	let Some(namespace) = services.catalog.find_namespace_by_name(txn, namespace_name)? else {
@@ -56,56 +61,58 @@ pub(crate) fn insert_series<'a>(
 	};
 
 	let series_name = plan.target.name();
-	let Some(series_def) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
+	let Some(series) = services.catalog.find_series_by_name(txn, namespace.id(), series_name)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
 	// Get current metadata
-	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series_def.id)? else {
+	let Some(mut metadata) = services.catalog.find_series_metadata(txn, series.id)? else {
 		let fragment = Fragment::internal(plan.target.name());
 		return_error!(series_not_found(fragment, namespace_name, series_name));
 	};
 
-	let has_tag = series_def.tag.is_some();
+	let has_tag = series.tag.is_some();
+	let key = &series.key;
+	let key_column_name = series.key.column();
 
 	// Create resolved source for the series
 	let namespace_ident = Fragment::internal(namespace.name());
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
-	let series_ident = Fragment::internal(series_def.name.clone());
-	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series_def.clone());
-	let resolved_source = Some(ResolvedPrimitive::Series(resolved_series));
+	let series_ident = Fragment::internal(series.name.clone());
+	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
+	let resolved_source = Some(ResolvedSchema::Series(resolved_series));
 
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: resolved_source,
 		batch_size: 1024,
 		params: params.clone(),
-		stack: SymbolTable::new(),
+		symbols: symbols.clone(),
 		identity: IdentityId::root(),
-		testing: None,
 	});
 
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 	let mut inserted_count = 0u64;
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
+		Vec::with_capacity(16)
+	} else {
+		Vec::new()
+	};
 
 	// Initialize the operator before execution
 	input_node.initialize(txn, &execution_context)?;
 
-	// Determine timestamp from clock based on precision
-	let precision = series_def.precision;
-
 	// Create schema for series encoding
-	let schema = get_or_create_series_schema(&services.catalog, &series_def, txn)?;
+	let schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
 
 	// Process all input batches
 	let mut mutable_context = (*execution_context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		// Enforce write policies before processing rows
-		PolicyEvaluator::new(services, symbol_table).enforce_write_policies(
+		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
-			identity,
 			namespace_name,
 			series_name,
 			"insert",
@@ -116,25 +123,33 @@ pub(crate) fn insert_series<'a>(
 		let row_count = columns.row_count();
 
 		for row_idx in 0..row_count {
-			// Extract or generate timestamp
-			let timestamp: i64 =
-				if let Some(ts_col) = columns.iter().find(|col| col.name().text() == "timestamp") {
-					match ts_col.data().get_value(row_idx) {
-						Value::Int1(ts) => ts as i64,
-						Value::Int2(ts) => ts as i64,
-						Value::Int4(ts) => ts as i64,
-						Value::Int8(ts) => ts,
-						Value::Int16(ts) => ts as i64,
-						Value::Uint1(ts) => ts as i64,
-						Value::Uint2(ts) => ts as i64,
-						Value::Uint4(ts) => ts as i64,
-						Value::Uint8(ts) => ts as i64,
-						Value::Uint16(ts) => ts as i64,
-						_ => generate_timestamp(services, precision),
-					}
-				} else {
-					generate_timestamp(services, precision)
-				};
+			// Extract or generate key value
+			let key_value: u64 = if let Some(key_col) =
+				columns.iter().find(|col| col.name().text() == key_column_name)
+			{
+				match series.key_to_u64(key_col.data().get_value(row_idx)) {
+					Some(v) => v,
+					None => match key {
+						SeriesKey::DateTime {
+							precision,
+							..
+						} => generate_timestamp(services, precision),
+						SeriesKey::Integer {
+							..
+						} => metadata.newest_key + 1,
+					},
+				}
+			} else {
+				match key {
+					SeriesKey::DateTime {
+						precision,
+						..
+					} => generate_timestamp(services, precision),
+					SeriesKey::Integer {
+						..
+					} => metadata.newest_key + 1,
+				}
+			};
 
 			// Extract optional tag
 			let variant_tag: Option<u8> = if has_tag {
@@ -156,17 +171,18 @@ pub(crate) fn insert_series<'a>(
 			let sequence = metadata.sequence_counter;
 
 			// Build key
-			let key = SeriesRowKey {
-				series: series_def.id,
+			let row_key = SeriesRowKey {
+				series: series.id,
 				variant_tag,
-				timestamp,
+				key: key_value,
 				sequence,
 			};
-			let encoded_key = key.encode();
+			let encoded_key = row_key.encode();
 
-			// Collect data column values (excluding timestamp and tag)
-			let mut data_values = Vec::with_capacity(series_def.columns.len());
-			for col_def in &series_def.columns {
+			// Collect data column values (excluding key column)
+			let data_columns: Vec<_> = series.data_columns().collect();
+			let mut data_values = Vec::with_capacity(data_columns.len());
+			for col_def in &data_columns {
 				let value = if let Some(input_col) =
 					columns.iter().find(|c| c.name().text() == col_def.name)
 				{
@@ -177,37 +193,31 @@ pub(crate) fn insert_series<'a>(
 				data_values.push(value);
 			}
 
-			// Encode using schema (timestamp at index 0, data columns at index 1+)
+			// Encode using schema (key at index 0, data columns at index 1+)
+			let key_value_encoded = series.key_from_u64(key_value);
 			let mut row = schema.allocate();
-			schema.set_value(&mut row, 0, &Value::Int8(timestamp));
+			schema.set_value(&mut row, 0, &key_value_encoded);
 			for (i, value) in data_values.iter().enumerate() {
 				schema.set_value(&mut row, i + 1, value);
 			}
 
-			// Write to storage
-			txn.set(&encoded_key, row)?;
+			let row = SeriesRowInterceptor::pre_insert(txn, &series, row)?;
+			txn.set(&encoded_key, row.clone())?;
+			SeriesRowInterceptor::post_insert(txn, &series, &row)?;
 
-			if let Some(log) = testing.as_mut() {
-				let new = Columns::single_row(
-					iter::once(("timestamp", Value::Int8(timestamp))).chain(series_def
-						.columns
-						.iter()
-						.enumerate()
-						.map(|(i, col)| (col.name.as_str(), data_values[i].clone()))),
-				);
-				let key = format!("series::{}::{}", namespace.name(), series_def.name);
-				log.record_insert(key, new);
+			if plan.returning.is_some() {
+				returned_rows.push((RowNumber::from(sequence as u64), row.clone()));
 			}
 
 			// Track flow change for transactional/deferred view processing
 			{
 				let row_number = RowNumber::from(sequence as u64);
-				let mut cols = Vec::with_capacity(1 + series_def.columns.len());
+				let mut cols = Vec::with_capacity(1 + data_columns.len());
 				cols.push(Column {
-					name: Fragment::internal("timestamp"),
-					data: ColumnData::int8(vec![timestamp]),
+					name: Fragment::internal(key_column_name),
+					data: series.key_column_data(vec![key_value]),
 				});
-				for (i, col_def) in series_def.columns.iter().enumerate() {
+				for (i, col_def) in data_columns.iter().enumerate() {
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(data_values[i].clone());
 					cols.push(Column {
@@ -220,7 +230,7 @@ pub(crate) fn insert_series<'a>(
 					columns: CowVec::new(cols),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Primitive(PrimitiveId::series(series_def.id)),
+					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Insert {
 						post,
@@ -230,13 +240,15 @@ pub(crate) fn insert_series<'a>(
 
 			// Update metadata
 			if metadata.row_count == 0 {
-				metadata.oldest_timestamp = timestamp;
-			}
-			if timestamp < metadata.oldest_timestamp {
-				metadata.oldest_timestamp = timestamp;
-			}
-			if timestamp > metadata.newest_timestamp {
-				metadata.newest_timestamp = timestamp;
+				metadata.oldest_key = key_value;
+				metadata.newest_key = key_value;
+			} else {
+				if key_value < metadata.oldest_key {
+					metadata.oldest_key = key_value;
+				}
+				if key_value > metadata.newest_key {
+					metadata.newest_key = key_value;
+				}
 			}
 			metadata.row_count += 1;
 			inserted_count += 1;
@@ -246,18 +258,25 @@ pub(crate) fn insert_series<'a>(
 	// Save updated metadata
 	services.catalog.update_series_metadata_txn(txn, metadata)?;
 
+	// If RETURNING clause is present, evaluate expressions against inserted rows
+	if let Some(returning_exprs) = &plan.returning {
+		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		return evaluate_returning(services, symbols, returning_exprs, columns);
+	}
+
 	// Return summary
 	Ok(Columns::single_row([
 		("namespace", Value::Utf8(namespace.name().to_string())),
-		("series", Value::Utf8(series_def.name)),
+		("series", Value::Utf8(series.name)),
 		("inserted", Value::Uint8(inserted_count)),
 	]))
 }
 
-fn generate_timestamp(services: &Services, precision: TimestampPrecision) -> i64 {
+fn generate_timestamp(services: &Services, precision: &TimestampPrecision) -> u64 {
 	match precision {
-		TimestampPrecision::Millisecond => services.clock.now_millis() as i64,
-		TimestampPrecision::Microsecond => services.clock.now_micros() as i64,
-		TimestampPrecision::Nanosecond => services.clock.now_nanos() as i64,
+		TimestampPrecision::Second => services.runtime_context.clock.now_secs(),
+		TimestampPrecision::Millisecond => services.runtime_context.clock.now_millis(),
+		TimestampPrecision::Microsecond => services.runtime_context.clock.now_micros(),
+		TimestampPrecision::Nanosecond => services.runtime_context.clock.now_nanos() as u64,
 	}
 }

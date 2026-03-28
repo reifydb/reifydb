@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::user::RoleDef, key::role::RoleKey};
+use reifydb_core::{interface::catalog::identity::Role, key::role::RoleKey};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, store::role::convert_role};
 
 impl CatalogStore {
-	pub(crate) fn list_all_roles(rx: &mut Transaction<'_>) -> Result<Vec<RoleDef>> {
+	pub(crate) fn list_all_roles(rx: &mut Transaction<'_>) -> Result<Vec<Role>> {
 		let mut result = Vec::new();
 		let mut stream = rx.range(RoleKey::full_scan(), 1024)?;
 
@@ -22,7 +22,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::CatalogStore;

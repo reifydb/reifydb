@@ -109,6 +109,32 @@ fn test([input, output]: [&Path; 2]) {
 }
 ```
 
+## Ignoring specific tests
+
+You can selectively ignore tests based on file names using the `ignore` keyword.
+This is useful for tests that are slow, require external services, or should only be run explicitly.
+
+Provide a map of file names to ignore reasons:
+
+```rust
+test_each_path! { 
+    #[cfg(feature = "integration")]
+    for ["in", "out"] 
+    in "./tests/integration" 
+    as integration
+    => test 
+    ignore {
+        "slow" => "Load tests, ignored for taking two hours",
+        "external" => "Requires external services"
+    }
+}
+```
+
+This will add `#[ignore = "reason"]` to matching tests, allowing you to document why certain tests are ignored.
+The ignore patterns match against the tests' names.
+
+Ignored tests can be run explicitly with `cargo test -- --ignored`.
+
 ## More examples
 
 The expression that is called on each file can also be a closure, for example:

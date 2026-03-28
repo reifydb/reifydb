@@ -118,6 +118,21 @@ impl<'bump> Compiler<'bump> {
 			});
 		}
 
+		let partition_by: Vec<String> = ast.partition_by.iter().map(|s| s.to_string()).collect();
+
+		// Validate that partition_by columns exist in the column list
+		for pb_col in &partition_by {
+			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
+				return Err(CatalogError::NotFound {
+					kind: CatalogObjectKind::Column,
+					namespace: ringbuffer_ns_segments.join("::"),
+					name: pb_col.clone(),
+					fragment: Fragment::internal(pb_col.as_str()),
+				}
+				.into());
+			}
+		}
+
 		let ringbuffer = ast.ringbuffer;
 
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {
@@ -125,6 +140,7 @@ impl<'bump> Compiler<'bump> {
 			if_not_exists: false,
 			columns,
 			capacity: ast.capacity,
+			partition_by,
 		}))
 	}
 }

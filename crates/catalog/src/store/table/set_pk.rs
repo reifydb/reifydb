@@ -26,7 +26,7 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = multi.values.clone();
+		let mut updated_row = multi.row.clone();
 		table::SCHEMA.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(&TableKey::encoded(table_id), updated_row)?;
@@ -38,7 +38,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{PrimaryKeyId, TableId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 
 	use crate::{CatalogStore, test_utils::ensure_test_table};
 

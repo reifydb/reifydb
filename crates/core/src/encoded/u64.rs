@@ -5,10 +5,10 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{encoded::EncodedValues, schema::Schema};
+use crate::encoded::{row::EncodedRow, schema::RowSchema};
 
-impl Schema {
-	pub fn set_u64(&self, row: &mut EncodedValues, index: usize, value: impl Into<u64>) {
+impl RowSchema {
+	pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint8);
@@ -21,14 +21,14 @@ impl Schema {
 		}
 	}
 
-	pub fn get_u64(&self, row: &EncodedValues, index: usize) -> u64 {
+	pub fn get_u64(&self, row: &EncodedRow, index: usize) -> u64 {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(*field.constraint.get_type().inner_type(), Type::Uint8);
 		unsafe { (row.as_ptr().add(field.offset as usize) as *const u64).read_unaligned() }
 	}
 
-	pub fn try_get_u64(&self, row: &EncodedValues, index: usize) -> Option<u64> {
+	pub fn try_get_u64(&self, row: &EncodedRow, index: usize) -> Option<u64> {
 		if row.is_defined(index) && self.fields()[index].constraint.get_type() == Type::Uint8 {
 			Some(self.get_u64(row, index))
 		} else {
@@ -41,11 +41,11 @@ impl Schema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::Schema;
+	use crate::encoded::schema::RowSchema;
 
 	#[test]
 	fn test_set_get_u64() {
-		let schema = Schema::testing(&[Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8]);
 		let mut row = schema.allocate();
 		schema.set_u64(&mut row, 0, 18446744073709551615u64);
 		assert_eq!(schema.get_u64(&row, 0), 18446744073709551615u64);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u64() {
-		let schema = Schema::testing(&[Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_u64(&row, 0), None);
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn test_extremes() {
-		let schema = Schema::testing(&[Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8]);
 		let mut row = schema.allocate();
 
 		schema.set_u64(&mut row, 0, u64::MAX);
@@ -81,7 +81,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_values() {
-		let schema = Schema::testing(&[Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8]);
 
 		let test_values = [
 			0u64,
@@ -104,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_memory_sizes() {
-		let schema = Schema::testing(&[Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8]);
 
 		// Test values representing memory sizes in bytes
 		let memory_sizes = [
@@ -125,7 +125,7 @@ pub mod tests {
 
 	#[test]
 	fn test_nanosecond_timestamps() {
-		let schema = Schema::testing(&[Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8]);
 
 		// Test nanosecond precision timestamps
 		let ns_timestamps = [
@@ -144,7 +144,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = Schema::testing(&[Type::Uint8, Type::Float8, Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8, Type::Float8, Type::Uint8]);
 		let mut row = schema.allocate();
 
 		schema.set_u64(&mut row, 0, 15_000_000_000_000_000_000u64);
@@ -158,7 +158,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = Schema::testing(&[Type::Uint8, Type::Uint8]);
+		let schema = RowSchema::testing(&[Type::Uint8, Type::Uint8]);
 		let mut row = schema.allocate();
 
 		schema.set_u64(&mut row, 0, 1234567890123456789u64);
@@ -172,7 +172,7 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_u64_wrong_type() {
-		let schema = Schema::testing(&[Type::Boolean]);
+		let schema = RowSchema::testing(&[Type::Boolean]);
 		let mut row = schema.allocate();
 
 		schema.set_bool(&mut row, 0, true);

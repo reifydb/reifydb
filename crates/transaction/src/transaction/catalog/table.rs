@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackTableChangeOperations,
 	id::{NamespaceId, TableId},
-	table::TableDef,
+	table::Table,
 };
 use reifydb_type::Result;
 
@@ -18,40 +18,40 @@ use crate::{
 };
 
 impl CatalogTrackTableChangeOperations for AdminTransaction {
-	fn track_table_def_created(&mut self, table: TableDef) -> Result<()> {
+	fn track_table_created(&mut self, table: Table) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(table),
 			op: Create,
 		};
-		self.changes.add_table_def_change(change);
+		self.changes.add_table_change(change);
 		Ok(())
 	}
 
-	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> Result<()> {
+	fn track_table_updated(&mut self, pre: Table, post: Table) -> Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
 			op: Update,
 		};
-		self.changes.add_table_def_change(change);
+		self.changes.add_table_change(change);
 		Ok(())
 	}
 
-	fn track_table_def_deleted(&mut self, table: TableDef) -> Result<()> {
+	fn track_table_deleted(&mut self, table: Table) -> Result<()> {
 		let change = Change {
 			pre: Some(table),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_table_def_change(change);
+		self.changes.add_table_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalTableChanges for AdminTransaction {
-	fn find_table(&self, id: TableId) -> Option<&TableDef> {
-		for change in self.changes.table_def.iter().rev() {
+	fn find_table(&self, id: TableId) -> Option<&Table> {
+		for change in self.changes.table.iter().rev() {
 			if let Some(table) = &change.post {
 				if table.id == id {
 					return Some(table);
@@ -65,9 +65,9 @@ impl TransactionalTableChanges for AdminTransaction {
 		None
 	}
 
-	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TableDef> {
+	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Table> {
 		self.changes
-			.table_def
+			.table
 			.iter()
 			.rev()
 			.find_map(|change| change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name))
@@ -75,14 +75,14 @@ impl TransactionalTableChanges for AdminTransaction {
 
 	fn is_table_deleted(&self, id: TableId) -> bool {
 		self.changes
-			.table_def
+			.table
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|t| t.id) == Some(id))
 	}
 
 	fn is_table_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.changes.table_def.iter().rev().any(|change| {
+		self.changes.table.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
@@ -94,25 +94,25 @@ impl TransactionalTableChanges for AdminTransaction {
 }
 
 impl CatalogTrackTableChangeOperations for SubscriptionTransaction {
-	fn track_table_def_created(&mut self, table: TableDef) -> Result<()> {
-		self.inner.track_table_def_created(table)
+	fn track_table_created(&mut self, table: Table) -> Result<()> {
+		self.inner.track_table_created(table)
 	}
 
-	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> Result<()> {
-		self.inner.track_table_def_updated(pre, post)
+	fn track_table_updated(&mut self, pre: Table, post: Table) -> Result<()> {
+		self.inner.track_table_updated(pre, post)
 	}
 
-	fn track_table_def_deleted(&mut self, table: TableDef) -> Result<()> {
-		self.inner.track_table_def_deleted(table)
+	fn track_table_deleted(&mut self, table: Table) -> Result<()> {
+		self.inner.track_table_deleted(table)
 	}
 }
 
 impl TransactionalTableChanges for SubscriptionTransaction {
-	fn find_table(&self, id: TableId) -> Option<&TableDef> {
+	fn find_table(&self, id: TableId) -> Option<&Table> {
 		self.inner.find_table(id)
 	}
 
-	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TableDef> {
+	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Table> {
 		self.inner.find_table_by_name(namespace, name)
 	}
 

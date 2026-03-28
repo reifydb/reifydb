@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,27 +14,27 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext, VTableRegistry},
+	vtable::{BaseVTable, Batch, VTableContext, VTableRegistry},
 };
 
 /// Virtual table that exposes information about all virtual tables (system and user-defined)
-pub struct TablesVirtual {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemTablesVirtual {
+	pub(crate) definition: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl TablesVirtual {
+impl SystemTablesVirtual {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_virtual_tables_table_def().clone(),
+			definition: SystemCatalog::get_system_virtual_tables_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for TablesVirtual {
+impl BaseVTable for SystemTablesVirtual {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -51,10 +51,10 @@ impl VTable for TablesVirtual {
 		let mut names = Vec::new();
 		let mut kinds = Vec::new();
 
-		for vtable_def in VTableRegistry::list_vtables(txn)? {
-			ids.push(vtable_def.id.0);
-			namespaces.push(vtable_def.namespace.0);
-			names.push(vtable_def.name.clone());
+		for vtable in VTableRegistry::list_vtables(txn)? {
+			ids.push(vtable.id.0);
+			namespaces.push(vtable.namespace.0);
+			names.push(vtable.name.clone());
 			kinds.push("system".to_string());
 		}
 
@@ -110,7 +110,7 @@ impl VTable for TablesVirtual {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

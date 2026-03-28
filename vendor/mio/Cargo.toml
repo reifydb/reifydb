@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.71"
 name = "mio"
-version = "1.1.0"
+version = "1.1.1"
 authors = [
     "Carl Lerche <me@carllerche.com>",
     "Thomas de Zeeuw <thomasdezeeuw@gmail.com>",
@@ -125,16 +125,16 @@ default-features = false
 version = "0.9"
 
 [target.'cfg(target_os = "hermit")'.dependencies.libc]
-version = "0.2.159"
+version = "0.2.178"
 
 [target.'cfg(target_os = "wasi")'.dependencies.libc]
-version = "0.2.159"
+version = "0.2.178"
 
 [target.'cfg(target_os = "wasi")'.dependencies.wasi]
 version = "0.11.0"
 
 [target."cfg(unix)".dependencies.libc]
-version = "0.2.159"
+version = "0.2.178"
 
 [target."cfg(windows)".dependencies.windows-sys]
 version = "0.61"

@@ -10,7 +10,7 @@ use std::{cmp::Ordering, collections::btree_map::Range as BTreeMapRange};
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
-	interface::store::{MultiVersionBatch, MultiVersionValues},
+	interface::store::{MultiVersionBatch, MultiVersionRow},
 };
 
 use super::PendingWrite;
@@ -28,13 +28,13 @@ use super::PendingWrite;
 /// - Maintains sorted order
 pub struct FlowRangeIter<'a> {
 	/// Iterator over committed results from query transaction
-	committed: Box<dyn Iterator<Item = MultiVersionValues> + Send + 'a>,
+	committed: Box<dyn Iterator<Item = MultiVersionRow> + Send + 'a>,
 	/// Range iterator over pending writes in sorted order
 	pending: BTreeMapRange<'a, EncodedKey, PendingWrite>,
 	/// Pre-fetched next pending item for lookahead comparison
 	next_pending: Option<(&'a EncodedKey, &'a PendingWrite)>,
 	/// Pre-fetched next committed item for lookahead comparison
-	next_committed: Option<MultiVersionValues>,
+	next_committed: Option<MultiVersionRow>,
 	/// Fixed version for pending writes (CDC version)
 	version: CommitVersion,
 }
@@ -43,7 +43,7 @@ impl<'a> FlowRangeIter<'a> {
 	/// Create a new merge iterator for range queries
 	pub fn new(
 		pending: BTreeMapRange<'a, EncodedKey, PendingWrite>,
-		committed: Box<dyn Iterator<Item = MultiVersionValues> + Send + 'a>,
+		committed: Box<dyn Iterator<Item = MultiVersionRow> + Send + 'a>,
 		version: CommitVersion,
 	) -> Self {
 		let mut iterator = Self {
@@ -72,7 +72,7 @@ impl<'a> FlowRangeIter<'a> {
 }
 
 impl<'a> Iterator for FlowRangeIter<'a> {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -86,10 +86,10 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 							self.advance_pending();
 
 							match value {
-								PendingWrite::Set(values) => {
-									return Some(MultiVersionValues {
+								PendingWrite::Set(row) => {
+									return Some(MultiVersionRow {
 										key: key.clone(),
-										values: values.clone(),
+										row: row.clone(),
 										version: self.version,
 									});
 								}
@@ -103,10 +103,10 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 							self.advance_committed(); // Skip the duplicate committed entry
 
 							match value {
-								PendingWrite::Set(values) => {
-									return Some(MultiVersionValues {
+								PendingWrite::Set(row) => {
+									return Some(MultiVersionRow {
 										key: key.clone(),
-										values: values.clone(),
+										row: row.clone(),
 										version: self.version,
 									});
 								}
@@ -127,10 +127,10 @@ impl<'a> Iterator for FlowRangeIter<'a> {
 					self.advance_pending();
 
 					match value {
-						PendingWrite::Set(values) => {
-							return Some(MultiVersionValues {
+						PendingWrite::Set(row) => {
+							return Some(MultiVersionRow {
 								key: key.clone(),
-								values: values.clone(),
+								row: row.clone(),
 								version: self.version,
 							});
 						}
@@ -178,8 +178,8 @@ pub mod tests {
 
 	use reifydb_core::{
 		common::CommitVersion,
-		encoded::{encoded::EncodedValues, key::EncodedKey},
-		interface::store::MultiVersionValues,
+		encoded::{key::EncodedKey, row::EncodedRow},
+		interface::store::MultiVersionRow,
 	};
 	use reifydb_type::util::cowvec::CowVec;
 
@@ -189,14 +189,14 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 
-	fn make_value(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn make_committed(key: &str, value: &str, version: u64) -> MultiVersionValues {
-		MultiVersionValues {
+	fn make_committed(key: &str, value: &str, version: u64) -> MultiVersionRow {
+		MultiVersionRow {
 			key: make_key(key),
-			values: make_value(value),
+			row: make_value(value),
 			version: CommitVersion(version),
 		}
 	}
@@ -204,7 +204,7 @@ pub mod tests {
 	#[test]
 	fn test_empty_range_both_iterators() {
 		let pending: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-		let committed: Vec<MultiVersionValues> = vec![];
+		let committed: Vec<MultiVersionRow> = vec![];
 
 		let mut iter = FlowRangeIter::new(pending.range(..), Box::new(committed.into_iter()), CommitVersion(1));
 
@@ -219,7 +219,7 @@ pub mod tests {
 		pending.insert(make_key("c"), PendingWrite::Set(make_value("3")));
 		pending.insert(make_key("d"), PendingWrite::Set(make_value("4")));
 
-		let committed: Vec<MultiVersionValues> = vec![];
+		let committed: Vec<MultiVersionRow> = vec![];
 
 		// Range from "b" to "d" (exclusive)
 		let iter = FlowRangeIter::new(
@@ -256,7 +256,7 @@ pub mod tests {
 		pending.insert(make_key("b"), PendingWrite::Remove);
 		pending.insert(make_key("c"), PendingWrite::Set(make_value("3")));
 
-		let committed: Vec<MultiVersionValues> = vec![];
+		let committed: Vec<MultiVersionRow> = vec![];
 
 		let iter = FlowRangeIter::new(pending.range(..), Box::new(committed.into_iter()), CommitVersion(10));
 
@@ -279,7 +279,7 @@ pub mod tests {
 		let items: Vec<_> = iter.collect();
 		assert_eq!(items.len(), 3);
 		assert_eq!(items[1].key, make_key("b"));
-		assert_eq!(items[1].values, make_value("new"));
+		assert_eq!(items[1].row, make_value("new"));
 		assert_eq!(items[1].version, CommitVersion(10));
 	}
 
@@ -322,12 +322,12 @@ pub mod tests {
 
 		assert_eq!(items.len(), 4);
 		assert_eq!(items[0].key, make_key("b"));
-		assert_eq!(items[0].values, make_value("b")); // Pending value
+		assert_eq!(items[0].row, make_value("b")); // Pending value
 
 		assert_eq!(items[1].key, make_key("c"));
 		assert_eq!(items[2].key, make_key("d"));
 		assert_eq!(items[3].key, make_key("f"));
-		assert_eq!(items[3].values, make_value("f_old"));
+		assert_eq!(items[3].row, make_value("f_old"));
 	}
 
 	#[test]
@@ -383,7 +383,7 @@ pub mod tests {
 		pending.insert(make_key("c"), PendingWrite::Set(make_value("c")));
 		pending.insert(make_key("d"), PendingWrite::Set(make_value("d")));
 
-		let committed: Vec<MultiVersionValues> = vec![];
+		let committed: Vec<MultiVersionRow> = vec![];
 
 		// Start from "b" onwards
 		let iter = FlowRangeIter::new(
@@ -407,7 +407,7 @@ pub mod tests {
 		pending.insert(make_key("c"), PendingWrite::Set(make_value("c")));
 		pending.insert(make_key("d"), PendingWrite::Set(make_value("d")));
 
-		let committed: Vec<MultiVersionValues> = vec![];
+		let committed: Vec<MultiVersionRow> = vec![];
 
 		// Up to "c" (exclusive)
 		let iter = FlowRangeIter::new(
@@ -430,7 +430,7 @@ pub mod tests {
 		pending.insert(make_key("c"), PendingWrite::Set(make_value("c")));
 		pending.insert(make_key("d"), PendingWrite::Set(make_value("d")));
 
-		let committed: Vec<MultiVersionValues> = vec![];
+		let committed: Vec<MultiVersionRow> = vec![];
 
 		// From "b" to "c" inclusive
 		let iter = FlowRangeIter::new(
@@ -475,13 +475,13 @@ pub mod tests {
 		// Removed: b, f
 		assert_eq!(items.len(), 4);
 		assert_eq!(items[0].key, make_key("a"));
-		assert_eq!(items[0].values, make_value("new_a"));
+		assert_eq!(items[0].row, make_value("new_a"));
 		assert_eq!(items[1].key, make_key("c"));
-		assert_eq!(items[1].values, make_value("new_c"));
+		assert_eq!(items[1].row, make_value("new_c"));
 		assert_eq!(items[2].key, make_key("d"));
-		assert_eq!(items[2].values, make_value("old_d"));
+		assert_eq!(items[2].row, make_value("old_d"));
 		assert_eq!(items[3].key, make_key("e"));
-		assert_eq!(items[3].values, make_value("old_e"));
+		assert_eq!(items[3].row, make_value("old_e"));
 	}
 
 	#[test]
@@ -490,7 +490,7 @@ pub mod tests {
 		pending.insert(make_key("a"), PendingWrite::Set(make_value("a")));
 		pending.insert(make_key("z"), PendingWrite::Set(make_value("z")));
 
-		let committed: Vec<MultiVersionValues> = vec![];
+		let committed: Vec<MultiVersionRow> = vec![];
 
 		// Range with no matching keys
 		let iter = FlowRangeIter::new(

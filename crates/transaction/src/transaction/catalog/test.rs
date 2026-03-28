@@ -4,7 +4,7 @@
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackTestChangeOperations,
 	id::{NamespaceId, TestId},
-	test::TestDef,
+	test::Test,
 };
 use reifydb_type::Result;
 
@@ -18,30 +18,30 @@ use crate::{
 };
 
 impl CatalogTrackTestChangeOperations for AdminTransaction {
-	fn track_test_def_created(&mut self, test: TestDef) -> Result<()> {
+	fn track_test_created(&mut self, test: Test) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(test),
 			op: Create,
 		};
-		self.changes.add_test_def_change(change);
+		self.changes.add_test_change(change);
 		Ok(())
 	}
 
-	fn track_test_def_deleted(&mut self, test: TestDef) -> Result<()> {
+	fn track_test_deleted(&mut self, test: Test) -> Result<()> {
 		let change = Change {
 			pre: Some(test),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_test_def_change(change);
+		self.changes.add_test_change(change);
 		Ok(())
 	}
 }
 
 impl TransactionalTestChanges for AdminTransaction {
-	fn find_test(&self, id: TestId) -> Option<&TestDef> {
-		for change in self.changes.test_def.iter().rev() {
+	fn find_test(&self, id: TestId) -> Option<&Test> {
+		for change in self.changes.test.iter().rev() {
 			if let Some(test) = &change.post {
 				if test.id == id {
 					return Some(test);
@@ -55,9 +55,9 @@ impl TransactionalTestChanges for AdminTransaction {
 		None
 	}
 
-	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TestDef> {
+	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Test> {
 		self.changes
-			.test_def
+			.test
 			.iter()
 			.rev()
 			.find_map(|change| change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name))
@@ -65,14 +65,14 @@ impl TransactionalTestChanges for AdminTransaction {
 
 	fn is_test_deleted(&self, id: TestId) -> bool {
 		self.changes
-			.test_def
+			.test
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|t| t.id) == Some(id))
 	}
 
 	fn is_test_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.changes.test_def.iter().rev().any(|change| {
+		self.changes.test.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
@@ -84,21 +84,21 @@ impl TransactionalTestChanges for AdminTransaction {
 }
 
 impl CatalogTrackTestChangeOperations for SubscriptionTransaction {
-	fn track_test_def_created(&mut self, test: TestDef) -> Result<()> {
-		self.inner.track_test_def_created(test)
+	fn track_test_created(&mut self, test: Test) -> Result<()> {
+		self.inner.track_test_created(test)
 	}
 
-	fn track_test_def_deleted(&mut self, test: TestDef) -> Result<()> {
-		self.inner.track_test_def_deleted(test)
+	fn track_test_deleted(&mut self, test: Test) -> Result<()> {
+		self.inner.track_test_deleted(test)
 	}
 }
 
 impl TransactionalTestChanges for SubscriptionTransaction {
-	fn find_test(&self, id: TestId) -> Option<&TestDef> {
+	fn find_test(&self, id: TestId) -> Option<&Test> {
 		self.inner.find_test(id)
 	}
 
-	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&TestDef> {
+	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Test> {
 		self.inner.find_test_by_name(namespace, name)
 	}
 

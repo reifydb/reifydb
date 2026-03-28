@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::schema::{Schema, SchemaField},
+	encoded::schema::{RowSchema, RowSchemaField},
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, primitive::PrimitiveId},
+		catalog::{flow::FlowNodeId, id::TableId, schema::SchemaId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	row::Row,
@@ -17,7 +17,7 @@ use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
 pub struct TestRowBuilder {
 	row_number: RowNumber,
 	values: Vec<Value>,
-	schema: Option<Schema>,
+	schema: Option<RowSchema>,
 }
 
 impl TestRowBuilder {
@@ -43,7 +43,7 @@ impl TestRowBuilder {
 	}
 
 	/// Set the schema for the row (inferred from values if not set)
-	pub fn with_schema(mut self, schema: Schema) -> Self {
+	pub fn with_schema(mut self, schema: RowSchema) -> Self {
 		self.schema = Some(schema);
 		self
 	}
@@ -55,13 +55,13 @@ impl TestRowBuilder {
 			schema
 		} else {
 			// Infer types from values and create schema
-			let fields: Vec<SchemaField> = self
+			let fields: Vec<RowSchemaField> = self
 				.values
 				.iter()
 				.enumerate()
-				.map(|(i, v)| SchemaField::unconstrained(format!("field{}", i), v.get_type()))
+				.map(|(i, v)| RowSchemaField::unconstrained(format!("field{}", i), v.get_type()))
 				.collect();
-			Schema::new(fields)
+			RowSchema::new(fields)
 		};
 
 		let mut encoded = schema.allocate();
@@ -86,15 +86,15 @@ impl TestChangeBuilder {
 	/// Create a new flow change builder with default origin and version
 	pub fn new() -> Self {
 		Self {
-			origin: ChangeOrigin::Primitive(PrimitiveId::Table(TableId(1))),
+			origin: ChangeOrigin::Schema(SchemaId::Table(TableId(1))),
 			diffs: Vec::new(),
 			version: CommitVersion(1),
 		}
 	}
 
 	/// Set the origin as an external source
-	pub fn changed_by_source(mut self, source: PrimitiveId) -> Self {
-		self.origin = ChangeOrigin::Primitive(source);
+	pub fn changed_by_schema(mut self, schema: SchemaId) -> Self {
+		self.origin = ChangeOrigin::Schema(schema);
 		self
 	}
 
@@ -172,7 +172,7 @@ impl TestChangeBuilder {
 
 /// Builder for creating test schemas
 pub struct TestLayoutBuilder {
-	fields: Vec<SchemaField>,
+	fields: Vec<RowSchemaField>,
 }
 
 impl TestLayoutBuilder {
@@ -186,46 +186,46 @@ impl TestLayoutBuilder {
 	/// Add a type to the schema with auto-generated name
 	pub fn add_type(mut self, ty: Type) -> Self {
 		let field_name = format!("field{}", self.fields.len());
-		self.fields.push(SchemaField::unconstrained(field_name, ty));
+		self.fields.push(RowSchemaField::unconstrained(field_name, ty));
 		self
 	}
 
 	/// Add a named field to the schema
 	pub fn add_field(mut self, name: impl Into<String>, ty: Type) -> Self {
-		self.fields.push(SchemaField::unconstrained(name, ty));
+		self.fields.push(RowSchemaField::unconstrained(name, ty));
 		self
 	}
 
 	/// Build the schema
-	pub fn build(self) -> Schema {
-		Schema::new(self.fields)
+	pub fn build(self) -> RowSchema {
+		RowSchema::new(self.fields)
 	}
 
 	/// Build the schema (alias for backwards compatibility)
-	pub fn build_named(self) -> Schema {
+	pub fn build_named(self) -> RowSchema {
 		self.build()
 	}
 }
 
 /// Helper functions for common test data patterns
 pub mod helpers {
-	use reifydb_core::{encoded::schema::Schema, interface::change::Change, row::Row};
+	use reifydb_core::{encoded::schema::RowSchema, interface::change::Change, row::Row};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::*;
 
 	/// Create a simple counter schema (single int8 field)
-	pub fn counter_layout() -> Schema {
+	pub fn counter_layout() -> RowSchema {
 		TestLayoutBuilder::new().add_type(Type::Int8).build()
 	}
 
 	/// Create a key-value schema (utf8 key, int8 value)
-	pub fn key_value_layout() -> Schema {
+	pub fn key_value_layout() -> RowSchema {
 		TestLayoutBuilder::new().add_type(Type::Utf8).add_type(Type::Int8).build()
 	}
 
 	/// Create a named key-value schema
-	pub fn named_key_value_layout() -> Schema {
+	pub fn named_key_value_layout() -> RowSchema {
 		TestLayoutBuilder::new().add_field("key", Type::Utf8).add_field("value", Type::Int8).build_named()
 	}
 
@@ -265,7 +265,7 @@ pub mod helpers {
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::{catalog::primitive::PrimitiveId, change::ChangeOrigin},
+		interface::{catalog::schema::SchemaId, change::ChangeOrigin},
 	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
@@ -285,7 +285,7 @@ pub mod tests {
 	#[test]
 	fn test_flow_change_builder() {
 		let change = TestChangeBuilder::new()
-			.changed_by_source(PrimitiveId::table(100))
+			.changed_by_schema(SchemaId::table(100))
 			.with_version(CommitVersion(5))
 			.insert_row(1, vec![Value::Int8(42i64)])
 			.update_row(2, vec![Value::Int8(10i64)], vec![Value::Int8(20i64)])
@@ -296,8 +296,8 @@ pub mod tests {
 		assert_eq!(change.diffs.len(), 3);
 
 		match &change.origin {
-			ChangeOrigin::Primitive(source) => {
-				assert_eq!(*source, PrimitiveId::table(100));
+			ChangeOrigin::Schema(schema) => {
+				assert_eq!(*schema, SchemaId::table(100));
 			}
 			_ => panic!("Expected external origin"),
 		}

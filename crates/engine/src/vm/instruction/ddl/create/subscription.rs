@@ -33,7 +33,7 @@ pub(crate) fn create_subscription(
 			columns: plan.columns,
 		},
 	)?;
-	txn.track_subscription_def_created(result.clone())?;
+	txn.track_subscription_created(result.clone())?;
 
 	if let Some(as_clause) = plan.as_clause {
 		create_subscription_flow(&services.catalog, txn, &result, *as_clause)?;

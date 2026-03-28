@@ -181,7 +181,7 @@ fn parse_human_duration(fragment: Fragment) -> Result<Duration, Error> {
 		.into());
 	}
 
-	Ok(Duration::new(months, days, nanos))
+	Ok(Duration::new(months, days, nanos)?)
 }
 
 /// Parse ISO 8601 duration format: `P[n]Y[n]M[n]DT[n]H[n]M[n.n]S`
@@ -640,7 +640,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 		.into());
 	}
 
-	Ok(Duration::new(months, days, nanos))
+	Ok(Duration::new(months, days, nanos)?)
 }
 
 #[cfg(test)]
@@ -792,8 +792,6 @@ pub mod tests {
 		let err = parse_duration(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_015");
 	}
-
-	// ---- Human-readable format tests ----
 
 	#[test]
 	fn test_human_seconds() {

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::vtable::VTableDef,
+	interface::catalog::vtable::VTable,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -16,25 +16,25 @@ use reifydb_type::{
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes system ring buffer information
-pub struct RingBuffers {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemRingBuffers {
+	pub(crate) definition: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl RingBuffers {
+impl SystemRingBuffers {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_ringbuffers_table_def().clone(),
+			definition: SystemCatalog::get_system_ringbuffers_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for RingBuffers {
+impl BaseVTable for SystemRingBuffers {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -96,7 +96,7 @@ impl VTable for RingBuffers {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

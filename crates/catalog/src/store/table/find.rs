@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, TableId},
-		table::TableDef,
+		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
@@ -16,17 +16,17 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<TableDef>> {
+	pub(crate) fn find_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Option<Table>> {
 		let Some(multi) = rx.get(&TableKey::encoded(table))? else {
 			return Ok(None);
 		};
 
-		let row = multi.values;
+		let row = multi.row;
 		let id = TableId(table::SCHEMA.get_u64(&row, table::ID));
 		let namespace = NamespaceId(table::SCHEMA.get_u64(&row, table::NAMESPACE));
 		let name = table::SCHEMA.get_utf8(&row, table::NAME).to_string();
 
-		Ok(Some(TableDef {
+		Ok(Some(Table {
 			id,
 			name,
 			namespace,
@@ -39,14 +39,14 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
-	) -> Result<Option<TableDef>> {
+	) -> Result<Option<Table>> {
 		let name = name.as_ref();
 		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), 1024)?;
 
 		let mut found_table = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let row = &multi.values;
+			let row = &multi.row;
 			let table_name = table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME);
 			if name == table_name {
 				found_table = Some(TableId(table_namespace::SCHEMA.get_u64(row, table_namespace::ID)));
@@ -67,7 +67,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::{NamespaceId, TableId};
-	use reifydb_engine::test_utils::create_test_admin_transaction;
+	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{

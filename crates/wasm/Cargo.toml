@@ -5,14 +5,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "WebAssembly interpreter for sandboxed execution in ReifyDB"
+description = "WebAssembly runtime for sandboxed execution in ReifyDB (backed by wasmtime)"
 
 [build-dependencies]
 reifydb-build = { workspace = true }
 
-[dependencies]
-libm = { workspace = true }
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
 
 [dev-dependencies]
-wast = { workspace = true }
 wat = { workspace = true }

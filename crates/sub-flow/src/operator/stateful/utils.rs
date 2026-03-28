@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
-		schema::Schema,
+		row::EncodedRow,
+		schema::RowSchema,
 	},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
@@ -18,7 +18,7 @@ use crate::transaction::FlowTransaction;
 /// Helper functions for state operations that can be used by any stateful trait
 
 /// Get raw bytes for a key
-pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedValues>> {
+pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
@@ -29,7 +29,7 @@ pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) ->
 }
 
 /// Set raw bytes for a key
-pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedValues) -> Result<()> {
+pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, value: EncodedRow) -> Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.set(&encoded_key, value)?;
@@ -45,11 +45,7 @@ pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey)
 }
 
 /// Get raw bytes for a key from internal state (not subject to retention policies)
-pub fn internal_state_get(
-	id: FlowNodeId,
-	txn: &mut FlowTransaction,
-	key: &EncodedKey,
-) -> Result<Option<EncodedValues>> {
+pub fn internal_state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
@@ -64,7 +60,7 @@ pub fn internal_state_set(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
-	value: EncodedValues,
+	value: EncodedRow,
 ) -> Result<()> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
@@ -88,9 +84,9 @@ pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<StateIter
 	while let Some(result) = stream.next() {
 		let multi = result?;
 		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
-			items.push((EncodedKey::new(state_key.key), multi.values));
+			items.push((EncodedKey::new(state_key.key), multi.row));
 		} else {
-			items.push((multi.key, multi.values));
+			items.push((multi.key, multi.row));
 		}
 	}
 	Ok(StateIterator::from_items(items))
@@ -104,9 +100,9 @@ pub fn state_range(id: FlowNodeId, txn: &mut FlowTransaction, range: EncodedKeyR
 	while let Some(result) = stream.next() {
 		let multi = result?;
 		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
-			items.push((EncodedKey::new(state_key.key), multi.values));
+			items.push((EncodedKey::new(state_key.key), multi.row));
 		} else {
-			items.push((multi.key, multi.values));
+			items.push((multi.key, multi.row));
 		}
 	}
 	Ok(StateIterator::from_items(items))
@@ -136,8 +132,8 @@ pub fn load_or_create_row(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
-	schema: &Schema,
-) -> Result<EncodedValues> {
+	schema: &RowSchema,
+) -> Result<EncodedRow> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
 		None => Ok(schema.allocate()),
@@ -145,7 +141,7 @@ pub fn load_or_create_row(
 }
 
 /// Save state encoded
-pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, row: EncodedValues) -> Result<()> {
+pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 	state_set(id, txn, key, row)
 }
 
@@ -203,8 +199,8 @@ pub mod tests {
 			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("set");
-		let value1 = EncodedValues(CowVec::new(vec![1, 2, 3]));
-		let value2 = EncodedValues(CowVec::new(vec![4, 5, 6]));
+		let value1 = EncodedRow(CowVec::new(vec![1, 2, 3]));
+		let value2 = EncodedRow(CowVec::new(vec![4, 5, 6]));
 
 		// Set initial value
 		state_set(node_id, &mut txn, &key, value1.clone()).unwrap();
@@ -245,7 +241,7 @@ pub mod tests {
 		// Add multiple entries
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // Use padding for proper ordering
-			let value = EncodedValues(CowVec::new(vec![i as u8]));
+			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
@@ -255,7 +251,7 @@ pub mod tests {
 
 		// Verify we got all the expected values
 		for i in 0..5 {
-			assert_eq!(entries[i].1.as_ref()[0], i as u8);
+			assert_eq!(entries[i].1.as_slice()[0], i as u8);
 		}
 	}
 
@@ -391,7 +387,7 @@ pub mod tests {
 			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
-		let schema = Schema::testing(&[Type::Int4]);
+		let schema = RowSchema::testing(&[Type::Int4]);
 
 		// Load non-existing should create new
 		let result = load_or_create_row(node_id, &mut txn, &key, &schema).unwrap();
@@ -432,8 +428,8 @@ pub mod tests {
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
 		let key = test_key("shared");
-		let value1 = EncodedValues(CowVec::new(vec![1]));
-		let value2 = EncodedValues(CowVec::new(vec![2]));
+		let value1 = EncodedRow(CowVec::new(vec![1]));
+		let value2 = EncodedRow(CowVec::new(vec![2]));
 
 		// Set different values for same key in different nodes
 		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
@@ -461,7 +457,7 @@ pub mod tests {
 		let key = test_key("large");
 
 		// Create a large value (10KB)
-		let large_value = EncodedValues(CowVec::new(vec![0xAB; 10240]));
+		let large_value = EncodedRow(CowVec::new(vec![0xAB; 10240]));
 
 		// Store and retrieve
 		state_set(node_id, &mut txn, &key, large_value.clone()).unwrap();

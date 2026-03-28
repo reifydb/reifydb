@@ -10,7 +10,7 @@ use std::{
 	ops::RangeBounds,
 };
 
-use reifydb_core::encoded::{encoded::EncodedValues, key::EncodedKey};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 
 use crate::multi::types::Pending;
 
@@ -66,7 +66,7 @@ impl PendingWrites {
 	#[inline]
 	pub fn estimate_size(&self, _entry: &Pending) -> u64 {
 		// Use fixed size estimation for speed
-		(size_of::<EncodedKey>() + size_of::<EncodedValues>()) as u64
+		(size_of::<EncodedKey>() + size_of::<EncodedRow>()) as u64
 	}
 
 	/// Get a pending write by key - O(log n) performance
@@ -91,12 +91,12 @@ impl PendingWrites {
 	pub fn insert(&mut self, key: EncodedKey, value: Pending) {
 		let size_estimate = self.estimate_size(&value);
 
-		if let Some(old_value) = self.writes.insert(key.clone(), value) {
+		if let Some(pre) = self.writes.insert(key.clone(), value) {
 			// Update existing - might change size
-			let old_size = self.estimate_size(&old_value);
-			if size_estimate != old_size {
+			let pre_size = self.estimate_size(&pre);
+			if size_estimate != pre_size {
 				self.estimated_size =
-					self.estimated_size.saturating_sub(old_size).saturating_add(size_estimate);
+					self.estimated_size.saturating_sub(pre_size).saturating_add(size_estimate);
 			}
 			// Key already exists in insertion_order and position_index, don't add again
 		} else {
@@ -211,15 +211,15 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn create_test_values(s: &str) -> EncodedValues {
-		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
+	fn create_test_row(s: &str) -> EncodedRow {
+		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	fn create_test_pending(version: CommitVersion, key: &str, values_data: &str) -> Pending {
 		Pending {
 			delta: Delta::Set {
 				key: create_test_key(key),
-				values: create_test_values(values_data),
+				row: create_test_row(values_data),
 			},
 			version,
 		}

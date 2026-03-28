@@ -5,7 +5,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		id::NamespaceId,
-		procedure::{ProcedureParamDef, ProcedureTrigger},
+		procedure::{ProcedureParam, ProcedureTrigger},
 	},
 };
 use reifydb_transaction::{
@@ -16,14 +16,17 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, r#type::Type},
+	value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type},
 };
 
 use crate::{
-	Result,
+	CatalogStore, Result,
 	catalog::{Catalog, namespace::NamespaceToCreate, procedure::ProcedureToCreate},
-	materialized::{MaterializedCatalog, load::MaterializedCatalogLoader},
-	schema::{SchemaRegistry, load::SchemaRegistryLoader},
+	materialized::{
+		MaterializedCatalog,
+		load::{MaterializedCatalogLoader, identity::load_identities},
+	},
+	schema::{RowSchemaRegistry, load::RowSchemaRegistryLoader},
 };
 
 /// Load all catalog data from storage into MaterializedCatalog.
@@ -32,20 +35,25 @@ pub fn load_materialized_catalog(
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
 ) -> Result<()> {
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
 	MaterializedCatalogLoader::load_all(&mut Transaction::Query(&mut qt), catalog)?;
 	Ok(())
 }
 
 /// Write registered config defaults to storage for keys not yet stored.
-pub fn bootstrap_config_defaults(
+pub fn bootstrap_configaults(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	let mut admin =
-		AdminTransaction::new(multi.clone(), single.clone(), eventbus.clone(), Interceptors::default())?;
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+	)?;
 	MaterializedCatalogLoader::bootstrap_missing_defaults(&mut admin, catalog)?;
 	admin.commit()?;
 	Ok(())
@@ -58,12 +66,17 @@ pub fn bootstrap_system_procedures(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
-	schema_registry: &SchemaRegistry,
+	row_schema_registry: &RowSchemaRegistry,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	let catalog_api = Catalog::new(catalog.clone(), schema_registry.clone());
-	let mut admin =
-		AdminTransaction::new(multi.clone(), single.clone(), eventbus.clone(), Interceptors::default())?;
+	let catalog_api = Catalog::new(catalog.clone(), row_schema_registry.clone());
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+	)?;
 
 	// Ensure the system::config sub-namespace exists (persisted to storage).
 	// On first boot it won't exist; on subsequent boots it's already loaded into
@@ -78,6 +91,7 @@ pub fn bootstrap_system_procedures(
 					name: "system::config".to_string(),
 					local_name: "config".to_string(),
 					parent_id: NamespaceId(1),
+					token: None,
 					grpc: None,
 				},
 			)?;
@@ -94,11 +108,11 @@ pub fn bootstrap_system_procedures(
 			name: Fragment::internal("set"),
 			namespace: ns_id,
 			params: vec![
-				ProcedureParamDef {
+				ProcedureParam {
 					name: "key".to_string(),
 					param_type: TypeConstraint::unconstrained(Type::Utf8),
 				},
-				ProcedureParamDef {
+				ProcedureParam {
 					name: "value".to_string(),
 					param_type: TypeConstraint::unconstrained(Type::Utf8),
 				},
@@ -121,13 +135,51 @@ pub fn bootstrap_system_procedures(
 	Ok(())
 }
 
-/// Load schemas from storage into SchemaRegistry.
+/// Bootstrap the root identity in the catalog.
+///
+/// Creates an identity named "root" with `IdentityId::root()`.
+/// This makes root a real catalog identity that can have authentication attached
+/// (e.g., `CREATE AUTHENTICATION FOR root { method: token; token: '...' }`).
+///
+/// Skips creation if the root identity already exists.
+pub fn bootstrap_root_identity(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &MaterializedCatalog,
+	eventbus: &EventBus,
+) -> Result<()> {
+	// Check if root identity already exists via storage scan
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	if CatalogStore::find_identity_by_name(&mut Transaction::Query(&mut qt), "root")?.is_some() {
+		return Ok(());
+	}
+	drop(qt);
+
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+	)?;
+
+	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root())?;
+	admin.commit()?;
+
+	// Reload materialized catalog to pick up the new identity
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	load_identities(&mut Transaction::Query(&mut qt), catalog)?;
+
+	Ok(())
+}
+
+/// Load schemas from storage into RowSchemaRegistry.
 pub fn load_schema_registry(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
-	registry: &SchemaRegistry,
+	registry: &RowSchemaRegistry,
 ) -> Result<()> {
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone());
-	SchemaRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
+	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
+	RowSchemaRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
 	Ok(())
 }

@@ -7,11 +7,12 @@ use reifydb::{
 	WithSubsystem, server, sub_server_http::factory::HttpConfig, sub_server_otel::config::OtelConfig,
 	sub_server_ws::factory::WsConfig,
 };
+use reifydb_type::params::Params;
 use tracing::info;
 
 fn main() {
-	let http_config = HttpConfig::default();
-	let ws_config = WsConfig::default();
+	let http_config = HttpConfig::default().admin_bind_addr("0.0.0.0:8091");
+	let ws_config = WsConfig::default().admin_bind_addr("0.0.0.0:8090");
 
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
@@ -21,8 +22,7 @@ fn main() {
 				.endpoint("http://localhost:4317")
 				.sample_ratio(1.0)
 				.scheduled_delay(Duration::from_millis(500)),
-			|t| t
-				.without_console()  // Disable console logging for better performance
+			|t| t.without_console()  // Disable console logging for better performance
 				.with_filter("trace"),  // Only affects OpenTelemetry layer
 		)
 		.with_http(http_config)
@@ -42,5 +42,21 @@ fn main() {
 	println!();
 	println!("Press Ctrl+C to stop...");
 
-	db.start_and_await_signal().unwrap();
+	db.start().unwrap();
+
+	// Create a hardcoded auth token for root so clients can authenticate
+	db.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }", Params::None)
+		.unwrap();
+	println!("Auth token configured for root user: mysecrettoken");
+
+	// Create test users for login integration tests
+	db.admin_as_root("CREATE USER alice", Params::None).unwrap();
+	db.admin_as_root("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }", Params::None)
+		.unwrap();
+	db.admin_as_root("CREATE USER bob", Params::None).unwrap();
+	db.admin_as_root("CREATE AUTHENTICATION FOR bob { method: token; token: 'bob-secret-token' }", Params::None)
+		.unwrap();
+	println!("Test users configured: alice (password), bob (token)");
+
+	db.await_signal().unwrap();
 }

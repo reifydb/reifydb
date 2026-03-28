@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{procedure::ProcedureTrigger, vtable::VTableDef},
+	interface::catalog::{procedure::ProcedureTrigger, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -14,27 +14,27 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	system::SystemCatalog,
-	vtable::{Batch, VTable, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 /// Virtual table that exposes procedures with trigger = Call or NativeCall
-pub struct Procedures {
-	pub(crate) definition: Arc<VTableDef>,
+pub struct SystemProcedures {
+	pub(crate) definition: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
 
-impl Procedures {
+impl SystemProcedures {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_procedures_table_def().clone(),
+			definition: SystemCatalog::get_system_procedures_table().clone(),
 			catalog,
 			exhausted: false,
 		}
 	}
 }
 
-impl VTable for Procedures {
+impl BaseVTable for SystemProcedures {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -108,7 +108,7 @@ impl VTable for Procedures {
 		}))
 	}
 
-	fn definition(&self) -> &VTableDef {
+	fn definition(&self) -> &VTable {
 		&self.definition
 	}
 }

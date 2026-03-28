@@ -47,6 +47,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                 abortControllerRef.current.abort();
             }
             abortControllerRef.current = new AbortController();
+            const currentController = abortControllerRef.current;
 
             setState({
                 isExecuting: true,
@@ -62,6 +63,9 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                     // Call client.admin which returns FrameResults (array of frames)
                     // Commands and queries both use the same admin method
                     const frameResults = await client?.admin(statements, params || null, schemas || []) || [];
+
+                    // If this execution was superseded by a newer one, discard results
+                    if (currentController.signal.aborted) return;
 
                     const executionTime = Date.now() - startTime;
 
@@ -83,7 +87,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                                     return {
                                         name: key,
                                         type: dataType,
-                                        data: [],
+                                        payload: [],
                                     };
                                 });
                             } else {
@@ -91,7 +95,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                                 columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
                                     type: 'Utf8', // Default type for plain objects
-                                    data: [],
+                                    payload: [],
                                 }));
                             }
 
@@ -119,6 +123,9 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                         executionTime,
                     });
                 } catch (err) {
+                    // If this execution was superseded by a newer one, discard error
+                    if (currentController.signal.aborted) return;
+
                     const executionTime = Date.now() - startTime;
                     let errorMessage = 'Admin execution failed';
 

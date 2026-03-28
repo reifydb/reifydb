@@ -4,12 +4,12 @@
 use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate};
 use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowStatus},
-	subscription::{SubscriptionDef, subscription_flow_name, subscription_flow_namespace},
-	view::ViewDef,
+	subscription::{Subscription, subscription_flow_name, subscription_flow_namespace},
+	view::View,
 };
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, value::duration::Duration};
 
 use crate::{
 	Result,
@@ -21,6 +21,7 @@ pub mod deferred;
 pub mod dictionary;
 pub mod event;
 
+pub mod identity;
 pub mod migration;
 pub mod namespace;
 pub mod policy;
@@ -31,13 +32,14 @@ pub mod remote_namespace;
 pub mod ringbuffer;
 pub mod role;
 pub mod series;
+pub mod sink;
+pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod tag;
 pub mod test;
 pub mod transactional;
-pub mod user;
 
 /// Creates a flow for a deferred view.
 ///
@@ -46,19 +48,21 @@ pub mod user;
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
-	view: &ViewDef,
+	view: &View,
 	plan: QueryPlan,
+	tick: Option<Duration>,
 ) -> Result<()> {
-	let flow_def = catalog.create_flow(
+	let flow = catalog.create_flow(
 		txn,
 		FlowToCreate {
-			name: Fragment::internal(&view.name),
-			namespace: view.namespace,
+			name: Fragment::internal(view.name()),
+			namespace: view.namespace(),
 			status: FlowStatus::Active,
+			tick,
 		},
 	)?;
 
-	let _flow = compile_flow(catalog, txn, plan, Some(view), flow_def.id)?;
+	let _flow = compile_flow(catalog, txn, plan, Some(view), flow.id)?;
 	Ok(())
 }
 
@@ -69,21 +73,22 @@ pub(crate) fn create_deferred_view_flow(
 pub(crate) fn create_subscription_flow(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
-	subscription: &SubscriptionDef,
+	subscription: &Subscription,
 	plan: QueryPlan,
 ) -> Result<()> {
 	// FlowId == SubscriptionId for subscription flows
 	let flow_id = FlowId(subscription.id.0);
-	let flow_def = catalog.create_flow_with_id(
+	let flow = catalog.create_flow_with_id(
 		txn,
 		flow_id,
 		FlowToCreate {
 			name: Fragment::internal(subscription_flow_name(subscription.id)),
 			namespace: subscription_flow_namespace(),
 			status: FlowStatus::Active,
+			tick: None,
 		},
 	)?;
 
-	let _flow = compile_subscription_flow(catalog, txn, plan, subscription, flow_def.id)?;
+	let _flow = compile_subscription_flow(catalog, txn, plan, subscription, flow.id)?;
 	Ok(())
 }

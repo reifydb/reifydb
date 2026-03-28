@@ -7,29 +7,29 @@ use crate::{
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
-		encoded::EncodedValues,
 		key::{EncodedKey, EncodedKeyRange},
+		row::EncodedRow,
 	},
 };
 
 #[derive(Debug, Clone)]
-pub struct MultiVersionValues {
+pub struct MultiVersionRow {
 	pub key: EncodedKey,
-	pub values: EncodedValues,
+	pub row: EncodedRow,
 	pub version: CommitVersion,
 }
 
 #[derive(Debug, Clone)]
-pub struct SingleVersionValues {
+pub struct SingleVersionRow {
 	pub key: EncodedKey,
-	pub values: EncodedValues,
+	pub row: EncodedRow,
 }
 
 /// A batch of multi-version range results with continuation info.
 #[derive(Debug, Clone)]
 pub struct MultiVersionBatch {
 	/// The values in this batch.
-	pub items: Vec<MultiVersionValues>,
+	pub items: Vec<MultiVersionRow>,
 	/// Whether there are more items after this batch.
 	pub has_more: bool,
 }
@@ -58,7 +58,7 @@ pub trait MultiVersionCommit: Send + Sync {
 /// Trait for getting values from multi-version storage.
 pub trait MultiVersionGet: Send + Sync {
 	/// Get the value for a key at a specific version.
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>>;
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>>;
 }
 
 /// Trait for checking key existence in multi-version storage.
@@ -87,7 +87,7 @@ pub trait MultiVersionGetPrevious: Send + Sync {
 		&self,
 		key: &EncodedKey,
 		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionValues>>;
+	) -> Result<Option<MultiVersionRow>>;
 }
 
 /// Composite trait for multi-version storage capabilities.
@@ -100,7 +100,7 @@ pub trait MultiVersionStore:
 #[derive(Debug, Clone)]
 pub struct SingleVersionBatch {
 	/// The values in this batch.
-	pub items: Vec<SingleVersionValues>,
+	pub items: Vec<SingleVersionRow>,
 	/// Whether there are more items after this batch.
 	pub has_more: bool,
 }
@@ -129,7 +129,7 @@ pub trait SingleVersionCommit: Send + Sync {
 /// Trait for getting values from single-version storage.
 pub trait SingleVersionGet: Send + Sync {
 	/// Get the value for a key.
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>>;
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>>;
 }
 
 /// Trait for checking key existence in single-version storage.
@@ -141,12 +141,12 @@ pub trait SingleVersionContains: Send + Sync {
 /// Trait for setting values in single-version storage.
 pub trait SingleVersionSet: SingleVersionCommit {
 	/// Set a value for a key.
-	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Set {
 				key: key.clone(),
-				values: values.clone(),
+				row: row.clone(),
 			}]),
 		)
 	}
@@ -155,12 +155,12 @@ pub trait SingleVersionSet: SingleVersionCommit {
 /// Trait for removing values from single-version storage.
 pub trait SingleVersionRemove: SingleVersionCommit {
 	/// Unset a key, preserving the deleted values for CDC and metrics.
-	fn unset(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<()> {
+	fn unset(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Unset {
 				key: key.clone(),
-				values,
+				row,
 			}]),
 		)
 	}

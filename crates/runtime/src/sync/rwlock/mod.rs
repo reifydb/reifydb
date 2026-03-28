@@ -7,13 +7,13 @@ use std::ops::{Deref, DerefMut};
 
 use cfg_if::cfg_if;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(not(reifydb_single_threaded))]
 pub(crate) mod native;
-#[cfg(reifydb_target = "wasm")]
+#[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
-	if #[cfg(reifydb_target = "native")] {
+	if #[cfg(not(reifydb_single_threaded))] {
 		type RwLockInnerImpl<T> = native::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = native::RwLockReadGuardInner<'a, T>;
 		type RwLockWriteGuardInnerImpl<'a, T> = native::RwLockWriteGuardInner<'a, T>;
@@ -29,8 +29,8 @@ pub struct RwLock<T> {
 	inner: RwLockInnerImpl<T>,
 }
 
-// SAFETY: WASM is single-threaded, so Sync is safe
-#[cfg(reifydb_target = "wasm")]
+// SAFETY: Single-threaded targets (WASM/WASI) don't have real concurrency
+#[cfg(reifydb_single_threaded)]
 unsafe impl<T> Sync for RwLock<T> {}
 
 impl<T> RwLock<T> {

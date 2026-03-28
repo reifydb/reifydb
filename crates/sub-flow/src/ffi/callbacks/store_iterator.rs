@@ -31,11 +31,7 @@ struct BatchIterator {
 impl BatchIterator {
 	/// Create a new batch iterator from a MultiVersionBatch
 	fn new(batch: MultiVersionBatch) -> Self {
-		let items = batch
-			.items
-			.into_iter()
-			.map(|multi| (multi.key.as_ref().to_vec(), multi.values.as_ref().to_vec()))
-			.collect();
+		let items = batch.items.into_iter().map(|multi| (multi.key.to_vec(), multi.row.to_vec())).collect();
 
 		Self {
 			items,
