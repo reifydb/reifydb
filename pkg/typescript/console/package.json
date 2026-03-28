@@ -1,6 +1,6 @@
 {
   "name": "@reifydb/console",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Database console and embeddable snippet component for ReifyDB",
   "type": "module",
   "main": "dist/index.js",
