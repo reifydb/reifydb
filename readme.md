@@ -1,7 +1,7 @@
 <div align="center">
 
 <picture>
-  <img src="https://reifydb.com/img/logo.png" alt="ReifyDB Logo" width="512">
+  <img src="https://reifydb.com/assets/img/logo.png" alt="ReifyDB Logo" width="512">
 </picture>
 
 <b>ReifyDB</b>  
