@@ -22,11 +22,3 @@ pub mod node;
 pub mod proposal;
 pub mod state;
 pub mod transport;
-
-pub use driver::RaftHandle;
-pub use log::{Entry, Index, Log};
-pub use message::{Command, Envelope, Message};
-pub use node::{Node, NodeId, Options, Progress, Term, Ticks};
-pub use proposal::ProposalError;
-pub use state::{KVState, State, test_write};
-pub use transport::Transport;

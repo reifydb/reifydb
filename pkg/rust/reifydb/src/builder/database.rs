@@ -329,7 +329,8 @@ impl DatabaseBuilder {
 		eventbus.register::<CdcStatsDroppedEvent, _>(CdcStatsDroppedListener::new(metrics_worker.sender()));
 		self.ioc.register_service::<Arc<MetricsWorker>>(metrics_worker);
 
-		// Register single store in IoC for engine to access
+		// Register stores in IoC for engine and subsystems to access
+		self.ioc = self.ioc.register(multi_store.clone());
 		self.ioc = self.ioc.register(single_store);
 
 		let functions = if let Some(configurator) = self.functions_configurator {

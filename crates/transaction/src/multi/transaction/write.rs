@@ -20,6 +20,7 @@ use reifydb_core::{
 	event::transaction::PostCommitEvent,
 	interface::store::{MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet},
 };
+use reifydb_sub_raft::{message::Command, proposal::ProposalError};
 use reifydb_type::{
 	Result,
 	util::{cowvec::CowVec, hex},
@@ -27,7 +28,7 @@ use reifydb_type::{
 use tracing::instrument;
 
 use super::{MultiTransaction, TransactionManagerCommand, version::StandardVersionProvider};
-use crate::{delta::optimize_deltas, multi::types::TransactionValue};
+use crate::{delta::optimize_deltas, error::TransactionError, multi::types::TransactionValue};
 
 /// Snapshot of write transaction state for savepoint/restore.
 pub struct WriteSavepoint {
@@ -99,12 +100,28 @@ impl MultiWriteTransaction {
 		let optimized = optimize_deltas(raw_deltas.iter().cloned());
 		let deltas = CowVec::new(optimized);
 
-		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
-
-		self.tm.oracle.done_commit(commit_version);
-		self.tm.discard();
-
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
+		let raft_handle = self.engine.raft.read().clone();
+		if let Some(raft) = raft_handle {
+			let cmd = Command::WriteMulti {
+				deltas: deltas.to_vec(),
+				version: commit_version,
+			};
+			if let Err(e) = raft.propose(cmd) {
+				self.tm.oracle.done_commit(commit_version);
+				self.tm.discard();
+				return Err(TransactionError::RaftProposeFailed {
+					message: e.to_string(),
+				}
+				.into());
+			}
+			self.tm.oracle.done_commit(commit_version);
+			self.tm.discard();
+		} else {
+			MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
+			self.tm.oracle.done_commit(commit_version);
+			self.tm.discard();
+			self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
+		}
 
 		Ok(commit_version)
 	}

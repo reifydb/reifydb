@@ -35,6 +35,11 @@ pub enum TransactionError {
 	Poisoned {
 		cause: Diagnostic,
 	},
+
+	#[error("Raft proposal failed: {message}")]
+	RaftProposeFailed {
+		message: String,
+	},
 }
 
 impl IntoDiagnostic for TransactionError {
@@ -144,6 +149,19 @@ impl IntoDiagnostic for TransactionError {
 				help: Some("A previous statement failed, invalidating this transaction. Start a new transaction.".to_string()),
 				notes: vec![],
 				cause: Some(Box::new(cause)),
+				operator_chain: None,
+			},
+
+			TransactionError::RaftProposeFailed { message } => Diagnostic {
+				code: "TXN_012".to_string(),
+				statement: None,
+				message: format!("Raft proposal failed: {message}"),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("The write could not be replicated. Retry or check cluster health.".to_string()),
+				notes: vec![],
+				cause: None,
 				operator_chain: None,
 			},
 		}

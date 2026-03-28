@@ -143,6 +143,16 @@ impl VersionProvider for StandardVersionProvider {
 	}
 }
 
+impl StandardVersionProvider {
+	/// Advance the version counter to at least the given version.
+	/// Used by Raft followers to keep the read version in sync with
+	/// replicated writes.
+	pub fn advance_to(&self, version: CommitVersion) {
+		self.next_version.fetch_max(version.0, Ordering::SeqCst);
+		self.current_block_end.fetch_max(version.0 + BLOCK_SIZE, Ordering::SeqCst);
+	}
+}
+
 #[cfg(test)]
 pub mod tests {
 	use std::{sync::Arc, thread};

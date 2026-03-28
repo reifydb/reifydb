@@ -10,11 +10,12 @@
 use std::{collections::HashSet, net::SocketAddr};
 
 use reifydb_sub_raft::{
-	KVState, Log, Node, Options,
 	config::PeerConfig,
 	driver::{DriverConfig, RaftDriver},
 	grpc::GrpcTransport,
-	node::NodeId,
+	log::Log,
+	node::{Node, NodeId, Options},
+	state::testing::KV,
 };
 
 #[tokio::main]
@@ -55,7 +56,7 @@ async fn main() {
 	let peer_ids: HashSet<NodeId> = peers.iter().map(|p| p.node_id).collect();
 	let opts = Options::default();
 	let log = Log::new();
-	let state = Box::new(KVState::new());
+	let state = Box::new(KV::new());
 	let node = Node::new_seeded(node_id, peer_ids, log, state, opts, node_id as u64);
 
 	eprintln!("node {node_id}: starting gRPC transport on {bind_addr}");
@@ -73,7 +74,7 @@ async fn main() {
 	tokio::spawn(async move {
 		loop {
 			tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-			eprintln!("node {node_id}: alive (handle active={})", !status_handle.proposal_tx_closed());
+			eprintln!("node {node_id}: alive (handle active={})", !status_handle.is_closed());
 		}
 	});
 

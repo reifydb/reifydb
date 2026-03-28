@@ -34,6 +34,8 @@ use reifydb_type::{
 };
 use tracing::{debug, error, instrument, warn};
 
+#[cfg(feature = "sub_raft")]
+use crate::raft::RaftSubsystem;
 use crate::{
 	Migration,
 	boot::Bootloader,
@@ -68,6 +70,11 @@ impl Database {
 	#[cfg(feature = "sub_server_http")]
 	pub fn sub_server_http(&self) -> Option<&HttpSubsystem> {
 		self.subsystem::<HttpSubsystem>()
+	}
+
+	#[cfg(feature = "sub_raft")]
+	pub fn sub_raft(&self) -> Option<&RaftSubsystem> {
+		self.subsystem::<RaftSubsystem>()
 	}
 
 	#[cfg(feature = "sub_server_ws")]

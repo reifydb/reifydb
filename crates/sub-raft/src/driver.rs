@@ -1,9 +1,13 @@
 // Copyright (c) 2025 ReifyDB
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::mpsc::SyncSender, time::Duration};
 
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::{
+	select,
+	sync::{mpsc, watch},
+	time::interval,
+};
 
 use crate::{
 	log::Index,
@@ -21,6 +25,7 @@ pub struct NodeStatus {
 	pub term: Term,
 	pub commit_index: Index,
 	pub applied_index: Index,
+	pub last_index: Index,
 	pub leader: Option<NodeId>,
 }
 
@@ -46,24 +51,29 @@ impl Default for DriverConfig {
 
 /// Cheap, cloneable handle for submitting proposals to the driver.
 #[derive(Clone)]
-pub struct RaftHandle {
+pub struct Raft {
 	proposal_tx: mpsc::Sender<Proposal>,
 	status_rx: watch::Receiver<NodeStatus>,
 }
 
-impl RaftHandle {
+impl Raft {
 	/// Propose a command and wait for it to be committed.
 	/// Returns the log index of the committed entry.
-	pub async fn propose(&self, command: Command) -> Result<Index, ProposalError> {
-		let (result_tx, result_rx) = oneshot::channel();
+	///
+	/// This is a synchronous call safe to use from any thread (Rayon, OS, etc.).
+	/// It does not require a tokio runtime on the calling thread.
+	pub fn propose(&self, command: Command) -> Result<Index, ProposalError> {
+		let (result_tx, result_rx) = std::sync::mpsc::sync_channel(1);
 		self.proposal_tx
-			.send(Proposal {
+			.try_send(Proposal {
 				command,
 				result_tx,
 			})
-			.await
-			.map_err(|_| ProposalError::Shutdown)?;
-		result_rx.await.map_err(|_| ProposalError::Shutdown)?
+			.map_err(|e| match e {
+				mpsc::error::TrySendError::Full(_) => ProposalError::Overloaded,
+				mpsc::error::TrySendError::Closed(_) => ProposalError::Shutdown,
+			})?;
+		result_rx.recv().map_err(|_| ProposalError::Shutdown)?
 	}
 
 	/// Returns true if the driver has shut down.
@@ -89,14 +99,14 @@ pub struct RaftDriver<T: Transport> {
 	node: Option<Node>,
 	transport: T,
 	proposal_rx: mpsc::Receiver<Proposal>,
-	pending_proposals: HashMap<Index, oneshot::Sender<Result<Index, ProposalError>>>,
+	pending_proposals: HashMap<Index, SyncSender<Result<Index, ProposalError>>>,
 	status_tx: watch::Sender<NodeStatus>,
 	config: DriverConfig,
 }
 
 impl<T: Transport> RaftDriver<T> {
 	/// Creates a new driver and its handle.
-	pub fn new(node: Node, transport: T, config: DriverConfig) -> (Self, RaftHandle) {
+	pub fn new(node: Node, transport: T, config: DriverConfig) -> (Self, Raft) {
 		let (proposal_tx, proposal_rx) = mpsc::channel(config.proposal_channel_capacity);
 		let initial_status = Self::snapshot_status(&node);
 		let (status_tx, status_rx) = watch::channel(initial_status);
@@ -108,7 +118,7 @@ impl<T: Transport> RaftDriver<T> {
 			status_tx,
 			config,
 		};
-		let handle = RaftHandle {
+		let handle = Raft {
 			proposal_tx,
 			status_rx,
 		};
@@ -122,6 +132,7 @@ impl<T: Transport> RaftDriver<T> {
 			term: node.term(),
 			commit_index: node.get_commit_index().0,
 			applied_index: node.applied_index(),
+			last_index: node.log().get_last_index().0,
 			leader: node.leader(),
 		}
 	}
@@ -133,13 +144,13 @@ impl<T: Transport> RaftDriver<T> {
 	}
 
 	/// Run the driver loop. This blocks until the proposal channel is closed
-	/// (all RaftHandle instances dropped) or an unrecoverable error occurs.
+	/// (all Raft instances dropped) or an unrecoverable error occurs.
 	pub async fn run(mut self) {
-		let mut tick_interval = tokio::time::interval(self.config.tick_interval);
-		let mut recv_interval = tokio::time::interval(self.config.recv_interval);
+		let mut tick_interval = interval(self.config.tick_interval);
+		let mut recv_interval = interval(self.config.recv_interval);
 
 		loop {
-			tokio::select! {
+			select! {
 				_ = tick_interval.tick() => {
 					self.do_tick();
 				}

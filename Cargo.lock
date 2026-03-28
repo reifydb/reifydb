@@ -2383,7 +2383,9 @@ dependencies = [
 name = "raft"
 version = "0.4.7"
 dependencies = [
+ "reifydb",
  "reifydb-sub-raft",
+ "reifydb-type",
  "tokio",
 ]
 
@@ -2575,6 +2577,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-flow",
+ "reifydb-sub-raft",
  "reifydb-sub-replication",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
@@ -3232,6 +3235,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
+ "reifydb-sub-raft",
  "reifydb-testing",
  "reifydb-type",
  "test_each_file",

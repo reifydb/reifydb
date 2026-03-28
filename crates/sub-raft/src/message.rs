@@ -17,10 +17,14 @@ use crate::{
 /// A command stored in a Raft log entry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Command {
-	/// A batch of deltas with leader-allocated version.
-	Write {
+	/// A batch of multi-version deltas with leader-allocated version.
+	WriteMulti {
 		deltas: Vec<Delta>,
 		version: CommitVersion,
+	},
+	/// A batch of single-version deltas (catalog metadata, sequences, schemas).
+	WriteSingle {
+		deltas: Vec<Delta>,
 	},
 	/// No-op entry used during leader election to commit entries from prior terms.
 	Noop,

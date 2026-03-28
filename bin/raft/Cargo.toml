@@ -6,5 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+reifydb = { workspace = true, features = ["sub_raft"] }
 reifydb-sub-raft = { workspace = true }
+reifydb-type = { workspace = true }
 tokio = { workspace = true }

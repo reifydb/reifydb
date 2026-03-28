@@ -17,6 +17,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-core = { workspace = true }
+reifydb-sub-raft = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-type = { workspace = true }

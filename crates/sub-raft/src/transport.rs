@@ -1,7 +1,7 @@
 // Copyright (c) 2025 ReifyDB
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Envelope;
+use crate::message::Envelope;
 
 /// Abstraction for delivering Raft messages between nodes.
 ///

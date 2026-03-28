@@ -12,6 +12,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_store_single::SingleStore;
+use reifydb_sub_raft::driver::Raft;
 
 pub mod read;
 pub mod write;
@@ -26,10 +27,11 @@ pub struct SingleTransaction {
 	inner: Arc<SingleTransactionInner>,
 }
 
-struct SingleTransactionInner {
-	store: RwLock<SingleStore>,
-	event_bus: EventBus,
-	key_locks: SkipMap<EncodedKey, Arc<RwLock<()>>>,
+pub(crate) struct SingleTransactionInner {
+	pub(crate) store: RwLock<SingleStore>,
+	pub(crate) event_bus: EventBus,
+	pub(crate) key_locks: SkipMap<EncodedKey, Arc<RwLock<()>>>,
+	pub(crate) raft: RwLock<Option<Raft>>,
 }
 
 impl SingleTransactionInner {
@@ -53,8 +55,23 @@ impl SingleTransaction {
 				store: RwLock::new(store),
 				event_bus,
 				key_locks: SkipMap::new(),
+				raft: RwLock::new(None),
 			}),
 		}
+	}
+
+	pub fn set_raft(&self, handle: Raft) {
+		*self.inner.raft.write() = Some(handle);
+	}
+
+	pub fn clear_raft(&self) {
+		*self.inner.raft.write() = None;
+	}
+
+	/// Direct read-only access to the underlying store for scanning.
+	/// Bypasses the per-key locking (used for bulk reload operations).
+	pub fn read_store(&self) -> SingleStore {
+		self.inner.store.read().clone()
 	}
 
 	pub fn testing() -> Self {

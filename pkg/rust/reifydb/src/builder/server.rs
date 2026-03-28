@@ -17,6 +17,8 @@ use reifydb_sub_replication::{
 	builder::{ReplicationConfig, ReplicationConfigurator},
 	factory::ReplicationSubsystemFactory,
 };
+#[cfg(feature = "sub_raft")]
+use reifydb_sub_raft::config::RaftConfig;
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
 #[cfg(feature = "sub_server_admin")]
@@ -213,6 +215,14 @@ impl ServerBuilder {
 	#[cfg(feature = "sub_server")]
 	pub fn with_request_interceptor<I: RequestInterceptor>(mut self, interceptor: I) -> Self {
 		self.request_interceptors.push(Arc::new(interceptor));
+		self
+	}
+
+	/// Configure and add a Raft consensus subsystem.
+	#[cfg(feature = "sub_raft")]
+	pub fn with_raft(mut self, config: RaftConfig) -> Self {
+		let factory = crate::raft::RaftSubsystemFactory::new(config);
+		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 

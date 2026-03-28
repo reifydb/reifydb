@@ -7,15 +7,16 @@
 //   Copyright (c) 2024 Erik Grinaker
 
 use std::{
-	cmp::max,
+	cmp::{max, min},
 	collections::{HashMap, HashSet},
+	mem,
 	ops::Range,
 };
 
-use rand::{RngExt as _, SeedableRng, rngs::SmallRng};
+use rand::{RngExt as _, SeedableRng, rng, rngs::SmallRng};
 
 use crate::{
-	log::{Index, Log},
+	log::{Entry, Index, Log},
 	message::{Command, Envelope, Message},
 	state::State,
 };
@@ -67,7 +68,7 @@ impl Node {
 	/// Creates a new Raft node with a thread-local RNG.
 	pub fn new(id: NodeId, peers: HashSet<NodeId>, log: Log, state: Box<dyn State>, opts: Options) -> Self {
 		// Use node ID as a simple non-deterministic seed mixer.
-		let rng = SmallRng::from_rng(&mut rand::rng());
+		let rng = SmallRng::from_rng(&mut rng());
 		Self::new_with_rng(id, peers, log, state, opts, rng)
 	}
 
@@ -148,9 +149,9 @@ impl Node {
 	/// Drains and returns all outbound messages.
 	pub fn drain_outbox(&mut self) -> Vec<Envelope> {
 		match self {
-			Self::Candidate(n) => std::mem::take(&mut n.outbox),
-			Self::Follower(n) => std::mem::take(&mut n.outbox),
-			Self::Leader(n) => std::mem::take(&mut n.outbox),
+			Self::Candidate(n) => mem::take(&mut n.outbox),
+			Self::Follower(n) => mem::take(&mut n.outbox),
+			Self::Leader(n) => mem::take(&mut n.outbox),
 		}
 	}
 
@@ -241,7 +242,7 @@ impl Node {
 	}
 
 	/// Returns all log entries from index 1 to last_index.
-	pub fn scan_log(&self) -> Vec<crate::log::Entry> {
+	pub fn scan_log(&self) -> Vec<Entry> {
 		let (last_index, _) = self.log().get_last_index();
 		if last_index == 0 {
 			return Vec::new();
@@ -502,7 +503,7 @@ impl RawNode<Follower> {
 						},
 					);
 				} else {
-					let reject_index = std::cmp::min(base_index, self.log.get_last_index().0 + 1);
+					let reject_index = min(base_index, self.log.get_last_index().0 + 1);
 					self.send(
 						msg.from,
 						Message::AppendResponse {

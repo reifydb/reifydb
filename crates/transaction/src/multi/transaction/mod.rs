@@ -24,8 +24,10 @@ use reifydb_runtime::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
+	sync::rwlock::RwLock,
 };
 use reifydb_store_multi::MultiStore;
+use reifydb_sub_raft::driver::Raft;
 use reifydb_type::{Result, util::hex};
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
@@ -89,6 +91,13 @@ where
 			discarded: false,
 			done_query: false,
 		})
+	}
+}
+
+impl TransactionManager<StandardVersionProvider> {
+	pub fn advance_version_to(&self, version: CommitVersion) {
+		self.inner.inner.read().clock.advance_to(version);
+		self.inner.done_commit(version);
 	}
 }
 
@@ -210,6 +219,7 @@ pub struct Inner {
 	pub(crate) tm: TransactionManager<StandardVersionProvider>,
 	pub(crate) store: MultiStore,
 	pub(crate) event_bus: EventBus,
+	pub(crate) raft: RwLock<Option<Raft>>,
 }
 
 impl Deref for MultiTransaction {
@@ -243,6 +253,7 @@ impl Inner {
 			tm,
 			store,
 			event_bus,
+			raft: RwLock::new(None),
 		})
 	}
 
@@ -310,6 +321,23 @@ impl MultiTransaction {
 	/// Get the shared system config from the oracle.
 	pub fn system_config(&self) -> SystemConfig {
 		self.0.tm.system_config()
+	}
+
+	/// Set the Raft handle for replicated writes. When set, commit()
+	/// routes through Raft instead of writing directly to storage.
+	pub fn set_raft(&self, handle: Raft) {
+		*self.0.raft.write() = Some(handle);
+	}
+
+	/// Clear the Raft handle, reverting to direct storage writes.
+	pub fn clear_raft(&self) {
+		*self.0.raft.write() = None;
+	}
+
+	/// Advance the version counter to at least the given version.
+	/// Used by Raft followers after applying replicated writes.
+	pub fn advance_version_to(&self, version: CommitVersion) {
+		self.0.tm.advance_version_to(version);
 	}
 }
 

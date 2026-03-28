@@ -3,12 +3,16 @@
 
 use std::{
 	collections::HashMap,
+	error::Error,
+	mem::take,
 	net::SocketAddr,
 	sync::{Arc, Mutex},
+	time::Duration,
 };
 
-use tokio::sync::mpsc;
-use tonic::transport::Server;
+use postcard::{from_bytes, to_stdvec};
+use tokio::{spawn, sync::mpsc, task::JoinHandle, time::sleep};
+use tonic::{Request, Response, Status, transport::Server};
 
 use crate::{
 	config::PeerConfig,
@@ -37,7 +41,7 @@ impl GrpcTransport {
 		node_id: NodeId,
 		bind_addr: SocketAddr,
 		peers: Vec<PeerConfig>,
-	) -> Result<(Self, tokio::task::JoinHandle<()>), Box<dyn std::error::Error>> {
+	) -> Result<(Self, JoinHandle<()>), Box<dyn Error>> {
 		let inbound = Arc::new(Mutex::new(Vec::new()));
 
 		// Start gRPC server.
@@ -46,7 +50,7 @@ impl GrpcTransport {
 		};
 		let server_handle = {
 			let addr = bind_addr;
-			tokio::spawn(async move {
+			spawn(async move {
 				Server::builder()
 					.add_service(RaftTransportServer::new(service))
 					.serve(addr)
@@ -56,7 +60,7 @@ impl GrpcTransport {
 		};
 
 		// Give server a moment to bind.
-		tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+		sleep(Duration::from_millis(50)).await;
 
 		// Connect to each peer.
 		let mut outbound_txs = HashMap::new();
@@ -65,12 +69,12 @@ impl GrpcTransport {
 			outbound_txs.insert(peer.node_id, tx);
 
 			let addr = format!("http://{}", peer.addr);
-			tokio::spawn(async move {
+			spawn(async move {
 				loop {
 					match RaftTransportClient::connect(addr.clone()).await {
 						Ok(mut client) => {
 							while let Some(envelope) = rx.recv().await {
-								let payload = postcard::to_stdvec(&envelope)
+								let payload = to_stdvec(&envelope)
 									.expect("serialize envelope");
 								let msg = RaftMessage {
 									payload,
@@ -81,7 +85,7 @@ impl GrpcTransport {
 							}
 						}
 						Err(_) => {
-							tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+							sleep(Duration::from_millis(500)).await;
 						}
 					}
 				}
@@ -106,7 +110,7 @@ impl Transport for GrpcTransport {
 
 	fn receive(&self) -> Vec<Envelope> {
 		let mut inbound = self.inbound.lock().unwrap();
-		std::mem::take(&mut *inbound)
+		take(&mut *inbound)
 	}
 }
 
@@ -116,11 +120,11 @@ struct InboundService {
 
 #[tonic::async_trait]
 impl RaftTransportTrait for InboundService {
-	async fn send(&self, request: tonic::Request<RaftMessage>) -> Result<tonic::Response<RaftAck>, tonic::Status> {
+	async fn send(&self, request: Request<RaftMessage>) -> Result<Response<RaftAck>, Status> {
 		let msg = request.into_inner();
-		let envelope: Envelope = postcard::from_bytes(&msg.payload)
-			.map_err(|e| tonic::Status::invalid_argument(format!("deserialize: {e}")))?;
+		let envelope: Envelope =
+			from_bytes(&msg.payload).map_err(|e| Status::invalid_argument(format!("deserialize: {e}")))?;
 		self.inbound.lock().unwrap().push(envelope);
-		Ok(tonic::Response::new(RaftAck {}))
+		Ok(Response::new(RaftAck {}))
 	}
 }
