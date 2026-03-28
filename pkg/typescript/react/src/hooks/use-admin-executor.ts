@@ -34,38 +34,45 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
         executionTime: undefined,
     });
 
-    const abortControllerRef = useRef<AbortController | null>(null);
-    const isMountedRef = useRef(true);
+    // Stable refs so the callback never recreates
+    const clientRef = useRef(client);
+    clientRef.current = client;
+
+    const isMountedRef = useRef(false);
     useEffect(() => {
+        isMountedRef.current = true;
         return () => { isMountedRef.current = false; };
     }, []);
 
-    const admin = useCallback(
-        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): void => {
-            // Cancel any ongoing admin for THIS instance only
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-            abortControllerRef.current = new AbortController();
-            const currentController = abortControllerRef.current;
+    // Counter to detect superseded executions
+    const executionIdRef = useRef(0);
 
-            setState({
-                isExecuting: true,
-                results: undefined,
-                error: undefined,
-                executionTime: undefined,
-            });
+    // Stash pending call if client isn't ready yet
+    const pendingRef = useRef<{statements: string | string[], params?: any, schemas?: readonly SchemaNode[]} | null>(null);
+
+    const admin = useCallback(
+        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): Promise<void> => {
+            const currentClient = clientRef.current;
+            // If no client yet, stash the request for replay when client connects
+            if (!currentClient) {
+                pendingRef.current = {statements, params, schemas};
+                setState(prev => ({...prev, isExecuting: true, error: undefined}));
+                return Promise.resolve();
+            }
+
+            pendingRef.current = null;
+            const thisExecution = ++executionIdRef.current;
+
+            setState(prev => ({...prev, isExecuting: true, error: undefined}));
 
             const startTime = Date.now();
 
-            (async () => {
+            return (async () => {
                 try {
-                    // Call client.admin which returns FrameResults (array of frames)
-                    // Commands and queries both use the same admin method
-                    const frameResults = await client?.admin(statements, params || null, schemas || []) || [];
+                    const frameResults = await currentClient.admin(statements, params || null, schemas || []) || [];
 
                     // If this execution was superseded by a newer one, discard results
-                    if (currentController.signal.aborted) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
                     const executionTime = Date.now() - startTime;
 
@@ -80,7 +87,6 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                                 Object.values(firstRow).some(v => v && typeof v === 'object' && 'type' in v);
 
                             if (hasValueObjects) {
-                                // We have Value objects - extract type info
                                 columns = Object.keys(firstRow).map((key) => {
                                     const value = firstRow[key];
                                     const dataType = value?.type || 'Utf8';
@@ -91,10 +97,9 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                                     };
                                 });
                             } else {
-                                // Plain objects from schema conversion
                                 columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
-                                    type: 'Utf8', // Default type for plain objects
+                                    type: 'Utf8',
                                     payload: [],
                                 }));
                             }
@@ -105,7 +110,6 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                                 executionTimeMs: executionTime,
                             };
                         } else {
-                            // Empty result or rows affected
                             return {
                                 columns: [],
                                 rows: [],
@@ -123,8 +127,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                         executionTime,
                     });
                 } catch (err) {
-                    // If this execution was superseded by a newer one, discard error
-                    if (currentController.signal.aborted) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
                     const executionTime = Date.now() - startTime;
                     let errorMessage = 'Admin execution failed';
@@ -140,39 +143,42 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
                     console.error('Admin execution failed:', errorMessage);
 
                     if (!isMountedRef.current) return;
-                    setState({
+                    setState(prev => ({
+                        ...prev,
                         isExecuting: false,
-                        results: undefined,
                         error: errorMessage,
                         executionTime,
-                    });
-                } finally {
-                    abortControllerRef.current = null;
+                    }));
+
                 }
             })();
         },
-        [client]
+        []  // stable — never recreates
     );
 
-    const cancelAdmin = useCallback(() => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            setState((prev) => ({
-                ...prev,
-                isExecuting: false,
-                error: 'Admin cancelled',
-            }));
+    // Replay pending request when client becomes available
+    useEffect(() => {
+        if (client && pendingRef.current) {
+            const {statements, params, schemas} = pendingRef.current;
+            admin(statements, params, schemas);
         }
+    }, [client, admin]);
+
+    const cancelAdmin = useCallback(() => {
+        // Bump execution ID so any in-flight request is ignored on completion
+        executionIdRef.current++;
+        setState((prev) => ({
+            ...prev,
+            isExecuting: false,
+            error: 'Admin cancelled',
+        }));
     }, []);
 
     return {
-        // State
         isExecuting: state.isExecuting,
         results: state.results,
         error: state.error,
         executionTime: state.executionTime,
-
-        // Actions
         admin,
         cancelAdmin,
     };

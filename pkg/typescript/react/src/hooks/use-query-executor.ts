@@ -34,53 +34,51 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
         executionTime: undefined,
     });
 
-    const abortControllerRef = useRef<AbortController | null>(null);
-    const isMountedRef = useRef(false);
+    const clientRef = useRef(client);
+    clientRef.current = client;
+
+    const isMountedRef = useRef(true);
     useEffect(() => {
-        isMountedRef.current = true;
         return () => { isMountedRef.current = false; };
     }, []);
 
-    const query = useCallback(
-        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): void => {
-            // Cancel any ongoing query for THIS instance only
-            if (abortControllerRef.current) {
-                abortControllerRef.current.abort();
-            }
-            abortControllerRef.current = new AbortController();
-            const currentController = abortControllerRef.current;
+    const executionIdRef = useRef(0);
+    const pendingRef = useRef<{statements: string | string[], params?: any, schemas?: readonly SchemaNode[]} | null>(null);
 
-            setState({
-                isExecuting: true,
-                results: undefined,
-                error: undefined,
-                executionTime: undefined,
-            });
+    const query = useCallback(
+        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): Promise<void> => {
+            const currentClient = clientRef.current;
+
+            if (!currentClient) {
+                pendingRef.current = {statements, params, schemas};
+                setState(prev => ({...prev, isExecuting: true, error: undefined}));
+                return Promise.resolve();
+            }
+
+            pendingRef.current = null;
+            const thisExecution = ++executionIdRef.current;
+
+            setState(prev => ({...prev, isExecuting: true, error: undefined}));
 
             const startTime = Date.now();
 
-            (async () => {
+            return (async () => {
                 try {
-                    // Call client.query which returns FrameResults (array of frames)
-                    const frameResults = await client?.query(statements, params || null, schemas || []) || [];
+                    const frameResults = await currentClient.query(statements, params || null, schemas || []) || [];
 
-                    // If this execution was superseded by a newer one, discard results
-                    if (currentController.signal.aborted) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
                     const executionTime = Date.now() - startTime;
-                    
-                    // Process each frame into a QueryResult
+
                     const results: QueryResult<T>[] = frameResults.map((frame: any) => {
                         if (Array.isArray(frame) && frame.length > 0) {
                             const firstRow = frame[0];
                             let columns: Column[] = [];
-                            
-                            // Check if we have Value objects or plain objects
-                            const hasValueObjects = firstRow && typeof firstRow === 'object' && 
+
+                            const hasValueObjects = firstRow && typeof firstRow === 'object' &&
                                 Object.values(firstRow).some(v => v && typeof v === 'object' && 'type' in v);
-                            
+
                             if (hasValueObjects) {
-                                // We have Value objects - extract type info
                                 columns = Object.keys(firstRow).map((key) => {
                                     const value = firstRow[key];
                                     const dataType = value?.type || 'Utf8';
@@ -91,21 +89,19 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                                     };
                                 });
                             } else {
-                                // Plain objects from schema conversion
                                 columns = Object.keys(firstRow).map((key) => ({
                                     name: key,
-                                    type: 'Utf8', // Default type for plain objects
+                                    type: 'Utf8',
                                     payload: [],
                                 }));
                             }
-                            
+
                             return {
                                 columns,
                                 rows: frame as T[],
                                 executionTimeMs: executionTime,
                             };
                         } else {
-                            // Empty result
                             return {
                                 columns: [],
                                 rows: [],
@@ -122,8 +118,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                         executionTime,
                     });
                 } catch (err) {
-                    // If this execution was superseded by a newer one, discard error
-                    if (currentController.signal.aborted) return;
+                    if (executionIdRef.current !== thisExecution) return;
 
                     const executionTime = Date.now() - startTime;
                     let errorMessage = 'Query execution failed';
@@ -139,39 +134,40 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                     console.error('Query execution failed:', errorMessage);
 
                     if (!isMountedRef.current) return;
-                    setState({
+                    setState(prev => ({
+                        ...prev,
                         isExecuting: false,
-                        results: undefined,
                         error: errorMessage,
                         executionTime,
-                    });
-                } finally {
-                    abortControllerRef.current = null;
+                    }));
+
                 }
             })();
         },
-        [client]
+        []
     );
 
-    const cancelQuery = useCallback(() => {
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-            setState((prev) => ({
-                ...prev,
-                isExecuting: false,
-                error: 'Query cancelled',
-            }));
+    useEffect(() => {
+        if (client && pendingRef.current) {
+            const {statements, params, schemas} = pendingRef.current;
+            query(statements, params, schemas);
         }
+    }, [client, query]);
+
+    const cancelQuery = useCallback(() => {
+        executionIdRef.current++;
+        setState((prev) => ({
+            ...prev,
+            isExecuting: false,
+            error: 'Query cancelled',
+        }));
     }, []);
 
     return {
-        // State
         isExecuting: state.isExecuting,
         results: state.results,
         error: state.error,
         executionTime: state.executionTime,
-
-        // Actions
         query,
         cancelQuery,
     };

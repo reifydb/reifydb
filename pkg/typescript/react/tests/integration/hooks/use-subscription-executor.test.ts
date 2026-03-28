@@ -432,14 +432,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 ['id Int4', 'value Utf8']
             );
 
-            // Pre-populate with data
-            const client = getConnection().getClient();
-            await client!.command(
-                `INSERT test::${tableName} [{id: 1, value: 'to_delete'}]`,
-                null,
-                []
-            );
-
+            // Subscribe first so that the INSERT is tracked as a change
             await act(async () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
@@ -452,6 +445,23 @@ describe('useSubscriptionExecutor Hook', () => {
                 expect(result.current.state.isSubscribed).toBe(true);
             });
 
+            // Insert data after subscription is active
+            const client = getConnection().getClient();
+            await act(async () => {
+                await client!.command(
+                    `INSERT test::${tableName} [{id: 1, value: 'to_delete'}]`,
+                    null,
+                    []
+                );
+            });
+
+            await waitFor(() => {
+                expect(result.current.state.changes.length).toBe(1);
+            });
+
+            expect(result.current.state.changes[0].operation).toBe('INSERT');
+
+            // Now delete the row
             await act(async () => {
                 await client!.command(
                     `DELETE test::${tableName} FILTER id == 1`,
@@ -464,7 +474,6 @@ describe('useSubscriptionExecutor Hook', () => {
                 expect(result.current.state.changes.length).toBe(2);
             });
 
-            expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[1].operation).toBe('REMOVE');
             expect(result.current.state.changes[1].rows).toEqual([
                 {id: 1, value: 'to_delete'}

@@ -138,7 +138,7 @@ export class WsClient {
 
         // Normalize statements to array
         const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so all results are returned
+        // When multiple array elements, mark each with OUTPUT so results are returned.
         const outputStatements = statementArray.length > 1
             ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
             : statementArray;
@@ -184,7 +184,7 @@ export class WsClient {
 
         // Normalize statements to array
         const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so all results are returned
+        // When multiple array elements, mark each with OUTPUT so results are returned.
         const outputStatements = statementArray.length > 1
             ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
             : statementArray;
@@ -231,7 +231,7 @@ export class WsClient {
 
         // Normalize statements to array
         const statementArray = Array.isArray(statements) ? statements : [statements];
-        // When multiple array elements, mark each with OUTPUT so all results are returned
+        // When multiple array elements, mark each with OUTPUT so results are returned.
         const outputStatements = statementArray.length > 1
             ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
             : statementArray;
