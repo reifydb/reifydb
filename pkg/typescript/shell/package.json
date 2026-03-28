@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
     "prepublishOnly": "pnpm build",
-    "publish:npm": "pnpm publish --access public"
+    "publish:npm": "pnpm publish --access public --no-git-checks"
   },
   "peerDependencies": {
     "@xterm/xterm": ">=5.0.0",

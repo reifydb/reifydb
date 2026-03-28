@@ -100,7 +100,7 @@ if [ -f "$ROOT_DIR/release.toml" ]; then
         SKIP_CRATES=1
         echo -e "${YELLOW}  Skipping crates.io publishing (disabled in config)${NC}"
     fi
-    if grep -q "pnpm_registry = false" "$ROOT_DIR/release.toml"; then
+    if grep -q "npm_registry = false" "$ROOT_DIR/release.toml"; then
         SKIP_PNPM=1
         echo -e "${YELLOW}  Skipping pnpm publishing (disabled in config)${NC}"
     fi
@@ -193,24 +193,34 @@ if [ $SKIP_PNPM -eq 0 ]; then
     echo ""
     echo -e "${YELLOW}[Phase 2/2] Publishing TypeScript packages to pnpm${NC}"
 
-    # Publish all TS packages via the root publish:all script
-    # Order: core → client → console → react → shell → wasm
-    cd "$ROOT_DIR/pkg/typescript"
-
-    echo -e "${BLUE}  Building all TypeScript packages...${NC}"
-    run_cmd "pnpm run build"
-
-    echo -e "${BLUE}  Publishing all TypeScript packages...${NC}"
-    if run_cmd "pnpm run publish:all"; then
-        log_publish "pnpm:all" "SUCCESS"
-        echo -e "${GREEN}  ✓ All TypeScript packages published successfully${NC}"
-    else
+    # Verify npm auth is configured before attempting to publish
+    if ! pnpm whoami &>/dev/null; then
+        echo -e "${RED}  Error: Not authenticated to npm registry${NC}"
+        echo -e "${YELLOW}  Run 'pnpm login' or configure an auth token in .npmrc before releasing${NC}"
         log_publish "pnpm:all" "FAILED"
-        echo -e "${RED}  ✗ Failed to publish TypeScript packages${NC}"
-        FAILED_PACKAGES="$FAILED_PACKAGES pnpm:all"
-    fi
+        FAILED_PACKAGES="$FAILED_PACKAGES pnpm:auth"
+    else
+        echo -e "${GREEN}  ✓ npm authentication verified${NC}"
 
-    cd "$ROOT_DIR"
+        # Publish all TS packages via the root publish:all script
+        # Order: core → client → console → react → shell → wasm
+        cd "$ROOT_DIR/pkg/typescript"
+
+        echo -e "${BLUE}  Building all TypeScript packages...${NC}"
+        run_cmd "pnpm run build"
+
+        echo -e "${BLUE}  Publishing all TypeScript packages...${NC}"
+        if run_cmd "pnpm run publish:all"; then
+            log_publish "pnpm:all" "SUCCESS"
+            echo -e "${GREEN}  ✓ All TypeScript packages published successfully${NC}"
+        else
+            log_publish "pnpm:all" "FAILED"
+            echo -e "${RED}  ✗ Failed to publish TypeScript packages${NC}"
+            FAILED_PACKAGES="$FAILED_PACKAGES pnpm:all"
+        fi
+
+        cd "$ROOT_DIR"
+    fi
 else
     echo -e "${YELLOW}[Phase 2/2] Skipping pnpm packages (--skip-pnpm)${NC}"
 fi

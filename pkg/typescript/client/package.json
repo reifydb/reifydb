@@ -15,7 +15,7 @@
     "test:coverage": "pnpm test:integration:coverage",
     "pretest:integration": "pnpm build",
     "prepublishOnly": "pnpm build",
-    "publish:npm": "pnpm publish --access public"
+    "publish:npm": "pnpm publish --access public --no-git-checks"
   },
   "dependencies": {
     "@reifydb/core": "workspace:*",

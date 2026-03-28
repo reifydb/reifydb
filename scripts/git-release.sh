@@ -50,19 +50,19 @@ if [ -z "$(git status --porcelain)" ]; then
     echo -e "${YELLOW}Checking if tag already exists...${NC}"
 
     if git rev-parse "v${VERSION}" >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ Tag v${VERSION} already exists${NC}"
         CURRENT_TAG_COMMIT=$(git rev-parse "v${VERSION}")
         CURRENT_HEAD=$(git rev-parse HEAD)
 
-        if [ "$CURRENT_TAG_COMMIT" != "$CURRENT_HEAD" ]; then
-            echo -e "${YELLOW}Warning: Tag exists but points to different commit${NC}"
-            echo -e "${YELLOW}  Tag commit:  $CURRENT_TAG_COMMIT${NC}"
-            echo -e "${YELLOW}  HEAD commit: $CURRENT_HEAD${NC}"
-            exit 1
+        if [ "$CURRENT_TAG_COMMIT" = "$CURRENT_HEAD" ]; then
+            echo -e "${GREEN}✓ Tag v${VERSION} already points to current HEAD. Skipping git operations.${NC}"
+            exit 0
         fi
 
-        echo -e "${GREEN}Tag already points to current HEAD. Skipping git operations.${NC}"
-        exit 0
+        echo -e "${YELLOW}Tag v${VERSION} exists but points to different commit. Re-tagging at HEAD.${NC}"
+        echo -e "${YELLOW}  Old tag commit: $CURRENT_TAG_COMMIT${NC}"
+        echo -e "${YELLOW}  HEAD commit:    $CURRENT_HEAD${NC}"
+        git tag -d "v${VERSION}"
+        CREATE_COMMIT=0
     else
         echo -e "${YELLOW}No tag found. Proceeding to create tag without commit.${NC}"
         CREATE_COMMIT=0

@@ -12,7 +12,7 @@
     "test:unit:coverage": "vitest run --coverage --config vitest.config.ts",
     "test:coverage": "pnpm test:unit:coverage",
     "prepublishOnly": "pnpm build && pnpm test",
-    "publish:npm": "pnpm publish --access public"
+    "publish:npm": "pnpm publish --access public --no-git-checks"
   },
   "dependencies": {
     "uuid": "^11.1.0"

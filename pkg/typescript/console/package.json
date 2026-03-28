@@ -17,7 +17,7 @@
     "test": "vitest run",
     "test:unit": "vitest run",
     "prepublishOnly": "pnpm build",
-    "publish:npm": "pnpm publish --access public"
+    "publish:npm": "pnpm publish --access public --no-git-checks"
   },
   "peerDependencies": {
     "react": ">=18.0.0",
