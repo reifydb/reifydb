@@ -18,7 +18,7 @@ use serde_json::from_str;
 use super::MaterializedCatalog;
 use crate::{
 	Result,
-	store::source::schema::{
+	store::source::shape::{
 		source,
 		source::{CONFIG, CONNECTOR, ID, NAME, NAMESPACE, STATUS, TARGET_NAME, TARGET_NAMESPACE},
 	},
@@ -40,15 +40,15 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &MaterializedCatal
 
 fn convert_source(multi: MultiVersionRow) -> Source {
 	let row = multi.row;
-	let id = SourceId(source::SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(source::SCHEMA.get_u64(&row, NAMESPACE));
-	let name = source::SCHEMA.get_utf8(&row, NAME).to_string();
-	let connector = source::SCHEMA.get_utf8(&row, CONNECTOR).to_string();
-	let config_json = source::SCHEMA.get_utf8(&row, CONFIG);
+	let id = SourceId(source::SHAPE.get_u64(&row, ID));
+	let namespace = NamespaceId(source::SHAPE.get_u64(&row, NAMESPACE));
+	let name = source::SHAPE.get_utf8(&row, NAME).to_string();
+	let connector = source::SHAPE.get_utf8(&row, CONNECTOR).to_string();
+	let config_json = source::SHAPE.get_utf8(&row, CONFIG);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let target_namespace = NamespaceId(source::SCHEMA.get_u64(&row, TARGET_NAMESPACE));
-	let target_name = source::SCHEMA.get_utf8(&row, TARGET_NAME).to_string();
-	let status = FlowStatus::from_u8(source::SCHEMA.get_u8(&row, STATUS));
+	let target_namespace = NamespaceId(source::SHAPE.get_u64(&row, TARGET_NAMESPACE));
+	let target_name = source::SHAPE.get_utf8(&row, TARGET_NAME).to_string();
+	let status = FlowStatus::from_u8(source::SHAPE.get_u8(&row, STATUS));
 
 	Source {
 		id,

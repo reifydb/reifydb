@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::identity::schema::identity};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::identity::shape::identity};
 
 pub(super) struct IdentityApplier;
 
@@ -32,9 +32,9 @@ impl CatalogChangeApplier for IdentityApplier {
 }
 
 fn decode_identity(row: &EncodedRow) -> Identity {
-	let id = identity::SCHEMA.get_identity_id(row, identity::IDENTITY);
-	let name = identity::SCHEMA.get_utf8(row, identity::NAME).to_string();
-	let enabled = identity::SCHEMA.get_bool(row, identity::ENABLED);
+	let id = identity::SHAPE.get_identity_id(row, identity::IDENTITY);
+	let name = identity::SHAPE.get_utf8(row, identity::NAME).to_string();
+	let enabled = identity::SHAPE.get_bool(row, identity::ENABLED);
 
 	Identity {
 		id,

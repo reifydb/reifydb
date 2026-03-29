@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowNodeId, view::View},
 		change::{Change, Diff},
@@ -78,8 +78,8 @@ impl Operator for PrimitiveViewOperator {
 			return Ok(Columns::from_view(&self.view));
 		}
 
-		let schema: RowSchema = self.view.columns().into();
-		let fields = schema.fields();
+		let shape: RowShape = self.view.columns().into();
+		let fields = shape.fields();
 
 		// Pre-allocate columns with capacity
 		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
@@ -97,7 +97,7 @@ impl Operator for PrimitiveViewOperator {
 				row_numbers.push(*row_num);
 				// Decode each column value directly
 				for (i, _field) in fields.iter().enumerate() {
-					let value = schema.get_value(&encoded, i);
+					let value = shape.get_value(&encoded, i);
 					columns_vec[i].data.push_value(value);
 				}
 			}

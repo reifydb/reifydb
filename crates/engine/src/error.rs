@@ -209,7 +209,7 @@ impl IntoDiagnostic for EngineError {
 				column: None,
 				fragment,
 				label: Some("unknown column".to_string()),
-				help: Some("check that the column name matches the schema".to_string()),
+				help: Some("check that the column name matches the shape".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

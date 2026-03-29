@@ -4,7 +4,7 @@ use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		schema::RowSchema,
+		shape::RowShape,
 	},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
 };
@@ -17,7 +17,7 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait WindowStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> RowSchema;
+	fn layout(&self) -> RowShape;
 
 	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedRow {
@@ -97,7 +97,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement WindowStateful
 	impl WindowStateful for TestOperator {
-		fn layout(&self) -> RowSchema {
+		fn layout(&self) -> RowShape {
 			self.layout.clone()
 		}
 	}

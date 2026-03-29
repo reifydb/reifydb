@@ -3,4 +3,4 @@
 
 //! Re-export decode helpers from catalog.
 
-pub(crate) use reifydb_catalog::schema::decode::{build_insert_diff, build_remove_diff, build_update_diff};
+pub(crate) use reifydb_catalog::shape::decode::{build_insert_diff, build_remove_diff, build_update_diff};

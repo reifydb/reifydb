@@ -36,11 +36,11 @@ pub mod primary_keys;
 pub mod procedures;
 pub mod ringbuffers;
 pub mod roles;
-pub mod schema_fields;
-pub mod schema_retention_policies;
-pub mod schemas;
 pub mod sequence;
 pub mod series;
+pub mod shape_fields;
+pub mod shape_retention_policies;
+pub mod shapes;
 pub mod storage_stats_dictionary;
 pub mod storage_stats_flow;
 pub mod storage_stats_flow_node;
@@ -87,11 +87,11 @@ use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use procedures::procedures;
 use roles::roles;
-use schema_fields::schema_fields;
-use schema_retention_policies::schema_retention_policies;
-use schemas::schemas;
 use sequence::sequences;
 use series::series;
+use shape_fields::shape_fields;
+use shape_retention_policies::shape_retention_policies;
+use shapes::shapes;
 use storage_stats_dictionary::dictionary_storage_stats;
 use storage_stats_flow::flow_storage_stats;
 use storage_stats_flow_node::flow_node_storage_stats;
@@ -203,8 +203,8 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SCHEMA_ID: ColumnId = ColumnId(2);
-			pub const SCHEMA_TYPE: ColumnId = ColumnId(3);
+			pub const SHAPE_ID: ColumnId = ColumnId(2);
+			pub const SHAPE_TYPE: ColumnId = ColumnId(3);
 			pub const NAME: ColumnId = ColumnId(4);
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
@@ -212,7 +212,7 @@ pub mod ids {
 			pub const DICTIONARY_ID: ColumnId = ColumnId(8);
 
 			pub const ALL: [ColumnId; 8] =
-				[ID, SCHEMA_ID, SCHEMA_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
+				[ID, SHAPE_ID, SHAPE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
 		}
 
 		pub mod enum_variants {
@@ -353,9 +353,9 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SCHEMA_ID: ColumnId = ColumnId(2);
+			pub const SHAPE_ID: ColumnId = ColumnId(2);
 
-			pub const ALL: [ColumnId; 2] = [ID, SCHEMA_ID];
+			pub const ALL: [ColumnId; 2] = [ID, SHAPE_ID];
 		}
 
 		pub mod ringbuffers {
@@ -414,7 +414,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod schema_retention_policies {
+		pub mod shape_retention_policies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const PRIMITIVE_ID: ColumnId = ColumnId(1);
@@ -508,7 +508,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 3] = [FLOW_ID, PRIMITIVE_ID, LAG];
 		}
 
-		pub mod schemas {
+		pub mod shapes {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const FINGERPRINT: ColumnId = ColumnId(1);
@@ -517,10 +517,10 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [FINGERPRINT, FIELD_COUNT];
 		}
 
-		pub mod schema_fields {
+		pub mod shape_fields {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const SCHEMA_FINGERPRINT: ColumnId = ColumnId(1);
+			pub const SHAPE_FINGERPRINT: ColumnId = ColumnId(1);
 			pub const FIELD_INDEX: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
@@ -532,7 +532,7 @@ pub mod ids {
 			pub const ALIGN: ColumnId = ColumnId(10);
 
 			pub const ALL: [ColumnId; 10] = [
-				SCHEMA_FINGERPRINT,
+				SHAPE_FINGERPRINT,
 				FIELD_INDEX,
 				NAME,
 				TYPE,
@@ -702,8 +702,8 @@ pub mod ids {
 		pub const RINGBUFFER_STORAGE_STATS: VTableId = VTableId(29);
 		pub const DICTIONARY_STORAGE_STATS: VTableId = VTableId(30);
 		pub const FLOW_LAGS: VTableId = VTableId(31);
-		pub const SCHEMAS: VTableId = VTableId(32);
-		pub const SCHEMA_FIELDS: VTableId = VTableId(33);
+		pub const SHAPES: VTableId = VTableId(32);
+		pub const SHAPE_FIELDS: VTableId = VTableId(33);
 		pub const ENUMS: VTableId = VTableId(34);
 		pub const EVENTS: VTableId = VTableId(35);
 		pub const PROCEDURES: VTableId = VTableId(36);
@@ -755,8 +755,8 @@ pub mod ids {
 			RINGBUFFER_STORAGE_STATS,
 			DICTIONARY_STORAGE_STATS,
 			FLOW_LAGS,
-			SCHEMAS,
-			SCHEMA_FIELDS,
+			SHAPES,
+			SHAPE_FIELDS,
 			ENUMS,
 			EVENTS,
 			PROCEDURES,
@@ -856,9 +856,9 @@ impl SystemCatalog {
 		versions()
 	}
 
-	/// Get the schema_retention_policies virtual table definition
-	pub fn get_system_schema_retention_policies_table() -> Arc<VTable> {
-		schema_retention_policies()
+	/// Get the shape_retention_policies virtual table definition
+	pub fn get_system_shape_retention_policies_table() -> Arc<VTable> {
+		shape_retention_policies()
 	}
 
 	/// Get the operator_retention_policies virtual table definition
@@ -956,14 +956,14 @@ impl SystemCatalog {
 		dictionary_storage_stats()
 	}
 
-	/// Get the schemas virtual table definition
-	pub fn get_system_schemas_table() -> Arc<VTable> {
-		schemas()
+	/// Get the shapes virtual table definition
+	pub fn get_system_shapes_table() -> Arc<VTable> {
+		shapes()
 	}
 
-	/// Get the schema_fields virtual table definition
-	pub fn get_system_schema_fields_table() -> Arc<VTable> {
-		schema_fields()
+	/// Get the shape_fields virtual table definition
+	pub fn get_system_shape_fields_table() -> Arc<VTable> {
+		shape_fields()
 	}
 
 	/// Get the enums virtual table definition

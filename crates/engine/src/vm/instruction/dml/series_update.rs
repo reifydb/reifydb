@@ -8,9 +8,9 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, schema::SchemaId},
+		catalog::{policy::PolicyTargetType, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
-		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedSeries},
+		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -31,7 +31,7 @@ use crate::{
 	Result,
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::schema::get_or_create_series_schema,
+		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -66,7 +66,7 @@ pub(crate) fn update_series<'a>(
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 	let series_ident = Fragment::internal(series.name.clone());
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
-	let resolved_source = Some(ResolvedSchema::Series(resolved_series));
+	let resolved_source = Some(ResolvedShape::Series(resolved_series));
 
 	let context = QueryContext {
 		services: services.clone(),
@@ -132,15 +132,15 @@ pub(crate) fn update_series<'a>(
 			};
 			let encoded_key = key.encode();
 
-			let schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
-			let mut row = schema.allocate();
+			let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+			let mut row = shape.allocate();
 
 			let key_col_value = columns
 				.iter()
 				.find(|c| c.name().text() == series.key.column())
 				.map(|c| c.data().get_value(row_idx))
 				.unwrap_or(Value::Int8(0));
-			schema.set_value(&mut row, 0, &key_col_value);
+			shape.set_value(&mut row, 0, &key_col_value);
 
 			for (i, col_def) in series.data_columns().enumerate() {
 				let value = columns
@@ -148,7 +148,7 @@ pub(crate) fn update_series<'a>(
 					.find(|c| c.name().text() == col_def.name)
 					.map(|c| c.data().get_value(row_idx))
 					.unwrap_or(Value::none());
-				schema.set_value(&mut row, i + 1, &value);
+				shape.set_value(&mut row, i + 1, &value);
 			}
 
 			updates_to_apply.push((encoded_key, row, row_idx));
@@ -167,14 +167,14 @@ pub(crate) fn update_series<'a>(
 			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
 
 			if let Some(ref pre_vals) = pre_values {
-				let read_schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
+				let read_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 				pre_col_vec.push(Column {
 					name: Fragment::internal(series.key.column()),
 					data: series.key_column_data(vec![key_value]),
 				});
 				for (i, col_def) in series.data_columns().enumerate() {
-					let val = read_schema.get_value(pre_vals, i + 1);
+					let val = read_shape.get_value(pre_vals, i + 1);
 					let mut data = ColumnData::with_capacity(col_def.constraint.get_type(), 1);
 					data.push_value(val);
 					pre_col_vec.push(Column {
@@ -208,7 +208,7 @@ pub(crate) fn update_series<'a>(
 					columns: CowVec::new(post_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
+					origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Update {
 						pre,

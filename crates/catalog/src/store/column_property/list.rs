@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::column_property::schema::column_property};
+use crate::{CatalogStore, Result, store::column_property::shape::column_property};
 
 impl CatalogStore {
 	pub(crate) fn list_column_properties(
@@ -23,12 +23,12 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = multi.row;
-			let id = ColumnPropertyId(column_property::SCHEMA.get_u64(&row, column_property::ID));
-			let column = ColumnId(column_property::SCHEMA.get_u64(&row, column_property::COLUMN));
+			let id = ColumnPropertyId(column_property::SHAPE.get_u64(&row, column_property::ID));
+			let column = ColumnId(column_property::SHAPE.get_u64(&row, column_property::COLUMN));
 
 			let property = ColumnPropertyKind::from_u8(
-				column_property::SCHEMA.get_u8(&row, column_property::POLICY),
-				column_property::SCHEMA.get_u8(&row, column_property::VALUE),
+				column_property::SHAPE.get_u8(&row, column_property::POLICY),
+				column_property::SHAPE.get_u8(&row, column_property::VALUE),
 			);
 
 			result.push(ColumnProperty {
@@ -81,7 +81,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],

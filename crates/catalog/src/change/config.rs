@@ -12,7 +12,7 @@ use super::CatalogChangeApplier;
 use crate::{
 	Result,
 	catalog::Catalog,
-	store::config::schema::config::{SCHEMA, VALUE},
+	store::config::shape::config::{SHAPE, VALUE},
 };
 
 pub(super) struct ConfigApplier;
@@ -36,7 +36,7 @@ fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: 
 	if config_key.is_empty() {
 		return;
 	}
-	let value = match SCHEMA.get_value(row, VALUE) {
+	let value = match SHAPE.get_value(row, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

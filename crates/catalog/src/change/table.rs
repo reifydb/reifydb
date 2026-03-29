@@ -16,7 +16,7 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::table::schema::table::{self, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	store::table::shape::table::{self, ID, NAME, NAMESPACE, PRIMARY_KEY},
 };
 
 pub(super) struct TableApplier;
@@ -45,10 +45,10 @@ use reifydb_core::common::CommitVersion;
 use crate::materialized::MaterializedCatalog;
 
 fn decode_table(row: &EncodedRow, materialized: &MaterializedCatalog, version: CommitVersion) -> Table {
-	let id = TableId(table::SCHEMA.get_u64(row, ID));
-	let namespace = NamespaceId(table::SCHEMA.get_u64(row, NAMESPACE));
-	let name = table::SCHEMA.get_utf8(row, NAME).to_string();
-	let pk_raw = table::SCHEMA.get_u64(row, PRIMARY_KEY);
+	let id = TableId(table::SHAPE.get_u64(row, ID));
+	let namespace = NamespaceId(table::SHAPE.get_u64(row, NAMESPACE));
+	let name = table::SHAPE.get_utf8(row, NAME).to_string();
+	let pk_raw = table::SHAPE.get_u64(row, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {

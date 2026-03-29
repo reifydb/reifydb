@@ -36,7 +36,7 @@ impl<'bump> Parser<'bump> {
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
 		let index =
-			MaybeQualifiedIndexIdentifier::new(table_fragment, name_token.fragment).with_schema(namespace);
+			MaybeQualifiedIndexIdentifier::new(table_fragment, name_token.fragment).with_shape(namespace);
 
 		let columns = self.parse_index_columns()?;
 

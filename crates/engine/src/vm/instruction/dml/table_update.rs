@@ -4,14 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey, row::RowKey},
@@ -29,7 +29,7 @@ use reifydb_type::{
 use super::{
 	primary_key,
 	returning::{decode_rows_to_columns, evaluate_returning},
-	schema::get_or_create_table_schema,
+	shape::get_or_create_table_shape,
 };
 use crate::{
 	Result,
@@ -71,8 +71,8 @@ pub(crate) fn update_table<'a>(
 		unimplemented!("Cannot infer target table from pipeline - no table found")
 	};
 
-	// Get or create schema with proper field names and constraints
-	let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
+	// Get or create shape with proper field names and constraints
+	let shape = get_or_create_table_shape(&services.catalog, &table, txn)?;
 
 	// Create resolved source for the table
 	let namespace_ident = Fragment::internal(namespace.name());
@@ -80,7 +80,7 @@ pub(crate) fn update_table<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
+	let resolved_source = Some(ResolvedShape::Table(resolved_table));
 
 	let context = QueryContext {
 		services: services.clone(),
@@ -124,7 +124,7 @@ pub(crate) fn update_table<'a>(
 			let row_count = columns.row_count();
 
 			for row_numberx in 0..row_count {
-				let mut row = schema.allocate();
+				let mut row = shape.allocate();
 
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
 					let mut value = if let Some(input_column) =
@@ -177,7 +177,7 @@ pub(crate) fn update_table<'a>(
 						value
 					};
 
-					schema.set_value(&mut row, table_idx, &value);
+					shape.set_value(&mut row, table_idx, &value);
 				}
 
 				let row_number = row_numbers[row_numberx];
@@ -188,7 +188,7 @@ pub(crate) fn update_table<'a>(
 					if let Some(pre_row_data) = txn.get(&row_key)? {
 						let pre_row = pre_row_data.row;
 						let pre_key = primary_key::encode_primary_key(
-							&pk_def, &pre_row, &table, &schema,
+							&pk_def, &pre_row, &table, &shape,
 						)?;
 
 						txn.remove(&IndexEntryKey::new(
@@ -199,11 +199,11 @@ pub(crate) fn update_table<'a>(
 						.encode())?;
 					}
 
-					let post_key = primary_key::encode_primary_key(&pk_def, &row, &table, &schema)?;
+					let post_key = primary_key::encode_primary_key(&pk_def, &row, &table, &shape)?;
 
-					let row_number_schema = RowSchema::testing(&[Type::Uint8]);
-					let mut row_number_encoded = row_number_schema.allocate();
-					row_number_schema.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+					let row_number_shape = RowShape::testing(&[Type::Uint8]);
+					let mut row_number_encoded = row_number_shape.allocate();
+					row_number_shape.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 					txn.set(
 						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key)
@@ -225,7 +225,7 @@ pub(crate) fn update_table<'a>(
 
 	// If RETURNING clause is present, evaluate expressions against updated rows
 	if let Some(returning_exprs) = &plan.returning {
-		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 

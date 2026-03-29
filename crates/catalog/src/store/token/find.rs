@@ -7,7 +7,7 @@ use subtle::ConstantTimeEq;
 
 use crate::{
 	CatalogStore, Result,
-	store::token::{convert_token, schema::token},
+	store::token::{convert_token, shape::token},
 };
 
 impl CatalogStore {
@@ -17,7 +17,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let stored_token = token::SCHEMA.get_utf8(&multi.row, token::TOKEN);
+			let stored_token = token::SHAPE.get_utf8(&multi.row, token::TOKEN);
 			if stored_token.as_bytes().ct_eq(value.as_bytes()).into() {
 				return Ok(Some(convert_token(multi)));
 			}

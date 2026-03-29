@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::{
 	id::{ColumnId, RingBufferId, SequenceId, TableId},
-	schema::SchemaId,
+	shape::ShapeId,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::{Value, row_number::RowNumber};
@@ -69,24 +69,24 @@ impl Catalog {
 		RowSequence::next_row_number_batch_for_ringbuffer(txn, ringbuffer, count)
 	}
 
-	#[instrument(name = "catalog::sequence::column_sequence_next_value", level = "trace", skip(self, txn, schema))]
+	#[instrument(name = "catalog::sequence::column_sequence_next_value", level = "trace", skip(self, txn, shape))]
 	pub fn column_sequence_next_value(
 		&self,
 		txn: &mut impl SequenceTransaction,
-		schema: impl Into<SchemaId>,
+		shape: impl Into<ShapeId>,
 		column: ColumnId,
 	) -> Result<Value> {
-		ColumnSequence::next_value(txn, schema, column)
+		ColumnSequence::next_value(txn, shape, column)
 	}
 
-	#[instrument(name = "catalog::sequence::column_sequence_set_value", level = "trace", skip(self, txn, schema))]
+	#[instrument(name = "catalog::sequence::column_sequence_set_value", level = "trace", skip(self, txn, shape))]
 	pub fn column_sequence_set_value(
 		&self,
 		txn: &mut impl SequenceTransaction,
-		schema: impl Into<SchemaId>,
+		shape: impl Into<ShapeId>,
 		column: ColumnId,
 		value: Value,
 	) -> Result<()> {
-		ColumnSequence::set_value(txn, schema, column, value)
+		ColumnSequence::set_value(txn, shape, column, value)
 	}
 }

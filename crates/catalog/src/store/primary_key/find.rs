@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::Column,
 		id::{TableId, ViewId},
 		key::PrimaryKey,
-		schema::SchemaId,
+		shape::ShapeId,
 	},
 	key::primary_key::PrimaryKeyKey,
 	return_internal_error,
@@ -15,38 +15,38 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::primary_key::schema::{primary_key, primary_key::deserialize_column_ids},
+	store::primary_key::shape::{primary_key, primary_key::deserialize_column_ids},
 };
 
 impl CatalogStore {
 	pub(crate) fn find_primary_key(
 		rx: &mut Transaction<'_>,
-		object: impl Into<SchemaId>,
+		object: impl Into<ShapeId>,
 	) -> Result<Option<PrimaryKey>> {
 		let object_id = object.into();
 
 		let primary_key_id = match object_id {
-			SchemaId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
+			ShapeId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			SchemaId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
+			ShapeId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			SchemaId::TableVirtual(_) => {
+			ShapeId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			SchemaId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
+			ShapeId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			SchemaId::Dictionary(_) => {
+			ShapeId::Dictionary(_) => {
 				// Dictionaries don't have traditional primary keys
 				return Ok(None);
 			}
-			SchemaId::Series(_) => {
+			ShapeId::Series(_) => {
 				// Series use timestamp-based key ordering, no traditional primary keys
 				return Ok(None);
 			}
@@ -62,7 +62,7 @@ impl CatalogStore {
 		};
 
 		// Deserialize column IDs
-		let column_ids_blob = primary_key::SCHEMA.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::SHAPE.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		// Fetch full Column for each column ID

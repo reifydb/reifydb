@@ -10,7 +10,7 @@ use reifydb_type::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore, Result,
-	store::authentication::{convert_authentication, schema::authentication},
+	store::authentication::{convert_authentication, shape::authentication},
 };
 
 impl CatalogStore {
@@ -31,9 +31,8 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let auth_identity =
-				authentication::SCHEMA.get_identity_id(&multi.row, authentication::IDENTITY);
-			let auth_method = authentication::SCHEMA.get_utf8(&multi.row, authentication::METHOD);
+			let auth_identity = authentication::SHAPE.get_identity_id(&multi.row, authentication::IDENTITY);
+			let auth_method = authentication::SHAPE.get_utf8(&multi.row, authentication::METHOD);
 			if auth_identity == identity && auth_method == method {
 				return Ok(Some(convert_authentication(multi)));
 			}
@@ -52,7 +51,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let auth_method = authentication::SCHEMA.get_utf8(&multi.row, authentication::METHOD);
+			let auth_method = authentication::SHAPE.get_utf8(&multi.row, authentication::METHOD);
 			if auth_method == method {
 				results.push(convert_authentication(multi));
 			}

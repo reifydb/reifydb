@@ -77,7 +77,7 @@ impl VTableRegistry {
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
 			PRIMITIVE_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_schema_retention_policies_table())
+				Some(SystemCatalog::get_system_shape_retention_policies_table())
 			}
 			OPERATOR_RETENTION_POLICIES => {
 				Some(SystemCatalog::get_system_operator_retention_policies_table())
@@ -92,8 +92,8 @@ impl VTableRegistry {
 			FLOW_OPERATOR_OUTPUTS => Some(SystemCatalog::get_system_flow_operator_outputs_table()),
 			DICTIONARIES => Some(SystemCatalog::get_system_dictionaries_table()),
 			RINGBUFFERS => Some(SystemCatalog::get_system_ringbuffers_table()),
-			SCHEMAS => Some(SystemCatalog::get_system_schemas_table()),
-			SCHEMA_FIELDS => Some(SystemCatalog::get_system_schema_fields_table()),
+			SHAPES => Some(SystemCatalog::get_system_shapes_table()),
+			SHAPE_FIELDS => Some(SystemCatalog::get_system_shape_fields_table()),
 			ENUMS => Some(SystemCatalog::get_system_enums_table()),
 			ENUM_VARIANTS => Some(SystemCatalog::get_system_enum_variants_table()),
 			EVENTS => Some(SystemCatalog::get_system_events_table()),
@@ -137,7 +137,7 @@ impl VTableRegistry {
 			SystemCatalog::get_system_primary_keys_table(),
 			SystemCatalog::get_system_primary_key_columns_table(),
 			SystemCatalog::get_system_versions_table(),
-			SystemCatalog::get_system_schema_retention_policies_table(),
+			SystemCatalog::get_system_shape_retention_policies_table(),
 			SystemCatalog::get_system_operator_retention_policies_table(),
 			SystemCatalog::get_system_cdc_consumers_table(),
 			SystemCatalog::get_system_flows_table(),
@@ -149,8 +149,8 @@ impl VTableRegistry {
 			SystemCatalog::get_system_flow_operator_outputs_table(),
 			SystemCatalog::get_system_dictionaries_table(),
 			SystemCatalog::get_system_ringbuffers_table(),
-			SystemCatalog::get_system_schemas_table(),
-			SystemCatalog::get_system_schema_fields_table(),
+			SystemCatalog::get_system_shapes_table(),
+			SystemCatalog::get_system_shape_fields_table(),
 			SystemCatalog::get_system_enums_table(),
 			SystemCatalog::get_system_enum_variants_table(),
 			SystemCatalog::get_system_events_table(),

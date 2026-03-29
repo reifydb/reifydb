@@ -71,7 +71,7 @@ impl GeneratorFunction for InspectSubscription {
 		drop(stream); // Explicitly drop to release the borrow on txn
 
 		let catalog = ctx.catalog;
-		let row_schema_registry = &catalog.schema;
+		let row_shape_registry = &catalog.shape;
 
 		// Process collected entries
 		for entry in entries {
@@ -79,12 +79,12 @@ impl GeneratorFunction for InspectSubscription {
 				row_numbers.push(sub_row_key.row);
 
 				let fingerprint = entry.row.fingerprint();
-				let schema = row_schema_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-					Error(internal(format!("Schema not found for fingerprint: {:?}", fingerprint)))
+				let shape = row_shape_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
+					Error(internal(format!("Shape not found for fingerprint: {:?}", fingerprint)))
 				})?;
 
 				for (idx, (_, data)) in column_data_builders.iter_mut().enumerate() {
-					let value = schema.get_value(&entry.row, idx);
+					let value = shape.get_value(&entry.row, idx);
 					data.push_value(value);
 				}
 			}

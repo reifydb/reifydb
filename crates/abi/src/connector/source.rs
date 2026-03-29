@@ -29,7 +29,7 @@ pub struct SourceDescriptorFFI {
 	pub description: BufferFFI,
 	/// 0 = Pull, 1 = Push
 	pub mode: u8,
-	/// Schema of records this source produces
+	/// Shape of records this source produces
 	pub output_columns: OperatorColumnsFFI,
 	/// Virtual function table
 	pub vtable: SourceVTableFFI,

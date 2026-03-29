@@ -3,14 +3,14 @@
 
 use crate::{
 	encoded::key::EncodedKey,
-	interface::catalog::{id::ColumnId, schema::SchemaId},
+	interface::catalog::{id::ColumnId, shape::ShapeId},
 	key::{EncodableKey, KeyKind},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColumnSequenceKey {
-	pub object: SchemaId,
+	pub shape: ShapeId,
 	pub column: ColumnId,
 }
 
@@ -24,7 +24,7 @@ impl EncodableKey for ColumnSequenceKey {
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
-			.extend_schema_id(self.object)
+			.extend_shape_id(self.shape)
 			.extend_u64(self.column);
 		serializer.to_encoded_key()
 	}
@@ -42,20 +42,20 @@ impl EncodableKey for ColumnSequenceKey {
 			return None;
 		}
 
-		let object = de.read_schema_id().ok()?;
+		let shape = de.read_shape_id().ok()?;
 		let column = de.read_u64().ok()?;
 
 		Some(Self {
-			object,
+			shape,
 			column: ColumnId(column),
 		})
 	}
 }
 
 impl ColumnSequenceKey {
-	pub fn encoded(object: impl Into<SchemaId>, column: impl Into<ColumnId>) -> EncodedKey {
+	pub fn encoded(shape: impl Into<ShapeId>, column: impl Into<ColumnId>) -> EncodedKey {
 		Self {
-			object: object.into(),
+			shape: shape.into(),
 			column: column.into(),
 		}
 		.encode()
@@ -67,13 +67,13 @@ pub mod tests {
 	use super::{ColumnSequenceKey, EncodableKey};
 	use crate::{
 		encoded::key::EncodedKey,
-		interface::catalog::{id::ColumnId, schema::SchemaId},
+		interface::catalog::{id::ColumnId, shape::ShapeId},
 	};
 
 	#[test]
 	fn test_encode_decode() {
 		let key = ColumnSequenceKey {
-			object: SchemaId::table(0x1234),
+			shape: ShapeId::table(0x1234),
 			column: ColumnId(0x5678),
 		};
 		let encoded = key.encode();
@@ -83,7 +83,7 @@ pub mod tests {
 
 		// Test decode
 		let decoded = ColumnSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.object, SchemaId::table(0x1234));
+		assert_eq!(decoded.shape, ShapeId::table(0x1234));
 		assert_eq!(decoded.column, ColumnId(0x5678));
 	}
 

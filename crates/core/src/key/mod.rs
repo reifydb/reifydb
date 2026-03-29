@@ -31,7 +31,7 @@ use policy::PolicyKey;
 use policy_op::PolicyOpKey;
 use primary_key::PrimaryKeyKey;
 use property::ColumnPropertyKey;
-use retention_policy::{OperatorRetentionPolicyKey, SchemaRetentionPolicyKey};
+use retention_policy::{OperatorRetentionPolicyKey, ShapeRetentionPolicyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
 use row::RowKey;
@@ -97,9 +97,9 @@ pub mod ringbuffer;
 pub mod role;
 pub mod row;
 pub mod row_sequence;
-pub mod schema;
 pub mod series;
 pub mod series_row;
+pub mod shape;
 pub mod sink;
 pub mod source;
 pub mod subscription;
@@ -140,7 +140,7 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
-	SchemaRetentionPolicy(SchemaRetentionPolicyKey),
+	ShapeRetentionPolicy(ShapeRetentionPolicyKey),
 	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
@@ -198,7 +198,7 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
-			Key::SchemaRetentionPolicy(key) => key.encode(),
+			Key::ShapeRetentionPolicy(key) => key.encode(),
 			Key::OperatorRetentionPolicy(key) => key.encode(),
 			Key::Dictionary(key) => key.encode(),
 			Key::DictionaryEntry(key) => key.encode(),
@@ -302,8 +302,8 @@ impl Key {
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(&key).map(Self::NamespaceRingBuffer)
 			}
-			KeyKind::SchemaRetentionPolicy => {
-				SchemaRetentionPolicyKey::decode(&key).map(Self::SchemaRetentionPolicy)
+			KeyKind::ShapeRetentionPolicy => {
+				ShapeRetentionPolicyKey::decode(&key).map(Self::ShapeRetentionPolicy)
 			}
 			KeyKind::OperatorRetentionPolicy => {
 				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
@@ -344,8 +344,8 @@ impl Key {
 				SubscriptionColumnKey::decode(&key).map(Self::SubscriptionColumn)
 			}
 			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(&key).map(Self::SubscriptionRow),
-			KeyKind::Schema | KeyKind::RowSchemaField => {
-				// Schema keys are used directly via EncodableKey trait, not through Key enum
+			KeyKind::Shape | KeyKind::RowShapeField => {
+				// Shape keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 			KeyKind::Series => SeriesKey::decode(&key).map(Self::Series),
@@ -386,7 +386,7 @@ pub mod tests {
 		interface::catalog::{
 			flow::FlowNodeId,
 			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, SequenceId, TableId},
-			schema::SchemaId,
+			shape::ShapeId,
 		},
 		key::{
 			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
@@ -418,7 +418,7 @@ pub mod tests {
 	#[test]
 	fn test_column() {
 		let key = Key::Column(ColumnKey {
-			object: SchemaId::table(1),
+			shape: ShapeId::table(1),
 			column: ColumnId(42),
 		});
 
@@ -427,7 +427,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Column(decoded_inner) => {
-				assert_eq!(decoded_inner.object, SchemaId::table(1));
+				assert_eq!(decoded_inner.shape, ShapeId::table(1));
 				assert_eq!(decoded_inner.column, 42);
 			}
 			_ => unreachable!(),
@@ -526,7 +526,7 @@ pub mod tests {
 	#[test]
 	fn test_index() {
 		let key = Key::Index(IndexKey {
-			object: SchemaId::table(42),
+			shape: ShapeId::table(42),
 			index: IndexId::primary(999_999),
 		});
 
@@ -535,7 +535,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Index(decoded_inner) => {
-				assert_eq!(decoded_inner.object, SchemaId::table(42));
+				assert_eq!(decoded_inner.shape, ShapeId::table(42));
 				assert_eq!(decoded_inner.index, 999_999);
 			}
 			_ => unreachable!(),
@@ -545,7 +545,7 @@ pub mod tests {
 	#[test]
 	fn test_row() {
 		let key = Key::Row(RowKey {
-			object: SchemaId::table(42),
+			shape: ShapeId::table(42),
 			row: RowNumber(999_999),
 		});
 
@@ -554,7 +554,7 @@ pub mod tests {
 
 		match decoded {
 			Key::Row(decoded_inner) => {
-				assert_eq!(decoded_inner.object, SchemaId::table(42));
+				assert_eq!(decoded_inner.shape, ShapeId::table(42));
 				assert_eq!(decoded_inner.row, 999_999);
 			}
 			_ => unreachable!(),
@@ -564,7 +564,7 @@ pub mod tests {
 	#[test]
 	fn test_row_sequence() {
 		let key = Key::RowSequence(RowSequenceKey {
-			object: SchemaId::table(42),
+			shape: ShapeId::table(42),
 		});
 
 		let encoded = key.encode();
@@ -572,7 +572,7 @@ pub mod tests {
 
 		match decoded {
 			Key::RowSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.object, SchemaId::table(42));
+				assert_eq!(decoded_inner.shape, ShapeId::table(42));
 			}
 			_ => unreachable!(),
 		}
@@ -581,7 +581,7 @@ pub mod tests {
 	#[test]
 	fn test_column_sequence() {
 		let key = Key::TableColumnSequence(ColumnSequenceKey {
-			object: SchemaId::table(42),
+			shape: ShapeId::table(42),
 			column: ColumnId(123),
 		});
 
@@ -590,7 +590,7 @@ pub mod tests {
 
 		match decoded {
 			Key::TableColumnSequence(decoded_inner) => {
-				assert_eq!(decoded_inner.object, SchemaId::table(42));
+				assert_eq!(decoded_inner.shape, ShapeId::table(42));
 				assert_eq!(decoded_inner.column, 123);
 			}
 			_ => unreachable!(),

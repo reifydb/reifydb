@@ -12,25 +12,25 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction};
 use reifydb_type::value::Value;
 
-use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer_metadata};
+use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer_metadata};
 
 pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
-	let mut row = ringbuffer_metadata::SCHEMA.allocate();
-	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
-	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
-	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::HEAD, metadata.head);
-	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
-	ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
+	let mut row = ringbuffer_metadata::SHAPE.allocate();
+	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::ID, metadata.id);
+	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::CAPACITY, metadata.capacity);
+	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::HEAD, metadata.head);
+	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
+	ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
 	row
 }
 
 pub fn decode_ringbuffer_metadata(row: &EncodedRow) -> RingBufferMetadata {
 	RingBufferMetadata {
-		id: RingBufferId(ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::ID)),
-		capacity: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::CAPACITY),
-		count: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::COUNT),
-		head: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::HEAD),
-		tail: ringbuffer_metadata::SCHEMA.get_u64(row, ringbuffer_metadata::TAIL),
+		id: RingBufferId(ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::ID)),
+		capacity: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::CAPACITY),
+		count: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::COUNT),
+		head: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::HEAD),
+		tail: ringbuffer_metadata::SHAPE.get_u64(row, ringbuffer_metadata::TAIL),
 	}
 }
 

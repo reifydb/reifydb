@@ -10,7 +10,7 @@ use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 
 use crate::{
 	CatalogStore, Result,
-	store::dictionary::schema::{dictionary, dictionary_namespace},
+	store::dictionary::shape::{dictionary, dictionary_namespace},
 };
 
 impl CatalogStore {
@@ -24,7 +24,7 @@ impl CatalogStore {
 				let multi = entry?;
 				let row = &multi.row;
 				dictionary_ids.push(DictionaryId(
-					dictionary_namespace::SCHEMA.get_u64(row, dictionary_namespace::ID),
+					dictionary_namespace::SHAPE.get_u64(row, dictionary_namespace::ID),
 				));
 			}
 		}
@@ -47,11 +47,11 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.row;
-			let id = DictionaryId(dictionary::SCHEMA.get_u64(&row, dictionary::ID));
-			let namespace = NamespaceId(dictionary::SCHEMA.get_u64(&row, dictionary::NAMESPACE));
-			let name = dictionary::SCHEMA.get_utf8(&row, dictionary::NAME).to_string();
-			let value_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::VALUE_TYPE);
-			let id_type_ordinal = dictionary::SCHEMA.get_u8(&row, dictionary::ID_TYPE);
+			let id = DictionaryId(dictionary::SHAPE.get_u64(&row, dictionary::ID));
+			let namespace = NamespaceId(dictionary::SHAPE.get_u64(&row, dictionary::NAMESPACE));
+			let name = dictionary::SHAPE.get_utf8(&row, dictionary::NAME).to_string();
+			let value_type_ordinal = dictionary::SHAPE.get_u8(&row, dictionary::VALUE_TYPE);
+			let id_type_ordinal = dictionary::SHAPE.get_u8(&row, dictionary::ID_TYPE);
 
 			dictionaries.push(Dictionary {
 				id,

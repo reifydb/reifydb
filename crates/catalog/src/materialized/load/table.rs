@@ -17,7 +17,7 @@ use reifydb_transaction::transaction::Transaction;
 use super::MaterializedCatalog;
 use crate::{
 	CatalogStore, Result,
-	store::table::schema::{
+	store::table::shape::{
 		table,
 		table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
 	},
@@ -49,9 +49,9 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalo
 
 fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Table {
 	let row = multi.row;
-	let id = TableId(table::SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(table::SCHEMA.get_u64(&row, NAMESPACE));
-	let name = table::SCHEMA.get_utf8(&row, NAME).to_string();
+	let id = TableId(table::SHAPE.get_u64(&row, ID));
+	let namespace = NamespaceId(table::SHAPE.get_u64(&row, NAMESPACE));
+	let name = table::SHAPE.get_utf8(&row, NAME).to_string();
 
 	Table {
 		id,
@@ -63,7 +63,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 }
 
 fn get_table_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = table::SCHEMA.get_u64(&multi.row, PRIMARY_KEY);
+	let pk_id_raw = table::SHAPE.get_u64(&multi.row, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

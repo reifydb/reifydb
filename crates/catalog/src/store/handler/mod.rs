@@ -9,22 +9,22 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::value::sumtype::{SumTypeId, VariantRef};
-use schema::handler;
+use shape::handler;
 
 pub mod create;
 pub mod find;
 pub mod get;
-pub(crate) mod schema;
+pub(crate) mod shape;
 
 pub(crate) fn handler_from_row(row: &EncodedRow) -> Handler {
-	let id = HandlerId(handler::SCHEMA.get_u64(row, handler::ID));
-	let namespace = NamespaceId(handler::SCHEMA.get_u64(row, handler::NAMESPACE));
-	let name = handler::SCHEMA.get_utf8(row, handler::NAME).to_string();
+	let id = HandlerId(handler::SHAPE.get_u64(row, handler::ID));
+	let namespace = NamespaceId(handler::SHAPE.get_u64(row, handler::NAMESPACE));
+	let name = handler::SHAPE.get_utf8(row, handler::NAME).to_string();
 	let variant = VariantRef {
-		sumtype_id: SumTypeId(handler::SCHEMA.get_u64(row, handler::ON_SUMTYPE_ID)),
-		variant_tag: handler::SCHEMA.get_u8(row, handler::ON_VARIANT_TAG),
+		sumtype_id: SumTypeId(handler::SHAPE.get_u64(row, handler::ON_SUMTYPE_ID)),
+		variant_tag: handler::SHAPE.get_u8(row, handler::ON_VARIANT_TAG),
 	};
-	let body_source = handler::SCHEMA.get_utf8(row, handler::BODY_SOURCE).to_string();
+	let body_source = handler::SHAPE.get_utf8(row, handler::BODY_SOURCE).to_string();
 
 	Handler {
 		id,

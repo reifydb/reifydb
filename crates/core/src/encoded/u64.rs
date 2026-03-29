@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,47 +41,47 @@ impl RowSchema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_u64() {
-		let schema = RowSchema::testing(&[Type::Uint8]);
-		let mut row = schema.allocate();
-		schema.set_u64(&mut row, 0, 18446744073709551615u64);
-		assert_eq!(schema.get_u64(&row, 0), 18446744073709551615u64);
+		let shape = RowShape::testing(&[Type::Uint8]);
+		let mut row = shape.allocate();
+		shape.set_u64(&mut row, 0, 18446744073709551615u64);
+		assert_eq!(shape.get_u64(&row, 0), 18446744073709551615u64);
 	}
 
 	#[test]
 	fn test_try_get_u64() {
-		let schema = RowSchema::testing(&[Type::Uint8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint8]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_u64(&row, 0), None);
+		assert_eq!(shape.try_get_u64(&row, 0), None);
 
-		schema.set_u64(&mut row, 0, 18446744073709551615u64);
-		assert_eq!(schema.try_get_u64(&row, 0), Some(18446744073709551615u64));
+		shape.set_u64(&mut row, 0, 18446744073709551615u64);
+		assert_eq!(shape.try_get_u64(&row, 0), Some(18446744073709551615u64));
 	}
 
 	#[test]
 	fn test_extremes() {
-		let schema = RowSchema::testing(&[Type::Uint8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint8]);
+		let mut row = shape.allocate();
 
-		schema.set_u64(&mut row, 0, u64::MAX);
-		assert_eq!(schema.get_u64(&row, 0), u64::MAX);
+		shape.set_u64(&mut row, 0, u64::MAX);
+		assert_eq!(shape.get_u64(&row, 0), u64::MAX);
 
-		let mut row2 = schema.allocate();
-		schema.set_u64(&mut row2, 0, u64::MIN);
-		assert_eq!(schema.get_u64(&row2, 0), u64::MIN);
+		let mut row2 = shape.allocate();
+		shape.set_u64(&mut row2, 0, u64::MIN);
+		assert_eq!(shape.get_u64(&row2, 0), u64::MIN);
 
-		let mut row3 = schema.allocate();
-		schema.set_u64(&mut row3, 0, 0u64);
-		assert_eq!(schema.get_u64(&row3, 0), 0u64);
+		let mut row3 = shape.allocate();
+		shape.set_u64(&mut row3, 0, 0u64);
+		assert_eq!(shape.get_u64(&row3, 0), 0u64);
 	}
 
 	#[test]
 	fn test_large_values() {
-		let schema = RowSchema::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[Type::Uint8]);
 
 		let test_values = [
 			0u64,
@@ -96,15 +96,15 @@ pub mod tests {
 		];
 
 		for value in test_values {
-			let mut row = schema.allocate();
-			schema.set_u64(&mut row, 0, value);
-			assert_eq!(schema.get_u64(&row, 0), value);
+			let mut row = shape.allocate();
+			shape.set_u64(&mut row, 0, value);
+			assert_eq!(shape.get_u64(&row, 0), value);
 		}
 	}
 
 	#[test]
 	fn test_memory_sizes() {
-		let schema = RowSchema::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[Type::Uint8]);
 
 		// Test values representing memory sizes in bytes
 		let memory_sizes = [
@@ -117,15 +117,15 @@ pub mod tests {
 		];
 
 		for size in memory_sizes {
-			let mut row = schema.allocate();
-			schema.set_u64(&mut row, 0, size);
-			assert_eq!(schema.get_u64(&row, 0), size);
+			let mut row = shape.allocate();
+			shape.set_u64(&mut row, 0, size);
+			assert_eq!(shape.get_u64(&row, 0), size);
 		}
 	}
 
 	#[test]
 	fn test_nanosecond_timestamps() {
-		let schema = RowSchema::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[Type::Uint8]);
 
 		// Test nanosecond precision timestamps
 		let ns_timestamps = [
@@ -136,47 +136,47 @@ pub mod tests {
 		];
 
 		for timestamp in ns_timestamps {
-			let mut row = schema.allocate();
-			schema.set_u64(&mut row, 0, timestamp);
-			assert_eq!(schema.get_u64(&row, 0), timestamp);
+			let mut row = shape.allocate();
+			shape.set_u64(&mut row, 0, timestamp);
+			assert_eq!(shape.get_u64(&row, 0), timestamp);
 		}
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Uint8, Type::Float8, Type::Uint8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint8, Type::Float8, Type::Uint8]);
+		let mut row = shape.allocate();
 
-		schema.set_u64(&mut row, 0, 15_000_000_000_000_000_000u64);
-		schema.set_f64(&mut row, 1, 3.14159265359);
-		schema.set_u64(&mut row, 2, 12_000_000_000_000_000_000u64);
+		shape.set_u64(&mut row, 0, 15_000_000_000_000_000_000u64);
+		shape.set_f64(&mut row, 1, 3.14159265359);
+		shape.set_u64(&mut row, 2, 12_000_000_000_000_000_000u64);
 
-		assert_eq!(schema.get_u64(&row, 0), 15_000_000_000_000_000_000u64);
-		assert_eq!(schema.get_f64(&row, 1), 3.14159265359);
-		assert_eq!(schema.get_u64(&row, 2), 12_000_000_000_000_000_000u64);
+		assert_eq!(shape.get_u64(&row, 0), 15_000_000_000_000_000_000u64);
+		assert_eq!(shape.get_f64(&row, 1), 3.14159265359);
+		assert_eq!(shape.get_u64(&row, 2), 12_000_000_000_000_000_000u64);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Uint8, Type::Uint8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint8, Type::Uint8]);
+		let mut row = shape.allocate();
 
-		schema.set_u64(&mut row, 0, 1234567890123456789u64);
+		shape.set_u64(&mut row, 0, 1234567890123456789u64);
 
-		assert_eq!(schema.try_get_u64(&row, 0), Some(1234567890123456789));
-		assert_eq!(schema.try_get_u64(&row, 1), None);
+		assert_eq!(shape.try_get_u64(&row, 0), Some(1234567890123456789));
+		assert_eq!(shape.try_get_u64(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_u64(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_u64(&row, 0), None);
 	}
 
 	#[test]
 	fn test_try_get_u64_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_u64(&row, 0), None);
+		assert_eq!(shape.try_get_u64(&row, 0), None);
 	}
 }

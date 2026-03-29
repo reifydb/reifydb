@@ -36,7 +36,7 @@ pub trait FFISinkMetadata {
 	const VERSION: &'static str;
 	/// Human-readable description
 	const DESCRIPTION: &'static str;
-	/// Schema of records this sink accepts
+	/// Shape of records this sink accepts
 	const INPUT_COLUMNS: &'static [OperatorColumn];
 }
 

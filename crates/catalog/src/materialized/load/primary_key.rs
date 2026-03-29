@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use super::MaterializedCatalog;
 use crate::{
 	CatalogStore, Result,
-	store::primary_key::schema::{
+	store::primary_key::shape::{
 		primary_key,
 		primary_key::{COLUMN_IDS, ID, deserialize_column_ids},
 	},
@@ -33,9 +33,9 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 		let version = multi.version;
 		let row = multi.row;
 
-		let pk_id = PrimaryKeyId(primary_key::SCHEMA.get_u64(&row, ID));
+		let pk_id = PrimaryKeyId(primary_key::SHAPE.get_u64(&row, ID));
 
-		let column_ids_blob = primary_key::SCHEMA.get_blob(&row, COLUMN_IDS);
+		let column_ids_blob = primary_key::SHAPE.get_blob(&row, COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		let mut columns = Vec::new();

@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 
 use postcard::from_bytes;
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{
 			column::Column as CatalogColumn,
@@ -46,7 +46,7 @@ static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::ne
 static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
 static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(RuntimeContext::default);
 
-/// Coerce columns to match target schema types
+/// Coerce columns to match target shape types
 pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
@@ -109,14 +109,14 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 	Ok(Columns::with_row_numbers(result_columns, row_numbers))
 }
 
-/// Coerce columns to match subscription schema types (simpler than Column)
+/// Coerce columns to match subscription shape types (simpler than Column)
 pub(crate) fn coerce_subscription_columns(columns: &Columns, target_columns: &[SubscriptionColumn]) -> Result<Columns> {
 	let row_count = columns.row_count();
 	if row_count == 0 {
 		return Ok(Columns::empty());
 	}
 
-	// If target columns are empty (schema-less subscription),
+	// If target columns are empty (shape-less subscription),
 	// use the input columns as-is (inferred from query)
 	if target_columns.is_empty() {
 		return Ok(columns.clone());
@@ -175,14 +175,14 @@ pub(crate) fn coerce_subscription_columns(columns: &Columns, target_columns: &[S
 pub(crate) fn encode_row_at_index(
 	columns: &Columns,
 	row_idx: usize,
-	schema: &RowSchema,
+	shape: &RowShape,
 	row_number: RowNumber,
 ) -> (RowNumber, EncodedRow) {
 	// Use row_number parameter instead of columns.row_numbers[row_idx]
 
-	// Collect values in SCHEMA FIELD ORDER by matching column names
-	// This ensures values are in the same order as schema expects
-	let values: Vec<Value> = schema
+	// Collect values in SHAPE FIELD ORDER by matching column names
+	// This ensures values are in the same order as shape expects
+	let values: Vec<Value> = shape
 		.field_names()
 		.map(|field_name| {
 			// Find column with matching name
@@ -196,8 +196,8 @@ pub(crate) fn encode_row_at_index(
 		.collect();
 
 	// Encode directly
-	let mut encoded = schema.allocate();
-	schema.set_values(&mut encoded, &values);
+	let mut encoded = shape.allocate();
+	shape.set_values(&mut encoded, &values);
 
 	(row_number, encoded)
 }

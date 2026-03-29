@@ -54,7 +54,7 @@ pub trait FFISourceMetadata {
 	const DESCRIPTION: &'static str;
 	/// Pull or Push mode
 	const MODE: SourceMode;
-	/// Schema of records this source produces
+	/// Shape of records this source produces
 	const OUTPUT_COLUMNS: &'static [OperatorColumn];
 }
 

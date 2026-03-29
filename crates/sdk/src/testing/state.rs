@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
 use reifydb_type::value::Value;
 
 use super::helpers::get_values;
@@ -67,35 +67,35 @@ impl TestStateStore {
 		self.data.iter().map(|(k, v)| (k, v)).collect()
 	}
 
-	/// Decode a value using a schema
-	pub fn decode_value(&self, key: &EncodedKey, schema: &RowSchema) -> Option<Vec<Value>> {
-		self.get(key).map(|encoded| get_values(schema, encoded))
+	/// Decode a value using a shape
+	pub fn decode_value(&self, key: &EncodedKey, shape: &RowShape) -> Option<Vec<Value>> {
+		self.get(key).map(|encoded| get_values(shape, encoded))
 	}
 
-	/// Decode a value using a schema with field names
-	pub fn decode_named_value(&self, key: &EncodedKey, schema: &RowSchema) -> Option<HashMap<String, Value>> {
+	/// Decode a value using a shape with field names
+	pub fn decode_named_value(&self, key: &EncodedKey, shape: &RowShape) -> Option<HashMap<String, Value>> {
 		self.get(key).map(|encoded| {
-			let values = get_values(schema, encoded);
-			schema.field_names().map(|n| n.to_string()).zip(values).collect()
+			let values = get_values(shape, encoded);
+			shape.field_names().map(|n| n.to_string()).zip(values).collect()
 		})
 	}
 
-	/// Set a value using a schema
-	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], schema: &RowSchema) {
-		let mut encoded = schema.allocate();
-		schema.set_values(&mut encoded, values);
+	/// Set a value using a shape
+	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], shape: &RowShape) {
+		let mut encoded = shape.allocate();
+		shape.set_values(&mut encoded, values);
 		self.set(key, encoded);
 	}
 
-	/// Set a value using a schema with field names
-	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, schema: &RowSchema) {
-		let mut encoded = schema.allocate();
+	/// Set a value using a shape with field names
+	pub fn set_named_value(&mut self, key: EncodedKey, values: &HashMap<String, Value>, shape: &RowShape) {
+		let mut encoded = shape.allocate();
 
-		// Convert HashMap to ordered values based on schema field names
+		// Convert HashMap to ordered values based on shape field names
 		let ordered_values: Vec<Value> =
-			schema.field_names().map(|name| values.get(name).cloned().unwrap_or(Value::none())).collect();
+			shape.field_names().map(|name| values.get(name).cloned().unwrap_or(Value::none())).collect();
 
-		schema.set_values(&mut encoded, &ordered_values);
+		shape.set_values(&mut encoded, &ordered_values);
 		self.set(key, encoded);
 	}
 
@@ -110,8 +110,8 @@ impl TestStateStore {
 	}
 
 	/// Assert that a key has a specific value
-	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], schema: &RowSchema) {
-		let actual = self.decode_value(key, schema).expect(&format!("Key {:?} not found in state", key));
+	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], shape: &RowShape) {
+		let actual = self.decode_value(key, shape).expect(&format!("Key {:?} not found in state", key));
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
 	}
 
@@ -135,7 +135,7 @@ impl TestStateStore {
 pub mod tests {
 	use reifydb_core::encoded::{
 		row::EncodedRow,
-		schema::{RowSchema, RowSchemaField},
+		shape::{RowShape, RowShapeField},
 	};
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
@@ -161,24 +161,24 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_state_store_with_schema() {
+	fn test_state_store_with_shape() {
 		let mut store = TestStateStore::new();
-		let schema = RowSchema::testing(&[Type::Int8, Type::Utf8]);
+		let shape = RowShape::testing(&[Type::Int8, Type::Utf8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(42i64), Value::Utf8("hello".into())];
 
-		store.set_value(key.clone(), &values, &schema);
+		store.set_value(key.clone(), &values, &shape);
 
-		let decoded = store.decode_value(&key, &schema).unwrap();
+		let decoded = store.decode_value(&key, &shape).unwrap();
 		assert_eq!(decoded, values);
 	}
 
 	#[test]
-	fn test_state_store_with_named_schema() {
+	fn test_state_store_with_named_shape() {
 		let mut store = TestStateStore::new();
-		let schema = RowSchema::new(vec![
-			RowSchemaField::unconstrained("count", Type::Int8),
-			RowSchemaField::unconstrained("name", Type::Utf8),
+		let shape = RowShape::new(vec![
+			RowShapeField::unconstrained("count", Type::Int8),
+			RowShapeField::unconstrained("name", Type::Utf8),
 		]);
 		let key = encode_key("test_key");
 
@@ -186,9 +186,9 @@ pub mod tests {
 		values.insert("count".to_string(), Value::Int8(10i64));
 		values.insert("name".to_string(), Value::Utf8("test".into()));
 
-		store.set_named_value(key.clone(), &values, &schema);
+		store.set_named_value(key.clone(), &values, &shape);
 
-		let decoded = store.decode_named_value(&key, &schema).unwrap();
+		let decoded = store.decode_named_value(&key, &shape).unwrap();
 		assert_eq!(decoded, values);
 	}
 
@@ -216,14 +216,14 @@ pub mod tests {
 	#[test]
 	fn test_state_store_assertions() {
 		let mut store = TestStateStore::new();
-		let schema = RowSchema::testing(&[Type::Int8]);
+		let shape = RowShape::testing(&[Type::Int8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(100i64)];
 
-		store.set_value(key.clone(), &values, &schema);
+		store.set_value(key.clone(), &values, &shape);
 
 		store.assert_exists(&key);
-		store.assert_value(&key, &values, &schema);
+		store.assert_value(&key, &values, &shape);
 		store.assert_count(1);
 
 		let missing_key = encode_key("missing");

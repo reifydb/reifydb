@@ -6,13 +6,13 @@
 use reifydb_core::encoded::{
 	key::{EncodedKey, IntoEncodedKey},
 	row::EncodedRow,
-	schema::RowSchema,
+	shape::RowShape,
 };
 use reifydb_type::value::Value;
 
-/// Get all values from an encoded row using a schema
-pub fn get_values(schema: &RowSchema, row: &EncodedRow) -> Vec<Value> {
-	(0..schema.field_count()).map(|i| schema.get_value(row, i)).collect()
+/// Get all values from an encoded row using a shape
+pub fn get_values(shape: &RowShape, row: &EncodedRow) -> Vec<Value> {
+	(0..shape.field_count()).map(|i| shape.get_value(row, i)).collect()
 }
 
 /// Helper to encode a key using IntoEncodedKey

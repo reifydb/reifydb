@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::schema::{RowSchema, RowSchemaField},
+	encoded::shape::{RowShape, RowShapeField},
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -53,43 +53,43 @@ pub struct StandardVersionProvider {
 	current_block_end: Arc<AtomicU64>,
 	// Mutex for block boundary persistence (rare - 1 in BLOCK_SIZE operations)
 	block_persist_lock: Arc<Mutex<()>>,
-	schema: RowSchema,
+	shape: RowShape,
 }
 
 impl StandardVersionProvider {
 	pub fn new(single: SingleTransaction) -> Result<Self> {
-		let schema = RowSchema::new(vec![RowSchemaField::unconstrained("version", Type::Uint8)]);
+		let shape = RowShape::new(vec![RowShapeField::unconstrained("version", Type::Uint8)]);
 
 		// Load current version and allocate first block
-		let current_version = Self::load_current_version(&schema, &single)?;
+		let current_version = Self::load_current_version(&shape, &single)?;
 		let first_block = VersionBlock::new(current_version);
 
 		// Persist the end of first block to storage
-		Self::persist_version(&schema, &single, first_block.last)?;
+		Self::persist_version(&shape, &single, first_block.last)?;
 
 		Ok(Self {
 			single,
 			next_version: Arc::new(AtomicU64::new(first_block.current)),
 			current_block_end: Arc::new(AtomicU64::new(first_block.last)),
 			block_persist_lock: Arc::new(Mutex::new(())),
-			schema,
+			shape,
 		})
 	}
 
-	fn load_current_version(schema: &RowSchema, single: &SingleTransaction) -> Result<u64> {
+	fn load_current_version(shape: &RowShape, single: &SingleTransaction) -> Result<u64> {
 		let key = TransactionVersionKey {}.encode();
 
 		let mut tx = single.begin_query([&key])?;
 		match tx.get(&key)? {
 			None => Ok(0),
-			Some(single) => Ok(schema.get_u64(&single.row, 0)),
+			Some(single) => Ok(shape.get_u64(&single.row, 0)),
 		}
 	}
 
-	fn persist_version(schema: &RowSchema, single: &SingleTransaction, version: u64) -> Result<()> {
+	fn persist_version(shape: &RowShape, single: &SingleTransaction, version: u64) -> Result<()> {
 		let key = TransactionVersionKey {}.encode();
-		let mut row = schema.allocate();
-		schema.set_u64(&mut row, 0, version);
+		let mut row = shape.allocate();
+		shape.set_u64(&mut row, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
 		tx.set(&key, row)?;
@@ -125,7 +125,7 @@ impl VersionProvider for StandardVersionProvider {
 		let new_block_end = new_block_start + BLOCK_SIZE;
 
 		// Persist the new block boundary to storage
-		Self::persist_version(&self.schema, &self.single, new_block_end)?;
+		Self::persist_version(&self.shape, &self.single, new_block_end)?;
 
 		// Update the block end atomically
 		self.current_block_end.store(new_block_end, Ordering::SeqCst);
@@ -275,10 +275,10 @@ pub mod tests {
 		let single = SingleTransaction::testing();
 
 		// Manually set a version in storage
-		let schema = RowSchema::testing(&[Type::Uint8]);
+		let shape = RowShape::testing(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut row = schema.allocate();
-		schema.set_u64(&mut row, 0, 500u64);
+		let mut row = shape.allocate();
+		shape.set_u64(&mut row, 0, 500u64);
 
 		{
 			let mut tx = single.begin_command([&key]).unwrap();

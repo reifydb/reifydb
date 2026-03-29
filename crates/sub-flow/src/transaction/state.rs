@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		schema::RowSchema,
+		shape::RowShape,
 	},
 	interface::{catalog::flow::FlowNodeId, store::MultiVersionBatch},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
@@ -131,17 +131,12 @@ impl FlowTransaction {
 	}
 
 	/// Load state for a key, creating if not exists
-	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, schema), fields(
+	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, shape), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
 		created
 	))]
-	pub fn load_or_create_row(
-		&mut self,
-		id: FlowNodeId,
-		key: &EncodedKey,
-		schema: &RowSchema,
-	) -> Result<EncodedRow> {
+	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &EncodedKey, shape: &RowShape) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -149,7 +144,7 @@ impl FlowTransaction {
 			}
 			None => {
 				Span::current().record("created", true);
-				Ok(schema.allocate())
+				Ok(shape.allocate())
 			}
 		}
 	}
@@ -174,7 +169,7 @@ pub mod tests {
 		encoded::{
 			key::{EncodedKey, EncodedKeyRange},
 			row::EncodedRow,
-			schema::RowSchema,
+			shape::RowShape,
 		},
 		interface::catalog::flow::FlowNodeId,
 	};
@@ -399,13 +394,13 @@ pub mod tests {
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
-		let schema = RowSchema::testing(&[Type::Int8, Type::Float8]);
+		let shape = RowShape::testing(&[Type::Int8, Type::Float8]);
 
 		// Set existing state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
 		// load_or_create should return existing value
-		let result = txn.load_or_create_row(node_id, &key, &schema).unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &shape).unwrap();
 		assert_eq!(result, value);
 	}
 
@@ -417,12 +412,12 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
-		let schema = RowSchema::testing(&[Type::Int8, Type::Float8]);
+		let shape = RowShape::testing(&[Type::Int8, Type::Float8]);
 
 		// load_or_create should allocate new row
-		let result = txn.load_or_create_row(node_id, &key, &schema).unwrap();
+		let result = txn.load_or_create_row(node_id, &key, &shape).unwrap();
 
-		// Result should be a newly allocated row (schema.allocate())
+		// Result should be a newly allocated row (shape.allocate())
 		assert!(!result.is_empty());
 	}
 

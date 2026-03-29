@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{NamespaceId, SeriesId},
@@ -140,8 +140,8 @@ impl Catalog {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
 
-		let schema = RowSchema::from(series.columns.as_slice());
-		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
+		let shape = RowShape::from(series.columns.as_slice());
+		let _registered_shape = self.shape.get_or_create(shape.fields().to_vec())?;
 
 		Ok(series)
 	}

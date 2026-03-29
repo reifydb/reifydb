@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use reifydb_core::encoded::schema::RowSchema;
+use reifydb_core::encoded::shape::RowShape;
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -26,7 +26,7 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 #[test]
 fn test_uuid_uniqueness() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+	let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 
 	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
@@ -34,20 +34,20 @@ fn test_uuid_uniqueness() {
 	let mut identity_set = HashSet::new();
 
 	for _ in 0..1000 {
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate(&clock, &rng);
 		let identity = IdentityId::generate(&clock, &rng);
 
-		schema.set_uuid4(&mut row, 0, uuid4);
-		schema.set_uuid7(&mut row, 1, uuid7);
-		schema.set_identity_id(&mut row, 2, identity);
+		shape.set_uuid4(&mut row, 0, uuid4);
+		shape.set_uuid7(&mut row, 1, uuid7);
+		shape.set_identity_id(&mut row, 2, identity);
 
 		// Verify storage and retrieval
-		assert_eq!(schema.get_uuid4(&row, 0), uuid4);
-		assert_eq!(schema.get_uuid7(&row, 1), uuid7);
-		assert_eq!(schema.get_identity_id(&row, 2), identity);
+		assert_eq!(shape.get_uuid4(&row, 0), uuid4);
+		assert_eq!(shape.get_uuid7(&row, 1), uuid7);
+		assert_eq!(shape.get_identity_id(&row, 2), identity);
 
 		// Check uniqueness
 		assert!(uuid4_set.insert(uuid4), "UUID4 collision detected");
@@ -60,14 +60,14 @@ fn test_uuid_uniqueness() {
 #[test]
 fn test_uuid7_timestamp_ordering() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let schema = RowSchema::testing(&[Type::Uuid7]);
+	let shape = RowShape::testing(&[Type::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 		let uuid = Uuid7::generate(&clock, &rng);
-		schema.set_uuid7(&mut row, 0, uuid);
-		uuids.push(schema.get_uuid7(&row, 0));
+		shape.set_uuid7(&mut row, 0, uuid);
+		uuids.push(shape.get_uuid7(&row, 0));
 
 		// Advance clock to ensure timestamp progression
 		mock.advance_millis(1);

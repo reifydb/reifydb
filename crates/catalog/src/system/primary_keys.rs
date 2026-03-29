@@ -33,8 +33,8 @@ pub fn primary_keys() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: SCHEMA_ID,
-					name: "schema_id".to_string(),
+					id: SHAPE_ID,
+					name: "shape_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
 					index: ColumnIndex(1),

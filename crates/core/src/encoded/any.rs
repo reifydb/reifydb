@@ -18,7 +18,7 @@ use reifydb_type::value::{
 };
 use uuid::Uuid;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 /// Encodes an inner value to a `[type_byte][payload]` byte vector.
 ///
@@ -227,7 +227,7 @@ pub fn decode_value(bytes: &[u8]) -> Value {
 	}
 }
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_any(&self, row: &mut EncodedRow, index: usize, value: &Value) {
 		debug_assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), Type::Any);
 		let encoded = encode_value(value);
@@ -271,7 +271,7 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -282,15 +282,15 @@ pub mod tests {
 
 	#[test]
 	fn test_any_boolean() {
-		let schema = RowSchema::testing(&[Type::Any]);
-		let mut row = schema.allocate();
-		schema.set_any(&mut row, 0, &Value::Boolean(true));
-		assert_eq!(schema.get_any(&row, 0), Value::Boolean(true));
+		let shape = RowShape::testing(&[Type::Any]);
+		let mut row = shape.allocate();
+		shape.set_any(&mut row, 0, &Value::Boolean(true));
+		assert_eq!(shape.get_any(&row, 0), Value::Boolean(true));
 	}
 
 	#[test]
 	fn test_any_integers() {
-		let schema = RowSchema::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[Type::Any]);
 
 		let cases: &[Value] = &[
 			Value::Int1(-42),
@@ -306,98 +306,98 @@ pub mod tests {
 		];
 
 		for case in cases {
-			let mut row = schema.allocate();
-			schema.set_any(&mut row, 0, case);
-			assert_eq!(&schema.get_any(&row, 0), case);
+			let mut row = shape.allocate();
+			shape.set_any(&mut row, 0, case);
+			assert_eq!(&shape.get_any(&row, 0), case);
 		}
 	}
 
 	#[test]
 	fn test_any_floats() {
-		let schema = RowSchema::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[Type::Any]);
 
 		let f4 = Value::Float4(OrderedF32::try_from(3.14f32).unwrap());
-		let mut row = schema.allocate();
-		schema.set_any(&mut row, 0, &f4);
-		assert_eq!(schema.get_any(&row, 0), f4);
+		let mut row = shape.allocate();
+		shape.set_any(&mut row, 0, &f4);
+		assert_eq!(shape.get_any(&row, 0), f4);
 
 		let f8 = Value::Float8(OrderedF64::try_from(E).unwrap());
-		let mut row2 = schema.allocate();
-		schema.set_any(&mut row2, 0, &f8);
-		assert_eq!(schema.get_any(&row2, 0), f8);
+		let mut row2 = shape.allocate();
+		shape.set_any(&mut row2, 0, &f8);
+		assert_eq!(shape.get_any(&row2, 0), f8);
 	}
 
 	#[test]
 	fn test_any_temporal() {
-		let schema = RowSchema::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[Type::Any]);
 
 		let date = Value::Date(Date::new(2025, 7, 4).unwrap());
-		let mut row = schema.allocate();
-		schema.set_any(&mut row, 0, &date);
-		assert_eq!(schema.get_any(&row, 0), date);
+		let mut row = shape.allocate();
+		shape.set_any(&mut row, 0, &date);
+		assert_eq!(shape.get_any(&row, 0), date);
 
 		let dt = Value::DateTime(DateTime::new(2025, 1, 1, 12, 0, 0, 0).unwrap());
-		let mut row2 = schema.allocate();
-		schema.set_any(&mut row2, 0, &dt);
-		assert_eq!(schema.get_any(&row2, 0), dt);
+		let mut row2 = shape.allocate();
+		shape.set_any(&mut row2, 0, &dt);
+		assert_eq!(shape.get_any(&row2, 0), dt);
 
 		let t = Value::Time(Time::new(14, 30, 45, 123456789).unwrap());
-		let mut row3 = schema.allocate();
-		schema.set_any(&mut row3, 0, &t);
-		assert_eq!(schema.get_any(&row3, 0), t);
+		let mut row3 = shape.allocate();
+		shape.set_any(&mut row3, 0, &t);
+		assert_eq!(shape.get_any(&row3, 0), t);
 
 		let dur = Value::Duration(Duration::from_seconds(3600).unwrap());
-		let mut row4 = schema.allocate();
-		schema.set_any(&mut row4, 0, &dur);
-		assert_eq!(schema.get_any(&row4, 0), dur);
+		let mut row4 = shape.allocate();
+		shape.set_any(&mut row4, 0, &dur);
+		assert_eq!(shape.get_any(&row4, 0), dur);
 	}
 
 	#[test]
 	fn test_any_uuid() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[Type::Any]);
 
 		let u4 = Value::Uuid4(Uuid4::generate());
-		let mut row = schema.allocate();
-		schema.set_any(&mut row, 0, &u4);
-		assert_eq!(schema.get_any(&row, 0), u4);
+		let mut row = shape.allocate();
+		shape.set_any(&mut row, 0, &u4);
+		assert_eq!(shape.get_any(&row, 0), u4);
 
 		let u7 = Value::Uuid7(Uuid7::generate(&clock, &rng));
-		let mut row2 = schema.allocate();
-		schema.set_any(&mut row2, 0, &u7);
-		assert_eq!(schema.get_any(&row2, 0), u7);
+		let mut row2 = shape.allocate();
+		shape.set_any(&mut row2, 0, &u7);
+		assert_eq!(shape.get_any(&row2, 0), u7);
 	}
 
 	#[test]
 	fn test_any_utf8() {
-		let schema = RowSchema::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[Type::Any]);
 		let v = Value::Utf8("hello, world!".to_string());
-		let mut row = schema.allocate();
-		schema.set_any(&mut row, 0, &v);
-		assert_eq!(schema.get_any(&row, 0), v);
+		let mut row = shape.allocate();
+		shape.set_any(&mut row, 0, &v);
+		assert_eq!(shape.get_any(&row, 0), v);
 	}
 
 	#[test]
 	fn test_any_blob() {
-		let schema = RowSchema::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[Type::Any]);
 		let v = Value::Blob(Blob::from_slice(&[0xDE, 0xAD, 0xBE, 0xEF]));
-		let mut row = schema.allocate();
-		schema.set_any(&mut row, 0, &v);
-		assert_eq!(schema.get_any(&row, 0), v);
+		let mut row = shape.allocate();
+		shape.set_any(&mut row, 0, &v);
+		assert_eq!(shape.get_any(&row, 0), v);
 	}
 
 	#[test]
 	fn test_any_none_via_set_value() {
-		let schema = RowSchema::testing(&[Type::Any]);
-		let mut row = schema.allocate();
-		schema.set_value(&mut row, 0, &Value::none());
+		let shape = RowShape::testing(&[Type::Any]);
+		let mut row = shape.allocate();
+		shape.set_value(&mut row, 0, &Value::none());
 		assert!(!row.is_defined(0));
-		assert_eq!(schema.get_value(&row, 0), Value::none());
+		assert_eq!(shape.get_value(&row, 0), Value::none());
 	}
 
 	#[test]
 	fn test_any_roundtrip_via_set_get_value() {
-		let schema = RowSchema::testing(&[Type::Any]);
+		let shape = RowShape::testing(&[Type::Any]);
 
 		let cases: &[Value] = &[
 			Value::Boolean(false),
@@ -408,58 +408,58 @@ pub mod tests {
 
 		for inner in cases {
 			let wrapped = Value::any(inner.clone());
-			let mut row = schema.allocate();
-			schema.set_value(&mut row, 0, &wrapped);
-			let retrieved = schema.get_value(&row, 0);
+			let mut row = shape.allocate();
+			shape.set_value(&mut row, 0, &wrapped);
+			let retrieved = shape.get_value(&row, 0);
 			assert_eq!(retrieved, wrapped, "roundtrip failed for {:?}", inner);
 		}
 	}
 
 	#[test]
 	fn test_any_multiple_fields() {
-		let schema = RowSchema::testing(&[Type::Any, Type::Int4, Type::Any]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Any, Type::Int4, Type::Any]);
+		let mut row = shape.allocate();
 
-		schema.set_any(&mut row, 0, &Value::Utf8("first".to_string()));
-		schema.set_i32(&mut row, 1, 99);
-		schema.set_any(&mut row, 2, &Value::Boolean(true));
+		shape.set_any(&mut row, 0, &Value::Utf8("first".to_string()));
+		shape.set_i32(&mut row, 1, 99);
+		shape.set_any(&mut row, 2, &Value::Boolean(true));
 
-		assert_eq!(schema.get_any(&row, 0), Value::Utf8("first".to_string()));
-		assert_eq!(schema.get_i32(&row, 1), 99);
-		assert_eq!(schema.get_any(&row, 2), Value::Boolean(true));
+		assert_eq!(shape.get_any(&row, 0), Value::Utf8("first".to_string()));
+		assert_eq!(shape.get_i32(&row, 1), 99);
+		assert_eq!(shape.get_any(&row, 2), Value::Boolean(true));
 	}
 
 	#[test]
 	fn test_update_any() {
-		let schema = RowSchema::testing(&[Type::Any]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Any]);
+		let mut row = shape.allocate();
 
-		schema.set_any(&mut row, 0, &Value::Int4(42));
-		assert_eq!(schema.get_any(&row, 0), Value::Int4(42));
+		shape.set_any(&mut row, 0, &Value::Int4(42));
+		assert_eq!(shape.get_any(&row, 0), Value::Int4(42));
 
 		// Overwrite with a different type
-		schema.set_any(&mut row, 0, &Value::Utf8("hello".to_string()));
-		assert_eq!(schema.get_any(&row, 0), Value::Utf8("hello".to_string()));
+		shape.set_any(&mut row, 0, &Value::Utf8("hello".to_string()));
+		assert_eq!(shape.get_any(&row, 0), Value::Utf8("hello".to_string()));
 
 		// Overwrite again with boolean
-		schema.set_any(&mut row, 0, &Value::Boolean(true));
-		assert_eq!(schema.get_any(&row, 0), Value::Boolean(true));
+		shape.set_any(&mut row, 0, &Value::Boolean(true));
+		assert_eq!(shape.get_any(&row, 0), Value::Boolean(true));
 	}
 
 	#[test]
 	fn test_update_any_with_other_dynamic_fields() {
-		let schema = RowSchema::testing(&[Type::Any, Type::Utf8, Type::Any]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Any, Type::Utf8, Type::Any]);
+		let mut row = shape.allocate();
 
-		schema.set_any(&mut row, 0, &Value::Int4(1));
-		schema.set_utf8(&mut row, 1, "middle");
-		schema.set_any(&mut row, 2, &Value::Boolean(false));
+		shape.set_any(&mut row, 0, &Value::Int4(1));
+		shape.set_utf8(&mut row, 1, "middle");
+		shape.set_any(&mut row, 2, &Value::Boolean(false));
 
 		// Update first any with a larger value
-		schema.set_any(&mut row, 0, &Value::Utf8("a long string value".to_string()));
+		shape.set_any(&mut row, 0, &Value::Utf8("a long string value".to_string()));
 
-		assert_eq!(schema.get_any(&row, 0), Value::Utf8("a long string value".to_string()));
-		assert_eq!(schema.get_utf8(&row, 1), "middle");
-		assert_eq!(schema.get_any(&row, 2), Value::Boolean(false));
+		assert_eq!(shape.get_any(&row, 0), Value::Utf8("a long string value".to_string()));
+		assert_eq!(shape.get_utf8(&row, 1), "middle");
+		assert_eq!(shape.get_any(&row, 2), Value::Boolean(false));
 	}
 }

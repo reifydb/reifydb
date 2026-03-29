@@ -12,7 +12,7 @@ use reifydb_core::{
 		transaction::PostCommitEvent,
 	},
 	interface::{
-		catalog::schema::SchemaId,
+		catalog::shape::ShapeId,
 		cdc::{Cdc, SystemChange},
 		change::{Change, Diff},
 		store::MultiVersionGetPrevious,
@@ -84,9 +84,9 @@ where
 	}
 
 	fn process(&self, version: CommitVersion, timestamp: u64, deltas: Vec<Delta>) {
-		let mut diffs_by_object: BTreeMap<SchemaId, Vec<Diff>> = BTreeMap::new();
+		let mut diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
-		let registry = self.host.row_schema_registry();
+		let registry = self.host.row_shape_registry();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -103,7 +103,7 @@ where
 				if kind == KeyKind::Row {
 					// Try series key first (more specific encoding)
 					if let Some(series_key) = SeriesRowKey::decode(&key) {
-						let object = SchemaId::Series(series_key.series);
+						let shape = ShapeId::Series(series_key.series);
 						let row_number = RowNumber::from(series_key.sequence);
 						let decoded = match &delta {
 							Delta::Set {
@@ -147,7 +147,7 @@ where
 							_ => None,
 						};
 						if let Some(diff) = decoded {
-							diffs_by_object.entry(object).or_default().push(diff);
+							diffs_by_shape.entry(shape).or_default().push(diff);
 							// Also keep as SystemChange for replication
 							push_raw_system_change(
 								&delta,
@@ -204,7 +204,7 @@ where
 						};
 
 						if let Some(diff) = decoded {
-							diffs_by_object.entry(row_key.object).or_default().push(diff);
+							diffs_by_shape.entry(row_key.shape).or_default().push(diff);
 							// Also keep as SystemChange for replication
 							push_raw_system_change(
 								&delta,
@@ -271,11 +271,11 @@ where
 			system_changes.push(change);
 		}
 
-		// Merge diffs by (SchemaId, DiffKind) into batched Changes
+		// Merge diffs by (ShapeId, DiffKind) into batched Changes
 		let mut changes: Vec<Change> = Vec::new();
-		for (object, diffs) in diffs_by_object {
+		for (shape, diffs) in diffs_by_shape {
 			let merged = merge_diffs(diffs);
-			changes.push(Change::from_schema(object, version, merged));
+			changes.push(Change::from_shape(shape, version, merged));
 		}
 
 		if !changes.is_empty() || !system_changes.is_empty() {
@@ -566,7 +566,7 @@ where
 pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
-	use reifydb_catalog::schema::RowSchemaRegistry;
+	use reifydb_catalog::shape::RowShapeRegistry;
 	use reifydb_core::{
 		config::SystemConfig,
 		encoded::{key::EncodedKey, row::EncodedRow},
@@ -605,7 +605,7 @@ pub mod tests {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		row_schema_registry: RowSchemaRegistry,
+		row_shape_registry: RowShapeRegistry,
 	}
 
 	impl TestCdcHost {
@@ -631,7 +631,7 @@ pub mod tests {
 				multi,
 				single,
 				event_bus,
-				row_schema_registry: RowSchemaRegistry::testing(),
+				row_shape_registry: RowShapeRegistry::testing(),
 			}
 		}
 	}
@@ -663,8 +663,8 @@ pub mod tests {
 			true
 		}
 
-		fn row_schema_registry(&self) -> &RowSchemaRegistry {
-			&self.row_schema_registry
+		fn row_shape_registry(&self) -> &RowShapeRegistry {
+			&self.row_shape_registry
 		}
 	}
 

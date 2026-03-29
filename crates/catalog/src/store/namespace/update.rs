@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::namespace::schema::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SCHEMA},
+	store::namespace::shape::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SHAPE},
 };
 
 impl CatalogStore {
@@ -17,14 +17,14 @@ impl CatalogStore {
 	) -> Result<()> {
 		let existing = Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?;
 
-		let mut row = SCHEMA.allocate();
-		SCHEMA.set_u64(&mut row, ID, existing.id().0);
-		SCHEMA.set_utf8(&mut row, NAME, existing.name());
-		SCHEMA.set_u64(&mut row, PARENT_ID, existing.parent_id().0);
+		let mut row = SHAPE.allocate();
+		SHAPE.set_u64(&mut row, ID, existing.id().0);
+		SHAPE.set_utf8(&mut row, NAME, existing.name());
+		SHAPE.set_u64(&mut row, PARENT_ID, existing.parent_id().0);
 		if let Some(ref grpc) = grpc {
-			SCHEMA.set_utf8(&mut row, GRPC, grpc);
+			SHAPE.set_utf8(&mut row, GRPC, grpc);
 		}
-		SCHEMA.set_utf8(&mut row, LOCAL_NAME, existing.local_name());
+		SHAPE.set_utf8(&mut row, LOCAL_NAME, existing.local_name());
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 		Ok(())

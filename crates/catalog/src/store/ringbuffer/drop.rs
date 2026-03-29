@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::schema::drop::drop_schema_metadata};
+use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_ringbuffer(txn: &mut AdminTransaction, ringbuffer: RingBufferId) -> Result<()> {
@@ -26,7 +26,7 @@ impl CatalogStore {
 		};
 
 		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
-		drop_schema_metadata(txn, ringbuffer.into(), pk_id)?;
+		drop_shape_metadata(txn, ringbuffer.into(), pk_id)?;
 
 		// Remove the ringbuffer metadata
 		txn.remove(&RingBufferMetadataKey::encoded(ringbuffer))?;
@@ -41,7 +41,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{id::RingBufferId, schema::SchemaId},
+		interface::catalog::{id::RingBufferId, shape::ShapeId},
 		retention::RetentionPolicy,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
@@ -54,7 +54,7 @@ pub mod tests {
 	use crate::{
 		CatalogStore,
 		store::{
-			retention_policy::create::create_schema_retention_policy,
+			retention_policy::create::create_shape_retention_policy,
 			ringbuffer::create::RingBufferColumnToCreate,
 		},
 		test_utils::{create_ringbuffer, ensure_test_namespace, ensure_test_ringbuffer},
@@ -119,7 +119,7 @@ pub mod tests {
 		);
 
 		// Add retention policy
-		create_schema_retention_policy(&mut txn, SchemaId::RingBuffer(rb.id), &RetentionPolicy::KeepForever)
+		create_shape_retention_policy(&mut txn, ShapeId::RingBuffer(rb.id), &RetentionPolicy::KeepForever)
 			.unwrap();
 
 		// Verify columns exist before drop
@@ -127,9 +127,9 @@ pub mod tests {
 		assert_eq!(columns.len(), 2);
 
 		// Verify retention policy exists before drop
-		let policy = CatalogStore::find_schema_retention_policy(
+		let policy = CatalogStore::find_shape_retention_policy(
 			&mut Transaction::Admin(&mut txn),
-			SchemaId::RingBuffer(rb.id),
+			ShapeId::RingBuffer(rb.id),
 		)
 		.unwrap();
 		assert!(policy.is_some());
@@ -142,9 +142,9 @@ pub mod tests {
 		assert!(columns.is_empty());
 
 		// Verify retention policy is cleaned up
-		let policy = CatalogStore::find_schema_retention_policy(
+		let policy = CatalogStore::find_shape_retention_policy(
 			&mut Transaction::Admin(&mut txn),
-			SchemaId::RingBuffer(rb.id),
+			ShapeId::RingBuffer(rb.id),
 		)
 		.unwrap();
 		assert!(policy.is_none());

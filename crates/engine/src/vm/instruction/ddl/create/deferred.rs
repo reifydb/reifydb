@@ -180,14 +180,14 @@ pub mod tests {
 	use reifydb_type::{params::Params, value::Value};
 
 	use crate::{
-		test_harness::create_test_admin_transaction_with_internal_schema,
+		test_harness::create_test_admin_transaction_with_internal_shape,
 		vm::{Admin, executor::Executor},
 	};
 
 	#[test]
 	fn test_create_view() {
 		let instance = Executor::testing();
-		let mut txn = create_test_admin_transaction_with_internal_schema();
+		let mut txn = create_test_admin_transaction_with_internal_shape();
 
 		instance.admin(
 			&mut txn,
@@ -237,9 +237,9 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_same_view_in_different_schema() {
+	fn test_create_same_view_in_different_shape() {
 		let instance = Executor::testing();
-		let mut txn = create_test_admin_transaction_with_internal_schema();
+		let mut txn = create_test_admin_transaction_with_internal_shape();
 
 		instance.admin(
 			&mut txn,
@@ -252,7 +252,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE NAMESPACE another_schema",
+				rql: "CREATE NAMESPACE another_shape",
 				params: Params::default(),
 			},
 		)
@@ -269,7 +269,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE TABLE another_schema::src { id: Int4 }",
+				rql: "CREATE TABLE another_shape::src { id: Int4 }",
 				params: Params::default(),
 			},
 		)
@@ -295,14 +295,14 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DEFERRED VIEW another_schema::test_view { id: Int4 } AS { FROM another_schema::src }",
+					rql: "CREATE DEFERRED VIEW another_shape::test_view { id: Int4 } AS { FROM another_shape::src }",
 					params: Params::default(),
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1031));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}

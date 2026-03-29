@@ -55,7 +55,7 @@ pub enum SelectColumn {
 pub enum FromClause {
 	Table {
 		name: String,
-		schema: Option<String>,
+		shape: Option<String>,
 		alias: Option<String>,
 	},
 	Subquery(Box<SelectStatement>),
@@ -91,7 +91,7 @@ pub enum OrderDirection {
 #[derive(Debug, Clone)]
 pub struct InsertStatement {
 	pub table: String,
-	pub schema: Option<String>,
+	pub shape: Option<String>,
 	pub columns: Vec<String>,
 	pub source: InsertSource,
 }
@@ -105,7 +105,7 @@ pub enum InsertSource {
 #[derive(Debug, Clone)]
 pub struct UpdateStatement {
 	pub table: String,
-	pub schema: Option<String>,
+	pub shape: Option<String>,
 	pub assignments: Vec<(String, Expr)>,
 	pub where_clause: Option<Expr>,
 }
@@ -113,14 +113,14 @@ pub struct UpdateStatement {
 #[derive(Debug, Clone)]
 pub struct DeleteStatement {
 	pub table: String,
-	pub schema: Option<String>,
+	pub shape: Option<String>,
 	pub where_clause: Option<Expr>,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateTableStatement {
 	pub table: String,
-	pub schema: Option<String>,
+	pub shape: Option<String>,
 	pub columns: Vec<Column>,
 	pub primary_key: Vec<String>,
 	pub if_not_exists: bool,
@@ -131,7 +131,7 @@ pub struct CreateIndexStatement {
 	pub unique: bool,
 	pub index_name: String,
 	pub table: String,
-	pub schema: Option<String>,
+	pub shape: Option<String>,
 	pub columns: Vec<IndexColumn>,
 }
 
@@ -144,7 +144,7 @@ pub struct IndexColumn {
 #[derive(Debug, Clone)]
 pub struct DropTableStatement {
 	pub table: String,
-	pub schema: Option<String>,
+	pub shape: Option<String>,
 	pub if_exists: bool,
 }
 

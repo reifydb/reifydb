@@ -83,7 +83,7 @@ pub trait WithInterceptorBuilder: Sized {
 ///
 /// Use `.table(spec)`, `.ringbuffer(spec)`, or `.view(spec)` to select data operations,
 /// or `.table(spec)`, `.view(spec)`, `.ringbuffer(spec)`, `.namespace(spec)`
-/// for schema lifecycle operations.
+/// for shape lifecycle operations.
 pub struct InterceptBuilder<B: WithInterceptorBuilder> {
 	builder: B,
 }

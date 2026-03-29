@@ -881,7 +881,7 @@ impl From<RqlError> for Error {
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
-	SourceNotFound(SchemaNotFoundError),
+	SourceNotFound(ShapeNotFoundError),
 	ColumnNotFound {
 		column: String,
 	},
@@ -1005,15 +1005,15 @@ impl From<IdentifierError> for Error {
 	}
 }
 
-/// Schema (table/view) not found error
+/// Shape (table/view) not found error
 #[derive(Debug, Clone)]
-pub struct SchemaNotFoundError {
+pub struct ShapeNotFoundError {
 	pub namespace: String,
 	pub name: String,
 	pub fragment: Fragment,
 }
 
-impl fmt::Display for SchemaNotFoundError {
+impl fmt::Display for ShapeNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if self.namespace == "public" || self.namespace.is_empty() {
 			write!(f, "Table or view '{}' does not exist", self.name)
@@ -1023,7 +1023,7 @@ impl fmt::Display for SchemaNotFoundError {
 	}
 }
 
-impl SchemaNotFoundError {
+impl ShapeNotFoundError {
 	/// Create error with additional context about what type was expected
 	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
 		// Could extend this to include expected type in the error
@@ -1089,19 +1089,19 @@ pub mod tests {
 
 	#[test]
 	fn test_source_not_found_display() {
-		let err = SchemaNotFoundError {
+		let err = ShapeNotFoundError {
 			namespace: "public".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
-		let err = SchemaNotFoundError {
-			namespace: "myschema".to_string(),
+		let err = ShapeNotFoundError {
+			namespace: "myshape".to_string(),
 			name: "users".to_string(),
 			fragment: Fragment::None,
 		};
-		assert_eq!(err.to_string(), "Table or view 'myschema::users' does not exist");
+		assert_eq!(err.to_string(), "Table or view 'myshape::users' does not exist");
 	}
 
 	#[test]

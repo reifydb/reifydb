@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::granted_role::schema::granted_role};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::granted_role::shape::granted_role};
 
 pub(super) struct GrantedRoleApplier;
 
@@ -32,8 +32,8 @@ impl CatalogChangeApplier for GrantedRoleApplier {
 }
 
 fn decode_granted_role(row: &EncodedRow) -> GrantedRole {
-	let identity = granted_role::SCHEMA.get_identity_id(row, granted_role::IDENTITY);
-	let role_id = granted_role::SCHEMA.get_u64(row, granted_role::ROLE_ID);
+	let identity = granted_role::SHAPE.get_identity_id(row, granted_role::IDENTITY);
+	let role_id = granted_role::SHAPE.get_u64(row, granted_role::ROLE_ID);
 
 	GrantedRole {
 		identity,

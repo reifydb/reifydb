@@ -94,7 +94,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE NAMESPACE my_schema",
+					rql: "CREATE NAMESPACE my_shape",
 					params: Params::default(),
 				},
 			)
@@ -102,7 +102,7 @@ pub mod tests {
 		let frame = &frames[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("my_schema".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 
 		// Creating the same namespace again with `IF NOT EXISTS`
@@ -111,14 +111,14 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE NAMESPACE IF NOT EXISTS my_schema",
+					rql: "CREATE NAMESPACE IF NOT EXISTS my_shape",
 					params: Params::default(),
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("my_schema".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
 
 		// Creating the same namespace again without `IF NOT EXISTS`
@@ -127,7 +127,7 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE NAMESPACE my_schema",
+					rql: "CREATE NAMESPACE my_shape",
 					params: Params::default(),
 				},
 			)

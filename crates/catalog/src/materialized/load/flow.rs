@@ -17,7 +17,7 @@ use reifydb_type::value::duration::Duration;
 use super::MaterializedCatalog;
 use crate::{
 	Result,
-	store::flow::schema::{
+	store::flow::shape::{
 		flow,
 		flow::{ID, NAME, NAMESPACE, STATUS, TICK_NANOS},
 	},
@@ -39,11 +39,11 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 
 fn convert_flow(multi: MultiVersionRow) -> Flow {
 	let row = multi.row;
-	let id = FlowId(flow::SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(flow::SCHEMA.get_u64(&row, NAMESPACE));
-	let name = flow::SCHEMA.get_utf8(&row, NAME).to_string();
-	let status = FlowStatus::from_u8(flow::SCHEMA.get_u8(&row, STATUS));
-	let tick_nanos = flow::SCHEMA.get_u64(&row, TICK_NANOS);
+	let id = FlowId(flow::SHAPE.get_u64(&row, ID));
+	let namespace = NamespaceId(flow::SHAPE.get_u64(&row, NAMESPACE));
+	let name = flow::SHAPE.get_utf8(&row, NAME).to_string();
+	let status = FlowStatus::from_u8(flow::SHAPE.get_u8(&row, STATUS));
+	let tick_nanos = flow::SHAPE.get_u64(&row, TICK_NANOS);
 	let tick = if tick_nanos > 0 {
 		Some(Duration::from_nanoseconds(tick_nanos as i64).unwrap())
 	} else {

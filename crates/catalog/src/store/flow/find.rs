@@ -13,7 +13,7 @@ use reifydb_type::value::duration::Duration;
 
 use crate::{
 	CatalogStore, Result,
-	store::flow::schema::{flow, flow_namespace},
+	store::flow::shape::{flow, flow_namespace},
 };
 
 impl CatalogStore {
@@ -23,13 +23,13 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = FlowId(flow::SCHEMA.get_u64(&row, flow::ID));
-		let namespace = NamespaceId(flow::SCHEMA.get_u64(&row, flow::NAMESPACE));
-		let name = flow::SCHEMA.get_utf8(&row, flow::NAME).to_string();
-		let status_u8 = flow::SCHEMA.get_u8(&row, flow::STATUS);
+		let id = FlowId(flow::SHAPE.get_u64(&row, flow::ID));
+		let namespace = NamespaceId(flow::SHAPE.get_u64(&row, flow::NAMESPACE));
+		let name = flow::SHAPE.get_utf8(&row, flow::NAME).to_string();
+		let status_u8 = flow::SHAPE.get_u8(&row, flow::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
-		let tick_nanos = flow::SCHEMA.get_u64(&row, flow::TICK_NANOS);
+		let tick_nanos = flow::SHAPE.get_u64(&row, flow::TICK_NANOS);
 		let tick = if tick_nanos > 0 {
 			Some(Duration::from_nanoseconds(tick_nanos as i64)?)
 		} else {
@@ -57,9 +57,9 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.row;
-			let flow_name = flow_namespace::SCHEMA.get_utf8(row, flow_namespace::NAME);
+			let flow_name = flow_namespace::SHAPE.get_utf8(row, flow_namespace::NAME);
 			if name == flow_name {
-				found_flow = Some(FlowId(flow_namespace::SCHEMA.get_u64(row, flow_namespace::ID)));
+				found_flow = Some(FlowId(flow_namespace::SHAPE.get_u64(row, flow_namespace::ID)));
 				break;
 			}
 		}

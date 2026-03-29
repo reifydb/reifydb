@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	internal,
 	retention::RetentionPolicy,
 };
@@ -12,16 +12,13 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Get a retention policy for a schema (table, view, or ring buffer)
+	/// Get a retention policy for a shape (table, view, or ring buffer)
 	/// Returns an error if no retention policy is set
-	pub(crate) fn get_schema_retention_policy(
-		rx: &mut Transaction<'_>,
-		schema: SchemaId,
-	) -> Result<RetentionPolicy> {
-		Self::find_schema_retention_policy(rx, schema)?.ok_or_else(|| {
+	pub(crate) fn get_shape_retention_policy(rx: &mut Transaction<'_>, shape: ShapeId) -> Result<RetentionPolicy> {
+		Self::find_shape_retention_policy(rx, shape)?.ok_or_else(|| {
 			Error(internal!(
-				"Retention policy for schema {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-				schema
+				"Retention policy for shape {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				shape
 			))
 		})
 	}
@@ -52,30 +49,30 @@ pub mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_schema_retention_policy,
+		_create_operator_retention_policy, create_shape_retention_policy,
 	};
 
 	#[test]
-	fn test_get_schema_retention_policy_exists() {
+	fn test_get_shape_retention_policy_exists() {
 		let mut txn = create_test_admin_transaction();
-		let schema = SchemaId::View(ViewId(100));
+		let shape = ShapeId::View(ViewId(100));
 
 		let policy = RetentionPolicy::KeepForever;
 
-		create_schema_retention_policy(&mut txn, schema, &policy).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy).unwrap();
 
 		let retrieved =
-			CatalogStore::get_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema).unwrap();
+			CatalogStore::get_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape).unwrap();
 		assert_eq!(retrieved, policy);
 	}
 
 	#[test]
-	fn test_get_schema_retention_policy_not_exists() {
+	fn test_get_shape_retention_policy_not_exists() {
 		let mut txn = create_test_admin_transaction();
-		let schema = SchemaId::RingBuffer(RingBufferId(9999));
+		let shape = ShapeId::RingBuffer(RingBufferId(9999));
 
-		let err = CatalogStore::get_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema)
-			.unwrap_err();
+		let err =
+			CatalogStore::get_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("Retention policy"));

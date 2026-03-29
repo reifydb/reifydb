@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::role::schema::role};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::role::shape::role};
 
 pub(super) struct RoleApplier;
 
@@ -32,8 +32,8 @@ impl CatalogChangeApplier for RoleApplier {
 }
 
 fn decode_role(row: &EncodedRow) -> Role {
-	let id = role::SCHEMA.get_u64(row, role::ID);
-	let name = role::SCHEMA.get_utf8(row, role::NAME).to_string();
+	let id = role::SHAPE.get_u64(row, role::ID);
+	let name = role::SHAPE.get_utf8(row, role::NAME).to_string();
 
 	Role {
 		id,

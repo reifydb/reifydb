@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::policy::PolicyTargetType,
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	internal_error,
 	value::column::columns::Columns,
@@ -28,7 +28,7 @@ use reifydb_type::{
 use super::{
 	coerce::coerce_value_to_column_type,
 	returning::{decode_rows_to_columns, evaluate_returning},
-	schema::get_or_create_ringbuffer_schema,
+	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
 	Result,
@@ -65,8 +65,8 @@ pub(crate) fn update_ringbuffer<'a>(
 	// Load all partitions — unified across global and partitioned
 	let partitions = services.catalog.list_ringbuffer_partitions(txn, &ringbuffer)?;
 
-	// Get or create schema with proper field names and constraints
-	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
+	// Get or create shape with proper field names and constraints
+	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
 
 	// Create resolved source for the ring buffer
 	let namespace_ident = Fragment::internal(namespace.name());
@@ -74,7 +74,7 @@ pub(crate) fn update_ringbuffer<'a>(
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedShape::RingBuffer(resolved_rb));
 
 	// Create execution context
 	let context = QueryContext {
@@ -128,7 +128,7 @@ pub(crate) fn update_ringbuffer<'a>(
 			}
 
 			for row_idx in 0..row_count {
-				let mut row = schema.allocate();
+				let mut row = shape.allocate();
 
 				// For each ring buffer column, find if it exists in the input columns
 				for (rb_idx, rb_column) in ringbuffer.columns.iter().enumerate() {
@@ -183,7 +183,7 @@ pub(crate) fn update_ringbuffer<'a>(
 						value
 					};
 
-					schema.set_value(&mut row, rb_idx, &value);
+					shape.set_value(&mut row, rb_idx, &value);
 				}
 
 				// Update the encoded using the existing RowNumber from the columns
@@ -212,7 +212,7 @@ pub(crate) fn update_ringbuffer<'a>(
 
 	// If RETURNING clause is present, evaluate expressions against updated rows
 	if let Some(returning_exprs) = &plan.returning {
-		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 

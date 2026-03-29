@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use postcard::to_stdvec;
 use reifydb_core::{
 	common::JoinType,
-	encoded::{key::EncodedKey, schema::RowSchema},
+	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
@@ -66,7 +66,7 @@ pub struct JoinOperator {
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
-	schema: RowSchema,
+	shape: RowShape,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
 	functions: Functions,
@@ -87,7 +87,7 @@ impl JoinOperator {
 		executor: Executor,
 	) -> Self {
 		let strategy = JoinStrategy::from(join_type);
-		let schema = Self::state_schema();
+		let shape = Self::state_shape();
 		let row_number_provider = RowNumberProvider::new(node);
 
 		// Create compile context with empty symbol table
@@ -125,7 +125,7 @@ impl JoinOperator {
 			compiled_left_exprs,
 			compiled_right_exprs,
 			alias,
-			schema,
+			shape,
 			row_number_provider,
 			executor,
 			functions,
@@ -133,8 +133,8 @@ impl JoinOperator {
 		}
 	}
 
-	fn state_schema() -> RowSchema {
-		RowSchema::testing(&[Type::Blob])
+	fn state_shape() -> RowShape {
+		RowShape::testing(&[Type::Blob])
 	}
 
 	/// Compute join keys for all rows in Columns
@@ -223,12 +223,12 @@ impl JoinOperator {
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
-		// Get the right side schema
-		let right_schema = self.right_parent.pull(txn, &[])?;
+		// Get the right side shape
+		let right_shape = self.right_parent.pull(txn, &[])?;
 
 		// Build using JoinedColumnsBuilder
-		let builder = JoinedColumnsBuilder::new(left, &right_schema, &self.alias);
-		Ok(builder.unmatched_left(result_row_number, left, left_idx, &right_schema))
+		let builder = JoinedColumnsBuilder::new(left, &right_shape, &self.alias);
+		Ok(builder.unmatched_left(result_row_number, left, left_idx, &right_shape))
 	}
 
 	/// Generate columns for multiple unmatched left join results.
@@ -259,12 +259,12 @@ impl JoinOperator {
 			self.row_number_provider.get_or_create_row_numbers(txn, composite_keys.iter())?;
 		let row_numbers: Vec<RowNumber> = row_numbers_with_flags.iter().map(|(rn, _)| *rn).collect();
 
-		// Get the right side schema
-		let right_schema = self.right_parent.pull(txn, &[])?;
+		// Get the right side shape
+		let right_shape = self.right_parent.pull(txn, &[])?;
 
 		// Build using JoinedColumnsBuilder
-		let builder = JoinedColumnsBuilder::new(left, &right_schema, &self.alias);
-		Ok(builder.unmatched_left_batch(&row_numbers, left, left_indices, &right_schema))
+		let builder = JoinedColumnsBuilder::new(left, &right_shape, &self.alias);
+		Ok(builder.unmatched_left_batch(&row_numbers, left, left_indices, &right_shape))
 	}
 
 	/// Clean up all join results for a given left row
@@ -458,8 +458,8 @@ impl JoinOperator {
 impl RawStatefulOperator for JoinOperator {}
 
 impl SingleStateful for JoinOperator {
-	fn layout(&self) -> RowSchema {
-		self.schema.clone()
+	fn layout(&self) -> RowShape {
+		self.shape.clone()
 	}
 }
 
@@ -648,7 +648,7 @@ impl Operator for JoinOperator {
 	}
 
 	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's
-	// schema to create the combined layout To make that work it requires schema / layout information of the right
+	// shape to create the combined layout To make that work it requires shape / layout information of the right
 	// side this should unlock the test:
 	// testsuite/flow/tests/scripts/backfill/18_multiple_joins_same_table.skip
 	// testsuite/flow/tests/scripts/backfill/19_complex_multi_table.skip
@@ -686,9 +686,9 @@ impl Operator for JoinOperator {
 				}
 			} else {
 				// Unmatched left row - use builder.unmatched_left
-				let right_schema = self.right_parent.pull(txn, &[])?;
-				let builder = JoinedColumnsBuilder::new(&left_cols, &right_schema, &self.alias);
-				let mut unmatched = builder.unmatched_left(row_number, &left_cols, 0, &right_schema);
+				let right_shape = self.right_parent.pull(txn, &[])?;
+				let builder = JoinedColumnsBuilder::new(&left_cols, &right_shape, &self.alias);
+				let mut unmatched = builder.unmatched_left(row_number, &left_cols, 0, &right_shape);
 				// Override the row number to match what was requested
 				unmatched.row_numbers = CowVec::new(vec![row_number]);
 				found_columns.push(unmatched);
@@ -697,19 +697,19 @@ impl Operator for JoinOperator {
 
 		// Combine found rows
 		if found_columns.is_empty() {
-			// Get schema from both parents and combine them
-			let left_schema = self.left_parent.pull(txn, &[])?;
-			let right_schema = self.right_parent.pull(txn, &[])?;
+			// Get shape from both parents and combine them
+			let left_shape = self.left_parent.pull(txn, &[])?;
+			let right_shape = self.right_parent.pull(txn, &[])?;
 
 			// Use JoinedColumnsBuilder to get properly aliased names
-			let builder = JoinedColumnsBuilder::new(&left_schema, &right_schema, &self.alias);
+			let builder = JoinedColumnsBuilder::new(&left_shape, &right_shape, &self.alias);
 			let right_names = builder.right_column_names();
 
 			// Add left columns as-is
-			let mut all_columns: Vec<Column> = left_schema.columns.into_iter().collect();
+			let mut all_columns: Vec<Column> = left_shape.columns.into_iter().collect();
 
 			// Add right columns with pre-computed aliased names
-			for (col, aliased_name) in right_schema.columns.into_iter().zip(right_names.iter()) {
+			for (col, aliased_name) in right_shape.columns.into_iter().zip(right_names.iter()) {
 				all_columns.push(Column {
 					name: Fragment::internal(aliased_name),
 					data: col.data,
@@ -727,7 +727,7 @@ impl Operator for JoinOperator {
 			for cols in found_columns {
 				result.row_numbers.make_mut().extend(cols.row_numbers.iter().copied());
 				for (i, col) in cols.columns.into_iter().enumerate() {
-					result.columns.make_mut()[i].extend(col).expect("schema mismatch in join pull");
+					result.columns.make_mut()[i].extend(col).expect("shape mismatch in join pull");
 				}
 			}
 			Ok(result)

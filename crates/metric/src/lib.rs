@@ -34,7 +34,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use reifydb_core::interface::catalog::{flow::FlowNodeId, schema::SchemaId};
+use reifydb_core::interface::catalog::{flow::FlowNodeId, shape::ShapeId};
 
 pub mod cdc;
 pub mod encoding;
@@ -46,8 +46,8 @@ pub mod worker;
 /// Identifier for tracking per-object storage statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MetricId {
-	/// Table, view, or flow source
-	Source(SchemaId),
+	/// Table, view, or flow shape
+	Shape(ShapeId),
 	/// Flow operator node
 	FlowNode(FlowNodeId),
 	/// System metadata (sequences, versions, etc.)

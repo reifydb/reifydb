@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
 		id::{NamespaceId, PrimaryKeyId, RingBufferId},
@@ -157,8 +157,8 @@ impl Catalog {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
-		let schema = RowSchema::from(ringbuffer.columns.as_slice());
-		let _registered_schema = self.schema.get_or_create(schema.fields().to_vec())?;
+		let shape = RowShape::from(ringbuffer.columns.as_slice());
+		let _registered_shape = self.shape.get_or_create(shape.fields().to_vec())?;
 
 		Ok(ringbuffer)
 	}

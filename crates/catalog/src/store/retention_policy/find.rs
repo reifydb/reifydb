@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
-	key::retention_policy::{OperatorRetentionPolicyKey, SchemaRetentionPolicyKey},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	key::retention_policy::{OperatorRetentionPolicyKey, ShapeRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -12,13 +12,13 @@ use super::decode_retention_policy;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Find a retention policy for a schema (table, view, or ring buffer)
+	/// Find a retention policy for a shape (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
-	pub(crate) fn find_schema_retention_policy(
+	pub(crate) fn find_shape_retention_policy(
 		rx: &mut Transaction<'_>,
-		schema: SchemaId,
+		shape: ShapeId,
 	) -> Result<Option<RetentionPolicy>> {
-		let value = rx.get(&SchemaRetentionPolicyKey::encoded(schema))?;
+		let value = rx.get(&ShapeRetentionPolicyKey::encoded(shape))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.row)))
 	}
 
@@ -44,33 +44,33 @@ pub mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_schema_retention_policy,
+		_create_operator_retention_policy, create_shape_retention_policy,
 	};
 
 	#[test]
-	fn test_find_schema_retention_policy_exists() {
+	fn test_find_shape_retention_policy_exists() {
 		let mut txn = create_test_admin_transaction();
-		let schema = SchemaId::Table(TableId(42));
+		let shape = ShapeId::Table(TableId(42));
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_schema_retention_policy(&mut txn, schema, &policy).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy).unwrap();
 
 		let found =
-			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema).unwrap();
+			CatalogStore::find_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape).unwrap();
 		assert_eq!(found, Some(policy));
 	}
 
 	#[test]
-	fn test_find_schema_retention_policy_not_exists() {
+	fn test_find_shape_retention_policy_not_exists() {
 		let mut txn = create_test_admin_transaction();
-		let schema = SchemaId::Table(TableId(9999));
+		let shape = ShapeId::Table(TableId(9999));
 
 		let found =
-			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema).unwrap();
+			CatalogStore::find_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape).unwrap();
 		assert_eq!(found, None);
 	}
 

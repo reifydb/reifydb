@@ -13,13 +13,13 @@ use crate::{
 /// Represents a source identifier that hasn't been resolved to a specific type yet
 /// Used in AST parsing before we know whether it's a table, view, or ring buffer
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnresolvedSchemaIdentifier<'bump> {
+pub struct UnresolvedShapeIdentifier<'bump> {
 	pub namespace: Vec<BumpFragment<'bump>>,
 	pub name: BumpFragment<'bump>,
 	pub alias: Option<BumpFragment<'bump>>,
 }
 
-impl<'bump> UnresolvedSchemaIdentifier<'bump> {
+impl<'bump> UnresolvedShapeIdentifier<'bump> {
 	pub fn new(namespace: Vec<BumpFragment<'bump>>, name: BumpFragment<'bump>) -> Self {
 		Self {
 			namespace,
@@ -330,7 +330,7 @@ impl<'bump> MaybeQualifiedIndexIdentifier<'bump> {
 		}
 	}
 
-	pub fn with_schema(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
+	pub fn with_shape(mut self, namespace: Vec<BumpFragment<'bump>>) -> Self {
 		self.namespace = namespace;
 		self
 	}
@@ -338,8 +338,8 @@ impl<'bump> MaybeQualifiedIndexIdentifier<'bump> {
 
 /// How a maybe-qualified column is referenced
 #[derive(Debug, Clone, PartialEq)]
-pub enum MaybeQualifiedColumnSchema<'bump> {
-	/// Qualified by schema name (table/view) - namespace still optional
+pub enum MaybeQualifiedColumnShape<'bump> {
+	/// Qualified by shape name (table/view) - namespace still optional
 	Qualified {
 		namespace: Vec<BumpFragment<'bump>>,
 		name: BumpFragment<'bump>,
@@ -350,30 +350,30 @@ pub enum MaybeQualifiedColumnSchema<'bump> {
 	Unqualified,
 }
 
-/// Maybe-qualified column identifier - schema qualification is optional
+/// Maybe-qualified column identifier - shape qualification is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedColumnIdentifier<'bump> {
-	pub schema: MaybeQualifiedColumnSchema<'bump>,
+	pub shape: MaybeQualifiedColumnShape<'bump>,
 	pub name: BumpFragment<'bump>,
 }
 
 impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 	pub fn unqualified(name: BumpFragment<'bump>) -> Self {
 		Self {
-			schema: MaybeQualifiedColumnSchema::Unqualified,
+			shape: MaybeQualifiedColumnShape::Unqualified,
 			name,
 		}
 	}
 
-	pub fn with_schema(
+	pub fn with_shape(
 		namespace: Vec<BumpFragment<'bump>>,
-		schema: BumpFragment<'bump>,
+		shape: BumpFragment<'bump>,
 		name: BumpFragment<'bump>,
 	) -> Self {
 		Self {
-			schema: MaybeQualifiedColumnSchema::Qualified {
+			shape: MaybeQualifiedColumnShape::Qualified {
 				namespace,
-				name: schema,
+				name: shape,
 			},
 			name,
 		}
@@ -381,7 +381,7 @@ impl<'bump> MaybeQualifiedColumnIdentifier<'bump> {
 
 	pub fn with_alias(alias: BumpFragment<'bump>, name: BumpFragment<'bump>) -> Self {
 		Self {
-			schema: MaybeQualifiedColumnSchema::Alias(alias),
+			shape: MaybeQualifiedColumnShape::Alias(alias),
 			name,
 		}
 	}

@@ -10,7 +10,7 @@ use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 };
 use reifydb_type::{Result, util::cowvec::CowVec};
 
@@ -22,7 +22,7 @@ pub enum EntryKind {
 	/// Multi-version storage for general data
 	Multi,
 	/// Per-source table for row data
-	Source(SchemaId),
+	Source(ShapeId),
 	/// Per-operator table for flow node state
 	Operator(FlowNodeId),
 }

@@ -2,27 +2,27 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column::Column, id::ColumnId, schema::SchemaId},
+	interface::catalog::{column::Column, id::ColumnId, shape::ShapeId},
 	key::column::ColumnKey,
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::column::schema::primitive_column};
+use crate::{CatalogStore, Result, store::column::shape::primitive_column};
 
 impl CatalogStore {
 	pub(crate) fn find_column_by_name(
 		rx: &mut Transaction<'_>,
-		schema: impl Into<SchemaId>,
+		shape: impl Into<ShapeId>,
 		column_name: &str,
 	) -> Result<Option<Column>> {
-		let mut stream = rx.range(ColumnKey::full_scan(schema), 1024)?;
+		let mut stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
 
 		let mut found_id = None;
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = multi.row;
-			let column = ColumnId(primitive_column::SCHEMA.get_u64(&row, primitive_column::ID));
-			let name = primitive_column::SCHEMA.get_utf8(&row, primitive_column::NAME);
+			let column = ColumnId(primitive_column::SHAPE.get_u64(&row, primitive_column::ID));
+			let name = primitive_column::SHAPE.get_utf8(&row, primitive_column::NAME);
 
 			if name == column_name {
 				found_id = Some(column);

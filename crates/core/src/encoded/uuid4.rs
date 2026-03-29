@@ -6,9 +6,9 @@ use std::ptr;
 use reifydb_type::value::{r#type::Type, uuid::Uuid4};
 use uuid::Uuid;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_uuid4(&self, row: &mut EncodedRow, index: usize, value: Uuid4) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -48,41 +48,41 @@ impl RowSchema {
 pub mod tests {
 	use reifydb_type::value::{r#type::Type, uuid::Uuid4};
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_uuid4() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
-		schema.set_uuid4(&mut row, 0, uuid.clone());
-		assert_eq!(schema.get_uuid4(&row, 0), uuid);
+		shape.set_uuid4(&mut row, 0, uuid.clone());
+		assert_eq!(shape.get_uuid4(&row, 0), uuid);
 	}
 
 	#[test]
 	fn test_try_get_uuid4() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_uuid4(&row, 0), None);
+		assert_eq!(shape.try_get_uuid4(&row, 0), None);
 
 		let uuid = Uuid4::generate();
-		schema.set_uuid4(&mut row, 0, uuid.clone());
-		assert_eq!(schema.try_get_uuid4(&row, 0), Some(uuid));
+		shape.set_uuid4(&mut row, 0, uuid.clone());
+		assert_eq!(shape.try_get_uuid4(&row, 0), Some(uuid));
 	}
 
 	#[test]
 	fn test_multiple_generations() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
+		let shape = RowShape::testing(&[Type::Uuid4]);
 
 		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
 		for _ in 0..10 {
-			let mut row = schema.allocate();
+			let mut row = shape.allocate();
 			let uuid = Uuid4::generate();
-			schema.set_uuid4(&mut row, 0, uuid.clone());
-			let retrieved = schema.get_uuid4(&row, 0);
+			shape.set_uuid4(&mut row, 0, uuid.clone());
+			let retrieved = shape.get_uuid4(&row, 0);
 			assert_eq!(retrieved, uuid);
 			uuids.push(uuid);
 		}
@@ -97,12 +97,12 @@ pub mod tests {
 
 	#[test]
 	fn test_version_check() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
-		schema.set_uuid4(&mut row, 0, uuid.clone());
-		let retrieved = schema.get_uuid4(&row, 0);
+		shape.set_uuid4(&mut row, 0, uuid.clone());
+		let retrieved = shape.get_uuid4(&row, 0);
 
 		// Verify it's a version 4 UUID
 		assert_eq!(retrieved.get_version_num(), 4);
@@ -110,48 +110,48 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Uuid4, Type::Boolean, Type::Uuid4, Type::Int4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4, Type::Boolean, Type::Uuid4, Type::Int4]);
+		let mut row = shape.allocate();
 
 		let uuid1 = Uuid4::generate();
 		let uuid2 = Uuid4::generate();
 
-		schema.set_uuid4(&mut row, 0, uuid1.clone());
-		schema.set_bool(&mut row, 1, true);
-		schema.set_uuid4(&mut row, 2, uuid2.clone());
-		schema.set_i32(&mut row, 3, 42);
+		shape.set_uuid4(&mut row, 0, uuid1.clone());
+		shape.set_bool(&mut row, 1, true);
+		shape.set_uuid4(&mut row, 2, uuid2.clone());
+		shape.set_i32(&mut row, 3, 42);
 
-		assert_eq!(schema.get_uuid4(&row, 0), uuid1);
-		assert_eq!(schema.get_bool(&row, 1), true);
-		assert_eq!(schema.get_uuid4(&row, 2), uuid2);
-		assert_eq!(schema.get_i32(&row, 3), 42);
+		assert_eq!(shape.get_uuid4(&row, 0), uuid1);
+		assert_eq!(shape.get_bool(&row, 1), true);
+		assert_eq!(shape.get_uuid4(&row, 2), uuid2);
+		assert_eq!(shape.get_i32(&row, 3), 42);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
-		schema.set_uuid4(&mut row, 0, uuid.clone());
+		shape.set_uuid4(&mut row, 0, uuid.clone());
 
-		assert_eq!(schema.try_get_uuid4(&row, 0), Some(uuid));
-		assert_eq!(schema.try_get_uuid4(&row, 1), None);
+		assert_eq!(shape.try_get_uuid4(&row, 0), Some(uuid));
+		assert_eq!(shape.try_get_uuid4(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_uuid4(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_uuid4(&row, 0), None);
 	}
 
 	#[test]
 	fn test_persistence() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
 		let uuid_string = uuid.to_string();
 
-		schema.set_uuid4(&mut row, 0, uuid.clone());
-		let retrieved = schema.get_uuid4(&row, 0);
+		shape.set_uuid4(&mut row, 0, uuid.clone());
+		let retrieved = shape.get_uuid4(&row, 0);
 
 		assert_eq!(retrieved, uuid);
 		assert_eq!(retrieved.to_string(), uuid_string);
@@ -160,13 +160,13 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let original_uuid = Uuid4::generate();
-		schema.set_uuid4(&mut row, 0, original_uuid.clone());
+		shape.set_uuid4(&mut row, 0, original_uuid.clone());
 
-		let retrieved_uuid = schema.get_uuid4(&row, 0);
+		let retrieved_uuid = shape.get_uuid4(&row, 0);
 		assert_eq!(retrieved_uuid, original_uuid);
 
 		// Verify that the byte representation is identical
@@ -175,20 +175,20 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid4, Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid4, Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let uuid1 = Uuid4::generate();
 		let uuid2 = Uuid4::generate();
 		let uuid3 = Uuid4::generate();
 
-		schema.set_uuid4(&mut row, 0, uuid1.clone());
-		schema.set_uuid4(&mut row, 1, uuid2.clone());
-		schema.set_uuid4(&mut row, 2, uuid3.clone());
+		shape.set_uuid4(&mut row, 0, uuid1.clone());
+		shape.set_uuid4(&mut row, 1, uuid2.clone());
+		shape.set_uuid4(&mut row, 2, uuid3.clone());
 
-		assert_eq!(schema.get_uuid4(&row, 0), uuid1);
-		assert_eq!(schema.get_uuid4(&row, 1), uuid2);
-		assert_eq!(schema.get_uuid4(&row, 2), uuid3);
+		assert_eq!(shape.get_uuid4(&row, 0), uuid1);
+		assert_eq!(shape.get_uuid4(&row, 1), uuid2);
+		assert_eq!(shape.get_uuid4(&row, 2), uuid3);
 
 		// Ensure all UUIDs are different
 		assert_ne!(uuid1, uuid2);
@@ -198,14 +198,14 @@ pub mod tests {
 
 	#[test]
 	fn test_format_consistency() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
 		let original_string = uuid.to_string();
 
-		schema.set_uuid4(&mut row, 0, uuid.clone());
-		let retrieved = schema.get_uuid4(&row, 0);
+		shape.set_uuid4(&mut row, 0, uuid.clone());
+		let retrieved = shape.get_uuid4(&row, 0);
 		let retrieved_string = retrieved.to_string();
 
 		assert_eq!(original_string, retrieved_string);
@@ -217,14 +217,14 @@ pub mod tests {
 
 	#[test]
 	fn test_byte_level_storage() {
-		let schema = RowSchema::testing(&[Type::Uuid4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4]);
+		let mut row = shape.allocate();
 
 		let uuid = Uuid4::generate();
 		let original_bytes = *uuid.as_bytes();
 
-		schema.set_uuid4(&mut row, 0, uuid.clone());
-		let retrieved = schema.get_uuid4(&row, 0);
+		shape.set_uuid4(&mut row, 0, uuid.clone());
+		let retrieved = shape.get_uuid4(&row, 0);
 		let retrieved_bytes = *retrieved.as_bytes();
 
 		assert_eq!(original_bytes, retrieved_bytes);
@@ -236,11 +236,11 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_uuid4_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_uuid4(&row, 0), None);
+		assert_eq!(shape.try_get_uuid4(&row, 0), None);
 	}
 }

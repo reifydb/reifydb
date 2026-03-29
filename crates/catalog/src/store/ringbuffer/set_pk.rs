@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
-use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer};
+use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
 
 impl CatalogStore {
 	/// Set the primary key ID for a ring buffer
@@ -27,7 +27,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = multi.row.clone();
-		ringbuffer::SCHEMA.set_u64(&mut updated_row, ringbuffer::PRIMARY_KEY, primary_key_id.0);
+		ringbuffer::SHAPE.set_u64(&mut updated_row, ringbuffer::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(&RingBufferKey::encoded(ringbuffer_id), updated_row)?;
 

@@ -4,7 +4,7 @@
 //! Key parsing utilities for extracting Id from encoded keys.
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	key::{Key, kind::KeyKind},
 	util::encoding::keycode::deserializer::KeyDeserializer,
 };
@@ -26,12 +26,12 @@ pub fn parse_id(key: &[u8]) -> MetricId {
 /// Extract Id from an encoded key based on its KeyKind.
 ///
 /// Different key types embed different IDs:
-/// - Row, Index, IndexEntry, etc. contain SchemaId
+/// - Row, Index, IndexEntry, etc. contain ShapeId
 /// - FlowNodeState, FlowNodeInternalState contain FlowNodeId
 /// - Other keys are classified as System
 fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 	match kind {
-		// Keys that contain SchemaId at bytes 2..11
+		// Keys that contain ShapeId at bytes 2..11
 		KeyKind::Row
 		| KeyKind::RowSequence
 		| KeyKind::Column
@@ -40,12 +40,12 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 		| KeyKind::ColumnProperty
 		| KeyKind::Index
 		| KeyKind::IndexEntry
-		| KeyKind::PrimaryKey => extract_schema_id(key).map(MetricId::Source).unwrap_or(MetricId::System),
+		| KeyKind::PrimaryKey => extract_shape_id(key).map(MetricId::Shape).unwrap_or(MetricId::System),
 
 		// Keys that contain DictionaryId at bytes 2..10
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
 			extract_dictionary_id(key)
-				.map(|id| MetricId::Source(SchemaId::Dictionary(DictionaryId(id))))
+				.map(|id| MetricId::Shape(ShapeId::Dictionary(DictionaryId(id))))
 				.unwrap_or(MetricId::System)
 		}
 
@@ -59,10 +59,10 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 	}
 }
 
-/// Extract SchemaId from a key.
+/// Extract ShapeId from a key.
 ///
-/// Assumes key format: `[VERSION:1][KIND:1][SchemaId:9][...]`
-fn extract_schema_id(key: &[u8]) -> Option<SchemaId> {
+/// Assumes key format: `[VERSION:1][KIND:1][ShapeId:9][...]`
+fn extract_shape_id(key: &[u8]) -> Option<ShapeId> {
 	if key.len() < 11 {
 		// 1 + 1 + 9 = 11 bytes minimum
 		return None;
@@ -71,7 +71,7 @@ fn extract_schema_id(key: &[u8]) -> Option<SchemaId> {
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?; // Skip version
 	let _ = de.read_u8().ok()?; // Skip kind
-	de.read_schema_id().ok()
+	de.read_shape_id().ok()
 }
 
 /// Extract FlowNodeId from a key.
@@ -108,7 +108,7 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{flow::FlowNodeId, schema::SchemaId},
+		interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 		key::{EncodableKey, dictionary::DictionaryEntryKey, flow_node_state::FlowNodeStateKey, row::RowKey},
 	};
 	use reifydb_type::value::{dictionary::DictionaryId, row_number::RowNumber};
@@ -117,11 +117,11 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_object_id_row() {
-		let schema = SchemaId::table(42);
-		let encoded = RowKey::encoded(schema, RowNumber(100));
+		let shape = ShapeId::table(42);
+		let encoded = RowKey::encoded(shape, RowNumber(100));
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, MetricId::Source(schema));
+		assert_eq!(id, MetricId::Shape(shape));
 	}
 
 	#[test]
@@ -150,6 +150,6 @@ pub mod tests {
 		let encoded = key.encode();
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, MetricId::Source(SchemaId::Dictionary(dictionary_id)));
+		assert_eq!(id, MetricId::Shape(ShapeId::Dictionary(dictionary_id)));
 	}
 }

@@ -5,9 +5,9 @@ use std::{f64, ptr};
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -44,124 +44,124 @@ pub mod tests {
 
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_f64() {
-		let schema = RowSchema::testing(&[Type::Float8]);
-		let mut row = schema.allocate();
-		schema.set_f64(&mut row, 0, 2.5f64);
-		assert_eq!(schema.get_f64(&row, 0), 2.5f64);
+		let shape = RowShape::testing(&[Type::Float8]);
+		let mut row = shape.allocate();
+		shape.set_f64(&mut row, 0, 2.5f64);
+		assert_eq!(shape.get_f64(&row, 0), 2.5f64);
 	}
 
 	#[test]
 	fn test_try_get_f64() {
-		let schema = RowSchema::testing(&[Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Float8]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_f64(&row, 0), None);
+		assert_eq!(shape.try_get_f64(&row, 0), None);
 
-		schema.set_f64(&mut row, 0, 2.5f64);
-		assert_eq!(schema.try_get_f64(&row, 0), Some(2.5f64));
+		shape.set_f64(&mut row, 0, 2.5f64);
+		assert_eq!(shape.try_get_f64(&row, 0), Some(2.5f64));
 	}
 
 	#[test]
 	fn test_special_values() {
-		let schema = RowSchema::testing(&[Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Float8]);
+		let mut row = shape.allocate();
 
 		// Test zero
-		schema.set_f64(&mut row, 0, 0.0f64);
-		assert_eq!(schema.get_f64(&row, 0), 0.0f64);
+		shape.set_f64(&mut row, 0, 0.0f64);
+		assert_eq!(shape.get_f64(&row, 0), 0.0f64);
 
 		// Test negative zero
-		let mut row2 = schema.allocate();
-		schema.set_f64(&mut row2, 0, -0.0f64);
-		assert_eq!(schema.get_f64(&row2, 0), -0.0f64);
+		let mut row2 = shape.allocate();
+		shape.set_f64(&mut row2, 0, -0.0f64);
+		assert_eq!(shape.get_f64(&row2, 0), -0.0f64);
 
 		// Test infinity
-		let mut row3 = schema.allocate();
-		schema.set_f64(&mut row3, 0, f64::INFINITY);
-		assert_eq!(schema.get_f64(&row3, 0), f64::INFINITY);
+		let mut row3 = shape.allocate();
+		shape.set_f64(&mut row3, 0, f64::INFINITY);
+		assert_eq!(shape.get_f64(&row3, 0), f64::INFINITY);
 
 		// Test negative infinity
-		let mut row4 = schema.allocate();
-		schema.set_f64(&mut row4, 0, f64::NEG_INFINITY);
-		assert_eq!(schema.get_f64(&row4, 0), f64::NEG_INFINITY);
+		let mut row4 = shape.allocate();
+		shape.set_f64(&mut row4, 0, f64::NEG_INFINITY);
+		assert_eq!(shape.get_f64(&row4, 0), f64::NEG_INFINITY);
 
 		// Test NaN
-		let mut row5 = schema.allocate();
-		schema.set_f64(&mut row5, 0, f64::NAN);
-		assert!(schema.get_f64(&row5, 0).is_nan());
+		let mut row5 = shape.allocate();
+		shape.set_f64(&mut row5, 0, f64::NAN);
+		assert!(shape.get_f64(&row5, 0).is_nan());
 	}
 
 	#[test]
 	fn test_extreme_values() {
-		let schema = RowSchema::testing(&[Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Float8]);
+		let mut row = shape.allocate();
 
-		schema.set_f64(&mut row, 0, f64::MAX);
-		assert_eq!(schema.get_f64(&row, 0), f64::MAX);
+		shape.set_f64(&mut row, 0, f64::MAX);
+		assert_eq!(shape.get_f64(&row, 0), f64::MAX);
 
-		let mut row2 = schema.allocate();
-		schema.set_f64(&mut row2, 0, f64::MIN);
-		assert_eq!(schema.get_f64(&row2, 0), f64::MIN);
+		let mut row2 = shape.allocate();
+		shape.set_f64(&mut row2, 0, f64::MIN);
+		assert_eq!(shape.get_f64(&row2, 0), f64::MIN);
 
-		let mut row3 = schema.allocate();
-		schema.set_f64(&mut row3, 0, f64::MIN_POSITIVE);
-		assert_eq!(schema.get_f64(&row3, 0), f64::MIN_POSITIVE);
+		let mut row3 = shape.allocate();
+		shape.set_f64(&mut row3, 0, f64::MIN_POSITIVE);
+		assert_eq!(shape.get_f64(&row3, 0), f64::MIN_POSITIVE);
 	}
 
 	#[test]
 	fn test_high_precision() {
-		let schema = RowSchema::testing(&[Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Float8]);
+		let mut row = shape.allocate();
 
 		let pi = PI;
-		schema.set_f64(&mut row, 0, pi);
-		assert_eq!(schema.get_f64(&row, 0), pi);
+		shape.set_f64(&mut row, 0, pi);
+		assert_eq!(shape.get_f64(&row, 0), pi);
 
-		let mut row2 = schema.allocate();
+		let mut row2 = shape.allocate();
 		let e = E;
-		schema.set_f64(&mut row2, 0, e);
-		assert_eq!(schema.get_f64(&row2, 0), e);
+		shape.set_f64(&mut row2, 0, e);
+		assert_eq!(shape.get_f64(&row2, 0), e);
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Float8, Type::Int8, Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Float8, Type::Int8, Type::Float8]);
+		let mut row = shape.allocate();
 
-		schema.set_f64(&mut row, 0, 3.14159265359);
-		schema.set_i64(&mut row, 1, 9223372036854775807i64);
-		schema.set_f64(&mut row, 2, -2.718281828459045);
+		shape.set_f64(&mut row, 0, 3.14159265359);
+		shape.set_i64(&mut row, 1, 9223372036854775807i64);
+		shape.set_f64(&mut row, 2, -2.718281828459045);
 
-		assert_eq!(schema.get_f64(&row, 0), 3.14159265359);
-		assert_eq!(schema.get_i64(&row, 1), 9223372036854775807);
-		assert_eq!(schema.get_f64(&row, 2), -2.718281828459045);
+		assert_eq!(shape.get_f64(&row, 0), 3.14159265359);
+		assert_eq!(shape.get_i64(&row, 1), 9223372036854775807);
+		assert_eq!(shape.get_f64(&row, 2), -2.718281828459045);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Float8, Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Float8, Type::Float8]);
+		let mut row = shape.allocate();
 
-		schema.set_f64(&mut row, 0, 2.718281828459045);
+		shape.set_f64(&mut row, 0, 2.718281828459045);
 
-		assert_eq!(schema.try_get_f64(&row, 0), Some(2.718281828459045));
-		assert_eq!(schema.try_get_f64(&row, 1), None);
+		assert_eq!(shape.try_get_f64(&row, 0), Some(2.718281828459045));
+		assert_eq!(shape.try_get_f64(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_f64(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_f64(&row, 0), None);
 	}
 
 	#[test]
 	fn test_try_get_f64_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_f64(&row, 0), None);
+		assert_eq!(shape.try_get_f64(&row, 0), None);
 	}
 }

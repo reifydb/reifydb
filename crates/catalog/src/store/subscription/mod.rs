@@ -6,4 +6,4 @@ pub mod drop;
 pub mod find;
 pub mod get;
 pub mod list;
-pub mod schema;
+pub mod shape;

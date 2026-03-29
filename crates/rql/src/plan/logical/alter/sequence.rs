@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstAlterSequence},
-		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnSchema},
+		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnShape},
 	},
 	bump::BumpFragment,
 	expression::ExpressionCompiler,
@@ -22,7 +22,7 @@ impl<'bump> Compiler<'bump> {
 		let sequence_name = ast.sequence.name;
 
 		let column = MaybeQualifiedColumnIdentifier {
-			schema: MaybeQualifiedColumnSchema::Qualified {
+			shape: MaybeQualifiedColumnShape::Qualified {
 				namespace,
 				name: sequence_name,
 			},

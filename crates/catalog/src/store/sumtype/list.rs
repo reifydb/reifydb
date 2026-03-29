@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::sumtype::SumTypeId;
 
 use super::sumtype_from_row;
-use crate::{CatalogStore, Result, store::sumtype::schema::sumtype_namespace};
+use crate::{CatalogStore, Result, store::sumtype::shape::sumtype_namespace};
 
 impl CatalogStore {
 	pub(crate) fn list_sumtypes(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Vec<SumType>> {
@@ -19,7 +19,7 @@ impl CatalogStore {
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = &multi.row;
-				ids.push(SumTypeId(sumtype_namespace::SCHEMA.get_u64(row, sumtype_namespace::ID)));
+				ids.push(SumTypeId(sumtype_namespace::SHAPE.get_u64(row, sumtype_namespace::ID)));
 			}
 		}
 

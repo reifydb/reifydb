@@ -43,8 +43,8 @@ impl BaseVTable for SystemColumnsTable {
 		}
 
 		let mut column_ids = Vec::new();
-		let mut schema_ids = Vec::new();
-		let mut schema_types = Vec::new();
+		let mut shape_ids = Vec::new();
+		let mut shape_types = Vec::new();
 		let mut column_names = Vec::new();
 		let mut column_types = Vec::new();
 		let mut positions = Vec::new();
@@ -54,8 +54,8 @@ impl BaseVTable for SystemColumnsTable {
 		let columns_list = CatalogStore::list_columns_all(txn)?;
 		for info in columns_list {
 			column_ids.push(info.column.id.0);
-			schema_ids.push(info.schema_id.as_u64());
-			schema_types.push(info.schema_id.to_type_u8());
+			shape_ids.push(info.shape_id.as_u64());
+			shape_types.push(info.shape_id.to_type_u8());
 			column_names.push(info.column.name);
 			column_types.push(info.column.constraint.get_type().to_u8());
 			positions.push(info.column.index.0);
@@ -69,12 +69,12 @@ impl BaseVTable for SystemColumnsTable {
 				data: ColumnData::uint8(column_ids),
 			},
 			Column {
-				name: Fragment::internal("schema_id"),
-				data: ColumnData::uint8(schema_ids),
+				name: Fragment::internal("shape_id"),
+				data: ColumnData::uint8(shape_ids),
 			},
 			Column {
-				name: Fragment::internal("schema_type"),
-				data: ColumnData::uint1(schema_types),
+				name: Fragment::internal("shape_type"),
+				data: ColumnData::uint1(shape_types),
 			},
 			Column {
 				name: Fragment::internal("name"),

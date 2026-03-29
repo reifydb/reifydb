@@ -29,7 +29,7 @@ use reifydb_core::{
 	common::{IndexType, JoinType},
 	interface::{
 		catalog::{property::ColumnPropertyKind, series::SeriesKey},
-		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSchema},
+		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
 	sort::{SortDirection, SortKey},
 };
@@ -465,7 +465,7 @@ pub enum LogicalPlan<'bump> {
 	Patch(PatchNode),
 	Apply(ApplyNode<'bump>),
 	InlineData(InlineDataNode),
-	PrimitiveScan(SchemaScanNode),
+	PrimitiveScan(ShapeScanNode),
 	RemoteScan(RemoteScanNode),
 	Window(WindowNode),
 	Generator(GeneratorNode<'bump>),
@@ -873,8 +873,8 @@ pub struct InlineDataNode {
 }
 
 #[derive(Debug)]
-pub struct SchemaScanNode {
-	pub source: ResolvedSchema,
+pub struct ShapeScanNode {
+	pub source: ResolvedShape,
 	pub columns: Option<Vec<ResolvedColumn>>,
 	pub index: Option<ResolvedIndex>,
 }

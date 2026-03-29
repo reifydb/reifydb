@@ -12,7 +12,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::handler::{handler_from_row, schema::handler_namespace},
+	store::handler::{handler_from_row, shape::handler_namespace},
 };
 
 impl CatalogStore {
@@ -36,10 +36,10 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.row;
-			let entry_name = handler_namespace::SCHEMA.get_utf8(row, handler_namespace::NAME);
+			let entry_name = handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME);
 			if name == entry_name {
 				found_id =
-					Some(HandlerId(handler_namespace::SCHEMA.get_u64(row, handler_namespace::ID)));
+					Some(HandlerId(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID)));
 				break;
 			}
 		}

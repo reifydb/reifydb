@@ -50,7 +50,7 @@ pub(crate) fn insert_dictionary<'a>(
 		return_error!(dictionary_not_found(fragment.clone(), namespace_name, dictionary_name,));
 	};
 
-	// No resolved source needed for dictionary insert - dictionary has fixed (id, value) schema
+	// No resolved source needed for dictionary insert - dictionary has fixed (id, value) shape
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
 		source: None,

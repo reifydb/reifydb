@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::table::schema::table};
+use crate::{CatalogStore, Result, store::table::shape::table};
 
 impl CatalogStore {
 	/// Get the primary key ID for a table
@@ -18,7 +18,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = table::SCHEMA.get_u64(&multi.row, table::PRIMARY_KEY);
+		let pk_id = table::SHAPE.get_u64(&multi.row, table::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)
@@ -30,7 +30,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, schema::SchemaId};
+	use reifydb_core::interface::catalog::{column::ColumnIndex, id::TableId, shape::ShapeId};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
@@ -53,7 +53,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -68,7 +68,7 @@ pub mod tests {
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
-				object: SchemaId::Table(table.id),
+				shape: ShapeId::Table(table.id),
 				column_ids: vec![col.id],
 			},
 		)

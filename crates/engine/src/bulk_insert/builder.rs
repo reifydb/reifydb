@@ -9,7 +9,7 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	error::CoreError,
 	interface::catalog::id::IndexId,
 	internal_error,
@@ -39,7 +39,7 @@ use crate::{
 	},
 	vm::instruction::dml::{
 		primary_key,
-		schema::{get_or_create_ringbuffer_schema, get_or_create_table_schema},
+		shape::{get_or_create_ringbuffer_shape, get_or_create_table_shape},
 	},
 };
 
@@ -183,8 +183,8 @@ fn execute_table_insert<V: ValidationMode>(
 			fragment: Fragment::None,
 		})?;
 
-	// 2. Get or create schema with proper field names and constraints
-	let schema = get_or_create_table_schema(catalog, &table, &mut Transaction::Command(txn))?;
+	// 2. Get or create shape with proper field names and constraints
+	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == TypeId::of::<Validated>();
@@ -229,9 +229,9 @@ fn execute_table_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 		for (idx, value) in values.iter().enumerate() {
-			schema.set_value(&mut row, idx, value);
+			shape.set_value(&mut row, idx, value);
 		}
 		encoded_rows.push(row);
 	}
@@ -250,19 +250,19 @@ fn execute_table_insert<V: ValidationMode>(
 
 	// Hoist loop-invariant computations out of the insertion loop
 	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), &table)?;
-	let row_number_schema = if pk_def.is_some() {
-		Some(RowSchema::testing(&[Type::Uint8]))
+	let row_number_shape = if pk_def.is_some() {
+		Some(RowShape::testing(&[Type::Uint8]))
 	} else {
 		None
 	};
 
 	// 5. Insert all rows with their row numbers
 	for (row, &row_number) in encoded_rows.iter().zip(row_numbers.iter()) {
-		txn.insert_table(&table, &schema, row.clone(), row_number)?;
+		txn.insert_table(&table, &shape, row.clone(), row_number)?;
 
 		// Handle primary key index if table has one
 		if let Some(ref pk_def) = pk_def {
-			let index_key = primary_key::encode_primary_key(pk_def, row, &table, &schema)?;
+			let index_key = primary_key::encode_primary_key(pk_def, row, &table, &shape)?;
 			let index_entry_key =
 				IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
 
@@ -278,7 +278,7 @@ fn execute_table_insert<V: ValidationMode>(
 			}
 
 			// Store the index entry
-			let rns = row_number_schema.as_ref().unwrap();
+			let rns = row_number_shape.as_ref().unwrap();
 			let mut row_number_encoded = rns.allocate();
 			rns.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 			txn.set(&index_entry_key.encode(), row_number_encoded)?;
@@ -326,8 +326,8 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 			fragment: Fragment::None,
 		})?;
 
-	// Get or create schema with proper field names and constraints
-	let schema = get_or_create_ringbuffer_schema(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
+	// Get or create shape with proper field names and constraints
+	let shape = get_or_create_ringbuffer_shape(catalog, &ringbuffer, &mut Transaction::Command(txn))?;
 
 	// 3. Validate and coerce all rows in batch (fail-fast)
 	let is_validated = type_id == TypeId::of::<Validated>();
@@ -366,9 +366,9 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		}
 
 		// Encode the row
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 		for (idx, value) in values.iter().enumerate() {
-			schema.set_value(&mut row, idx, value);
+			shape.set_value(&mut row, idx, value);
 		}
 
 		// Handle ring buffer overflow - delete oldest entry if full
@@ -383,7 +383,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 		// Store the row
-		txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row)?;
+		txn.insert_ringbuffer_at(&ringbuffer, &shape, row_number, row)?;
 
 		// Update metadata
 		if metadata.is_empty() {

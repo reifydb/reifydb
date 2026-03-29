@@ -4,7 +4,7 @@
 //! Catalog cache for the flow consumer.
 //!
 //! Caches source metadata (columns, types, dictionaries) to avoid redundant catalog lookups
-//! during CDC processing. The cache is invalidated when schema changes are observed via CDC.
+//! during CDC processing. The cache is invalidated when shape changes are observed via CDC.
 
 use std::{collections::BTreeMap, sync::Arc};
 

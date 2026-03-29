@@ -9,24 +9,24 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::flow_node::schema::{flow_node, flow_node_by_flow},
+	store::flow_node::shape::{flow_node, flow_node_by_flow},
 };
 
 impl CatalogStore {
 	pub(crate) fn create_flow_node(txn: &mut AdminTransaction, node_def: &FlowNode) -> Result<()> {
 		// Write to main flow_node table
-		let mut row = flow_node::SCHEMA.allocate();
-		flow_node::SCHEMA.set_u64(&mut row, flow_node::ID, node_def.id);
-		flow_node::SCHEMA.set_u64(&mut row, flow_node::FLOW, node_def.flow);
-		flow_node::SCHEMA.set_u8(&mut row, flow_node::TYPE, node_def.node_type);
-		flow_node::SCHEMA.set_blob(&mut row, flow_node::DATA, &node_def.data);
+		let mut row = flow_node::SHAPE.allocate();
+		flow_node::SHAPE.set_u64(&mut row, flow_node::ID, node_def.id);
+		flow_node::SHAPE.set_u64(&mut row, flow_node::FLOW, node_def.flow);
+		flow_node::SHAPE.set_u8(&mut row, flow_node::TYPE, node_def.node_type);
+		flow_node::SHAPE.set_blob(&mut row, flow_node::DATA, &node_def.data);
 
 		txn.set(&FlowNodeKey::encoded(node_def.id), row)?;
 
 		// Write to flow_node_by_flow index
-		let mut index_row = flow_node_by_flow::SCHEMA.allocate();
-		flow_node_by_flow::SCHEMA.set_u64(&mut index_row, flow_node_by_flow::FLOW, node_def.flow);
-		flow_node_by_flow::SCHEMA.set_u64(&mut index_row, flow_node_by_flow::ID, node_def.id);
+		let mut index_row = flow_node_by_flow::SHAPE.allocate();
+		flow_node_by_flow::SHAPE.set_u64(&mut index_row, flow_node_by_flow::FLOW, node_def.flow);
+		flow_node_by_flow::SHAPE.set_u64(&mut index_row, flow_node_by_flow::ID, node_def.id);
 
 		txn.set(&FlowNodeByFlowKey::encoded(node_def.flow, node_def.id), index_row)?;
 

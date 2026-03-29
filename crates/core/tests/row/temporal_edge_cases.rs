@@ -3,13 +3,13 @@
 
 //! Temporal data edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::RowSchema;
+use reifydb_core::encoded::shape::RowShape;
 use reifydb_type::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, r#type::Type};
 
 #[test]
 fn test_date_boundaries() {
-	let schema = RowSchema::testing(&[Type::Date]);
-	let mut row = schema.allocate();
+	let shape = RowShape::testing(&[Type::Date]);
+	let mut row = shape.allocate();
 
 	let dates = [
 		Date::from_ymd(1, 1, 1).unwrap(),      // Minimum reasonable date
@@ -20,20 +20,20 @@ fn test_date_boundaries() {
 	];
 
 	for date in dates {
-		schema.set_date(&mut row, 0, date);
-		assert_eq!(schema.get_date(&row, 0), date);
+		shape.set_date(&mut row, 0, date);
+		assert_eq!(shape.get_date(&row, 0), date);
 	}
 }
 
 #[test]
 fn test_datetime_precision_limits() {
-	let schema = RowSchema::testing(&[Type::DateTime]);
-	let mut row = schema.allocate();
+	let shape = RowShape::testing(&[Type::DateTime]);
+	let mut row = shape.allocate();
 
 	// Test nanosecond precision preservation
 	let dt = DateTime::new(2024, 12, 25, 12, 34, 56, 123456789).unwrap();
-	schema.set_datetime(&mut row, 0, dt);
-	let retrieved = schema.get_datetime(&row, 0);
+	shape.set_datetime(&mut row, 0, dt);
+	let retrieved = shape.get_datetime(&row, 0);
 	assert_eq!(retrieved, dt);
 
 	// Verify nanosecond precision
@@ -42,8 +42,8 @@ fn test_datetime_precision_limits() {
 
 #[test]
 fn test_time_edge_values() {
-	let schema = RowSchema::testing(&[Type::Time]);
-	let mut row = schema.allocate();
+	let shape = RowShape::testing(&[Type::Time]);
+	let mut row = shape.allocate();
 
 	let times = [
 		Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -54,15 +54,15 @@ fn test_time_edge_values() {
 	];
 
 	for time in times {
-		schema.set_time(&mut row, 0, time);
-		assert_eq!(schema.get_time(&row, 0), time);
+		shape.set_time(&mut row, 0, time);
+		assert_eq!(shape.get_time(&row, 0), time);
 	}
 }
 
 #[test]
 fn test_interval_combinations() {
-	let schema = RowSchema::testing(&[Type::Duration]);
-	let mut row = schema.allocate();
+	let shape = RowShape::testing(&[Type::Duration]);
+	let mut row = shape.allocate();
 
 	let intervals = [
 		Duration::from_seconds(0).unwrap(),
@@ -76,7 +76,7 @@ fn test_interval_combinations() {
 	];
 
 	for interval in intervals {
-		schema.set_duration(&mut row, 0, interval);
-		assert_eq!(schema.get_duration(&row, 0), interval);
+		shape.set_duration(&mut row, 0, interval);
+		assert_eq!(shape.get_duration(&row, 0), interval);
 	}
 }

@@ -3,13 +3,13 @@
 
 //! Float edge case tests for the encoded encoding system
 
-use reifydb_core::encoded::schema::RowSchema;
+use reifydb_core::encoded::shape::RowShape;
 use reifydb_type::value::r#type::Type;
 
 #[test]
 fn test_float_special_values_preservation() {
-	let schema = RowSchema::testing(&[Type::Float4, Type::Float8]);
-	let mut row = schema.allocate();
+	let shape = RowShape::testing(&[Type::Float4, Type::Float8]);
+	let mut row = shape.allocate();
 
 	// Test f32 special values
 	let f32_values = [
@@ -29,8 +29,8 @@ fn test_float_special_values_preservation() {
 	];
 
 	for &value in &f32_values {
-		schema.set_f32(&mut row, 0, value);
-		let retrieved = schema.get_f32(&row, 0);
+		shape.set_f32(&mut row, 0, value);
+		let retrieved = shape.get_f32(&row, 0);
 
 		if value.is_nan() {
 			assert!(retrieved.is_nan(), "NaN not preserved");
@@ -60,8 +60,8 @@ fn test_float_special_values_preservation() {
 	];
 
 	for &value in &f64_values {
-		schema.set_f64(&mut row, 1, value);
-		let retrieved = schema.get_f64(&row, 1);
+		shape.set_f64(&mut row, 1, value);
+		let retrieved = shape.get_f64(&row, 1);
 
 		if value.is_nan() {
 			assert!(retrieved.is_nan(), "NaN not preserved");
@@ -74,18 +74,18 @@ fn test_float_special_values_preservation() {
 
 #[test]
 fn test_float_precision_boundaries() {
-	let schema = RowSchema::testing(&[Type::Float4, Type::Float8]);
-	let mut row = schema.allocate();
+	let shape = RowShape::testing(&[Type::Float4, Type::Float8]);
+	let mut row = shape.allocate();
 
 	// Test f32 precision boundary (about 7 decimal digits)
 	let f32_precise = 1.2345678_f32;
 	let f32_imprecise = 1.23456789_f32; // 9 digits, will lose precision
 
-	schema.set_f32(&mut row, 0, f32_precise);
-	assert_eq!(schema.get_f32(&row, 0), f32_precise);
+	shape.set_f32(&mut row, 0, f32_precise);
+	assert_eq!(shape.get_f32(&row, 0), f32_precise);
 
-	schema.set_f32(&mut row, 0, f32_imprecise);
-	let retrieved = schema.get_f32(&row, 0);
+	shape.set_f32(&mut row, 0, f32_imprecise);
+	let retrieved = shape.get_f32(&row, 0);
 	// Value should be close but not exact due to precision
 	assert!((retrieved - f32_imprecise).abs() < 0.000001);
 
@@ -93,10 +93,10 @@ fn test_float_precision_boundaries() {
 	let f64_precise = 1.234567890123456_f64;
 	let f64_imprecise = 1.2345678901234567890_f64; // More than 15 digits
 
-	schema.set_f64(&mut row, 1, f64_precise);
-	assert_eq!(schema.get_f64(&row, 1), f64_precise);
+	shape.set_f64(&mut row, 1, f64_precise);
+	assert_eq!(shape.get_f64(&row, 1), f64_precise);
 
-	schema.set_f64(&mut row, 1, f64_imprecise);
-	let retrieved = schema.get_f64(&row, 1);
+	shape.set_f64(&mut row, 1, f64_imprecise);
+	let retrieved = shape.get_f64(&row, 1);
 	assert!((retrieved - f64_imprecise).abs() < 1e-15);
 }

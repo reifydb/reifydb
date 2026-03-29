@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	key::{
 		EncodableKey,
 		system_version::{SystemVersion, SystemVersionKey},
@@ -16,7 +16,7 @@ const CURRENT_STORAGE_VERSION: u8 = 0x01;
 /// Ensures the storage version key exists and matches the expected version.
 /// On first boot, creates the version entry.
 pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> crate::Result<()> {
-	let schema = RowSchema::testing(&[Type::Uint1]);
+	let shape = RowShape::testing(&[Type::Uint1]);
 	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
 	}
@@ -26,12 +26,12 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> crate::Resul
 
 	match tx.get(&key)? {
 		None => {
-			let mut row = schema.allocate();
-			schema.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
+			let mut row = shape.allocate();
+			shape.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
 			tx.set(&key, row)?;
 		}
 		Some(single) => {
-			let version = schema.get_u8(&single.row, 0);
+			let version = shape.get_u8(&single.row, 0);
 			assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
 		}
 	};

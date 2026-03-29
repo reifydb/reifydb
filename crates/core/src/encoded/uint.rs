@@ -7,7 +7,7 @@ use num_bigint::{BigInt, BigUint};
 use num_traits::ToPrimitive;
 use reifydb_type::value::{r#type::Type, uint::Uint};
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
 /// Uint storage modes using MSB of u128 as indicator
 /// MSB = 0: Value stored inline in lower 127 bits
@@ -22,7 +22,7 @@ const INLINE_VALUE_MASK: u128 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF; // 64 bits for offset
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000; // 63 bits for length
 
-impl RowSchema {
+impl RowShape {
 	/// Set a Uint value with 2-tier storage optimization
 	/// - Values fitting in 127 bits: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
@@ -105,52 +105,52 @@ pub mod tests {
 	use num_traits::Zero;
 	use reifydb_type::value::{r#type::Type, uint::Uint};
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_u64_inline() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
 		// Test simple unsigned value
 		let small = Uint::from(42u64);
-		schema.set_uint(&mut row, 0, &small);
+		shape.set_uint(&mut row, 0, &small);
 		assert!(row.is_defined(0));
 
-		let retrieved = schema.get_uint(&row, 0);
+		let retrieved = shape.get_uint(&row, 0);
 		assert_eq!(retrieved, small);
 
 		// Test larger unsigned value
-		let mut row2 = schema.allocate();
+		let mut row2 = shape.allocate();
 		let large = Uint::from(999999999999u64);
-		schema.set_uint(&mut row2, 0, &large);
-		assert_eq!(schema.get_uint(&row2, 0), large);
+		shape.set_uint(&mut row2, 0, &large);
+		assert_eq!(shape.get_uint(&row2, 0), large);
 	}
 
 	#[test]
 	fn test_u128_boundary() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
 		// Value that needs u128 storage
 		let large = Uint::from(u64::MAX);
-		schema.set_uint(&mut row, 0, &large);
+		shape.set_uint(&mut row, 0, &large);
 		assert!(row.is_defined(0));
 
-		let retrieved = schema.get_uint(&row, 0);
+		let retrieved = shape.get_uint(&row, 0);
 		assert_eq!(retrieved, large);
 
 		// Test max u128 that fits in 127 bits
-		let mut row2 = schema.allocate();
+		let mut row2 = shape.allocate();
 		let max_u127 = Uint::from(u128::MAX >> 1); // 127 bits
-		schema.set_uint(&mut row2, 0, &max_u127);
-		assert_eq!(schema.get_uint(&row2, 0), max_u127);
+		shape.set_uint(&mut row2, 0, &max_u127);
+		assert_eq!(shape.get_uint(&row2, 0), max_u127);
 	}
 
 	#[test]
 	fn test_dynamic_storage() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
 		// Create a value that requires dynamic storage (>127 bits)
 		// Using string representation for very large numbers
@@ -159,159 +159,159 @@ pub mod tests {
 				.unwrap(),
 		);
 
-		schema.set_uint(&mut row, 0, &huge);
+		shape.set_uint(&mut row, 0, &huge);
 		assert!(row.is_defined(0));
 
-		let retrieved = schema.get_uint(&row, 0);
+		let retrieved = shape.get_uint(&row, 0);
 		assert_eq!(retrieved, huge);
 	}
 
 	#[test]
 	fn test_zero() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
 		let zero = Uint::from(0);
-		schema.set_uint(&mut row, 0, &zero);
+		shape.set_uint(&mut row, 0, &zero);
 		assert!(row.is_defined(0));
 
-		let retrieved = schema.get_uint(&row, 0);
+		let retrieved = shape.get_uint(&row, 0);
 		assert!(retrieved.is_zero());
 	}
 
 	#[test]
 	fn test_try_get() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
 		// Undefined initially
-		assert_eq!(schema.try_get_uint(&row, 0), None);
+		assert_eq!(shape.try_get_uint(&row, 0), None);
 
 		// Set value
 		let value = Uint::from(12345u64);
-		schema.set_uint(&mut row, 0, &value);
-		assert_eq!(schema.try_get_uint(&row, 0), Some(value));
+		shape.set_uint(&mut row, 0, &value);
+		assert_eq!(shape.try_get_uint(&row, 0), Some(value));
 	}
 
 	#[test]
 	fn test_clone_on_write() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let row1 = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let row1 = shape.allocate();
 		let mut row2 = row1.clone();
 
 		let value = Uint::from(999999999999999u64);
-		schema.set_uint(&mut row2, 0, &value);
+		shape.set_uint(&mut row2, 0, &value);
 
 		assert!(!row1.is_defined(0));
 		assert!(row2.is_defined(0));
 		assert_ne!(row1.as_ptr(), row2.as_ptr());
-		assert_eq!(schema.get_uint(&row2, 0), value);
+		assert_eq!(shape.get_uint(&row2, 0), value);
 	}
 
 	#[test]
 	fn test_multiple_fields() {
-		let schema = RowSchema::testing(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
 		let small = Uint::from(100u64);
-		schema.set_uint(&mut row, 1, &small);
+		shape.set_uint(&mut row, 1, &small);
 
-		schema.set_utf8(&mut row, 2, "test");
+		shape.set_utf8(&mut row, 2, "test");
 
 		let large = Uint::from(u128::MAX >> 1);
-		schema.set_uint(&mut row, 3, &large);
+		shape.set_uint(&mut row, 3, &large);
 
-		schema.set_i32(&mut row, 4, 42);
+		shape.set_i32(&mut row, 4, 42);
 
-		assert_eq!(schema.get_bool(&row, 0), true);
-		assert_eq!(schema.get_uint(&row, 1), small);
-		assert_eq!(schema.get_utf8(&row, 2), "test");
-		assert_eq!(schema.get_uint(&row, 3), large);
-		assert_eq!(schema.get_i32(&row, 4), 42);
+		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get_uint(&row, 1), small);
+		assert_eq!(shape.get_utf8(&row, 2), "test");
+		assert_eq!(shape.get_uint(&row, 3), large);
+		assert_eq!(shape.get_i32(&row, 4), 42);
 	}
 
 	#[test]
 	fn test_negative_input_handling() {
-		let schema = RowSchema::testing(&[Type::Uint]);
+		let shape = RowShape::testing(&[Type::Uint]);
 
 		// Test how negative values are handled (should be converted to
 		// 0 or error)
-		let mut row1 = schema.allocate();
+		let mut row1 = shape.allocate();
 		let negative = Uint::from(-42); // This creates a negative BigInt
-		schema.set_uint(&mut row1, 0, &negative);
+		shape.set_uint(&mut row1, 0, &negative);
 
 		// Should store as 0 since Uint can't handle negative values
-		let retrieved = schema.get_uint(&row1, 0);
+		let retrieved = shape.get_uint(&row1, 0);
 		assert_eq!(retrieved, Uint::from(0));
 	}
 
 	#[test]
 	fn test_try_get_uint_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_uint(&row, 0), None);
+		assert_eq!(shape.try_get_uint(&row, 0), None);
 	}
 
 	#[test]
 	fn test_update_uint_inline_to_inline() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
-		schema.set_uint(&mut row, 0, &Uint::from(42u64));
-		assert_eq!(schema.get_uint(&row, 0), Uint::from(42u64));
+		shape.set_uint(&mut row, 0, &Uint::from(42u64));
+		assert_eq!(shape.get_uint(&row, 0), Uint::from(42u64));
 
-		schema.set_uint(&mut row, 0, &Uint::from(999u64));
-		assert_eq!(schema.get_uint(&row, 0), Uint::from(999u64));
+		shape.set_uint(&mut row, 0, &Uint::from(999u64));
+		assert_eq!(shape.get_uint(&row, 0), Uint::from(999u64));
 	}
 
 	#[test]
 	fn test_update_uint_inline_to_dynamic() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
-		schema.set_uint(&mut row, 0, &Uint::from(42u64));
+		shape.set_uint(&mut row, 0, &Uint::from(42u64));
 
 		let huge = Uint::from(
 			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
 		);
-		schema.set_uint(&mut row, 0, &huge);
-		assert_eq!(schema.get_uint(&row, 0), huge);
+		shape.set_uint(&mut row, 0, &huge);
+		assert_eq!(shape.get_uint(&row, 0), huge);
 	}
 
 	#[test]
 	fn test_update_uint_dynamic_to_inline() {
-		let schema = RowSchema::testing(&[Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint]);
+		let mut row = shape.allocate();
 
 		let huge = Uint::from(
 			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
 		);
-		schema.set_uint(&mut row, 0, &huge);
+		shape.set_uint(&mut row, 0, &huge);
 
-		schema.set_uint(&mut row, 0, &Uint::from(42u64));
-		assert_eq!(schema.get_uint(&row, 0), Uint::from(42u64));
-		assert_eq!(row.len(), schema.total_static_size());
+		shape.set_uint(&mut row, 0, &Uint::from(42u64));
+		assert_eq!(shape.get_uint(&row, 0), Uint::from(42u64));
+		assert_eq!(row.len(), shape.total_static_size());
 	}
 
 	#[test]
 	fn test_update_uint_with_other_dynamic_fields() {
-		let schema = RowSchema::testing(&[Type::Uint, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint, Type::Utf8]);
+		let mut row = shape.allocate();
 
 		let huge = Uint::from(
 			BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap(),
 		);
-		schema.set_uint(&mut row, 0, &huge);
-		schema.set_utf8(&mut row, 1, "hello");
+		shape.set_uint(&mut row, 0, &huge);
+		shape.set_utf8(&mut row, 1, "hello");
 
 		// Update uint to inline, verify utf8 still works
-		schema.set_uint(&mut row, 0, &Uint::from(1u64));
-		assert_eq!(schema.get_uint(&row, 0), Uint::from(1u64));
-		assert_eq!(schema.get_utf8(&row, 1), "hello");
+		shape.set_uint(&mut row, 0, &Uint::from(1u64));
+		assert_eq!(shape.get_uint(&row, 0), Uint::from(1u64));
+		assert_eq!(shape.get_utf8(&row, 1), "hello");
 	}
 }

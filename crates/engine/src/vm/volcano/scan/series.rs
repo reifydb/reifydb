@@ -22,7 +22,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	vm::{
-		instruction::dml::schema::get_or_create_series_schema,
+		instruction::dml::shape::get_or_create_series_shape,
 		volcano::query::{QueryContext, QueryNode},
 	},
 };
@@ -105,8 +105,8 @@ impl QueryNode for SeriesScanNode {
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 		let mut new_last_key = None;
 
-		// Get the schema for decoding series values before borrowing rx for the stream
-		let read_schema = get_or_create_series_schema(&stored_ctx.services.catalog, self.series.def(), rx)?;
+		// Get the shape for decoding series values before borrowing rx for the stream
+		let read_shape = get_or_create_series_shape(&stored_ctx.services.catalog, self.series.def(), rx)?;
 
 		let mut stream = rx.range(range, batch_size as usize)?;
 		let mut count = 0;
@@ -122,10 +122,10 @@ impl QueryNode for SeriesScanNode {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
 
-				// Decode data columns from value using schema
+				// Decode data columns from value using shape
 				let mut values = Vec::with_capacity(series.data_columns().count());
 				for (i, _) in series.data_columns().enumerate() {
-					values.push(read_schema.get_value(&entry.row, i + 1));
+					values.push(read_shape.get_value(&entry.row, i + 1));
 				}
 				data_rows.push(values);
 
@@ -142,7 +142,7 @@ impl QueryNode for SeriesScanNode {
 		if key_values.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				// Empty series: return empty columns with correct types to preserve schema
+				// Empty series: return empty columns with correct types to preserve shape
 				let key_type = series
 					.columns
 					.iter()

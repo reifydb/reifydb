@@ -259,14 +259,14 @@ impl Parser {
 				self.advance()?;
 				let table = self.expect_ident()?;
 				FromClause::Table {
-					schema: Some(name),
+					shape: Some(name),
 					name: table,
 					alias: None,
 				}
 			} else {
 				FromClause::Table {
 					name,
-					schema: None,
+					shape: None,
 					alias: None,
 				}
 			}
@@ -287,12 +287,12 @@ impl Parser {
 			match from {
 				FromClause::Table {
 					name,
-					schema,
+					shape,
 					..
 				} => Ok((
 					FromClause::Table {
 						name,
-						schema,
+						shape,
 						alias: Some(alias),
 					},
 					None,
@@ -484,7 +484,7 @@ impl Parser {
 		self.expect_keyword(Keyword::Insert)?;
 		self.expect_keyword(Keyword::Into)?;
 
-		let (schema, table) = self.parse_table_name()?;
+		let (shape, table) = self.parse_table_name()?;
 
 		let columns = if self.at_token(&Token::OpenParen) {
 			self.advance()?;
@@ -500,7 +500,7 @@ impl Parser {
 			let sel = self.parse_select_statement()?;
 			return Ok(Statement::Insert(InsertStatement {
 				table,
-				schema,
+				shape,
 				columns,
 				source: InsertSource::Select(sel),
 			}));
@@ -523,7 +523,7 @@ impl Parser {
 
 		Ok(Statement::Insert(InsertStatement {
 			table,
-			schema,
+			shape,
 			columns,
 			source: InsertSource::Values(values),
 		}))
@@ -531,7 +531,7 @@ impl Parser {
 
 	fn parse_update(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Update)?;
-		let (schema, table) = self.parse_table_name()?;
+		let (shape, table) = self.parse_table_name()?;
 		self.expect_keyword(Keyword::Set)?;
 
 		let mut assignments = Vec::new();
@@ -556,7 +556,7 @@ impl Parser {
 
 		Ok(Statement::Update(UpdateStatement {
 			table,
-			schema,
+			shape,
 			assignments,
 			where_clause,
 		}))
@@ -565,7 +565,7 @@ impl Parser {
 	fn parse_delete(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Delete)?;
 		self.expect_keyword(Keyword::From)?;
-		let (schema, table) = self.parse_table_name()?;
+		let (shape, table) = self.parse_table_name()?;
 
 		let where_clause = if self.at_keyword(&Keyword::Where) {
 			self.advance()?;
@@ -576,7 +576,7 @@ impl Parser {
 
 		Ok(Statement::Delete(DeleteStatement {
 			table,
-			schema,
+			shape,
 			where_clause,
 		}))
 	}
@@ -610,7 +610,7 @@ impl Parser {
 			false
 		};
 
-		let (schema, table) = self.parse_table_name()?;
+		let (shape, table) = self.parse_table_name()?;
 
 		self.expect_token(Token::OpenParen)?;
 		let mut columns = Vec::new();
@@ -683,7 +683,7 @@ impl Parser {
 
 		Ok(Statement::CreateTable(CreateTableStatement {
 			table,
-			schema,
+			shape,
 			columns,
 			primary_key,
 			if_not_exists,
@@ -701,7 +701,7 @@ impl Parser {
 
 		let index_name = self.expect_ident()?;
 		self.expect_keyword(Keyword::On)?;
-		let (schema, table) = self.parse_table_name()?;
+		let (shape, table) = self.parse_table_name()?;
 
 		self.expect_token(Token::OpenParen)?;
 		let mut columns = Vec::new();
@@ -738,7 +738,7 @@ impl Parser {
 			unique,
 			index_name,
 			table,
-			schema,
+			shape,
 			columns,
 		}))
 	}
@@ -761,7 +761,7 @@ impl Parser {
 			// DROP INDEX just emits as-is
 			return Ok(Statement::DropTable(DropTableStatement {
 				table: index_name,
-				schema: None,
+				shape: None,
 				if_exists: _if_exists,
 			}));
 		}
@@ -776,11 +776,11 @@ impl Parser {
 			false
 		};
 
-		let (schema, table) = self.parse_table_name()?;
+		let (shape, table) = self.parse_table_name()?;
 
 		Ok(Statement::DropTable(DropTableStatement {
 			table,
-			schema,
+			shape,
 			if_exists,
 		}))
 	}

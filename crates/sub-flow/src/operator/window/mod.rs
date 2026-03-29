@@ -36,7 +36,7 @@ use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		schema::{RowSchema, RowSchemaField},
+		shape::{RowShape, RowShapeField},
 	},
 	interface::change::{Change, Diff},
 	row::Row,
@@ -72,7 +72,7 @@ use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider
 
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
 
-/// RowSchema layout shared across all events in a window (stored once, not per event)
+/// RowShape layout shared across all events in a window (stored once, not per event)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowLayout {
 	pub names: Vec<String>,
@@ -82,19 +82,19 @@ pub struct WindowLayout {
 impl WindowLayout {
 	pub fn from_row(row: &Row) -> Self {
 		Self {
-			names: row.schema.field_names().map(|s| s.to_string()).collect(),
-			types: row.schema.fields().iter().map(|f| f.constraint.get_type()).collect(),
+			names: row.shape.field_names().map(|s| s.to_string()).collect(),
+			types: row.shape.fields().iter().map(|f| f.constraint.get_type()).collect(),
 		}
 	}
 
-	pub fn to_schema(&self) -> RowSchema {
-		let fields: Vec<RowSchemaField> = self
+	pub fn to_shape(&self) -> RowShape {
+		let fields: Vec<RowShapeField> = self
 			.names
 			.iter()
 			.zip(self.types.iter())
-			.map(|(name, ty)| RowSchemaField::unconstrained(name.clone(), ty.clone()))
+			.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
 			.collect();
-		RowSchema::new(fields)
+		RowShape::new(fields)
 	}
 }
 
@@ -117,12 +117,12 @@ impl WindowEvent {
 	}
 
 	pub fn to_row(&self, layout: &WindowLayout) -> Row {
-		let schema = layout.to_schema();
+		let shape = layout.to_shape();
 		let encoded = EncodedRow(CowVec::new(self.encoded_bytes.clone()));
 		Row {
 			number: self.row_number,
 			encoded,
-			schema,
+			shape,
 		}
 	}
 }
@@ -132,7 +132,7 @@ impl WindowEvent {
 pub struct WindowState {
 	/// All events in this window (stored in insertion order)
 	pub events: Vec<WindowEvent>,
-	/// RowSchema layout shared by all events (set on first event)
+	/// RowShape layout shared by all events (set on first event)
 	pub window_layout: Option<WindowLayout>,
 	/// Window creation timestamp
 	pub window_start: u64,
@@ -171,7 +171,7 @@ pub struct WindowOperator {
 	pub ts: Option<String>,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub compiled_aggregations: Vec<CompiledExpr>,
-	pub layout: RowSchema,
+	pub layout: RowShape,
 	pub functions: Functions,
 	pub row_number_provider: RowNumberProvider,
 	pub runtime_context: RuntimeContext,
@@ -223,7 +223,7 @@ impl WindowOperator {
 			ts,
 			compiled_group_by,
 			compiled_aggregations,
-			layout: RowSchema::testing(&[Type::Blob]),
+			layout: RowShape::testing(&[Type::Blob]),
 			functions,
 			row_number_provider: RowNumberProvider::new(node),
 			runtime_context,
@@ -611,7 +611,7 @@ impl WindowOperator {
 		for event in events.iter() {
 			let row = event.to_row(window_layout);
 			for (idx, builder) in builders.iter_mut().enumerate() {
-				let value = row.schema.get_value(&row.encoded, idx);
+				let value = row.shape.get_value(&row.encoded, idx);
 				builder.push_value(value);
 			}
 		}
@@ -676,12 +676,12 @@ impl WindowOperator {
 			result_types.push(value.get_type());
 		}
 
-		let fields: Vec<RowSchemaField> = result_names
+		let fields: Vec<RowShapeField> = result_names
 			.iter()
 			.zip(result_types.iter())
-			.map(|(name, ty)| RowSchemaField::unconstrained(name.clone(), ty.clone()))
+			.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
 			.collect();
-		let layout = RowSchema::new(fields);
+		let layout = RowShape::new(fields);
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
@@ -690,7 +690,7 @@ impl WindowOperator {
 		let result_row = Row {
 			number: result_row_number,
 			encoded,
-			schema: layout,
+			shape: layout,
 		};
 
 		Ok(Some((result_row, is_new)))
@@ -1018,7 +1018,7 @@ impl WindowOperator {
 impl RawStatefulOperator for WindowOperator {}
 
 impl WindowStateful for WindowOperator {
-	fn layout(&self) -> RowSchema {
+	fn layout(&self) -> RowShape {
 		self.layout.clone()
 	}
 }

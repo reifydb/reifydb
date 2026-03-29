@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::{time::Time, r#type::Type};
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -46,54 +46,54 @@ impl RowSchema {
 pub mod tests {
 	use reifydb_type::value::{time::Time, r#type::Type};
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_time() {
-		let schema = RowSchema::testing(&[Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time]);
+		let mut row = shape.allocate();
 
 		let value = Time::new(20, 50, 0, 0).unwrap();
-		schema.set_time(&mut row, 0, value.clone());
-		assert_eq!(schema.get_time(&row, 0), value);
+		shape.set_time(&mut row, 0, value.clone());
+		assert_eq!(shape.get_time(&row, 0), value);
 	}
 
 	#[test]
 	fn test_try_get_time() {
-		let schema = RowSchema::testing(&[Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_time(&row, 0), None);
+		assert_eq!(shape.try_get_time(&row, 0), None);
 
 		let test_time = Time::from_hms(14, 30, 45).unwrap();
-		schema.set_time(&mut row, 0, test_time.clone());
-		assert_eq!(schema.try_get_time(&row, 0), Some(test_time));
+		shape.set_time(&mut row, 0, test_time.clone());
+		assert_eq!(shape.try_get_time(&row, 0), Some(test_time));
 	}
 
 	#[test]
 	fn test_time_midnight() {
-		let schema = RowSchema::testing(&[Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time]);
+		let mut row = shape.allocate();
 
 		let midnight = Time::default(); // 00:00:00
-		schema.set_time(&mut row, 0, midnight.clone());
-		assert_eq!(schema.get_time(&row, 0), midnight);
+		shape.set_time(&mut row, 0, midnight.clone());
+		assert_eq!(shape.get_time(&row, 0), midnight);
 	}
 
 	#[test]
 	fn test_time_with_nanoseconds() {
-		let schema = RowSchema::testing(&[Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time]);
+		let mut row = shape.allocate();
 
 		// Test with high precision nanoseconds
 		let precise_time = Time::new(15, 30, 45, 123456789).unwrap();
-		schema.set_time(&mut row, 0, precise_time.clone());
-		assert_eq!(schema.get_time(&row, 0), precise_time);
+		shape.set_time(&mut row, 0, precise_time.clone());
+		assert_eq!(shape.get_time(&row, 0), precise_time);
 	}
 
 	#[test]
 	fn test_time_various_times() {
-		let schema = RowSchema::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[Type::Time]);
 
 		let test_times = [
 			Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -104,15 +104,15 @@ pub mod tests {
 		];
 
 		for time in test_times {
-			let mut row = schema.allocate();
-			schema.set_time(&mut row, 0, time.clone());
-			assert_eq!(schema.get_time(&row, 0), time);
+			let mut row = shape.allocate();
+			shape.set_time(&mut row, 0, time.clone());
+			assert_eq!(shape.get_time(&row, 0), time);
 		}
 	}
 
 	#[test]
 	fn test_time_boundary_cases() {
-		let schema = RowSchema::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[Type::Time]);
 
 		let boundary_times = [
 			Time::new(0, 0, 0, 0).unwrap(), // Start of day
@@ -123,85 +123,85 @@ pub mod tests {
 		];
 
 		for time in boundary_times {
-			let mut row = schema.allocate();
-			schema.set_time(&mut row, 0, time.clone());
-			assert_eq!(schema.get_time(&row, 0), time);
+			let mut row = shape.allocate();
+			shape.set_time(&mut row, 0, time.clone());
+			assert_eq!(shape.get_time(&row, 0), time);
 		}
 	}
 
 	#[test]
 	fn test_time_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Time, Type::Boolean, Type::Time, Type::Int4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time, Type::Boolean, Type::Time, Type::Int4]);
+		let mut row = shape.allocate();
 
 		let time1 = Time::new(9, 15, 30, 0).unwrap();
 		let time2 = Time::new(21, 45, 0, 250000000).unwrap();
 
-		schema.set_time(&mut row, 0, time1.clone());
-		schema.set_bool(&mut row, 1, false);
-		schema.set_time(&mut row, 2, time2.clone());
-		schema.set_i32(&mut row, 3, -999);
+		shape.set_time(&mut row, 0, time1.clone());
+		shape.set_bool(&mut row, 1, false);
+		shape.set_time(&mut row, 2, time2.clone());
+		shape.set_i32(&mut row, 3, -999);
 
-		assert_eq!(schema.get_time(&row, 0), time1);
-		assert_eq!(schema.get_bool(&row, 1), false);
-		assert_eq!(schema.get_time(&row, 2), time2);
-		assert_eq!(schema.get_i32(&row, 3), -999);
+		assert_eq!(shape.get_time(&row, 0), time1);
+		assert_eq!(shape.get_bool(&row, 1), false);
+		assert_eq!(shape.get_time(&row, 2), time2);
+		assert_eq!(shape.get_i32(&row, 3), -999);
 	}
 
 	#[test]
 	fn test_time_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Time, Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time, Type::Time]);
+		let mut row = shape.allocate();
 
 		let time = Time::new(16, 20, 45, 333000000).unwrap();
-		schema.set_time(&mut row, 0, time.clone());
+		shape.set_time(&mut row, 0, time.clone());
 
-		assert_eq!(schema.try_get_time(&row, 0), Some(time));
-		assert_eq!(schema.try_get_time(&row, 1), None);
+		assert_eq!(shape.try_get_time(&row, 0), Some(time));
+		assert_eq!(shape.try_get_time(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_time(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_time(&row, 0), None);
 	}
 
 	#[test]
 	fn test_time_precision_preservation() {
-		let schema = RowSchema::testing(&[Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time]);
+		let mut row = shape.allocate();
 
 		// Test that nanosecond precision is preserved
 		let high_precision = Time::new(12, 34, 56, 987654321).unwrap();
-		schema.set_time(&mut row, 0, high_precision.clone());
+		shape.set_time(&mut row, 0, high_precision.clone());
 
-		let retrieved = schema.get_time(&row, 0);
+		let retrieved = shape.get_time(&row, 0);
 		assert_eq!(retrieved, high_precision);
 		assert_eq!(retrieved.to_nanos_since_midnight(), high_precision.to_nanos_since_midnight());
 	}
 
 	#[test]
 	fn test_time_microsecond_precision() {
-		let schema = RowSchema::testing(&[Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time]);
+		let mut row = shape.allocate();
 
 		// Test microsecond precision (common in databases)
 		let microsecond_precision = Time::new(14, 25, 30, 123456000).unwrap();
-		schema.set_time(&mut row, 0, microsecond_precision.clone());
-		assert_eq!(schema.get_time(&row, 0), microsecond_precision);
+		shape.set_time(&mut row, 0, microsecond_precision.clone());
+		assert_eq!(shape.get_time(&row, 0), microsecond_precision);
 	}
 
 	#[test]
 	fn test_time_millisecond_precision() {
-		let schema = RowSchema::testing(&[Type::Time]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Time]);
+		let mut row = shape.allocate();
 
 		// Test millisecond precision
 		let millisecond_precision = Time::new(8, 15, 42, 123000000).unwrap();
-		schema.set_time(&mut row, 0, millisecond_precision.clone());
-		assert_eq!(schema.get_time(&row, 0), millisecond_precision);
+		shape.set_time(&mut row, 0, millisecond_precision.clone());
+		assert_eq!(shape.get_time(&row, 0), millisecond_precision);
 	}
 
 	#[test]
 	fn test_time_common_times() {
-		let schema = RowSchema::testing(&[Type::Time]);
+		let shape = RowShape::testing(&[Type::Time]);
 
 		// Test common business/system times
 		let common_times = [
@@ -213,19 +213,19 @@ pub mod tests {
 		];
 
 		for time in common_times {
-			let mut row = schema.allocate();
-			schema.set_time(&mut row, 0, time.clone());
-			assert_eq!(schema.get_time(&row, 0), time);
+			let mut row = shape.allocate();
+			shape.set_time(&mut row, 0, time.clone());
+			assert_eq!(shape.get_time(&row, 0), time);
 		}
 	}
 
 	#[test]
 	fn test_try_get_time_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_time(&row, 0), None);
+		assert_eq!(shape.try_get_time(&row, 0), None);
 	}
 }

@@ -18,7 +18,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		sequence::sink::next_sink_id,
-		sink::schema::{sink, sink_namespace},
+		sink::shape::{sink, sink_namespace},
 	},
 };
 
@@ -67,15 +67,15 @@ impl CatalogStore {
 	) -> Result<()> {
 		let config_json = to_string(&to_create.config).unwrap_or_default();
 
-		let mut row = sink::SCHEMA.allocate();
-		sink::SCHEMA.set_u64(&mut row, sink::ID, sink);
-		sink::SCHEMA.set_u64(&mut row, sink::NAMESPACE, namespace);
-		sink::SCHEMA.set_utf8(&mut row, sink::NAME, to_create.name.text());
-		sink::SCHEMA.set_u64(&mut row, sink::SOURCE_NAMESPACE, to_create.source_namespace);
-		sink::SCHEMA.set_utf8(&mut row, sink::SOURCE_NAME, &to_create.source_name);
-		sink::SCHEMA.set_utf8(&mut row, sink::CONNECTOR, &to_create.connector);
-		sink::SCHEMA.set_utf8(&mut row, sink::CONFIG, &config_json);
-		sink::SCHEMA.set_u8(&mut row, sink::STATUS, FlowStatus::Active.to_u8());
+		let mut row = sink::SHAPE.allocate();
+		sink::SHAPE.set_u64(&mut row, sink::ID, sink);
+		sink::SHAPE.set_u64(&mut row, sink::NAMESPACE, namespace);
+		sink::SHAPE.set_utf8(&mut row, sink::NAME, to_create.name.text());
+		sink::SHAPE.set_u64(&mut row, sink::SOURCE_NAMESPACE, to_create.source_namespace);
+		sink::SHAPE.set_utf8(&mut row, sink::SOURCE_NAME, &to_create.source_name);
+		sink::SHAPE.set_utf8(&mut row, sink::CONNECTOR, &to_create.connector);
+		sink::SHAPE.set_utf8(&mut row, sink::CONFIG, &config_json);
+		sink::SHAPE.set_u8(&mut row, sink::STATUS, FlowStatus::Active.to_u8());
 
 		let key = SinkKey::encoded(sink);
 		txn.set(&key, row)?;
@@ -89,9 +89,9 @@ impl CatalogStore {
 		sink: SinkId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = sink_namespace::SCHEMA.allocate();
-		sink_namespace::SCHEMA.set_u64(&mut row, sink_namespace::ID, sink);
-		sink_namespace::SCHEMA.set_utf8(&mut row, sink_namespace::NAME, name);
+		let mut row = sink_namespace::SHAPE.allocate();
+		sink_namespace::SHAPE.set_u64(&mut row, sink_namespace::ID, sink);
+		sink_namespace::SHAPE.set_utf8(&mut row, sink_namespace::NAME, name);
 		let key = NamespaceSinkKey::encoded(namespace, sink);
 		txn.set(&key, row)?;
 		Ok(())
@@ -109,7 +109,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::sink::{create::SinkToCreate, schema::sink_namespace},
+		store::sink::{create::SinkToCreate, shape::sink_namespace},
 		test_utils::{create_namespace, ensure_test_namespace},
 	};
 
@@ -196,8 +196,8 @@ pub mod tests {
 
 		for link in &links {
 			let row = &link.row;
-			let id = sink_namespace::SCHEMA.get_u64(row, sink_namespace::ID);
-			let name = sink_namespace::SCHEMA.get_utf8(row, sink_namespace::NAME);
+			let id = sink_namespace::SHAPE.get_u64(row, sink_namespace::ID);
+			let name = sink_namespace::SHAPE.get_utf8(row, sink_namespace::NAME);
 
 			match name {
 				"sink_one" => {

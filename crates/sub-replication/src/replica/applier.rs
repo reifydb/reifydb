@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::{catalog::Catalog, change::apply_system_change};
-use reifydb_core::{common::CommitVersion, encoded::schema::RowSchemaField};
+use reifydb_core::{common::CommitVersion, encoded::shape::RowShapeField};
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	transaction::{Transaction, replica::ReplicaTransaction},
@@ -44,28 +44,28 @@ impl ReplicaApplier {
 		replica_txn.commit_at_version()?;
 		self.multi.advance_version_for_replica(version);
 
-		self.ensure_schemas()?;
+		self.ensure_shapes()?;
 
 		debug!(version = version.0, "Replica applied CDC entry");
 		Ok(())
 	}
 
-	/// Ensure row schemas exist for all tables in the materialized catalog.
+	/// Ensure row shapes exist for all tables in the materialized catalog.
 	///
-	/// After catalog changes, tables have columns but their row schemas may
-	/// not exist in the replica's schema registry yet. This creates them via
+	/// After catalog changes, tables have columns but their row shapes may
+	/// not exist in the replica's shape registry yet. This creates them via
 	/// `get_or_create`, which is idempotent.
-	fn ensure_schemas(&self) -> Result<()> {
+	fn ensure_shapes(&self) -> Result<()> {
 		for table in self.catalog.materialized.list_tables() {
 			if table.columns.is_empty() {
 				continue;
 			}
-			let fields: Vec<RowSchemaField> = table
+			let fields: Vec<RowShapeField> = table
 				.columns
 				.iter()
-				.map(|col| RowSchemaField::new(col.name.clone(), col.constraint.clone()))
+				.map(|col| RowShapeField::new(col.name.clone(), col.constraint.clone()))
 				.collect();
-			self.catalog.schema.get_or_create(fields)?;
+			self.catalog.shape.get_or_create(fields)?;
 		}
 		Ok(())
 	}

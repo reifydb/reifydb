@@ -35,7 +35,7 @@ fn query(db: &reifydb::Database, label: &str, cmd: &str) {
 fn main() {
 	let db = server::memory().build().unwrap();
 
-	// ── Schema ──────────────────────────────────────────────
+	// ── Shape ──────────────────────────────────────────────
 	admin(&db, "Create namespace", "CREATE NAMESPACE demo");
 	admin(&db, "Create table", "CREATE TABLE demo::users { id: Int4, name: Text, active: Boolean }");
 	admin(

@@ -4,7 +4,7 @@
 #[cfg(test)]
 pub mod test {
 	use reifydb_core::{
-		encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
+		encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 		interface::{catalog::flow::FlowNodeId, change::Change},
 		value::column::columns::Columns,
 	};
@@ -21,16 +21,16 @@ pub mod test {
 	/// Test operator implementation for stateful traits
 	pub struct TestOperator {
 		pub id: FlowNodeId,
-		pub layout: RowSchema,
+		pub layout: RowShape,
 		pub key_types: Vec<Type>,
 	}
 
 	impl TestOperator {
-		/// Create a new test operator with a complex schema
+		/// Create a new test operator with a complex shape
 		pub fn new(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: RowSchema::testing(&[Type::Int8, Type::Float8, Type::Utf8]),
+				layout: RowShape::testing(&[Type::Int8, Type::Float8, Type::Utf8]),
 				key_types: vec![Type::Utf8, Type::Int4],
 			}
 		}
@@ -39,7 +39,7 @@ pub mod test {
 		pub fn simple(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: RowSchema::testing(&[Type::Int8]),
+				layout: RowShape::testing(&[Type::Int8]),
 				key_types: vec![],
 			}
 		}
@@ -48,7 +48,7 @@ pub mod test {
 		pub fn with_key_types(id: FlowNodeId, key_types: Vec<Type>) -> Self {
 			Self {
 				id,
-				layout: RowSchema::testing(&[Type::Blob, Type::Int4]),
+				layout: RowShape::testing(&[Type::Blob, Type::Int4]),
 				key_types,
 			}
 		}

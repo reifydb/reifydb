@@ -4,13 +4,13 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::schema::SchemaId,
+	interface::catalog::shape::ShapeId,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowSequenceKey {
-	pub object: SchemaId,
+	pub shape: ShapeId,
 }
 
 const VERSION: u8 = 1;
@@ -20,7 +20,7 @@ impl EncodableKey for RowSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_schema_id(self.object);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(self.shape);
 		serializer.to_encoded_key()
 	}
 
@@ -37,18 +37,18 @@ impl EncodableKey for RowSequenceKey {
 			return None;
 		}
 
-		let object = de.read_schema_id().ok()?;
+		let shape = de.read_shape_id().ok()?;
 
 		Some(Self {
-			object,
+			shape,
 		})
 	}
 }
 
 impl RowSequenceKey {
-	pub fn encoded(object: impl Into<SchemaId>) -> EncodedKey {
+	pub fn encoded(shape: impl Into<ShapeId>) -> EncodedKey {
 		Self {
-			object: object.into(),
+			shape: shape.into(),
 		}
 		.encode()
 	}
@@ -73,23 +73,23 @@ impl RowSequenceKey {
 #[cfg(test)]
 pub mod tests {
 	use super::{EncodableKey, RowSequenceKey};
-	use crate::interface::catalog::schema::SchemaId;
+	use crate::interface::catalog::shape::ShapeId;
 
 	#[test]
 	fn test_encode_decode() {
 		let key = RowSequenceKey {
-			object: SchemaId::table(0xABCD),
+			shape: ShapeId::table(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![
 			0xFE, // version
 			0xF7, // kind
-			0x01, // SchemaId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // object id bytes
+			0x01, // ShapeId type discriminator (Table)
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // shape id bytes
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = RowSequenceKey::decode(&encoded).unwrap();
-		assert_eq!(key.object, 0xABCD);
+		assert_eq!(key.shape, 0xABCD);
 	}
 }

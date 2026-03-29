@@ -28,8 +28,8 @@ impl MaterializedCatalog {
 		version: CommitVersion,
 	) -> Option<Source> {
 		self.sources_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
-			let schema_id = *entry.value();
-			self.find_source_at(schema_id, version)
+			let shape_id = *entry.value();
+			self.find_source_at(shape_id, version)
 		})
 	}
 
@@ -44,8 +44,8 @@ impl MaterializedCatalog {
 	/// Find a source by name in a namespace (returns latest version)
 	pub fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<Source> {
 		self.sources_by_name.get(&(namespace, name.to_string())).and_then(|entry| {
-			let schema_id = *entry.value();
-			self.find_source(schema_id)
+			let shape_id = *entry.value();
+			self.find_source(shape_id)
 		})
 	}
 
@@ -89,35 +89,35 @@ pub mod tests {
 	#[test]
 	fn test_set_and_find_source() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let schema_id = SourceId(1);
+		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
-		let source = create_test_source(schema_id, namespace_id, "test_source");
+		let source = create_test_source(shape_id, namespace_id, "test_source");
 
 		// Set source at version 1
-		catalog.set_source(schema_id, CommitVersion(1), Some(source.clone()));
+		catalog.set_source(shape_id, CommitVersion(1), Some(source.clone()));
 
 		// Find source at version 1
-		let found = catalog.find_source_at(schema_id, CommitVersion(1));
+		let found = catalog.find_source_at(shape_id, CommitVersion(1));
 		assert_eq!(found, Some(source.clone()));
 
 		// Find source at later version (should return same source)
-		let found = catalog.find_source_at(schema_id, CommitVersion(5));
+		let found = catalog.find_source_at(shape_id, CommitVersion(5));
 		assert_eq!(found, Some(source));
 
 		// Source shouldn't exist at version 0
-		let found = catalog.find_source_at(schema_id, CommitVersion(0));
+		let found = catalog.find_source_at(shape_id, CommitVersion(0));
 		assert_eq!(found, None);
 	}
 
 	#[test]
 	fn test_find_source_by_name() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let schema_id = SourceId(1);
+		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
-		let source = create_test_source(schema_id, namespace_id, "named_source");
+		let source = create_test_source(shape_id, namespace_id, "named_source");
 
 		// Set source
-		catalog.set_source(schema_id, CommitVersion(1), Some(source.clone()));
+		catalog.set_source(shape_id, CommitVersion(1), Some(source.clone()));
 
 		// Find by name
 		let found = catalog.find_source_by_name_at(namespace_id, "named_source", CommitVersion(1));
@@ -135,26 +135,26 @@ pub mod tests {
 	#[test]
 	fn test_source_deletion() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let schema_id = SourceId(1);
+		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create and set source
-		let source = create_test_source(schema_id, namespace_id, "deletable_source");
-		catalog.set_source(schema_id, CommitVersion(1), Some(source.clone()));
+		let source = create_test_source(shape_id, namespace_id, "deletable_source");
+		catalog.set_source(shape_id, CommitVersion(1), Some(source.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(1)), Some(source.clone()));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(1)), Some(source.clone()));
 		assert!(catalog.find_source_by_name_at(namespace_id, "deletable_source", CommitVersion(1)).is_some());
 
 		// Delete the source
-		catalog.set_source(schema_id, CommitVersion(2), None);
+		catalog.set_source(shape_id, CommitVersion(2), None);
 
 		// Should not exist at version 2
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(2)), None);
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(2)), None);
 		assert!(catalog.find_source_by_name_at(namespace_id, "deletable_source", CommitVersion(2)).is_none());
 
 		// Should still exist at version 1 (historical)
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(1)), Some(source));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(1)), Some(source));
 	}
 
 	#[test]
@@ -180,28 +180,28 @@ pub mod tests {
 	#[test]
 	fn test_source_versioning() {
 		let catalog = MaterializedCatalog::new(SystemConfig::new());
-		let schema_id = SourceId(1);
+		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
 		// Create multiple versions
-		let source_v1 = create_test_source(schema_id, namespace_id, "source_v1");
+		let source_v1 = create_test_source(shape_id, namespace_id, "source_v1");
 		let mut source_v2 = source_v1.clone();
 		source_v2.name = "source_v2".to_string();
 		let mut source_v3 = source_v2.clone();
 		source_v3.name = "source_v3".to_string();
 
 		// Set at different versions
-		catalog.set_source(schema_id, CommitVersion(10), Some(source_v1.clone()));
-		catalog.set_source(schema_id, CommitVersion(20), Some(source_v2.clone()));
-		catalog.set_source(schema_id, CommitVersion(30), Some(source_v3.clone()));
+		catalog.set_source(shape_id, CommitVersion(10), Some(source_v1.clone()));
+		catalog.set_source(shape_id, CommitVersion(20), Some(source_v2.clone()));
+		catalog.set_source(shape_id, CommitVersion(30), Some(source_v3.clone()));
 
 		// Query at different versions
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(5)), None);
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(10)), Some(source_v1.clone()));
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(15)), Some(source_v1));
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(20)), Some(source_v2.clone()));
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(25)), Some(source_v2));
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(30)), Some(source_v3.clone()));
-		assert_eq!(catalog.find_source_at(schema_id, CommitVersion(100)), Some(source_v3));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(5)), None);
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(10)), Some(source_v1.clone()));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(15)), Some(source_v1));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(20)), Some(source_v2.clone()));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(25)), Some(source_v2));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(30)), Some(source_v3.clone()));
+		assert_eq!(catalog.find_source_at(shape_id, CommitVersion(100)), Some(source_v3));
 	}
 }

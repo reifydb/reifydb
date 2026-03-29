@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::policy::schema::policy::{ENABLED, ID, NAME, SCHEMA, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
+	store::policy::shape::policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
 };
 
 impl CatalogStore {
@@ -16,13 +16,13 @@ impl CatalogStore {
 		enabled: bool,
 	) -> Result<()> {
 		if let Some(def) = Self::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
-			let mut row = SCHEMA.allocate();
-			SCHEMA.set_u64(&mut row, ID, def.id);
-			SCHEMA.set_utf8(&mut row, NAME, def.name.as_deref().unwrap_or(""));
-			SCHEMA.set_utf8(&mut row, TARGET_TYPE, def.target_type.as_str());
-			SCHEMA.set_utf8(&mut row, TARGET_NAMESPACE, def.target_namespace.as_deref().unwrap_or(""));
-			SCHEMA.set_utf8(&mut row, TARGET_OBJECT, def.target_object.as_deref().unwrap_or(""));
-			SCHEMA.set_bool(&mut row, ENABLED, enabled);
+			let mut row = SHAPE.allocate();
+			SHAPE.set_u64(&mut row, ID, def.id);
+			SHAPE.set_utf8(&mut row, NAME, def.name.as_deref().unwrap_or(""));
+			SHAPE.set_utf8(&mut row, TARGET_TYPE, def.target_type.as_str());
+			SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, def.target_namespace.as_deref().unwrap_or(""));
+			SHAPE.set_utf8(&mut row, TARGET_OBJECT, def.target_object.as_deref().unwrap_or(""));
+			SHAPE.set_bool(&mut row, ENABLED, enabled);
 
 			txn.set(&PolicyKey::encoded(policy_id), row)?;
 		}

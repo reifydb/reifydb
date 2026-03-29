@@ -20,7 +20,7 @@ pub mod identity;
 pub mod int;
 pub mod key;
 pub mod row;
-pub mod schema;
+pub mod shape;
 pub mod time;
 pub mod u128;
 pub mod u16;

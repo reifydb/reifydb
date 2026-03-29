@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use flow_edge_by_flow::SCHEMA;
+use flow_edge_by_flow::SHAPE;
 use reifydb_core::{
 	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, FlowNodeId},
 	key::{
@@ -13,7 +13,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::flow_edge::schema::{flow_edge, flow_edge_by_flow},
+	store::flow_edge::shape::{flow_edge, flow_edge_by_flow},
 };
 
 impl CatalogStore {
@@ -24,7 +24,7 @@ impl CatalogStore {
 			let mut stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
-				edge_ids.push(FlowEdgeId(SCHEMA.get_u64(&multi.row, flow_edge_by_flow::ID)));
+				edge_ids.push(FlowEdgeId(SHAPE.get_u64(&multi.row, flow_edge_by_flow::ID)));
 			}
 		}
 
@@ -51,9 +51,9 @@ impl CatalogStore {
 			let entry = entry?;
 			if let Some(flow_edge_key) = FlowEdgeKey::decode(&entry.key) {
 				let edge_id = flow_edge_key.edge;
-				let flow_id = FlowId(flow_edge::SCHEMA.get_u64(&entry.row, flow_edge::FLOW));
-				let source = FlowNodeId(flow_edge::SCHEMA.get_u64(&entry.row, flow_edge::SOURCE));
-				let target = FlowNodeId(flow_edge::SCHEMA.get_u64(&entry.row, flow_edge::TARGET));
+				let flow_id = FlowId(flow_edge::SHAPE.get_u64(&entry.row, flow_edge::FLOW));
+				let source = FlowNodeId(flow_edge::SHAPE.get_u64(&entry.row, flow_edge::SOURCE));
+				let target = FlowNodeId(flow_edge::SHAPE.get_u64(&entry.row, flow_edge::TARGET));
 
 				let edge_def = FlowEdge {
 					id: edge_id,

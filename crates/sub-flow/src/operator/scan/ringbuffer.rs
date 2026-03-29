@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	interface::{
-		catalog::{flow::FlowNodeId, ringbuffer::RingBuffer, schema::SchemaId},
+		catalog::{flow::FlowNodeId, ringbuffer::RingBuffer, shape::ShapeId},
 		change::{Change, Diff},
 	},
 	key::row::RowKey,
@@ -78,8 +78,8 @@ impl Operator for PrimitiveRingBufferOperator {
 			return Ok(self.empty_columns());
 		}
 
-		let schema: RowSchema = (&self.ringbuffer.columns).into();
-		let fields = schema.fields();
+		let shape: RowShape = (&self.ringbuffer.columns).into();
+		let fields = shape.fields();
 
 		let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
@@ -91,11 +91,11 @@ impl Operator for PrimitiveRingBufferOperator {
 		let mut row_numbers = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
-			let key = RowKey::encoded(SchemaId::ringbuffer(self.ringbuffer.id), *row_num);
+			let key = RowKey::encoded(ShapeId::ringbuffer(self.ringbuffer.id), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
 				for (i, _field) in fields.iter().enumerate() {
-					let value = schema.get_value(&encoded, i);
+					let value = shape.get_value(&encoded, i);
 					columns_vec[i].data.push_value(value);
 				}
 			}

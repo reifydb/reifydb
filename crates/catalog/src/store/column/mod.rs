@@ -7,4 +7,4 @@ pub mod find;
 pub mod get;
 pub mod list;
 pub mod rename;
-pub mod schema;
+pub mod shape;

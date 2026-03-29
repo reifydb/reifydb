@@ -17,11 +17,11 @@ use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
 		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
-		load_schema_registry,
+		load_shape_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::RowSchemaRegistry,
+	shape::RowShapeRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -112,13 +112,13 @@ impl Bridge {
 
 		let ioc_ref = ioc.clone();
 
-		let schema_registry = RowSchemaRegistry::new(single.clone());
+		let shape_registry = RowShapeRegistry::new(single.clone());
 
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
 		bootstrap_root_identity(&multi, &single, &materialized_catalog, &eventbus)?;
 		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)?;
-		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &schema_registry, &eventbus)?;
-		load_schema_registry(&multi, &single, &schema_registry)?;
+		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &shape_registry, &eventbus)?;
+		load_shape_registry(&multi, &single, &shape_registry)?;
 
 		let procedures = default_procedures().build();
 
@@ -128,7 +128,7 @@ impl Bridge {
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog, schema_registry),
+			Catalog::new(materialized_catalog, shape_registry),
 			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 			default_functions().build(),
 			procedures,

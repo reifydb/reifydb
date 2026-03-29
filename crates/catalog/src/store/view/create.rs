@@ -26,7 +26,7 @@ use crate::{
 	store::{
 		column::create::ColumnToCreate,
 		sequence::system::SystemSequence,
-		view::schema::{view, view_namespace},
+		view::shape::{view, view_namespace},
 	},
 };
 
@@ -113,11 +113,11 @@ impl CatalogStore {
 		to_create: &ViewToCreate,
 		kind: ViewKind,
 	) -> Result<()> {
-		let mut row = view::SCHEMA.allocate();
-		view::SCHEMA.set_u64(&mut row, view::ID, view);
-		view::SCHEMA.set_u64(&mut row, view::NAMESPACE, namespace);
-		view::SCHEMA.set_utf8(&mut row, view::NAME, to_create.name.text());
-		view::SCHEMA.set_u8(
+		let mut row = view::SHAPE.allocate();
+		view::SHAPE.set_u64(&mut row, view::ID, view);
+		view::SHAPE.set_u64(&mut row, view::NAMESPACE, namespace);
+		view::SHAPE.set_utf8(&mut row, view::NAME, to_create.name.text());
+		view::SHAPE.set_u8(
 			&mut row,
 			view::KIND,
 			match kind {
@@ -125,31 +125,31 @@ impl CatalogStore {
 				Transactional => 1,
 			},
 		);
-		view::SCHEMA.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
+		view::SHAPE.set_u64(&mut row, view::PRIMARY_KEY, 0u64);
 
 		// Write storage kind and configuration
 		match &to_create.storage {
 			ViewStorageConfig::Table {
 				underlying,
 			} => {
-				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
-				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
-				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
-				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
-				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, "");
-				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, 0u8);
-				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
-				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
+				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
+				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
+				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
+				view::SHAPE.set_u8(&mut row, view::PRECISION, 0u8);
+				view::SHAPE.set_u64(&mut row, view::TAG_ID, 0u64);
 			}
 			ViewStorageConfig::RingBuffer {
 				underlying,
 				capacity,
 				propagate_evictions,
 			} => {
-				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
-				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
-				view::SCHEMA.set_u64(&mut row, view::CAPACITY, *capacity);
-				view::SCHEMA.set_u8(
+				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::CAPACITY, *capacity);
+				view::SHAPE.set_u8(
 					&mut row,
 					view::PROPAGATE_EVICTIONS,
 					if *propagate_evictions {
@@ -158,21 +158,21 @@ impl CatalogStore {
 						0
 					},
 				);
-				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, "");
-				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, 0u8);
-				view::SCHEMA.set_u8(&mut row, view::PRECISION, 0u8);
-				view::SCHEMA.set_u64(&mut row, view::TAG_ID, 0u64);
+				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
+				view::SHAPE.set_u8(&mut row, view::KEY_KIND, 0u8);
+				view::SHAPE.set_u8(&mut row, view::PRECISION, 0u8);
+				view::SHAPE.set_u64(&mut row, view::TAG_ID, 0u64);
 			}
 			ViewStorageConfig::Series {
 				underlying,
 				key,
 				tag,
 			} => {
-				view::SCHEMA.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
-				view::SCHEMA.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
-				view::SCHEMA.set_u64(&mut row, view::CAPACITY, 0u64);
-				view::SCHEMA.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
-				view::SCHEMA.set_utf8(&mut row, view::KEY_COLUMN, key.column());
+				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
+				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
+				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
 				let (key_kind_u8, precision_u8) = match key {
 					SeriesKey::DateTime {
 						precision,
@@ -182,9 +182,9 @@ impl CatalogStore {
 						..
 					} => (1u8, 0u8),
 				};
-				view::SCHEMA.set_u8(&mut row, view::KEY_KIND, key_kind_u8);
-				view::SCHEMA.set_u8(&mut row, view::PRECISION, precision_u8);
-				view::SCHEMA.set_u64(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
+				view::SHAPE.set_u8(&mut row, view::KEY_KIND, key_kind_u8);
+				view::SHAPE.set_u8(&mut row, view::PRECISION, precision_u8);
+				view::SHAPE.set_u64(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
 			}
 		}
 
@@ -199,9 +199,9 @@ impl CatalogStore {
 		view: ViewId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = view_namespace::SCHEMA.allocate();
-		view_namespace::SCHEMA.set_u64(&mut row, view_namespace::ID, view);
-		view_namespace::SCHEMA.set_utf8(&mut row, view_namespace::NAME, name);
+		let mut row = view_namespace::SHAPE.allocate();
+		view_namespace::SHAPE.set_u64(&mut row, view_namespace::ID, view);
+		view_namespace::SHAPE.set_utf8(&mut row, view_namespace::NAME, name);
 		txn.set(&NamespaceViewKey::encoded(namespace, view), row)?;
 		Ok(())
 	}
@@ -217,7 +217,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace.name().to_string(),
-					schema_name: to_create.name.text().to_string(),
+					shape_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: vec![],
@@ -243,7 +243,7 @@ pub mod tests {
 	use super::ViewStorageConfig;
 	use crate::{
 		CatalogStore,
-		store::view::{create::ViewToCreate, schema::view_namespace},
+		store::view::{create::ViewToCreate, shape::view_namespace},
 		test_utils::ensure_test_namespace,
 	};
 
@@ -302,13 +302,13 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1025);
-		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "test_view");
+		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 1025);
+		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(view_namespace::SCHEMA.get_u64(row, view_namespace::ID), 1026);
-		assert_eq!(view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME), "another_view");
+		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 1026);
+		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 
 	#[test]

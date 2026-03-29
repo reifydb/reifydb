@@ -11,6 +11,6 @@ use crate::{Result, store::sequence::generator::u64::GeneratorU64, system::ids::
 
 static SOURCE_CONNECTOR_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(SOURCE_CONNECTOR));
 
-pub(crate) fn next_schema_id(txn: &mut AdminTransaction) -> Result<SourceId> {
+pub(crate) fn next_shape_id(txn: &mut AdminTransaction) -> Result<SourceId> {
 	GeneratorU64::next(txn, &SOURCE_CONNECTOR_KEY, None).map(SourceId)
 }

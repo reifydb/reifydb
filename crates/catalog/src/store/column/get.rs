@@ -13,7 +13,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::store::column::schema::column::SCHEMA;
+use crate::store::column::shape::column::SHAPE;
 
 /// Decodes a constraint from stored bytes
 fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
@@ -59,7 +59,7 @@ use reifydb_core::interface::catalog::{
 
 use crate::{
 	CatalogStore, Result,
-	store::column::schema::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
+	store::column::shape::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
 };
 
 impl CatalogStore {
@@ -73,18 +73,18 @@ impl CatalogStore {
 
 		let row = multi.row;
 
-		let id = ColumnId(SCHEMA.get_u64(&row, ID));
-		let name = SCHEMA.get_utf8(&row, NAME).to_string();
-		let base_type = Type::from_u8(SCHEMA.get_u8(&row, VALUE));
-		let index = ColumnIndex(SCHEMA.get_u8(&row, INDEX));
-		let auto_increment = SCHEMA.get_bool(&row, AUTO_INCREMENT);
+		let id = ColumnId(SHAPE.get_u64(&row, ID));
+		let name = SHAPE.get_utf8(&row, NAME).to_string();
+		let base_type = Type::from_u8(SHAPE.get_u8(&row, VALUE));
+		let index = ColumnIndex(SHAPE.get_u8(&row, INDEX));
+		let auto_increment = SHAPE.get_bool(&row, AUTO_INCREMENT);
 
 		// Reconstruct constraint from stored blob
-		let constraint_bytes = SCHEMA.get_blob(&row, CONSTRAINT);
+		let constraint_bytes = SHAPE.get_blob(&row, CONSTRAINT);
 		let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
 
 		// Read dictionary_id (0 means no dictionary)
-		let dict_id_raw = SCHEMA.get_u64(&row, DICTIONARY_ID);
+		let dict_id_raw = SHAPE.get_u64(&row, DICTIONARY_ID);
 		let dictionary_id = if dict_id_raw == 0 {
 			None
 		} else {

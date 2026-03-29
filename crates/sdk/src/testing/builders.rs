@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::schema::{RowSchema, RowSchemaField},
+	encoded::shape::{RowShape, RowShapeField},
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, schema::SchemaId},
+		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	row::Row,
@@ -17,7 +17,7 @@ use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
 pub struct TestRowBuilder {
 	row_number: RowNumber,
 	values: Vec<Value>,
-	schema: Option<RowSchema>,
+	shape: Option<RowShape>,
 }
 
 impl TestRowBuilder {
@@ -26,7 +26,7 @@ impl TestRowBuilder {
 		Self {
 			row_number: row_number.into(),
 			values: Vec::new(),
-			schema: None,
+			shape: None,
 		}
 	}
 
@@ -42,35 +42,35 @@ impl TestRowBuilder {
 		self
 	}
 
-	/// Set the schema for the row (inferred from values if not set)
-	pub fn with_schema(mut self, schema: RowSchema) -> Self {
-		self.schema = Some(schema);
+	/// Set the shape for the row (inferred from values if not set)
+	pub fn with_shape(mut self, shape: RowShape) -> Self {
+		self.shape = Some(shape);
 		self
 	}
 
 	/// Build the row
 	pub fn build(self) -> Row {
-		// Use provided schema or infer from values
-		let schema = if let Some(schema) = self.schema {
-			schema
+		// Use provided shape or infer from values
+		let shape = if let Some(shape) = self.shape {
+			shape
 		} else {
-			// Infer types from values and create schema
-			let fields: Vec<RowSchemaField> = self
+			// Infer types from values and create shape
+			let fields: Vec<RowShapeField> = self
 				.values
 				.iter()
 				.enumerate()
-				.map(|(i, v)| RowSchemaField::unconstrained(format!("field{}", i), v.get_type()))
+				.map(|(i, v)| RowShapeField::unconstrained(format!("field{}", i), v.get_type()))
 				.collect();
-			RowSchema::new(fields)
+			RowShape::new(fields)
 		};
 
-		let mut encoded = schema.allocate();
-		schema.set_values(&mut encoded, &self.values);
+		let mut encoded = shape.allocate();
+		shape.set_values(&mut encoded, &self.values);
 
 		Row {
 			number: self.row_number,
 			encoded,
-			schema,
+			shape,
 		}
 	}
 }
@@ -86,15 +86,15 @@ impl TestChangeBuilder {
 	/// Create a new flow change builder with default origin and version
 	pub fn new() -> Self {
 		Self {
-			origin: ChangeOrigin::Schema(SchemaId::Table(TableId(1))),
+			origin: ChangeOrigin::Shape(ShapeId::Table(TableId(1))),
 			diffs: Vec::new(),
 			version: CommitVersion(1),
 		}
 	}
 
 	/// Set the origin as an external source
-	pub fn changed_by_schema(mut self, schema: SchemaId) -> Self {
-		self.origin = ChangeOrigin::Schema(schema);
+	pub fn changed_by_shape(mut self, shape: ShapeId) -> Self {
+		self.origin = ChangeOrigin::Shape(shape);
 		self
 	}
 
@@ -170,62 +170,62 @@ impl TestChangeBuilder {
 	}
 }
 
-/// Builder for creating test schemas
+/// Builder for creating test shapes
 pub struct TestLayoutBuilder {
-	fields: Vec<RowSchemaField>,
+	fields: Vec<RowShapeField>,
 }
 
 impl TestLayoutBuilder {
-	/// Create a new schema builder
+	/// Create a new shape builder
 	pub fn new() -> Self {
 		Self {
 			fields: Vec::new(),
 		}
 	}
 
-	/// Add a type to the schema with auto-generated name
+	/// Add a type to the shape with auto-generated name
 	pub fn add_type(mut self, ty: Type) -> Self {
 		let field_name = format!("field{}", self.fields.len());
-		self.fields.push(RowSchemaField::unconstrained(field_name, ty));
+		self.fields.push(RowShapeField::unconstrained(field_name, ty));
 		self
 	}
 
-	/// Add a named field to the schema
+	/// Add a named field to the shape
 	pub fn add_field(mut self, name: impl Into<String>, ty: Type) -> Self {
-		self.fields.push(RowSchemaField::unconstrained(name, ty));
+		self.fields.push(RowShapeField::unconstrained(name, ty));
 		self
 	}
 
-	/// Build the schema
-	pub fn build(self) -> RowSchema {
-		RowSchema::new(self.fields)
+	/// Build the shape
+	pub fn build(self) -> RowShape {
+		RowShape::new(self.fields)
 	}
 
-	/// Build the schema (alias for backwards compatibility)
-	pub fn build_named(self) -> RowSchema {
+	/// Build the shape (alias for backwards compatibility)
+	pub fn build_named(self) -> RowShape {
 		self.build()
 	}
 }
 
 /// Helper functions for common test data patterns
 pub mod helpers {
-	use reifydb_core::{encoded::schema::RowSchema, interface::change::Change, row::Row};
+	use reifydb_core::{encoded::shape::RowShape, interface::change::Change, row::Row};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
 	use super::*;
 
-	/// Create a simple counter schema (single int8 field)
-	pub fn counter_layout() -> RowSchema {
+	/// Create a simple counter shape (single int8 field)
+	pub fn counter_layout() -> RowShape {
 		TestLayoutBuilder::new().add_type(Type::Int8).build()
 	}
 
-	/// Create a key-value schema (utf8 key, int8 value)
-	pub fn key_value_layout() -> RowSchema {
+	/// Create a key-value shape (utf8 key, int8 value)
+	pub fn key_value_layout() -> RowShape {
 		TestLayoutBuilder::new().add_type(Type::Utf8).add_type(Type::Int8).build()
 	}
 
-	/// Create a named key-value schema
-	pub fn named_key_value_layout() -> RowSchema {
+	/// Create a named key-value shape
+	pub fn named_key_value_layout() -> RowShape {
 		TestLayoutBuilder::new().add_field("key", Type::Utf8).add_field("value", Type::Int8).build_named()
 	}
 
@@ -265,7 +265,7 @@ pub mod helpers {
 pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::{catalog::schema::SchemaId, change::ChangeOrigin},
+		interface::{catalog::shape::ShapeId, change::ChangeOrigin},
 	};
 	use reifydb_type::value::{row_number::RowNumber, r#type::Type};
 
@@ -279,13 +279,13 @@ pub mod tests {
 			.build();
 
 		assert_eq!(row.number, RowNumber(42));
-		assert_eq!(row.schema.field_count(), 2);
+		assert_eq!(row.shape.field_count(), 2);
 	}
 
 	#[test]
 	fn test_flow_change_builder() {
 		let change = TestChangeBuilder::new()
-			.changed_by_schema(SchemaId::table(100))
+			.changed_by_shape(ShapeId::table(100))
 			.with_version(CommitVersion(5))
 			.insert_row(1, vec![Value::Int8(42i64)])
 			.update_row(2, vec![Value::Int8(10i64)], vec![Value::Int8(20i64)])
@@ -296,8 +296,8 @@ pub mod tests {
 		assert_eq!(change.diffs.len(), 3);
 
 		match &change.origin {
-			ChangeOrigin::Schema(schema) => {
-				assert_eq!(*schema, SchemaId::table(100));
+			ChangeOrigin::Shape(shape) => {
+				assert_eq!(*shape, ShapeId::table(100));
 			}
 			_ => panic!("Expected external origin"),
 		}

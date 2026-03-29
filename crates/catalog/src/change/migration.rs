@@ -16,7 +16,7 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::migration::schema::{migration, migration_event},
+	store::migration::shape::{migration, migration_event},
 };
 
 pub(super) struct MigrationApplier;
@@ -61,10 +61,10 @@ impl CatalogChangeApplier for MigrationEventApplier {
 }
 
 fn decode_migration(row: &EncodedRow) -> Migration {
-	let id = MigrationId(migration::SCHEMA.get_u64(row, migration::ID));
-	let name = migration::SCHEMA.get_utf8(row, migration::NAME).to_string();
-	let body = migration::SCHEMA.get_utf8(row, migration::BODY).to_string();
-	let rollback_body_str = migration::SCHEMA.get_utf8(row, migration::ROLLBACK_BODY).to_string();
+	let id = MigrationId(migration::SHAPE.get_u64(row, migration::ID));
+	let name = migration::SHAPE.get_utf8(row, migration::NAME).to_string();
+	let body = migration::SHAPE.get_utf8(row, migration::BODY).to_string();
+	let rollback_body_str = migration::SHAPE.get_utf8(row, migration::ROLLBACK_BODY).to_string();
 	let rollback_body = if rollback_body_str.is_empty() {
 		None
 	} else {
@@ -80,9 +80,9 @@ fn decode_migration(row: &EncodedRow) -> Migration {
 }
 
 fn decode_migration_event(row: &EncodedRow) -> MigrationEvent {
-	let id = MigrationEventId(migration_event::SCHEMA.get_u64(row, migration_event::ID));
-	let migration_id = MigrationId(migration_event::SCHEMA.get_u64(row, migration_event::MIGRATION_ID));
-	let action_raw = migration_event::SCHEMA.get_u8(row, migration_event::ACTION);
+	let id = MigrationEventId(migration_event::SHAPE.get_u64(row, migration_event::ID));
+	let migration_id = MigrationId(migration_event::SHAPE.get_u64(row, migration_event::MIGRATION_ID));
+	let action_raw = migration_event::SHAPE.get_u8(row, migration_event::ACTION);
 	let action = if action_raw == 0 {
 		MigrationAction::Applied
 	} else {

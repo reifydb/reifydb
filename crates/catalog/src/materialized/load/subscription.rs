@@ -18,7 +18,7 @@ use reifydb_transaction::transaction::Transaction;
 use super::MaterializedCatalog;
 use crate::{
 	Result,
-	store::subscription::schema::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY},
+	store::subscription::shape::subscription::{self, ACKNOWLEDGED_VERSION, ID, PRIMARY_KEY},
 };
 
 pub(crate) fn load_subscriptions(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
@@ -41,8 +41,8 @@ pub(crate) fn load_subscriptions(rx: &mut Transaction<'_>, catalog: &Materialize
 
 fn convert_subscription(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Subscription {
 	let row = multi.row;
-	let id = SubscriptionId(subscription::SCHEMA.get_u64(&row, ID));
-	let acknowledged_version = CommitVersion(subscription::SCHEMA.get_u64(&row, ACKNOWLEDGED_VERSION));
+	let id = SubscriptionId(subscription::SHAPE.get_u64(&row, ID));
+	let acknowledged_version = CommitVersion(subscription::SHAPE.get_u64(&row, ACKNOWLEDGED_VERSION));
 
 	Subscription {
 		id,
@@ -53,7 +53,7 @@ fn convert_subscription(multi: MultiVersionRow, primary_key: Option<PrimaryKey>)
 }
 
 fn get_subscription_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = subscription::SCHEMA.get_u64(&multi.row, PRIMARY_KEY);
+	let pk_id_raw = subscription::SHAPE.get_u64(&multi.row, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

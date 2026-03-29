@@ -18,7 +18,7 @@ pub mod catalog;
 pub mod change;
 pub mod error;
 pub mod materialized;
-pub mod schema;
+pub mod shape;
 pub mod store;
 pub mod system;
 pub mod test_utils;

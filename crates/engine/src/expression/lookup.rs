@@ -148,7 +148,7 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Res
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::identifier::{ColumnIdentifier, ColumnSchema},
+		interface::identifier::{ColumnIdentifier, ColumnShape},
 		value::column::{Column, columns::Columns, data::ColumnData},
 	};
 	use reifydb_routine::function::registry::Functions;
@@ -180,7 +180,7 @@ pub mod tests {
 		let result = column_lookup(
 			&ctx,
 			&ColumnExpression(ColumnIdentifier {
-				schema: ColumnSchema::Alias(Fragment::internal("nonexistent_col")),
+				shape: ColumnShape::Alias(Fragment::internal("nonexistent_col")),
 				name: Fragment::internal("nonexistent_col"),
 			}),
 		)

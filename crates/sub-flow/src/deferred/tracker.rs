@@ -5,18 +5,18 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use reifydb_core::{common::CommitVersion, interface::catalog::schema::SchemaId};
+use reifydb_core::{common::CommitVersion, interface::catalog::shape::ShapeId};
 use reifydb_runtime::sync::rwlock::RwLock;
 
 /// Tracks the latest CDC version for each primitive (table/view/flow).
 ///
 /// This is used to compute flow lag by comparing a flow's current version
 /// to the latest version where its sources had changes.
-pub struct SchemaVersionTracker {
-	versions: Arc<RwLock<BTreeMap<SchemaId, CommitVersion>>>,
+pub struct ShapeVersionTracker {
+	versions: Arc<RwLock<BTreeMap<ShapeId, CommitVersion>>>,
 }
 
-impl SchemaVersionTracker {
+impl ShapeVersionTracker {
 	pub fn new() -> Self {
 		Self {
 			versions: Arc::new(RwLock::new(BTreeMap::new())),
@@ -24,7 +24,7 @@ impl SchemaVersionTracker {
 	}
 
 	/// Update the latest version for a primitive.
-	pub fn update(&self, object_id: SchemaId, version: CommitVersion) {
+	pub fn update(&self, object_id: ShapeId, version: CommitVersion) {
 		let mut versions = self.versions.write();
 		versions.entry(object_id)
 			.and_modify(|v| {
@@ -36,13 +36,13 @@ impl SchemaVersionTracker {
 	}
 
 	/// Get all tracked primitive versions.
-	pub fn all(&self) -> BTreeMap<SchemaId, CommitVersion> {
+	pub fn all(&self) -> BTreeMap<ShapeId, CommitVersion> {
 		let versions = self.versions.read();
 		versions.clone()
 	}
 }
 
-impl Default for SchemaVersionTracker {
+impl Default for ShapeVersionTracker {
 	fn default() -> Self {
 		Self::new()
 	}

@@ -17,8 +17,8 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		sequence::source::next_schema_id,
-		source::schema::{source, source_namespace},
+		sequence::source::next_shape_id,
+		source::shape::{source, source_namespace},
 	},
 };
 
@@ -52,11 +52,11 @@ impl CatalogStore {
 			.into());
 		}
 
-		let schema_id = next_schema_id(txn)?;
-		Self::store_source(txn, schema_id, namespace_id, &to_create)?;
-		Self::link_source_to_namespace(txn, namespace_id, schema_id, to_create.name.text())?;
+		let shape_id = next_shape_id(txn)?;
+		Self::store_source(txn, shape_id, namespace_id, &to_create)?;
+		Self::link_source_to_namespace(txn, namespace_id, shape_id, to_create.name.text())?;
 
-		Ok(Self::get_source(&mut Transaction::Admin(&mut *txn), schema_id)?)
+		Ok(Self::get_source(&mut Transaction::Admin(&mut *txn), shape_id)?)
 	}
 
 	fn store_source(
@@ -67,15 +67,15 @@ impl CatalogStore {
 	) -> Result<()> {
 		let config_json = to_string(&to_create.config).unwrap_or_default();
 
-		let mut row = source::SCHEMA.allocate();
-		source::SCHEMA.set_u64(&mut row, source::ID, source);
-		source::SCHEMA.set_u64(&mut row, source::NAMESPACE, namespace);
-		source::SCHEMA.set_utf8(&mut row, source::NAME, to_create.name.text());
-		source::SCHEMA.set_utf8(&mut row, source::CONNECTOR, &to_create.connector);
-		source::SCHEMA.set_utf8(&mut row, source::CONFIG, &config_json);
-		source::SCHEMA.set_u64(&mut row, source::TARGET_NAMESPACE, to_create.target_namespace);
-		source::SCHEMA.set_utf8(&mut row, source::TARGET_NAME, &to_create.target_name);
-		source::SCHEMA.set_u8(&mut row, source::STATUS, FlowStatus::Active.to_u8());
+		let mut row = source::SHAPE.allocate();
+		source::SHAPE.set_u64(&mut row, source::ID, source);
+		source::SHAPE.set_u64(&mut row, source::NAMESPACE, namespace);
+		source::SHAPE.set_utf8(&mut row, source::NAME, to_create.name.text());
+		source::SHAPE.set_utf8(&mut row, source::CONNECTOR, &to_create.connector);
+		source::SHAPE.set_utf8(&mut row, source::CONFIG, &config_json);
+		source::SHAPE.set_u64(&mut row, source::TARGET_NAMESPACE, to_create.target_namespace);
+		source::SHAPE.set_utf8(&mut row, source::TARGET_NAME, &to_create.target_name);
+		source::SHAPE.set_u8(&mut row, source::STATUS, FlowStatus::Active.to_u8());
 
 		let key = SourceKey::encoded(source);
 		txn.set(&key, row)?;
@@ -89,9 +89,9 @@ impl CatalogStore {
 		source: SourceId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = source_namespace::SCHEMA.allocate();
-		source_namespace::SCHEMA.set_u64(&mut row, source_namespace::ID, source);
-		source_namespace::SCHEMA.set_utf8(&mut row, source_namespace::NAME, name);
+		let mut row = source_namespace::SHAPE.allocate();
+		source_namespace::SHAPE.set_u64(&mut row, source_namespace::ID, source);
+		source_namespace::SHAPE.set_utf8(&mut row, source_namespace::NAME, name);
 		let key = NamespaceSourceKey::encoded(namespace, source);
 		txn.set(&key, row)?;
 		Ok(())
@@ -109,7 +109,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::source::{create::SourceToCreate, schema::source_namespace},
+		store::source::{create::SourceToCreate, shape::source_namespace},
 		test_utils::{create_namespace, ensure_test_namespace},
 	};
 
@@ -196,8 +196,8 @@ pub mod tests {
 
 		for link in &links {
 			let row = &link.row;
-			let id = source_namespace::SCHEMA.get_u64(row, source_namespace::ID);
-			let name = source_namespace::SCHEMA.get_utf8(row, source_namespace::NAME);
+			let id = source_namespace::SHAPE.get_u64(row, source_namespace::ID);
+			let name = source_namespace::SHAPE.get_utf8(row, source_namespace::NAME);
 
 			match name {
 				"source_one" => {

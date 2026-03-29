@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Column definitions for operator input/output schemas
+//! Column definitions for operator input/output shapes
 
 use reifydb_type::value::constraint::TypeConstraint;
 

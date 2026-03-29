@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstGenerator, AstList, AstVariable},
-		identifier::UnresolvedSchemaIdentifier,
+		identifier::UnresolvedShapeIdentifier,
 		parse::Parser,
 	},
 	diagnostic::AstError,
@@ -114,7 +114,7 @@ impl<'bump> Parser<'bump> {
 				let name = segments.pop().unwrap().into_fragment();
 				let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
 
-				let mut source = UnresolvedSchemaIdentifier::new(namespace, name);
+				let mut source = UnresolvedShapeIdentifier::new(namespace, name);
 
 				if !self.is_eof() && self.current()?.is_identifier() {
 					let alias_token = self.consume(TokenKind::Identifier)?;
@@ -124,7 +124,7 @@ impl<'bump> Parser<'bump> {
 				source
 			} else {
 				let mut source =
-					UnresolvedSchemaIdentifier::new(vec![], first_identifier.into_fragment());
+					UnresolvedShapeIdentifier::new(vec![], first_identifier.into_fragment());
 
 				if !self.is_eof() && self.current()?.is_identifier() {
 					let alias_token = self.consume(TokenKind::Identifier)?;
@@ -213,7 +213,7 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_from_schema_and_table() {
+	fn test_from_shape_and_table() {
 		let bump = Bump::new();
 		let source = "FROM reifydb::users";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -239,7 +239,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_from_table_without_schema() {
+	fn test_from_table_without_shape() {
 		let bump = Bump::new();
 		let source = "FROM users";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

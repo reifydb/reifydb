@@ -2,26 +2,26 @@
 // Copyright (c) 2025 ReifyDB
 
 use super::{ringbuffer::RingBuffer, table::Table, view::View};
-use crate::encoded::schema::RowSchema;
+use crate::encoded::shape::RowShape;
 
-pub trait GetSchema {
-	fn get_schema(&self) -> RowSchema;
+pub trait GetShape {
+	fn get_shape(&self) -> RowShape;
 }
 
-impl GetSchema for Table {
-	fn get_schema(&self) -> RowSchema {
-		RowSchema::from(&self.columns)
+impl GetShape for Table {
+	fn get_shape(&self) -> RowShape {
+		RowShape::from(&self.columns)
 	}
 }
 
-impl GetSchema for View {
-	fn get_schema(&self) -> RowSchema {
-		RowSchema::from(self.columns())
+impl GetShape for View {
+	fn get_shape(&self) -> RowShape {
+		RowShape::from(self.columns())
 	}
 }
 
-impl GetSchema for RingBuffer {
-	fn get_schema(&self) -> RowSchema {
-		RowSchema::from(&self.columns)
+impl GetShape for RingBuffer {
+	fn get_shape(&self) -> RowShape {
+		RowShape::from(&self.columns)
 	}
 }

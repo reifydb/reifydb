@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use flow_edge::SCHEMA;
+use flow_edge::SHAPE;
 use reifydb_core::{
 	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, FlowNodeId},
 	key::flow_edge::FlowEdgeKey,
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::flow_edge::schema::flow_edge};
+use crate::{CatalogStore, Result, store::flow_edge::shape::flow_edge};
 
 impl CatalogStore {
 	pub(crate) fn find_flow_edge(rx: &mut Transaction<'_>, edge: FlowEdgeId) -> Result<Option<FlowEdge>> {
@@ -17,10 +17,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = FlowEdgeId(SCHEMA.get_u64(&row, flow_edge::ID));
-		let flow = FlowId(SCHEMA.get_u64(&row, flow_edge::FLOW));
-		let source = FlowNodeId(SCHEMA.get_u64(&row, flow_edge::SOURCE));
-		let target = FlowNodeId(SCHEMA.get_u64(&row, flow_edge::TARGET));
+		let id = FlowEdgeId(SHAPE.get_u64(&row, flow_edge::ID));
+		let flow = FlowId(SHAPE.get_u64(&row, flow_edge::FLOW));
+		let source = FlowNodeId(SHAPE.get_u64(&row, flow_edge::SOURCE));
+		let target = FlowNodeId(SHAPE.get_u64(&row, flow_edge::TARGET));
 
 		Ok(Some(FlowEdge {
 			id,

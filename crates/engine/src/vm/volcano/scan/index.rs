@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::RowSchema},
+	encoded::{key::EncodedKey, shape::RowShape},
 	interface::catalog::{id::IndexId, table::Table},
 	value::column::{columns::Columns, headers::ColumnHeaders},
 };
@@ -22,7 +22,7 @@ pub(crate) struct IndexScanNode {
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 	_storage_types: Vec<Type>,
-	_schema: Option<RowSchema>,
+	_shape: Option<RowShape>,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,
 }
@@ -41,7 +41,7 @@ impl IndexScanNode {
 			context: Some(context),
 			headers,
 			_storage_types: storage_types,
-			_schema: None,
+			_shape: None,
 			_last_key: None,
 			_exhausted: false,
 		})
@@ -66,8 +66,8 @@ impl QueryNode for IndexScanNode {
 		// let batch_size = ctx.batch_size;
 		//
 		// // Create range for scanning index entries
-		// let schema_id: SchemaId = self.table.id.into();
-		// let base_range = IndexEntryKey::index_range(schema_id, self.index_id);
+		// let shape_id: ShapeId = self.table.id.into();
+		// let base_range = IndexEntryKey::index_range(shape_id, self.index_id);
 		//
 		// let range = if let Some(ref last_key) = self.last_key {
 		// 	let end = match base_range.end {
@@ -89,11 +89,11 @@ impl QueryNode for IndexScanNode {
 		// let index_entries: Vec<_> = rx.range(range)?.into_iter().collect();
 		//
 		// for entry in index_entries.into_iter() {
-		// 	let row_number_schema = RowSchema::new(&[Uint8]);
+		// 	let row_number_shape = RowShape::new(&[Uint8]);
 		//
 		// 	let row_number = row_number_layout.get_u64(&entry.encoded, 0);
 		//
-		// 	let schema: SchemaId = self.table.id.into();
+		// 	let shape: ShapeId = self.table.id.into();
 		// 	let row_key = RowKey {
 		// 		source,
 		// 		encoded: RowNumber(row_number),

@@ -4,19 +4,19 @@
 use reifydb_type::fragment::Fragment;
 use serde::{Deserialize, Serialize};
 
-/// Column identifier with schema qualification
+/// Column identifier with shape qualification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnIdentifier {
-	pub schema: ColumnSchema,
+	pub shape: ColumnShape,
 	pub name: Fragment,
 }
 
 impl ColumnIdentifier {
-	pub fn with_schema(namespace: Fragment, schema: Fragment, name: Fragment) -> Self {
+	pub fn with_shape(namespace: Fragment, shape: Fragment, name: Fragment) -> Self {
 		Self {
-			schema: ColumnSchema::Qualified {
+			shape: ColumnShape::Qualified {
 				namespace,
-				name: schema,
+				name: shape,
 			},
 			name,
 		}
@@ -24,21 +24,21 @@ impl ColumnIdentifier {
 
 	pub fn with_alias(alias: Fragment, name: Fragment) -> Self {
 		Self {
-			schema: ColumnSchema::Alias(alias),
+			shape: ColumnShape::Alias(alias),
 			name,
 		}
 	}
 
 	pub fn into_owned(self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			schema: self.schema,
+			shape: self.shape,
 			name: self.name,
 		}
 	}
 
 	pub fn to_static(&self) -> ColumnIdentifier {
 		ColumnIdentifier {
-			schema: self.schema.clone(),
+			shape: self.shape.clone(),
 			name: Fragment::internal(self.name.text()),
 		}
 	}
@@ -46,50 +46,50 @@ impl ColumnIdentifier {
 
 /// How a column is qualified in plans (always fully qualified)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ColumnSchema {
-	/// Fully qualified by namespace.schema
+pub enum ColumnShape {
+	/// Fully qualified by namespace.shape
 	Qualified {
 		namespace: Fragment,
 		name: Fragment,
 	},
-	/// Qualified by alias (which maps to a fully qualified schema)
+	/// Qualified by alias (which maps to a fully qualified shape)
 	Alias(Fragment),
 }
 
-impl ColumnSchema {
-	pub fn into_owned(self) -> ColumnSchema {
+impl ColumnShape {
+	pub fn into_owned(self) -> ColumnShape {
 		match self {
-			ColumnSchema::Qualified {
+			ColumnShape::Qualified {
 				namespace,
 				name,
-			} => ColumnSchema::Qualified {
+			} => ColumnShape::Qualified {
 				namespace,
 				name,
 			},
-			ColumnSchema::Alias(alias) => ColumnSchema::Alias(alias),
+			ColumnShape::Alias(alias) => ColumnShape::Alias(alias),
 		}
 	}
 
-	pub fn to_static(&self) -> ColumnSchema {
+	pub fn to_static(&self) -> ColumnShape {
 		match self {
-			ColumnSchema::Qualified {
+			ColumnShape::Qualified {
 				namespace,
 				name,
-			} => ColumnSchema::Qualified {
+			} => ColumnShape::Qualified {
 				namespace: Fragment::internal(namespace.text()),
 				name: Fragment::internal(name.text()),
 			},
-			ColumnSchema::Alias(alias) => ColumnSchema::Alias(Fragment::internal(alias.text())),
+			ColumnShape::Alias(alias) => ColumnShape::Alias(Fragment::internal(alias.text())),
 		}
 	}
 
 	pub fn as_fragment(&self) -> &Fragment {
 		match self {
-			ColumnSchema::Qualified {
+			ColumnShape::Qualified {
 				name,
 				..
 			} => name,
-			ColumnSchema::Alias(alias) => alias,
+			ColumnShape::Alias(alias) => alias,
 		}
 	}
 }

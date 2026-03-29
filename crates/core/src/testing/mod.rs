@@ -29,13 +29,13 @@ pub struct CapturedInvocation {
 
 /// Identifies the primitive type category for a `testing::*::changed()` generator.
 pub struct TestingChanged {
-	pub schema_type: &'static str,
+	pub shape_type: &'static str,
 }
 
 impl TestingChanged {
-	pub fn new(schema_type: &'static str) -> Self {
+	pub fn new(shape_type: &'static str) -> Self {
 		Self {
-			schema_type,
+			shape_type,
 		}
 	}
 }

@@ -10,11 +10,11 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			policy::PolicyTargetType,
-			schema::SchemaId,
 			series::{SeriesKey, TimestampPrecision},
+			shape::ShapeId,
 		},
 		change::{Change, ChangeOrigin, Diff},
-		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedSeries},
+		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
 	key::{EncodableKey, series_row::SeriesRowKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
@@ -32,7 +32,7 @@ use tracing::instrument;
 
 use super::{
 	returning::{decode_rows_to_columns, evaluate_returning},
-	schema::get_or_create_series_schema,
+	shape::get_or_create_series_shape,
 };
 use crate::{
 	Result,
@@ -81,7 +81,7 @@ pub(crate) fn insert_series<'a>(
 	let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 	let series_ident = Fragment::internal(series.name.clone());
 	let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
-	let resolved_source = Some(ResolvedSchema::Series(resolved_series));
+	let resolved_source = Some(ResolvedShape::Series(resolved_series));
 
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -104,8 +104,8 @@ pub(crate) fn insert_series<'a>(
 	// Initialize the operator before execution
 	input_node.initialize(txn, &execution_context)?;
 
-	// Create schema for series encoding
-	let schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
+	// Create shape for series encoding
+	let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 
 	// Process all input batches
 	let mut mutable_context = (*execution_context).clone();
@@ -193,12 +193,12 @@ pub(crate) fn insert_series<'a>(
 				data_values.push(value);
 			}
 
-			// Encode using schema (key at index 0, data columns at index 1+)
+			// Encode using shape (key at index 0, data columns at index 1+)
 			let key_value_encoded = series.key_from_u64(key_value);
-			let mut row = schema.allocate();
-			schema.set_value(&mut row, 0, &key_value_encoded);
+			let mut row = shape.allocate();
+			shape.set_value(&mut row, 0, &key_value_encoded);
 			for (i, value) in data_values.iter().enumerate() {
-				schema.set_value(&mut row, i + 1, value);
+				shape.set_value(&mut row, i + 1, value);
 			}
 
 			let row = SeriesRowInterceptor::pre_insert(txn, &series, row)?;
@@ -230,7 +230,7 @@ pub(crate) fn insert_series<'a>(
 					columns: CowVec::new(cols),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
+					origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Insert {
 						post,
@@ -260,7 +260,7 @@ pub(crate) fn insert_series<'a>(
 
 	// If RETURNING clause is present, evaluate expressions against inserted rows
 	if let Some(returning_exprs) = &plan.returning {
-		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 

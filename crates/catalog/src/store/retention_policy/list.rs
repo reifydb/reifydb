@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	key::{
 		EncodableKey,
 		retention_policy::{
-			OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, SchemaRetentionPolicyKey,
-			SchemaRetentionPolicyKeyRange,
+			OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, ShapeRetentionPolicyKey,
+			ShapeRetentionPolicyKeyRange,
 		},
 	},
 	retention::RetentionPolicy,
@@ -19,8 +19,8 @@ use crate::{CatalogStore, Result};
 
 /// A object retention policy entry
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SchemaRetentionPolicyEntry {
-	pub object: SchemaId,
+pub struct ShapeRetentionPolicyEntry {
+	pub shape: ShapeId,
 	pub policy: RetentionPolicy,
 }
 
@@ -33,19 +33,19 @@ pub struct OperatorRetentionPolicyEntry {
 
 impl CatalogStore {
 	/// List all retention policies for primitives (tables, views, ring buffers)
-	pub(crate) fn list_schema_retention_policies(
+	pub(crate) fn list_shape_retention_policies(
 		rx: &mut Transaction<'_>,
-	) -> Result<Vec<SchemaRetentionPolicyEntry>> {
+	) -> Result<Vec<ShapeRetentionPolicyEntry>> {
 		let mut result = Vec::new();
 
-		let mut stream = rx.range(SchemaRetentionPolicyKeyRange::full_scan(), 1024)?;
+		let mut stream = rx.range(ShapeRetentionPolicyKeyRange::full_scan(), 1024)?;
 
 		while let Some(entry) = stream.next() {
 			let entry = entry?;
-			if let Some(key) = SchemaRetentionPolicyKey::decode(&entry.key) {
+			if let Some(key) = ShapeRetentionPolicyKey::decode(&entry.key) {
 				if let Some(policy) = decode_retention_policy(&entry.row) {
-					result.push(SchemaRetentionPolicyEntry {
-						object: key.object,
+					result.push(ShapeRetentionPolicyEntry {
+						shape: key.shape,
 						policy,
 					});
 				}
@@ -90,50 +90,50 @@ pub mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		_create_operator_retention_policy, create_schema_retention_policy,
+		_create_operator_retention_policy, create_shape_retention_policy,
 	};
 
 	#[test]
-	fn test_list_schema_retention_policies_empty() {
+	fn test_list_shape_retention_policies_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let policies = CatalogStore::list_schema_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
+		let policies = CatalogStore::list_shape_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(policies.len(), 0);
 	}
 
 	#[test]
-	fn test_list_schema_retention_policies_multiple() {
+	fn test_list_shape_retention_policies_multiple() {
 		let mut txn = create_test_admin_transaction();
 
 		// Create policies for different sources
-		let table_source = SchemaId::Table(TableId(1));
+		let table_source = ShapeId::Table(TableId(1));
 		let table_policy = RetentionPolicy::KeepVersions {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		create_schema_retention_policy(&mut txn, table_source, &table_policy).unwrap();
+		create_shape_retention_policy(&mut txn, table_source, &table_policy).unwrap();
 
-		let view_source = SchemaId::View(ViewId(2));
+		let view_source = ShapeId::View(ViewId(2));
 		let view_policy = RetentionPolicy::KeepForever;
-		create_schema_retention_policy(&mut txn, view_source, &view_policy).unwrap();
+		create_shape_retention_policy(&mut txn, view_source, &view_policy).unwrap();
 
-		let ringbuffer_source = SchemaId::RingBuffer(RingBufferId(3));
+		let ringbuffer_source = ShapeId::RingBuffer(RingBufferId(3));
 		let ringbuffer_policy = RetentionPolicy::KeepVersions {
 			count: 50,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_schema_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).unwrap();
+		create_shape_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).unwrap();
 
 		// List all policies
-		let policies = CatalogStore::list_schema_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
+		let policies = CatalogStore::list_shape_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 
 		assert_eq!(policies.len(), 3);
 
 		// Verify each policy
-		assert!(policies.iter().any(|p| p.object == table_source && p.policy == table_policy));
-		assert!(policies.iter().any(|p| p.object == view_source && p.policy == view_policy));
-		assert!(policies.iter().any(|p| p.object == ringbuffer_source && p.policy == ringbuffer_policy));
+		assert!(policies.iter().any(|p| p.shape == table_source && p.policy == table_policy));
+		assert!(policies.iter().any(|p| p.shape == view_source && p.policy == view_policy));
+		assert!(policies.iter().any(|p| p.shape == ringbuffer_source && p.policy == ringbuffer_policy));
 	}
 
 	#[test]
@@ -182,16 +182,16 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_list_schema_retention_policies_after_updates() {
+	fn test_list_shape_retention_policies_after_updates() {
 		let mut txn = create_test_admin_transaction();
 
-		let schema = SchemaId::Table(TableId(42));
+		let shape = ShapeId::Table(TableId(42));
 
 		// Create initial policy
 		let policy1 = RetentionPolicy::KeepForever;
-		create_schema_retention_policy(&mut txn, schema, &policy1).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy1).unwrap();
 
-		let policies = CatalogStore::list_schema_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
+		let policies = CatalogStore::list_shape_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy1);
 
@@ -200,10 +200,10 @@ pub mod tests {
 			count: 20,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_schema_retention_policy(&mut txn, schema, &policy2).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy2).unwrap();
 
 		// Should still have only 1 entry (updated, not added)
-		let policies = CatalogStore::list_schema_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
+		let policies = CatalogStore::list_shape_retention_policies(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].policy, policy2);
 	}

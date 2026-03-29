@@ -8,7 +8,7 @@ pub mod generator;
 pub mod get;
 pub mod list;
 pub mod row;
-pub mod schema;
+pub mod shape;
 pub mod sink;
 pub mod source;
 pub mod system;

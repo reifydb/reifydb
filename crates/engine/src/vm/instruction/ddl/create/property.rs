@@ -5,7 +5,7 @@ use reifydb_core::{
 	error::diagnostic::{catalog::table_not_found, query::column_not_found},
 	interface::catalog::{
 		change::{CatalogTrackSeriesChangeOperations, CatalogTrackTableChangeOperations},
-		schema::SchemaId,
+		shape::ShapeId,
 		table::Table,
 	},
 	value::column::columns::Columns,
@@ -35,7 +35,7 @@ pub(crate) fn create_column_property(
 		let column_name = plan.column.text();
 		let Some(column) = services.catalog.find_column_by_name(
 			&mut Transaction::Admin(txn),
-			SchemaId::Table(table.id),
+			ShapeId::Table(table.id),
 			column_name,
 		)?
 		else {
@@ -75,7 +75,7 @@ pub(crate) fn create_column_property(
 		let column_name = plan.column.text();
 		let Some(column) = services.catalog.find_column_by_name(
 			&mut Transaction::Admin(txn),
-			SchemaId::Series(series.id),
+			ShapeId::Series(series.id),
 			column_name,
 		)?
 		else {

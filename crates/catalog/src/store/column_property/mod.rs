@@ -3,4 +3,4 @@
 
 pub mod create;
 pub mod list;
-pub mod schema;
+pub mod shape;

@@ -130,7 +130,7 @@ impl IntoDiagnostic for CoreError {
 				fragment: Fragment::None,
 				label: None,
 				help: Some("The flow version stored in the catalog is corrupted. \
-					This may indicate data corruption or a schema migration issue. \
+					This may indicate data corruption or a shape migration issue. \
 					Try dropping and recreating the flow."
 					.to_string()),
 				notes: vec![],

@@ -12,7 +12,7 @@ use crate::{
 	CatalogStore, Result,
 	store::sequence::{
 		Sequence,
-		schema::sequence::{SCHEMA, VALUE},
+		shape::sequence::{SHAPE, VALUE},
 	},
 	system::ids::sequences::{COLUMN, COLUMN_PROPERTY, FLOW, FLOW_EDGE, FLOW_NODE, NAMESPACE, PRIMARY_KEY, SOURCE},
 };
@@ -38,7 +38,7 @@ impl CatalogStore {
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
 		let value = match rx.get(&sequence_key)? {
-			Some(row) => SCHEMA.get_u64(&row.row, VALUE),
+			Some(row) => SHAPE.get_u64(&row.row, VALUE),
 			None => 0,
 		};
 

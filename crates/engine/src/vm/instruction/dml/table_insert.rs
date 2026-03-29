@@ -4,14 +4,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		index::primary_key_violation,
 	},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSchema, ResolvedTable},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedShape, ResolvedTable},
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
@@ -30,7 +30,7 @@ use tracing::instrument;
 use super::{
 	primary_key,
 	returning::{decode_rows_to_columns, evaluate_returning},
-	schema::get_or_create_table_schema,
+	shape::get_or_create_table_shape,
 };
 use crate::{
 	Result,
@@ -66,8 +66,8 @@ pub(crate) fn insert_table<'a>(
 		return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 	};
 
-	// Get or create schema with proper field names and constraints
-	let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
+	// Get or create shape with proper field names and constraints
+	let shape = get_or_create_table_shape(&services.catalog, &table, txn)?;
 
 	// Create resolved source for the table
 	let namespace_ident = Fragment::internal(namespace.name());
@@ -75,7 +75,7 @@ pub(crate) fn insert_table<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
+	let resolved_source = Some(ResolvedShape::Table(resolved_table));
 
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -115,7 +115,7 @@ pub(crate) fn insert_table<'a>(
 		}
 
 		for row_numberx in 0..row_count {
-			let mut row = schema.allocate();
+			let mut row = shape.allocate();
 
 			// For each table column, find if it exists in the input columns
 			for (table_idx, table_column) in table.columns.iter().enumerate() {
@@ -174,7 +174,7 @@ pub(crate) fn insert_table<'a>(
 					value
 				};
 
-				schema.set_value(&mut row, table_idx, &value);
+				shape.set_value(&mut row, table_idx, &value);
 			}
 
 			// Store the validated and encoded row for later insertion
@@ -199,8 +199,8 @@ pub(crate) fn insert_table<'a>(
 
 	// Hoist loop-invariant computations out of PASS 2
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
-	let row_number_schema = if pk_def.is_some() {
-		Some(RowSchema::testing(&[Type::Uint8]))
+	let row_number_shape = if pk_def.is_some() {
+		Some(RowShape::testing(&[Type::Uint8]))
 	} else {
 		None
 	};
@@ -214,7 +214,7 @@ pub(crate) fn insert_table<'a>(
 
 	for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 		// Insert the row directly into storage
-		let stored_row = txn.insert_table(&table, &schema, row.clone(), row_number)?;
+		let stored_row = txn.insert_table(&table, &shape, row.clone(), row_number)?;
 
 		if plan.returning.is_some() {
 			returned_rows.push((row_number, stored_row));
@@ -222,7 +222,7 @@ pub(crate) fn insert_table<'a>(
 
 		// Store primary key index entry if table has one
 		if let Some(ref pk_def) = pk_def {
-			let index_key = primary_key::encode_primary_key(pk_def, row, &table, &schema)?;
+			let index_key = primary_key::encode_primary_key(pk_def, row, &table, &shape)?;
 
 			// Check if primary key already exists
 			let index_entry_key =
@@ -237,7 +237,7 @@ pub(crate) fn insert_table<'a>(
 			}
 
 			// Store the index entry with the row number as value
-			let rns = row_number_schema.as_ref().unwrap();
+			let rns = row_number_shape.as_ref().unwrap();
 			let mut row_number_encoded = rns.allocate();
 			rns.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
@@ -247,7 +247,7 @@ pub(crate) fn insert_table<'a>(
 
 	// If RETURNING clause is present, evaluate expressions against inserted rows
 	if let Some(returning_exprs) = &plan.returning {
-		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 

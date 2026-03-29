@@ -10,7 +10,7 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 	materialized::MaterializedCatalog,
-	schema::RowSchemaRegistry,
+	shape::RowShapeRegistry,
 };
 use reifydb_cdc::{
 	produce::producer::{CdcProduceMsg, CdcProducerEventListener, spawn_cdc_producer},
@@ -188,8 +188,8 @@ impl TestEngineBuilder {
 		let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
 		ioc = ioc.register(materialized_catalog.clone());
 
-		let row_schema_registry = RowSchemaRegistry::new(single.clone());
-		ioc = ioc.register(row_schema_registry.clone());
+		let row_shape_registry = RowShapeRegistry::new(single.clone());
+		ioc = ioc.register(row_shape_registry.clone());
 
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
@@ -221,7 +221,7 @@ impl TestEngineBuilder {
 			single,
 			eventbus.clone(),
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog, row_schema_registry),
+			Catalog::new(materialized_catalog, row_shape_registry),
 			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 			default_functions().build(),
 			Procedures::empty(),
@@ -275,7 +275,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap()
 }
 
-pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction {
+pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
@@ -307,8 +307,8 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 	.unwrap();
 
 	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
-	let row_schema_registry = RowSchemaRegistry::new(single);
-	let catalog = Catalog::new(materialized_catalog, row_schema_registry);
+	let row_shape_registry = RowShapeRegistry::new(single);
+	let catalog = Catalog::new(materialized_catalog, row_shape_registry);
 
 	let namespace = catalog
 		.create_namespace(

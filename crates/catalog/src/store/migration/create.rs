@@ -12,7 +12,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		migration::schema::{migration as migration_schema, migration_event as event_schema},
+		migration::shape::{migration as migration_shape, migration_event as event_shape},
 		sequence::system::SystemSequence,
 	},
 };
@@ -40,13 +40,13 @@ impl CatalogStore {
 
 		let migration_id = SystemSequence::next_migration_id(txn)?;
 
-		let mut row = migration_schema::SCHEMA.allocate();
-		migration_schema::SCHEMA.set_u64(&mut row, migration_schema::ID, migration_id);
-		migration_schema::SCHEMA.set_utf8(&mut row, migration_schema::NAME, &to_create.name);
-		migration_schema::SCHEMA.set_utf8(&mut row, migration_schema::BODY, &to_create.body);
-		migration_schema::SCHEMA.set_utf8(
+		let mut row = migration_shape::SHAPE.allocate();
+		migration_shape::SHAPE.set_u64(&mut row, migration_shape::ID, migration_id);
+		migration_shape::SHAPE.set_utf8(&mut row, migration_shape::NAME, &to_create.name);
+		migration_shape::SHAPE.set_utf8(&mut row, migration_shape::BODY, &to_create.body);
+		migration_shape::SHAPE.set_utf8(
 			&mut row,
-			migration_schema::ROLLBACK_BODY,
+			migration_shape::ROLLBACK_BODY,
 			to_create.rollback_body.as_deref().unwrap_or(""),
 		);
 
@@ -67,12 +67,12 @@ impl CatalogStore {
 	) -> Result<MigrationEvent> {
 		let event_id = SystemSequence::next_migration_event_id(txn)?;
 
-		let mut row = event_schema::SCHEMA.allocate();
-		event_schema::SCHEMA.set_u64(&mut row, event_schema::ID, event_id);
-		event_schema::SCHEMA.set_u64(&mut row, event_schema::MIGRATION_ID, migration.id);
-		event_schema::SCHEMA.set_u8(
+		let mut row = event_shape::SHAPE.allocate();
+		event_shape::SHAPE.set_u64(&mut row, event_shape::ID, event_id);
+		event_shape::SHAPE.set_u64(&mut row, event_shape::MIGRATION_ID, migration.id);
+		event_shape::SHAPE.set_u8(
 			&mut row,
-			event_schema::ACTION,
+			event_shape::ACTION,
 			match action {
 				MigrationAction::Applied => 0,
 				MigrationAction::Rollback => 1,

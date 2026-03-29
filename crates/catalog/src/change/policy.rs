@@ -9,7 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::policy::schema::policy};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::policy::shape::policy};
 
 pub(super) struct PolicyApplier;
 
@@ -32,14 +32,14 @@ impl CatalogChangeApplier for PolicyApplier {
 }
 
 fn decode_policy(row: &EncodedRow) -> Policy {
-	let id = policy::SCHEMA.get_u64(row, policy::ID);
-	let name_str = policy::SCHEMA.get_utf8(row, policy::NAME).to_string();
+	let id = policy::SHAPE.get_u64(row, policy::ID);
+	let name_str = policy::SHAPE.get_utf8(row, policy::NAME).to_string();
 	let name = if name_str.is_empty() {
 		None
 	} else {
 		Some(name_str)
 	};
-	let target_type_str = policy::SCHEMA.get_utf8(row, policy::TARGET_TYPE);
+	let target_type_str = policy::SHAPE.get_utf8(row, policy::TARGET_TYPE);
 	let target_type = match target_type_str {
 		"table" => PolicyTargetType::Table,
 		"column" => PolicyTargetType::Column,
@@ -55,19 +55,19 @@ fn decode_policy(row: &EncodedRow) -> Policy {
 		"ringbuffer" => PolicyTargetType::RingBuffer,
 		_ => PolicyTargetType::Table,
 	};
-	let target_ns_str = policy::SCHEMA.get_utf8(row, policy::TARGET_NAMESPACE).to_string();
+	let target_ns_str = policy::SHAPE.get_utf8(row, policy::TARGET_NAMESPACE).to_string();
 	let target_namespace = if target_ns_str.is_empty() {
 		None
 	} else {
 		Some(target_ns_str)
 	};
-	let target_obj_str = policy::SCHEMA.get_utf8(row, policy::TARGET_OBJECT).to_string();
+	let target_obj_str = policy::SHAPE.get_utf8(row, policy::TARGET_OBJECT).to_string();
 	let target_object = if target_obj_str.is_empty() {
 		None
 	} else {
 		Some(target_obj_str)
 	};
-	let enabled = policy::SCHEMA.get_bool(row, policy::ENABLED);
+	let enabled = policy::SHAPE.get_bool(row, policy::ENABLED);
 
 	Policy {
 		id,

@@ -47,9 +47,9 @@ impl SubscriptionConsumer {
 			}
 		};
 
-		// Get schema registry for resolving per-row schemas
+		// Get shape registry for resolving per-row shapes
 		let catalog = engine.catalog();
-		let row_schema_registry = &catalog.schema;
+		let row_shape_registry = &catalog.shape;
 
 		// Create range for scanning rows
 		let range = if let Some(last_key) = last_consumed_key {
@@ -79,24 +79,24 @@ impl SubscriptionConsumer {
 				row_numbers.push(sub_row_key.row);
 				row_keys.push(entry.key.clone());
 
-				// Extract schema fingerprint from the encoded row
+				// Extract shape fingerprint from the encoded row
 				let fingerprint = entry.row.fingerprint();
 
-				// Resolve schema using RowSchemaRegistry
-				let schema = row_schema_registry
+				// Resolve shape using RowShapeRegistry
+				let shape = row_shape_registry
 					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
 					.ok_or_else(|| {
 						Error(internal(format!(
-							"Schema not found for fingerprint: {:?}",
+							"Shape not found for fingerprint: {:?}",
 							fingerprint
 						)))
 					})?;
 
 				let mut seen_in_this_entry = HashSet::new();
 
-				// Decode each field using the resolved schema
-				for (idx, field) in schema.fields().iter().enumerate() {
-					let value = schema.get_value(&entry.row, idx);
+				// Decode each field using the resolved shape
+				for (idx, field) in shape.fields().iter().enumerate() {
+					let value = shape.get_value(&entry.row, idx);
 					seen_in_this_entry.insert(field.name.clone());
 
 					// Get or create column data for this field

@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{
-		catalog::{schema::SchemaId, table::Table},
+		catalog::{shape::ShapeId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
@@ -20,8 +20,8 @@ use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::
 
 use crate::Result;
 
-fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
-	let fields = schema.fields();
+fn build_encoded_columns(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
+	let fields = shape.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
 	for field in fields.iter() {
@@ -32,7 +32,7 @@ fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &En
 	}
 
 	for (i, _) in fields.iter().enumerate() {
-		columns_vec[i].data.push_value(schema.get_value(encoded, i));
+		columns_vec[i].data.push_value(shape.get_value(encoded, i));
 	}
 
 	Columns {
@@ -41,35 +41,35 @@ fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &En
 	}
 }
 
-fn build_table_insert_change(table: &Table, schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Change {
+fn build_table_insert_change(table: &Table, shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow) -> Change {
 	Change {
-		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
+		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Insert {
-			post: build_encoded_columns(schema, row_number, encoded),
+			post: build_encoded_columns(shape, row_number, encoded),
 		}],
 	}
 }
 
 fn build_table_update_change(table: &Table, row_number: RowNumber, pre: &EncodedRow, post: &EncodedRow) -> Change {
-	let schema: RowSchema = (&table.columns).into();
+	let shape: RowShape = (&table.columns).into();
 	Change {
-		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
+		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Update {
-			pre: build_encoded_columns(&schema, row_number, pre),
-			post: build_encoded_columns(&schema, row_number, post),
+			pre: build_encoded_columns(&shape, row_number, pre),
+			post: build_encoded_columns(&shape, row_number, post),
 		}],
 	}
 }
 
 fn build_table_remove_change(table: &Table, row_number: RowNumber, encoded: &EncodedRow) -> Change {
-	let schema: RowSchema = (&table.columns).into();
+	let shape: RowShape = (&table.columns).into();
 	Change {
-		origin: ChangeOrigin::Schema(SchemaId::Table(table.id)),
+		origin: ChangeOrigin::Shape(ShapeId::Table(table.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Remove {
-			pre: build_encoded_columns(&schema, row_number, encoded),
+			pre: build_encoded_columns(&shape, row_number, encoded),
 		}],
 	}
 }
@@ -78,7 +78,7 @@ pub(crate) trait TableOperations {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow>;
@@ -92,7 +92,7 @@ impl TableOperations for CommandTransaction {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow> {
@@ -110,7 +110,7 @@ impl TableOperations for CommandTransaction {
 		}));
 
 		// Track flow change for transactional view pre-commit processing
-		self.track_flow_change(build_table_insert_change(table, schema, row_number, &row));
+		self.track_flow_change(build_table_insert_change(table, shape, row_number, &row));
 
 		Ok(row)
 	}
@@ -158,7 +158,7 @@ impl TableOperations for AdminTransaction {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow> {
@@ -176,7 +176,7 @@ impl TableOperations for AdminTransaction {
 		}));
 
 		// Track flow change for transactional view pre-commit processing
-		self.track_flow_change(build_table_insert_change(table, schema, row_number, &row));
+		self.track_flow_change(build_table_insert_change(table, shape, row_number, &row));
 
 		Ok(row)
 	}
@@ -224,17 +224,17 @@ impl TableOperations for Transaction<'_> {
 	fn insert_table(
 		&mut self,
 		table: &Table,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row: EncodedRow,
 		row_number: RowNumber,
 	) -> Result<EncodedRow> {
 		match self {
-			Transaction::Command(txn) => txn.insert_table(table, schema, row, row_number),
-			Transaction::Admin(txn) => txn.insert_table(table, schema, row, row_number),
+			Transaction::Command(txn) => txn.insert_table(table, shape, row, row_number),
+			Transaction::Admin(txn) => txn.insert_table(table, shape, row, row_number),
 			Transaction::Subscription(txn) => {
-				txn.as_admin_mut().insert_table(table, schema, row, row_number)
+				txn.as_admin_mut().insert_table(table, shape, row, row_number)
 			}
-			Transaction::Test(t) => t.inner.insert_table(table, schema, row, row_number),
+			Transaction::Test(t) => t.inner.insert_table(table, shape, row, row_number),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}

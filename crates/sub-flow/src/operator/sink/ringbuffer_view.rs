@@ -6,9 +6,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_catalog::store::ringbuffer::update::{decode_ringbuffer_metadata, encode_ringbuffer_metadata};
 use reifydb_core::{
-	encoded::schema::{RowSchema, RowSchemaField},
+	encoded::shape::{RowShape, RowShapeField},
 	interface::{
-		catalog::{flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, schema::SchemaId},
+		catalog::{flow::FlowNodeId, id::RingBufferId, ringbuffer::RingBufferMetadata, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -48,7 +48,7 @@ pub struct SinkRingBufferViewOperator {
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
 	propagate_evictions: bool,
-	state_schema: RowSchema,
+	state_shape: RowShape,
 }
 
 impl SinkRingBufferViewOperator {
@@ -67,7 +67,7 @@ impl SinkRingBufferViewOperator {
 			ringbuffer_id,
 			capacity,
 			propagate_evictions,
-			state_schema: RowSchema::new(vec![RowSchemaField::unconstrained("state", Type::Blob)]),
+			state_shape: RowShape::new(vec![RowShapeField::unconstrained("state", Type::Blob)]),
 		}
 	}
 
@@ -92,7 +92,7 @@ impl SinkRingBufferViewOperator {
 			return Ok(RingBufferState::default());
 		}
 
-		let blob = self.state_schema.get_blob(&state_row, 0);
+		let blob = self.state_shape.get_blob(&state_row, 0);
 		if blob.is_empty() {
 			return Ok(RingBufferState::default());
 		}
@@ -105,8 +105,8 @@ impl SinkRingBufferViewOperator {
 			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize RingBufferState: {}", e)))?;
 		let blob = Blob::from(serialized);
 
-		self.update_state(txn, |schema, row| {
-			schema.set_blob(row, 0, &blob);
+		self.update_state(txn, |shape, row| {
+			shape.set_blob(row, 0, &blob);
 			Ok(())
 		})?;
 		Ok(())
@@ -116,8 +116,8 @@ impl SinkRingBufferViewOperator {
 impl RawStatefulOperator for SinkRingBufferViewOperator {}
 
 impl SingleStateful for SinkRingBufferViewOperator {
-	fn layout(&self) -> RowSchema {
-		self.state_schema.clone()
+	fn layout(&self) -> RowShape {
+		self.state_shape.clone()
 	}
 }
 
@@ -128,8 +128,8 @@ impl Operator for SinkRingBufferViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
-		let schema: RowSchema = view.columns().into();
-		let object_id = SchemaId::ringbuffer(self.ringbuffer_id);
+		let shape: RowShape = view.columns().into();
+		let object_id = ShapeId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = self.read_metadata(txn)?;
 		let mut state = self.load(txn)?;
 
@@ -164,7 +164,7 @@ impl Operator for SinkRingBufferViewOperator {
 						let source_rn = coerced.row_numbers[row_idx];
 						let assigned_rn = RowNumber(metadata.tail);
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &schema, assigned_rn);
+							encode_row_at_index(&coerced, row_idx, &shape, assigned_rn);
 
 						// Track alias when source row number differs from assigned key
 						if source_rn != assigned_rn {
@@ -190,7 +190,7 @@ impl Operator for SinkRingBufferViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
+						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
@@ -222,13 +222,13 @@ impl Operator for SinkRingBufferViewOperator {
 						let (_, pre_encoded) = encode_row_at_index(
 							&coerced_pre,
 							row_idx,
-							&schema,
+							&shape,
 							pre_storage_rn,
 						);
 						let (_, post_encoded) = encode_row_at_index(
 							&coerced_post,
 							row_idx,
-							&schema,
+							&shape,
 							post_storage_rn,
 						);
 
@@ -252,7 +252,7 @@ impl Operator for SinkRingBufferViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
+						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Update {
 							pre: coerced_pre,
@@ -271,7 +271,7 @@ impl Operator for SinkRingBufferViewOperator {
 						let storage_rn = state.forward.remove(&source_rn).unwrap_or(source_rn);
 						state.reverse.remove(&storage_rn);
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &schema, storage_rn);
+							encode_row_at_index(&coerced, row_idx, &shape, storage_rn);
 						ViewRowInterceptor::pre_delete(txn, &view, storage_rn)?;
 						let key = RowKey::encoded(object_id, storage_rn);
 						txn.remove(&key)?;
@@ -279,7 +279,7 @@ impl Operator for SinkRingBufferViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
+						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,

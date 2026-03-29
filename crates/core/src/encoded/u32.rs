@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,47 +41,47 @@ impl RowSchema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_u32() {
-		let schema = RowSchema::testing(&[Type::Uint4]);
-		let mut row = schema.allocate();
-		schema.set_u32(&mut row, 0, 4294967295u32);
-		assert_eq!(schema.get_u32(&row, 0), 4294967295u32);
+		let shape = RowShape::testing(&[Type::Uint4]);
+		let mut row = shape.allocate();
+		shape.set_u32(&mut row, 0, 4294967295u32);
+		assert_eq!(shape.get_u32(&row, 0), 4294967295u32);
 	}
 
 	#[test]
 	fn test_try_get_u32() {
-		let schema = RowSchema::testing(&[Type::Uint4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint4]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_u32(&row, 0), None);
+		assert_eq!(shape.try_get_u32(&row, 0), None);
 
-		schema.set_u32(&mut row, 0, 4294967295u32);
-		assert_eq!(schema.try_get_u32(&row, 0), Some(4294967295u32));
+		shape.set_u32(&mut row, 0, 4294967295u32);
+		assert_eq!(shape.try_get_u32(&row, 0), Some(4294967295u32));
 	}
 
 	#[test]
 	fn test_extremes() {
-		let schema = RowSchema::testing(&[Type::Uint4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint4]);
+		let mut row = shape.allocate();
 
-		schema.set_u32(&mut row, 0, u32::MAX);
-		assert_eq!(schema.get_u32(&row, 0), u32::MAX);
+		shape.set_u32(&mut row, 0, u32::MAX);
+		assert_eq!(shape.get_u32(&row, 0), u32::MAX);
 
-		let mut row2 = schema.allocate();
-		schema.set_u32(&mut row2, 0, u32::MIN);
-		assert_eq!(schema.get_u32(&row2, 0), u32::MIN);
+		let mut row2 = shape.allocate();
+		shape.set_u32(&mut row2, 0, u32::MIN);
+		assert_eq!(shape.get_u32(&row2, 0), u32::MIN);
 
-		let mut row3 = schema.allocate();
-		schema.set_u32(&mut row3, 0, 0u32);
-		assert_eq!(schema.get_u32(&row3, 0), 0u32);
+		let mut row3 = shape.allocate();
+		shape.set_u32(&mut row3, 0, 0u32);
+		assert_eq!(shape.get_u32(&row3, 0), 0u32);
 	}
 
 	#[test]
 	fn test_large_values() {
-		let schema = RowSchema::testing(&[Type::Uint4]);
+		let shape = RowShape::testing(&[Type::Uint4]);
 
 		let test_values = [
 			0u32,
@@ -96,15 +96,15 @@ pub mod tests {
 		];
 
 		for value in test_values {
-			let mut row = schema.allocate();
-			schema.set_u32(&mut row, 0, value);
-			assert_eq!(schema.get_u32(&row, 0), value);
+			let mut row = shape.allocate();
+			shape.set_u32(&mut row, 0, value);
+			assert_eq!(shape.get_u32(&row, 0), value);
 		}
 	}
 
 	#[test]
 	fn test_timestamp_values() {
-		let schema = RowSchema::testing(&[Type::Uint4]);
+		let shape = RowShape::testing(&[Type::Uint4]);
 
 		// Test Unix timestamp values that fit in u32
 		let timestamps = [
@@ -115,47 +115,47 @@ pub mod tests {
 		];
 
 		for timestamp in timestamps {
-			let mut row = schema.allocate();
-			schema.set_u32(&mut row, 0, timestamp);
-			assert_eq!(schema.get_u32(&row, 0), timestamp);
+			let mut row = shape.allocate();
+			shape.set_u32(&mut row, 0, timestamp);
+			assert_eq!(shape.get_u32(&row, 0), timestamp);
 		}
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Uint4, Type::Float4, Type::Uint4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint4, Type::Float4, Type::Uint4]);
+		let mut row = shape.allocate();
 
-		schema.set_u32(&mut row, 0, 3_000_000_000u32);
-		schema.set_f32(&mut row, 1, 3.14f32);
-		schema.set_u32(&mut row, 2, 1_500_000_000u32);
+		shape.set_u32(&mut row, 0, 3_000_000_000u32);
+		shape.set_f32(&mut row, 1, 3.14f32);
+		shape.set_u32(&mut row, 2, 1_500_000_000u32);
 
-		assert_eq!(schema.get_u32(&row, 0), 3_000_000_000u32);
-		assert_eq!(schema.get_f32(&row, 1), 3.14f32);
-		assert_eq!(schema.get_u32(&row, 2), 1_500_000_000u32);
+		assert_eq!(shape.get_u32(&row, 0), 3_000_000_000u32);
+		assert_eq!(shape.get_f32(&row, 1), 3.14f32);
+		assert_eq!(shape.get_u32(&row, 2), 1_500_000_000u32);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Uint4, Type::Uint4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uint4, Type::Uint4]);
+		let mut row = shape.allocate();
 
-		schema.set_u32(&mut row, 0, 123456789u32);
+		shape.set_u32(&mut row, 0, 123456789u32);
 
-		assert_eq!(schema.try_get_u32(&row, 0), Some(123456789));
-		assert_eq!(schema.try_get_u32(&row, 1), None);
+		assert_eq!(shape.try_get_u32(&row, 0), Some(123456789));
+		assert_eq!(shape.try_get_u32(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_u32(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_u32(&row, 0), None);
 	}
 
 	#[test]
 	fn test_try_get_u32_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_u32(&row, 0), None);
+		assert_eq!(shape.try_get_u32(&row, 0), None);
 	}
 }

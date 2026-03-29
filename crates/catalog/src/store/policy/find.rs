@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::policy::{convert_policy, schema::policy},
+	store::policy::{convert_policy, shape::policy},
 };
 
 impl CatalogStore {
@@ -22,7 +22,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let policy_name = policy::SCHEMA.get_utf8(&multi.row, policy::NAME);
+			let policy_name = policy::SHAPE.get_utf8(&multi.row, policy::NAME);
 			if !policy_name.is_empty() && name == policy_name {
 				return Ok(Some(convert_policy(multi)));
 			}

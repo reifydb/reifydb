@@ -9,14 +9,14 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstFrom, AstInfix, AstJoin, AstSubQuery, AstUsingClause, InfixOperator, JoinConnector},
-		identifier::UnresolvedSchemaIdentifier,
+		identifier::UnresolvedShapeIdentifier,
 	},
 	bump::{BumpBox, BumpFragment, BumpVec},
 	expression::{AndExpression, EqExpression, Expression, OrExpression, join::JoinConditionCompiler},
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan,
 		LogicalPlan::PrimitiveScan,
-		RemoteScanNode, SchemaScanNode,
+		RemoteScanNode, ShapeScanNode,
 		resolver::{self, ResolvedSource},
 	},
 };
@@ -149,7 +149,7 @@ impl<'bump> Compiler<'bump> {
 				..
 			}) => {
 				let mut unresolved =
-					UnresolvedSchemaIdentifier::new(source.namespace.clone(), source.name);
+					UnresolvedShapeIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
 
 				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
@@ -158,7 +158,7 @@ impl<'bump> Compiler<'bump> {
 				Ok(result)
 			}
 			Ast::Identifier(identifier) => {
-				let mut unresolved = UnresolvedSchemaIdentifier::new(vec![], identifier.token.fragment);
+				let mut unresolved = UnresolvedShapeIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
 
 				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
@@ -180,7 +180,7 @@ impl<'bump> Compiler<'bump> {
 					unreachable!()
 				};
 
-				let mut unresolved = UnresolvedSchemaIdentifier::new(
+				let mut unresolved = UnresolvedShapeIdentifier::new(
 					vec![namespace.token.fragment],
 					table.token.fragment,
 				);
@@ -208,7 +208,7 @@ impl<'bump> Compiler<'bump> {
 				..
 			}) => {
 				let mut unresolved =
-					UnresolvedSchemaIdentifier::new(source.namespace.clone(), source.name);
+					UnresolvedShapeIdentifier::new(source.namespace.clone(), source.name);
 				unresolved = unresolved.with_alias(*alias);
 
 				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
@@ -217,7 +217,7 @@ impl<'bump> Compiler<'bump> {
 				Ok(result)
 			}
 			Ast::Identifier(identifier) => {
-				let mut unresolved = UnresolvedSchemaIdentifier::new(vec![], identifier.token.fragment);
+				let mut unresolved = UnresolvedShapeIdentifier::new(vec![], identifier.token.fragment);
 				unresolved = unresolved.with_alias(*alias);
 
 				let plan = resolve_join_plan(&self.catalog, tx, &unresolved)?;
@@ -239,7 +239,7 @@ impl<'bump> Compiler<'bump> {
 					unreachable!()
 				};
 
-				let mut unresolved = UnresolvedSchemaIdentifier::new(
+				let mut unresolved = UnresolvedShapeIdentifier::new(
 					vec![namespace.token.fragment],
 					table.token.fragment,
 				);
@@ -258,11 +258,11 @@ impl<'bump> Compiler<'bump> {
 fn resolve_join_plan<'bump>(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	unresolved: &UnresolvedSchemaIdentifier,
+	unresolved: &UnresolvedShapeIdentifier,
 ) -> Result<LogicalPlan<'bump>> {
 	let resolved = resolver::resolve_unresolved_source(catalog, tx, unresolved)?;
 	match resolved {
-		ResolvedSource::Schema(p) => Ok(PrimitiveScan(SchemaScanNode {
+		ResolvedSource::Shape(p) => Ok(PrimitiveScan(ShapeScanNode {
 			source: p,
 			columns: None,
 			index: None,

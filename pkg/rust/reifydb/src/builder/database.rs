@@ -12,11 +12,11 @@ use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
 		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
-		load_schema_registry,
+		load_shape_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::RowSchemaRegistry,
+	shape::RowShapeRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -108,7 +108,7 @@ impl DatabaseBuilder {
 		let ioc = IocContainer::new()
 			.register(system_config.clone())
 			.register(MaterializedCatalog::new(system_config))
-			.register(RowSchemaRegistry::new(single.clone()))
+			.register(RowShapeRegistry::new(single.clone()))
 			.register(eventbus)
 			.register(multi)
 			.register(single);
@@ -295,7 +295,7 @@ impl DatabaseBuilder {
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
-		let schema_registry = self.ioc.resolve::<RowSchemaRegistry>()?;
+		let shape_registry = self.ioc.resolve::<RowShapeRegistry>()?;
 		let multi = self.ioc.resolve::<MultiTransaction>()?;
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
@@ -303,8 +303,8 @@ impl DatabaseBuilder {
 		load_materialized_catalog(&multi, &single, &catalog)?;
 		bootstrap_root_identity(&multi, &single, &catalog, &eventbus)?;
 		bootstrap_configaults(&multi, &single, &catalog, &eventbus)?;
-		bootstrap_system_procedures(&multi, &single, &catalog, &schema_registry, &eventbus)?;
-		load_schema_registry(&multi, &single, &schema_registry)?;
+		bootstrap_system_procedures(&multi, &single, &catalog, &shape_registry, &eventbus)?;
+		load_shape_registry(&multi, &single, &shape_registry)?;
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
@@ -380,7 +380,7 @@ impl DatabaseBuilder {
 			single.clone(),
 			eventbus.clone(),
 			self.interceptors.build(),
-			Catalog::new(catalog, schema_registry),
+			Catalog::new(catalog, shape_registry),
 			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 			functions,
 			procedures,

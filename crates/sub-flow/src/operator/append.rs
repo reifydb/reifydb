@@ -20,7 +20,7 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// APPEND operator that appends N input flows (N >= 2) with identical schemas
+/// APPEND operator that appends N input flows (N >= 2) with identical shapes
 /// into a single output flow. Keeps all rows including duplicates.
 pub struct AppendOperator {
 	node: FlowNodeId,
@@ -49,7 +49,7 @@ impl AppendOperator {
 	fn determine_parent_index(&self, change: &Change) -> Option<usize> {
 		match &change.origin {
 			ChangeOrigin::Flow(from_node) => self.input_nodes.iter().position(|n| n == from_node),
-			ChangeOrigin::Schema(_) => None,
+			ChangeOrigin::Shape(_) => None,
 		}
 	}
 
@@ -236,7 +236,7 @@ impl Operator for AppendOperator {
 				for (i, col) in cols.columns.into_iter().enumerate() {
 					result.columns.make_mut()[i]
 						.extend(col)
-						.expect("schema mismatch in append pull");
+						.expect("shape mismatch in append pull");
 				}
 			}
 			Ok(result)

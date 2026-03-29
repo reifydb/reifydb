@@ -27,7 +27,7 @@ use reifydb_type::{
 use uuid::Uuid;
 
 use super::{catalog, deserialize};
-use crate::interface::catalog::{id::IndexId, schema::SchemaId};
+use crate::interface::catalog::{id::IndexId, shape::ShapeId};
 
 pub struct KeyDeserializer<'a> {
 	buffer: &'a [u8],
@@ -190,9 +190,9 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_schema_id(&mut self) -> Result<SchemaId> {
+	pub fn read_shape_id(&mut self) -> Result<ShapeId> {
 		let bytes = self.read_exact(9)?;
-		catalog::deserialize_schema_id(bytes)
+		catalog::deserialize_shape_id(bytes)
 	}
 
 	pub fn read_index_id(&mut self) -> Result<IndexId> {
@@ -506,7 +506,7 @@ pub mod tests {
 	};
 
 	use crate::{
-		interface::catalog::{id::IndexId, schema::SchemaId},
+		interface::catalog::{id::IndexId, shape::ShapeId},
 		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	};
 
@@ -705,14 +705,14 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_read_schema_id() {
+	fn test_read_shape_id() {
 		let mut ser = KeySerializer::new();
-		let primitive = SchemaId::table(42);
-		ser.extend_schema_id(primitive);
+		let primitive = ShapeId::table(42);
+		ser.extend_shape_id(primitive);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
-		assert_eq!(de.read_schema_id().unwrap(), primitive);
+		assert_eq!(de.read_shape_id().unwrap(), primitive);
 		assert!(de.is_empty());
 	}
 

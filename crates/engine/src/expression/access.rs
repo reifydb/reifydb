@@ -4,21 +4,21 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	error::diagnostic::query::column_not_found, interface::identifier::ColumnSchema, value::column::Column,
+	error::diagnostic::query::column_not_found, interface::identifier::ColumnShape, value::column::Column,
 };
-use reifydb_rql::expression::AccessSchemaExpression;
+use reifydb_rql::expression::AccessShapeExpression;
 use reifydb_type::{error, fragment::Fragment};
 
 use crate::{Result, expression::context::EvalContext};
 
-pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessSchemaExpression) -> Result<Column> {
-	// Extract primitive name based on the ColumnSchema type
-	let source = match &expr.column.schema {
-		ColumnSchema::Qualified {
+pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessShapeExpression) -> Result<Column> {
+	// Extract primitive name based on the ColumnShape type
+	let source = match &expr.column.shape {
+		ColumnShape::Qualified {
 			name,
 			..
 		} => name,
-		ColumnSchema::Alias(alias) => alias,
+		ColumnShape::Alias(alias) => alias,
 	};
 	let column = expr.column.name.text().to_string();
 
@@ -34,7 +34,7 @@ pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessSchemaExpression) ->
 
 		// For non-aliased columns, just match on the column name
 		// (but only if this isn't an aliased access)
-		if matches!(&expr.column.schema, ColumnSchema::Qualified { .. }) {
+		if matches!(&expr.column.shape, ColumnShape::Qualified { .. }) {
 			if col.name().text() == column {
 				// Make sure this column doesn't belong to a different source
 				// by checking if it has a dot in the name (qualified)

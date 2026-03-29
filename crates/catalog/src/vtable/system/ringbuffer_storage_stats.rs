@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{schema::SchemaId, vtable::VTable},
+	interface::catalog::{shape::ShapeId, vtable::VTable},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_metric::{MetricId, metric::MetricReader, multi::Tier};
@@ -62,7 +62,7 @@ impl BaseVTable for SystemRingBufferStorageStats {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
 				// Filter for ring buffer sources only
-				if let MetricId::Source(SchemaId::RingBuffer(ringbuffer_id)) = obj_id {
+				if let MetricId::Shape(ShapeId::RingBuffer(ringbuffer_id)) = obj_id {
 					// Look up namespace_id from catalog
 					let namespace_id = match CatalogStore::find_ringbuffer(txn, ringbuffer_id)? {
 						Some(ringbuffer) => ringbuffer.namespace.0,

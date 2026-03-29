@@ -23,7 +23,7 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -34,123 +34,123 @@ pub mod tests {
 
 	#[test]
 	fn test_set_bool() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
 		// Set a value
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 		assert!(row.is_defined(0));
-		assert_eq!(schema.try_get_bool(&row, 0), Some(true));
+		assert_eq!(shape.try_get_bool(&row, 0), Some(true));
 
 		// Set as undefined
-		schema.set_none(&mut row, 0);
+		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
-		assert_eq!(schema.try_get_bool(&row, 0), None);
+		assert_eq!(shape.try_get_bool(&row, 0), None);
 	}
 
 	#[test]
 	fn test_set_integer() {
-		let schema = RowSchema::testing(&[Type::Int4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Int4]);
+		let mut row = shape.allocate();
 
 		// Set a value
-		schema.set_i32(&mut row, 0, 12345);
+		shape.set_i32(&mut row, 0, 12345);
 		assert!(row.is_defined(0));
-		assert_eq!(schema.try_get_i32(&row, 0), Some(12345));
+		assert_eq!(shape.try_get_i32(&row, 0), Some(12345));
 
 		// Set as undefined
-		schema.set_none(&mut row, 0);
+		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
-		assert_eq!(schema.try_get_i32(&row, 0), None);
+		assert_eq!(shape.try_get_i32(&row, 0), None);
 	}
 
 	#[test]
 	fn test_set_dynamic_type() {
-		let schema = RowSchema::testing(&[Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8]);
+		let mut row = shape.allocate();
 
 		// Set a string value
-		schema.set_utf8(&mut row, 0, "hello world");
+		shape.set_utf8(&mut row, 0, "hello world");
 		assert!(row.is_defined(0));
-		assert_eq!(schema.try_get_utf8(&row, 0), Some("hello world"));
+		assert_eq!(shape.try_get_utf8(&row, 0), Some("hello world"));
 
 		// Set as undefined
-		schema.set_none(&mut row, 0);
+		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
-		assert_eq!(schema.try_get_utf8(&row, 0), None);
+		assert_eq!(shape.try_get_utf8(&row, 0), None);
 	}
 
 	#[test]
 	fn test_set_multiple_fields() {
-		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Utf8]);
+		let mut row = shape.allocate();
 
 		// Set all fields
-		schema.set_bool(&mut row, 0, true);
-		schema.set_i32(&mut row, 1, 42);
-		schema.set_utf8(&mut row, 2, "test");
+		shape.set_bool(&mut row, 0, true);
+		shape.set_i32(&mut row, 1, 42);
+		shape.set_utf8(&mut row, 2, "test");
 
 		assert!(row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
 		// Set middle field as undefined
-		schema.set_none(&mut row, 1);
+		shape.set_none(&mut row, 1);
 
 		assert!(row.is_defined(0));
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		assert_eq!(schema.try_get_bool(&row, 0), Some(true));
-		assert_eq!(schema.try_get_i32(&row, 1), None);
-		assert_eq!(schema.try_get_utf8(&row, 2), Some("test"));
+		assert_eq!(shape.try_get_bool(&row, 0), Some(true));
+		assert_eq!(shape.try_get_i32(&row, 1), None);
+		assert_eq!(shape.try_get_utf8(&row, 2), Some("test"));
 	}
 
 	#[test]
 	fn test_set_all_fields() {
-		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
+		let mut row = shape.allocate();
 
 		// Set all fields
-		schema.set_bool(&mut row, 0, false);
-		schema.set_i32(&mut row, 1, -999);
-		schema.set_f64(&mut row, 2, 3.14159);
+		shape.set_bool(&mut row, 0, false);
+		shape.set_i32(&mut row, 1, -999);
+		shape.set_f64(&mut row, 2, 3.14159);
 
 		assert!(row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
 		// Set all as undefined
-		schema.set_none(&mut row, 0);
-		schema.set_none(&mut row, 1);
-		schema.set_none(&mut row, 2);
+		shape.set_none(&mut row, 0);
+		shape.set_none(&mut row, 1);
+		shape.set_none(&mut row, 2);
 
 		assert!(!row.is_defined(0));
 		assert!(!row.is_defined(1));
 		assert!(!row.is_defined(2));
-		assert!(!(0..schema.field_count()).all(|i| row.is_defined(i)));
+		assert!(!(0..shape.field_count()).all(|i| row.is_defined(i)));
 	}
 
 	#[test]
 	fn test_set_reuse_field() {
-		let schema = RowSchema::testing(&[Type::Int8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Int8]);
+		let mut row = shape.allocate();
 
 		// Set, unset, then set again
-		schema.set_i64(&mut row, 0, 100);
-		assert_eq!(schema.try_get_i64(&row, 0), Some(100));
+		shape.set_i64(&mut row, 0, 100);
+		assert_eq!(shape.try_get_i64(&row, 0), Some(100));
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_i64(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_i64(&row, 0), None);
 
-		schema.set_i64(&mut row, 0, 200);
-		assert_eq!(schema.try_get_i64(&row, 0), Some(200));
+		shape.set_i64(&mut row, 0, 200);
+		assert_eq!(shape.try_get_i64(&row, 0), Some(200));
 	}
 
 	#[test]
 	fn test_set_temporal_types() {
-		let schema = RowSchema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let mut row = shape.allocate();
 
 		// Set temporal values
 		let date = Date::new(2025, 1, 15).unwrap();
@@ -158,10 +158,10 @@ pub mod tests {
 		let time = Time::from_hms(14, 30, 45).unwrap();
 		let duration = Duration::from_days(7).unwrap();
 
-		schema.set_date(&mut row, 0, date.clone());
-		schema.set_datetime(&mut row, 1, datetime.clone());
-		schema.set_time(&mut row, 2, time.clone());
-		schema.set_duration(&mut row, 3, duration.clone());
+		shape.set_date(&mut row, 0, date.clone());
+		shape.set_datetime(&mut row, 1, datetime.clone());
+		shape.set_time(&mut row, 2, time.clone());
+		shape.set_duration(&mut row, 3, duration.clone());
 
 		// Verify all are defined
 		assert!(row.is_defined(0));
@@ -170,8 +170,8 @@ pub mod tests {
 		assert!(row.is_defined(3));
 
 		// Set some as undefined
-		schema.set_none(&mut row, 0);
-		schema.set_none(&mut row, 2);
+		shape.set_none(&mut row, 0);
+		shape.set_none(&mut row, 2);
 
 		// Check results
 		assert!(!row.is_defined(0));
@@ -179,26 +179,26 @@ pub mod tests {
 		assert!(!row.is_defined(2));
 		assert!(row.is_defined(3));
 
-		assert_eq!(schema.try_get_date(&row, 0), None);
-		assert_eq!(schema.try_get_datetime(&row, 1), Some(datetime));
-		assert_eq!(schema.try_get_time(&row, 2), None);
-		assert_eq!(schema.try_get_duration(&row, 3), Some(duration));
+		assert_eq!(shape.try_get_date(&row, 0), None);
+		assert_eq!(shape.try_get_datetime(&row, 1), Some(datetime));
+		assert_eq!(shape.try_get_time(&row, 2), None);
+		assert_eq!(shape.try_get_duration(&row, 3), Some(duration));
 	}
 
 	#[test]
 	fn test_set_uuid_types() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+		let mut row = shape.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
 
 		// Set UUID values
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate(&clock, &rng);
 		let identity_id = IdentityId::generate(&clock, &rng);
 
-		schema.set_uuid4(&mut row, 0, uuid4.clone());
-		schema.set_uuid7(&mut row, 1, uuid7.clone());
-		schema.set_identity_id(&mut row, 2, identity_id.clone());
+		shape.set_uuid4(&mut row, 0, uuid4.clone());
+		shape.set_uuid7(&mut row, 1, uuid7.clone());
+		shape.set_identity_id(&mut row, 2, identity_id.clone());
 
 		// All should be defined
 		assert!(row.is_defined(0));
@@ -206,31 +206,31 @@ pub mod tests {
 		assert!(row.is_defined(2));
 
 		// Set UUID7 as undefined
-		schema.set_none(&mut row, 1);
+		shape.set_none(&mut row, 1);
 
 		// Check results
 		assert!(row.is_defined(0));
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		assert_eq!(schema.try_get_uuid4(&row, 0), Some(uuid4));
-		assert_eq!(schema.try_get_uuid7(&row, 1), None);
-		assert_eq!(schema.try_get_identity_id(&row, 2), Some(identity_id));
+		assert_eq!(shape.try_get_uuid4(&row, 0), Some(uuid4));
+		assert_eq!(shape.try_get_uuid7(&row, 1), None);
+		assert_eq!(shape.try_get_identity_id(&row, 2), Some(identity_id));
 	}
 
 	#[test]
 	fn test_set_decimal_int_uint() {
-		let schema = RowSchema::testing(&[Type::Decimal, Type::Int, Type::Uint]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Decimal, Type::Int, Type::Uint]);
+		let mut row = shape.allocate();
 
 		// Set values
 		let decimal = Decimal::from_str("123.45").unwrap();
 		let int = Int::from(i64::MAX);
 		let uint = Uint::from(u64::MAX);
 
-		schema.set_decimal(&mut row, 0, &decimal);
-		schema.set_int(&mut row, 1, &int);
-		schema.set_uint(&mut row, 2, &uint);
+		shape.set_decimal(&mut row, 0, &decimal);
+		shape.set_int(&mut row, 1, &int);
+		shape.set_uint(&mut row, 2, &uint);
 
 		// All should be defined
 		assert!(row.is_defined(0));
@@ -238,61 +238,56 @@ pub mod tests {
 		assert!(row.is_defined(2));
 
 		// Set some as undefined
-		schema.set_none(&mut row, 0);
-		schema.set_none(&mut row, 2);
+		shape.set_none(&mut row, 0);
+		shape.set_none(&mut row, 2);
 
 		// Check results
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(!row.is_defined(2));
 
-		assert_eq!(schema.try_get_decimal(&row, 0), None);
-		assert_eq!(schema.try_get_int(&row, 1), Some(int));
-		assert_eq!(schema.try_get_uint(&row, 2), None);
+		assert_eq!(shape.try_get_decimal(&row, 0), None);
+		assert_eq!(shape.try_get_int(&row, 1), Some(int));
+		assert_eq!(shape.try_get_uint(&row, 2), None);
 	}
 
 	#[test]
 	fn test_set_blob() {
-		let schema = RowSchema::testing(&[Type::Blob]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Blob]);
+		let mut row = shape.allocate();
 
 		// Set a blob value
 		let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
-		schema.set_blob(&mut row, 0, &blob);
+		shape.set_blob(&mut row, 0, &blob);
 		assert!(row.is_defined(0));
-		assert_eq!(schema.try_get_blob(&row, 0), Some(blob.clone()));
+		assert_eq!(shape.try_get_blob(&row, 0), Some(blob.clone()));
 
 		// Set as undefined
-		schema.set_none(&mut row, 0);
+		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
-		assert_eq!(schema.try_get_blob(&row, 0), None);
+		assert_eq!(shape.try_get_blob(&row, 0), None);
 
 		// Set again with different value
 		let blob2 = Blob::from_slice(&[10, 20, 30]);
-		schema.set_blob(&mut row, 0, &blob2);
+		shape.set_blob(&mut row, 0, &blob2);
 		assert!(row.is_defined(0));
-		assert_eq!(schema.try_get_blob(&row, 0), Some(blob2));
+		assert_eq!(shape.try_get_blob(&row, 0), Some(blob2));
 	}
 
 	#[test]
 	fn test_set_pattern() {
-		let schema = RowSchema::testing(&[
-			Type::Boolean,
-			Type::Boolean,
-			Type::Boolean,
-			Type::Boolean,
-			Type::Boolean,
-		]);
-		let mut row = schema.allocate();
+		let shape =
+			RowShape::testing(&[Type::Boolean, Type::Boolean, Type::Boolean, Type::Boolean, Type::Boolean]);
+		let mut row = shape.allocate();
 
 		// Set all as true
 		for i in 0..5 {
-			schema.set_bool(&mut row, i, true);
+			shape.set_bool(&mut row, i, true);
 		}
 
 		// Set every other field as undefined
 		for i in (0..5).step_by(2) {
-			schema.set_none(&mut row, i);
+			shape.set_none(&mut row, i);
 		}
 
 		// Check pattern: undefined, defined, undefined, defined,
@@ -303,10 +298,10 @@ pub mod tests {
 		assert!(row.is_defined(3));
 		assert!(!row.is_defined(4));
 
-		assert_eq!(schema.try_get_bool(&row, 0), None);
-		assert_eq!(schema.try_get_bool(&row, 1), Some(true));
-		assert_eq!(schema.try_get_bool(&row, 2), None);
-		assert_eq!(schema.try_get_bool(&row, 3), Some(true));
-		assert_eq!(schema.try_get_bool(&row, 4), None);
+		assert_eq!(shape.try_get_bool(&row, 0), None);
+		assert_eq!(shape.try_get_bool(&row, 1), Some(true));
+		assert_eq!(shape.try_get_bool(&row, 2), None);
+		assert_eq!(shape.try_get_bool(&row, 3), Some(true));
+		assert_eq!(shape.try_get_bool(&row, 4), None);
 	}
 }

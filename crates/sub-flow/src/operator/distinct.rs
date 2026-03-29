@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock};
 use indexmap::IndexMap;
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	interface::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
@@ -173,7 +173,7 @@ pub struct DistinctOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
 	compiled_expressions: Vec<CompiledExpr>,
-	schema: RowSchema,
+	shape: RowShape,
 	functions: Functions,
 	runtime_context: RuntimeContext,
 }
@@ -201,7 +201,7 @@ impl DistinctOperator {
 			parent,
 			node,
 			compiled_expressions,
-			schema: RowSchema::testing(&[Type::Blob]),
+			shape: RowShape::testing(&[Type::Blob]),
 			functions,
 			runtime_context,
 		}
@@ -265,7 +265,7 @@ impl DistinctOperator {
 			return Ok(DistinctState::default());
 		}
 
-		let blob = self.schema.get_blob(&state_row, 0);
+		let blob = self.shape.get_blob(&state_row, 0);
 		if blob.is_empty() {
 			return Ok(DistinctState::default());
 		}
@@ -278,8 +278,8 @@ impl DistinctOperator {
 			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 		let blob = Blob::from(serialized);
 
-		self.update_state(txn, |schema, row| {
-			schema.set_blob(row, 0, &blob);
+		self.update_state(txn, |shape, row| {
+			shape.set_blob(row, 0, &blob);
 			Ok(())
 		})?;
 		Ok(())
@@ -464,8 +464,8 @@ impl DistinctOperator {
 impl RawStatefulOperator for DistinctOperator {}
 
 impl SingleStateful for DistinctOperator {
-	fn layout(&self) -> RowSchema {
-		self.schema.clone()
+	fn layout(&self) -> RowShape {
+		self.shape.clone()
 	}
 }
 

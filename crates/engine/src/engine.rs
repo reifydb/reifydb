@@ -7,7 +7,7 @@ use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	schema::RowSchemaRegistry,
+	shape::RowShapeRegistry,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -313,8 +313,8 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn row_schema_registry(&self) -> &RowSchemaRegistry {
-		&self.catalog.schema
+	fn row_shape_registry(&self) -> &RowShapeRegistry {
+		&self.catalog.shape
 	}
 }
 
@@ -545,7 +545,7 @@ impl StandardEngine {
 	/// # Safety
 	///
 	/// The caller is responsible for ensuring the data conforms to the
-	/// schema constraints. Invalid data may cause undefined behavior.
+	/// shape constraints. Invalid data may cause undefined behavior.
 	pub fn bulk_insert_trusted<'e>(&'e self, identity: IdentityId) -> BulkInsertBuilder<'e, Trusted> {
 		BulkInsertBuilder::new_trusted(self, identity)
 	}

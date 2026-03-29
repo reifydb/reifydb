@@ -27,7 +27,7 @@ pub struct SinkDescriptorFFI {
 	pub version: BufferFFI,
 	/// Description (UTF-8)
 	pub description: BufferFFI,
-	/// Schema of records this sink accepts
+	/// Shape of records this sink accepts
 	pub input_columns: OperatorColumnsFFI,
 	/// Virtual function table
 	pub vtable: SinkVTableFFI,

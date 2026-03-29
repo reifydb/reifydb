@@ -10,7 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::namespace::{convert_namespace, schema::namespace},
+	store::namespace::{convert_namespace, shape::namespace},
 };
 
 impl CatalogStore {
@@ -34,7 +34,7 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row: &EncodedRow = &multi.row;
-			let namespace_name = namespace::SCHEMA.get_utf8(row, namespace::NAME);
+			let namespace_name = namespace::SHAPE.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
 				return Ok(Some(convert_namespace(multi)));
 			}

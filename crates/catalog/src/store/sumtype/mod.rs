@@ -12,25 +12,25 @@ use reifydb_type::value::sumtype::SumTypeId;
 use serde_json::from_str;
 use tracing::warn;
 
-use self::schema::sumtype;
+use self::shape::sumtype;
 
 pub mod create;
 pub mod drop;
 pub mod find;
 pub mod get;
 pub mod list;
-pub(crate) mod schema;
+pub(crate) mod shape;
 
 pub(crate) fn sumtype_from_row(row: &EncodedRow) -> SumType {
-	let id = SumTypeId(sumtype::SCHEMA.get_u64(row, sumtype::ID));
-	let namespace = NamespaceId(sumtype::SCHEMA.get_u64(row, sumtype::NAMESPACE));
-	let name = sumtype::SCHEMA.get_utf8(row, sumtype::NAME).to_string();
-	let variants_json = sumtype::SCHEMA.get_utf8(row, sumtype::VARIANTS_JSON);
+	let id = SumTypeId(sumtype::SHAPE.get_u64(row, sumtype::ID));
+	let namespace = NamespaceId(sumtype::SHAPE.get_u64(row, sumtype::NAMESPACE));
+	let name = sumtype::SHAPE.get_utf8(row, sumtype::NAME).to_string();
+	let variants_json = sumtype::SHAPE.get_utf8(row, sumtype::VARIANTS_JSON);
 	let variants: Vec<Variant> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
-	let kind = match sumtype::SCHEMA.get_u8(row, sumtype::KIND) {
+	let kind = match sumtype::SHAPE.get_u8(row, sumtype::KIND) {
 		0 => SumTypeKind::Enum,
 		1 => SumTypeKind::Event,
 		2 => SumTypeKind::Tag,

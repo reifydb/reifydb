@@ -9,7 +9,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		role::schema::role::{ID, NAME, SCHEMA},
+		role::shape::role::{ID, NAME, SHAPE},
 		sequence::system::SystemSequence,
 	},
 };
@@ -28,9 +28,9 @@ impl CatalogStore {
 
 		let role_id = SystemSequence::next_role_id(txn)?;
 
-		let mut row = SCHEMA.allocate();
-		SCHEMA.set_u64(&mut row, ID, role_id);
-		SCHEMA.set_utf8(&mut row, NAME, name);
+		let mut row = SHAPE.allocate();
+		SHAPE.set_u64(&mut row, ID, role_id);
+		SHAPE.set_utf8(&mut row, NAME, name);
 
 		txn.set(&RoleKey::encoded(role_id), row)?;
 

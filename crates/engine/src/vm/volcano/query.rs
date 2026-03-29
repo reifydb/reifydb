@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::resolved::ResolvedSchema,
+	interface::resolved::ResolvedShape,
 	value::{
 		batch::lazy::LazyBatch,
 		column::{columns::Columns, headers::ColumnHeaders},
@@ -42,7 +42,7 @@ pub(crate) trait QueryNode: Send + Sync {
 #[derive(Clone)]
 pub struct QueryContext {
 	pub services: Arc<Services>,
-	pub source: Option<ResolvedSchema>,
+	pub source: Option<ResolvedShape>,
 	pub batch_size: u64,
 	pub params: Params,
 	pub symbols: SymbolTable,

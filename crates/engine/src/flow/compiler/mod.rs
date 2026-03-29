@@ -72,7 +72,7 @@ pub(crate) struct FlowCompiler {
 	pub(crate) catalog: Catalog,
 	/// The flow builder being used for construction
 	builder: FlowBuilder,
-	/// The sink view schema (for terminal nodes)
+	/// The sink view shape (for terminal nodes)
 	pub(crate) sink: Option<View>,
 }
 

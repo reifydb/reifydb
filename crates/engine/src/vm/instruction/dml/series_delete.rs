@@ -8,9 +8,9 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
-		catalog::{policy::PolicyTargetType, schema::SchemaId},
+		catalog::{policy::PolicyTargetType, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
-		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedSeries},
+		resolved::{ResolvedNamespace, ResolvedSeries, ResolvedShape},
 	},
 	key::{
 		EncodableKey,
@@ -34,7 +34,7 @@ use crate::{
 	Result,
 	policy::PolicyEvaluator,
 	vm::{
-		instruction::dml::schema::get_or_create_series_schema,
+		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
 		stack::SymbolTable,
 		volcano::{
@@ -77,7 +77,7 @@ pub(crate) fn delete_series<'a>(
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let series_ident = Fragment::internal(series.name.clone());
 		let resolved_series = ResolvedSeries::new(series_ident, resolved_namespace, series.clone());
-		let resolved_source = Some(ResolvedSchema::Series(resolved_series));
+		let resolved_source = Some(ResolvedShape::Series(resolved_series));
 
 		let context = QueryContext {
 			services: services.clone(),
@@ -164,7 +164,7 @@ pub(crate) fn delete_series<'a>(
 					columns: CowVec::new(pre_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
+					origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Remove {
 						pre,
@@ -223,7 +223,7 @@ pub(crate) fn delete_series<'a>(
 		}
 		drop(stream);
 
-		let delete_all_schema = get_or_create_series_schema(&services.catalog, &series, txn)?;
+		let delete_all_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 
 		for (key, encoded_row) in entries_to_delete.iter() {
 			if let Some(decoded_key) = SeriesRowKey::decode(key) {
@@ -231,7 +231,7 @@ pub(crate) fn delete_series<'a>(
 				let data_values: Vec<Value> = series
 					.data_columns()
 					.enumerate()
-					.map(|(i, _)| delete_all_schema.get_value(encoded_row, i + 1))
+					.map(|(i, _)| delete_all_shape.get_value(encoded_row, i + 1))
 					.collect();
 				let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 				pre_col_vec.push(Column {
@@ -251,7 +251,7 @@ pub(crate) fn delete_series<'a>(
 					columns: CowVec::new(pre_col_vec),
 				};
 				txn.track_flow_change(Change {
-					origin: ChangeOrigin::Schema(SchemaId::series(series.id)),
+					origin: ChangeOrigin::Shape(ShapeId::series(series.id)),
 					version: CommitVersion(0),
 					diffs: vec![Diff::Remove {
 						pre,
@@ -272,7 +272,7 @@ pub(crate) fn delete_series<'a>(
 					returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));
 				}
 			}
-			let columns = decode_rows_to_columns(&delete_all_schema, &returned_rows);
+			let columns = decode_rows_to_columns(&delete_all_shape, &returned_rows);
 			returning_columns = Some(columns);
 		}
 	}

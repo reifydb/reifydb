@@ -297,7 +297,7 @@ pub mod tests {
 	};
 
 	#[test]
-	fn test_alter_sequence_with_schema() {
+	fn test_alter_sequence_with_shape() {
 		let bump = Bump::new();
 		let source = "ALTER SEQUENCE test::users::id SET VALUE 1000";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -331,7 +331,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_alter_sequence_without_schema() {
+	fn test_alter_sequence_without_shape() {
 		let bump = Bump::new();
 		let source = "ALTER SEQUENCE users::id SET VALUE 500";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

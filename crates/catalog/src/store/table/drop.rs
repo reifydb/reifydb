@@ -2,12 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::TableId, schema::SchemaId},
+	interface::catalog::{id::TableId, shape::ShapeId},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::schema::drop::drop_schema_metadata};
+use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_table(txn: &mut AdminTransaction, table: TableId) -> Result<()> {
@@ -19,7 +19,7 @@ impl CatalogStore {
 
 		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
 		let pk_id = Self::get_table_pk_id(&mut Transaction::Admin(&mut *txn), table)?;
-		drop_schema_metadata(txn, SchemaId::Table(table), pk_id)?;
+		drop_shape_metadata(txn, ShapeId::Table(table), pk_id)?;
 
 		// Delete the table metadata
 		txn.remove(&TableKey::encoded(table))?;
@@ -33,7 +33,7 @@ pub mod tests {
 	use reifydb_core::{
 		interface::catalog::{
 			id::{NamespaceId, TableId},
-			schema::SchemaId,
+			shape::ShapeId,
 		},
 		retention::RetentionPolicy,
 	};
@@ -48,7 +48,7 @@ pub mod tests {
 		CatalogStore,
 		store::{
 			namespace::create::NamespaceToCreate,
-			retention_policy::create::create_schema_retention_policy,
+			retention_policy::create::create_shape_retention_policy,
 			table::create::{TableColumnToCreate, TableToCreate},
 		},
 		test_utils::{create_table, ensure_test_namespace},
@@ -147,7 +147,7 @@ pub mod tests {
 		);
 
 		// Add retention policy
-		create_schema_retention_policy(&mut txn, SchemaId::Table(table.id), &RetentionPolicy::KeepForever)
+		create_shape_retention_policy(&mut txn, ShapeId::Table(table.id), &RetentionPolicy::KeepForever)
 			.unwrap();
 
 		// Verify columns exist before drop
@@ -155,9 +155,9 @@ pub mod tests {
 		assert_eq!(columns.len(), 2);
 
 		// Verify retention policy exists before drop
-		let policy = CatalogStore::find_schema_retention_policy(
+		let policy = CatalogStore::find_shape_retention_policy(
 			&mut Transaction::Admin(&mut txn),
-			SchemaId::Table(table.id),
+			ShapeId::Table(table.id),
 		)
 		.unwrap();
 		assert!(policy.is_some());
@@ -170,9 +170,9 @@ pub mod tests {
 		assert!(columns.is_empty());
 
 		// Verify retention policy is cleaned up
-		let policy = CatalogStore::find_schema_retention_policy(
+		let policy = CatalogStore::find_shape_retention_policy(
 			&mut Transaction::Admin(&mut txn),
-			SchemaId::Table(table.id),
+			ShapeId::Table(table.id),
 		)
 		.unwrap();
 		assert!(policy.is_none());

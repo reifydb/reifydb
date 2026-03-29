@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::schema::RowSchema,
+	encoded::shape::RowShape,
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, schema::SchemaId},
+		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::ResolvedView,
 	},
@@ -45,8 +45,8 @@ impl Operator for SinkTableViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
-		let schema: RowSchema = view.columns().into();
-		let object_id = SchemaId::table(self.underlying);
+		let shape: RowShape = view.columns().into();
+		let object_id = ShapeId::table(self.underlying);
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -59,7 +59,7 @@ impl Operator for SinkTableViewOperator {
 						let row_number = coerced.row_numbers[row_idx];
 
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &schema, row_number);
+							encode_row_at_index(&coerced, row_idx, &shape, row_number);
 
 						let encoded = ViewRowInterceptor::pre_insert(
 							txn, &view, row_number, encoded,
@@ -70,7 +70,7 @@ impl Operator for SinkTableViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
+						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
@@ -90,13 +90,13 @@ impl Operator for SinkTableViewOperator {
 						let (_, pre_encoded) = encode_row_at_index(
 							&coerced_pre,
 							row_idx,
-							&schema,
+							&shape,
 							pre_row_number,
 						);
 						let (_, post_encoded) = encode_row_at_index(
 							&coerced_post,
 							row_idx,
-							&schema,
+							&shape,
 							post_row_number,
 						);
 
@@ -120,7 +120,7 @@ impl Operator for SinkTableViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
+						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Update {
 							pre: coerced_pre,
@@ -136,7 +136,7 @@ impl Operator for SinkTableViewOperator {
 					for row_idx in 0..row_count {
 						let row_number = coerced.row_numbers[row_idx];
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &schema, row_number);
+							encode_row_at_index(&coerced, row_idx, &shape, row_number);
 
 						ViewRowInterceptor::pre_delete(txn, &view, row_number)?;
 						let key = RowKey::encoded(object_id, row_number);
@@ -145,7 +145,7 @@ impl Operator for SinkTableViewOperator {
 					}
 					let version = txn.version();
 					txn.track_flow_change(Change {
-						origin: ChangeOrigin::Schema(SchemaId::view(view.id())),
+						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,

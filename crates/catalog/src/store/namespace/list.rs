@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::namespace::schema::namespace};
+use crate::{CatalogStore, Result, store::namespace::shape::namespace};
 
 impl CatalogStore {
 	pub(crate) fn list_namespaces_all(rx: &mut Transaction<'_>) -> Result<Vec<Namespace>> {
@@ -23,15 +23,14 @@ impl CatalogStore {
 				if let Key::Namespace(namespace_key) = key {
 					let namespace_id = namespace_key.namespace;
 
-					let name = namespace::SCHEMA.get_utf8(&entry.row, namespace::NAME).to_string();
-					let parent_id = NamespaceId(
-						namespace::SCHEMA.get_u64(&entry.row, namespace::PARENT_ID),
-					);
-					let grpc = namespace::SCHEMA
+					let name = namespace::SHAPE.get_utf8(&entry.row, namespace::NAME).to_string();
+					let parent_id =
+						NamespaceId(namespace::SHAPE.get_u64(&entry.row, namespace::PARENT_ID));
+					let grpc = namespace::SHAPE
 						.try_get_utf8(&entry.row, namespace::GRPC)
 						.map(|s| s.to_string())
 						.filter(|s| !s.is_empty());
-					let local_name = namespace::SCHEMA
+					let local_name = namespace::SHAPE
 						.try_get_utf8(&entry.row, namespace::LOCAL_NAME)
 						.filter(|s| !s.is_empty())
 						.unwrap_or_else(|| {
@@ -39,7 +38,7 @@ impl CatalogStore {
 						})
 						.to_string();
 					let namespace = if let Some(address) = grpc {
-						let token = namespace::SCHEMA
+						let token = namespace::SHAPE
 							.try_get_utf8(&entry.row, namespace::TOKEN)
 							.map(|s| s.to_string())
 							.filter(|s| !s.is_empty());

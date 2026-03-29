@@ -13,7 +13,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use crate::{
 	CatalogStore, Result,
 	error::CatalogError,
-	store::{column_property::schema::column_property, sequence::system::SystemSequence},
+	store::{column_property::shape::column_property, sequence::system::SystemSequence},
 };
 
 impl CatalogStore {
@@ -38,14 +38,14 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_property_id(txn)?;
 
-		let mut row = column_property::SCHEMA.allocate();
-		column_property::SCHEMA.set_u64(&mut row, column_property::ID, id);
-		column_property::SCHEMA.set_u64(&mut row, column_property::COLUMN, column);
+		let mut row = column_property::SHAPE.allocate();
+		column_property::SHAPE.set_u64(&mut row, column_property::ID, id);
+		column_property::SHAPE.set_u64(&mut row, column_property::COLUMN, column);
 
 		{
 			let (kind, value) = property.to_u8();
-			column_property::SCHEMA.set_u8(&mut row, column_property::POLICY, kind);
-			column_property::SCHEMA.set_u8(&mut row, column_property::VALUE, value);
+			column_property::SHAPE.set_u8(&mut row, column_property::POLICY, kind);
+			column_property::SHAPE.set_u8(&mut row, column_property::VALUE, value);
 		}
 
 		txn.set(&ColumnPropertyKey::encoded(column, id), row)?;
@@ -100,7 +100,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "namespace".to_string(),
-				schema_name: "table".to_string(),
+				shape_name: "table".to_string(),
 				column: "col1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				properties: vec![],

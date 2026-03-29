@@ -14,7 +14,7 @@ use serde_json::from_str;
 
 use crate::{
 	CatalogStore, Result,
-	store::source::schema::{source, source_namespace},
+	store::source::shape::{source, source_namespace},
 };
 
 impl CatalogStore {
@@ -24,15 +24,15 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = SourceId(source::SCHEMA.get_u64(&row, source::ID));
-		let namespace = NamespaceId(source::SCHEMA.get_u64(&row, source::NAMESPACE));
-		let name = source::SCHEMA.get_utf8(&row, source::NAME).to_string();
-		let connector = source::SCHEMA.get_utf8(&row, source::CONNECTOR).to_string();
-		let config_json = source::SCHEMA.get_utf8(&row, source::CONFIG);
+		let id = SourceId(source::SHAPE.get_u64(&row, source::ID));
+		let namespace = NamespaceId(source::SHAPE.get_u64(&row, source::NAMESPACE));
+		let name = source::SHAPE.get_utf8(&row, source::NAME).to_string();
+		let connector = source::SHAPE.get_utf8(&row, source::CONNECTOR).to_string();
+		let config_json = source::SHAPE.get_utf8(&row, source::CONFIG);
 		let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-		let target_namespace = NamespaceId(source::SCHEMA.get_u64(&row, source::TARGET_NAMESPACE));
-		let target_name = source::SCHEMA.get_utf8(&row, source::TARGET_NAME).to_string();
-		let status_u8 = source::SCHEMA.get_u8(&row, source::STATUS);
+		let target_namespace = NamespaceId(source::SHAPE.get_u64(&row, source::TARGET_NAMESPACE));
+		let target_name = source::SHAPE.get_utf8(&row, source::TARGET_NAME).to_string();
+		let status_u8 = source::SHAPE.get_u8(&row, source::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
 		Ok(Some(Source {
@@ -59,10 +59,10 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.row;
-			let source_name = source_namespace::SCHEMA.get_utf8(row, source_namespace::NAME);
+			let source_name = source_namespace::SHAPE.get_utf8(row, source_namespace::NAME);
 			if name == source_name {
 				found_source =
-					Some(SourceId(source_namespace::SCHEMA.get_u64(row, source_namespace::ID)));
+					Some(SourceId(source_namespace::SHAPE.get_u64(row, source_namespace::ID)));
 				break;
 			}
 		}

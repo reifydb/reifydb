@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{evaluate::TargetColumn, resolved::ResolvedSchema},
+	interface::{evaluate::TargetColumn, resolved::ResolvedShape},
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
@@ -38,8 +38,8 @@ impl InlineDataNode {
 		let headers = cloned_context.source.as_ref().map(|source| {
 			let mut layout = Self::create_columns_layout_from_source(source);
 			// For series, include extra columns from input (e.g., timestamp, tag)
-			// that aren't part of the schema but are needed by the insert executor.
-			if matches!(source, ResolvedSchema::Series(_)) {
+			// that aren't part of the shape but are needed by the insert executor.
+			if matches!(source, ResolvedShape::Series(_)) {
 				let existing: HashSet<String> =
 					layout.columns.iter().map(|c| c.text().to_string()).collect();
 				for row in &rows {
@@ -62,7 +62,7 @@ impl InlineDataNode {
 		}
 	}
 
-	fn create_columns_layout_from_source(source: &ResolvedSchema) -> ColumnHeaders {
+	fn create_columns_layout_from_source(source: &ResolvedShape) -> ColumnHeaders {
 		ColumnHeaders {
 			columns: source.columns().iter().map(|col| Fragment::internal(&col.name)).collect(),
 		}
@@ -112,7 +112,7 @@ impl InlineDataNode {
 						};
 
 						let sumtype = if is_unresolved {
-							// Resolve from column constraint in table schema
+							// Resolve from column constraint in table shape
 							let tag_col_name = format!("{}_tag", col_name);
 							let source = ctx
 								.source
@@ -130,7 +130,7 @@ impl InlineDataNode {
 									)
 								};
 								ctx.services.catalog.get_sumtype(txn, *id)?
-							} else if let ResolvedSchema::Series(series) = source {
+							} else if let ResolvedShape::Series(series) = source {
 								// For series, the tag is stored as Series.tag, not
 								// as a column
 								let tag_id =
@@ -226,7 +226,7 @@ impl InlineDataNode {
 								} else {
 									None
 								}
-							} else if let ResolvedSchema::Series(series) = source {
+							} else if let ResolvedShape::Series(series) = source {
 								// For series, the tag is stored as Series.tag
 								if let Some(tag_id) = series.def().tag {
 									let sumtype = ctx

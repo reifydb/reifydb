@@ -17,7 +17,7 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::handler::schema::handler::{self, BODY_SOURCE, ID, NAME, NAMESPACE, ON_SUMTYPE_ID, ON_VARIANT_TAG},
+	store::handler::shape::handler::{self, BODY_SOURCE, ID, NAME, NAMESPACE, ON_SUMTYPE_ID, ON_VARIANT_TAG},
 };
 
 pub(super) struct HandlerApplier;
@@ -41,12 +41,12 @@ impl CatalogChangeApplier for HandlerApplier {
 }
 
 fn decode_handler(row: &EncodedRow) -> Handler {
-	let id = HandlerId(handler::SCHEMA.get_u64(row, ID));
-	let namespace = NamespaceId(handler::SCHEMA.get_u64(row, NAMESPACE));
-	let name = handler::SCHEMA.get_utf8(row, NAME).to_string();
-	let sumtype_id = SumTypeId(handler::SCHEMA.get_u64(row, ON_SUMTYPE_ID));
-	let variant_tag = handler::SCHEMA.get_u8(row, ON_VARIANT_TAG);
-	let body_source = handler::SCHEMA.get_utf8(row, BODY_SOURCE).to_string();
+	let id = HandlerId(handler::SHAPE.get_u64(row, ID));
+	let namespace = NamespaceId(handler::SHAPE.get_u64(row, NAMESPACE));
+	let name = handler::SHAPE.get_utf8(row, NAME).to_string();
+	let sumtype_id = SumTypeId(handler::SHAPE.get_u64(row, ON_SUMTYPE_ID));
+	let variant_tag = handler::SHAPE.get_u8(row, ON_VARIANT_TAG);
+	let body_source = handler::SHAPE.get_utf8(row, BODY_SOURCE).to_string();
 
 	Handler {
 		id,

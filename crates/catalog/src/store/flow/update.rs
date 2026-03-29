@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::flow::schema::flow};
+use crate::{CatalogStore, Result, store::flow::shape::flow};
 
 impl CatalogStore {
 	/// Update the name of a flow
@@ -16,11 +16,11 @@ impl CatalogStore {
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		// Update the name field
-		let mut row = flow::SCHEMA.allocate();
-		flow::SCHEMA.set_u64(&mut row, flow::ID, flow_id.0);
-		flow::SCHEMA.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
-		flow::SCHEMA.set_utf8(&mut row, flow::NAME, &new_name);
-		flow::SCHEMA.set_u8(&mut row, flow::STATUS, flow.status as u8);
+		let mut row = flow::SHAPE.allocate();
+		flow::SHAPE.set_u64(&mut row, flow::ID, flow_id.0);
+		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
+		flow::SHAPE.set_utf8(&mut row, flow::NAME, &new_name);
+		flow::SHAPE.set_u8(&mut row, flow::STATUS, flow.status as u8);
 
 		txn.set(&FlowKey::encoded(flow_id), row)?;
 
@@ -37,11 +37,11 @@ impl CatalogStore {
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		// Update the status field
-		let mut row = flow::SCHEMA.allocate();
-		flow::SCHEMA.set_u64(&mut row, flow::ID, flow_id.0);
-		flow::SCHEMA.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
-		flow::SCHEMA.set_utf8(&mut row, flow::NAME, &flow.name);
-		flow::SCHEMA.set_u8(&mut row, flow::STATUS, status as u8);
+		let mut row = flow::SHAPE.allocate();
+		flow::SHAPE.set_u64(&mut row, flow::ID, flow_id.0);
+		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
+		flow::SHAPE.set_utf8(&mut row, flow::NAME, &flow.name);
+		flow::SHAPE.set_u8(&mut row, flow::STATUS, status as u8);
 
 		txn.set(&FlowKey::encoded(flow_id), row)?;
 

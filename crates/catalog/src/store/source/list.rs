@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use serde_json::from_str;
 
-use crate::{CatalogStore, Result, store::source::schema::source};
+use crate::{CatalogStore, Result, store::source::shape::source};
 
 impl CatalogStore {
 	pub(crate) fn list_sources_all(rx: &mut Transaction<'_>) -> Result<Vec<Source>> {
@@ -24,15 +24,15 @@ impl CatalogStore {
 			let entry = entry?;
 			let row = &entry.row;
 
-			let id = SourceId(source::SCHEMA.get_u64(row, source::ID));
-			let namespace = NamespaceId(source::SCHEMA.get_u64(row, source::NAMESPACE));
-			let name = source::SCHEMA.get_utf8(row, source::NAME).to_string();
-			let connector = source::SCHEMA.get_utf8(row, source::CONNECTOR).to_string();
-			let config_json = source::SCHEMA.get_utf8(row, source::CONFIG);
+			let id = SourceId(source::SHAPE.get_u64(row, source::ID));
+			let namespace = NamespaceId(source::SHAPE.get_u64(row, source::NAMESPACE));
+			let name = source::SHAPE.get_utf8(row, source::NAME).to_string();
+			let connector = source::SHAPE.get_utf8(row, source::CONNECTOR).to_string();
+			let config_json = source::SHAPE.get_utf8(row, source::CONFIG);
 			let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-			let target_namespace = NamespaceId(source::SCHEMA.get_u64(row, source::TARGET_NAMESPACE));
-			let target_name = source::SCHEMA.get_utf8(row, source::TARGET_NAME).to_string();
-			let status_u8 = source::SCHEMA.get_u8(row, source::STATUS);
+			let target_namespace = NamespaceId(source::SHAPE.get_u64(row, source::TARGET_NAMESPACE));
+			let target_name = source::SHAPE.get_utf8(row, source::TARGET_NAME).to_string();
+			let status_u8 = source::SHAPE.get_u8(row, source::STATUS);
 			let status = FlowStatus::from_u8(status_u8);
 
 			result.push(Source {

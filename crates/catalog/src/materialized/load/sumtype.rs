@@ -19,7 +19,7 @@ use tracing::warn;
 use super::MaterializedCatalog;
 use crate::{
 	Result,
-	store::sumtype::schema::sumtype::{ID, KIND, NAME, NAMESPACE, SCHEMA, VARIANTS_JSON},
+	store::sumtype::shape::sumtype::{ID, KIND, NAME, NAMESPACE, SHAPE, VARIANTS_JSON},
 };
 
 pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
@@ -38,16 +38,16 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &MaterializedCata
 
 fn convert_sumtype(multi: MultiVersionRow) -> SumType {
 	let row = multi.row;
-	let id = SumTypeId(SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(SCHEMA.get_u64(&row, NAMESPACE));
-	let name = SCHEMA.get_utf8(&row, NAME).to_string();
-	let variants_json = SCHEMA.get_utf8(&row, VARIANTS_JSON);
+	let id = SumTypeId(SHAPE.get_u64(&row, ID));
+	let namespace = NamespaceId(SHAPE.get_u64(&row, NAMESPACE));
+	let name = SHAPE.get_utf8(&row, NAME).to_string();
+	let variants_json = SHAPE.get_utf8(&row, VARIANTS_JSON);
 	let variants: Vec<Variant> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
 
-	let kind = if SCHEMA.get_u8(&row, KIND) != 0 {
+	let kind = if SHAPE.get_u8(&row, KIND) != 0 {
 		SumTypeKind::Event
 	} else {
 		SumTypeKind::Enum

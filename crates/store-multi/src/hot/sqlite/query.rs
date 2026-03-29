@@ -3,7 +3,7 @@
 
 //! SQL query builders for SQLite backend with MVCC versioning.
 //!
-//! The table schema uses (key, version) composite primary key:
+//! The table shape uses (key, version) composite primary key:
 //! ```sql
 //! CREATE TABLE IF NOT EXISTS "{table_name}" (
 //!     key BLOB NOT NULL,

@@ -30,7 +30,7 @@ use reifydb_type::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::catalog::{id::IndexId, schema::SchemaId},
+	interface::catalog::{id::IndexId, shape::ShapeId},
 	util::encoding::{binary::decode_binary, keycode::serializer::KeySerializer},
 };
 
@@ -187,9 +187,9 @@ impl EncodedKeyBuilder {
 		self
 	}
 
-	/// Extend with a SchemaId value
-	pub fn object_id(mut self, object: impl Into<SchemaId>) -> Self {
-		self.serializer.extend_schema_id(object);
+	/// Extend with a ShapeId value
+	pub fn object_id(mut self, object: impl Into<ShapeId>) -> Self {
+		self.serializer.extend_shape_id(object);
 		self
 	}
 

@@ -9,5 +9,5 @@ pub use reifydb_type::{
 
 pub use crate::{
 	engine::StandardEngine,
-	test_harness::{TestEngine, create_test_admin_transaction, create_test_admin_transaction_with_internal_schema},
+	test_harness::{TestEngine, create_test_admin_transaction, create_test_admin_transaction_with_internal_shape},
 };

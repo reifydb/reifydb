@@ -16,7 +16,7 @@ use reifydb::{
 	sub_tracing::builder::TracingBuilder,
 };
 
-use crate::{cli::Cli, shared::schema};
+use crate::{cli::Cli, shared::shape};
 
 fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
 	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("debug,reifydb=trace")
@@ -29,7 +29,7 @@ pub fn start(cli: &Cli) {
 		.with_grpc(GrpcConfig::default().bind_addr(&cli.grpc_addr))
 		.with_ws(WsConfig::default().bind_addr(&cli.ws_addr))
 		.with_tracing(tracing_configuration)
-		.with_migrations(schema::migrations())
+		.with_migrations(shape::migrations())
 		.with_procedures(|builder| {
 			builder.with_procedure("forge::run_pipeline", || procedures::RunPipelineProcedure)
 				.with_procedure("forge::cancel_run", || procedures::CancelRunProcedure)

@@ -555,7 +555,7 @@ impl TierBackend for MemoryPrimitiveStorage {}
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{id::TableId, schema::SchemaId};
+	use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
 
 	use super::*;
 
@@ -591,8 +591,8 @@ pub mod tests {
 	fn test_source_tables() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		let source1 = SchemaId::Table(TableId(1));
-		let source2 = SchemaId::Table(TableId(2));
+		let source1 = ShapeId::Table(TableId(1));
+		let source2 = ShapeId::Table(TableId(2));
 
 		let key = CowVec::new(b"key".to_vec());
 		let version = CommitVersion(1);

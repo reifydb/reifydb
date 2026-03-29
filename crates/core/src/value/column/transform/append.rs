@@ -24,7 +24,7 @@ use reifydb_type::{
 use uuid::Uuid;
 
 use crate::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	error::CoreError,
 	value::column::{ColumnData, columns::Columns},
 };
@@ -65,16 +65,16 @@ impl Columns {
 impl Columns {
 	pub fn append_rows(
 		&mut self,
-		schema: &RowSchema,
+		shape: &RowShape,
 		rows: impl IntoIterator<Item = EncodedRow>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
-		if self.len() != schema.field_count() {
+		if self.len() != shape.field_count() {
 			return Err(CoreError::FrameError {
 				message: format!(
 					"mismatched column count: expected {}, got {}",
 					self.len(),
-					schema.field_count()
+					shape.field_count()
 				),
 			}
 			.into());
@@ -102,7 +102,7 @@ impl Columns {
 		// Handle all-none Option column conversion to properly-typed Option column
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
-			let field = schema.get_field(index).unwrap();
+			let field = shape.get_field(index).unwrap();
 			let is_all_none = if let ColumnData::Option {
 				bitvec,
 				..
@@ -243,7 +243,7 @@ impl Columns {
 				*column = column.with_new_data(new_data);
 			}
 
-			// Set dictionary_id on DictionaryId containers from schema constraint
+			// Set dictionary_id on DictionaryId containers from shape constraint
 			if let ColumnData::DictionaryId(container) = column.data_mut() {
 				if container.dictionary_id().is_none() {
 					if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
@@ -254,25 +254,25 @@ impl Columns {
 			}
 		}
 
-		// Append rows using RowSchema methods
+		// Append rows using RowShape methods
 		for row in &rows {
 			// Check if all fields are defined
-			let all_defined = (0..schema.field_count()).all(|i| row.is_defined(i));
+			let all_defined = (0..shape.field_count()).all(|i| row.is_defined(i));
 
 			if all_defined {
-				self.append_all_defined_from_schema(schema, &row)?;
+				self.append_all_defined_from_shape(shape, &row)?;
 			} else {
-				self.append_fallback_from_schema(schema, &row)?;
+				self.append_fallback_from_shape(shape, &row)?;
 			}
 		}
 
 		Ok(())
 	}
 
-	fn append_all_defined_from_schema(&mut self, schema: &RowSchema, row: &EncodedRow) -> Result<()> {
+	fn append_all_defined_from_shape(&mut self, shape: &RowShape, row: &EncodedRow) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
-			let field = schema.get_field(index).unwrap();
+			let field = shape.get_field(index).unwrap();
 			match (column.data_mut(), field.constraint.get_type()) {
 				// Handle Option-wrapped columns by unwrapping and pushing to inner + bitvec
 				(
@@ -282,7 +282,7 @@ impl Columns {
 					},
 					_ty,
 				) => {
-					let value = schema.get_value(&row, index);
+					let value = shape.get_value(&row, index);
 					if matches!(value, Value::None { .. }) {
 						inner.push_none();
 						DataBitVec::push(bitvec, false);
@@ -292,28 +292,28 @@ impl Columns {
 					}
 				}
 				(ColumnData::Bool(container), Type::Boolean) => {
-					container.push(schema.get_bool(&row, index));
+					container.push(shape.get_bool(&row, index));
 				}
 				(ColumnData::Float4(container), Type::Float4) => {
-					container.push(schema.get_f32(&row, index));
+					container.push(shape.get_f32(&row, index));
 				}
 				(ColumnData::Float8(container), Type::Float8) => {
-					container.push(schema.get_f64(&row, index));
+					container.push(shape.get_f64(&row, index));
 				}
 				(ColumnData::Int1(container), Type::Int1) => {
-					container.push(schema.get_i8(&row, index));
+					container.push(shape.get_i8(&row, index));
 				}
 				(ColumnData::Int2(container), Type::Int2) => {
-					container.push(schema.get_i16(&row, index));
+					container.push(shape.get_i16(&row, index));
 				}
 				(ColumnData::Int4(container), Type::Int4) => {
-					container.push(schema.get_i32(&row, index));
+					container.push(shape.get_i32(&row, index));
 				}
 				(ColumnData::Int8(container), Type::Int8) => {
-					container.push(schema.get_i64(&row, index));
+					container.push(shape.get_i64(&row, index));
 				}
 				(ColumnData::Int16(container), Type::Int16) => {
-					container.push(schema.get_i128(&row, index));
+					container.push(shape.get_i128(&row, index));
 				}
 				(
 					ColumnData::Utf8 {
@@ -322,43 +322,43 @@ impl Columns {
 					},
 					Type::Utf8,
 				) => {
-					container.push(schema.get_utf8(&row, index).to_string());
+					container.push(shape.get_utf8(&row, index).to_string());
 				}
 				(ColumnData::Uint1(container), Type::Uint1) => {
-					container.push(schema.get_u8(&row, index));
+					container.push(shape.get_u8(&row, index));
 				}
 				(ColumnData::Uint2(container), Type::Uint2) => {
-					container.push(schema.get_u16(&row, index));
+					container.push(shape.get_u16(&row, index));
 				}
 				(ColumnData::Uint4(container), Type::Uint4) => {
-					container.push(schema.get_u32(&row, index));
+					container.push(shape.get_u32(&row, index));
 				}
 				(ColumnData::Uint8(container), Type::Uint8) => {
-					container.push(schema.get_u64(&row, index));
+					container.push(shape.get_u64(&row, index));
 				}
 				(ColumnData::Uint16(container), Type::Uint16) => {
-					container.push(schema.get_u128(&row, index));
+					container.push(shape.get_u128(&row, index));
 				}
 				(ColumnData::Date(container), Type::Date) => {
-					container.push(schema.get_date(&row, index));
+					container.push(shape.get_date(&row, index));
 				}
 				(ColumnData::DateTime(container), Type::DateTime) => {
-					container.push(schema.get_datetime(&row, index));
+					container.push(shape.get_datetime(&row, index));
 				}
 				(ColumnData::Time(container), Type::Time) => {
-					container.push(schema.get_time(&row, index));
+					container.push(shape.get_time(&row, index));
 				}
 				(ColumnData::Duration(container), Type::Duration) => {
-					container.push(schema.get_duration(&row, index));
+					container.push(shape.get_duration(&row, index));
 				}
 				(ColumnData::Uuid4(container), Type::Uuid4) => {
-					container.push(schema.get_uuid4(&row, index));
+					container.push(shape.get_uuid4(&row, index));
 				}
 				(ColumnData::Uuid7(container), Type::Uuid7) => {
-					container.push(schema.get_uuid7(&row, index));
+					container.push(shape.get_uuid7(&row, index));
 				}
 				(ColumnData::IdentityId(container), Type::IdentityId) => {
-					container.push(schema.get_identity_id(&row, index));
+					container.push(shape.get_identity_id(&row, index));
 				}
 				(
 					ColumnData::Blob {
@@ -367,7 +367,7 @@ impl Columns {
 					},
 					Type::Blob,
 				) => {
-					container.push(schema.get_blob(&row, index));
+					container.push(shape.get_blob(&row, index));
 				}
 				(
 					ColumnData::Int {
@@ -376,7 +376,7 @@ impl Columns {
 					},
 					Type::Int,
 				) => {
-					container.push(schema.get_int(&row, index));
+					container.push(shape.get_int(&row, index));
 				}
 				(
 					ColumnData::Uint {
@@ -385,7 +385,7 @@ impl Columns {
 					},
 					Type::Uint,
 				) => {
-					container.push(schema.get_uint(&row, index));
+					container.push(shape.get_uint(&row, index));
 				}
 				(
 					ColumnData::Decimal {
@@ -396,10 +396,10 @@ impl Columns {
 						..
 					},
 				) => {
-					container.push(schema.get_decimal(&row, index));
+					container.push(shape.get_decimal(&row, index));
 				}
 				(ColumnData::DictionaryId(container), Type::DictionaryId) => {
-					match schema.get_value(&row, index) {
+					match shape.get_value(&row, index) {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
 					}
@@ -420,10 +420,10 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback_from_schema(&mut self, schema: &RowSchema, row: &EncodedRow) -> Result<()> {
+	fn append_fallback_from_shape(&mut self, shape: &RowShape, row: &EncodedRow) -> Result<()> {
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
-			let field = schema.get_field(index).unwrap();
+			let field = shape.get_field(index).unwrap();
 
 			// If the value is undefined, use ColumnData-level push_none
 			// which correctly promotes bare containers to Option-wrapped
@@ -441,33 +441,33 @@ impl Columns {
 					},
 					_ty,
 				) => {
-					let value = schema.get_value(row, index);
+					let value = shape.get_value(row, index);
 					inner.push_value(value);
 					DataBitVec::push(bitvec, true);
 				}
 				(ColumnData::Bool(container), Type::Boolean) => {
-					container.push(schema.get_bool(row, index));
+					container.push(shape.get_bool(row, index));
 				}
 				(ColumnData::Float4(container), Type::Float4) => {
-					container.push(schema.get_f32(row, index));
+					container.push(shape.get_f32(row, index));
 				}
 				(ColumnData::Float8(container), Type::Float8) => {
-					container.push(schema.get_f64(row, index));
+					container.push(shape.get_f64(row, index));
 				}
 				(ColumnData::Int1(container), Type::Int1) => {
-					container.push(schema.get_i8(row, index));
+					container.push(shape.get_i8(row, index));
 				}
 				(ColumnData::Int2(container), Type::Int2) => {
-					container.push(schema.get_i16(row, index));
+					container.push(shape.get_i16(row, index));
 				}
 				(ColumnData::Int4(container), Type::Int4) => {
-					container.push(schema.get_i32(row, index));
+					container.push(shape.get_i32(row, index));
 				}
 				(ColumnData::Int8(container), Type::Int8) => {
-					container.push(schema.get_i64(row, index));
+					container.push(shape.get_i64(row, index));
 				}
 				(ColumnData::Int16(container), Type::Int16) => {
-					container.push(schema.get_i128(row, index));
+					container.push(shape.get_i128(row, index));
 				}
 				(
 					ColumnData::Utf8 {
@@ -476,40 +476,40 @@ impl Columns {
 					},
 					Type::Utf8,
 				) => {
-					container.push(schema.get_utf8(row, index).to_string());
+					container.push(shape.get_utf8(row, index).to_string());
 				}
 				(ColumnData::Uint1(container), Type::Uint1) => {
-					container.push(schema.get_u8(row, index));
+					container.push(shape.get_u8(row, index));
 				}
 				(ColumnData::Uint2(container), Type::Uint2) => {
-					container.push(schema.get_u16(row, index));
+					container.push(shape.get_u16(row, index));
 				}
 				(ColumnData::Uint4(container), Type::Uint4) => {
-					container.push(schema.get_u32(row, index));
+					container.push(shape.get_u32(row, index));
 				}
 				(ColumnData::Uint8(container), Type::Uint8) => {
-					container.push(schema.get_u64(row, index));
+					container.push(shape.get_u64(row, index));
 				}
 				(ColumnData::Uint16(container), Type::Uint16) => {
-					container.push(schema.get_u128(row, index));
+					container.push(shape.get_u128(row, index));
 				}
 				(ColumnData::Date(container), Type::Date) => {
-					container.push(schema.get_date(row, index));
+					container.push(shape.get_date(row, index));
 				}
 				(ColumnData::DateTime(container), Type::DateTime) => {
-					container.push(schema.get_datetime(row, index));
+					container.push(shape.get_datetime(row, index));
 				}
 				(ColumnData::Time(container), Type::Time) => {
-					container.push(schema.get_time(row, index));
+					container.push(shape.get_time(row, index));
 				}
 				(ColumnData::Duration(container), Type::Duration) => {
-					container.push(schema.get_duration(row, index));
+					container.push(shape.get_duration(row, index));
 				}
 				(ColumnData::Uuid4(container), Type::Uuid4) => {
-					container.push(schema.get_uuid4(row, index));
+					container.push(shape.get_uuid4(row, index));
 				}
 				(ColumnData::Uuid7(container), Type::Uuid7) => {
-					container.push(schema.get_uuid7(row, index));
+					container.push(shape.get_uuid7(row, index));
 				}
 				(
 					ColumnData::Int {
@@ -518,7 +518,7 @@ impl Columns {
 					},
 					Type::Int,
 				) => {
-					container.push(schema.get_int(row, index));
+					container.push(shape.get_int(row, index));
 				}
 				(
 					ColumnData::Uint {
@@ -527,7 +527,7 @@ impl Columns {
 					},
 					Type::Uint,
 				) => {
-					container.push(schema.get_uint(row, index));
+					container.push(shape.get_uint(row, index));
 				}
 				(
 					ColumnData::Decimal {
@@ -538,10 +538,10 @@ impl Columns {
 						..
 					},
 				) => {
-					container.push(schema.get_decimal(row, index));
+					container.push(shape.get_decimal(row, index));
 				}
 				(ColumnData::DictionaryId(container), Type::DictionaryId) => {
-					match schema.get_value(row, index) {
+					match shape.get_value(row, index) {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
 					}
@@ -893,7 +893,7 @@ pub mod tests {
 		};
 
 		use crate::{
-			encoded::schema::{RowSchema, RowSchemaField},
+			encoded::shape::{RowShape, RowShapeField},
 			value::column::{Column, ColumnData, columns::Columns},
 		};
 
@@ -902,11 +902,11 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
 
-			let schema = RowSchema::testing(&[Type::Boolean]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Boolean(true)]);
+			let shape = RowShape::testing(&[Type::Boolean]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Boolean(true)]);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -921,10 +921,10 @@ pub mod tests {
 		fn test_before_undefined_float4() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Float4]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Float4]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -939,10 +939,10 @@ pub mod tests {
 		fn test_before_undefined_float8() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Float8]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Float8]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -957,10 +957,10 @@ pub mod tests {
 		fn test_before_undefined_int1() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Int1]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Int1(42)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Int1]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Int1(42)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -972,10 +972,10 @@ pub mod tests {
 		fn test_before_undefined_int2() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Int2]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Int2(-1234)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Int2]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Int2(-1234)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -987,10 +987,10 @@ pub mod tests {
 		fn test_before_undefined_int4() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Int4]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Int4(56789)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Int4]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Int4(56789)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1002,10 +1002,10 @@ pub mod tests {
 		fn test_before_undefined_int8() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Int8]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Int8(-987654321)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Int8]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Int8(-987654321)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1020,10 +1020,10 @@ pub mod tests {
 		fn test_before_undefined_int16() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Int16]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Int16]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1038,10 +1038,10 @@ pub mod tests {
 		fn test_before_undefined_string() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Utf8]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Utf8]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1056,10 +1056,10 @@ pub mod tests {
 		fn test_before_undefined_uint1() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Uint1]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Uint1(255)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Uint1]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Uint1(255)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1071,10 +1071,10 @@ pub mod tests {
 		fn test_before_undefined_uint2() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Uint2]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Uint2(65535)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Uint2]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Uint2(65535)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1086,10 +1086,10 @@ pub mod tests {
 		fn test_before_undefined_uint4() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Uint4]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Uint4(4294967295)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Uint4]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Uint4(4294967295)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1104,10 +1104,10 @@ pub mod tests {
 		fn test_before_undefined_uint8() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Uint8]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Uint8]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1122,10 +1122,10 @@ pub mod tests {
 		fn test_before_undefined_uint16() {
 			let mut test_instance =
 				Columns::new(vec![Column::undefined_typed("test_col", Type::Boolean, 2)]);
-			let schema = RowSchema::testing(&[Type::Uint16]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			let shape = RowShape::testing(&[Type::Uint16]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1140,11 +1140,11 @@ pub mod tests {
 		fn test_mismatched_columns() {
 			let mut test_instance = Columns::new(vec![]);
 
-			let schema = RowSchema::testing(&[Type::Int2]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Int2(2)]);
+			let shape = RowShape::testing(&[Type::Int2]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Int2(2)]);
 
-			let err = test_instance.append_rows(&schema, [row], vec![]).err().unwrap();
+			let err = test_instance.append_rows(&shape, [row], vec![]).err().unwrap();
 			assert!(err.to_string().contains("mismatched column count: expected 0, got 1"));
 		}
 
@@ -1152,13 +1152,13 @@ pub mod tests {
 		fn test_ok() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = RowSchema::testing(&[Type::Int2, Type::Boolean]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
+			let shape = RowShape::testing(&[Type::Int2, Type::Boolean]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int2([1, 2, 3]));
 			assert_eq!(*test_instance[1].data(), ColumnData::bool([true, true, false]));
@@ -1168,13 +1168,13 @@ pub mod tests {
 		fn test_all_defined_bool() {
 			let mut test_instance = Columns::new(vec![Column::bool("test_col", Vec::<bool>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Boolean]);
-			let mut row_one = schema.allocate();
-			schema.set_bool(&mut row_one, 0, true);
-			let mut row_two = schema.allocate();
-			schema.set_bool(&mut row_two, 0, false);
+			let shape = RowShape::testing(&[Type::Boolean]);
+			let mut row_one = shape.allocate();
+			shape.set_bool(&mut row_one, 0, true);
+			let mut row_two = shape.allocate();
+			shape.set_bool(&mut row_two, 0, false);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::bool([true, false]));
 		}
@@ -1183,13 +1183,13 @@ pub mod tests {
 		fn test_all_defined_float4() {
 			let mut test_instance = Columns::new(vec![Column::float4("test_col", Vec::<f32>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Float4]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
+			let shape = RowShape::testing(&[Type::Float4]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float4([1.0, 2.0]));
 		}
@@ -1198,13 +1198,13 @@ pub mod tests {
 		fn test_all_defined_float8() {
 			let mut test_instance = Columns::new(vec![Column::float8("test_col", Vec::<f64>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Float8]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
+			let shape = RowShape::testing(&[Type::Float8]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float8([1.0, 2.0]));
 		}
@@ -1213,13 +1213,13 @@ pub mod tests {
 		fn test_all_defined_int1() {
 			let mut test_instance = Columns::new(vec![Column::int1("test_col", Vec::<i8>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Int1]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Int1(1)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Int1(2)]);
+			let shape = RowShape::testing(&[Type::Int1]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Int1(1)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Int1(2)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int1([1, 2]));
 		}
@@ -1228,13 +1228,13 @@ pub mod tests {
 		fn test_all_defined_int2() {
 			let mut test_instance = Columns::new(vec![Column::int2("test_col", Vec::<i16>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Int2]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Int2(100)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Int2(200)]);
+			let shape = RowShape::testing(&[Type::Int2]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Int2(100)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Int2(200)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int2([100, 200]));
 		}
@@ -1243,13 +1243,13 @@ pub mod tests {
 		fn test_all_defined_int4() {
 			let mut test_instance = Columns::new(vec![Column::int4("test_col", Vec::<i32>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Int4]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Int4(1000)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Int4(2000)]);
+			let shape = RowShape::testing(&[Type::Int4]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Int4(1000)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Int4(2000)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int4([1000, 2000]));
 		}
@@ -1258,13 +1258,13 @@ pub mod tests {
 		fn test_all_defined_int8() {
 			let mut test_instance = Columns::new(vec![Column::int8("test_col", Vec::<i64>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Int8]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Int8(10000)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Int8(20000)]);
+			let shape = RowShape::testing(&[Type::Int8]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Int8(10000)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Int8(20000)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int8([10000, 20000]));
 		}
@@ -1273,13 +1273,13 @@ pub mod tests {
 		fn test_all_defined_int16() {
 			let mut test_instance = Columns::new(vec![Column::int16("test_col", Vec::<i128>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Int16]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Int16(1000)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Int16(2000)]);
+			let shape = RowShape::testing(&[Type::Int16]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Int16(1000)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Int16(2000)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int16([1000, 2000]));
 		}
@@ -1288,13 +1288,13 @@ pub mod tests {
 		fn test_all_defined_string() {
 			let mut test_instance = Columns::new(vec![Column::utf8("test_col", Vec::<String>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Utf8]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Utf8("a".into())]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Utf8("b".into())]);
+			let shape = RowShape::testing(&[Type::Utf8]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Utf8("a".into())]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Utf8("b".into())]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::utf8(["a".to_string(), "b".to_string()]));
 		}
@@ -1303,13 +1303,13 @@ pub mod tests {
 		fn test_all_defined_uint1() {
 			let mut test_instance = Columns::new(vec![Column::uint1("test_col", Vec::<u8>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Uint1]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Uint1(1)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Uint1(2)]);
+			let shape = RowShape::testing(&[Type::Uint1]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Uint1(1)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Uint1(2)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint1([1, 2]));
 		}
@@ -1318,13 +1318,13 @@ pub mod tests {
 		fn test_all_defined_uint2() {
 			let mut test_instance = Columns::new(vec![Column::uint2("test_col", Vec::<u16>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Uint2]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Uint2(100)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Uint2(200)]);
+			let shape = RowShape::testing(&[Type::Uint2]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Uint2(100)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Uint2(200)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint2([100, 200]));
 		}
@@ -1333,13 +1333,13 @@ pub mod tests {
 		fn test_all_defined_uint4() {
 			let mut test_instance = Columns::new(vec![Column::uint4("test_col", Vec::<u32>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Uint4]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Uint4(1000)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Uint4(2000)]);
+			let shape = RowShape::testing(&[Type::Uint4]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Uint4(1000)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Uint4(2000)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint4([1000, 2000]));
 		}
@@ -1348,13 +1348,13 @@ pub mod tests {
 		fn test_all_defined_uint8() {
 			let mut test_instance = Columns::new(vec![Column::uint8("test_col", Vec::<u64>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Uint8]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Uint8(10000)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Uint8(20000)]);
+			let shape = RowShape::testing(&[Type::Uint8]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Uint8(10000)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Uint8(20000)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint8([10000, 20000]));
 		}
@@ -1363,13 +1363,13 @@ pub mod tests {
 		fn test_all_defined_uint16() {
 			let mut test_instance = Columns::new(vec![Column::uint16("test_col", Vec::<u128>::new())]);
 
-			let schema = RowSchema::testing(&[Type::Uint16]);
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::Uint16(1000)]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::Uint16(2000)]);
+			let shape = RowShape::testing(&[Type::Uint16]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::Uint16(1000)]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::Uint16(2000)]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint16([1000, 2000]));
 		}
@@ -1378,11 +1378,11 @@ pub mod tests {
 		fn test_row_with_undefined() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = RowSchema::testing(&[Type::Int2, Type::Boolean]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
+			let shape = RowShape::testing(&[Type::Int2, Type::Boolean]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1395,11 +1395,11 @@ pub mod tests {
 		fn test_row_with_type_mismatch_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = RowSchema::testing(&[Type::Boolean, Type::Boolean]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
+			let shape = RowShape::testing(&[Type::Boolean, Type::Boolean]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
 
-			let result = test_instance.append_rows(&schema, [row], vec![]);
+			let result = test_instance.append_rows(&shape, [row], vec![]);
 			assert!(result.is_err());
 			assert!(result.unwrap_err().to_string().contains("type mismatch"));
 		}
@@ -1408,11 +1408,11 @@ pub mod tests {
 		fn test_row_wrong_length_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let schema = RowSchema::testing(&[Type::Int2]);
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::Int2(2)]);
+			let shape = RowShape::testing(&[Type::Int2]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::Int2(2)]);
 
-			let result = test_instance.append_rows(&schema, [row], vec![]);
+			let result = test_instance.append_rows(&shape, [row], vec![]);
 			assert!(result.is_err());
 			assert!(result.unwrap_err().to_string().contains("mismatched column count"));
 		}
@@ -1424,12 +1424,12 @@ pub mod tests {
 				Column::bool("none", Vec::<bool>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Boolean, Type::Boolean]);
-			let mut row_one = schema.allocate();
-			schema.set_bool(&mut row_one, 0, true);
-			schema.set_none(&mut row_one, 1);
+			let shape = RowShape::testing(&[Type::Boolean, Type::Boolean]);
+			let mut row_one = shape.allocate();
+			shape.set_bool(&mut row_one, 0, true);
+			shape.set_none(&mut row_one, 1);
 
-			test_instance.append_rows(&schema, [row_one], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::bool_with_bitvec([true], [true]));
 
@@ -1443,12 +1443,12 @@ pub mod tests {
 				Column::float4("none", Vec::<f32>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Float4, Type::Float4]);
-			let mut row = schema.allocate();
-			schema.set_f32(&mut row, 0, 1.5);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Float4, Type::Float4]);
+			let mut row = shape.allocate();
+			shape.set_f32(&mut row, 0, 1.5);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float4_with_bitvec([1.5], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::float4_with_bitvec([0.0], [false]));
@@ -1461,12 +1461,12 @@ pub mod tests {
 				Column::float8("none", Vec::<f64>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Float8, Type::Float8]);
-			let mut row = schema.allocate();
-			schema.set_f64(&mut row, 0, 2.5);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Float8, Type::Float8]);
+			let mut row = shape.allocate();
+			shape.set_f64(&mut row, 0, 2.5);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::float8_with_bitvec([2.5], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::float8_with_bitvec([0.0], [false]));
@@ -1479,12 +1479,12 @@ pub mod tests {
 				Column::int1("none", Vec::<i8>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Int1, Type::Int1]);
-			let mut row = schema.allocate();
-			schema.set_i8(&mut row, 0, 42);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Int1, Type::Int1]);
+			let mut row = shape.allocate();
+			shape.set_i8(&mut row, 0, 42);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int1_with_bitvec([42], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int1_with_bitvec([0], [false]));
@@ -1497,12 +1497,12 @@ pub mod tests {
 				Column::int2("none", Vec::<i16>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Int2, Type::Int2]);
-			let mut row = schema.allocate();
-			schema.set_i16(&mut row, 0, -1234i16);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Int2, Type::Int2]);
+			let mut row = shape.allocate();
+			shape.set_i16(&mut row, 0, -1234i16);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int2_with_bitvec([-1234], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int2_with_bitvec([0], [false]));
@@ -1515,12 +1515,12 @@ pub mod tests {
 				Column::int4("none", Vec::<i32>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Int4, Type::Int4]);
-			let mut row = schema.allocate();
-			schema.set_i32(&mut row, 0, 56789);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Int4, Type::Int4]);
+			let mut row = shape.allocate();
+			shape.set_i32(&mut row, 0, 56789);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int4_with_bitvec([56789], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int4_with_bitvec([0], [false]));
@@ -1533,12 +1533,12 @@ pub mod tests {
 				Column::int8("none", Vec::<i64>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Int8, Type::Int8]);
-			let mut row = schema.allocate();
-			schema.set_i64(&mut row, 0, -987654321);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Int8, Type::Int8]);
+			let mut row = shape.allocate();
+			shape.set_i64(&mut row, 0, -987654321);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::int8_with_bitvec([-987654321], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::int8_with_bitvec([0], [false]));
@@ -1551,12 +1551,12 @@ pub mod tests {
 				Column::int16("none", Vec::<i128>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Int16, Type::Int16]);
-			let mut row = schema.allocate();
-			schema.set_i128(&mut row, 0, 123456789012345678901234567890i128);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Int16, Type::Int16]);
+			let mut row = shape.allocate();
+			shape.set_i128(&mut row, 0, 123456789012345678901234567890i128);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1572,12 +1572,12 @@ pub mod tests {
 				Column::utf8("none", Vec::<String>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8]);
-			let mut row = schema.allocate();
-			schema.set_utf8(&mut row, 0, "reifydb");
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Utf8, Type::Utf8]);
+			let mut row = shape.allocate();
+			shape.set_utf8(&mut row, 0, "reifydb");
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1593,12 +1593,12 @@ pub mod tests {
 				Column::uint1("none", Vec::<u8>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Uint1, Type::Uint1]);
-			let mut row = schema.allocate();
-			schema.set_u8(&mut row, 0, 255);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Uint1, Type::Uint1]);
+			let mut row = shape.allocate();
+			shape.set_u8(&mut row, 0, 255);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint1_with_bitvec([255], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::uint1_with_bitvec([0], [false]));
@@ -1611,12 +1611,12 @@ pub mod tests {
 				Column::uint2("none", Vec::<u16>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Uint2, Type::Uint2]);
-			let mut row = schema.allocate();
-			schema.set_u16(&mut row, 0, 65535u16);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Uint2, Type::Uint2]);
+			let mut row = shape.allocate();
+			shape.set_u16(&mut row, 0, 65535u16);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint2_with_bitvec([65535], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::uint2_with_bitvec([0], [false]));
@@ -1629,12 +1629,12 @@ pub mod tests {
 				Column::uint4("none", Vec::<u32>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Uint4, Type::Uint4]);
-			let mut row = schema.allocate();
-			schema.set_u32(&mut row, 0, 4294967295u32);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Uint4, Type::Uint4]);
+			let mut row = shape.allocate();
+			shape.set_u32(&mut row, 0, 4294967295u32);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(*test_instance[0].data(), ColumnData::uint4_with_bitvec([4294967295], [true]));
 			assert_eq!(*test_instance[1].data(), ColumnData::uint4_with_bitvec([0], [false]));
@@ -1647,12 +1647,12 @@ pub mod tests {
 				Column::uint8("none", Vec::<u64>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Uint8, Type::Uint8]);
-			let mut row = schema.allocate();
-			schema.set_u64(&mut row, 0, 18446744073709551615u64);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Uint8, Type::Uint8]);
+			let mut row = shape.allocate();
+			shape.set_u64(&mut row, 0, 18446744073709551615u64);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1668,12 +1668,12 @@ pub mod tests {
 				Column::uint16("none", Vec::<u128>::new()),
 			]);
 
-			let schema = RowSchema::testing(&[Type::Uint16, Type::Uint16]);
-			let mut row = schema.allocate();
-			schema.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
-			schema.set_none(&mut row, 1);
+			let shape = RowShape::testing(&[Type::Uint16, Type::Uint16]);
+			let mut row = shape.allocate();
+			shape.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
+			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			assert_eq!(
 				*test_instance[0].data(),
@@ -1685,17 +1685,17 @@ pub mod tests {
 		#[test]
 		fn test_all_defined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
-			let schema = RowSchema::new(vec![RowSchemaField::new("status", constraint)]);
+			let shape = RowShape::new(vec![RowShapeField::new("status", constraint)]);
 
 			let mut test_instance =
 				Columns::new(vec![Column::dictionary_id("status", Vec::<DictionaryEntryId>::new())]);
 
-			let mut row_one = schema.allocate();
-			schema.set_values(&mut row_one, &[Value::DictionaryId(DictionaryEntryId::U4(10))]);
-			let mut row_two = schema.allocate();
-			schema.set_values(&mut row_two, &[Value::DictionaryId(DictionaryEntryId::U4(20))]);
+			let mut row_one = shape.allocate();
+			shape.set_values(&mut row_one, &[Value::DictionaryId(DictionaryEntryId::U4(10))]);
+			let mut row_two = shape.allocate();
+			shape.set_values(&mut row_two, &[Value::DictionaryId(DictionaryEntryId::U4(20))]);
 
-			test_instance.append_rows(&schema, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0].data().get_value(0),
@@ -1710,9 +1710,9 @@ pub mod tests {
 		#[test]
 		fn test_fallback_dictionary_id() {
 			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
-			let schema = RowSchema::new(vec![
-				RowSchemaField::new("dict_col", dict_constraint),
-				RowSchemaField::unconstrained("bool_col", Type::Boolean),
+			let shape = RowShape::new(vec![
+				RowShapeField::new("dict_col", dict_constraint),
+				RowShapeField::unconstrained("bool_col", Type::Boolean),
 			]);
 
 			let mut test_instance = Columns::new(vec![
@@ -1720,10 +1720,10 @@ pub mod tests {
 				Column::bool("bool_col", Vec::<bool>::new()),
 			]);
 
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::none(), Value::Boolean(true)]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::none(), Value::Boolean(true)]);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			// Dictionary column should be undefined
 			assert!(!test_instance[0].data().is_defined(0));
@@ -1734,14 +1734,14 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), Type::Uint4);
-			let schema = RowSchema::new(vec![RowSchemaField::new("tag", constraint)]);
+			let shape = RowShape::new(vec![RowShapeField::new("tag", constraint)]);
 
 			let mut test_instance = Columns::new(vec![Column::undefined_typed("tag", Type::Boolean, 2)]);
 
-			let mut row = schema.allocate();
-			schema.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);
+			let mut row = shape.allocate();
+			shape.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);
 
-			test_instance.append_rows(&schema, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
 			// First two are undefined (promoted from Undefined column), third is defined
 			assert!(!test_instance[0].data().is_defined(0));

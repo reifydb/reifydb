@@ -6,7 +6,7 @@
 //! This module provides the `FFISingleStateful` trait for operators that maintain
 //! a single state value, such as counters, accumulators, or running aggregates.
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
 
 use super::{FFIRawStatefulOperator, utils};
 use crate::{error::Result, operator::context::OperatorContext};
@@ -17,11 +17,11 @@ use crate::{error::Result, operator::context::OperatorContext};
 /// a single state value. It handles key management automatically (using an empty key by default)
 /// and provides convenient methods for loading, saving, and updating state.
 pub trait FFISingleStateful: FFIRawStatefulOperator {
-	/// Get or create the schema for state rows
+	/// Get or create the shape for state rows
 	///
 	/// This defines the structure of the state value, including field types
 	/// and default values.
-	fn schema(&self) -> RowSchema;
+	fn shape(&self) -> RowShape;
 
 	/// Key for the single state - default is empty
 	///
@@ -33,10 +33,10 @@ pub trait FFISingleStateful: FFIRawStatefulOperator {
 
 	/// Create a new state encoded with default values
 	///
-	/// This allocates a new state row based on the schema, initialized with default values.
+	/// This allocates a new state row based on the shape, initialized with default values.
 	fn create_state(&self) -> EncodedRow {
-		let schema = self.schema();
-		schema.allocate()
+		let shape = self.shape();
+		shape.allocate()
 	}
 
 	/// Load the operator's single state
@@ -52,7 +52,7 @@ pub trait FFISingleStateful: FFIRawStatefulOperator {
 	/// The loaded or newly created state
 	fn load_state(&self, ctx: &mut OperatorContext) -> Result<EncodedRow> {
 		let key = self.key();
-		utils::load_or_create_row(ctx, &key, &self.schema())
+		utils::load_or_create_row(ctx, &key, &self.shape())
 	}
 
 	/// Save the operator's single state
@@ -74,18 +74,18 @@ pub trait FFISingleStateful: FFIRawStatefulOperator {
 	/// # Arguments
 	///
 	/// * `ctx` - The operator context
-	/// * `f` - Function that modifies the state. Receives the schema and mutable state row.
+	/// * `f` - Function that modifies the state. Receives the shape and mutable state row.
 	///
 	/// # Returns
 	///
 	/// The updated state after applying the function
 	fn update_state<F>(&self, ctx: &mut OperatorContext, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
 	{
-		let schema = self.schema();
+		let shape = self.shape();
 		let mut row = self.load_state(ctx)?;
-		f(&schema, &mut row)?;
+		f(&shape, &mut row)?;
 		self.save_state(ctx, &row)?;
 		Ok(row)
 	}

@@ -14,7 +14,7 @@ use reifydb_type::value::sumtype::SumTypeId;
 
 use crate::{
 	CatalogStore, Result,
-	store::view::schema::{view, view_namespace},
+	store::view::shape::{view, view_namespace},
 };
 
 impl CatalogStore {
@@ -43,9 +43,9 @@ impl CatalogStore {
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
 			let row = &multi.row;
-			let view_name = view_namespace::SCHEMA.get_utf8(row, view_namespace::NAME);
+			let view_name = view_namespace::SHAPE.get_utf8(row, view_namespace::NAME);
 			if name == view_name {
-				found_view = Some(ViewId(view_namespace::SCHEMA.get_u64(row, view_namespace::ID)));
+				found_view = Some(ViewId(view_namespace::SHAPE.get_u64(row, view_namespace::ID)));
 				break;
 			}
 		}
@@ -70,11 +70,11 @@ use reifydb_type::{
 };
 
 pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
-	let id = ViewId(view::SCHEMA.get_u64(row, view::ID));
-	let namespace = NamespaceId(view::SCHEMA.get_u64(row, view::NAMESPACE));
-	let name = view::SCHEMA.get_utf8(row, view::NAME).to_string();
+	let id = ViewId(view::SHAPE.get_u64(row, view::ID));
+	let namespace = NamespaceId(view::SHAPE.get_u64(row, view::NAMESPACE));
+	let name = view::SHAPE.get_utf8(row, view::NAME).to_string();
 
-	let kind_raw = view::SCHEMA.get_u8(row, view::KIND);
+	let kind_raw = view::SHAPE.get_u8(row, view::KIND);
 	let kind = match kind_raw {
 		0 => ViewKind::Deferred,
 		1 => ViewKind::Transactional,
@@ -94,8 +94,8 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 		}
 	};
 
-	let storage_kind = view::SCHEMA.get_u8(row, view::STORAGE_KIND);
-	let underlying_object_id = view::SCHEMA.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
+	let storage_kind = view::SHAPE.get_u8(row, view::STORAGE_KIND);
+	let underlying_object_id = view::SHAPE.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
 
 	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
@@ -108,8 +108,8 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			underlying: TableId(underlying_object_id),
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
-			let capacity = view::SCHEMA.get_u64(row, view::CAPACITY);
-			let propagate_evictions = view::SCHEMA.get_u8(row, view::PROPAGATE_EVICTIONS) != 0;
+			let capacity = view::SHAPE.get_u64(row, view::CAPACITY);
+			let propagate_evictions = view::SHAPE.get_u8(row, view::PROPAGATE_EVICTIONS) != 0;
 			View::RingBuffer(RingBufferView {
 				id,
 				name,
@@ -123,11 +123,11 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 			})
 		}
 		x if x == ViewStorageKind::Series as u8 => {
-			let key_column = view::SCHEMA.get_utf8(row, view::KEY_COLUMN).to_string();
-			let key_kind_raw = view::SCHEMA.get_u8(row, view::KEY_KIND);
-			let precision_raw = view::SCHEMA.get_u8(row, view::PRECISION);
+			let key_column = view::SHAPE.get_utf8(row, view::KEY_COLUMN).to_string();
+			let key_kind_raw = view::SHAPE.get_u8(row, view::KEY_KIND);
+			let precision_raw = view::SHAPE.get_u8(row, view::PRECISION);
 			let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
-			let tag_raw = view::SCHEMA.get_u64(row, view::TAG_ID);
+			let tag_raw = view::SHAPE.get_u64(row, view::TAG_ID);
 			let tag = if tag_raw == 0 {
 				None
 			} else {

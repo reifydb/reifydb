@@ -259,7 +259,7 @@ impl JoinedColumnsBuilder {
 		row_number: RowNumber,
 		left: &Columns,
 		left_idx: usize,
-		right_schema: &Columns,
+		right_shape: &Columns,
 	) -> Columns {
 		let total_columns = self.left_column_count + self.right_column_names.len();
 		let mut result_columns = Vec::with_capacity(total_columns);
@@ -275,7 +275,7 @@ impl JoinedColumnsBuilder {
 		}
 
 		// Add right columns with Undefined values
-		for (right_col, aliased_name) in right_schema.columns.iter().zip(self.right_column_names.iter()) {
+		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
 			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), 1);
 			col_data.push_value(Value::none());
 			result_columns.push(Column {
@@ -297,7 +297,7 @@ impl JoinedColumnsBuilder {
 		row_numbers: &[RowNumber],
 		left: &Columns,
 		left_indices: &[usize],
-		right_schema: &Columns,
+		right_shape: &Columns,
 	) -> Columns {
 		let count = left_indices.len();
 		debug_assert_eq!(row_numbers.len(), count, "row_numbers must match indices count");
@@ -318,7 +318,7 @@ impl JoinedColumnsBuilder {
 		}
 
 		// Add right columns with Undefined values
-		for (right_col, aliased_name) in right_schema.columns.iter().zip(self.right_column_names.iter()) {
+		for (right_col, aliased_name) in right_shape.columns.iter().zip(self.right_column_names.iter()) {
 			let mut col_data = ColumnData::with_capacity(right_col.data().get_type(), count);
 			for _ in 0..count {
 				col_data.push_value(Value::none());

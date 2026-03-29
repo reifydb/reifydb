@@ -14,7 +14,7 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::dictionary::schema::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SCHEMA, VALUE_TYPE},
+	store::dictionary::shape::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SHAPE, VALUE_TYPE},
 };
 
 pub(super) struct DictionaryApplier;
@@ -40,11 +40,11 @@ impl CatalogChangeApplier for DictionaryApplier {
 }
 
 fn decode_dictionary(row: &EncodedRow) -> Dictionary {
-	let id = DictionaryId(SCHEMA.get_u64(row, ID));
-	let namespace = NamespaceId(SCHEMA.get_u64(row, NAMESPACE));
-	let name = SCHEMA.get_utf8(row, NAME).to_string();
-	let value_type = Type::from_u8(SCHEMA.get_u8(row, VALUE_TYPE));
-	let id_type = Type::from_u8(SCHEMA.get_u8(row, ID_TYPE));
+	let id = DictionaryId(SHAPE.get_u64(row, ID));
+	let namespace = NamespaceId(SHAPE.get_u64(row, NAMESPACE));
+	let name = SHAPE.get_utf8(row, NAME).to_string();
+	let value_type = Type::from_u8(SHAPE.get_u8(row, VALUE_TYPE));
+	let id_type = Type::from_u8(SHAPE.get_u8(row, ID_TYPE));
 
 	Dictionary {
 		id,

@@ -3,7 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::RowSchema},
+	encoded::{key::EncodedKey, shape::RowShape},
 	interface::catalog::flow::FlowNodeId,
 	internal,
 };
@@ -51,8 +51,8 @@ impl Store {
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				// Deserialize JoinSideEntry from the encoded
-				let schema = RowSchema::testing(&[Type::Blob]);
-				let blob = schema.get_blob(&row, 0);
+				let shape = RowShape::testing(&[Type::Blob]);
+				let blob = shape.get_blob(&row, 0);
 				if blob.is_empty() {
 					return Ok(None);
 				}
@@ -70,10 +70,10 @@ impl Store {
 		let serialized =
 			to_stdvec(entry).map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
-		let schema = RowSchema::testing(&[Type::Blob]);
-		let mut row = state_get(self.node_id, txn, &key)?.unwrap_or_else(|| schema.allocate());
+		let shape = RowShape::testing(&[Type::Blob]);
+		let mut row = state_get(self.node_id, txn, &key)?.unwrap_or_else(|| shape.allocate());
 		let blob = Blob::from(serialized);
-		schema.set_blob(&mut row, 0, &blob);
+		shape.set_blob(&mut row, 0, &blob);
 
 		state_set(self.node_id, txn, &key, row)?;
 		Ok(())

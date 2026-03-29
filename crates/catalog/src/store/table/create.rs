@@ -6,7 +6,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{NamespaceId, TableId},
 		property::ColumnPropertyKind,
-		schema::SchemaId,
+		shape::ShapeId,
 		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
@@ -23,9 +23,9 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		retention_policy::create::create_schema_retention_policy,
+		retention_policy::create::create_shape_retention_policy,
 		sequence::system::SystemSequence,
-		table::schema::{table, table_namespace},
+		table::shape::{table, table_namespace},
 	},
 };
 
@@ -71,7 +71,7 @@ impl CatalogStore {
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
 		if let Some(retention_policy) = &to_create.retention_policy {
-			create_schema_retention_policy(txn, SchemaId::Table(table_id), retention_policy)?;
+			create_shape_retention_policy(txn, ShapeId::Table(table_id), retention_policy)?;
 		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
@@ -85,13 +85,13 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
 	) -> Result<()> {
-		let mut row = table::SCHEMA.allocate();
-		table::SCHEMA.set_u64(&mut row, table::ID, table);
-		table::SCHEMA.set_u64(&mut row, table::NAMESPACE, namespace);
-		table::SCHEMA.set_utf8(&mut row, table::NAME, to_create.name.text());
+		let mut row = table::SHAPE.allocate();
+		table::SHAPE.set_u64(&mut row, table::ID, table);
+		table::SHAPE.set_u64(&mut row, table::NAMESPACE, namespace);
+		table::SHAPE.set_utf8(&mut row, table::NAME, to_create.name.text());
 
 		// Initialize with no primary key
-		table::SCHEMA.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
+		table::SHAPE.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 
 		txn.set(&TableKey::encoded(table), row)?;
 
@@ -104,9 +104,9 @@ impl CatalogStore {
 		table: TableId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = table_namespace::SCHEMA.allocate();
-		table_namespace::SCHEMA.set_u64(&mut row, table_namespace::ID, table);
-		table_namespace::SCHEMA.set_utf8(&mut row, table_namespace::NAME, name);
+		let mut row = table_namespace::SHAPE.allocate();
+		table_namespace::SHAPE.set_u64(&mut row, table_namespace::ID, table);
+		table_namespace::SHAPE.set_utf8(&mut row, table_namespace::NAME, name);
 		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;
 		Ok(())
 	}
@@ -124,7 +124,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace_name.clone(),
-					schema_name: to_create.name.text().to_string(),
+					shape_name: to_create.name.text().to_string(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: column_to_create.properties.clone(),
@@ -149,7 +149,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::table::{create::TableToCreate, schema::table_namespace},
+		store::table::{create::TableToCreate, shape::table_namespace},
 		test_utils::ensure_test_namespace,
 	};
 
@@ -208,12 +208,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1025);
-		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "test_table");
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1025);
+		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(table_namespace::SCHEMA.get_u64(row, table_namespace::ID), 1026);
-		assert_eq!(table_namespace::SCHEMA.get_utf8(row, table_namespace::NAME), "another_table");
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1026);
+		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "another_table");
 	}
 }

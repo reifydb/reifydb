@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::encoded::{
 	key::{EncodedKey, IntoEncodedKey},
 	row::EncodedRow,
-	schema::RowSchema,
+	shape::RowShape,
 };
 use reifydb_type::{
 	util::cowvec::CowVec,
@@ -17,28 +17,28 @@ use super::helpers::get_values;
 
 /// Test helper for FFISingleStateful operators
 pub struct SingleStatefulTestHelper {
-	schema: RowSchema,
+	shape: RowShape,
 	state: Option<Vec<u8>>,
 }
 
 impl SingleStatefulTestHelper {
 	/// Create a new single stateful test helper
-	pub fn new(schema: RowSchema) -> Self {
+	pub fn new(shape: RowShape) -> Self {
 		Self {
-			schema,
+			shape,
 			state: None,
 		}
 	}
 
-	/// Create with a simple counter schema (single int8)
+	/// Create with a simple counter shape (single int8)
 	pub fn counter() -> Self {
-		Self::new(RowSchema::testing(&[Type::Int8]))
+		Self::new(RowShape::testing(&[Type::Int8]))
 	}
 
 	/// Set the current state
 	pub fn set_state(&mut self, values: &[Value]) {
-		let mut encoded = self.schema.allocate();
-		self.schema.set_values(&mut encoded, values);
+		let mut encoded = self.shape.allocate();
+		self.shape.set_values(&mut encoded, values);
 		self.state = Some(encoded.0.to_vec());
 	}
 
@@ -46,7 +46,7 @@ impl SingleStatefulTestHelper {
 	pub fn get_state(&self) -> Option<Vec<Value>> {
 		self.state.as_ref().map(|bytes| {
 			let encoded = EncodedRow(CowVec::new(bytes.clone()));
-			get_values(&self.schema, &encoded)
+			get_values(&self.shape, &encoded)
 		})
 	}
 
@@ -69,27 +69,27 @@ impl SingleStatefulTestHelper {
 
 /// Test helper for FFIKeyedStateful operators
 pub struct KeyedStatefulTestHelper {
-	schema: RowSchema,
+	shape: RowShape,
 	states: HashMap<EncodedKey, EncodedRow>,
 }
 
 impl KeyedStatefulTestHelper {
 	/// Create a new keyed stateful test helper
-	pub fn new(schema: RowSchema) -> Self {
+	pub fn new(shape: RowShape) -> Self {
 		Self {
-			schema,
+			shape,
 			states: HashMap::new(),
 		}
 	}
 
-	/// Create with a simple counter schema (single int8)
+	/// Create with a simple counter shape (single int8)
 	pub fn counter() -> Self {
-		Self::new(RowSchema::testing(&[Type::Int8]))
+		Self::new(RowShape::testing(&[Type::Int8]))
 	}
 
-	/// Create with a sum schema (single int8 or int4)
+	/// Create with a sum shape (single int8 or int4)
 	pub fn sum() -> Self {
-		Self::new(RowSchema::testing(&[Type::Int4]))
+		Self::new(RowShape::testing(&[Type::Int4]))
 	}
 
 	/// Set state for a key
@@ -97,8 +97,8 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.schema.allocate();
-		self.schema.set_values(&mut encoded, values);
+		let mut encoded = self.shape.allocate();
+		self.shape.set_values(&mut encoded, values);
 		self.states.insert(key.into_encoded_key(), encoded);
 	}
 
@@ -107,7 +107,7 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		self.states.get(&key.into_encoded_key()).map(|encoded| get_values(&self.schema, encoded))
+		self.states.get(&key.into_encoded_key()).map(|encoded| get_values(&self.shape, encoded))
 	}
 
 	/// Assert state for a key matches expected values
@@ -119,7 +119,7 @@ impl KeyedStatefulTestHelper {
 		let actual = self
 			.states
 			.get(&key_encoded)
-			.map(|encoded| get_values(&self.schema, encoded))
+			.map(|encoded| get_values(&self.shape, encoded))
 			.expect("No state for key");
 		assert_eq!(actual, expected, "State mismatch for key");
 	}
@@ -129,7 +129,7 @@ impl KeyedStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		self.states.remove(&key.into_encoded_key()).map(|encoded| get_values(&self.schema, &encoded))
+		self.states.remove(&key.into_encoded_key()).map(|encoded| get_values(&self.shape, &encoded))
 	}
 
 	/// Check if a key has state
@@ -163,29 +163,29 @@ impl KeyedStatefulTestHelper {
 
 /// Test helper for FFIWindowStateful operators
 pub struct WindowStatefulTestHelper {
-	schema: RowSchema,
+	shape: RowShape,
 	windows: HashMap<i64, HashMap<EncodedKey, EncodedRow>>, // window_id -> key -> state
 	window_size: i64,
 }
 
 impl WindowStatefulTestHelper {
 	/// Create a new window stateful test helper
-	pub fn new(schema: RowSchema, window_size: i64) -> Self {
+	pub fn new(shape: RowShape, window_size: i64) -> Self {
 		Self {
-			schema,
+			shape,
 			windows: HashMap::new(),
 			window_size,
 		}
 	}
 
-	/// Create with a counter schema for time windows
+	/// Create with a counter shape for time windows
 	pub fn time_window_counter(window_size_seconds: i64) -> Self {
-		Self::new(RowSchema::testing(&[Type::Int8]), window_size_seconds)
+		Self::new(RowShape::testing(&[Type::Int8]), window_size_seconds)
 	}
 
-	/// Create with a sum schema for count windows
+	/// Create with a sum shape for count windows
 	pub fn count_window_sum(window_size_count: i64) -> Self {
-		Self::new(RowSchema::testing(&[Type::Int4]), window_size_count)
+		Self::new(RowShape::testing(&[Type::Int4]), window_size_count)
 	}
 
 	/// Set state for a window and key
@@ -193,8 +193,8 @@ impl WindowStatefulTestHelper {
 	where
 		K: IntoEncodedKey,
 	{
-		let mut encoded = self.schema.allocate();
-		self.schema.set_values(&mut encoded, values);
+		let mut encoded = self.shape.allocate();
+		self.shape.set_values(&mut encoded, values);
 
 		self.windows.entry(window_id).or_insert_with(HashMap::new).insert(key.into_encoded_key(), encoded);
 	}
@@ -207,7 +207,7 @@ impl WindowStatefulTestHelper {
 		self.windows
 			.get(&window_id)
 			.and_then(|window| window.get(&key.into_encoded_key()))
-			.map(|encoded| get_values(&self.schema, encoded))
+			.map(|encoded| get_values(&self.shape, encoded))
 	}
 
 	/// Assert state for a window and key
@@ -220,7 +220,7 @@ impl WindowStatefulTestHelper {
 			.windows
 			.get(&window_id)
 			.and_then(|window| window.get(&key_encoded))
-			.map(|encoded| get_values(&self.schema, encoded))
+			.map(|encoded| get_values(&self.shape, encoded))
 			.expect("No state for window and key");
 		assert_eq!(actual, expected, "State mismatch for window {} and key", window_id);
 	}

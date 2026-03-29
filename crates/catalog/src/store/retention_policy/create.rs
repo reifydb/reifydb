@@ -2,8 +2,8 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
-	key::retention_policy::{OperatorRetentionPolicyKey, SchemaRetentionPolicyKey},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
+	key::retention_policy::{OperatorRetentionPolicyKey, ShapeRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -11,15 +11,15 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 use super::encode_retention_policy;
 use crate::Result;
 
-/// Store a retention policy for a schema (table, view, or ring buffer)
-pub(crate) fn create_schema_retention_policy(
+/// Store a retention policy for a shape (table, view, or ring buffer)
+pub(crate) fn create_shape_retention_policy(
 	txn: &mut AdminTransaction,
-	schema: SchemaId,
+	shape: ShapeId,
 	retention_policy: &RetentionPolicy,
 ) -> Result<()> {
 	let value = encode_retention_policy(retention_policy);
 
-	txn.set(&SchemaRetentionPolicyKey::encoded(schema), value)?;
+	txn.set(&ShapeRetentionPolicyKey::encoded(shape), value)?;
 	Ok(())
 }
 
@@ -48,21 +48,21 @@ pub mod tests {
 	use crate::CatalogStore;
 
 	#[test]
-	fn test_create_schema_retention_policy_for_table() {
+	fn test_create_shape_retention_policy_for_table() {
 		let mut txn = create_test_admin_transaction();
 		let table_id = TableId(42);
-		let schema = SchemaId::Table(table_id);
+		let shape = ShapeId::Table(table_id);
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 10,
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_schema_retention_policy(&mut txn, schema, &policy).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy).unwrap();
 
 		// Verify the policy was stored
 		let retrieved_policy =
-			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema)
+			CatalogStore::find_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape)
 				.unwrap()
 				.expect("Policy should be stored");
 
@@ -70,18 +70,18 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_schema_retention_policy_for_view() {
+	fn test_create_shape_retention_policy_for_view() {
 		let mut txn = create_test_admin_transaction();
 		let view_id = ViewId(100);
-		let schema = SchemaId::View(view_id);
+		let shape = ShapeId::View(view_id);
 
 		let policy = RetentionPolicy::KeepForever;
 
-		create_schema_retention_policy(&mut txn, schema, &policy).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy).unwrap();
 
 		// Verify the policy was stored
 		let retrieved_policy =
-			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema)
+			CatalogStore::find_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape)
 				.unwrap()
 				.expect("Policy should be stored");
 
@@ -89,21 +89,21 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_schema_retention_policy_for_ringbuffer() {
+	fn test_create_shape_retention_policy_for_ringbuffer() {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer_id = RingBufferId(200);
-		let schema = SchemaId::RingBuffer(ringbuffer_id);
+		let shape = ShapeId::RingBuffer(ringbuffer_id);
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 50,
 			cleanup_mode: CleanupMode::Drop,
 		};
 
-		create_schema_retention_policy(&mut txn, schema, &policy).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy).unwrap();
 
 		// Verify the policy was stored
 		let retrieved_policy =
-			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema)
+			CatalogStore::find_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape)
 				.unwrap()
 				.expect("Policy should be stored");
 
@@ -132,25 +132,25 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_overwrite_schema_retention_policy() {
+	fn test_overwrite_shape_retention_policy() {
 		let mut txn = create_test_admin_transaction();
 		let table_id = TableId(42);
-		let schema = SchemaId::Table(table_id);
+		let shape = ShapeId::Table(table_id);
 
 		// Create initial policy
 		let policy1 = RetentionPolicy::KeepForever;
-		create_schema_retention_policy(&mut txn, schema, &policy1).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy1).unwrap();
 
 		// Overwrite with new policy
 		let policy2 = RetentionPolicy::KeepVersions {
 			count: 20,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_schema_retention_policy(&mut txn, schema, &policy2).unwrap();
+		create_shape_retention_policy(&mut txn, shape, &policy2).unwrap();
 
 		// Verify the latest policy is stored
 		let retrieved_policy =
-			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema)
+			CatalogStore::find_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape)
 				.unwrap()
 				.expect("Policy should be stored");
 
@@ -183,12 +183,12 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_nonexistent_schema_retention_policy() {
+	fn test_get_nonexistent_shape_retention_policy() {
 		let mut txn = create_test_admin_transaction();
-		let schema = SchemaId::Table(TableId(9999));
+		let shape = ShapeId::Table(TableId(9999));
 
 		let retrieved_policy =
-			CatalogStore::find_schema_retention_policy(&mut Transaction::Admin(&mut txn), schema).unwrap();
+			CatalogStore::find_shape_retention_policy(&mut Transaction::Admin(&mut txn), shape).unwrap();
 
 		assert!(retrieved_policy.is_none());
 	}

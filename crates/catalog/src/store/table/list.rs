@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::table::schema::table};
+use crate::{CatalogStore, Result, store::table::shape::table};
 
 impl CatalogStore {
 	pub(crate) fn list_tables_all(rx: &mut Transaction<'_>) -> Result<Vec<Table>> {
@@ -22,10 +22,9 @@ impl CatalogStore {
 				if let Some(key) = Key::decode(&entry.key) {
 					if let Key::Table(table_key) = key {
 						let table_id = table_key.table;
-						let namespace_id = NamespaceId(
-							table::SCHEMA.get_u64(&entry.row, table::NAMESPACE),
-						);
-						let name = table::SCHEMA.get_utf8(&entry.row, table::NAME).to_string();
+						let namespace_id =
+							NamespaceId(table::SHAPE.get_u64(&entry.row, table::NAMESPACE));
+						let name = table::SHAPE.get_utf8(&entry.row, table::NAME).to_string();
 						table_ids.push((table_id, namespace_id, name));
 					}
 				}

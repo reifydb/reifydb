@@ -9,7 +9,7 @@ use crate::{
 	CatalogStore, Result,
 	store::{
 		sequence::system::SystemSequence,
-		token::schema::token::{CREATED_AT, EXPIRES_AT, ID, IDENTITY, SCHEMA, TOKEN},
+		token::shape::token::{CREATED_AT, EXPIRES_AT, ID, IDENTITY, SHAPE, TOKEN},
 	},
 };
 
@@ -23,16 +23,16 @@ impl CatalogStore {
 	) -> Result<Token> {
 		let id = SystemSequence::next_token_id(txn)?;
 
-		let mut row = SCHEMA.allocate();
-		SCHEMA.set_u64(&mut row, ID, id);
-		SCHEMA.set_utf8(&mut row, TOKEN, token);
-		SCHEMA.set_identity_id(&mut row, IDENTITY, identity);
+		let mut row = SHAPE.allocate();
+		SHAPE.set_u64(&mut row, ID, id);
+		SHAPE.set_utf8(&mut row, TOKEN, token);
+		SHAPE.set_identity_id(&mut row, IDENTITY, identity);
 		if let Some(expires) = expires_at {
-			SCHEMA.set_datetime(&mut row, EXPIRES_AT, expires);
+			SHAPE.set_datetime(&mut row, EXPIRES_AT, expires);
 		} else {
-			SCHEMA.set_none(&mut row, EXPIRES_AT);
+			SHAPE.set_none(&mut row, EXPIRES_AT);
 		}
-		SCHEMA.set_datetime(&mut row, CREATED_AT, created_at);
+		SHAPE.set_datetime(&mut row, CREATED_AT, created_at);
 
 		txn.set(&TokenKey::encoded(id), row)?;
 

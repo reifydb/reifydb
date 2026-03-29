@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,71 +41,71 @@ impl RowSchema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_bool() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
-		schema.set_bool(&mut row, 0, true);
-		assert!(schema.get_bool(&row, 0));
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
+		shape.set_bool(&mut row, 0, true);
+		assert!(shape.get_bool(&row, 0));
 	}
 
 	#[test]
 	fn test_try_get_bool() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_bool(&row, 0), None);
+		assert_eq!(shape.try_get_bool(&row, 0), None);
 
-		schema.set_bool(&mut row, 0, true);
-		assert_eq!(schema.try_get_bool(&row, 0), Some(true));
+		shape.set_bool(&mut row, 0, true);
+		assert_eq!(shape.try_get_bool(&row, 0), Some(true));
 	}
 
 	#[test]
 	fn test_false() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
-		schema.set_bool(&mut row, 0, false);
-		assert!(!schema.get_bool(&row, 0));
-		assert_eq!(schema.try_get_bool(&row, 0), Some(false));
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
+		shape.set_bool(&mut row, 0, false);
+		assert!(!shape.get_bool(&row, 0));
+		assert_eq!(shape.try_get_bool(&row, 0), Some(false));
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
-		schema.set_i32(&mut row, 1, 42);
-		schema.set_bool(&mut row, 2, false);
+		shape.set_bool(&mut row, 0, true);
+		shape.set_i32(&mut row, 1, 42);
+		shape.set_bool(&mut row, 2, false);
 
-		assert_eq!(schema.get_bool(&row, 0), true);
-		assert_eq!(schema.get_i32(&row, 1), 42);
-		assert_eq!(schema.get_bool(&row, 2), false);
+		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get_i32(&row, 1), 42);
+		assert_eq!(shape.get_bool(&row, 2), false);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Boolean, Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean, Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_bool(&row, 0), Some(true));
-		assert_eq!(schema.try_get_bool(&row, 1), None);
+		assert_eq!(shape.try_get_bool(&row, 0), Some(true));
+		assert_eq!(shape.try_get_bool(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_bool(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_bool(&row, 0), None);
 	}
 
 	#[test]
 	fn test_try_get_bool_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Int1]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Int1]);
+		let mut row = shape.allocate();
 
-		schema.set_i8(&mut row, 0, 42);
+		shape.set_i8(&mut row, 0, 42);
 
-		assert_eq!(schema.try_get_bool(&row, 0), None);
+		assert_eq!(shape.try_get_bool(&row, 0), None);
 	}
 }

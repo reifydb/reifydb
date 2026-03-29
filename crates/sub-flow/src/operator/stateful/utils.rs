@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
-		schema::RowSchema,
+		shape::RowShape,
 	},
 	interface::catalog::flow::FlowNodeId,
 	key::{EncodableKey, flow_node_internal_state::FlowNodeInternalStateKey, flow_node_state::FlowNodeStateKey},
@@ -132,11 +132,11 @@ pub fn load_or_create_row(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
 	key: &EncodedKey,
-	schema: &RowSchema,
+	shape: &RowShape,
 ) -> Result<EncodedRow> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
-		None => Ok(schema.allocate()),
+		None => Ok(shape.allocate()),
 	}
 }
 
@@ -387,10 +387,10 @@ pub mod tests {
 			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
-		let schema = RowSchema::testing(&[Type::Int4]);
+		let shape = RowShape::testing(&[Type::Int4]);
 
 		// Load non-existing should create new
-		let result = load_or_create_row(node_id, &mut txn, &key, &schema).unwrap();
+		let result = load_or_create_row(node_id, &mut txn, &key, &shape).unwrap();
 		// Should create a encoded with the expected layout
 		assert!(result.len() > 0);
 	}

@@ -98,7 +98,7 @@ impl SqlitePrimitiveStorage {
 		let _ = conn.pragma_update(None, "cache_size", 0);
 	}
 
-	/// Create a table with the versioned schema if it doesn't exist.
+	/// Create a table with the versioned shape if it doesn't exist.
 	fn create_table_if_needed(conn: &Connection, table_name: &str) -> SqliteResult<()> {
 		conn.execute(
 			&format!(
@@ -511,7 +511,7 @@ fn insert_versioned_entries_in_tx(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{id::TableId, schema::SchemaId};
+	use reifydb_core::interface::catalog::{id::TableId, shape::ShapeId};
 
 	use super::*;
 
@@ -545,8 +545,8 @@ pub mod tests {
 	fn test_source_tables() {
 		let storage = SqlitePrimitiveStorage::in_memory();
 
-		let source1 = SchemaId::Table(TableId(1));
-		let source2 = SchemaId::Table(TableId(2));
+		let source1 = ShapeId::Table(TableId(1));
+		let source2 = ShapeId::Table(TableId(2));
 		let key = CowVec::new(b"key".to_vec());
 		let version = CommitVersion(1);
 

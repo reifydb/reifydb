@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::resolved::ResolvedView,
 	internal_error,
 	key::{
@@ -26,7 +26,7 @@ pub(crate) struct ViewScanNode {
 	view: ResolvedView,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<RowSchema>,
+	shape: Option<RowShape>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 }
@@ -41,31 +41,31 @@ impl ViewScanNode {
 			view,
 			context: Some(context),
 			headers,
-			schema: None,
+			shape: None,
 			last_key: None,
 			exhausted: false,
 		})
 	}
 
-	fn get_or_load_schema<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<RowSchema> {
-		if let Some(schema) = &self.schema {
-			return Ok(schema.clone());
+	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<RowShape> {
+		if let Some(shape) = &self.shape {
+			return Ok(shape.clone());
 		}
 
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("ViewScanNode context not set");
-		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+		let shape = stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
-				"RowSchema with fingerprint {:?} not found for view {}",
+				"RowShape with fingerprint {:?} not found for view {}",
 				fingerprint,
 				self.view.def().name()
 			)
 		})?;
 
-		self.schema = Some(schema.clone());
+		self.shape = Some(shape.clone());
 
-		Ok(schema)
+		Ok(shape)
 	}
 }
 
@@ -115,7 +115,7 @@ impl QueryNode for ViewScanNode {
 		if batch_rows.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				// Empty view: return empty columns with correct types to preserve schema
+				// Empty view: return empty columns with correct types to preserve shape
 				return Ok(Some(Columns::from_resolved_view(&self.view)));
 			}
 			return Ok(None);
@@ -124,8 +124,8 @@ impl QueryNode for ViewScanNode {
 		self.last_key = new_last_key;
 
 		let mut columns = Columns::from_resolved_view(&self.view);
-		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
-		columns.append_rows(&schema, batch_rows.into_iter(), row_numbers)?;
+		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
+		columns.append_rows(&shape, batch_rows.into_iter(), row_numbers)?;
 
 		Ok(Some(columns))
 	}

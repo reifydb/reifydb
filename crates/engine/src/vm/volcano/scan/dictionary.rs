@@ -113,7 +113,7 @@ impl QueryNode for DictionaryScanNode {
 		if ids.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				// Empty dictionary: return empty columns with correct types to preserve schema
+				// Empty dictionary: return empty columns with correct types to preserve shape
 				let columns = Columns::new(vec![
 					Column {
 						name: Fragment::internal("id"),

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::expression::Expression;
@@ -24,9 +24,9 @@ use crate::{
 	vm::{services::Services, stack::SymbolTable},
 };
 
-/// Decode multiple encoded rows into a single Columns structure using the schema.
-pub(crate) fn decode_rows_to_columns(schema: &RowSchema, rows: &[(RowNumber, EncodedRow)]) -> Columns {
-	let fields = schema.fields();
+/// Decode multiple encoded rows into a single Columns structure using the shape.
+pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedRow)]) -> Columns {
+	let fields = shape.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
 	for field in fields.iter() {
@@ -40,7 +40,7 @@ pub(crate) fn decode_rows_to_columns(schema: &RowSchema, rows: &[(RowNumber, Enc
 	for (row_number, encoded) in rows {
 		row_numbers.push(*row_number);
 		for (i, _) in fields.iter().enumerate() {
-			columns_vec[i].data.push_value(schema.get_value(encoded, i));
+			columns_vec[i].data.push_value(shape.get_value(encoded, i));
 		}
 	}
 

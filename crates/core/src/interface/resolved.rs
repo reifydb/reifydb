@@ -153,7 +153,7 @@ impl ResolvedTable {
 	}
 }
 
-/// Resolved virtual table (system tables, information_schema)
+/// Resolved virtual table (system tables, information_shape)
 #[derive(Debug, Clone)]
 pub struct ResolvedTableVirtual(Arc<ResolvedTableVirtualInner>);
 
@@ -687,9 +687,9 @@ impl ResolvedFunction {
 		&self.0.def
 	}
 }
-/// Unified enum for any resolved schema type
+/// Unified enum for any resolved shape type
 #[derive(Debug, Clone)]
-pub enum ResolvedSchema {
+pub enum ResolvedShape {
 	Table(ResolvedTable),
 	TableVirtual(ResolvedTableVirtual),
 	View(ResolvedView),
@@ -700,7 +700,7 @@ pub enum ResolvedSchema {
 	Series(ResolvedSeries),
 }
 
-impl ResolvedSchema {
+impl ResolvedShape {
 	/// Get the identifier fragment
 	pub fn identifier(&self) -> &Fragment {
 		match self {
@@ -715,7 +715,7 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Get the schema name
+	/// Get the shape name
 	pub fn name(&self) -> &str {
 		match self {
 			Self::Table(t) => t.name(),
@@ -729,7 +729,7 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Get the namespace if this schema has one
+	/// Get the namespace if this shape has one
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
 		match self {
 			Self::Table(t) => Some(t.namespace()),
@@ -743,17 +743,17 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Check if this schema supports indexes
+	/// Check if this shape supports indexes
 	pub fn supports_indexes(&self) -> bool {
 		matches!(self, Self::Table(_))
 	}
 
-	/// Check if this schema supports mutations
+	/// Check if this shape supports mutations
 	pub fn supports_mutations(&self) -> bool {
 		matches!(self, Self::Table(_) | Self::RingBuffer(_) | Self::Series(_))
 	}
 
-	/// Get columns for this schema
+	/// Get columns for this shape
 	pub fn columns(&self) -> &[Column] {
 		match self {
 			Self::Table(t) => t.columns(),
@@ -772,7 +772,7 @@ impl ResolvedSchema {
 		self.columns().iter().find(|c| c.name == name)
 	}
 
-	/// Get the schema kind name for error messages
+	/// Get the shape kind name for error messages
 	pub fn kind_name(&self) -> &'static str {
 		match self {
 			Self::Table(_) => "table",
@@ -800,7 +800,7 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Convert to a table if this is a table schema
+	/// Convert to a table if this is a table shape
 	pub fn as_table(&self) -> Option<&ResolvedTable> {
 		match self {
 			Self::Table(t) => Some(t),
@@ -808,7 +808,7 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Convert to a view if this is a view schema
+	/// Convert to a view if this is a view shape
 	pub fn as_view(&self) -> Option<&ResolvedView> {
 		match self {
 			Self::View(v) => Some(v),
@@ -816,7 +816,7 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Convert to a ring buffer if this is a ring buffer schema
+	/// Convert to a ring buffer if this is a ring buffer shape
 	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
@@ -824,7 +824,7 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Convert to a dictionary if this is a dictionary schema
+	/// Convert to a dictionary if this is a dictionary shape
 	pub fn as_dictionary(&self) -> Option<&ResolvedDictionary> {
 		match self {
 			Self::Dictionary(d) => Some(d),
@@ -832,7 +832,7 @@ impl ResolvedSchema {
 		}
 	}
 
-	/// Convert to a series if this is a series schema
+	/// Convert to a series if this is a series shape
 	pub fn as_series(&self) -> Option<&ResolvedSeries> {
 		match self {
 			Self::Series(s) => Some(s),
@@ -841,7 +841,7 @@ impl ResolvedSchema {
 	}
 }
 
-/// Column with its resolved schema
+/// Column with its resolved shape
 #[derive(Debug, Clone)]
 pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 
@@ -849,17 +849,17 @@ pub struct ResolvedColumn(Arc<ResolvedColumnInner>);
 struct ResolvedColumnInner {
 	/// Original identifier with fragments
 	pub identifier: Fragment,
-	/// The resolved schema this column belongs to
-	pub schema: ResolvedSchema,
+	/// The resolved shape this column belongs to
+	pub shape: ResolvedShape,
 	/// The column definition
 	pub def: Column,
 }
 
 impl ResolvedColumn {
-	pub fn new(identifier: Fragment, schema: ResolvedSchema, def: Column) -> Self {
+	pub fn new(identifier: Fragment, shape: ResolvedShape, def: Column) -> Self {
 		Self(Arc::new(ResolvedColumnInner {
 			identifier,
-			schema,
+			shape,
 			def,
 		}))
 	}
@@ -879,9 +879,9 @@ impl ResolvedColumn {
 		&self.0.identifier
 	}
 
-	/// Get the schema
-	pub fn schema(&self) -> &ResolvedSchema {
-		&self.0.schema
+	/// Get the shape
+	pub fn shape(&self) -> &ResolvedShape {
+		&self.0.shape
 	}
 
 	/// Get the type constraint of this column
@@ -906,16 +906,16 @@ impl ResolvedColumn {
 
 	/// Get the namespace this column belongs to
 	pub fn namespace(&self) -> Option<&ResolvedNamespace> {
-		self.0.schema.namespace()
+		self.0.shape.namespace()
 	}
 
 	/// Get fully qualified name
 	pub fn qualified_name(&self) -> String {
-		match self.0.schema.fully_qualified_name() {
-			Some(schema_name) => {
-				format!("{}.{}", schema_name, self.name())
+		match self.0.shape.fully_qualified_name() {
+			Some(shape_name) => {
+				format!("{}.{}", shape_name, self.name())
 			}
-			None => format!("{}.{}", self.0.schema.identifier().text(), self.name()),
+			None => format!("{}.{}", self.0.shape.identifier().text(), self.name()),
 		}
 	}
 
@@ -928,7 +928,7 @@ impl ResolvedColumn {
 	pub fn to_static(&self) -> ResolvedColumn {
 		ResolvedColumn(Arc::new(ResolvedColumnInner {
 			identifier: Fragment::internal(self.0.identifier.text()),
-			schema: self.0.schema.clone(),
+			shape: self.0.shape.clone(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -937,29 +937,25 @@ impl ResolvedColumn {
 // Helper function to convert ResolvedColumn to NumberOutOfRangeDescriptor
 // This is used in evaluation context for error reporting
 pub fn resolved_column_to_number_descriptor(column: &ResolvedColumn) -> NumberOutOfRangeDescriptor {
-	let (namespace, table) = match column.schema() {
-		ResolvedSchema::Table(table) => {
+	let (namespace, table) = match column.shape() {
+		ResolvedShape::Table(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedSchema::TableVirtual(table) => {
+		ResolvedShape::TableVirtual(table) => {
 			(Some(table.namespace().name().to_string()), Some(table.name().to_string()))
 		}
-		ResolvedSchema::RingBuffer(rb) => {
-			(Some(rb.namespace().name().to_string()), Some(rb.name().to_string()))
-		}
-		ResolvedSchema::View(view) => {
+		ResolvedShape::RingBuffer(rb) => (Some(rb.namespace().name().to_string()), Some(rb.name().to_string())),
+		ResolvedShape::View(view) => (Some(view.namespace().name().to_string()), Some(view.name().to_string())),
+		ResolvedShape::DeferredView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedSchema::DeferredView(view) => {
+		ResolvedShape::TransactionalView(view) => {
 			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
 		}
-		ResolvedSchema::TransactionalView(view) => {
-			(Some(view.namespace().name().to_string()), Some(view.name().to_string()))
-		}
-		ResolvedSchema::Dictionary(dict) => {
+		ResolvedShape::Dictionary(dict) => {
 			(Some(dict.namespace().name().to_string()), Some(dict.name().to_string()))
 		}
-		ResolvedSchema::Series(series) => {
+		ResolvedShape::Series(series) => {
 			(Some(series.namespace().name().to_string()), Some(series.name().to_string()))
 		}
 	};
@@ -1071,20 +1067,20 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_resolved_schema_enum() {
+	fn test_resolved_shape_enum() {
 		let namespace = ResolvedNamespace::new(Fragment::testing("public"), test_namespace_def());
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let schema = ResolvedSchema::Table(table);
+		let shape = ResolvedShape::Table(table);
 
-		assert!(schema.supports_indexes());
-		assert!(schema.supports_mutations());
-		assert_eq!(schema.kind_name(), "table");
+		assert!(shape.supports_indexes());
+		assert!(shape.supports_mutations());
+		assert_eq!(shape.kind_name(), "table");
 		// effective_name removed - use identifier().text() instead
-		assert_eq!(schema.fully_qualified_name(), Some("public::users".to_string()));
-		assert!(schema.as_table().is_some());
-		assert!(schema.as_view().is_none());
+		assert_eq!(shape.fully_qualified_name(), Some("public::users".to_string()));
+		assert!(shape.as_table().is_some());
+		assert!(shape.as_view().is_none());
 	}
 
 	#[test]
@@ -1093,7 +1089,7 @@ pub mod tests {
 
 		let table = ResolvedTable::new(Fragment::testing("users"), namespace, test_table());
 
-		let schema = ResolvedSchema::Table(table);
+		let shape = ResolvedShape::Table(table);
 
 		let column_ident = Fragment::testing("id");
 
@@ -1107,7 +1103,7 @@ pub mod tests {
 			dictionary_id: None,
 		};
 
-		let column = ResolvedColumn::new(column_ident, schema, column);
+		let column = ResolvedColumn::new(column_ident, shape, column);
 
 		assert_eq!(column.name(), "id");
 		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));

@@ -7,7 +7,7 @@ use reifydb_type::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore, Result,
-	store::identity::{convert_identity, schema::identity},
+	store::identity::{convert_identity, shape::identity},
 };
 
 impl CatalogStore {
@@ -21,7 +21,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let identity_name = identity::SCHEMA.get_utf8(&multi.row, identity::NAME);
+			let identity_name = identity::SHAPE.get_utf8(&multi.row, identity::NAME);
 			if name == identity_name {
 				return Ok(Some(convert_identity(multi)));
 			}

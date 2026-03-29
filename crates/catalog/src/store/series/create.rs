@@ -25,7 +25,7 @@ use crate::{
 	store::{
 		column::create::ColumnToCreate,
 		sequence::system::SystemSequence,
-		series::schema::{series, series_metadata, series_namespace},
+		series::shape::{series, series_metadata, series_namespace},
 	},
 };
 
@@ -84,12 +84,12 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &SeriesToCreate,
 	) -> Result<()> {
-		let mut row = series::SCHEMA.allocate();
-		series::SCHEMA.set_u64(&mut row, series::ID, series_id);
-		series::SCHEMA.set_u64(&mut row, series::NAMESPACE, namespace);
-		series::SCHEMA.set_utf8(&mut row, series::NAME, to_create.name.text());
-		series::SCHEMA.set_u64(&mut row, series::TAG, to_create.tag.map(|t| *t).unwrap_or(0));
-		series::SCHEMA.set_utf8(&mut row, series::KEY_COLUMN, to_create.key.column());
+		let mut row = series::SHAPE.allocate();
+		series::SHAPE.set_u64(&mut row, series::ID, series_id);
+		series::SHAPE.set_u64(&mut row, series::NAMESPACE, namespace);
+		series::SHAPE.set_utf8(&mut row, series::NAME, to_create.name.text());
+		series::SHAPE.set_u64(&mut row, series::TAG, to_create.tag.map(|t| *t).unwrap_or(0));
+		series::SHAPE.set_utf8(&mut row, series::KEY_COLUMN, to_create.key.column());
 		let (key_kind_u8, precision_u8) = match &to_create.key {
 			SeriesKey::DateTime {
 				precision,
@@ -99,9 +99,9 @@ impl CatalogStore {
 				..
 			} => (1u8, 0u8),
 		};
-		series::SCHEMA.set_u8(&mut row, series::KEY_KIND, key_kind_u8);
-		series::SCHEMA.set_u8(&mut row, series::PRECISION, precision_u8);
-		series::SCHEMA.set_u64(&mut row, series::PRIMARY_KEY, 0u64);
+		series::SHAPE.set_u8(&mut row, series::KEY_KIND, key_kind_u8);
+		series::SHAPE.set_u8(&mut row, series::PRECISION, precision_u8);
+		series::SHAPE.set_u64(&mut row, series::PRIMARY_KEY, 0u64);
 
 		txn.set(&SeriesStorageKey::encoded(series_id), row)?;
 
@@ -114,9 +114,9 @@ impl CatalogStore {
 		series_id: SeriesId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = series_namespace::SCHEMA.allocate();
-		series_namespace::SCHEMA.set_u64(&mut row, series_namespace::ID, series_id);
-		series_namespace::SCHEMA.set_utf8(&mut row, series_namespace::NAME, name);
+		let mut row = series_namespace::SHAPE.allocate();
+		series_namespace::SHAPE.set_u64(&mut row, series_namespace::ID, series_id);
+		series_namespace::SHAPE.set_utf8(&mut row, series_namespace::NAME, name);
 
 		txn.set(&NamespaceSeriesKey::encoded(namespace, series_id), row)?;
 
@@ -135,7 +135,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
-					schema_name: String::new(),
+					shape_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint.clone(),
 					properties: col.properties.clone(),
@@ -150,12 +150,12 @@ impl CatalogStore {
 	}
 
 	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
-		let mut row = series_metadata::SCHEMA.allocate();
-		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ID, series_id);
-		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::ROW_COUNT, 0u64);
-		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::OLDEST_KEY, 0u64);
-		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::NEWEST_KEY, 0u64);
-		series_metadata::SCHEMA.set_u64(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
+		let mut row = series_metadata::SHAPE.allocate();
+		series_metadata::SHAPE.set_u64(&mut row, series_metadata::ID, series_id);
+		series_metadata::SHAPE.set_u64(&mut row, series_metadata::ROW_COUNT, 0u64);
+		series_metadata::SHAPE.set_u64(&mut row, series_metadata::OLDEST_KEY, 0u64);
+		series_metadata::SHAPE.set_u64(&mut row, series_metadata::NEWEST_KEY, 0u64);
+		series_metadata::SHAPE.set_u64(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
 
 		txn.set(&SeriesMetadataKey::encoded(series_id), row)?;
 

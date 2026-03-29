@@ -4,14 +4,14 @@
 use std::{collections, sync::Arc};
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
 		engine,
 	},
 	interface::{
 		catalog::policy::PolicyTargetType,
-		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
+		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	key::row::RowKey,
 	value::column::columns::Columns,
@@ -27,7 +27,7 @@ use reifydb_type::{
 
 use super::{
 	returning::{decode_rows_to_columns, evaluate_returning},
-	schema::get_or_create_ringbuffer_schema,
+	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
 	Result,
@@ -67,7 +67,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedShape::RingBuffer(resolved_rb));
 
 	// Resolve partition column indices once (empty vec for global)
 	let partition_col_indices: Vec<usize> = ringbuffer
@@ -76,7 +76,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 		.map(|pb_col| ringbuffer.columns.iter().position(|c| c.name == *pb_col).unwrap())
 		.collect();
 
-	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
+	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
 	let mut deleted_count = 0;
 	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
 		Vec::new()
@@ -149,7 +149,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					// Skip rows that don't belong to this partition
 					if !partition_col_indices.is_empty()
 						&& !row_matches_partition(
-							&schema,
+							&shape,
 							&row_data.row,
 							&partition_col_indices,
 							&partition_key,
@@ -206,7 +206,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 					// Skip rows that don't belong to this partition
 					if !partition_col_indices.is_empty()
 						&& !row_matches_partition(
-							&schema,
+							&shape,
 							&row_data.row,
 							&partition_col_indices,
 							&partition_key,
@@ -231,7 +231,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 	// If RETURNING clause is present, evaluate expressions against deleted rows
 	if let Some(returning_exprs) = &plan.returning {
-		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
@@ -244,13 +244,10 @@ pub(crate) fn delete_ringbuffer<'a>(
 }
 
 fn row_matches_partition(
-	schema: &RowSchema,
+	shape: &RowShape,
 	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],
 ) -> bool {
-	partition_col_indices
-		.iter()
-		.zip(expected_values)
-		.all(|(&idx, expected)| schema.get_value(row, idx) == *expected)
+	partition_col_indices.iter().zip(expected_values).all(|(&idx, expected)| shape.get_value(row, idx) == *expected)
 }

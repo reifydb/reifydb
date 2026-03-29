@@ -9,7 +9,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::role::{convert_role, schema::role},
+	store::role::{convert_role, shape::role},
 };
 
 impl CatalogStore {
@@ -23,7 +23,7 @@ impl CatalogStore {
 
 		while let Some(entry) = stream.next() {
 			let multi = entry?;
-			let role_name = role::SCHEMA.get_utf8(&multi.row, role::NAME);
+			let role_name = role::SHAPE.get_utf8(&multi.row, role::NAME);
 			if name == role_name {
 				return Ok(Some(convert_role(multi)));
 			}

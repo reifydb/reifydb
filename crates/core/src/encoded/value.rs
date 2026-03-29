@@ -9,10 +9,10 @@ use reifydb_type::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
-use super::schema::RowSchema;
+use super::shape::RowShape;
 use crate::encoded::row::EncodedRow;
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
 		debug_assert!(values.len() == self.fields().len());
 		for (idx, value) in values.iter().enumerate() {
@@ -331,7 +331,7 @@ pub mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	use crate::encoded::schema::{RowSchema, RowSchemaField};
+	use crate::encoded::shape::{RowShape, RowShapeField};
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -342,26 +342,26 @@ pub mod tests {
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {
-		let schema = RowSchema::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
+		let mut row = shape.allocate();
 
 		let value1 = Value::Utf8("hello".to_string());
 		let value2 = Value::Int4(42);
 		let value3 = Value::Utf8("world".to_string());
 
-		schema.set_value(&mut row, 0, &value1);
-		schema.set_value(&mut row, 1, &value2);
-		schema.set_value(&mut row, 2, &value3);
+		shape.set_value(&mut row, 0, &value1);
+		shape.set_value(&mut row, 1, &value2);
+		shape.set_value(&mut row, 2, &value3);
 
-		assert_eq!(schema.get_utf8(&row, 0), "hello");
-		assert_eq!(schema.get_i32(&row, 1), 42);
-		assert_eq!(schema.get_utf8(&row, 2), "world");
+		assert_eq!(shape.get_utf8(&row, 0), "hello");
+		assert_eq!(shape.get_i32(&row, 1), 42);
+		assert_eq!(shape.get_utf8(&row, 2), "world");
 	}
 
 	#[test]
 	fn test_set_values_with_mixed_dynamic_content() {
-		let schema = RowSchema::testing(&[Type::Boolean, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean, Type::Utf8, Type::Float4, Type::Utf8, Type::Int2]);
+		let mut row = shape.allocate();
 
 		let values = vec![
 			Value::Boolean(true),
@@ -371,19 +371,19 @@ pub mod tests {
 			Value::Int2(-100),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		assert_eq!(schema.get_bool(&row, 0), true);
-		assert_eq!(schema.get_utf8(&row, 1), "first_string");
-		assert_eq!(schema.get_f32(&row, 2), 3.14f32);
-		assert_eq!(schema.get_utf8(&row, 3), "second_string");
-		assert_eq!(schema.get_i16(&row, 4), -100);
+		assert_eq!(shape.get_bool(&row, 0), true);
+		assert_eq!(shape.get_utf8(&row, 1), "first_string");
+		assert_eq!(shape.get_f32(&row, 2), 3.14f32);
+		assert_eq!(shape.get_utf8(&row, 3), "second_string");
+		assert_eq!(shape.get_i16(&row, 4), -100);
 	}
 
 	#[test]
 	fn test_set_with_empty_and_large_utf8() {
-		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8]);
+		let mut row = shape.allocate();
 
 		let large_string = "X".repeat(2000);
 		let values = vec![
@@ -392,26 +392,26 @@ pub mod tests {
 			Value::Utf8("small".to_string()),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		assert_eq!(schema.get_utf8(&row, 0), "");
-		assert_eq!(schema.get_utf8(&row, 1), large_string);
-		assert_eq!(schema.get_utf8(&row, 2), "small");
-		assert_eq!(schema.dynamic_section_size(&row), 2005); // 0 + 2000 + 5
+		assert_eq!(shape.get_utf8(&row, 0), "");
+		assert_eq!(shape.get_utf8(&row, 1), large_string);
+		assert_eq!(shape.get_utf8(&row, 2), "small");
+		assert_eq!(shape.dynamic_section_size(&row), 2005); // 0 + 2000 + 5
 	}
 
 	#[test]
 	fn test_get_from_dynamic_content() {
-		let schema = RowSchema::testing(&[Type::Utf8, Type::Int8, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8, Type::Int8, Type::Utf8]);
+		let mut row = shape.allocate();
 
-		schema.set_utf8(&mut row, 0, "test_string");
-		schema.set_i64(&mut row, 1, 9876543210i64);
-		schema.set_utf8(&mut row, 2, "another_string");
+		shape.set_utf8(&mut row, 0, "test_string");
+		shape.set_i64(&mut row, 1, 9876543210i64);
+		shape.set_utf8(&mut row, 2, "another_string");
 
-		let value0 = schema.get_value(&row, 0);
-		let value1 = schema.get_value(&row, 1);
-		let value2 = schema.get_value(&row, 2);
+		let value0 = shape.get_value(&row, 0);
+		let value1 = shape.get_value(&row, 1);
+		let value2 = shape.get_value(&row, 2);
 
 		match value0 {
 			Value::Utf8(s) => assert_eq!(s, "test_string"),
@@ -431,32 +431,32 @@ pub mod tests {
 
 	#[test]
 	fn test_set_none_with_utf8_fields() {
-		let schema = RowSchema::testing(&[Type::Utf8, Type::Boolean, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8, Type::Boolean, Type::Utf8]);
+		let mut row = shape.allocate();
 
 		// Set some values
-		schema.set_value(&mut row, 0, &Value::Utf8("hello".to_string()));
-		schema.set_value(&mut row, 1, &Value::Boolean(true));
-		schema.set_value(&mut row, 2, &Value::Utf8("world".to_string()));
+		shape.set_value(&mut row, 0, &Value::Utf8("hello".to_string()));
+		shape.set_value(&mut row, 1, &Value::Boolean(true));
+		shape.set_value(&mut row, 2, &Value::Utf8("world".to_string()));
 
 		assert!(row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
 		// Set some as undefined
-		schema.set_value(&mut row, 0, &Value::none());
-		schema.set_value(&mut row, 2, &Value::none());
+		shape.set_value(&mut row, 0, &Value::none());
+		shape.set_value(&mut row, 2, &Value::none());
 
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(!row.is_defined(2));
 
-		assert_eq!(schema.get_bool(&row, 1), true);
+		assert_eq!(shape.get_bool(&row, 1), true);
 	}
 
 	#[test]
 	fn test_get_all_types_including_utf8() {
-		let schema = RowSchema::testing(&[
+		let shape = RowShape::testing(&[
 			Type::Boolean,
 			Type::Int1,
 			Type::Int2,
@@ -470,22 +470,22 @@ pub mod tests {
 			Type::Float8,
 			Type::Utf8,
 		]);
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
-		schema.set_i8(&mut row, 1, -42);
-		schema.set_i16(&mut row, 2, -1000i16);
-		schema.set_i32(&mut row, 3, -50000i32);
-		schema.set_i64(&mut row, 4, -3000000000i64);
-		schema.set_u8(&mut row, 5, 200u8);
-		schema.set_u16(&mut row, 6, 50000u16);
-		schema.set_u32(&mut row, 7, 3000000000u32);
-		schema.set_u64(&mut row, 8, 15000000000000000000u64);
-		schema.set_f32(&mut row, 9, 2.5);
-		schema.set_f64(&mut row, 10, 123.456789);
-		schema.set_utf8(&mut row, 11, "dynamic_string");
+		shape.set_bool(&mut row, 0, true);
+		shape.set_i8(&mut row, 1, -42);
+		shape.set_i16(&mut row, 2, -1000i16);
+		shape.set_i32(&mut row, 3, -50000i32);
+		shape.set_i64(&mut row, 4, -3000000000i64);
+		shape.set_u8(&mut row, 5, 200u8);
+		shape.set_u16(&mut row, 6, 50000u16);
+		shape.set_u32(&mut row, 7, 3000000000u32);
+		shape.set_u64(&mut row, 8, 15000000000000000000u64);
+		shape.set_f32(&mut row, 9, 2.5);
+		shape.set_f64(&mut row, 10, 123.456789);
+		shape.set_utf8(&mut row, 11, "dynamic_string");
 
-		let values: Vec<Value> = (0..12).map(|i| schema.get_value(&row, i)).collect();
+		let values: Vec<Value> = (0..12).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(values[0], Value::Boolean(true));
 		assert_eq!(values[1], Value::Int1(-42));
@@ -503,8 +503,8 @@ pub mod tests {
 
 	#[test]
 	fn test_set_values_sparse_with_utf8() {
-		let schema = RowSchema::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
+		let mut row = shape.allocate();
 
 		// Only set some values
 		let values = vec![
@@ -514,21 +514,21 @@ pub mod tests {
 			Value::none(),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
 		assert!(row.is_defined(0));
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
 		assert!(!row.is_defined(3));
 
-		assert_eq!(schema.get_utf8(&row, 0), "first");
-		assert_eq!(schema.get_utf8(&row, 2), "third");
+		assert_eq!(shape.get_utf8(&row, 0), "first");
+		assert_eq!(shape.get_utf8(&row, 2), "third");
 	}
 
 	#[test]
 	fn test_set_values_unicode_strings() {
-		let schema = RowSchema::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8, Type::Int4, Type::Utf8]);
+		let mut row = shape.allocate();
 
 		let values = vec![
 			Value::Utf8("🎉🚀✨".to_string()),
@@ -536,36 +536,36 @@ pub mod tests {
 			Value::Utf8("Hello 世界".to_string()),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		assert_eq!(schema.get_utf8(&row, 0), "🎉🚀✨");
-		assert_eq!(schema.get_i32(&row, 1), 123);
-		assert_eq!(schema.get_utf8(&row, 2), "Hello 世界");
+		assert_eq!(shape.get_utf8(&row, 0), "🎉🚀✨");
+		assert_eq!(shape.get_i32(&row, 1), 123);
+		assert_eq!(shape.get_utf8(&row, 2), "Hello 世界");
 	}
 
 	#[test]
 	fn test_static_fields_only_no_dynamic_with_values() {
-		let schema = RowSchema::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean, Type::Int4, Type::Float8]);
+		let mut row = shape.allocate();
 
 		let values =
 			vec![Value::Boolean(false), Value::Int4(999), Value::Float8(OrderedF64::try_from(E).unwrap())];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
 		// Verify no dynamic section
-		assert_eq!(schema.dynamic_section_size(&row), 0);
-		assert_eq!(row.len(), schema.total_static_size());
+		assert_eq!(shape.dynamic_section_size(&row), 0);
+		assert_eq!(row.len(), shape.total_static_size());
 
-		assert_eq!(schema.get_bool(&row, 0), false);
-		assert_eq!(schema.get_i32(&row, 1), 999);
-		assert_eq!(schema.get_f64(&row, 2), E);
+		assert_eq!(shape.get_bool(&row, 0), false);
+		assert_eq!(shape.get_i32(&row, 1), 999);
+		assert_eq!(shape.get_f64(&row, 2), E);
 	}
 
 	#[test]
 	fn test_temporal_types_roundtrip() {
-		let schema = RowSchema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let mut row = shape.allocate();
 
 		let original_values = vec![
 			Value::Date(Date::new(2025, 7, 15).unwrap()),
@@ -574,17 +574,17 @@ pub mod tests {
 			Value::Duration(Duration::from_seconds(3600).unwrap()),
 		];
 
-		schema.set_values(&mut row, &original_values);
+		shape.set_values(&mut row, &original_values);
 
-		let retrieved_values: Vec<Value> = (0..4).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..4).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, original_values);
 	}
 
 	#[test]
 	fn test_temporal_types_with_undefined() {
-		let schema = RowSchema::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Date, Type::DateTime, Type::Time, Type::Duration]);
+		let mut row = shape.allocate();
 
 		let values = vec![
 			Value::Date(Date::new(2000, 1, 1).unwrap()),
@@ -593,14 +593,14 @@ pub mod tests {
 			Value::none(),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
 		assert!(row.is_defined(0));
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
 		assert!(!row.is_defined(3));
 
-		let retrieved_values: Vec<Value> = (0..4).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..4).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values[0], values[0]);
 		assert_eq!(retrieved_values[1], Value::none());
@@ -610,7 +610,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_temporal_and_regular_types() {
-		let schema = RowSchema::testing(&[
+		let shape = RowShape::testing(&[
 			Type::Boolean,
 			Type::Date,
 			Type::Utf8,
@@ -619,7 +619,7 @@ pub mod tests {
 			Type::Time,
 			Type::Duration,
 		]);
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 
 		let values = vec![
 			Value::Boolean(true),
@@ -631,17 +631,17 @@ pub mod tests {
 			Value::Duration(Duration::from_minutes(30).unwrap()),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		let retrieved_values: Vec<Value> = (0..7).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..7).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, values);
 	}
 
 	#[test]
 	fn test_roundtrip_with_dynamic_content() {
-		let schema = RowSchema::testing(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Utf8, Type::Int2, Type::Utf8, Type::Float4]);
+		let mut row = shape.allocate();
 
 		let original_values = vec![
 			Value::Utf8("roundtrip_test".to_string()),
@@ -651,26 +651,26 @@ pub mod tests {
 		];
 
 		// Set values
-		schema.set_values(&mut row, &original_values);
+		shape.set_values(&mut row, &original_values);
 
 		// Get values back
-		let retrieved_values: Vec<Value> = (0..4).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..4).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, original_values);
 	}
 
 	#[test]
 	fn test_blob_roundtrip() {
-		let schema = RowSchema::testing(&[Type::Blob, Type::Int4, Type::Blob]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Blob, Type::Int4, Type::Blob]);
+		let mut row = shape.allocate();
 
 		let blob1 = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
 		let blob2 = Blob::new(vec![]);
 		let values = vec![Value::Blob(blob1.clone()), Value::Int4(42), Value::Blob(blob2.clone())];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		let retrieved_values: Vec<Value> = (0..3).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..3).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, values);
 
@@ -688,8 +688,8 @@ pub mod tests {
 
 	#[test]
 	fn test_blob_with_undefined() {
-		let schema = RowSchema::testing(&[Type::Blob, Type::Blob, Type::Blob]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Blob, Type::Blob, Type::Blob]);
+		let mut row = shape.allocate();
 
 		let values = vec![
 			Value::Blob(Blob::new(vec![0x00, 0x01, 0x02])),
@@ -697,13 +697,13 @@ pub mod tests {
 			Value::Blob(Blob::new(vec![0xFF, 0xFE])),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
 		assert!(row.is_defined(0));
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		let retrieved_values: Vec<Value> = (0..3).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..3).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values[0], values[0]);
 		assert_eq!(retrieved_values[1], Value::none());
@@ -713,16 +713,16 @@ pub mod tests {
 	#[test]
 	fn test_uuid_roundtrip() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
+		let mut row = shape.allocate();
 
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate(&clock, &rng);
 		let values = vec![Value::Uuid4(uuid4), Value::Uuid7(uuid7), Value::Int4(123)];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		let retrieved_values: Vec<Value> = (0..3).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..3).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, values);
 	}
@@ -730,17 +730,17 @@ pub mod tests {
 	#[test]
 	fn test_uuid_with_undefined() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Uuid4, Type::Uuid7]);
+		let mut row = shape.allocate();
 
 		let values = vec![Value::none(), Value::Uuid7(Uuid7::generate(&clock, &rng))];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 
-		let retrieved_values: Vec<Value> = (0..2).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..2).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values[0], Value::none());
 		assert_eq!(retrieved_values[1], values[1]);
@@ -749,15 +749,9 @@ pub mod tests {
 	#[test]
 	fn test_mixed_blob_row_number_uuid_types() {
 		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[
-			Type::Blob,
-			Type::Int16,
-			Type::Uuid4,
-			Type::Utf8,
-			Type::Uuid7,
-			Type::Int4,
-		]);
-		let mut row = schema.allocate();
+		let shape =
+			RowShape::testing(&[Type::Blob, Type::Int16, Type::Uuid4, Type::Utf8, Type::Uuid7, Type::Int4]);
+		let mut row = shape.allocate();
 
 		let values = vec![
 			Value::Blob(Blob::new(vec![0xCA, 0xFE, 0xBA, 0xBE])),
@@ -768,14 +762,14 @@ pub mod tests {
 			Value::Int4(-999),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		let retrieved_values: Vec<Value> = (0..6).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..6).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, values);
 
 		// Verify dynamic content exists (for blob and utf8)
-		assert!(schema.dynamic_section_size(&row) > 0);
+		assert!(shape.dynamic_section_size(&row) > 0);
 	}
 
 	#[test]
@@ -783,7 +777,7 @@ pub mod tests {
 		// except encoded id
 		let (_, clock, rng) = test_clock_and_rng();
 
-		let schema = RowSchema::testing(&[
+		let shape = RowShape::testing(&[
 			Type::Boolean,
 			Type::Int1,
 			Type::Int2,
@@ -806,7 +800,7 @@ pub mod tests {
 			Type::Uuid7,
 			Type::Blob,
 		]);
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 
 		let values = vec![
 			Value::Boolean(true),
@@ -835,9 +829,9 @@ pub mod tests {
 			])),
 		];
 
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		let retrieved_values: Vec<Value> = (0..21).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved_values: Vec<Value> = (0..21).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, values);
 
@@ -850,82 +844,82 @@ pub mod tests {
 	#[test]
 	fn test_dictionary_id_roundtrip_u4() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(42u64), Type::Uint4);
-		let schema = RowSchema::new(vec![RowSchemaField::new("status", constraint)]);
+		let shape = RowShape::new(vec![RowShapeField::new("status", constraint)]);
 
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 		let entry = DictionaryEntryId::U4(7);
-		schema.set_value(&mut row, 0, &Value::DictionaryId(entry));
+		shape.set_value(&mut row, 0, &Value::DictionaryId(entry));
 
 		assert!(row.is_defined(0));
-		let retrieved = schema.get_value(&row, 0);
+		let retrieved = shape.get_value(&row, 0);
 		assert_eq!(retrieved, Value::DictionaryId(DictionaryEntryId::U4(7)));
 	}
 
 	#[test]
 	fn test_dictionary_id_roundtrip_u2() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(10u64), Type::Uint2);
-		let schema = RowSchema::new(vec![RowSchemaField::new("category", constraint)]);
+		let shape = RowShape::new(vec![RowShapeField::new("category", constraint)]);
 
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 		let entry = DictionaryEntryId::U2(500);
-		schema.set_value(&mut row, 0, &Value::DictionaryId(entry));
+		shape.set_value(&mut row, 0, &Value::DictionaryId(entry));
 
 		assert!(row.is_defined(0));
-		let retrieved = schema.get_value(&row, 0);
+		let retrieved = shape.get_value(&row, 0);
 		assert_eq!(retrieved, Value::DictionaryId(DictionaryEntryId::U2(500)));
 	}
 
 	#[test]
 	fn test_dictionary_id_roundtrip_u8() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(99u64), Type::Uint8);
-		let schema = RowSchema::new(vec![RowSchemaField::new("tag", constraint)]);
+		let shape = RowShape::new(vec![RowShapeField::new("tag", constraint)]);
 
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 		let entry = DictionaryEntryId::U8(123456789);
-		schema.set_value(&mut row, 0, &Value::DictionaryId(entry));
+		shape.set_value(&mut row, 0, &Value::DictionaryId(entry));
 
 		assert!(row.is_defined(0));
-		let retrieved = schema.get_value(&row, 0);
+		let retrieved = shape.get_value(&row, 0);
 		assert_eq!(retrieved, Value::DictionaryId(DictionaryEntryId::U8(123456789)));
 	}
 
 	#[test]
 	fn test_dictionary_id_with_undefined() {
 		let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), Type::Uint4);
-		let schema = RowSchema::new(vec![
-			RowSchemaField::new("dict_col", constraint),
-			RowSchemaField::unconstrained("int_col", Type::Int4),
+		let shape = RowShape::new(vec![
+			RowShapeField::new("dict_col", constraint),
+			RowShapeField::unconstrained("int_col", Type::Int4),
 		]);
 
-		let mut row = schema.allocate();
-		schema.set_value(&mut row, 0, &Value::none());
-		schema.set_value(&mut row, 1, &Value::Int4(42));
+		let mut row = shape.allocate();
+		shape.set_value(&mut row, 0, &Value::none());
+		shape.set_value(&mut row, 1, &Value::Int4(42));
 
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 
-		assert_eq!(schema.get_value(&row, 0), Value::none());
-		assert_eq!(schema.get_value(&row, 1), Value::Int4(42));
+		assert_eq!(shape.get_value(&row, 0), Value::none());
+		assert_eq!(shape.get_value(&row, 1), Value::Int4(42));
 	}
 
 	#[test]
 	fn test_dictionary_id_mixed_with_other_types() {
 		let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(5u64), Type::Uint4);
-		let schema = RowSchema::new(vec![
-			RowSchemaField::unconstrained("id", Type::Int4),
-			RowSchemaField::new("status", dict_constraint),
-			RowSchemaField::unconstrained("name", Type::Utf8),
+		let shape = RowShape::new(vec![
+			RowShapeField::unconstrained("id", Type::Int4),
+			RowShapeField::new("status", dict_constraint),
+			RowShapeField::unconstrained("name", Type::Utf8),
 		]);
 
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 		let values = vec![
 			Value::Int4(100),
 			Value::DictionaryId(DictionaryEntryId::U4(3)),
 			Value::Utf8("test".to_string()),
 		];
-		schema.set_values(&mut row, &values);
+		shape.set_values(&mut row, &values);
 
-		let retrieved: Vec<Value> = (0..3).map(|i| schema.get_value(&row, i)).collect();
+		let retrieved: Vec<Value> = (0..3).map(|i| shape.get_value(&row, i)).collect();
 		assert_eq!(retrieved, values);
 	}
 }

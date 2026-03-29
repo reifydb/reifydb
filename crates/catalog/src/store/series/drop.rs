@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::schema::drop::drop_schema_metadata};
+use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_series(txn: &mut AdminTransaction, series: SeriesId) -> Result<()> {
@@ -24,7 +24,7 @@ impl CatalogStore {
 		};
 
 		// Clean up all associated metadata (columns, policies, sequences, pk)
-		drop_schema_metadata(txn, series.into(), pk_id)?;
+		drop_shape_metadata(txn, series.into(), pk_id)?;
 
 		// Remove the series metadata
 		txn.remove(&SeriesMetadataKey::encoded(series))?;

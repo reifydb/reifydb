@@ -7,7 +7,7 @@ use postcard::from_bytes;
 use reifydb_core::{
 	interface::catalog::{
 		flow::{FlowId, FlowNodeId},
-		schema::SchemaId,
+		shape::ShapeId,
 		view::ViewKind,
 	},
 	internal,
@@ -92,7 +92,7 @@ impl FlowEngine {
 			} => {
 				let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 
-				self.add_source(flow.id, node.id, SchemaId::table(table.id));
+				self.add_source(flow.id, node.id, ShapeId::table(table.id));
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SourceTable(PrimitiveTableOperator::new(node.id, table))),
@@ -102,11 +102,11 @@ impl FlowEngine {
 				view,
 			} => {
 				let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
-				self.add_source(flow.id, node.id, SchemaId::view(view.id()));
+				self.add_source(flow.id, node.id, ShapeId::view(view.id()));
 
 				// For deferred views, also register the underlying primitive as a source.
 				// Deferred view sinks write to the underlying primitive's key space,
-				// so CDC from upstream deferred view commits uses the underlying SchemaId.
+				// so CDC from upstream deferred view commits uses the underlying ShapeId.
 				if view.kind() == ViewKind::Deferred {
 					self.add_source(flow.id, node.id, view.underlying_id());
 				}
@@ -139,23 +139,21 @@ impl FlowEngine {
 											table: t,
 										} => {
 											additional_sources.push(
-												SchemaId::table(t),
+												ShapeId::table(t),
 											);
 										}
 										SourceRingBuffer {
 											ringbuffer: rb,
 										} => {
 											additional_sources.push(
-												SchemaId::ringbuffer(
-													rb,
-												),
+												ShapeId::ringbuffer(rb),
 											);
 										}
 										SourceSeries {
 											series: s,
 										} => {
 											additional_sources.push(
-												SchemaId::series(s),
+												ShapeId::series(s),
 											);
 										}
 										_ => {}
@@ -190,7 +188,7 @@ impl FlowEngine {
 				ringbuffer,
 			} => {
 				let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
-				self.add_source(flow.id, node.id, SchemaId::ringbuffer(rb.id));
+				self.add_source(flow.id, node.id, ShapeId::ringbuffer(rb.id));
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SourceRingBuffer(PrimitiveRingBufferOperator::new(
@@ -202,7 +200,7 @@ impl FlowEngine {
 				series,
 			} => {
 				let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
-				self.add_source(flow.id, node.id, SchemaId::series(s.id));
+				self.add_source(flow.id, node.id, ShapeId::series(s.id));
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::SourceSeries(PrimitiveSeriesOperator::new(node.id, s))),
@@ -218,7 +216,7 @@ impl FlowEngine {
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 
-				self.add_sink(flow.id, node.id, SchemaId::view(*view));
+				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
@@ -238,7 +236,7 @@ impl FlowEngine {
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.add_sink(flow.id, node.id, SchemaId::view(*view));
+				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
@@ -262,7 +260,7 @@ impl FlowEngine {
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				self.add_sink(flow.id, node.id, SchemaId::view(*view));
+				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 				self.operators.insert(
 					node.id,
@@ -291,7 +289,7 @@ impl FlowEngine {
 					.clone();
 
 				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
-				// which uses SchemaId (u64-based). Subscriptions are ephemeral 1:1 mapped.
+				// which uses ShapeId (u64-based). Subscriptions are ephemeral 1:1 mapped.
 				let resolved = self.catalog.resolve_subscription(&mut txn.reborrow(), subscription)?;
 				self.operators.insert(
 					node.id,
@@ -564,8 +562,8 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	fn add_source(&mut self, flow: FlowId, node: FlowNodeId, schema: SchemaId) {
-		let nodes = self.sources.entry(schema).or_insert_with(Vec::new);
+	fn add_source(&mut self, flow: FlowId, node: FlowNodeId, shape: ShapeId) {
+		let nodes = self.sources.entry(shape).or_insert_with(Vec::new);
 
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {
@@ -573,7 +571,7 @@ impl FlowEngine {
 		}
 	}
 
-	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: SchemaId) {
+	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ShapeId) {
 		let nodes = self.sinks.entry(sink).or_insert_with(Vec::new);
 
 		let entry = (flow, node);

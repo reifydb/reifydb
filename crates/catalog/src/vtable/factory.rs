@@ -36,7 +36,7 @@ pub trait VirtualTableFactory: Send + Sync + 'static {
 	/// Each call should return a fresh instance ready to process a new query.
 	fn create_boxed(&self) -> Box<dyn BaseVTable + Send + Sync>;
 
-	/// Get the table definition (schema).
+	/// Get the table definition (shape).
 	///
 	/// Returns the metadata including column names, types, and constraints.
 	fn definition(&self) -> Arc<VTable>;

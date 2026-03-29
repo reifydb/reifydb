@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{property::ColumnPropertyKind, schema::SchemaId},
+	interface::catalog::{property::ColumnPropertyKind, shape::ShapeId},
 	key::{column::ColumnKey, columns::ColumnsKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -49,7 +49,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		column::schema::{
+		column::shape::{
 			column,
 			column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, PRIMITIVE, VALUE},
 			primitive_column,
@@ -61,7 +61,7 @@ use crate::{
 pub(crate) struct ColumnToCreate {
 	pub fragment: Option<Fragment>,
 	pub namespace_name: String,
-	pub schema_name: String, // FIXME refactor to source_name
+	pub shape_name: String, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
 	pub properties: Vec<ColumnPropertyKind>,
@@ -73,19 +73,19 @@ pub(crate) struct ColumnToCreate {
 impl CatalogStore {
 	pub(crate) fn create_column(
 		txn: &mut AdminTransaction,
-		schema: impl Into<SchemaId>,
+		shape: impl Into<ShapeId>,
 		column_to_create: ColumnToCreate,
 	) -> Result<Column> {
-		let schema = schema.into();
+		let shape = shape.into();
 
 		// FIXME policies
 		if let Some(column) =
-			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), schema, &column_to_create.column)?
+			Self::find_column_by_name(&mut Transaction::Admin(&mut *txn), shape, &column_to_create.column)?
 		{
 			return Err(CatalogError::ColumnAlreadyExists {
 				kind: CatalogObjectKind::Table,
 				namespace: column_to_create.namespace_name.clone(),
-				name: column_to_create.schema_name.clone(),
+				name: column_to_create.shape_name.clone(),
 				column: column.name,
 				fragment: Fragment::None,
 			}
@@ -115,30 +115,30 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_id(txn)?;
 
-		let mut row = column::SCHEMA.allocate();
-		column::SCHEMA.set_u64(&mut row, ID, id);
-		column::SCHEMA.set_u64(&mut row, PRIMITIVE, schema);
-		column::SCHEMA.set_utf8(&mut row, NAME, &column_to_create.column);
-		column::SCHEMA.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
-		column::SCHEMA.set_u8(&mut row, INDEX, column_to_create.index);
-		column::SCHEMA.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
+		let mut row = column::SHAPE.allocate();
+		column::SHAPE.set_u64(&mut row, ID, id);
+		column::SHAPE.set_u64(&mut row, PRIMITIVE, shape);
+		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
+		column::SHAPE.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
+		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
+		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 
 		// Store constraint as encoded blob
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
 		let blob = Blob::from(constraint_bytes);
-		column::SCHEMA.set_blob(&mut row, CONSTRAINT, &blob);
+		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
 
 		// Store dictionary_id (0 means no dictionary)
 		let dict_id_value = column_to_create.dictionary_id.map(|id| u64::from(id)).unwrap_or(0);
-		column::SCHEMA.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
+		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
 		txn.set(&ColumnsKey::encoded(id), row)?;
 
-		let mut row = primitive_column::SCHEMA.allocate();
-		primitive_column::SCHEMA.set_u64(&mut row, primitive_column::ID, id);
-		primitive_column::SCHEMA.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
-		primitive_column::SCHEMA.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
-		txn.set(&ColumnKey::encoded(schema, id), row)?;
+		let mut row = primitive_column::SHAPE.allocate();
+		primitive_column::SHAPE.set_u64(&mut row, primitive_column::ID, id);
+		primitive_column::SHAPE.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
+		primitive_column::SHAPE.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
+		txn.set(&ColumnKey::encoded(shape, id), row)?;
 
 		for policy in column_to_create.properties {
 			Self::create_column_property(txn, id, policy)?;
@@ -179,7 +179,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],
@@ -196,7 +196,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "col_2".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
 				properties: vec![],
@@ -233,7 +233,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "id".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				properties: vec![],
@@ -265,7 +265,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "name".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Utf8),
 				properties: vec![],
@@ -287,7 +287,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "is_active".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],
@@ -307,7 +307,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "price".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Float8),
 				properties: vec![],
@@ -332,7 +332,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],
@@ -350,7 +350,7 @@ pub mod test {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "col_1".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],

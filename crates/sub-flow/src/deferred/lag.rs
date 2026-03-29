@@ -14,7 +14,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::identity::IdentityId;
 
-use super::tracker::SchemaVersionTracker;
+use super::tracker::ShapeVersionTracker;
 use crate::catalog::FlowCatalog;
 
 /// Provides flow lag data for virtual table queries.
@@ -23,14 +23,14 @@ use crate::catalog::FlowCatalog;
 /// This enables accurate per-flow lag reporting and supports exactly-once
 /// processing semantics during backfill restarts.
 pub struct FlowLags {
-	primitive_tracker: Arc<SchemaVersionTracker>,
+	primitive_tracker: Arc<ShapeVersionTracker>,
 	engine: StandardEngine,
 	catalog: FlowCatalog,
 }
 
 impl FlowLags {
 	/// Create a new flow lags provider.
-	pub fn new(primitive_tracker: Arc<SchemaVersionTracker>, engine: StandardEngine, catalog: FlowCatalog) -> Self {
+	pub fn new(primitive_tracker: Arc<ShapeVersionTracker>, engine: StandardEngine, catalog: FlowCatalog) -> Self {
 		Self {
 			primitive_tracker,
 			engine,

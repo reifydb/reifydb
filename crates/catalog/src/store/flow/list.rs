@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::duration::Duration;
 
-use crate::{CatalogStore, Result, store::flow::schema::flow};
+use crate::{CatalogStore, Result, store::flow::shape::flow};
 
 impl CatalogStore {
 	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>> {
@@ -26,12 +26,12 @@ impl CatalogStore {
 					let flow_id = flow_key.flow;
 
 					let namespace_id =
-						NamespaceId(flow::SCHEMA.get_u64(&entry.row, flow::NAMESPACE));
-					let name = flow::SCHEMA.get_utf8(&entry.row, flow::NAME).to_string();
-					let status_u8 = flow::SCHEMA.get_u8(&entry.row, flow::STATUS);
+						NamespaceId(flow::SHAPE.get_u64(&entry.row, flow::NAMESPACE));
+					let name = flow::SHAPE.get_utf8(&entry.row, flow::NAME).to_string();
+					let status_u8 = flow::SHAPE.get_u8(&entry.row, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 
-					let tick_nanos = flow::SCHEMA.get_u64(&entry.row, flow::TICK_NANOS);
+					let tick_nanos = flow::SHAPE.get_u64(&entry.row, flow::TICK_NANOS);
 					let tick = if tick_nanos > 0 {
 						Some(Duration::from_nanoseconds(tick_nanos as i64)?)
 					} else {

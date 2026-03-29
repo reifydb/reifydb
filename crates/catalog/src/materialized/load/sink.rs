@@ -18,7 +18,7 @@ use serde_json::from_str;
 use super::MaterializedCatalog;
 use crate::{
 	Result,
-	store::sink::schema::{
+	store::sink::shape::{
 		sink,
 		sink::{CONFIG, CONNECTOR, ID, NAME, NAMESPACE, SOURCE_NAME, SOURCE_NAMESPACE, STATUS},
 	},
@@ -40,15 +40,15 @@ pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 
 fn convert_sink(multi: MultiVersionRow) -> Sink {
 	let row = multi.row;
-	let id = SinkId(sink::SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(sink::SCHEMA.get_u64(&row, NAMESPACE));
-	let name = sink::SCHEMA.get_utf8(&row, NAME).to_string();
-	let source_namespace = NamespaceId(sink::SCHEMA.get_u64(&row, SOURCE_NAMESPACE));
-	let source_name = sink::SCHEMA.get_utf8(&row, SOURCE_NAME).to_string();
-	let connector = sink::SCHEMA.get_utf8(&row, CONNECTOR).to_string();
-	let config_json = sink::SCHEMA.get_utf8(&row, CONFIG);
+	let id = SinkId(sink::SHAPE.get_u64(&row, ID));
+	let namespace = NamespaceId(sink::SHAPE.get_u64(&row, NAMESPACE));
+	let name = sink::SHAPE.get_utf8(&row, NAME).to_string();
+	let source_namespace = NamespaceId(sink::SHAPE.get_u64(&row, SOURCE_NAMESPACE));
+	let source_name = sink::SHAPE.get_utf8(&row, SOURCE_NAME).to_string();
+	let connector = sink::SHAPE.get_utf8(&row, CONNECTOR).to_string();
+	let config_json = sink::SHAPE.get_utf8(&row, CONFIG);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let status = FlowStatus::from_u8(sink::SCHEMA.get_u8(&row, STATUS));
+	let status = FlowStatus::from_u8(sink::SHAPE.get_u8(&row, STATUS));
 
 	Sink {
 		id,

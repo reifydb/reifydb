@@ -26,7 +26,7 @@ impl FlowEngine {
 		let mut nodes_processed = 0;
 
 		match change.origin {
-			ChangeOrigin::Schema(source) => {
+			ChangeOrigin::Shape(source) => {
 				let node_registrations = self.sources.get(&source).cloned();
 
 				if let Some(node_registrations) = node_registrations {

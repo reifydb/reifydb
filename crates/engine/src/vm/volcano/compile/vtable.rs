@@ -21,13 +21,12 @@ use reifydb_catalog::vtable::{
 		policy_operations::SystemPolicyOperations, primary_key_columns::SystemPrimaryKeyColumns,
 		primary_keys::SystemPrimaryKeys, procedures::SystemProcedures,
 		ringbuffer_storage_stats::SystemRingBufferStorageStats, ringbuffers::SystemRingBuffers,
-		roles::SystemRoles, schema_fields::SystemSchemaFields,
-		schema_retention_policies::SystemSchemaRetentionPolicies, schemas::SystemSchemas,
-		sequences::SystemSequences, series::SystemSeries, table_storage_stats::SystemTableStorageStats,
-		tables::SystemTables, tables_virtual::SystemTablesVirtual, tag_variants::SystemTagVariants,
-		tags::SystemTags, types::SystemTypes, versions::SystemVersions,
-		view_storage_stats::SystemViewStorageStats, views::SystemViews,
-		virtual_table_columns::SystemVirtualTableColumns,
+		roles::SystemRoles, sequences::SystemSequences, series::SystemSeries, shape_fields::SystemShapeFields,
+		shape_retention_policies::SystemShapeRetentionPolicies, shapes::SystemShapes,
+		table_storage_stats::SystemTableStorageStats, tables::SystemTables,
+		tables_virtual::SystemTablesVirtual, tag_variants::SystemTagVariants, tags::SystemTags,
+		types::SystemTypes, versions::SystemVersions, view_storage_stats::SystemViewStorageStats,
+		views::SystemViews, virtual_table_columns::SystemVirtualTableColumns,
 	},
 	tables::VTables,
 };
@@ -84,7 +83,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"primary_key_columns" => VTables::PrimaryKeyColumns(SystemPrimaryKeyColumns::new()),
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
-		"schema_retention_policies" => VTables::SchemaRetentionPolicies(SystemSchemaRetentionPolicies::new()),
+		"shape_retention_policies" => VTables::ShapeRetentionPolicies(SystemShapeRetentionPolicies::new()),
 		"operator_retention_policies" => {
 			VTables::OperatorRetentionPolicies(SystemOperatorRetentionPolicies::new())
 		}
@@ -124,8 +123,8 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"dictionary_storage_stats" => VTables::DictionaryStorageStats(SystemDictionaryStorageStats::new(
 			context.services.stats_reader.clone(),
 		)),
-		"schemas" => VTables::Schemas(SystemSchemas::new(context.services.catalog.clone())),
-		"schema_fields" => VTables::SchemaFields(SystemSchemaFields::new(context.services.catalog.clone())),
+		"shapes" => VTables::Shapes(SystemShapes::new(context.services.catalog.clone())),
+		"shape_fields" => VTables::ShapeFields(SystemShapeFields::new(context.services.catalog.clone())),
 		"enums" => VTables::Enums(SystemEnums::new()),
 		"enum_variants" => VTables::EnumVariants(SystemEnumVariants::new()),
 		"events" => VTables::Events(SystemEvents::new()),

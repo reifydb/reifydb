@@ -15,7 +15,7 @@ use crate::{
 	materialized::MaterializedCatalog,
 	store::view::{
 		find::decode_view,
-		schema::view::{PRIMARY_KEY, SCHEMA},
+		shape::view::{PRIMARY_KEY, SHAPE},
 	},
 };
 
@@ -48,7 +48,7 @@ fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Resu
 }
 
 fn get_view_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = SCHEMA.get_u64(&multi.row, PRIMARY_KEY);
+	let pk_id_raw = SHAPE.get_u64(&multi.row, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

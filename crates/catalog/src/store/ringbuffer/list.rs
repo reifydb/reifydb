@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::ringbuffer::schema::ringbuffer};
+use crate::{CatalogStore, Result, store::ringbuffer::shape::ringbuffer};
 
 impl CatalogStore {
 	pub(crate) fn list_ringbuffers_all(rx: &mut Transaction<'_>) -> Result<Vec<RingBuffer>> {
@@ -28,17 +28,17 @@ impl CatalogStore {
 						let ringbuffer_id = ringbuffer_key.ringbuffer;
 
 						let namespace_id = NamespaceId(
-							ringbuffer::SCHEMA.get_u64(&entry.row, ringbuffer::NAMESPACE),
+							ringbuffer::SHAPE.get_u64(&entry.row, ringbuffer::NAMESPACE),
 						);
 
-						let name = ringbuffer::SCHEMA
+						let name = ringbuffer::SHAPE
 							.get_utf8(&entry.row, ringbuffer::NAME)
 							.to_string();
 
 						let capacity =
-							ringbuffer::SCHEMA.get_u64(&entry.row, ringbuffer::CAPACITY);
+							ringbuffer::SHAPE.get_u64(&entry.row, ringbuffer::CAPACITY);
 
-						let partition_by_str = ringbuffer::SCHEMA
+						let partition_by_str = ringbuffer::SHAPE
 							.get_utf8(&entry.row, ringbuffer::PARTITION_BY);
 						let partition_by = if partition_by_str.is_empty() {
 							vec![]

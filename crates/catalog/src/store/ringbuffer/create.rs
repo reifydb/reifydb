@@ -24,7 +24,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		ringbuffer::schema::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
+		ringbuffer::shape::{ringbuffer, ringbuffer_metadata, ringbuffer_namespace},
 		sequence::system::SystemSequence,
 	},
 };
@@ -92,14 +92,14 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
 	) -> Result<()> {
-		let mut row = ringbuffer::SCHEMA.allocate();
-		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::ID, ringbuffer);
-		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
-		ringbuffer::SCHEMA.set_utf8(&mut row, ringbuffer::NAME, to_create.name.text());
-		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
+		let mut row = ringbuffer::SHAPE.allocate();
+		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::ID, ringbuffer);
+		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::NAMESPACE, namespace);
+		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::NAME, to_create.name.text());
+		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
 		// Initialize with no primary key
-		ringbuffer::SCHEMA.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
-		ringbuffer::SCHEMA.set_utf8(&mut row, ringbuffer::PARTITION_BY, &to_create.partition_by.join(","));
+		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
+		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, &to_create.partition_by.join(","));
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 
@@ -112,9 +112,9 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = ringbuffer_namespace::SCHEMA.allocate();
-		ringbuffer_namespace::SCHEMA.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
-		ringbuffer_namespace::SCHEMA.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
+		let mut row = ringbuffer_namespace::SHAPE.allocate();
+		ringbuffer_namespace::SHAPE.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
+		ringbuffer_namespace::SHAPE.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
 
 		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row)?;
 
@@ -133,7 +133,7 @@ impl CatalogStore {
 				ColumnToCreate {
 					fragment: Some(col.fragment.clone()),
 					namespace_name: String::new(),
-					schema_name: String::new(),
+					shape_name: String::new(),
 					column: col.name.text().to_string(),
 					constraint: col.constraint,
 					properties: col.properties,
@@ -152,12 +152,12 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 	) -> Result<()> {
-		let mut row = ringbuffer_metadata::SCHEMA.allocate();
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::HEAD, 1u64);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::TAIL, 1u64);
-		ringbuffer_metadata::SCHEMA.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
+		let mut row = ringbuffer_metadata::SHAPE.allocate();
+		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::ID, ringbuffer_id);
+		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::CAPACITY, capacity);
+		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::HEAD, 1u64);
+		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::TAIL, 1u64);
+		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
 
 		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
 
@@ -176,7 +176,7 @@ pub mod tests {
 	};
 
 	use super::*;
-	use crate::{store::ringbuffer::schema::ringbuffer_namespace, test_utils::ensure_test_namespace};
+	use crate::{store::ringbuffer::shape::ringbuffer_namespace, test_utils::ensure_test_namespace};
 
 	#[test]
 	fn test_create_simple_ringbuffer() {
@@ -302,16 +302,16 @@ pub mod tests {
 		// Check first link (descending order, so buffer2 comes first)
 		let link = &links[0];
 		let row = &link.row;
-		let id2 = ringbuffer_namespace::SCHEMA.get_u64(row, ringbuffer_namespace::ID);
+		let id2 = ringbuffer_namespace::SHAPE.get_u64(row, ringbuffer_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME), "buffer2");
+		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME), "buffer2");
 
 		// Check second link (buffer1 comes second)
 		let link = &links[1];
 		let row = &link.row;
-		let id1 = ringbuffer_namespace::SCHEMA.get_u64(row, ringbuffer_namespace::ID);
+		let id1 = ringbuffer_namespace::SHAPE.get_u64(row, ringbuffer_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(ringbuffer_namespace::SCHEMA.get_utf8(row, ringbuffer_namespace::NAME), "buffer1");
+		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME), "buffer1");
 	}
 
 	#[test]

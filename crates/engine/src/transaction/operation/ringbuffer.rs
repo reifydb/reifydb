@@ -3,9 +3,9 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{
-		catalog::{ringbuffer::RingBuffer, schema::SchemaId},
+		catalog::{ringbuffer::RingBuffer, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::row::RowKey,
@@ -19,8 +19,8 @@ use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::
 
 use crate::Result;
 
-fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
-	let fields = schema.fields();
+fn build_encoded_columns(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
+	let fields = shape.fields();
 
 	let mut columns_vec: Vec<Column> = Vec::with_capacity(fields.len());
 	for field in fields.iter() {
@@ -31,7 +31,7 @@ fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &En
 	}
 
 	for (i, _) in fields.iter().enumerate() {
-		columns_vec[i].data.push_value(schema.get_value(encoded, i));
+		columns_vec[i].data.push_value(shape.get_value(encoded, i));
 	}
 
 	Columns {
@@ -42,15 +42,15 @@ fn build_encoded_columns(schema: &RowSchema, row_number: RowNumber, encoded: &En
 
 fn build_ringbuffer_insert_change(
 	rb: &RingBuffer,
-	schema: &RowSchema,
+	shape: &RowShape,
 	row_number: RowNumber,
 	encoded: &EncodedRow,
 ) -> Change {
 	Change {
-		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Insert {
-			post: build_encoded_columns(schema, row_number, encoded),
+			post: build_encoded_columns(shape, row_number, encoded),
 		}],
 	}
 }
@@ -61,24 +61,24 @@ fn build_ringbuffer_update_change(
 	pre: &EncodedRow,
 	post: &EncodedRow,
 ) -> Change {
-	let schema: RowSchema = (&rb.columns).into();
+	let shape: RowShape = (&rb.columns).into();
 	Change {
-		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Update {
-			pre: build_encoded_columns(&schema, row_number, pre),
-			post: build_encoded_columns(&schema, row_number, post),
+			pre: build_encoded_columns(&shape, row_number, pre),
+			post: build_encoded_columns(&shape, row_number, post),
 		}],
 	}
 }
 
 fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedRow) -> Change {
-	let schema: RowSchema = (&rb.columns).into();
+	let shape: RowShape = (&rb.columns).into();
 	Change {
-		origin: ChangeOrigin::Schema(SchemaId::ringbuffer(rb.id)),
+		origin: ChangeOrigin::Shape(ShapeId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: vec![Diff::Remove {
-			pre: build_encoded_columns(&schema, row_number, encoded),
+			pre: build_encoded_columns(&shape, row_number, encoded),
 		}],
 	}
 }
@@ -89,7 +89,7 @@ pub(crate) trait RingBufferOperations {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow>;
@@ -112,7 +112,7 @@ impl RingBufferOperations for CommandTransaction {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
@@ -142,7 +142,7 @@ impl RingBufferOperations for CommandTransaction {
 				&row,
 			));
 		} else {
-			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, schema, row_number, &row));
+			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &row));
 		}
 
 		Ok(row)
@@ -199,7 +199,7 @@ impl RingBufferOperations for AdminTransaction {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
@@ -226,7 +226,7 @@ impl RingBufferOperations for AdminTransaction {
 				&row,
 			));
 		} else {
-			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, schema, row_number, &row));
+			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &row));
 		}
 
 		Ok(row)
@@ -279,17 +279,17 @@ impl RingBufferOperations for Transaction<'_> {
 	fn insert_ringbuffer_at(
 		&mut self,
 		ringbuffer: &RingBuffer,
-		schema: &RowSchema,
+		shape: &RowShape,
 		row_number: RowNumber,
 		row: EncodedRow,
 	) -> Result<EncodedRow> {
 		match self {
-			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
-			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
+			Transaction::Command(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
+			Transaction::Admin(txn) => txn.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
 			Transaction::Subscription(txn) => {
-				txn.as_admin_mut().insert_ringbuffer_at(ringbuffer, schema, row_number, row)
+				txn.as_admin_mut().insert_ringbuffer_at(ringbuffer, shape, row_number, row)
 			}
-			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
+			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, shape, row_number, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}

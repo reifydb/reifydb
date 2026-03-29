@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::{duration::Duration, r#type::Type};
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_duration(&self, row: &mut EncodedRow, index: usize, value: Duration) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -64,43 +64,43 @@ impl RowSchema {
 pub mod tests {
 	use reifydb_type::value::{duration::Duration, r#type::Type};
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_duration() {
-		let schema = RowSchema::testing(&[Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration]);
+		let mut row = shape.allocate();
 
 		let value = Duration::from_seconds(-7200).unwrap();
-		schema.set_duration(&mut row, 0, value.clone());
-		assert_eq!(schema.get_duration(&row, 0), value);
+		shape.set_duration(&mut row, 0, value.clone());
+		assert_eq!(shape.get_duration(&row, 0), value);
 	}
 
 	#[test]
 	fn test_try_get_duration() {
-		let schema = RowSchema::testing(&[Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_duration(&row, 0), None);
+		assert_eq!(shape.try_get_duration(&row, 0), None);
 
 		let test_duration = Duration::from_days(30).unwrap();
-		schema.set_duration(&mut row, 0, test_duration.clone());
-		assert_eq!(schema.try_get_duration(&row, 0), Some(test_duration));
+		shape.set_duration(&mut row, 0, test_duration.clone());
+		assert_eq!(shape.try_get_duration(&row, 0), Some(test_duration));
 	}
 
 	#[test]
 	fn test_zero() {
-		let schema = RowSchema::testing(&[Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration]);
+		let mut row = shape.allocate();
 
 		let zero = Duration::default(); // Zero duration
-		schema.set_duration(&mut row, 0, zero.clone());
-		assert_eq!(schema.get_duration(&row, 0), zero);
+		shape.set_duration(&mut row, 0, zero.clone());
+		assert_eq!(shape.get_duration(&row, 0), zero);
 	}
 
 	#[test]
 	fn test_various_durations() {
-		let schema = RowSchema::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[Type::Duration]);
 
 		let test_durations = [
 			Duration::from_seconds(0).unwrap(),     // Zero
@@ -113,15 +113,15 @@ pub mod tests {
 		];
 
 		for duration in test_durations {
-			let mut row = schema.allocate();
-			schema.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(schema.get_duration(&row, 0), duration);
+			let mut row = shape.allocate();
+			shape.set_duration(&mut row, 0, duration.clone());
+			assert_eq!(shape.get_duration(&row, 0), duration);
 		}
 	}
 
 	#[test]
 	fn test_negative_durations() {
-		let schema = RowSchema::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[Type::Duration]);
 
 		let negative_durations = [
 			Duration::from_seconds(-60).unwrap(),    // -1 minute
@@ -132,16 +132,16 @@ pub mod tests {
 		];
 
 		for duration in negative_durations {
-			let mut row = schema.allocate();
-			schema.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(schema.get_duration(&row, 0), duration);
+			let mut row = shape.allocate();
+			shape.set_duration(&mut row, 0, duration.clone());
+			assert_eq!(shape.get_duration(&row, 0), duration);
 		}
 	}
 
 	#[test]
 	fn test_complex_parts() {
-		let schema = RowSchema::testing(&[Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration]);
+		let mut row = shape.allocate();
 
 		// Create a duration with all components
 		let complex_duration = Duration::new(
@@ -150,48 +150,48 @@ pub mod tests {
 			123456789, // nanoseconds
 		)
 		.unwrap();
-		schema.set_duration(&mut row, 0, complex_duration.clone());
-		assert_eq!(schema.get_duration(&row, 0), complex_duration);
+		shape.set_duration(&mut row, 0, complex_duration.clone());
+		assert_eq!(shape.get_duration(&row, 0), complex_duration);
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Duration, Type::Boolean, Type::Duration, Type::Int8]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration, Type::Boolean, Type::Duration, Type::Int8]);
+		let mut row = shape.allocate();
 
 		let duration1 = Duration::from_hours(24).unwrap();
 		let duration2 = Duration::from_minutes(-30).unwrap();
 
-		schema.set_duration(&mut row, 0, duration1.clone());
-		schema.set_bool(&mut row, 1, true);
-		schema.set_duration(&mut row, 2, duration2.clone());
-		schema.set_i64(&mut row, 3, 987654321);
+		shape.set_duration(&mut row, 0, duration1.clone());
+		shape.set_bool(&mut row, 1, true);
+		shape.set_duration(&mut row, 2, duration2.clone());
+		shape.set_i64(&mut row, 3, 987654321);
 
-		assert_eq!(schema.get_duration(&row, 0), duration1);
-		assert_eq!(schema.get_bool(&row, 1), true);
-		assert_eq!(schema.get_duration(&row, 2), duration2);
-		assert_eq!(schema.get_i64(&row, 3), 987654321);
+		assert_eq!(shape.get_duration(&row, 0), duration1);
+		assert_eq!(shape.get_bool(&row, 1), true);
+		assert_eq!(shape.get_duration(&row, 2), duration2);
+		assert_eq!(shape.get_i64(&row, 3), 987654321);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Duration, Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration, Type::Duration]);
+		let mut row = shape.allocate();
 
 		let duration = Duration::from_days(100).unwrap();
-		schema.set_duration(&mut row, 0, duration.clone());
+		shape.set_duration(&mut row, 0, duration.clone());
 
-		assert_eq!(schema.try_get_duration(&row, 0), Some(duration));
-		assert_eq!(schema.try_get_duration(&row, 1), None);
+		assert_eq!(shape.try_get_duration(&row, 0), Some(duration));
+		assert_eq!(shape.try_get_duration(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_duration(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_duration(&row, 0), None);
 	}
 
 	#[test]
 	fn test_large_values() {
-		let schema = RowSchema::testing(&[Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration]);
+		let mut row = shape.allocate();
 
 		// Test with large values
 		let large_duration = Duration::new(
@@ -200,14 +200,14 @@ pub mod tests {
 			123456789012345, // Large nanosecond value
 		)
 		.unwrap();
-		schema.set_duration(&mut row, 0, large_duration.clone());
-		assert_eq!(schema.get_duration(&row, 0), large_duration);
+		shape.set_duration(&mut row, 0, large_duration.clone());
+		assert_eq!(shape.get_duration(&row, 0), large_duration);
 	}
 
 	#[test]
 	fn test_precision_preservation() {
-		let schema = RowSchema::testing(&[Type::Duration]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Duration]);
+		let mut row = shape.allocate();
 
 		// Test that all components are preserved exactly
 		let precise_duration = Duration::new(
@@ -216,9 +216,9 @@ pub mod tests {
 			999999999, // 999,999,999 nanoseconds
 		)
 		.unwrap();
-		schema.set_duration(&mut row, 0, precise_duration.clone());
+		shape.set_duration(&mut row, 0, precise_duration.clone());
 
-		let retrieved = schema.get_duration(&row, 0);
+		let retrieved = shape.get_duration(&row, 0);
 		assert_eq!(retrieved, precise_duration);
 
 		let orig_months = precise_duration.get_months();
@@ -234,7 +234,7 @@ pub mod tests {
 
 	#[test]
 	fn test_common_durations() {
-		let schema = RowSchema::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[Type::Duration]);
 
 		// Test common durations used in applications
 		let common_durations = [
@@ -250,15 +250,15 @@ pub mod tests {
 		];
 
 		for duration in common_durations {
-			let mut row = schema.allocate();
-			schema.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(schema.get_duration(&row, 0), duration);
+			let mut row = shape.allocate();
+			shape.set_duration(&mut row, 0, duration.clone());
+			assert_eq!(shape.get_duration(&row, 0), duration);
 		}
 	}
 
 	#[test]
 	fn test_boundary_values() {
-		let schema = RowSchema::testing(&[Type::Duration]);
+		let shape = RowShape::testing(&[Type::Duration]);
 
 		// Test boundary values for each component
 		let boundary_durations = [
@@ -271,19 +271,19 @@ pub mod tests {
 		];
 
 		for duration in boundary_durations {
-			let mut row = schema.allocate();
-			schema.set_duration(&mut row, 0, duration.clone());
-			assert_eq!(schema.get_duration(&row, 0), duration);
+			let mut row = shape.allocate();
+			shape.set_duration(&mut row, 0, duration.clone());
+			assert_eq!(shape.get_duration(&row, 0), duration);
 		}
 	}
 
 	#[test]
 	fn test_try_get_duration_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_duration(&row, 0), None);
+		assert_eq!(shape.try_get_duration(&row, 0), None);
 	}
 }

@@ -103,7 +103,7 @@ use crate::{
 /// An active admin transaction that supports Query + DML + DDL operations.
 ///
 /// AdminTransaction is the most privileged transaction type, capable of
-/// executing DDL (schema changes), DML (data mutations), and queries.
+/// executing DDL (shape changes), DML (data mutations), and queries.
 /// It tracks catalog definition changes (TransactionalCatalogChanges) for DDL.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
@@ -400,7 +400,7 @@ impl AdminTransaction {
 
 	/// Track a flow change for transactional view pre-commit processing.
 	pub fn track_flow_change(&mut self, change: Change) {
-		if let ChangeOrigin::Schema(id) = change.origin {
+		if let ChangeOrigin::Shape(id) = change.origin {
 			for diff in change.diffs {
 				self.accumulator.track(id, diff);
 			}

@@ -6,7 +6,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::row::EncodedRow,
 	interface::{
-		catalog::{dictionary::Dictionary, schema::SchemaId},
+		catalog::{dictionary::Dictionary, shape::ShapeId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	internal_error,
@@ -163,7 +163,7 @@ impl DictionaryOperations for AdminTransaction {
 
 		// Track for testing::dictionaries::changed()
 		self.track_flow_change(Change {
-			origin: ChangeOrigin::Schema(SchemaId::Dictionary(dictionary.id)),
+			origin: ChangeOrigin::Shape(ShapeId::Dictionary(dictionary.id)),
 			version: CommitVersion(0),
 			diffs: vec![Diff::Insert {
 				post: Columns::single_row([("value", value)]),

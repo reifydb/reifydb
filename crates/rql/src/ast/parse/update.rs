@@ -5,7 +5,7 @@ use crate::{
 	Result,
 	ast::{
 		ast::{Ast, AstUpdate},
-		identifier::UnresolvedSchemaIdentifier,
+		identifier::UnresolvedShapeIdentifier,
 		parse::Parser,
 	},
 	bump::BumpBox,
@@ -29,9 +29,9 @@ impl<'bump> Parser<'bump> {
 		let target = if segments.len() > 1 {
 			let name = segments.pop().unwrap().into_fragment();
 			let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-			UnresolvedSchemaIdentifier::new(namespace, name)
+			UnresolvedShapeIdentifier::new(namespace, name)
 		} else {
-			UnresolvedSchemaIdentifier::new(vec![], segments.remove(0).into_fragment())
+			UnresolvedShapeIdentifier::new(vec![], segments.remove(0).into_fragment())
 		};
 
 		// 2. Parse assignments block { name: 'value', ... } - REQUIRED

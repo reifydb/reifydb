@@ -11,8 +11,8 @@
 use std::{iter, sync::Arc};
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
-	interface::{catalog::schema::SchemaId, resolved::ResolvedSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
+	interface::{catalog::shape::ShapeId, resolved::ResolvedShape},
 	internal_err, internal_error,
 	key::row::RowKey,
 	value::column::{columns::Columns, headers::ColumnHeaders},
@@ -31,16 +31,16 @@ use crate::{
 
 /// O(1) point lookup by row number
 pub(crate) struct RowPointLookupNode {
-	source: ResolvedSchema,
+	source: ResolvedShape,
 	row_number: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<RowSchema>,
+	shape: Option<RowShape>,
 	exhausted: bool,
 }
 
 impl<'a> RowPointLookupNode {
-	pub fn new(source: ResolvedSchema, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedShape, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -48,27 +48,27 @@ impl<'a> RowPointLookupNode {
 			row_number,
 			context: Some(context),
 			headers,
-			schema: None,
+			shape: None,
 			exhausted: false,
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
-		if let Some(schema) = &self.schema {
-			return Ok(schema.clone());
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+		if let Some(shape) = &self.shape {
+			return Ok(shape.clone());
 		}
 
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
-		let schema =
-			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-				internal_error!("RowSchema with fingerprint {:?} not found", fingerprint)
+		let shape =
+			stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+				internal_error!("RowShape with fingerprint {:?} not found", fingerprint)
 			})?;
 
-		self.schema = Some(schema.clone());
+		self.shape = Some(shape.clone());
 
-		Ok(schema)
+		Ok(shape)
 	}
 }
 
@@ -85,14 +85,14 @@ impl QueryNode for RowPointLookupNode {
 		}
 		self.exhausted = true;
 
-		let schema_id = get_object_id(&self.source)?;
-		let encoded_key = RowKey::encoded(schema_id, RowNumber(self.row_number));
+		let shape_id = get_object_id(&self.source)?;
+		let encoded_key = RowKey::encoded(shape_id, RowNumber(self.row_number));
 
 		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
-			let mut columns = columns_from_schema(&self.source);
-			let schema = self.get_or_load_schema(rx, &multi_values.row)?;
-			columns.append_rows(&schema, iter::once(multi_values.row), vec![RowNumber(self.row_number)])?;
+			let mut columns = columns_from_shape(&self.source);
+			let shape = self.get_or_load_shape(rx, &multi_values.row)?;
+			columns.append_rows(&shape, iter::once(multi_values.row), vec![RowNumber(self.row_number)])?;
 
 			Ok(Some(columns))
 		} else {
@@ -108,16 +108,16 @@ impl QueryNode for RowPointLookupNode {
 
 /// O(k) list lookup by row numbers
 pub(crate) struct RowListLookupNode {
-	source: ResolvedSchema,
+	source: ResolvedShape,
 	row_numbers: Vec<u64>,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<RowSchema>,
+	shape: Option<RowShape>,
 	current_index: usize,
 }
 
 impl<'a> RowListLookupNode {
-	pub fn new(source: ResolvedSchema, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedShape, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -125,27 +125,27 @@ impl<'a> RowListLookupNode {
 			row_numbers,
 			context: Some(context),
 			headers,
-			schema: None,
+			shape: None,
 			current_index: 0,
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
-		if let Some(schema) = &self.schema {
-			return Ok(schema.clone());
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+		if let Some(shape) = &self.shape {
+			return Ok(shape.clone());
 		}
 
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
-		let schema =
-			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-				internal_error!("RowSchema with fingerprint {:?} not found", fingerprint)
+		let shape =
+			stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+				internal_error!("RowShape with fingerprint {:?} not found", fingerprint)
 			})?;
 
-		self.schema = Some(schema.clone());
+		self.shape = Some(shape.clone());
 
-		Ok(schema)
+		Ok(shape)
 	}
 }
 
@@ -164,7 +164,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let schema_id = get_object_id(&self.source)?;
+		let shape_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -172,7 +172,7 @@ impl QueryNode for RowListLookupNode {
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
 		for &row_num in &self.row_numbers[self.current_index..end_index] {
-			let encoded_key = RowKey::encoded(schema_id, RowNumber(row_num));
+			let encoded_key = RowKey::encoded(shape_id, RowNumber(row_num));
 
 			// O(1) point lookup for each row
 			if let Some(multi_values) = rx.get(&encoded_key)? {
@@ -192,9 +192,9 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_schema(&self.source);
-		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
-		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
+		let mut columns = columns_from_shape(&self.source);
+		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
+		columns.append_rows(&shape, batch_rows.into_iter(), found_row_numbers)?;
 
 		Ok(Some(columns))
 	}
@@ -206,19 +206,19 @@ impl QueryNode for RowListLookupNode {
 
 /// Range scan by row numbers (start..=end)
 pub(crate) struct RowRangeScanNode {
-	source: ResolvedSchema,
+	source: ResolvedShape,
 	#[allow(dead_code)]
 	start: u64,
 	end: u64,
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
-	schema: Option<RowSchema>,
+	shape: Option<RowShape>,
 	current_row: u64,
 	exhausted: bool,
 }
 
 impl<'a> RowRangeScanNode {
-	pub fn new(source: ResolvedSchema, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
+	pub fn new(source: ResolvedShape, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
 		Ok(Self {
@@ -227,28 +227,28 @@ impl<'a> RowRangeScanNode {
 			end,
 			context: Some(context),
 			headers,
-			schema: None,
+			shape: None,
 			current_row: start,
 			exhausted: false,
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
-		if let Some(schema) = &self.schema {
-			return Ok(schema.clone());
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+		if let Some(shape) = &self.shape {
+			return Ok(shape.clone());
 		}
 
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowRangeScanNode context not set");
-		let schema =
-			stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
-				internal_error!("RowSchema with fingerprint {:?} not found", fingerprint)
+		let shape =
+			stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+				internal_error!("RowShape with fingerprint {:?} not found", fingerprint)
 			})?;
 
-		self.schema = Some(schema.clone());
+		self.shape = Some(shape.clone());
 
-		Ok(schema)
+		Ok(shape)
 	}
 }
 
@@ -267,7 +267,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let schema_id = get_object_id(&self.source)?;
+		let shape_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -275,7 +275,7 @@ impl QueryNode for RowRangeScanNode {
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
 		for row_num in self.current_row..=batch_end {
-			let encoded_key = RowKey::encoded(schema_id, RowNumber(row_num));
+			let encoded_key = RowKey::encoded(shape_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.row);
@@ -297,9 +297,9 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let mut columns = columns_from_schema(&self.source);
-		let schema = self.get_or_load_schema(rx, &batch_rows[0])?;
-		columns.append_rows(&schema, batch_rows.into_iter(), found_row_numbers)?;
+		let mut columns = columns_from_shape(&self.source);
+		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
+		columns.append_rows(&shape, batch_rows.into_iter(), found_row_numbers)?;
 
 		Ok(Some(columns))
 	}
@@ -311,11 +311,11 @@ impl QueryNode for RowRangeScanNode {
 
 // Helper functions
 
-fn build_headers_and_storage_types<'a>(source: &ResolvedSchema) -> Result<(ColumnHeaders, Vec<Type>)> {
+fn build_headers_and_storage_types<'a>(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<Type>)> {
 	let columns = match source {
-		ResolvedSchema::Table(table) => table.columns(),
-		ResolvedSchema::View(view) => view.columns(),
-		ResolvedSchema::RingBuffer(rb) => rb.columns(),
+		ResolvedShape::Table(table) => table.columns(),
+		ResolvedShape::View(view) => view.columns(),
+		ResolvedShape::RingBuffer(rb) => rb.columns(),
 		_ => {
 			unreachable!("Row lookup not supported for this source type");
 		}
@@ -330,20 +330,20 @@ fn build_headers_and_storage_types<'a>(source: &ResolvedSchema) -> Result<(Colum
 	Ok((headers, storage_types))
 }
 
-fn get_object_id(source: &ResolvedSchema) -> Result<SchemaId> {
+fn get_object_id(source: &ResolvedShape) -> Result<ShapeId> {
 	match source {
-		ResolvedSchema::Table(table) => Ok(table.def().id.into()),
-		ResolvedSchema::View(view) => Ok(view.def().underlying_id()),
-		ResolvedSchema::RingBuffer(rb) => Ok(rb.def().id.into()),
+		ResolvedShape::Table(table) => Ok(table.def().id.into()),
+		ResolvedShape::View(view) => Ok(view.def().underlying_id()),
+		ResolvedShape::RingBuffer(rb) => Ok(rb.def().id.into()),
 		_ => internal_err!("Row lookup not supported for this source type"),
 	}
 }
 
-fn columns_from_schema<'a>(source: &ResolvedSchema) -> Columns {
+fn columns_from_shape<'a>(source: &ResolvedShape) -> Columns {
 	match source {
-		ResolvedSchema::Table(table) => Columns::from_resolved_table(table),
-		ResolvedSchema::View(view) => Columns::from_resolved_view(view),
-		ResolvedSchema::RingBuffer(rb) => Columns::from_ringbuffer(rb),
+		ResolvedShape::Table(table) => Columns::from_resolved_table(table),
+		ResolvedShape::View(view) => Columns::from_resolved_view(view),
+		ResolvedShape::RingBuffer(rb) => Columns::from_ringbuffer(rb),
 		_ => Columns::empty(),
 	}
 }

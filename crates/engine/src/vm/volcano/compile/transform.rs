@@ -4,7 +4,7 @@
 use std::{collections, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::resolved::ResolvedSchema;
+use reifydb_core::interface::resolved::ResolvedShape;
 use reifydb_rql::{
 	expression::{AliasExpression, ConstantExpression, Expression, IdentExpression},
 	nodes::{
@@ -102,7 +102,7 @@ pub(crate) fn compile_patch<'a>(
 /// only replaces columns that appear in the assignments.
 fn expand_patch_sumtype_assignments(
 	assignments: Vec<Expression>,
-	source: &ResolvedSchema,
+	source: &ResolvedShape,
 	catalog: &Catalog,
 	rx: &mut Transaction<'_>,
 ) -> Vec<Expression> {

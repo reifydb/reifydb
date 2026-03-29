@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::catalog::{
 		flow::FlowNodeId,
 		id::{RingBufferId, SeriesId, TableId, ViewId},
-		schema::SchemaId,
+		shape::ShapeId,
 		vtable::VTableId,
 	},
 	key::kind::KeyKind,
@@ -36,7 +36,7 @@ const SUBKEY_BY_OBJECT: u8 = 0x02;
 const SUBKEY_CDC: u8 = 0x03;
 
 /// id discriminators for encoding
-const ID_SOURCE: u8 = 0x00;
+const ID_SHAPE: u8 = 0x00;
 const ID_FLOW_NODE: u8 = 0x01;
 const ID_SYSTEM: u8 = 0x02;
 
@@ -190,9 +190,9 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 
 fn encode_object_id(buf: &mut Vec<u8>, id: MetricId) {
 	match id {
-		MetricId::Source(schema_id) => {
-			buf.push(ID_SOURCE);
-			buf.extend_from_slice(&encode_schema_id(schema_id));
+		MetricId::Shape(shape_id) => {
+			buf.push(ID_SHAPE);
+			buf.extend_from_slice(&encode_shape_id(shape_id));
 		}
 		MetricId::FlowNode(flow_node_id) => {
 			buf.push(ID_FLOW_NODE);
@@ -209,12 +209,12 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 		return None;
 	}
 	match bytes[0] {
-		ID_SOURCE => {
+		ID_SHAPE => {
 			if bytes.len() < 10 {
 				return None;
 			}
-			let schema_id = decode_schema_id(&bytes[1..10])?;
-			Some(MetricId::Source(schema_id))
+			let shape_id = decode_shape_id(&bytes[1..10])?;
+			Some(MetricId::Shape(shape_id))
 		}
 		ID_FLOW_NODE => {
 			if bytes.len() < 9 {
@@ -228,15 +228,15 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 	}
 }
 
-// SchemaId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
-fn encode_schema_id(schema_id: SchemaId) -> [u8; 9] {
+// ShapeId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
+fn encode_shape_id(shape_id: ShapeId) -> [u8; 9] {
 	let mut buf = [0u8; 9];
-	buf[0] = schema_id.to_type_u8();
-	buf[1..9].copy_from_slice(&schema_id.as_u64().to_be_bytes());
+	buf[0] = shape_id.to_type_u8();
+	buf[1..9].copy_from_slice(&shape_id.as_u64().to_be_bytes());
 	buf
 }
 
-fn decode_schema_id(bytes: &[u8]) -> Option<SchemaId> {
+fn decode_shape_id(bytes: &[u8]) -> Option<ShapeId> {
 	if bytes.len() < 9 {
 		return None;
 	}
@@ -244,19 +244,19 @@ fn decode_schema_id(bytes: &[u8]) -> Option<SchemaId> {
 	let id = u64::from_be_bytes(bytes[1..9].try_into().ok()?);
 
 	match discriminant {
-		1 => Some(SchemaId::Table(TableId(id))),
-		2 => Some(SchemaId::View(ViewId(id))),
-		3 => Some(SchemaId::TableVirtual(VTableId(id))),
-		5 => Some(SchemaId::RingBuffer(RingBufferId(id))),
-		6 => Some(SchemaId::Dictionary(DictionaryId(id))),
-		7 => Some(SchemaId::Series(SeriesId(id))),
+		1 => Some(ShapeId::Table(TableId(id))),
+		2 => Some(ShapeId::View(ViewId(id))),
+		3 => Some(ShapeId::TableVirtual(VTableId(id))),
+		5 => Some(ShapeId::RingBuffer(RingBufferId(id))),
+		6 => Some(ShapeId::Dictionary(DictionaryId(id))),
+		7 => Some(ShapeId::Series(SeriesId(id))),
 		_ => None,
 	}
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::{flow::FlowNodeId, id::TableId, schema::SchemaId};
+	use reifydb_core::interface::catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId};
 
 	use super::*;
 
@@ -274,8 +274,8 @@ pub mod tests {
 	#[test]
 	fn test_storage_stats_key_source_roundtrip() {
 		let tier = Tier::Hot;
-		let schema_id = SchemaId::Table(TableId(12345));
-		let id = MetricId::Source(schema_id);
+		let shape_id = ShapeId::Table(TableId(12345));
+		let id = MetricId::Shape(shape_id);
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();
@@ -307,8 +307,8 @@ pub mod tests {
 
 	#[test]
 	fn test_cdc_stats_key_roundtrip() {
-		let schema_id = SchemaId::Table(TableId(12345));
-		let id = MetricId::Source(schema_id);
+		let shape_id = ShapeId::Table(TableId(12345));
+		let id = MetricId::Shape(shape_id);
 
 		let key = encode_cdc_stats_key(id);
 		let decoded = decode_cdc_stats_key(&key).unwrap();

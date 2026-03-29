@@ -7,7 +7,7 @@ mod vtable;
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{catalog::id::IndexId, resolved::ResolvedSchema};
+use reifydb_core::interface::{catalog::id::IndexId, resolved::ResolvedShape};
 use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, GeneratorNode as RqlGeneratorNode,
@@ -66,13 +66,13 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 	}
 }
 
-pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedSchema> {
+pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedShape> {
 	match plan {
-		RqlQueryPlan::TableScan(node) => Some(ResolvedSchema::Table(node.source.clone())),
-		RqlQueryPlan::ViewScan(node) => Some(ResolvedSchema::View(node.source.clone())),
-		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedSchema::RingBuffer(node.source.clone())),
-		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedSchema::Dictionary(node.source.clone())),
-		RqlQueryPlan::SeriesScan(node) => Some(ResolvedSchema::Series(node.source.clone())),
+		RqlQueryPlan::TableScan(node) => Some(ResolvedShape::Table(node.source.clone())),
+		RqlQueryPlan::ViewScan(node) => Some(ResolvedShape::View(node.source.clone())),
+		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedShape::RingBuffer(node.source.clone())),
+		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedShape::Dictionary(node.source.clone())),
+		RqlQueryPlan::SeriesScan(node) => Some(ResolvedShape::Series(node.source.clone())),
 		RqlQueryPlan::RemoteScan(_) => None,
 		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
 		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
@@ -200,7 +200,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_number,
 		}) => {
-			let resolved_source = ResolvedSchema::from(source);
+			let resolved_source = ResolvedShape::from(source);
 			Box::new(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
@@ -210,7 +210,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_numbers,
 		}) => {
-			let resolved_source = ResolvedSchema::from(source);
+			let resolved_source = ResolvedShape::from(source);
 			Box::new(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
@@ -221,7 +221,7 @@ pub(crate) fn compile<'a>(
 			start,
 			end,
 		}) => {
-			let resolved_source = ResolvedSchema::from(source);
+			let resolved_source = ResolvedShape::from(source);
 			Box::new(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),

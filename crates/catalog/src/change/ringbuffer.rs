@@ -16,7 +16,7 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::ringbuffer::schema::ringbuffer::{self, CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
+	store::ringbuffer::shape::ringbuffer::{self, CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
 };
 
 pub(super) struct RingBufferApplier;
@@ -47,18 +47,18 @@ use reifydb_core::common::CommitVersion;
 use crate::materialized::MaterializedCatalog;
 
 fn decode_ringbuffer(row: &EncodedRow, materialized: &MaterializedCatalog, version: CommitVersion) -> RingBuffer {
-	let id = RingBufferId(ringbuffer::SCHEMA.get_u64(row, ID));
-	let namespace = NamespaceId(ringbuffer::SCHEMA.get_u64(row, NAMESPACE));
-	let name = ringbuffer::SCHEMA.get_utf8(row, NAME).to_string();
-	let capacity = ringbuffer::SCHEMA.get_u64(row, CAPACITY);
-	let pk_raw = ringbuffer::SCHEMA.get_u64(row, PRIMARY_KEY);
+	let id = RingBufferId(ringbuffer::SHAPE.get_u64(row, ID));
+	let namespace = NamespaceId(ringbuffer::SHAPE.get_u64(row, NAMESPACE));
+	let name = ringbuffer::SHAPE.get_utf8(row, NAME).to_string();
+	let capacity = ringbuffer::SHAPE.get_u64(row, CAPACITY);
+	let pk_raw = ringbuffer::SHAPE.get_u64(row, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
 		None
 	};
 
-	let partition_by_str = ringbuffer::SCHEMA.get_utf8(row, ringbuffer::PARTITION_BY);
+	let partition_by_str = ringbuffer::SHAPE.get_utf8(row, ringbuffer::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {

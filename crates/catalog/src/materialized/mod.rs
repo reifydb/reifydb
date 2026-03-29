@@ -16,7 +16,7 @@ pub mod primary_key;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
-pub mod schema_retention_policy;
+pub mod shape_retention_policy;
 pub mod sink;
 pub mod source;
 pub mod subscription;
@@ -47,7 +47,7 @@ use reifydb_core::{
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
-		schema::SchemaId,
+		shape::ShapeId,
 		sink::Sink,
 		source::Source,
 		subscription::Subscription,
@@ -136,7 +136,7 @@ pub struct MaterializedCatalogInner {
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
 	/// MultiVersion source retention policies indexed by source ID
-	pub(crate) schema_retention_policies: SkipMap<SchemaId, MultiVersionRetentionPolicy>,
+	pub(crate) shape_retention_policies: SkipMap<ShapeId, MultiVersionRetentionPolicy>,
 	/// MultiVersion operator retention policies indexed by operator ID
 	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,
 	/// MultiVersion dictionary definitions indexed by dictionary ID
@@ -240,7 +240,7 @@ impl MaterializedCatalog {
 			flows: SkipMap::new(),
 			flows_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
-			schema_retention_policies: SkipMap::new(),
+			shape_retention_policies: SkipMap::new(),
 			operator_retention_policies: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),

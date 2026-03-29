@@ -7,7 +7,7 @@ use reifydb_type::{fragment::Fragment, return_error};
 
 use crate::{
 	Result,
-	ast::identifier::MaybeQualifiedColumnSchema,
+	ast::identifier::MaybeQualifiedColumnShape,
 	nodes::CreateColumnPropertyNode,
 	plan::{
 		logical,
@@ -21,8 +21,8 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		create: logical::CreateColumnPropertyNode<'_>,
 	) -> Result<PhysicalPlan<'bump>> {
-		let (ns_segments, table_fragment) = match &create.column.schema {
-			MaybeQualifiedColumnSchema::Qualified {
+		let (ns_segments, table_fragment) = match &create.column.shape {
+			MaybeQualifiedColumnShape::Qualified {
 				namespace,
 				name,
 			} => (
@@ -33,8 +33,8 @@ impl<'bump> Compiler<'bump> {
 		};
 
 		let Some(ns) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
-			let ns_fragment = match &create.column.schema {
-				MaybeQualifiedColumnSchema::Qualified {
+			let ns_fragment = match &create.column.shape {
+				MaybeQualifiedColumnShape::Qualified {
 					namespace,
 					..
 				} => {
@@ -50,8 +50,8 @@ impl<'bump> Compiler<'bump> {
 			return_error!(namespace_not_found(ns_fragment, &ns_segments.join("::")));
 		};
 
-		let namespace_id = match &create.column.schema {
-			MaybeQualifiedColumnSchema::Qualified {
+		let namespace_id = match &create.column.shape {
+			MaybeQualifiedColumnShape::Qualified {
 				namespace,
 				..
 			} => {

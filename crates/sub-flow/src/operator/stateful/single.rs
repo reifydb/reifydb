@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema};
+use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape};
 use reifydb_type::Result;
 
 use super::utils;
@@ -10,7 +10,7 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait SingleStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> RowSchema;
+	fn layout(&self) -> RowShape;
 
 	/// Key for the single state - default is empty
 	fn key(&self) -> EncodedKey {
@@ -38,11 +38,11 @@ pub trait SingleStateful: RawStatefulOperator {
 	/// Update state with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
 	{
-		let schema = self.layout();
+		let shape = self.layout();
 		let mut row = self.load_state(txn)?;
-		f(&schema, &mut row)?;
+		f(&shape, &mut row)?;
 		self.save_state(txn, row.clone())?;
 		Ok(row)
 	}
@@ -65,7 +65,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful for TestOperator {
-		fn layout(&self) -> RowSchema {
+		fn layout(&self) -> RowShape {
 			self.layout.clone()
 		}
 	}
@@ -118,8 +118,8 @@ pub mod tests {
 
 		// Update state with a function
 		let result = operator
-			.update_state(&mut txn, |schema, row| {
-				schema.set_i64(row, 0, 0x77);
+			.update_state(&mut txn, |shape, row| {
+				shape.set_i64(row, 0, 0x77);
 				Ok(())
 			})
 			.unwrap();
@@ -140,8 +140,8 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create and modify state
-		operator.update_state(&mut txn, |schema, row| {
-			schema.set_i64(row, 0, 0x99);
+		operator.update_state(&mut txn, |shape, row| {
+			shape.set_i64(row, 0, 0x99);
 			Ok(())
 		})
 		.unwrap();
@@ -165,15 +165,15 @@ pub mod tests {
 
 		// Set different states for each operator
 		operator1
-			.update_state(&mut txn, |schema, row| {
-				schema.set_i64(row, 0, 0x11);
+			.update_state(&mut txn, |shape, row| {
+				shape.set_i64(row, 0, 0x11);
 				Ok(())
 			})
 			.unwrap();
 
 		operator2
-			.update_state(&mut txn, |schema, row| {
-				schema.set_i64(row, 0, 0x22);
+			.update_state(&mut txn, |shape, row| {
+				shape.set_i64(row, 0, 0x22);
 				Ok(())
 			})
 			.unwrap();
@@ -197,10 +197,10 @@ pub mod tests {
 
 		// Simulate a counter incrementing
 		for i in 1..=5 {
-			operator.update_state(&mut txn, |schema, row| {
+			operator.update_state(&mut txn, |shape, row| {
 				// Assuming first field is an int8 counter
-				let current = schema.get_i64(row, 0);
-				schema.set_i64(row, 0, current + 1);
+				let current = shape.get_i64(row, 0);
+				shape.set_i64(row, 0, current + 1);
 				Ok(())
 			})
 			.unwrap();

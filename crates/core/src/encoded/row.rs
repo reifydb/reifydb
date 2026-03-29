@@ -6,9 +6,9 @@ use std::ops::Deref;
 use reifydb_type::util::cowvec::CowVec;
 use serde::{Deserialize, Serialize};
 
-use crate::encoded::schema::fingerprint::RowSchemaFingerprint;
+use crate::encoded::shape::fingerprint::RowShapeFingerprint;
 
-/// Size of schema header (fingerprint) in bytes
+/// Size of shape header (fingerprint) in bytes
 pub const SCHEMA_HEADER_SIZE: usize = 8;
 
 /// A boxed values iterator.
@@ -19,7 +19,7 @@ pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
 impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-// [schema_finger_print]:[bitvec]:[static_values]:[dynamic_values]
+// [shape_finger_print]:[bitvec]:[static_values]:[dynamic_values]
 #[derive(PartialEq, Eq)]
 pub struct EncodedRow(pub CowVec<u8>);
 
@@ -53,15 +53,15 @@ impl EncodedRow {
 		}
 	}
 
-	/// Read the schema fingerprint from the header
+	/// Read the shape fingerprint from the header
 	#[inline]
-	pub fn fingerprint(&self) -> RowSchemaFingerprint {
+	pub fn fingerprint(&self) -> RowShapeFingerprint {
 		let bytes: [u8; 8] = self.0[0..8].try_into().unwrap();
-		RowSchemaFingerprint::from_le_bytes(bytes)
+		RowShapeFingerprint::from_le_bytes(bytes)
 	}
 
-	/// Write the schema fingerprint to the header
-	pub fn set_fingerprint(&mut self, fingerprint: RowSchemaFingerprint) {
+	/// Write the shape fingerprint to the header
+	pub fn set_fingerprint(&mut self, fingerprint: RowShapeFingerprint) {
 		self.0.make_mut()[0..8].copy_from_slice(&fingerprint.to_le_bytes());
 	}
 }

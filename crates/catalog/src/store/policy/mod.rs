@@ -6,25 +6,25 @@ use reifydb_core::interface::{
 	store::MultiVersionRow,
 };
 
-use crate::store::policy::schema::{policy, policy_op};
+use crate::store::policy::shape::{policy, policy_op};
 
 pub mod alter;
 pub mod create;
 pub mod drop;
 pub mod find;
 pub mod list;
-pub mod schema;
+pub mod shape;
 
 pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 	let row = multi.row;
-	let id = policy::SCHEMA.get_u64(&row, policy::ID);
-	let name_str = policy::SCHEMA.get_utf8(&row, policy::NAME).to_string();
+	let id = policy::SHAPE.get_u64(&row, policy::ID);
+	let name_str = policy::SHAPE.get_utf8(&row, policy::NAME).to_string();
 	let name = if name_str.is_empty() {
 		None
 	} else {
 		Some(name_str)
 	};
-	let target_type_str = policy::SCHEMA.get_utf8(&row, policy::TARGET_TYPE);
+	let target_type_str = policy::SHAPE.get_utf8(&row, policy::TARGET_TYPE);
 	let target_type = match target_type_str {
 		"table" => PolicyTargetType::Table,
 		"column" => PolicyTargetType::Column,
@@ -40,19 +40,19 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 		"ringbuffer" => PolicyTargetType::RingBuffer,
 		_ => PolicyTargetType::Table,
 	};
-	let target_ns_str = policy::SCHEMA.get_utf8(&row, policy::TARGET_NAMESPACE).to_string();
+	let target_ns_str = policy::SHAPE.get_utf8(&row, policy::TARGET_NAMESPACE).to_string();
 	let target_namespace = if target_ns_str.is_empty() {
 		None
 	} else {
 		Some(target_ns_str)
 	};
-	let target_obj_str = policy::SCHEMA.get_utf8(&row, policy::TARGET_OBJECT).to_string();
+	let target_obj_str = policy::SHAPE.get_utf8(&row, policy::TARGET_OBJECT).to_string();
 	let target_object = if target_obj_str.is_empty() {
 		None
 	} else {
 		Some(target_obj_str)
 	};
-	let enabled = policy::SCHEMA.get_bool(&row, policy::ENABLED);
+	let enabled = policy::SHAPE.get_bool(&row, policy::ENABLED);
 
 	Policy {
 		id,
@@ -66,9 +66,9 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 
 pub(crate) fn convert_policy_op(multi: MultiVersionRow) -> PolicyOperation {
 	let row = multi.row;
-	let policy_id = policy_op::SCHEMA.get_u64(&row, policy_op::POLICY_ID);
-	let operation = policy_op::SCHEMA.get_utf8(&row, policy_op::OPERATION).to_string();
-	let body_source = policy_op::SCHEMA.get_utf8(&row, policy_op::BODY_SOURCE).to_string();
+	let policy_id = policy_op::SHAPE.get_u64(&row, policy_op::POLICY_ID);
+	let operation = policy_op::SHAPE.get_utf8(&row, policy_op::OPERATION).to_string();
+	let body_source = policy_op::SHAPE.get_utf8(&row, policy_op::BODY_SOURCE).to_string();
 
 	PolicyOperation {
 		policy_id,

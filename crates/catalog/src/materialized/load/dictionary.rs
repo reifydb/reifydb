@@ -14,7 +14,7 @@ use reifydb_type::value::{dictionary::DictionaryId, r#type::Type};
 use super::MaterializedCatalog;
 use crate::{
 	Result,
-	store::dictionary::schema::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SCHEMA, VALUE_TYPE},
+	store::dictionary::shape::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SHAPE, VALUE_TYPE},
 };
 
 pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
@@ -33,11 +33,11 @@ pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &Materialized
 
 fn convert_dictionary(multi: MultiVersionRow) -> Dictionary {
 	let row = multi.row;
-	let id = DictionaryId(SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(SCHEMA.get_u64(&row, NAMESPACE));
-	let name = SCHEMA.get_utf8(&row, NAME).to_string();
-	let value_type_ordinal = SCHEMA.get_u8(&row, VALUE_TYPE);
-	let id_type_ordinal = SCHEMA.get_u8(&row, ID_TYPE);
+	let id = DictionaryId(SHAPE.get_u64(&row, ID));
+	let namespace = NamespaceId(SHAPE.get_u64(&row, NAMESPACE));
+	let name = SHAPE.get_utf8(&row, NAME).to_string();
+	let value_type_ordinal = SHAPE.get_u8(&row, VALUE_TYPE);
+	let id_type_ordinal = SHAPE.get_u8(&row, ID_TYPE);
 
 	Dictionary {
 		id,

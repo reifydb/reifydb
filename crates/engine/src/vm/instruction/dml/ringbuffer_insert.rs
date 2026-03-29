@@ -4,11 +4,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
 		catalog::{policy::PolicyTargetType, ringbuffer::RingBufferMetadata},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema},
+		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	internal_error,
 	key::row::RowKey,
@@ -27,7 +27,7 @@ use tracing::instrument;
 use super::{
 	coerce::coerce_value_to_column_type,
 	returning::{decode_rows_to_columns, evaluate_returning},
-	schema::get_or_create_ringbuffer_schema,
+	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
 	Result,
@@ -62,8 +62,8 @@ pub(crate) fn insert_ringbuffer<'a>(
 		return_error!(ringbuffer_not_found(fragment.clone(), namespace_name, ringbuffer_name));
 	};
 
-	// Get or create schema with proper field names and constraints
-	let schema = get_or_create_ringbuffer_schema(&services.catalog, &ringbuffer, txn)?;
+	// Get or create shape with proper field names and constraints
+	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
 
 	// Create resolved source for the ring buffer
 	let namespace_ident = Fragment::internal(namespace.name());
@@ -71,7 +71,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 	let rb_ident = Fragment::internal(ringbuffer.name.clone());
 	let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ringbuffer.clone());
-	let resolved_source = Some(ResolvedSchema::RingBuffer(resolved_rb));
+	let resolved_source = Some(ResolvedShape::RingBuffer(resolved_rb));
 
 	let execution_context = Arc::new(QueryContext {
 		services: services.clone(),
@@ -120,7 +120,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 		let row_count = columns.row_count();
 
 		for row_idx in 0..row_count {
-			let mut row = schema.allocate();
+			let mut row = shape.allocate();
 			let mut row_values: Vec<Value> = Vec::with_capacity(ringbuffer.columns.len());
 
 			// For each ring buffer column, find if it exists in the input columns
@@ -175,7 +175,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 				};
 
 				row_values.push(value.clone());
-				schema.set_value(&mut row, rb_idx, &value);
+				shape.set_value(&mut row, rb_idx, &value);
 			}
 
 			// Extract partition key (empty vec for global → single partition)
@@ -201,7 +201,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 					if let Some(row_data) = txn.get(&key)? {
 						if partition_col_indices.is_empty()
 							|| row_matches_partition(
-								&schema,
+								&shape,
 								&row_data.row,
 								&partition_col_indices,
 								&partition_key,
@@ -222,7 +222,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 					if let Some(row_data) = txn.get(&key)? {
 						if partition_col_indices.is_empty()
 							|| row_matches_partition(
-								&schema,
+								&shape,
 								&row_data.row,
 								&partition_col_indices,
 								&partition_key,
@@ -239,7 +239,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 
 			// Store the row
-			let stored_row = txn.insert_ringbuffer_at(&ringbuffer, &schema, row_number, row.clone())?;
+			let stored_row = txn.insert_ringbuffer_at(&ringbuffer, &shape, row_number, row.clone())?;
 			if plan.returning.is_some() {
 				returned_rows.push((row_number, stored_row));
 			}
@@ -262,7 +262,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 
 	// If RETURNING clause is present, evaluate expressions against inserted rows
 	if let Some(returning_exprs) = &plan.returning {
-		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 
@@ -275,13 +275,10 @@ pub(crate) fn insert_ringbuffer<'a>(
 }
 
 fn row_matches_partition(
-	schema: &RowSchema,
+	shape: &RowShape,
 	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],
 ) -> bool {
-	partition_col_indices
-		.iter()
-		.zip(expected_values)
-		.all(|(&idx, expected)| schema.get_value(row, idx) == *expected)
+	partition_col_indices.iter().zip(expected_values).all(|(&idx, expected)| shape.get_value(row, idx) == *expected)
 }

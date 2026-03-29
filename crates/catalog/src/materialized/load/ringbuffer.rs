@@ -17,7 +17,7 @@ use reifydb_transaction::transaction::Transaction;
 use super::MaterializedCatalog;
 use crate::{
 	Result,
-	store::ringbuffer::schema::{
+	store::ringbuffer::shape::{
 		ringbuffer,
 		ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
 	},
@@ -43,12 +43,12 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &MaterializedC
 
 fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> RingBuffer {
 	let row = multi.row;
-	let id = RingBufferId(ringbuffer::SCHEMA.get_u64(&row, ID));
-	let namespace = NamespaceId(ringbuffer::SCHEMA.get_u64(&row, NAMESPACE));
-	let name = ringbuffer::SCHEMA.get_utf8(&row, NAME).to_string();
-	let capacity = ringbuffer::SCHEMA.get_u64(&row, CAPACITY);
+	let id = RingBufferId(ringbuffer::SHAPE.get_u64(&row, ID));
+	let namespace = NamespaceId(ringbuffer::SHAPE.get_u64(&row, NAMESPACE));
+	let name = ringbuffer::SHAPE.get_utf8(&row, NAME).to_string();
+	let capacity = ringbuffer::SHAPE.get_u64(&row, CAPACITY);
 
-	let partition_by_str = ringbuffer::SCHEMA.get_utf8(&row, ringbuffer::PARTITION_BY);
+	let partition_by_str = ringbuffer::SHAPE.get_utf8(&row, ringbuffer::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
@@ -67,7 +67,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 }
 
 fn get_ringbuffer_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = ringbuffer::SCHEMA.get_u64(&multi.row, PRIMARY_KEY);
+	let pk_id_raw = ringbuffer::SHAPE.get_u64(&multi.row, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

@@ -12,7 +12,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		namespace::schema::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SCHEMA, TOKEN},
+		namespace::shape::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SHAPE, TOKEN},
 		sequence::system::SystemSequence,
 	},
 };
@@ -43,17 +43,17 @@ impl CatalogStore {
 
 		let namespace_id = SystemSequence::next_namespace_id(txn)?;
 
-		let mut row = SCHEMA.allocate();
-		SCHEMA.set_u64(&mut row, ID, namespace_id);
-		SCHEMA.set_utf8(&mut row, NAME, &to_create.name);
-		SCHEMA.set_u64(&mut row, PARENT_ID, to_create.parent_id.0);
+		let mut row = SHAPE.allocate();
+		SHAPE.set_u64(&mut row, ID, namespace_id);
+		SHAPE.set_utf8(&mut row, NAME, &to_create.name);
+		SHAPE.set_u64(&mut row, PARENT_ID, to_create.parent_id.0);
 		if let Some(ref grpc) = to_create.grpc {
-			SCHEMA.set_utf8(&mut row, GRPC, grpc);
+			SHAPE.set_utf8(&mut row, GRPC, grpc);
 		}
 		if let Some(ref token) = to_create.token {
-			SCHEMA.set_utf8(&mut row, TOKEN, token);
+			SHAPE.set_utf8(&mut row, TOKEN, token);
 		}
-		SCHEMA.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
+		SHAPE.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 

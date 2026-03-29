@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, row::EncodedRow, schema::RowSchema},
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	util::encoding::keycode::serializer::KeySerializer,
 };
 use reifydb_type::{
@@ -17,9 +17,9 @@ use crate::{operator::stateful::raw::RawStatefulOperator, transaction::FlowTrans
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait KeyedStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> RowSchema;
+	fn layout(&self) -> RowShape;
 
-	/// RowSchema for keys - defines the types of the key components
+	/// RowShape for keys - defines the types of the key components
 	fn key_types(&self) -> &[Type];
 
 	/// Create EncodedKey from Values
@@ -55,11 +55,11 @@ pub trait KeyedStateful: RawStatefulOperator {
 	/// Update state for a key with a function
 	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&RowSchema, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
 	{
-		let schema = self.layout();
+		let shape = self.layout();
 		let mut row = self.load_state(txn, key_values)?;
-		f(&schema, &mut row)?;
+		f(&shape, &mut row)?;
 		self.save_state(txn, key_values, row.clone())?;
 		Ok(row)
 	}
@@ -85,7 +85,7 @@ pub mod tests {
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {
-		fn layout(&self) -> RowSchema {
+		fn layout(&self) -> RowShape {
 			self.layout.clone()
 		}
 
@@ -154,9 +154,9 @@ pub mod tests {
 
 		// Update with a function
 		let result = operator
-			.update_state(&mut txn, &key, |schema, row| {
+			.update_state(&mut txn, &key, |shape, row| {
 				// Set second field (Int4) to a specific value
-				schema.set_i32(row, 1, 0x55);
+				shape.set_i32(row, 1, 0x55);
 				Ok(())
 			})
 			.unwrap();
@@ -200,8 +200,8 @@ pub mod tests {
 		// Create multiple keys with different states
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
-			operator.update_state(&mut txn, &key, |schema, row| {
-				schema.set_i32(row, 1, i);
+			operator.update_state(&mut txn, &key, |shape, row| {
+				shape.set_i32(row, 1, i);
 				Ok(())
 			})
 			.unwrap();

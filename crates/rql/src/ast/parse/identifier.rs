@@ -144,7 +144,7 @@ impl<'bump> Parser<'bump> {
 			let table = ns_table_segments.pop().unwrap();
 			let namespace: Vec<_> = ns_table_segments.into_iter().map(|s| s.into_fragment()).collect();
 
-			Ok(MaybeQualifiedColumnIdentifier::with_schema(
+			Ok(MaybeQualifiedColumnIdentifier::with_shape(
 				namespace,
 				table.into_fragment(),
 				col.into_fragment(),
@@ -166,7 +166,7 @@ impl<'bump> Parser<'bump> {
 			2 => {
 				let table = segments.remove(0);
 				let col = segments.remove(0);
-				Ok(MaybeQualifiedColumnIdentifier::with_schema(
+				Ok(MaybeQualifiedColumnIdentifier::with_shape(
 					vec![],
 					table.into_fragment(),
 					col.into_fragment(),
@@ -176,7 +176,7 @@ impl<'bump> Parser<'bump> {
 				let col = segments.pop().unwrap();
 				let table = segments.pop().unwrap();
 				let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-				Ok(MaybeQualifiedColumnIdentifier::with_schema(
+				Ok(MaybeQualifiedColumnIdentifier::with_shape(
 					namespace,
 					table.into_fragment(),
 					col.into_fragment(),

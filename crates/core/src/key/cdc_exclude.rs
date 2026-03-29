@@ -89,7 +89,7 @@ pub mod tests {
 			KeyKind::RingBuffer => {}
 			KeyKind::NamespaceRingBuffer => {}
 			KeyKind::RingBufferMetadata => {}
-			KeyKind::SchemaRetentionPolicy => {}
+			KeyKind::ShapeRetentionPolicy => {}
 			KeyKind::OperatorRetentionPolicy => {}
 			KeyKind::Flow => {}
 			KeyKind::NamespaceFlow => {}
@@ -108,10 +108,10 @@ pub mod tests {
 			KeyKind::Subscription => {}
 			KeyKind::SubscriptionRow => {}
 			KeyKind::SubscriptionColumn => {}
-			KeyKind::Schema => {}
+			KeyKind::Shape => {}
 			KeyKind::SumType => {}
 			KeyKind::NamespaceSumType => {}
-			KeyKind::RowSchemaField => {}
+			KeyKind::RowShapeField => {}
 			KeyKind::Handler => {}
 			KeyKind::NamespaceHandler => {}
 			KeyKind::VariantHandler => {}
@@ -291,8 +291,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_schema_retention_policy() {
-		assert!(!should_exclude_from_cdc(KeyKind::SchemaRetentionPolicy));
+	fn test_include_shape_retention_policy() {
+		assert!(!should_exclude_from_cdc(KeyKind::ShapeRetentionPolicy));
 	}
 
 	#[test]
@@ -366,8 +366,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_schema() {
-		assert!(!should_exclude_from_cdc(KeyKind::Schema));
+	fn test_include_shape() {
+		assert!(!should_exclude_from_cdc(KeyKind::Shape));
 	}
 
 	#[test]
@@ -381,8 +381,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_schema_field() {
-		assert!(!should_exclude_from_cdc(KeyKind::RowSchemaField));
+	fn test_include_shape_field() {
+		assert!(!should_exclude_from_cdc(KeyKind::RowShapeField));
 	}
 
 	#[test]

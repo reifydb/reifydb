@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use reifydb_core::interface::identifier::ColumnSchema;
+use reifydb_core::interface::identifier::ColumnShape;
 use reifydb_type::fragment::Fragment;
 
 use crate::expression::{ConstantExpression, Expression};
@@ -64,16 +64,16 @@ fn simplified_name<'a>(expr: &Expression) -> Fragment {
 			} => Fragment::internal("none"),
 		},
 		Expression::AccessSource(access_expr) => {
-			// Extract primitive name based on the ColumnSchema type
-			let schema_name = match &access_expr.column.schema {
-				ColumnSchema::Qualified {
+			// Extract primitive name based on the ColumnShape type
+			let shape_name = match &access_expr.column.shape {
+				ColumnShape::Qualified {
 					name,
 					..
 				} => name.text(),
-				ColumnSchema::Alias(alias) => alias.text(),
+				ColumnShape::Alias(alias) => alias.text(),
 			};
 
-			Fragment::internal(format!("{}.{}", schema_name, access_expr.column.name.text()))
+			Fragment::internal(format!("{}.{}", shape_name, access_expr.column.name.text()))
 		}
 		Expression::Call(call_expr) => Fragment::internal(format!(
 			"{}({})",
@@ -346,12 +346,12 @@ pub fn collect_all_column_names(expressions: &[Expression]) -> HashSet<String> {
 mod tests {
 	use std::{collections::HashSet, sync::Arc};
 
-	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSchema};
+	use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnShape};
 	use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
 	use super::{collect_all_column_names, collect_column_names};
 	use crate::expression::{
-		AccessSchemaExpression, AddExpression, AliasExpression, BetweenExpression, CallExpression,
+		AccessShapeExpression, AddExpression, AliasExpression, BetweenExpression, CallExpression,
 		CastExpression, ColumnExpression, ConstantExpression, ElseIfExpression, Expression,
 		FieldAccessExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
 		ListExpression, ParameterExpression, PrefixExpression, PrefixOperator, SumTypeConstructorExpression,
@@ -366,7 +366,7 @@ mod tests {
 
 	fn col(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
-			schema: ColumnSchema::Qualified {
+			shape: ColumnShape::Qualified {
 				namespace: frag("ns"),
 				name: frag("tbl"),
 			},
@@ -394,9 +394,9 @@ mod tests {
 
 	#[test]
 	fn access_source_collects_name() {
-		let expr = Expression::AccessSource(AccessSchemaExpression {
+		let expr = Expression::AccessSource(AccessShapeExpression {
 			column: ColumnIdentifier {
-				schema: ColumnSchema::Qualified {
+				shape: ColumnShape::Qualified {
 					namespace: frag("ns"),
 					name: frag("tbl"),
 				},

@@ -17,7 +17,7 @@ use crate::{
 	Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::flow::schema::flow::{self, ID, NAME, NAMESPACE, STATUS, TICK_NANOS},
+	store::flow::shape::flow::{self, ID, NAME, NAMESPACE, STATUS, TICK_NANOS},
 };
 
 pub(super) struct FlowApplier;
@@ -41,11 +41,11 @@ impl CatalogChangeApplier for FlowApplier {
 }
 
 fn decode_flow(row: &EncodedRow) -> Flow {
-	let id = FlowId(flow::SCHEMA.get_u64(row, ID));
-	let namespace = NamespaceId(flow::SCHEMA.get_u64(row, NAMESPACE));
-	let name = flow::SCHEMA.get_utf8(row, NAME).to_string();
-	let status = FlowStatus::from_u8(flow::SCHEMA.get_u8(row, STATUS));
-	let tick_nanos = flow::SCHEMA.get_u64(row, TICK_NANOS);
+	let id = FlowId(flow::SHAPE.get_u64(row, ID));
+	let namespace = NamespaceId(flow::SHAPE.get_u64(row, NAMESPACE));
+	let name = flow::SHAPE.get_utf8(row, NAME).to_string();
+	let status = FlowStatus::from_u8(flow::SHAPE.get_u8(row, STATUS));
+	let tick_nanos = flow::SHAPE.get_u64(row, TICK_NANOS);
 	let tick = if tick_nanos > 0 {
 		Some(Duration::from_nanoseconds(tick_nanos as i64).unwrap())
 	} else {

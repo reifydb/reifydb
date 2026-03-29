@@ -11,7 +11,7 @@ use reifydb_core::{
 		row::EncodedRow,
 	},
 	interface::{
-		catalog::schema::SchemaId,
+		catalog::shape::ShapeId,
 		change::{Change, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
@@ -193,7 +193,7 @@ impl<'a> TestTransaction<'a> {
 
 	/// Read accumulator entries since the baseline.
 	/// Used by testing helpers to inspect mutations within the current test.
-	pub fn accumulator_entries_from(&self) -> &[(SchemaId, Diff)] {
+	pub fn accumulator_entries_from(&self) -> &[(ShapeId, Diff)] {
 		self.inner.accumulator.entries_from(self.baseline)
 	}
 
@@ -215,7 +215,7 @@ impl<'a> TestTransaction<'a> {
 			.accumulator
 			.entries_from(self.baseline)
 			.iter()
-			.any(|(id, _)| !matches!(id, SchemaId::View(_)));
+			.any(|(id, _)| !matches!(id, ShapeId::View(_)));
 
 		if !has_source_changes {
 			return Ok(());

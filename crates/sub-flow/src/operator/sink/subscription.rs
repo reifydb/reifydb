@@ -8,7 +8,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
-		schema::{RowSchema, RowSchemaField},
+		shape::{RowShape, RowShapeField},
 	},
 	interface::{
 		catalog::{flow::FlowNodeId, subscription::IMPLICIT_COLUMN_OP},
@@ -85,9 +85,9 @@ impl Operator for SinkSubscriptionOperator {
 				} => {
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Insert);
 
-					let schema = {
+					let shape = {
 						let catalog = txn.catalog();
-						create_schema_from_columns(&with_implicit, catalog)?
+						create_shape_from_columns(&with_implicit, catalog)?
 					};
 
 					let row_count = with_implicit.row_count();
@@ -97,7 +97,7 @@ impl Operator for SinkSubscriptionOperator {
 						let (_, encoded) = encode_row_at_index(
 							&with_implicit,
 							row_idx,
-							&schema,
+							&shape,
 							row_number,
 						);
 
@@ -111,9 +111,9 @@ impl Operator for SinkSubscriptionOperator {
 				} => {
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Update);
 
-					let schema = {
+					let shape = {
 						let catalog = txn.catalog();
-						create_schema_from_columns(&with_implicit, catalog)?
+						create_shape_from_columns(&with_implicit, catalog)?
 					};
 
 					let row_count = with_implicit.row_count();
@@ -123,7 +123,7 @@ impl Operator for SinkSubscriptionOperator {
 						let (_, encoded) = encode_row_at_index(
 							&with_implicit,
 							row_idx,
-							&schema,
+							&shape,
 							row_number,
 						);
 
@@ -136,9 +136,9 @@ impl Operator for SinkSubscriptionOperator {
 				} => {
 					let with_implicit = Self::add_implicit_columns(pre, DiffType::Remove);
 
-					let schema = {
+					let shape = {
 						let catalog = txn.catalog();
-						create_schema_from_columns(&with_implicit, catalog)?
+						create_shape_from_columns(&with_implicit, catalog)?
 					};
 
 					let row_count = with_implicit.row_count();
@@ -148,7 +148,7 @@ impl Operator for SinkSubscriptionOperator {
 						let (_, encoded) = encode_row_at_index(
 							&with_implicit,
 							row_idx,
-							&schema,
+							&shape,
 							row_number,
 						);
 
@@ -167,12 +167,12 @@ impl Operator for SinkSubscriptionOperator {
 	}
 }
 
-/// Create and persist a schema from actual column data
-fn create_schema_from_columns(columns: &Columns, catalog: &Catalog) -> Result<RowSchema> {
-	let fields: Vec<RowSchemaField> = columns
+/// Create and persist a shape from actual column data
+fn create_shape_from_columns(columns: &Columns, catalog: &Catalog) -> Result<RowShape> {
+	let fields: Vec<RowShapeField> = columns
 		.iter()
-		.map(|col| RowSchemaField::unconstrained(col.name.to_string(), col.data().get_type()))
+		.map(|col| RowShapeField::unconstrained(col.name.to_string(), col.data().get_type()))
 		.collect();
 
-	catalog.schema.get_or_create(fields)
+	catalog.shape.get_or_create(fields)
 }

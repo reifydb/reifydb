@@ -3,20 +3,20 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	interface::{catalog::schema::SchemaId, change::Diff},
+	interface::{catalog::shape::ShapeId, change::Diff},
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 
 /// Identifies the primitive type category for a `testing::*::changed()` generator.
 pub struct TestingChanged {
-	pub schema_type: &'static str,
+	pub shape_type: &'static str,
 }
 
 impl TestingChanged {
-	pub fn new(schema_type: &'static str) -> Self {
+	pub fn new(shape_type: &'static str) -> Self {
 		Self {
-			schema_type,
+			shape_type,
 		}
 	}
 }
@@ -39,7 +39,7 @@ impl GeneratorFunction for TestingChanged {
 
 		// Materialize view rows from pending source changes so that
 		// changed() sees transactional view mutations.
-		if self.schema_type == "views" {
+		if self.shape_type == "views" {
 			let _ = t.capture_testing_pre_commit();
 		}
 
@@ -50,24 +50,26 @@ impl GeneratorFunction for TestingChanged {
 		let mut mutations: Vec<MutationEntry> = Vec::new();
 
 		for (object_id, diff) in &entries {
-			let type_matches = match (&object_id, self.schema_type) {
-				(SchemaId::Table(_), "tables") => true,
-				(SchemaId::View(_), "views") => true,
-				(SchemaId::RingBuffer(_), "ringbuffers") => true,
-				(SchemaId::Series(_), "series") => true,
-				(SchemaId::Dictionary(_), "dictionaries") => true,
+			let type_matches = match (&object_id, self.shape_type) {
+				(ShapeId::Table(_), "tables") => true,
+				(ShapeId::View(_), "views") => true,
+				(ShapeId::RingBuffer(_), "ringbuffers") => true,
+				(ShapeId::Series(_), "series") => true,
+				(ShapeId::Dictionary(_), "dictionaries") => true,
 				_ => false,
 			};
 			if !type_matches {
 				continue;
 			}
 
-			let name =
-				match resolve_schema_name(ctx.catalog, &mut Transaction::Test(t.reborrow()), object_id)
-				{
-					Ok(n) => n,
-					Err(_) => continue,
-				};
+			let name = match resolve_shape_name(
+				ctx.catalog,
+				&mut Transaction::Test(t.reborrow()),
+				object_id,
+			) {
+				Ok(n) => n,
+				Err(_) => continue,
+			};
 
 			if let Some(filter) = filter_arg.as_deref() {
 				if name != filter {
@@ -91,9 +93,9 @@ struct MutationEntry {
 	diff: Diff,
 }
 
-fn resolve_schema_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &SchemaId) -> Result<String> {
+fn resolve_shape_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &ShapeId) -> Result<String> {
 	match id {
-		SchemaId::Table(table_id) => {
+		ShapeId::Table(table_id) => {
 			let table = catalog
 				.find_table(txn, *table_id)?
 				.ok_or_else(|| internal_error!("table not found for id {:?}", table_id))?;
@@ -102,7 +104,7 @@ fn resolve_schema_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Schema
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), table.name))
 		}
-		SchemaId::View(view_id) => {
+		ShapeId::View(view_id) => {
 			let view = catalog
 				.find_view(txn, *view_id)?
 				.ok_or_else(|| internal_error!("view not found for id {:?}", view_id))?;
@@ -111,7 +113,7 @@ fn resolve_schema_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Schema
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), view.name()))
 		}
-		SchemaId::RingBuffer(rb_id) => {
+		ShapeId::RingBuffer(rb_id) => {
 			let rb = catalog
 				.find_ringbuffer(txn, *rb_id)?
 				.ok_or_else(|| internal_error!("ringbuffer not found for id {:?}", rb_id))?;
@@ -120,7 +122,7 @@ fn resolve_schema_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Schema
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), rb.name))
 		}
-		SchemaId::Series(series_id) => {
+		ShapeId::Series(series_id) => {
 			let series = catalog
 				.find_series(txn, *series_id)?
 				.ok_or_else(|| internal_error!("series not found for id {:?}", series_id))?;
@@ -129,7 +131,7 @@ fn resolve_schema_name(catalog: &Catalog, txn: &mut Transaction<'_>, id: &Schema
 				.ok_or_else(|| internal_error!("namespace not found"))?;
 			Ok(format!("{}::{}", ns.name(), series.name))
 		}
-		SchemaId::Dictionary(dict_id) => {
+		ShapeId::Dictionary(dict_id) => {
 			let dict = catalog
 				.find_dictionary(txn, *dict_id)?
 				.ok_or_else(|| internal_error!("dictionary not found for id {:?}", dict_id))?;

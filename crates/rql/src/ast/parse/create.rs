@@ -774,11 +774,11 @@ impl<'bump> Parser<'bump> {
 	fn parse_subscription(&mut self, token: Token<'bump>) -> Result<AstCreate<'bump>> {
 		// Subscriptions don't have names - they're identified only by UUID v7
 		// Syntax: CREATE SUBSCRIPTION { columns... } AS { query }
-		// Or schema-less: CREATE SUBSCRIPTION AS { query }
+		// Or shape-less: CREATE SUBSCRIPTION AS { query }
 
 		// Check if we have columns or go straight to AS
 		let columns = if self.current()?.is_operator(Operator::As) {
-			// Schema-less: no columns, will be inferred from query
+			// Shape-less: no columns, will be inferred from query
 			Vec::new()
 		} else if self.current()?.is_operator(Operator::OpenCurly) {
 			// Has column definitions
@@ -838,7 +838,7 @@ impl<'bump> Parser<'bump> {
 			None
 		};
 
-		// Validation: schema-less subscriptions require AS clause
+		// Validation: shape-less subscriptions require AS clause
 		if columns.is_empty() && as_clause.is_none() {
 			let fragment = self
 				.current()
@@ -847,12 +847,12 @@ impl<'bump> Parser<'bump> {
 				.unwrap_or_else(|| Fragment::internal("end of input"));
 			return Err(Error::from(TypeError::Ast {
 				kind: AstErrorKind::UnexpectedToken {
-					expected: "AS clause (schema-less CREATE SUBSCRIPTION requires AS clause)"
+					expected: "AS clause (shape-less CREATE SUBSCRIPTION requires AS clause)"
 						.to_string(),
 				},
 				message: format!(
 					"Unexpected token: expected {}, got {}",
-					"AS clause (schema-less CREATE SUBSCRIPTION requires AS clause)",
+					"AS clause (shape-less CREATE SUBSCRIPTION requires AS clause)",
 					fragment.text()
 				),
 				fragment,
@@ -2477,7 +2477,7 @@ pub mod tests {
 	#[test]
 	fn test_create_table_with_hyphen() {
 		let bump = Bump::new();
-		let source = "CREATE TABLE my-schema::my-table { id: Int4 }";
+		let source = "CREATE TABLE my-shape::my-table { id: Int4 }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let mut result = parser.parse().unwrap();
@@ -2491,7 +2491,7 @@ pub mod tests {
 				table,
 				..
 			}) => {
-				assert_eq!(table.namespace[0].text(), "my-schema");
+				assert_eq!(table.namespace[0].text(), "my-shape");
 				assert_eq!(table.name.text(), "my-table");
 			}
 			_ => unreachable!(),
@@ -3356,9 +3356,9 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_subscription_schemaless() {
+	fn test_create_subscription_shapeless() {
 		let bump = Bump::new();
-		// Test schema-less subscription: CREATE SUBSCRIPTION AS { FROM demo::events }
+		// Test shape-less subscription: CREATE SUBSCRIPTION AS { FROM demo::events }
 		let source = "CREATE SUBSCRIPTION AS { FROM demo::events }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
@@ -3374,7 +3374,7 @@ pub mod tests {
 				as_clause,
 				..
 			}) => {
-				assert_eq!(columns.len(), 0, "Schema-less should have no columns");
+				assert_eq!(columns.len(), 0, "Shape-less should have no columns");
 				assert!(as_clause.is_some(), "AS clause should be present");
 
 				let as_clause = as_clause.as_ref().unwrap();
@@ -3392,7 +3392,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_subscription_schemaless_with_filter() {
+	fn test_create_subscription_shapeless_with_filter() {
 		let bump = Bump::new();
 		let source = "CREATE SUBSCRIPTION AS { FROM demo::events | FILTER {id > 1 and id < 3} }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -3409,7 +3409,7 @@ pub mod tests {
 				as_clause,
 				..
 			}) => {
-				assert_eq!(columns.len(), 0, "Schema-less should have no columns");
+				assert_eq!(columns.len(), 0, "Shape-less should have no columns");
 				assert!(as_clause.is_some(), "AS clause should be present");
 
 				let as_clause = as_clause.as_ref().unwrap();
@@ -3426,16 +3426,16 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_subscription_schemaless_missing_as_fails() {
+	fn test_create_subscription_shapeless_missing_as_fails() {
 		let bump = Bump::new();
-		// Test that schema-less subscription without AS clause fails
+		// Test that shape-less subscription without AS clause fails
 		let source = "CREATE SUBSCRIPTION";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 
 		// Should fail with an error
-		assert!(result.is_err(), "Schema-less subscription without AS should fail");
+		assert!(result.is_err(), "Shape-less subscription without AS should fail");
 	}
 
 	#[test]

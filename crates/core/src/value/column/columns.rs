@@ -17,7 +17,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	encoded::schema::{RowSchema, RowSchemaField},
+	encoded::shape::{RowShape, RowShapeField},
 	interface::{
 		catalog::{table::Table, view::View},
 		resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
@@ -325,7 +325,7 @@ impl Columns {
 		Self::from_table(table.def())
 	}
 
-	/// Create empty Columns (0 rows) with schema from a Table
+	/// Create empty Columns (0 rows) with shape from a Table
 	pub fn from_table(table: &Table) -> Self {
 		let columns: Vec<Column> = table
 			.columns
@@ -342,7 +342,7 @@ impl Columns {
 		}
 	}
 
-	/// Create empty Columns (0 rows) with schema from a View
+	/// Create empty Columns (0 rows) with shape from a View
 	pub fn from_view(view: &View) -> Self {
 		let columns: Vec<Column> = view
 			.columns()
@@ -457,8 +457,8 @@ impl Columns {
 	pub fn from_row(row: &Row) -> Self {
 		let mut columns = Vec::new();
 
-		for (idx, field) in row.schema.fields().iter().enumerate() {
-			let value = row.schema.get_value(&row.encoded, idx);
+		for (idx, field) in row.shape.fields().iter().enumerate() {
+			let value = row.shape.get_value(&row.encoded, idx);
 
 			// Use the field type for the column data, handling undefined values
 			let column_type = if matches!(value, Value::None { .. }) {
@@ -483,7 +483,7 @@ impl Columns {
 				}
 			}
 
-			let name = row.schema.get_field_name(idx).expect("RowSchema missing name for field");
+			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
 
 			columns.push(Column {
 				name: Fragment::internal(name),
@@ -510,14 +510,14 @@ impl Columns {
 
 		let row_number = self.row_numbers.first().unwrap().clone();
 
-		// Build schema fields for the layout
-		let fields: Vec<RowSchemaField> = self
+		// Build shape fields for the layout
+		let fields: Vec<RowShapeField> = self
 			.columns
 			.iter()
-			.map(|col| RowSchemaField::unconstrained(col.name().text().to_string(), col.data().get_type()))
+			.map(|col| RowShapeField::unconstrained(col.name().text().to_string(), col.data().get_type()))
 			.collect();
 
-		let layout = RowSchema::new(fields);
+		let layout = RowShape::new(fields);
 		let mut encoded = layout.allocate();
 
 		// Get values and set them
@@ -527,7 +527,7 @@ impl Columns {
 		Row {
 			number: row_number,
 			encoded,
-			schema: layout,
+			shape: layout,
 		}
 	}
 }

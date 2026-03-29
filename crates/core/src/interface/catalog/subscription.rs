@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::CommitVersion,
-	encoded::schema::{RowSchema, RowSchemaField},
+	encoded::shape::{RowShape, RowShapeField},
 	interface::catalog::{
 		id::{NamespaceId, SubscriptionColumnId, SubscriptionId},
 		key::PrimaryKey,
@@ -52,15 +52,15 @@ impl Subscription {
 	}
 }
 
-impl From<&Subscription> for RowSchema {
+impl From<&Subscription> for RowShape {
 	fn from(value: &Subscription) -> Self {
-		// Use only user-defined columns for schema (implicit columns like _op removed)
+		// Use only user-defined columns for shape (implicit columns like _op removed)
 		let fields = value
 			.columns
 			.iter()
-			.map(|col| RowSchemaField::unconstrained(col.name.clone(), col.ty.clone()))
+			.map(|col| RowShapeField::unconstrained(col.name.clone(), col.ty.clone()))
 			.collect();
-		RowSchema::new(fields)
+		RowShape::new(fields)
 	}
 }
 

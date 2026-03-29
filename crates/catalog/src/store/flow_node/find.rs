@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use flow_node::SCHEMA;
+use flow_node::SHAPE;
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, FlowNode, FlowNodeId},
 	key::flow_node::FlowNodeKey,
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::flow_node::schema::flow_node};
+use crate::{CatalogStore, Result, store::flow_node::shape::flow_node};
 
 impl CatalogStore {
 	pub(crate) fn find_flow_node(rx: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<Option<FlowNode>> {
@@ -17,10 +17,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = FlowNodeId(SCHEMA.get_u64(&row, flow_node::ID));
-		let flow = FlowId(SCHEMA.get_u64(&row, flow_node::FLOW));
-		let node_type = SCHEMA.get_u8(&row, flow_node::TYPE);
-		let data = SCHEMA.get_blob(&row, flow_node::DATA).clone();
+		let id = FlowNodeId(SHAPE.get_u64(&row, flow_node::ID));
+		let flow = FlowId(SHAPE.get_u64(&row, flow_node::FLOW));
+		let node_type = SHAPE.get_u8(&row, flow_node::TYPE);
+		let data = SHAPE.get_blob(&row, flow_node::DATA).clone();
 
 		Ok(Some(FlowNode {
 			id,

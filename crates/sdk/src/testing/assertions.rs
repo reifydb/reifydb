@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{key::EncodedKey, schema::RowSchema},
+	encoded::{key::EncodedKey, shape::RowShape},
 	interface::change::{Change, Diff},
 	row::Row,
 	value::column::columns::Columns,
@@ -210,16 +210,16 @@ impl<'a> RowAssertion<'a> {
 
 	/// Assert the row values match (using the row's layout)
 	pub fn has_values(&self, expected: &[Value]) -> &Self {
-		let actual = get_values(&self.row.schema, &self.row.encoded);
+		let actual = get_values(&self.row.shape, &self.row.encoded);
 		assert_eq!(actual, expected, "Row values mismatch. Expected: {:?}, Actual: {:?}", expected, actual);
 		self
 	}
 
 	/// Assert a specific field value (for named layouts)
 	pub fn has_field(&self, field_name: &str, expected: Value) -> &Self {
-		let values = get_values(&self.row.schema, &self.row.encoded);
+		let values = get_values(&self.row.shape, &self.row.encoded);
 		let field_index =
-			self.row.schema
+			self.row.shape
 				.find_field_index(field_name)
 				.unwrap_or_else(|| panic!("Field '{}' not found in layout", field_name));
 
@@ -233,7 +233,7 @@ impl<'a> RowAssertion<'a> {
 
 	/// Get the values from the row
 	pub fn values(&self) -> Vec<Value> {
-		get_values(&self.row.schema, &self.row.encoded)
+		get_values(&self.row.shape, &self.row.encoded)
 	}
 }
 
@@ -275,8 +275,8 @@ impl<'a> StateAssertion<'a> {
 	}
 
 	/// Assert a key has specific values
-	pub fn key_has_values(&self, key: &EncodedKey, expected: &[Value], schema: &RowSchema) -> &Self {
-		self.store.assert_value(key, expected, schema);
+	pub fn key_has_values(&self, key: &EncodedKey, expected: &[Value], shape: &RowShape) -> &Self {
+		self.store.assert_value(key, expected, shape);
 		self
 	}
 
@@ -336,7 +336,7 @@ impl Assertable for TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::encoded::schema::RowSchema;
+	use reifydb_core::encoded::shape::RowShape;
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
@@ -386,18 +386,18 @@ pub mod tests {
 	#[test]
 	fn test_state_assertions() {
 		let mut store = TestStateStore::new();
-		let schema = RowSchema::testing(&[Type::Int8]);
+		let shape = RowShape::testing(&[Type::Int8]);
 		let key1 = encode_key("key1");
 		let key2 = encode_key("key2");
 
-		store.set_value(key1.clone(), &[Value::Int8(10i64)], &schema);
-		store.set_value(key2.clone(), &[Value::Int8(20i64)], &schema);
+		store.set_value(key1.clone(), &[Value::Int8(10i64)], &shape);
+		store.set_value(key2.clone(), &[Value::Int8(20i64)], &shape);
 
 		store.assert()
 			.has_entries(2)
 			.has_key(&key1)
 			.has_key(&key2)
-			.key_has_values(&key1, &[Value::Int8(10i64)], &schema)
+			.key_has_values(&key1, &[Value::Int8(10i64)], &shape)
 			.all_keys(|k| k.0.len() == 6); // "key1" and "key2" are 6 bytes (4 chars + 2-byte terminator 0xffff)
 	}
 

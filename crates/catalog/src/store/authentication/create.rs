@@ -15,7 +15,7 @@ use serde_json::to_string;
 use crate::{
 	CatalogStore, Result,
 	store::{
-		authentication::schema::authentication::{ID, IDENTITY, METHOD, PROPERTIES, SCHEMA},
+		authentication::shape::authentication::{ID, IDENTITY, METHOD, PROPERTIES, SHAPE},
 		sequence::system::SystemSequence,
 	},
 };
@@ -45,11 +45,11 @@ impl CatalogStore {
 			})
 		})?;
 
-		let mut row = SCHEMA.allocate();
-		SCHEMA.set_u64(&mut row, ID, id);
-		SCHEMA.set_identity_id(&mut row, IDENTITY, identity);
-		SCHEMA.set_utf8(&mut row, METHOD, method);
-		SCHEMA.set_utf8(&mut row, PROPERTIES, &properties_json);
+		let mut row = SHAPE.allocate();
+		SHAPE.set_u64(&mut row, ID, id);
+		SHAPE.set_identity_id(&mut row, IDENTITY, identity);
+		SHAPE.set_utf8(&mut row, METHOD, method);
+		SHAPE.set_utf8(&mut row, PROPERTIES, &properties_json);
 
 		txn.set(&AuthenticationKey::encoded(id), row)?;
 

@@ -6,9 +6,9 @@ use std::ptr;
 use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_identity_id(&self, row: &mut EncodedRow, index: usize, value: IdentityId) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -54,7 +54,7 @@ pub mod tests {
 	};
 	use reifydb_type::value::{identity::IdentityId, r#type::Type};
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 		let mock = MockClock::from_millis(1000);
@@ -65,40 +65,40 @@ pub mod tests {
 
 	#[test]
 	fn test_set_get_identity_id() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
-		schema.set_identity_id(&mut row, 0, id.clone());
-		assert_eq!(schema.get_identity_id(&row, 0), id);
+		shape.set_identity_id(&mut row, 0, id.clone());
+		assert_eq!(shape.get_identity_id(&row, 0), id);
 	}
 
 	#[test]
 	fn test_try_get_identity_id() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_identity_id(&row, 0), None);
+		assert_eq!(shape.try_get_identity_id(&row, 0), None);
 
 		let id = IdentityId::generate(&clock, &rng);
-		schema.set_identity_id(&mut row, 0, id.clone());
-		assert_eq!(schema.try_get_identity_id(&row, 0), Some(id));
+		shape.set_identity_id(&mut row, 0, id.clone());
+		assert_eq!(shape.try_get_identity_id(&row, 0), Some(id));
 	}
 
 	#[test]
 	fn test_multiple_generations() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[Type::IdentityId]);
 
 		// Generate multiple Identity IDs and ensure they're different
 		let mut ids = Vec::new();
 		for _ in 0..10 {
-			let mut row = schema.allocate();
+			let mut row = shape.allocate();
 			let id = IdentityId::generate(&clock, &rng);
-			schema.set_identity_id(&mut row, 0, id.clone());
-			let retrieved = schema.get_identity_id(&row, 0);
+			shape.set_identity_id(&mut row, 0, id.clone());
+			let retrieved = shape.get_identity_id(&row, 0);
 			assert_eq!(retrieved, id);
 			ids.push(id);
 			mock.advance_millis(1);
@@ -114,13 +114,13 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7_properties() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
-		schema.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = schema.get_identity_id(&row, 0);
+		shape.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = shape.get_identity_id(&row, 0);
 
 		// Verify it's backed by a version 7 UUID
 		assert_eq!(retrieved.get_version_num(), 7);
@@ -130,16 +130,16 @@ pub mod tests {
 	#[test]
 	fn test_timestamp_ordering() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs in sequence - they should be ordered by
 		// timestamp
 		let mut ids = Vec::new();
 		for _ in 0..5 {
-			let mut row = schema.allocate();
+			let mut row = shape.allocate();
 			let id = IdentityId::generate(&clock, &rng);
-			schema.set_identity_id(&mut row, 0, id.clone());
-			let retrieved = schema.get_identity_id(&row, 0);
+			shape.set_identity_id(&mut row, 0, id.clone());
+			let retrieved = shape.get_identity_id(&row, 0);
 			assert_eq!(retrieved, id);
 			ids.push(id);
 
@@ -156,51 +156,51 @@ pub mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
+		let mut row = shape.allocate();
 
 		let id1 = IdentityId::generate(&clock, &rng);
 		mock.advance_millis(1);
 		let id2 = IdentityId::generate(&clock, &rng);
 
-		schema.set_identity_id(&mut row, 0, id1.clone());
-		schema.set_bool(&mut row, 1, true);
-		schema.set_identity_id(&mut row, 2, id2.clone());
-		schema.set_i32(&mut row, 3, 42);
+		shape.set_identity_id(&mut row, 0, id1.clone());
+		shape.set_bool(&mut row, 1, true);
+		shape.set_identity_id(&mut row, 2, id2.clone());
+		shape.set_i32(&mut row, 3, 42);
 
-		assert_eq!(schema.get_identity_id(&row, 0), id1);
-		assert_eq!(schema.get_bool(&row, 1), true);
-		assert_eq!(schema.get_identity_id(&row, 2), id2);
-		assert_eq!(schema.get_i32(&row, 3), 42);
+		assert_eq!(shape.get_identity_id(&row, 0), id1);
+		assert_eq!(shape.get_bool(&row, 1), true);
+		assert_eq!(shape.get_identity_id(&row, 2), id2);
+		assert_eq!(shape.get_i32(&row, 3), 42);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId, Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId, Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
-		schema.set_identity_id(&mut row, 0, id.clone());
+		shape.set_identity_id(&mut row, 0, id.clone());
 
-		assert_eq!(schema.try_get_identity_id(&row, 0), Some(id));
-		assert_eq!(schema.try_get_identity_id(&row, 1), None);
+		assert_eq!(shape.try_get_identity_id(&row, 0), Some(id));
+		assert_eq!(shape.try_get_identity_id(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_identity_id(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_identity_id(&row, 0), None);
 	}
 
 	#[test]
 	fn test_persistence() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
 		let id_string = id.to_string();
 
-		schema.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = schema.get_identity_id(&row, 0);
+		shape.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = shape.get_identity_id(&row, 0);
 
 		assert_eq!(retrieved, id);
 		assert_eq!(retrieved.to_string(), id_string);
@@ -209,14 +209,14 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let original_id = IdentityId::generate(&clock, &rng);
-		schema.set_identity_id(&mut row, 0, original_id.clone());
+		shape.set_identity_id(&mut row, 0, original_id.clone());
 
-		let retrieved_id = schema.get_identity_id(&row, 0);
+		let retrieved_id = shape.get_identity_id(&row, 0);
 		assert_eq!(retrieved_id, original_id);
 
 		// Verify that the underlying UUID7 byte representation is
@@ -227,8 +227,8 @@ pub mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let id1 = IdentityId::generate(&clock, &rng);
 		mock.advance_millis(1);
@@ -236,13 +236,13 @@ pub mod tests {
 		mock.advance_millis(1);
 		let id3 = IdentityId::generate(&clock, &rng);
 
-		schema.set_identity_id(&mut row, 0, id1.clone());
-		schema.set_identity_id(&mut row, 1, id2.clone());
-		schema.set_identity_id(&mut row, 2, id3.clone());
+		shape.set_identity_id(&mut row, 0, id1.clone());
+		shape.set_identity_id(&mut row, 1, id2.clone());
+		shape.set_identity_id(&mut row, 2, id3.clone());
 
-		assert_eq!(schema.get_identity_id(&row, 0), id1);
-		assert_eq!(schema.get_identity_id(&row, 1), id2);
-		assert_eq!(schema.get_identity_id(&row, 2), id3);
+		assert_eq!(shape.get_identity_id(&row, 0), id1);
+		assert_eq!(shape.get_identity_id(&row, 1), id2);
+		assert_eq!(shape.get_identity_id(&row, 2), id3);
 
 		// Ensure all Identity IDs are different
 		assert_ne!(id1, id2);
@@ -252,15 +252,15 @@ pub mod tests {
 
 	#[test]
 	fn test_format_consistency() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
 		let original_string = id.to_string();
 
-		schema.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = schema.get_identity_id(&row, 0);
+		shape.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = shape.get_identity_id(&row, 0);
 		let retrieved_string = retrieved.to_string();
 
 		assert_eq!(original_string, retrieved_string);
@@ -273,15 +273,15 @@ pub mod tests {
 
 	#[test]
 	fn test_byte_level_storage() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
-		let mut row = schema.allocate();
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[Type::IdentityId]);
+		let mut row = shape.allocate();
 
 		let id = IdentityId::generate(&clock, &rng);
 		let original_bytes = *id.as_bytes();
 
-		schema.set_identity_id(&mut row, 0, id.clone());
-		let retrieved = schema.get_identity_id(&row, 0);
+		shape.set_identity_id(&mut row, 0, id.clone());
+		let retrieved = shape.get_identity_id(&row, 0);
 		let retrieved_bytes = *retrieved.as_bytes();
 
 		assert_eq!(original_bytes, retrieved_bytes);
@@ -294,21 +294,21 @@ pub mod tests {
 	#[test]
 	fn test_time_based_properties() {
 		let (mock, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[Type::IdentityId]);
+		let shape = RowShape::testing(&[Type::IdentityId]);
 
 		// Generate Identity IDs at different times
 		let id1 = IdentityId::generate(&clock, &rng);
 		mock.advance_millis(2);
 		let id2 = IdentityId::generate(&clock, &rng);
 
-		let mut row1 = schema.allocate();
-		let mut row2 = schema.allocate();
+		let mut row1 = shape.allocate();
+		let mut row2 = shape.allocate();
 
-		schema.set_identity_id(&mut row1, 0, id1.clone());
-		schema.set_identity_id(&mut row2, 0, id2.clone());
+		shape.set_identity_id(&mut row1, 0, id1.clone());
+		shape.set_identity_id(&mut row2, 0, id2.clone());
 
-		let retrieved1 = schema.get_identity_id(&row1, 0);
-		let retrieved2 = schema.get_identity_id(&row2, 0);
+		let retrieved1 = shape.get_identity_id(&row1, 0);
+		let retrieved2 = shape.get_identity_id(&row2, 0);
 
 		// The second Identity ID should be "greater" due to timestamp
 		// ordering
@@ -317,23 +317,23 @@ pub mod tests {
 
 	#[test]
 	fn test_as_primary_key() {
-		let (_, clock, rng) = test_clock_and_rng();
-		let schema = RowSchema::testing(&[
+		let (_mock, clock, rng) = test_clock_and_rng();
+		let shape = RowShape::testing(&[
 			Type::IdentityId, // Primary key
 			Type::Utf8,       // Name field
 			Type::Int4,       // Age field
 		]);
-		let mut row = schema.allocate();
+		let mut row = shape.allocate();
 
 		// Simulate a database record with Identity ID as primary key
 		let primary_key = IdentityId::generate(&clock, &rng);
-		schema.set_identity_id(&mut row, 0, primary_key.clone());
-		schema.set_utf8(&mut row, 1, "John Doe");
-		schema.set_i32(&mut row, 2, 30);
+		shape.set_identity_id(&mut row, 0, primary_key.clone());
+		shape.set_utf8(&mut row, 1, "John Doe");
+		shape.set_i32(&mut row, 2, 30);
 
-		assert_eq!(schema.get_identity_id(&row, 0), primary_key);
-		assert_eq!(schema.get_utf8(&row, 1), "John Doe");
-		assert_eq!(schema.get_i32(&row, 2), 30);
+		assert_eq!(shape.get_identity_id(&row, 0), primary_key);
+		assert_eq!(shape.get_utf8(&row, 1), "John Doe");
+		assert_eq!(shape.get_i32(&row, 2), 30);
 
 		// Verify that the primary key is suitable for ordering/indexing
 		assert_eq!(primary_key.get_version_num(), 7);
@@ -341,11 +341,11 @@ pub mod tests {
 
 	#[test]
 	fn test_try_get_identity_id_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_identity_id(&row, 0), None);
+		assert_eq!(shape.try_get_identity_id(&row, 0), None);
 	}
 }

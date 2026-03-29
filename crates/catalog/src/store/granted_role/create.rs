@@ -10,7 +10,7 @@ use reifydb_type::value::identity::IdentityId;
 
 use crate::{
 	CatalogStore, Result,
-	store::granted_role::schema::granted_role::{IDENTITY, ROLE_ID, SCHEMA},
+	store::granted_role::shape::granted_role::{IDENTITY, ROLE_ID, SHAPE},
 };
 
 impl CatalogStore {
@@ -19,9 +19,9 @@ impl CatalogStore {
 		identity: IdentityId,
 		role: RoleId,
 	) -> Result<GrantedRole> {
-		let mut row = SCHEMA.allocate();
-		SCHEMA.set_identity_id(&mut row, IDENTITY, identity);
-		SCHEMA.set_u64(&mut row, ROLE_ID, role);
+		let mut row = SHAPE.allocate();
+		SHAPE.set_identity_id(&mut row, IDENTITY, identity);
+		SHAPE.set_u64(&mut row, ROLE_ID, role);
 
 		txn.set(&GrantedRoleKey::encoded(identity, role), row)?;
 

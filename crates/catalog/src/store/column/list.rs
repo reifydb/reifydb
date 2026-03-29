@@ -5,18 +5,18 @@ use reifydb_core::{
 	interface::catalog::{
 		column::Column,
 		id::{ColumnId, NamespaceId},
-		schema::SchemaId,
+		shape::ShapeId,
 	},
 	key::column::ColumnKey,
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{CatalogStore, Result, store::column::schema::primitive_column};
+use crate::{CatalogStore, Result, store::column::shape::primitive_column};
 
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
 	pub column: Column,
-	pub schema_id: SchemaId,
+	pub shape_id: ShapeId,
 	pub is_view: bool,
 	pub entity_kind: &'static str,
 	pub entity_name: String,
@@ -24,18 +24,18 @@ pub struct ColumnInfo {
 }
 
 impl CatalogStore {
-	pub(crate) fn list_columns(rx: &mut Transaction<'_>, schema: impl Into<SchemaId>) -> Result<Vec<Column>> {
-		let schema = schema.into();
+	pub(crate) fn list_columns(rx: &mut Transaction<'_>, shape: impl Into<ShapeId>) -> Result<Vec<Column>> {
+		let shape = shape.into();
 		let mut result = vec![];
 
 		// Collect column IDs first to avoid holding stream borrow
 		let mut ids = Vec::new();
 		{
-			let mut stream = rx.range(ColumnKey::full_scan(schema), 1024)?;
+			let mut stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
 			while let Some(entry) = stream.next() {
 				let multi = entry?;
 				let row = multi.row;
-				ids.push(ColumnId(primitive_column::SCHEMA.get_u64(&row, primitive_column::ID)));
+				ids.push(ColumnId(primitive_column::SHAPE.get_u64(&row, primitive_column::ID)));
 			}
 		}
 
@@ -58,7 +58,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					schema_id: table.id.into(),
+					shape_id: table.id.into(),
 					is_view: false,
 					entity_kind: "table",
 					entity_name: table.name.clone(),
@@ -74,7 +74,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					schema_id: view.id().into(),
+					shape_id: view.id().into(),
 					is_view: true,
 					entity_kind: "view",
 					entity_name: view.name().to_string(),
@@ -90,7 +90,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					schema_id: ringbuffer.id.into(),
+					shape_id: ringbuffer.id.into(),
 					is_view: false,
 					entity_kind: "ring buffer",
 					entity_name: ringbuffer.name.clone(),
@@ -124,7 +124,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "b_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int4),
 				properties: vec![],
@@ -141,7 +141,7 @@ pub mod tests {
 			ColumnToCreate {
 				fragment: None,
 				namespace_name: "test_namespace".to_string(),
-				schema_name: "test_table".to_string(),
+				shape_name: "test_table".to_string(),
 				column: "a_col".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				properties: vec![],

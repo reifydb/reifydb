@@ -7,16 +7,16 @@ use reifydb_core::{
 };
 use reifydb_type::value::Value;
 
-use crate::store::config::schema::config::{SCHEMA, VALUE};
+use crate::store::config::shape::config::{SHAPE, VALUE};
 
 pub mod get;
-pub mod schema;
 pub mod set;
+pub mod shape;
 
 pub(crate) fn convert_config(multi: MultiVersionRow) -> (String, Value) {
 	let config_key = ConfigKey::decode(&multi.key).map(|k| k.key).unwrap_or_default();
 
-	let value = match SCHEMA.get_value(&multi.row, VALUE) {
+	let value = match SHAPE.get_value(&multi.row, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

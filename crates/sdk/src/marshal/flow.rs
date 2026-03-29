@@ -21,7 +21,7 @@ use reifydb_core::{
 		catalog::{
 			flow::FlowNodeId,
 			id::{RingBufferId, SeriesId, TableId, ViewId},
-			schema::SchemaId,
+			shape::ShapeId,
 			vtable::VTableId,
 		},
 		change::{Change, ChangeOrigin, Diff},
@@ -67,28 +67,28 @@ impl Arena {
 				origin: 0,
 				id: node_id.0,
 			},
-			ChangeOrigin::Schema(schema_id) => match schema_id {
-				SchemaId::Table(id) => OriginFFI {
+			ChangeOrigin::Shape(shape_id) => match shape_id {
+				ShapeId::Table(id) => OriginFFI {
 					origin: 1,
 					id: id.0,
 				},
-				SchemaId::View(id) => OriginFFI {
+				ShapeId::View(id) => OriginFFI {
 					origin: 2,
 					id: id.0,
 				},
-				SchemaId::TableVirtual(id) => OriginFFI {
+				ShapeId::TableVirtual(id) => OriginFFI {
 					origin: 3,
 					id: id.0,
 				},
-				SchemaId::RingBuffer(id) => OriginFFI {
+				ShapeId::RingBuffer(id) => OriginFFI {
 					origin: 4,
 					id: id.0,
 				},
-				SchemaId::Dictionary(id) => OriginFFI {
+				ShapeId::Dictionary(id) => OriginFFI {
 					origin: 6,
 					id: id.0,
 				},
-				SchemaId::Series(id) => OriginFFI {
+				ShapeId::Series(id) => OriginFFI {
 					origin: 7,
 					id: id.0,
 				},
@@ -149,12 +149,12 @@ impl Arena {
 	fn unmarshal_origin(ffi: &OriginFFI) -> Result<ChangeOrigin, String> {
 		match ffi.origin {
 			0 => Ok(ChangeOrigin::Flow(FlowNodeId(ffi.id))),
-			1 => Ok(ChangeOrigin::Schema(SchemaId::Table(TableId(ffi.id)))),
-			2 => Ok(ChangeOrigin::Schema(SchemaId::View(ViewId(ffi.id)))),
-			3 => Ok(ChangeOrigin::Schema(SchemaId::TableVirtual(VTableId(ffi.id)))),
-			4 => Ok(ChangeOrigin::Schema(SchemaId::RingBuffer(RingBufferId(ffi.id)))),
-			6 => Ok(ChangeOrigin::Schema(SchemaId::Dictionary(DictionaryId(ffi.id)))),
-			7 => Ok(ChangeOrigin::Schema(SchemaId::Series(SeriesId(ffi.id)))),
+			1 => Ok(ChangeOrigin::Shape(ShapeId::Table(TableId(ffi.id)))),
+			2 => Ok(ChangeOrigin::Shape(ShapeId::View(ViewId(ffi.id)))),
+			3 => Ok(ChangeOrigin::Shape(ShapeId::TableVirtual(VTableId(ffi.id)))),
+			4 => Ok(ChangeOrigin::Shape(ShapeId::RingBuffer(RingBufferId(ffi.id)))),
+			6 => Ok(ChangeOrigin::Shape(ShapeId::Dictionary(DictionaryId(ffi.id)))),
+			7 => Ok(ChangeOrigin::Shape(ShapeId::Series(SeriesId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
 		}
 	}

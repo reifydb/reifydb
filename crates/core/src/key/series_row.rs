@@ -6,7 +6,7 @@ use std::collections::Bound;
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::{id::SeriesId, schema::SchemaId},
+	interface::catalog::{id::SeriesId, shape::ShapeId},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
@@ -14,8 +14,8 @@ const VERSION: u8 = 1;
 
 /// Key for series data rows.
 ///
-/// Layout without tag: `[Version | Row(0x03) | SchemaId::Series(id) | ordering_value(u64) | sequence(u64)]`
-/// Layout with tag:    `[Version | Row(0x03) | SchemaId::Series(id) | variant_tag(u8) | ordering_value(u64) |
+/// Layout without tag: `[Version | Row(0x03) | ShapeId::Series(id) | ordering_value(u64) | sequence(u64)]`
+/// Layout with tag:    `[Version | Row(0x03) | ShapeId::Series(id) | variant_tag(u8) | ordering_value(u64) |
 /// sequence(u64)]`
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeriesRowKey {
@@ -29,14 +29,14 @@ impl EncodableKey for SeriesRowKey {
 	const KIND: KeyKind = KeyKind::Row;
 
 	fn encode(&self) -> EncodedKey {
-		let object = SchemaId::Series(self.series);
+		let object = ShapeId::Series(self.series);
 		let capacity = if self.variant_tag.is_some() {
 			28
 		} else {
 			27
 		};
 		let mut serializer = KeySerializer::with_capacity(capacity);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_schema_id(object);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -57,9 +57,9 @@ impl EncodableKey for SeriesRowKey {
 			return None;
 		}
 
-		let object = de.read_schema_id().ok()?;
+		let object = de.read_shape_id().ok()?;
 		let series = match object {
-			SchemaId::Series(id) => id,
+			ShapeId::Series(id) => id,
 			_ => return None,
 		};
 
@@ -131,9 +131,9 @@ impl SeriesRowKeyRange {
 	}
 
 	fn start_key(&self) -> EncodedKey {
-		let object = SchemaId::Series(self.series);
+		let object = ShapeId::Series(self.series);
 		let mut serializer = KeySerializer::with_capacity(28);
-		serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_schema_id(object);
+		serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object);
 		if let Some(tag) = self.variant_tag {
 			serializer.extend_u8(tag);
 		}
@@ -151,9 +151,9 @@ impl SeriesRowKeyRange {
 		// The end key (upper bound) uses key_start (the lowest key value in
 		// the desired range) to stop scanning after the oldest matching row.
 		if let Some(key_val) = self.key_start {
-			let object = SchemaId::Series(self.series);
+			let object = ShapeId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(28);
-			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_schema_id(object);
+			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object);
 			if let Some(tag) = self.variant_tag {
 				serializer.extend_u8(tag);
 			}
@@ -162,10 +162,10 @@ impl SeriesRowKeyRange {
 			serializer.extend_u64(key_val).extend_u64(0u64);
 			serializer.to_encoded_key()
 		} else {
-			// Use SchemaId ordering trick to get end of range
-			let object = SchemaId::Series(self.series);
+			// Use ShapeId ordering trick to get end of range
+			let object = ShapeId::Series(self.series);
 			let mut serializer = KeySerializer::with_capacity(11);
-			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_schema_id(object.prev());
+			serializer.extend_u8(VERSION).extend_u8(KeyKind::Row as u8).extend_shape_id(object.prev());
 			serializer.to_encoded_key()
 		}
 	}

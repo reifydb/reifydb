@@ -3,14 +3,14 @@
 
 use crate::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, schema::SchemaId},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 	value::column::columns::Columns,
 };
 
 /// Origin of a change
 #[derive(Debug, Clone)]
 pub enum ChangeOrigin {
-	Schema(SchemaId),
+	Shape(ShapeId),
 	Flow(FlowNodeId),
 }
 /// Represents a single diff
@@ -40,10 +40,10 @@ pub struct Change {
 }
 
 impl Change {
-	/// Create a change from a schema (external) source
-	pub fn from_schema(schema: SchemaId, version: CommitVersion, diffs: Vec<Diff>) -> Self {
+	/// Create a change from a shape (external) source
+	pub fn from_shape(shape: ShapeId, version: CommitVersion, diffs: Vec<Diff>) -> Self {
 		Self {
-			origin: ChangeOrigin::Schema(schema),
+			origin: ChangeOrigin::Shape(shape),
 			diffs,
 			version,
 		}

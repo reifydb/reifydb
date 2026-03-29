@@ -7,7 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{CatalogStore, Result, store::schema::drop::drop_schema_metadata};
+use crate::{CatalogStore, Result, store::shape::drop::drop_shape_metadata};
 
 impl CatalogStore {
 	pub(crate) fn drop_view(txn: &mut AdminTransaction, view: ViewId) -> Result<()> {
@@ -21,7 +21,7 @@ impl CatalogStore {
 		};
 
 		// Clean up all associated metadata (columns, policies, sequences, pk, retention)
-		drop_schema_metadata(txn, view.into(), pk_id)?;
+		drop_shape_metadata(txn, view.into(), pk_id)?;
 
 		// Remove the view metadata
 		txn.remove(&ViewKey::encoded(view))?;

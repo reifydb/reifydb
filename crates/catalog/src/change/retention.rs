@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	key::{
 		EncodableKey,
-		retention_policy::{OperatorRetentionPolicyKey, SchemaRetentionPolicyKey},
+		retention_policy::{OperatorRetentionPolicyKey, ShapeRetentionPolicyKey},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -13,14 +13,14 @@ use reifydb_transaction::transaction::Transaction;
 use super::CatalogChangeApplier;
 use crate::{Result, catalog::Catalog, store::retention_policy::decode_retention_policy};
 
-pub(super) struct SchemaRetentionPolicyApplier;
+pub(super) struct ShapeRetentionPolicyApplier;
 
-impl CatalogChangeApplier for SchemaRetentionPolicyApplier {
+impl CatalogChangeApplier for ShapeRetentionPolicyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		if let Some(k) = SchemaRetentionPolicyKey::decode(key) {
+		if let Some(k) = ShapeRetentionPolicyKey::decode(key) {
 			if let Some(policy) = decode_retention_policy(row) {
-				catalog.materialized.set_schema_retention_policy(k.object, txn.version(), Some(policy));
+				catalog.materialized.set_shape_retention_policy(k.shape, txn.version(), Some(policy));
 			}
 		}
 		Ok(())
@@ -28,8 +28,8 @@ impl CatalogChangeApplier for SchemaRetentionPolicyApplier {
 
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
-		if let Some(k) = SchemaRetentionPolicyKey::decode(key) {
-			catalog.materialized.set_schema_retention_policy(k.object, txn.version(), None);
+		if let Some(k) = ShapeRetentionPolicyKey::decode(key) {
+			catalog.materialized.set_shape_retention_policy(k.shape, txn.version(), None);
 		}
 		Ok(())
 	}

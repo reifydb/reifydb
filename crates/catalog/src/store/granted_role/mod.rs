@@ -3,18 +3,18 @@
 
 use reifydb_core::interface::{catalog::identity::GrantedRole, store::MultiVersionRow};
 
-use crate::store::granted_role::schema::granted_role;
+use crate::store::granted_role::shape::granted_role;
 
 pub mod create;
 pub mod drop;
 pub mod find;
 pub mod list;
-pub mod schema;
+pub mod shape;
 
 pub(crate) fn convert_granted_role(multi: MultiVersionRow) -> GrantedRole {
 	let row = multi.row;
-	let identity = granted_role::SCHEMA.get_identity_id(&row, granted_role::IDENTITY);
-	let role_id = granted_role::SCHEMA.get_u64(&row, granted_role::ROLE_ID);
+	let identity = granted_role::SHAPE.get_identity_id(&row, granted_role::IDENTITY);
+	let role_id = granted_role::SHAPE.get_u64(&row, granted_role::ROLE_ID);
 
 	GrantedRole {
 		identity,

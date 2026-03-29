@@ -8,7 +8,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::schema::SchemaId,
+		catalog::shape::ShapeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
@@ -283,7 +283,7 @@ impl FlowTransaction {
 
 	/// Track a view-level flow change in this transaction's accumulator.
 	pub fn track_flow_change(&mut self, change: Change) {
-		if let ChangeOrigin::Schema(id) = change.origin {
+		if let ChangeOrigin::Shape(id) = change.origin {
 			for diff in change.diffs {
 				self.inner_mut().accumulator.track(id, diff);
 			}
@@ -291,7 +291,7 @@ impl FlowTransaction {
 	}
 
 	/// Drain the accumulator entries collected during flow processing.
-	pub fn take_accumulator_entries(&mut self) -> Vec<(SchemaId, Diff)> {
+	pub fn take_accumulator_entries(&mut self) -> Vec<(ShapeId, Diff)> {
 		let acc = &mut self.inner_mut().accumulator;
 		let entries: Vec<_> = acc.entries_from(0).to_vec();
 		acc.clear();

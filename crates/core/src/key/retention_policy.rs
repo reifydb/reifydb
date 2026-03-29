@@ -10,7 +10,7 @@ use crate::{
 	interface::catalog::{
 		flow::FlowNodeId,
 		id::{RingBufferId, SeriesId, TableId, ViewId},
-		schema::SchemaId,
+		shape::ShapeId,
 		vtable::VTableId,
 	},
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
@@ -18,46 +18,46 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing retention policy for a data object (table, view, ringbuffer)
+/// Key for storing retention policy for a data shape (table, view, ringbuffer)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SchemaRetentionPolicyKey {
-	pub object: SchemaId,
+pub struct ShapeRetentionPolicyKey {
+	pub shape: ShapeId,
 }
 
-impl SchemaRetentionPolicyKey {
-	pub fn encoded(object: impl Into<SchemaId>) -> EncodedKey {
+impl ShapeRetentionPolicyKey {
+	pub fn encoded(shape: impl Into<ShapeId>) -> EncodedKey {
 		Self {
-			object: object.into(),
+			shape: shape.into(),
 		}
 		.encode()
 	}
 }
 
-impl EncodableKey for SchemaRetentionPolicyKey {
-	const KIND: KeyKind = KeyKind::SchemaRetentionPolicy;
+impl EncodableKey for ShapeRetentionPolicyKey {
+	const KIND: KeyKind = KeyKind::ShapeRetentionPolicy;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
 
 		// Encode object_id with discriminator
-		match &self.object {
-			SchemaId::Table(id) => {
+		match &self.shape {
+			ShapeId::Table(id) => {
 				serializer.extend_u8(0x01).extend_u64(id.0);
 			}
-			SchemaId::View(id) => {
+			ShapeId::View(id) => {
 				serializer.extend_u8(0x02).extend_u64(id.0);
 			}
-			SchemaId::TableVirtual(id) => {
+			ShapeId::TableVirtual(id) => {
 				serializer.extend_u8(0x03).extend_u64(id.0);
 			}
-			SchemaId::RingBuffer(id) => {
+			ShapeId::RingBuffer(id) => {
 				serializer.extend_u8(0x04).extend_u64(id.0);
 			}
-			SchemaId::Dictionary(id) => {
+			ShapeId::Dictionary(id) => {
 				serializer.extend_u8(0x06).extend_u64(id.0);
 			}
-			SchemaId::Series(id) => {
+			ShapeId::Series(id) => {
 				serializer.extend_u8(0x07).extend_u64(id.0);
 			}
 		}
@@ -82,17 +82,17 @@ impl EncodableKey for SchemaRetentionPolicyKey {
 		let id = de.read_u64().ok()?;
 
 		let object_id = match discriminator {
-			0x01 => SchemaId::Table(TableId(id)),
-			0x02 => SchemaId::View(ViewId(id)),
-			0x03 => SchemaId::TableVirtual(VTableId(id)),
-			0x04 => SchemaId::RingBuffer(RingBufferId(id)),
-			0x06 => SchemaId::Dictionary(DictionaryId(id)),
-			0x07 => SchemaId::Series(SeriesId(id)),
+			0x01 => ShapeId::Table(TableId(id)),
+			0x02 => ShapeId::View(ViewId(id)),
+			0x03 => ShapeId::TableVirtual(VTableId(id)),
+			0x04 => ShapeId::RingBuffer(RingBufferId(id)),
+			0x06 => ShapeId::Dictionary(DictionaryId(id)),
+			0x07 => ShapeId::Series(SeriesId(id)),
 			_ => return None,
 		};
 
 		Some(Self {
-			object: object_id,
+			shape: object_id,
 		})
 	}
 }
@@ -140,23 +140,23 @@ impl EncodableKey for OperatorRetentionPolicyKey {
 	}
 }
 
-/// Range for scanning all object retention policies
-pub struct SchemaRetentionPolicyKeyRange;
+/// Range for scanning all shape retention policies
+pub struct ShapeRetentionPolicyKeyRange;
 
-impl SchemaRetentionPolicyKeyRange {
+impl ShapeRetentionPolicyKeyRange {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
 	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(SchemaRetentionPolicyKey::KIND as u8);
+		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionPolicyKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(SchemaRetentionPolicyKey::KIND as u8 - 1);
+		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionPolicyKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -187,9 +187,9 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_schema_retention_policy_key_encoding() {
-		let key = SchemaRetentionPolicyKey {
-			object: SchemaId::Table(TableId(42)),
+	fn test_shape_retention_policy_key_encoding() {
+		let key = ShapeRetentionPolicyKey {
+			shape: ShapeId::Table(TableId(42)),
 		};
 
 		let encoded = key.encode();
@@ -197,7 +197,7 @@ pub mod tests {
 		assert_eq!(encoded[1], 0xE8); // kind (0x17 encoded as !0x17)
 		assert_eq!(&encoded[3..11], &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xD5]);
 
-		let decoded = SchemaRetentionPolicyKey::decode(&encoded).unwrap();
+		let decoded = ShapeRetentionPolicyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 

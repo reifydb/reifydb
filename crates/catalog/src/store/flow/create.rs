@@ -15,7 +15,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		flow::schema::{flow, flow_namespace},
+		flow::shape::{flow, flow_namespace},
 		sequence::flow::next_flow_id,
 	},
 };
@@ -75,13 +75,13 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &FlowToCreate,
 	) -> Result<()> {
-		let mut row = flow::SCHEMA.allocate();
-		flow::SCHEMA.set_u64(&mut row, flow::ID, flow);
-		flow::SCHEMA.set_u64(&mut row, flow::NAMESPACE, namespace);
-		flow::SCHEMA.set_utf8(&mut row, flow::NAME, to_create.name.text());
-		flow::SCHEMA.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
+		let mut row = flow::SHAPE.allocate();
+		flow::SHAPE.set_u64(&mut row, flow::ID, flow);
+		flow::SHAPE.set_u64(&mut row, flow::NAMESPACE, namespace);
+		flow::SHAPE.set_utf8(&mut row, flow::NAME, to_create.name.text());
+		flow::SHAPE.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 		let tick_nanos = to_create.tick.map(|d| d.get_nanos() as u64).unwrap_or(0);
-		flow::SCHEMA.set_u64(&mut row, flow::TICK_NANOS, tick_nanos);
+		flow::SHAPE.set_u64(&mut row, flow::TICK_NANOS, tick_nanos);
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row)?;
@@ -95,9 +95,9 @@ impl CatalogStore {
 		flow: FlowId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = flow_namespace::SCHEMA.allocate();
-		flow_namespace::SCHEMA.set_u64(&mut row, flow_namespace::ID, flow);
-		flow_namespace::SCHEMA.set_utf8(&mut row, flow_namespace::NAME, name);
+		let mut row = flow_namespace::SHAPE.allocate();
+		flow_namespace::SHAPE.set_u64(&mut row, flow_namespace::ID, flow);
+		flow_namespace::SHAPE.set_utf8(&mut row, flow_namespace::NAME, name);
 		let key = NamespaceFlowKey::encoded(namespace, flow);
 		txn.set(&key, row)?;
 		Ok(())
@@ -118,7 +118,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::flow::{create::FlowToCreate, schema::flow_namespace},
+		store::flow::{create::FlowToCreate, shape::flow_namespace},
 		test_utils::{create_namespace, ensure_test_namespace},
 	};
 
@@ -182,8 +182,8 @@ pub mod tests {
 
 		for link in &links {
 			let row = &link.row;
-			let id = flow_namespace::SCHEMA.get_u64(row, flow_namespace::ID);
-			let name = flow_namespace::SCHEMA.get_utf8(row, flow_namespace::NAME);
+			let id = flow_namespace::SHAPE.get_u64(row, flow_namespace::ID);
+			let name = flow_namespace::SHAPE.get_utf8(row, flow_namespace::NAME);
 
 			match name {
 				"flow_one" => {

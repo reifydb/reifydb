@@ -12,7 +12,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::fragment::Fragment;
 use serde_json::to_string;
 
-use super::schema::{sumtype as sumtype_schema, sumtype_namespace};
+use super::shape::{sumtype as sumtype_shape, sumtype_namespace};
 use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
@@ -53,18 +53,18 @@ impl CatalogStore {
 
 		let variants_json = to_string(&to_create.def.variants).expect("failed to serialize variants");
 
-		let mut row = sumtype_schema::SCHEMA.allocate();
-		sumtype_schema::SCHEMA.set_u64(&mut row, sumtype_schema::ID, sumtype_id);
-		sumtype_schema::SCHEMA.set_u64(&mut row, sumtype_schema::NAMESPACE, namespace_id);
-		sumtype_schema::SCHEMA.set_utf8(&mut row, sumtype_schema::NAME, to_create.name.text());
-		sumtype_schema::SCHEMA.set_utf8(&mut row, sumtype_schema::VARIANTS_JSON, &variants_json);
-		sumtype_schema::SCHEMA.set_u8(&mut row, sumtype_schema::KIND, to_create.def.kind as u8);
+		let mut row = sumtype_shape::SHAPE.allocate();
+		sumtype_shape::SHAPE.set_u64(&mut row, sumtype_shape::ID, sumtype_id);
+		sumtype_shape::SHAPE.set_u64(&mut row, sumtype_shape::NAMESPACE, namespace_id);
+		sumtype_shape::SHAPE.set_utf8(&mut row, sumtype_shape::NAME, to_create.name.text());
+		sumtype_shape::SHAPE.set_utf8(&mut row, sumtype_shape::VARIANTS_JSON, &variants_json);
+		sumtype_shape::SHAPE.set_u8(&mut row, sumtype_shape::KIND, to_create.def.kind as u8);
 
 		txn.set(&SumTypeKey::encoded(sumtype_id), row)?;
 
-		let mut ns_row = sumtype_namespace::SCHEMA.allocate();
-		sumtype_namespace::SCHEMA.set_u64(&mut ns_row, sumtype_namespace::ID, sumtype_id);
-		sumtype_namespace::SCHEMA.set_utf8(&mut ns_row, sumtype_namespace::NAME, to_create.name.text());
+		let mut ns_row = sumtype_namespace::SHAPE.allocate();
+		sumtype_namespace::SHAPE.set_u64(&mut ns_row, sumtype_namespace::ID, sumtype_id);
+		sumtype_namespace::SHAPE.set_utf8(&mut ns_row, sumtype_namespace::NAME, to_create.name.text());
 
 		txn.set(&NamespaceSumTypeKey::encoded(namespace_id, sumtype_id), ns_row)?;
 
@@ -82,7 +82,7 @@ pub mod tests {
 	use reifydb_type::{fragment::Fragment, value::sumtype::SumTypeId};
 
 	use super::*;
-	use crate::{CatalogStore, store::sumtype::schema::sumtype_namespace, test_utils::ensure_test_namespace};
+	use crate::{CatalogStore, store::sumtype::shape::sumtype_namespace, test_utils::ensure_test_namespace};
 
 	#[test]
 	fn test_create_sumtype() {
@@ -214,14 +214,14 @@ pub mod tests {
 
 		let link = &links[0];
 		let row = &link.row;
-		let id2 = sumtype_namespace::SCHEMA.get_u64(row, sumtype_namespace::ID);
+		let id2 = sumtype_namespace::SHAPE.get_u64(row, sumtype_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(sumtype_namespace::SCHEMA.get_utf8(row, sumtype_namespace::NAME), "Shape");
+		assert_eq!(sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME), "Shape");
 
 		let link = &links[1];
 		let row = &link.row;
-		let id1 = sumtype_namespace::SCHEMA.get_u64(row, sumtype_namespace::ID);
+		let id1 = sumtype_namespace::SHAPE.get_u64(row, sumtype_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(sumtype_namespace::SCHEMA.get_utf8(row, sumtype_namespace::NAME), "Color");
+		assert_eq!(sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME), "Color");
 	}
 }

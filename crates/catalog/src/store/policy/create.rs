@@ -12,8 +12,8 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		policy::schema::{
-			policy::{ENABLED, ID, NAME, SCHEMA, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
+		policy::shape::{
+			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
 			policy_op,
 		},
 		sequence::system::SystemSequence,
@@ -40,23 +40,23 @@ impl CatalogStore {
 
 		let policy_id = SystemSequence::next_policy_id(txn)?;
 
-		let mut row = SCHEMA.allocate();
-		SCHEMA.set_u64(&mut row, ID, policy_id);
-		SCHEMA.set_utf8(&mut row, NAME, to_create.name.as_deref().unwrap_or(""));
-		SCHEMA.set_utf8(&mut row, TARGET_TYPE, to_create.target_type.as_str());
-		SCHEMA.set_utf8(&mut row, TARGET_NAMESPACE, to_create.target_namespace.as_deref().unwrap_or(""));
-		SCHEMA.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
-		SCHEMA.set_bool(&mut row, ENABLED, true);
+		let mut row = SHAPE.allocate();
+		SHAPE.set_u64(&mut row, ID, policy_id);
+		SHAPE.set_utf8(&mut row, NAME, to_create.name.as_deref().unwrap_or(""));
+		SHAPE.set_utf8(&mut row, TARGET_TYPE, to_create.target_type.as_str());
+		SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, to_create.target_namespace.as_deref().unwrap_or(""));
+		SHAPE.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
+		SHAPE.set_bool(&mut row, ENABLED, true);
 
 		txn.set(&PolicyKey::encoded(policy_id), row)?;
 
 		// Write operation rows
 		let mut ops = Vec::new();
 		for (i, op) in to_create.operations.iter().enumerate() {
-			let mut op_row = policy_op::SCHEMA.allocate();
-			policy_op::SCHEMA.set_u64(&mut op_row, policy_op::POLICY_ID, policy_id);
-			policy_op::SCHEMA.set_utf8(&mut op_row, policy_op::OPERATION, &op.operation);
-			policy_op::SCHEMA.set_utf8(&mut op_row, policy_op::BODY_SOURCE, &op.body_source);
+			let mut op_row = policy_op::SHAPE.allocate();
+			policy_op::SHAPE.set_u64(&mut op_row, policy_op::POLICY_ID, policy_id);
+			policy_op::SHAPE.set_utf8(&mut op_row, policy_op::OPERATION, &op.operation);
+			policy_op::SHAPE.set_utf8(&mut op_row, policy_op::BODY_SOURCE, &op.body_source);
 
 			txn.set(&PolicyOpKey::encoded(policy_id, i as u64), op_row)?;
 

@@ -8,7 +8,7 @@ use reifydb_core::{
 	encoded::{key::EncodedKeyRange, row::EncodedRow},
 	interface::{
 		catalog::{id::IndexId, policy::PolicyTargetType},
-		resolved::{ResolvedNamespace, ResolvedSchema, ResolvedTable},
+		resolved::{ResolvedNamespace, ResolvedShape, ResolvedTable},
 	},
 	internal_error,
 	key::{
@@ -29,7 +29,7 @@ use reifydb_type::{
 use super::{
 	primary_key,
 	returning::{decode_rows_to_columns, evaluate_returning},
-	schema::get_or_create_table_schema,
+	shape::get_or_create_table_shape,
 };
 use crate::{
 	Result,
@@ -88,7 +88,7 @@ pub(crate) fn delete<'a>(
 
 	let table_ident = Fragment::internal(table.name.clone());
 	let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
-	let resolved_source = Some(ResolvedSchema::Table(resolved_table));
+	let resolved_source = Some(ResolvedShape::Table(resolved_table));
 
 	let mut deleted_count = 0;
 	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
@@ -167,17 +167,16 @@ pub(crate) fn delete<'a>(
 
 			// Remove primary key index entry if table has one
 			if let Some(ref pk_def) = pk_def {
-				// Load schema from the row data
+				// Load shape from the row data
 				let fingerprint = row_values.fingerprint();
-				let schema =
-					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-						internal_error!(
-							"Schema with fingerprint {:?} not found for table {}",
-							fingerprint,
-							table.name
-						)
-					})?;
-				let index_key = primary_key::encode_primary_key(pk_def, &row_values, &table, &schema)?;
+				let shape = services.catalog.shape.get_or_load(fingerprint, txn)?.ok_or_else(|| {
+					internal_error!(
+						"Shape with fingerprint {:?} not found for table {}",
+						fingerprint,
+						table.name
+					)
+				})?;
+				let index_key = primary_key::encode_primary_key(pk_def, &row_values, &table, &shape)?;
 
 				txn.remove(
 					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode()
@@ -193,7 +192,7 @@ pub(crate) fn delete<'a>(
 	} else {
 		// Delete entire table - scan all rows and delete them
 		let range = RowKeyRange {
-			object: table.id.into(),
+			shape: table.id.into(),
 		};
 
 		// Get primary key info if table has one
@@ -209,15 +208,14 @@ pub(crate) fn delete<'a>(
 		for multi in rows {
 			if let Some(ref pk_def) = pk_def {
 				let fingerprint = multi.row.fingerprint();
-				let schema =
-					services.catalog.schema.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-						internal_error!(
-							"Schema with fingerprint {:?} not found for table {}",
-							fingerprint,
-							table.name
-						)
-					})?;
-				let index_key = primary_key::encode_primary_key(pk_def, &multi.row, &table, &schema)?;
+				let shape = services.catalog.shape.get_or_load(fingerprint, txn)?.ok_or_else(|| {
+					internal_error!(
+						"Shape with fingerprint {:?} not found for table {}",
+						fingerprint,
+						table.name
+					)
+				})?;
+				let index_key = primary_key::encode_primary_key(pk_def, &multi.row, &table, &shape)?;
 
 				txn.remove(
 					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode()
@@ -235,8 +233,8 @@ pub(crate) fn delete<'a>(
 
 	// If RETURNING clause is present, evaluate expressions against deleted rows
 	if let Some(returning_exprs) = &plan.returning {
-		let schema = get_or_create_table_schema(&services.catalog, &table, txn)?;
-		let columns = decode_rows_to_columns(&schema, &returned_rows);
+		let shape = get_or_create_table_shape(&services.catalog, &table, txn)?;
+		let columns = decode_rows_to_columns(&shape, &returned_rows);
 		return evaluate_returning(services, symbols, returning_exprs, columns);
 	}
 

@@ -18,7 +18,7 @@ use crate::tier::EntryKind;
 /// Classify a key to determine which table it belongs to.
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
-		Some(Key::Row(row_key)) => EntryKind::Source(row_key.object),
+		Some(Key::Row(row_key)) => EntryKind::Source(row_key.shape),
 		Some(Key::FlowNodeState(state_key)) => EntryKind::Operator(state_key.node),
 		Some(Key::FlowNodeInternalState(internal_key)) => EntryKind::Operator(internal_key.node),
 		_ => EntryKind::Multi,
@@ -39,7 +39,7 @@ pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
 /// or `None` if the range spans multiple tables.
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	if let (Some(start), Some(_end)) = RowKeyRange::decode(range) {
-		return Some(EntryKind::Source(start.object));
+		return Some(EntryKind::Source(start.shape));
 	}
 
 	if let (Some(start), Some(_end)) = FlowNodeStateKeyRange::decode(range) {

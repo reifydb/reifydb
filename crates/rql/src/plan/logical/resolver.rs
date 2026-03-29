@@ -9,20 +9,20 @@ use reifydb_core::interface::{
 		vtable::{VTable, VTableId},
 	},
 	resolved::{
-		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSchema,
-		ResolvedSeries, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+		ResolvedDeferredView, ResolvedDictionary, ResolvedNamespace, ResolvedRingBuffer, ResolvedSeries,
+		ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
 
 use crate::{
-	ast::identifier::UnresolvedSchemaIdentifier,
-	error::{IdentifierError, SchemaNotFoundError},
+	ast::identifier::UnresolvedShapeIdentifier,
+	error::{IdentifierError, ShapeNotFoundError},
 };
 
 pub enum ResolvedSource {
-	Schema(ResolvedSchema),
+	Shape(ResolvedShape),
 	Remote {
 		address: String,
 		token: Option<String>,
@@ -36,11 +36,11 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 
 /// Resolve an unresolved source identifier to a ResolvedSource.
 /// Returns `ResolvedSource::Remote` for remote namespaces, or
-/// `ResolvedSource::Schema` for local sources.
+/// `ResolvedSource::Shape` for local sources.
 pub fn resolve_unresolved_source(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	unresolved: &UnresolvedSchemaIdentifier,
+	unresolved: &UnresolvedShapeIdentifier,
 ) -> Result<ResolvedSource> {
 	let namespace_str = if !unresolved.namespace.is_empty() {
 		unresolved.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::")
@@ -73,7 +73,7 @@ pub fn resolve_unresolved_source(
 
 	// Check for user-defined virtual tables first (in any namespace)
 	if let Some(virtual_def) = catalog.find_vtable_user_by_name(tx, ns_def.id(), name_str) {
-		return Ok(ResolvedSource::Schema(ResolvedSchema::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedSource::Shape(ResolvedShape::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			(*virtual_def).clone(),
@@ -90,7 +90,7 @@ pub fn resolve_unresolved_source(
 			columns: vec![], // Columns are populated at execution time
 		};
 
-		return Ok(ResolvedSource::Schema(ResolvedSchema::TableVirtual(ResolvedTableVirtual::new(
+		return Ok(ResolvedSource::Shape(ResolvedShape::TableVirtual(ResolvedTableVirtual::new(
 			name_fragment,
 			namespace,
 			def,
@@ -101,7 +101,7 @@ pub fn resolve_unresolved_source(
 	if let Some(table) = catalog.find_table_by_name(tx, ns_def.id(), name_str)? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::Schema(ResolvedSchema::Table(ResolvedTable::new(
+		return Ok(ResolvedSource::Shape(ResolvedShape::Table(ResolvedTable::new(
 			name_fragment,
 			namespace,
 			table,
@@ -112,7 +112,7 @@ pub fn resolve_unresolved_source(
 	if let Some(ringbuffer) = catalog.find_ringbuffer_by_name(tx, ns_def.id(), name_str)? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::Schema(ResolvedSchema::RingBuffer(ResolvedRingBuffer::new(
+		return Ok(ResolvedSource::Shape(ResolvedShape::RingBuffer(ResolvedRingBuffer::new(
 			name_fragment,
 			namespace,
 			ringbuffer,
@@ -124,22 +124,22 @@ pub fn resolve_unresolved_source(
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		let schema = match view.kind() {
+		let shape = match view.kind() {
 			ViewKind::Deferred => {
-				ResolvedSchema::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
+				ResolvedShape::DeferredView(ResolvedDeferredView::new(name_fragment, namespace, view))
 			}
-			ViewKind::Transactional => ResolvedSchema::TransactionalView(ResolvedTransactionalView::new(
+			ViewKind::Transactional => ResolvedShape::TransactionalView(ResolvedTransactionalView::new(
 				name_fragment,
 				namespace,
 				view,
 			)),
 		};
-		return Ok(ResolvedSource::Schema(schema));
+		return Ok(ResolvedSource::Shape(shape));
 	}
 
 	// Try dictionaries
 	if let Some(dictionary) = catalog.find_dictionary_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Schema(ResolvedSchema::Dictionary(ResolvedDictionary::new(
+		return Ok(ResolvedSource::Shape(ResolvedShape::Dictionary(ResolvedDictionary::new(
 			name_fragment,
 			namespace,
 			dictionary,
@@ -148,7 +148,7 @@ pub fn resolve_unresolved_source(
 
 	// Try series
 	if let Some(series) = catalog.find_series_by_name(tx, ns_def.id(), name_str)? {
-		return Ok(ResolvedSource::Schema(ResolvedSchema::Series(ResolvedSeries::new(
+		return Ok(ResolvedSource::Shape(ResolvedShape::Series(ResolvedSeries::new(
 			name_fragment,
 			namespace,
 			series,
@@ -156,7 +156,7 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Not found
-	Err(IdentifierError::SourceNotFound(SchemaNotFoundError {
+	Err(IdentifierError::SourceNotFound(ShapeNotFoundError {
 		namespace: namespace_str.to_string(),
 		name: name_str.to_string(),
 		fragment: unresolved.name.to_owned(),

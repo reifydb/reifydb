@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	encoded::{row::EncodedRow, schema::RowSchema},
+	encoded::{row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::{dictionary::Dictionary, ringbuffer::PartitionedMetadata},
 		resolved::ResolvedRingBuffer,
@@ -33,7 +33,7 @@ pub struct RingBufferScan {
 	partitions: Vec<PartitionedMetadata>,
 	current_partition_index: usize,
 	headers: ColumnHeaders,
-	schema: Option<RowSchema>,
+	shape: Option<RowShape>,
 	/// Storage types for each column (Type::DictionaryId for dictionary columns)
 	storage_types: Vec<Type>,
 	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
@@ -90,7 +90,7 @@ impl RingBufferScan {
 			partitions: Vec::new(),
 			current_partition_index: 0,
 			headers,
-			schema: None,
+			shape: None,
 			storage_types,
 			dictionaries,
 			partition_col_indices,
@@ -101,25 +101,25 @@ impl RingBufferScan {
 		})
 	}
 
-	fn get_or_load_schema(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowSchema> {
-		if let Some(schema) = &self.schema {
-			return Ok(schema.clone());
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+		if let Some(shape) = &self.shape {
+			return Ok(shape.clone());
 		}
 
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
-		let schema = stored_ctx.services.catalog.schema.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+		let shape = stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
-				"RowSchema with fingerprint {:?} not found for ringbuffer {}",
+				"RowShape with fingerprint {:?} not found for ringbuffer {}",
 				fingerprint,
 				self.ringbuffer.def().name
 			)
 		})?;
 
-		self.schema = Some(schema.clone());
+		self.shape = Some(shape.clone());
 
-		Ok(schema)
+		Ok(shape)
 	}
 
 	/// Advance to next non-empty partition if current is exhausted. Returns false if all done.
@@ -161,7 +161,7 @@ impl QueryNode for RingBufferScan {
 	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
-		// If no partitions, return empty schema
+		// If no partitions, return empty shape
 		if self.partitions.is_empty() {
 			if self.current_partition_index == 0 {
 				self.current_partition_index = 1; // prevent re-entry
@@ -220,9 +220,9 @@ impl QueryNode for RingBufferScan {
 					// For partitioned ringbuffers, check if this row belongs to the current
 					// partition
 					if !partition_col_indices.is_empty() {
-						let schema = self.get_or_load_schema(txn, &multi.row)?;
+						let shape = self.get_or_load_shape(txn, &multi.row)?;
 						if !row_matches_partition(
-							&schema,
+							&shape,
 							&multi.row,
 							&partition_col_indices,
 							&partition_values,
@@ -253,7 +253,7 @@ impl QueryNode for RingBufferScan {
 		}
 
 		if batch_rows.is_empty() {
-			// If we never returned any rows at all, return empty schema
+			// If we never returned any rows at all, return empty shape
 			if self.partitions.iter().all(|p| p.metadata.is_empty()) {
 				let columns: Vec<Column> = self
 					.ringbuffer
@@ -281,8 +281,8 @@ impl QueryNode for RingBufferScan {
 				.collect();
 
 			let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
-			let schema = self.get_or_load_schema(txn, &batch_rows[0])?;
-			columns.append_rows(&schema, batch_rows.into_iter(), row_numbers.clone())?;
+			let shape = self.get_or_load_shape(txn, &batch_rows[0])?;
+			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
 
 			// Restore row numbers
 			columns.row_numbers = CowVec::new(row_numbers);
@@ -299,13 +299,10 @@ impl QueryNode for RingBufferScan {
 }
 
 fn row_matches_partition(
-	schema: &RowSchema,
+	shape: &RowShape,
 	row: &EncodedRow,
 	partition_col_indices: &[usize],
 	expected_values: &[Value],
 ) -> bool {
-	partition_col_indices
-		.iter()
-		.zip(expected_values)
-		.all(|(&idx, expected)| schema.get_value(row, idx) == *expected)
+	partition_col_indices.iter().zip(expected_values).all(|(&idx, expected)| shape.get_value(row, idx) == *expected)
 }

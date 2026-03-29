@@ -7,6 +7,6 @@ pub mod find;
 pub mod get;
 pub mod get_pk_id;
 pub mod list;
-pub(crate) mod schema;
 pub mod set_pk;
+pub(crate) mod shape;
 pub mod update;

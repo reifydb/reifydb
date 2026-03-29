@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{id::ColumnId, schema::SchemaId},
+	interface::catalog::{id::ColumnId, shape::ShapeId},
 	key::column_sequence::ColumnSequenceKey,
 };
 use reifydb_type::value::{Value, r#type::Type};
@@ -21,11 +21,11 @@ pub struct ColumnSequence {}
 impl ColumnSequence {
 	pub(crate) fn next_value(
 		txn: &mut impl SequenceTransaction,
-		schema: impl Into<SchemaId>,
+		shape: impl Into<ShapeId>,
 		column: ColumnId,
 	) -> Result<Value> {
 		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
-		let key = ColumnSequenceKey::encoded(schema, column.id);
+		let key = ColumnSequenceKey::encoded(shape, column.id);
 
 		Ok(match column.constraint.get_type() {
 			Type::Int1 => Value::Int1(GeneratorI8::next(txn, &key, None)?),
@@ -44,7 +44,7 @@ impl ColumnSequence {
 
 	pub(crate) fn set_value(
 		txn: &mut impl SequenceTransaction,
-		schema: impl Into<SchemaId>,
+		shape: impl Into<ShapeId>,
 		column: ColumnId,
 		value: Value,
 	) -> Result<()> {
@@ -59,7 +59,7 @@ impl ColumnSequence {
 
 		debug_assert!(value.get_type() == column.constraint.get_type());
 
-		let key = ColumnSequenceKey::encoded(schema, column.id);
+		let key = ColumnSequenceKey::encoded(shape, column.id);
 		match value {
 			Value::Int1(v) => GeneratorI8::set(txn, &key, v),
 			Value::Int2(v) => GeneratorI16::set(txn, &key, v),

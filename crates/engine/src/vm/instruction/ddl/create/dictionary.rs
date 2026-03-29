@@ -117,7 +117,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_create_same_dictionary_in_different_schema() {
+	fn test_create_same_dictionary_in_different_shape() {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
@@ -132,7 +132,7 @@ pub mod tests {
 		instance.admin(
 			&mut txn,
 			Admin {
-				rql: "CREATE NAMESPACE another_schema",
+				rql: "CREATE NAMESPACE another_shape",
 				params: Params::default(),
 			},
 		)
@@ -157,14 +157,14 @@ pub mod tests {
 			.admin(
 				&mut txn,
 				Admin {
-					rql: "CREATE DICTIONARY another_schema::test_dictionary FOR Utf8 AS Uint4",
+					rql: "CREATE DICTIONARY another_shape::test_dictionary FOR Utf8 AS Uint4",
 					params: Params::default(),
 				},
 			)
 			.unwrap();
 		let frame = &frames[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
-		assert_eq!(frame[1].get_value(0), Value::Utf8("another_schema".to_string()));
+		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}

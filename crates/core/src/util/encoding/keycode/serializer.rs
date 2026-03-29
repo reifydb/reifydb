@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
 	encoded::key::EncodedKey,
-	interface::catalog::{id::IndexId, schema::SchemaId},
+	interface::catalog::{id::IndexId, shape::ShapeId},
 };
 
 /// A builder for constructing binary keys using keycode encoding
@@ -148,10 +148,10 @@ impl KeySerializer {
 		EncodedKey::new(self.buffer)
 	}
 
-	/// Extend with a SchemaId value (includes type discriminator)
-	pub fn extend_schema_id(&mut self, object: impl Into<SchemaId>) -> &mut Self {
+	/// Extend with a ShapeId value (includes type discriminator)
+	pub fn extend_shape_id(&mut self, object: impl Into<ShapeId>) -> &mut Self {
 		let primitive = object.into();
-		self.buffer.extend_from_slice(&catalog::serialize_schema_id(&primitive));
+		self.buffer.extend_from_slice(&catalog::serialize_shape_id(&primitive));
 		self
 	}
 
@@ -226,7 +226,7 @@ impl KeySerializer {
 
 	/// Extend with Blob value
 	pub fn extend_blob(&mut self, blob: &Blob) -> &mut Self {
-		self.extend_bytes(blob.as_ref())
+		self.extend_bytes(blob.as_ref() as &[u8])
 	}
 
 	/// Extend with arbitrary precision Int value
@@ -476,7 +476,7 @@ pub mod tests {
 	use crate::{
 		interface::catalog::{
 			id::{IndexId, PrimaryKeyId, TableId},
-			schema::SchemaId,
+			shape::ShapeId,
 		},
 		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	};
@@ -1582,19 +1582,19 @@ pub mod tests {
 	#[test]
 	fn test_object_id() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_schema_id(SchemaId::Table(TableId(987654321)));
+		serializer.extend_shape_id(ShapeId::Table(TableId(987654321)));
 		let result = serializer.finish();
 
-		// SchemaId Table uses 1 byte prefix + 8 bytes u64 with bitwise NOT
+		// ShapeId Table uses 1 byte prefix + 8 bytes u64 with bitwise NOT
 		assert_eq!(result.len(), 9);
 		assert_eq!(result[0], 0x01); // Table variant prefix
 
 		// Verify ordering
 		let mut serializer2 = KeySerializer::new();
-		serializer2.extend_schema_id(SchemaId::Table(TableId(987654322)));
+		serializer2.extend_shape_id(ShapeId::Table(TableId(987654322)));
 		let result2 = serializer2.finish();
 
-		// result2 (for larger SchemaId) should be < result (inverted ordering)
+		// result2 (for larger ShapeId) should be < result (inverted ordering)
 		// Compare from byte 1 onwards (after the variant prefix)
 		assert!(result2[1..] < result[1..]);
 	}

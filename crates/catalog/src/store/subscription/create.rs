@@ -15,7 +15,7 @@ use crate::{
 	CatalogStore, Result,
 	store::{
 		sequence::flow::next_flow_id,
-		subscription::schema::{subscription, subscription_column},
+		subscription::shape::{subscription, subscription_column},
 	},
 };
 
@@ -45,10 +45,10 @@ impl CatalogStore {
 	}
 
 	fn store_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> Result<()> {
-		let mut row = subscription::SCHEMA.allocate();
-		subscription::SCHEMA.set_u64(&mut row, subscription::ID, subscription.0);
-		subscription::SCHEMA.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
-		subscription::SCHEMA.set_u64(&mut row, subscription::PRIMARY_KEY, 0u64);
+		let mut row = subscription::SHAPE.allocate();
+		subscription::SHAPE.set_u64(&mut row, subscription::ID, subscription.0);
+		subscription::SHAPE.set_u64(&mut row, subscription::ACKNOWLEDGED_VERSION, 0u64);
+		subscription::SHAPE.set_u64(&mut row, subscription::PRIMARY_KEY, 0u64);
 
 		txn.set(&SubscriptionKey::encoded(subscription), row)?;
 
@@ -63,14 +63,14 @@ impl CatalogStore {
 		for (idx, column_to_create) in to_create.columns.iter().enumerate() {
 			let column_id = SubscriptionColumnId(idx as u64);
 
-			let mut row = subscription_column::SCHEMA.allocate();
-			subscription_column::SCHEMA.set_u64(&mut row, subscription_column::ID, column_id);
-			subscription_column::SCHEMA.set_utf8(
+			let mut row = subscription_column::SHAPE.allocate();
+			subscription_column::SHAPE.set_u64(&mut row, subscription_column::ID, column_id);
+			subscription_column::SHAPE.set_utf8(
 				&mut row,
 				subscription_column::NAME,
 				&column_to_create.name,
 			);
-			subscription_column::SCHEMA.set_u8(
+			subscription_column::SHAPE.set_u8(
 				&mut row,
 				subscription_column::TYPE,
 				column_to_create.ty.to_u8(),
@@ -91,10 +91,9 @@ impl CatalogStore {
 		while let Some(result) = stream.next() {
 			let multi = result?;
 			let row = &multi.row;
-			let id =
-				SubscriptionColumnId(subscription_column::SCHEMA.get_u64(row, subscription_column::ID));
-			let name = subscription_column::SCHEMA.get_utf8(row, subscription_column::NAME).to_string();
-			let ty_u8 = subscription_column::SCHEMA.get_u8(row, subscription_column::TYPE);
+			let id = SubscriptionColumnId(subscription_column::SHAPE.get_u64(row, subscription_column::ID));
+			let name = subscription_column::SHAPE.get_utf8(row, subscription_column::NAME).to_string();
+			let ty_u8 = subscription_column::SHAPE.get_u8(row, subscription_column::TYPE);
 			let ty = Type::from_u8(ty_u8);
 
 			columns.push(SubscriptionColumn {

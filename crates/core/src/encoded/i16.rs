@@ -5,9 +5,9 @@ use std::ptr;
 
 use reifydb_type::value::r#type::Type;
 
-use crate::encoded::{row::EncodedRow, schema::RowSchema};
+use crate::encoded::{row::EncodedRow, shape::RowShape};
 
-impl RowSchema {
+impl RowShape {
 	pub fn set_i16(&self, row: &mut EncodedRow, index: usize, value: impl Into<i16>) {
 		let field = &self.fields()[index];
 		debug_assert!(row.len() >= self.total_static_size());
@@ -41,92 +41,92 @@ impl RowSchema {
 pub mod tests {
 	use reifydb_type::value::r#type::Type;
 
-	use crate::encoded::schema::RowSchema;
+	use crate::encoded::shape::RowShape;
 
 	#[test]
 	fn test_set_get_i16() {
-		let schema = RowSchema::testing(&[Type::Int2]);
-		let mut row = schema.allocate();
-		schema.set_i16(&mut row, 0, -1234i16);
-		assert_eq!(schema.get_i16(&row, 0), -1234i16);
+		let shape = RowShape::testing(&[Type::Int2]);
+		let mut row = shape.allocate();
+		shape.set_i16(&mut row, 0, -1234i16);
+		assert_eq!(shape.get_i16(&row, 0), -1234i16);
 	}
 
 	#[test]
 	fn test_try_get_i16() {
-		let schema = RowSchema::testing(&[Type::Int2]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Int2]);
+		let mut row = shape.allocate();
 
-		assert_eq!(schema.try_get_i16(&row, 0), None);
+		assert_eq!(shape.try_get_i16(&row, 0), None);
 
-		schema.set_i16(&mut row, 0, -1234i16);
-		assert_eq!(schema.try_get_i16(&row, 0), Some(-1234i16));
+		shape.set_i16(&mut row, 0, -1234i16);
+		assert_eq!(shape.try_get_i16(&row, 0), Some(-1234i16));
 	}
 
 	#[test]
 	fn test_extremes() {
-		let schema = RowSchema::testing(&[Type::Int2]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Int2]);
+		let mut row = shape.allocate();
 
-		schema.set_i16(&mut row, 0, i16::MAX);
-		assert_eq!(schema.get_i16(&row, 0), i16::MAX);
+		shape.set_i16(&mut row, 0, i16::MAX);
+		assert_eq!(shape.get_i16(&row, 0), i16::MAX);
 
-		let mut row2 = schema.allocate();
-		schema.set_i16(&mut row2, 0, i16::MIN);
-		assert_eq!(schema.get_i16(&row2, 0), i16::MIN);
+		let mut row2 = shape.allocate();
+		shape.set_i16(&mut row2, 0, i16::MIN);
+		assert_eq!(shape.get_i16(&row2, 0), i16::MIN);
 
-		let mut row3 = schema.allocate();
-		schema.set_i16(&mut row3, 0, 0i16);
-		assert_eq!(schema.get_i16(&row3, 0), 0i16);
+		let mut row3 = shape.allocate();
+		shape.set_i16(&mut row3, 0, 0i16);
+		assert_eq!(shape.get_i16(&row3, 0), 0i16);
 	}
 
 	#[test]
 	fn test_various_values() {
-		let schema = RowSchema::testing(&[Type::Int2]);
+		let shape = RowShape::testing(&[Type::Int2]);
 
 		let test_values = [-32768i16, -10000i16, -1i16, 0i16, 1i16, 10000i16, 32767i16];
 
 		for value in test_values {
-			let mut row = schema.allocate();
-			schema.set_i16(&mut row, 0, value);
-			assert_eq!(schema.get_i16(&row, 0), value);
+			let mut row = shape.allocate();
+			shape.set_i16(&mut row, 0, value);
+			assert_eq!(shape.get_i16(&row, 0), value);
 		}
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let schema = RowSchema::testing(&[Type::Int2, Type::Int1, Type::Int2]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Int2, Type::Int1, Type::Int2]);
+		let mut row = shape.allocate();
 
-		schema.set_i16(&mut row, 0, -30000i16);
-		schema.set_i8(&mut row, 1, 100i8);
-		schema.set_i16(&mut row, 2, 25000i16);
+		shape.set_i16(&mut row, 0, -30000i16);
+		shape.set_i8(&mut row, 1, 100i8);
+		shape.set_i16(&mut row, 2, 25000i16);
 
-		assert_eq!(schema.get_i16(&row, 0), -30000i16);
-		assert_eq!(schema.get_i8(&row, 1), 100i8);
-		assert_eq!(schema.get_i16(&row, 2), 25000i16);
+		assert_eq!(shape.get_i16(&row, 0), -30000i16);
+		assert_eq!(shape.get_i8(&row, 1), 100i8);
+		assert_eq!(shape.get_i16(&row, 2), 25000i16);
 	}
 
 	#[test]
 	fn test_undefined_handling() {
-		let schema = RowSchema::testing(&[Type::Int2, Type::Int2]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Int2, Type::Int2]);
+		let mut row = shape.allocate();
 
-		schema.set_i16(&mut row, 0, 1234i16);
+		shape.set_i16(&mut row, 0, 1234i16);
 
-		assert_eq!(schema.try_get_i16(&row, 0), Some(1234));
-		assert_eq!(schema.try_get_i16(&row, 1), None);
+		assert_eq!(shape.try_get_i16(&row, 0), Some(1234));
+		assert_eq!(shape.try_get_i16(&row, 1), None);
 
-		schema.set_none(&mut row, 0);
-		assert_eq!(schema.try_get_i16(&row, 0), None);
+		shape.set_none(&mut row, 0);
+		assert_eq!(shape.try_get_i16(&row, 0), None);
 	}
 
 	#[test]
 	fn test_try_get_i16_wrong_type() {
-		let schema = RowSchema::testing(&[Type::Boolean]);
-		let mut row = schema.allocate();
+		let shape = RowShape::testing(&[Type::Boolean]);
+		let mut row = shape.allocate();
 
-		schema.set_bool(&mut row, 0, true);
+		shape.set_bool(&mut row, 0, true);
 
-		assert_eq!(schema.try_get_i16(&row, 0), None);
+		assert_eq!(shape.try_get_i16(&row, 0), None);
 	}
 }

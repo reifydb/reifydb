@@ -33,8 +33,8 @@ pub fn columns() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: SCHEMA_ID,
-					name: "schema_id".to_string(),
+					id: SHAPE_ID,
+					name: "shape_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
 					index: ColumnIndex(1),
@@ -42,8 +42,8 @@ pub fn columns() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: SCHEMA_TYPE,
-					name: "schema_type".to_string(),
+					id: SHAPE_TYPE,
+					name: "shape_type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint1),
 					properties: vec![],
 					index: ColumnIndex(2),
