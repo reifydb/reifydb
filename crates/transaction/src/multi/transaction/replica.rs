@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::mem;
-use std::ops::RangeBounds;
+use std::{mem, ops::RangeBounds};
 
 use reifydb_core::{
 	common::CommitVersion,

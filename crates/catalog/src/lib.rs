@@ -15,6 +15,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::value::{datetime::DateTime, identity::IdentityId};
 pub mod bootstrap;
 pub mod catalog;
+pub mod change;
 pub mod error;
 pub mod materialized;
 pub mod schema;

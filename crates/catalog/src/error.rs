@@ -6,6 +6,7 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
+use reifydb_core::key::kind::KeyKind;
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -970,6 +971,43 @@ impl IntoDiagnostic for CatalogError {
 
 impl From<CatalogError> for Error {
 	fn from(err: CatalogError) -> Self {
+		Error(err.into_diagnostic())
+	}
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum CatalogChangeError {
+	#[error("failed to decode {kind:?} key while applying replicated catalog change")]
+	KeyDecodeFailed {
+		kind: KeyKind,
+	},
+}
+
+impl IntoDiagnostic for CatalogChangeError {
+	fn into_diagnostic(self) -> Diagnostic {
+		match self {
+			CatalogChangeError::KeyDecodeFailed {
+				kind,
+			} => Diagnostic {
+				code: "CA_070".to_string(),
+				statement: None,
+				message: format!("failed to decode {:?} key while applying replicated catalog change", kind),
+				fragment: Fragment::None,
+				label: Some("key decode failure during replication".to_string()),
+				help: Some(
+					"this indicates a protocol mismatch between primary and replica — ensure both nodes are running the same version".to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+		}
+	}
+}
+
+impl From<CatalogChangeError> for Error {
+	fn from(err: CatalogChangeError) -> Self {
 		Error(err.into_diagnostic())
 	}
 }
