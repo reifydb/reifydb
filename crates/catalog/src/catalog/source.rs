@@ -180,6 +180,29 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(source) =
+					self.materialized.find_source_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(source));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(source) = CatalogStore::find_source_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Source '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(source));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 

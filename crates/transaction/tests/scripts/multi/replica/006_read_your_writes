@@ -1,0 +1,20 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Read-your-writes within an uncommitted replica transaction.
+
+t1: begin_replica version=100
+t1: set a=1
+t1: get a
+---
+t1: "a" => "1"
+
+t1: set b=2
+t1: scan
+---
+t1: "a" => "1"
+t1: "b" => "2"
+
+t1: commit_replica
+---
+ok

@@ -142,6 +142,25 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(subscription) = self.materialized.find_subscription(id, rep.version()) {
+					return Ok(Some(subscription));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(subscription) =
+					CatalogStore::find_subscription(&mut Transaction::Replica(&mut *rep), id)?
+				{
+					warn!(
+						"Subscription with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(subscription));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 

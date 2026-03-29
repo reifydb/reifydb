@@ -5,6 +5,7 @@ mod begin;
 mod get;
 mod iter;
 mod range;
+mod replica;
 mod rollback;
 mod version;
 mod write;

@@ -150,6 +150,25 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(sink) =
+					self.materialized.find_sink_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(sink));
+				}
+				if let Some(sink) = CatalogStore::find_sink_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Sink '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(sink));
+				}
+				Ok(None)
+			}
 		}
 	}
 

@@ -120,6 +120,20 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(policy) = self.materialized.find_policy_by_name_at(name, rep.version()) {
+					return Ok(Some(policy));
+				}
+
+				if let Some(policy) =
+					CatalogStore::find_policy_by_name(&mut Transaction::Replica(&mut *rep), name)?
+				{
+					warn!("Policy '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(policy));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 

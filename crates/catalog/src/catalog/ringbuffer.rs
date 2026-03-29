@@ -91,6 +91,9 @@ impl Catalog {
 			Transaction::Test(t) => {
 				CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *t.inner), id)
 			}
+			Transaction::Replica(rep) => {
+				CatalogStore::find_ringbuffer(&mut Transaction::Replica(&mut *rep), id)
+			}
 		}
 	}
 
@@ -124,6 +127,11 @@ impl Catalog {
 			),
 			Transaction::Test(t) => CatalogStore::find_ringbuffer_by_name(
 				&mut Transaction::Admin(&mut *t.inner),
+				namespace,
+				name,
+			),
+			Transaction::Replica(rep) => CatalogStore::find_ringbuffer_by_name(
+				&mut Transaction::Replica(&mut *rep),
 				namespace,
 				name,
 			),

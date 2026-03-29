@@ -485,6 +485,10 @@ pub mod tests {
 		fn current(&self) -> Result<CommitVersion> {
 			Ok(CommitVersion(self.current.load(Ordering::Relaxed)))
 		}
+
+		fn advance_to(&self, version: CommitVersion) {
+			self.current.fetch_max(version.0, Ordering::Relaxed);
+		}
 	}
 
 	fn create_test_key(s: &str) -> EncodedKey {

@@ -1,0 +1,15 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Replica commit version is visible to subsequent queries.
+
+t1: begin_replica version=100
+t1: set a=1
+t1: commit_replica
+---
+ok
+
+t2: begin readonly
+t2: version
+---
+t2: 100

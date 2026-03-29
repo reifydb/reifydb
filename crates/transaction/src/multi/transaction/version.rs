@@ -21,6 +21,9 @@ const BLOCK_SIZE: u64 = 100_000;
 pub trait VersionProvider: Send + Sync + Clone {
 	fn next(&self) -> Result<CommitVersion>;
 	fn current(&self) -> Result<CommitVersion>;
+	/// Advance the clock to at least the given version without allocating.
+	/// Used by the replica to keep `current()` in sync with replicated versions.
+	fn advance_to(&self, version: CommitVersion);
 }
 
 /// Helper struct for initial block setup
@@ -130,6 +133,10 @@ impl VersionProvider for StandardVersionProvider {
 
 	fn current(&self) -> Result<CommitVersion> {
 		Ok(CommitVersion(self.next_version.load(Ordering::SeqCst)))
+	}
+
+	fn advance_to(&self, version: CommitVersion) {
+		self.next_version.fetch_max(version.0, Ordering::SeqCst);
 	}
 }
 

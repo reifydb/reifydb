@@ -184,6 +184,21 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(table) = self.materialized.find_table_at(id, rep.version()) {
+					return Ok(Some(table));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(table) = CatalogStore::find_table(&mut Transaction::Replica(&mut *rep), id)?
+				{
+					warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
+					return Ok(Some(table));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -326,6 +341,29 @@ impl Catalog {
 				)? {
 					return Ok(Some(table));
 				}
+				Ok(None)
+			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(table) =
+					self.materialized.find_table_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(table));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(table) = CatalogStore::find_table_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(table));
+				}
+
 				Ok(None)
 			}
 		}

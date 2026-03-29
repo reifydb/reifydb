@@ -32,6 +32,7 @@ use crate::{
 
 pub mod manager;
 pub mod read;
+pub mod replica;
 pub(crate) mod version;
 pub mod write;
 
@@ -39,7 +40,7 @@ use reifydb_runtime::SharedRuntimeConfig;
 use reifydb_store_single::SingleStore;
 
 use crate::multi::{
-	MultiReadTransaction, MultiWriteTransaction,
+	MultiReadTransaction, MultiReplicaTransaction, MultiWriteTransaction,
 	conflict::ConflictManager,
 	pending::PendingWrites,
 	transaction::manager::{TransactionManagerCommand, TransactionManagerQuery},
@@ -134,6 +135,26 @@ where
 		} else {
 			TransactionManagerQuery::new_current(TransactionId::generate(), self.clone(), safe_version)
 		})
+	}
+
+	/// Register a version with the command watermark before storage write.
+	/// Used by the replica applier to participate in the watermark system.
+	pub fn begin_commit(&self, version: CommitVersion) {
+		self.inner.command.begin(version);
+	}
+
+	/// Mark a commit version as done in the command watermark.
+	/// Used by the replica applier after storage write completes.
+	pub fn done_commit(&self, version: CommitVersion) {
+		self.inner.done_commit(version);
+	}
+
+	/// Advance the version provider's clock to at least the given version.
+	/// Used by the replica applier so that `clock.current()` returns
+	/// the latest replicated version for subsequent query transactions.
+	pub fn advance_clock_to(&self, version: CommitVersion) {
+		let inner = self.inner.inner.read();
+		inner.clock.advance_to(version);
 	}
 
 	/// Returns the highest version where ALL prior versions have completed.
@@ -280,6 +301,26 @@ impl MultiTransaction {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self) -> Result<MultiWriteTransaction> {
 		MultiWriteTransaction::new(self.clone())
+	}
+
+	/// Begin a replica write transaction at the primary's exact version.
+	///
+	/// The returned transaction commits at the given version, bypassing
+	/// oracle conflict detection and version allocation.
+	#[instrument(name = "transaction::begin_replica", level = "debug", skip(self), fields(version = %version.0))]
+	pub fn begin_replica(&self, version: CommitVersion) -> Result<MultiReplicaTransaction> {
+		MultiReplicaTransaction::new(self.clone(), version)
+	}
+
+	/// Advance the replica's version tracking for a primary version
+	/// that had no catalog changes (e.g. data-only commits).
+	///
+	/// Registers and immediately completes the version in the command
+	/// watermark, and advances the clock so queries see the latest state.
+	pub fn advance_version_for_replica(&self, version: CommitVersion) {
+		self.0.tm.begin_commit(version);
+		self.0.tm.done_commit(version);
+		self.0.tm.advance_clock_to(version);
 	}
 }
 

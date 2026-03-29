@@ -1,0 +1,74 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Multi-version scan via replica commits — mirrors scan/001 dataset.
+#
+# v100: B=B1 a=a1 c=c1
+# v200: a=(del) ba=ba2 bb=bb2 bc=bc2
+# v300: B=(del) a=a3 b=b3 bb=(del)
+# v400: b=(del) ba=ba4
+
+t1: begin_replica version=100
+t1: set B=B1 a=a1 c=c1
+t1: commit_replica
+---
+ok
+
+t2: begin_replica version=200
+t2: remove a
+t2: set ba=ba2 bb=bb2 bc=bc2
+t2: commit_replica
+---
+ok
+
+t3: begin_replica version=300
+t3: remove B
+t3: set a=a3 b=b3
+t3: remove bb
+t3: commit_replica
+---
+ok
+
+t4: begin_replica version=400
+t4: remove b
+t4: set ba=ba4
+t4: commit_replica
+---
+ok
+
+# Read at version 100
+r1: begin readonly version=100
+r1: scan
+---
+r1: "B" => "B1"
+r1: "a" => "a1"
+r1: "c" => "c1"
+
+# Read at version 200
+r2: begin readonly version=200
+r2: scan
+---
+r2: "B" => "B1"
+r2: "ba" => "ba2"
+r2: "bb" => "bb2"
+r2: "bc" => "bc2"
+r2: "c" => "c1"
+
+# Read at version 300
+r3: begin readonly version=300
+r3: scan
+---
+r3: "a" => "a3"
+r3: "b" => "b3"
+r3: "ba" => "ba2"
+r3: "bc" => "bc2"
+r3: "c" => "c1"
+
+# Read at latest (version 400)
+r4: begin readonly
+r4: scan
+---
+r4: "a" => "a3"
+r4: "ba" => "ba4"
+r4: "bc" => "bc2"
+r4: "c" => "c1"

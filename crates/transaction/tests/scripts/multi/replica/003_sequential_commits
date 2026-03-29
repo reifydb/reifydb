@@ -1,0 +1,23 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Multiple replica commits, later version overwrites earlier.
+
+t1: begin_replica version=100
+t1: set a=v1
+t1: commit_replica
+---
+ok
+
+t2: begin_replica version=200
+t2: set a=v2
+t2: commit_replica
+---
+ok
+
+t3: begin readonly
+t3: get a
+t3: version
+---
+t3: "a" => "v2"
+t3: 200

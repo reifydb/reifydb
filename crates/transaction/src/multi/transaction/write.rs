@@ -251,7 +251,7 @@ use reifydb_core::interface::store::MultiVersionRow;
 use crate::multi::{pending::PendingWrites, types::Pending};
 
 /// Iterator that merges pending writes with storage iterator.
-struct MergePendingIterator<I> {
+pub(crate) struct MergePendingIterator<I> {
 	pending_iter: iter::Peekable<vec::IntoIter<(EncodedKey, Pending)>>,
 	storage_iter: I,
 	next_storage: Option<MultiVersionRow>,
@@ -262,7 +262,7 @@ impl<I> MergePendingIterator<I>
 where
 	I: Iterator<Item = Result<MultiVersionRow>>,
 {
-	fn new(pending: Vec<(EncodedKey, Pending)>, storage_iter: I, reverse: bool) -> Self {
+	pub(crate) fn new(pending: Vec<(EncodedKey, Pending)>, storage_iter: I, reverse: bool) -> Self {
 		Self {
 			pending_iter: pending.into_iter().peekable(),
 			storage_iter,

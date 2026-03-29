@@ -76,6 +76,12 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(test) = self.materialized.find_test_at(id, rep.version()) {
+					return Ok(Some(test));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -146,6 +152,14 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(test) =
+					self.materialized.find_test_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(test));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -202,6 +216,9 @@ impl Catalog {
 				}
 				Ok(tests)
 			}
+			Transaction::Replica(rep) => {
+				Ok(self.materialized.list_tests_in_namespace_at(namespace, rep.version()))
+			}
 		}
 	}
 
@@ -243,6 +260,7 @@ impl Catalog {
 				}
 				Ok(tests)
 			}
+			Transaction::Replica(rep) => Ok(self.materialized.list_all_tests_at(rep.version())),
 		}
 	}
 

@@ -155,6 +155,20 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(view) = self.materialized.find_view_at(id, rep.version()) {
+					return Ok(Some(view));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(view) = CatalogStore::find_view(&mut Transaction::Replica(&mut *rep), id)? {
+					warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
+					return Ok(Some(view));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -295,6 +309,29 @@ impl Catalog {
 				)? {
 					return Ok(Some(view));
 				}
+				Ok(None)
+			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(view) =
+					self.materialized.find_view_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(view));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(view) = CatalogStore::find_view_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(view));
+				}
+
 				Ok(None)
 			}
 		}

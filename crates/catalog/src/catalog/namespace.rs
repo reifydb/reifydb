@@ -157,6 +157,21 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(namespace) = self.materialized.find_namespace_at(id, rep.version()) {
+					return Ok(Some(namespace));
+				}
+				if let Some(namespace) =
+					CatalogStore::find_namespace(&mut Transaction::Replica(&mut *rep), id)?
+				{
+					warn!(
+						"Namespace with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(namespace));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -277,6 +292,21 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(namespace) =
+					self.materialized.find_namespace_by_name_at(name, rep.version())
+				{
+					return Ok(Some(namespace));
+				}
+				if let Some(namespace) = CatalogStore::find_namespace_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					name,
+				)? {
+					warn!("Namespace '{}' found in storage but not in MaterializedCatalog", name);
+					return Ok(Some(namespace));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -351,6 +381,15 @@ impl Catalog {
 					return Ok(Some(ns));
 				}
 				let all = CatalogStore::list_namespaces_all(&mut Transaction::Admin(&mut *t.inner))?;
+				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
+			}
+			Transaction::Replica(rep) => {
+				if let Some(ns) =
+					self.materialized.find_child_namespace_at(parent_id, name, rep.version())
+				{
+					return Ok(Some(ns));
+				}
+				let all = CatalogStore::list_namespaces_all(&mut Transaction::Replica(&mut *rep))?;
 				Ok(all.into_iter().find(|ns| ns.local_name() == name && ns.parent_id() == parent_id))
 			}
 		}

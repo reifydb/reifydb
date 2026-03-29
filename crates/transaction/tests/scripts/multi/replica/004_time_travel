@@ -1,0 +1,29 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Replica commits at two versions, time-travel reads see historical values.
+
+t1: begin_replica version=100
+t1: set a=v1
+t1: commit_replica
+---
+ok
+
+t2: begin_replica version=200
+t2: set a=v2
+t2: commit_replica
+---
+ok
+
+# Time-travel to version 100 (exclusive 101 sees version 100)
+t3: begin readonly
+t3: set_as_of_exclusive 101
+t3: get a
+---
+t3: "a" => "v1"
+
+# Latest read sees version 200
+t4: begin readonly
+t4: get a
+---
+t4: "a" => "v2"

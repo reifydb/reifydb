@@ -214,6 +214,10 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction").into())
 			}
+			Transaction::Replica(_) => {
+				Err(internal_error!("Cannot insert into dictionary during a replica transaction")
+					.into())
+			}
 		}
 	}
 

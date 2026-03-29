@@ -152,6 +152,25 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(dict) = self.materialized.find_dictionary_at(id, rep.version()) {
+					return Ok(Some(dict));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(dict) =
+					CatalogStore::find_dictionary(&mut Transaction::Replica(&mut *rep), id)?
+				{
+					warn!(
+						"Dictionary with ID {:?} found in storage but not in MaterializedCatalog",
+						id
+					);
+					return Ok(Some(dict));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -298,6 +317,29 @@ impl Catalog {
 				)? {
 					return Ok(Some(dict));
 				}
+				Ok(None)
+			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(dict) =
+					self.materialized.find_dictionary_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(dict));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(dict) = CatalogStore::find_dictionary_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(dict));
+				}
+
 				Ok(None)
 			}
 		}

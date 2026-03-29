@@ -291,6 +291,7 @@ impl RingBufferOperations for Transaction<'_> {
 			}
 			Transaction::Test(t) => t.inner.insert_ringbuffer_at(ringbuffer, schema, row_number, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
@@ -301,6 +302,7 @@ impl RingBufferOperations for Transaction<'_> {
 			Transaction::Subscription(txn) => txn.as_admin_mut().update_ringbuffer(ringbuffer, id, row),
 			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 
@@ -311,6 +313,7 @@ impl RingBufferOperations for Transaction<'_> {
 			Transaction::Subscription(txn) => txn.as_admin_mut().remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}
 	}
 }

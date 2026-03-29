@@ -1,0 +1,29 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Replica insert then remove at later version.
+
+t1: begin_replica version=100
+t1: set a=1
+t1: commit_replica
+---
+ok
+
+t2: begin_replica version=200
+t2: remove a
+t2: commit_replica
+---
+ok
+
+# Latest: key removed
+t3: begin readonly
+t3: get a
+---
+t3: "a" => None
+
+# Time-travel to version 100: key exists
+t4: begin readonly
+t4: set_as_of_exclusive 101
+t4: get a
+---
+t4: "a" => "1"

@@ -1,0 +1,29 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# advance_replica for data-only primary commits (version gaps).
+
+t1: begin_replica version=100
+t1: set a=1
+t1: commit_replica
+---
+ok
+
+# Skip version 200 — data-only commit on primary
+advance_replica version=200
+---
+ok
+
+t2: begin_replica version=300
+t2: set b=2
+t2: commit_replica
+---
+ok
+
+t3: begin readonly
+t3: version
+t3: scan
+---
+t3: 300
+t3: "a" => "1"
+t3: "b" => "2"

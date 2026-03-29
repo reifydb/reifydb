@@ -113,6 +113,12 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(procedure) = self.materialized.find_procedure_at(id, rep.version()) {
+					return Ok(Some(procedure));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -205,6 +211,14 @@ impl Catalog {
 					return Ok(Some(procedure));
 				}
 
+				Ok(None)
+			}
+			Transaction::Replica(rep) => {
+				if let Some(procedure) =
+					self.materialized.find_procedure_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(procedure));
+				}
 				Ok(None)
 			}
 		}
@@ -340,6 +354,9 @@ impl Catalog {
 				}
 
 				Ok(procedures)
+			}
+			Transaction::Replica(rep) => {
+				Ok(self.materialized.list_procedures_for_variant_at(variant, rep.version()))
 			}
 		}
 	}

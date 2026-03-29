@@ -1,0 +1,32 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Prefix queries on replica-committed data.
+
+t1: begin_replica version=100
+t1: set aa=1 ab=2 ac=3 ba=4
+t1: commit_replica
+---
+ok
+
+# Forward prefix "a" — should return aa, ab, ac
+t2: begin readonly
+t2: prefix a
+---
+t2: "aa" => "1"
+t2: "ab" => "2"
+t2: "ac" => "3"
+
+# Reverse prefix "a" — should return ac, ab, aa
+t3: begin readonly
+t3: prefix a reverse=true
+---
+t3: "ac" => "3"
+t3: "ab" => "2"
+t3: "aa" => "1"
+
+# Prefix "b" — should return ba only
+t4: begin readonly
+t4: prefix b
+---
+t4: "ba" => "4"

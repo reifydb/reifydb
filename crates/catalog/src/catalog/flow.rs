@@ -135,6 +135,20 @@ impl Catalog {
 				}
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(flow) = self.materialized.find_flow_at(id, rep.version()) {
+					return Ok(Some(flow));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Replica(&mut *rep), id)? {
+					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
+					return Ok(Some(flow));
+				}
+
+				Ok(None)
+			}
 		}
 	}
 
@@ -275,6 +289,29 @@ impl Catalog {
 				)? {
 					return Ok(Some(flow));
 				}
+				Ok(None)
+			}
+			Transaction::Replica(rep) => {
+				// 1. Check MaterializedCatalog
+				if let Some(flow) =
+					self.materialized.find_flow_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(flow));
+				}
+
+				// 2. Fall back to storage as defensive measure
+				if let Some(flow) = CatalogStore::find_flow_by_name(
+					&mut Transaction::Replica(&mut *rep),
+					namespace,
+					name,
+				)? {
+					warn!(
+						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
+						name, namespace
+					);
+					return Ok(Some(flow));
+				}
+
 				Ok(None)
 			}
 		}

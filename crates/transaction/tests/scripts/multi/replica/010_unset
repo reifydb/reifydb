@@ -1,0 +1,31 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Replica unset (delete with tombstone preservation).
+
+t1: begin_replica version=100
+t1: set a=1 b=2
+t1: commit_replica
+---
+ok
+
+t2: begin_replica version=200
+t2: unset a=1
+t2: commit_replica
+---
+ok
+
+# Latest: a removed, b remains
+t3: begin readonly
+t3: get a b
+---
+t3: "a" => None
+t3: "b" => "2"
+
+# Time-travel to version 100: both exist
+t4: begin readonly
+t4: set_as_of_exclusive 101
+t4: get a b
+---
+t4: "a" => "1"
+t4: "b" => "2"

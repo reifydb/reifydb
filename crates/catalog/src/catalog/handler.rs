@@ -79,6 +79,12 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(handler) = self.materialized.find_handler_at(id, rep.version()) {
+					return Ok(Some(handler));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -172,6 +178,14 @@ impl Catalog {
 
 				Ok(None)
 			}
+			Transaction::Replica(rep) => {
+				if let Some(handler) =
+					self.materialized.find_handler_by_name_at(namespace, name, rep.version())
+				{
+					return Ok(Some(handler));
+				}
+				Ok(None)
+			}
 		}
 	}
 
@@ -241,6 +255,9 @@ impl Catalog {
 				}
 
 				Ok(handlers)
+			}
+			Transaction::Replica(rep) => {
+				Ok(self.materialized.list_handlers_for_variant_at(variant, rep.version()))
 			}
 		}
 	}
