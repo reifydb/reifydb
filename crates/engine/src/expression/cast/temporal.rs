@@ -32,9 +32,9 @@ pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			Type::Time => to_time(container, lazy_fragment),
 			Type::Duration => to_duration(container, lazy_fragment),
 			_ => {
-				let source_type = data.get_type();
+				let schema_type = data.get_type();
 				Err(TypeError::UnsupportedCast {
-					from: source_type,
+					from: schema_type,
 					to: target,
 					fragment: lazy_fragment.fragment(),
 				}
@@ -42,9 +42,9 @@ pub fn to_temporal(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 			}
 		}
 	} else {
-		let source_type = data.get_type();
+		let schema_type = data.get_type();
 		Err(TypeError::UnsupportedCast {
-			from: source_type,
+			from: schema_type,
 			to: target,
 			fragment: lazy_fragment.fragment(),
 		}

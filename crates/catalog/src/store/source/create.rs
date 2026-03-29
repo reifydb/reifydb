@@ -17,7 +17,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		sequence::source::next_source_id,
+		sequence::source::next_schema_id,
 		source::schema::{source, source_namespace},
 	},
 };
@@ -52,11 +52,11 @@ impl CatalogStore {
 			.into());
 		}
 
-		let source_id = next_source_id(txn)?;
-		Self::store_source(txn, source_id, namespace_id, &to_create)?;
-		Self::link_source_to_namespace(txn, namespace_id, source_id, to_create.name.text())?;
+		let schema_id = next_schema_id(txn)?;
+		Self::store_source(txn, schema_id, namespace_id, &to_create)?;
+		Self::link_source_to_namespace(txn, namespace_id, schema_id, to_create.name.text())?;
 
-		Ok(Self::get_source(&mut Transaction::Admin(&mut *txn), source_id)?)
+		Ok(Self::get_source(&mut Transaction::Admin(&mut *txn), schema_id)?)
 	}
 
 	fn store_source(

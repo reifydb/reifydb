@@ -85,8 +85,8 @@ impl QueryNode for RowPointLookupNode {
 		}
 		self.exhausted = true;
 
-		let source_id = get_object_id(&self.source)?;
-		let encoded_key = RowKey::encoded(source_id, RowNumber(self.row_number));
+		let schema_id = get_object_id(&self.source)?;
+		let encoded_key = RowKey::encoded(schema_id, RowNumber(self.row_number));
 
 		// O(1) point lookup
 		if let Some(multi_values) = rx.get(&encoded_key)? {
@@ -164,7 +164,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let source_id = get_object_id(&self.source)?;
+		let schema_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -172,7 +172,7 @@ impl QueryNode for RowListLookupNode {
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
 		for &row_num in &self.row_numbers[self.current_index..end_index] {
-			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
+			let encoded_key = RowKey::encoded(schema_id, RowNumber(row_num));
 
 			// O(1) point lookup for each row
 			if let Some(multi_values) = rx.get(&encoded_key)? {
@@ -267,7 +267,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let source_id = get_object_id(&self.source)?;
+		let schema_id = get_object_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -275,7 +275,7 @@ impl QueryNode for RowRangeScanNode {
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
 		for row_num in self.current_row..=batch_end {
-			let encoded_key = RowKey::encoded(source_id, RowNumber(row_num));
+			let encoded_key = RowKey::encoded(schema_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
 				batch_rows.push(multi_values.row);

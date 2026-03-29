@@ -16,7 +16,7 @@ use crate::{CatalogStore, Result, store::column::schema::primitive_column};
 /// Extended column information for system catalogs
 pub struct ColumnInfo {
 	pub column: Column,
-	pub source_id: SchemaId,
+	pub schema_id: SchemaId,
 	pub is_view: bool,
 	pub entity_kind: &'static str,
 	pub entity_name: String,
@@ -58,7 +58,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					source_id: table.id.into(),
+					schema_id: table.id.into(),
 					is_view: false,
 					entity_kind: "table",
 					entity_name: table.name.clone(),
@@ -74,7 +74,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					source_id: view.id().into(),
+					schema_id: view.id().into(),
 					is_view: true,
 					entity_kind: "view",
 					entity_name: view.name().to_string(),
@@ -90,7 +90,7 @@ impl CatalogStore {
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					source_id: ringbuffer.id.into(),
+					schema_id: ringbuffer.id.into(),
 					is_view: false,
 					entity_kind: "ring buffer",
 					entity_name: ringbuffer.name.clone(),

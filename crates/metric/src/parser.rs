@@ -40,7 +40,7 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 		| KeyKind::ColumnProperty
 		| KeyKind::Index
 		| KeyKind::IndexEntry
-		| KeyKind::PrimaryKey => extract_source_id(key).map(MetricId::Source).unwrap_or(MetricId::System),
+		| KeyKind::PrimaryKey => extract_schema_id(key).map(MetricId::Source).unwrap_or(MetricId::System),
 
 		// Keys that contain DictionaryId at bytes 2..10
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
@@ -62,7 +62,7 @@ fn extract_object_id(key: &[u8], kind: KeyKind) -> MetricId {
 /// Extract SchemaId from a key.
 ///
 /// Assumes key format: `[VERSION:1][KIND:1][SchemaId:9][...]`
-fn extract_source_id(key: &[u8]) -> Option<SchemaId> {
+fn extract_schema_id(key: &[u8]) -> Option<SchemaId> {
 	if key.len() < 11 {
 		// 1 + 1 + 9 = 11 bytes minimum
 		return None;

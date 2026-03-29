@@ -1,0 +1,18 @@
+# Multiple namespaces in a single replicate batch
+
+admin 'CREATE NAMESPACE ns1'
+admin 'CREATE NAMESPACE ns2'
+admin 'CREATE NAMESPACE ns3'
+replicate
+---
+version: 2
+
+query 'FROM system::namespaces FILTER {name == "ns1" or name == "ns2" or name == "ns3"} SORT {name:ASC}'
+---
++--------+--------+--------------+-------------+
+|   id   |  name  |  local_name  |  parent_id  |
++--------+--------+--------------+-------------+
+|  1025  |  ns1   |     ns1      |      0      |
+|  1026  |  ns2   |     ns2      |      0      |
+|  1027  |  ns3   |     ns3      |      0      |
++--------+--------+--------------+-------------+

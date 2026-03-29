@@ -59,7 +59,7 @@ impl SchemaResolver {
 		let mut mappings = Vec::with_capacity(target.field_count());
 
 		for target_field in target.fields() {
-			if let Some((source_idx, source_field)) =
+			if let Some((schema_idx, source_field)) =
 				source.fields().iter().enumerate().find(|(_, f)| f.name == target_field.name)
 			{
 				// Field exists in both - check type compatibility
@@ -67,7 +67,7 @@ impl SchemaResolver {
 					return None; // Incompatible types
 				}
 				mappings.push(FieldMapping::Direct {
-					source_index: source_idx,
+					source_index: schema_idx,
 				});
 			} else {
 				// Field only in target - needs default
@@ -85,10 +85,10 @@ impl SchemaResolver {
 	/// Check if source constraint can be read as target constraint.
 	/// For now, just compares base types - constraint widening could be added later.
 	fn types_compatible(source: &TypeConstraint, target: &TypeConstraint) -> bool {
-		let source_type = source.get_type();
+		let schema_type = source.get_type();
 		let target_type = target.get_type();
 
-		if source_type == target_type {
+		if schema_type == target_type {
 			return true;
 		}
 

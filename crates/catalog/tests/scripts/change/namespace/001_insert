@@ -1,0 +1,14 @@
+# Create a namespace on primary, replicate to replica, query replica via RQL
+
+admin 'CREATE NAMESPACE test_ns'
+replicate
+---
+version: 2
+
+query 'FROM system::namespaces FILTER {name == "test_ns"}'
+---
++--------+-----------+--------------+-------------+
+|   id   |   name    |  local_name  |  parent_id  |
++--------+-----------+--------------+-------------+
+|  1025  |  test_ns  |   test_ns    |      0      |
++--------+-----------+--------------+-------------+

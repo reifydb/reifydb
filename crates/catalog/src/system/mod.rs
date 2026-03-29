@@ -203,8 +203,8 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SOURCE_ID: ColumnId = ColumnId(2);
-			pub const SOURCE_TYPE: ColumnId = ColumnId(3);
+			pub const SCHEMA_ID: ColumnId = ColumnId(2);
+			pub const SCHEMA_TYPE: ColumnId = ColumnId(3);
 			pub const NAME: ColumnId = ColumnId(4);
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
@@ -212,7 +212,7 @@ pub mod ids {
 			pub const DICTIONARY_ID: ColumnId = ColumnId(8);
 
 			pub const ALL: [ColumnId; 8] =
-				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
+				[ID, SCHEMA_ID, SCHEMA_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
 		}
 
 		pub mod enum_variants {
@@ -353,9 +353,9 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SOURCE_ID: ColumnId = ColumnId(2);
+			pub const SCHEMA_ID: ColumnId = ColumnId(2);
 
-			pub const ALL: [ColumnId; 2] = [ID, SOURCE_ID];
+			pub const ALL: [ColumnId; 2] = [ID, SCHEMA_ID];
 		}
 
 		pub mod ringbuffers {

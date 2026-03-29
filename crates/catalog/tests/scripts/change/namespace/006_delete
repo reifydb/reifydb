@@ -1,0 +1,26 @@
+# Create namespace, verify, delete, verify gone
+
+admin 'CREATE NAMESPACE ephemeral'
+replicate
+---
+version: 2
+
+query 'FROM system::namespaces FILTER {name == "ephemeral"}'
+---
++--------+-------------+--------------+-------------+
+|   id   |    name     |  local_name  |  parent_id  |
++--------+-------------+--------------+-------------+
+|  1025  |  ephemeral  |  ephemeral   |      0      |
++--------+-------------+--------------+-------------+
+
+admin 'DROP NAMESPACE ephemeral'
+replicate
+---
+version: 3
+
+query 'FROM system::namespaces FILTER {name == "ephemeral"}'
+---
++------+--------+--------------+-------------+
+|  id  |  name  |  local_name  |  parent_id  |
++------+--------+--------------+-------------+
++------+--------+--------------+-------------+

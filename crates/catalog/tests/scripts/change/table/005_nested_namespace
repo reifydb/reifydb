@@ -1,0 +1,24 @@
+# Create table in a nested namespace
+
+admin 'CREATE NAMESPACE org::team'
+admin 'CREATE TABLE org::team::metrics { ts: int8, val: float8 }'
+replicate
+---
+version: 2
+
+query 'FROM system::namespaces FILTER {name == "org" or name == "org::team"} SORT {name:ASC}'
+---
++--------+-------------+--------------+-------------+
+|   id   |    name     |  local_name  |  parent_id  |
++--------+-------------+--------------+-------------+
+|  1025  |     org     |     org      |      0      |
+|  1026  |  org::team  |     team     |    1025     |
++--------+-------------+--------------+-------------+
+
+query 'FROM system::tables FILTER {name == "metrics"}'
+---
++--------+----------------+-----------+------------------+
+|   id   |  namespace_id  |   name    |  primary_key_id  |
++--------+----------------+-----------+------------------+
+|  1025  |      1026      |  metrics  |       none       |
++--------+----------------+-----------+------------------+

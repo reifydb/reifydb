@@ -1,0 +1,15 @@
+# Create a namespace and table on primary, replicate, query replica
+
+admin 'CREATE NAMESPACE test_ns'
+admin 'CREATE TABLE test_ns::users { id: int4, name: utf8 }'
+replicate
+---
+version: 2
+
+query 'FROM system::tables FILTER {name == "users"}'
+---
++--------+----------------+---------+------------------+
+|   id   |  namespace_id  |  name   |  primary_key_id  |
++--------+----------------+---------+------------------+
+|  1025  |      1025      |  users  |       none       |
++--------+----------------+---------+------------------+

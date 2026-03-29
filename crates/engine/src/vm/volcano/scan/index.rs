@@ -66,8 +66,8 @@ impl QueryNode for IndexScanNode {
 		// let batch_size = ctx.batch_size;
 		//
 		// // Create range for scanning index entries
-		// let source_id: SchemaId = self.table.id.into();
-		// let base_range = IndexEntryKey::index_range(source_id, self.index_id);
+		// let schema_id: SchemaId = self.table.id.into();
+		// let base_range = IndexEntryKey::index_range(schema_id, self.index_id);
 		//
 		// let range = if let Some(ref last_key) = self.last_key {
 		// 	let end = match base_range.end {

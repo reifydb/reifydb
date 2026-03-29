@@ -43,13 +43,13 @@ impl BaseVTable for SystemPrimaryKeys {
 		}
 
 		let mut pk_ids = Vec::new();
-		let mut source_ids = Vec::new();
+		let mut schema_ids = Vec::new();
 
 		// Read primary keys from storage instead of in-memory catalog
 		let primary_keys = CatalogStore::list_primary_keys(txn)?;
 		for pk_info in primary_keys {
 			pk_ids.push(pk_info.def.id.0);
-			source_ids.push(pk_info.source_id);
+			schema_ids.push(pk_info.schema_id);
 		}
 
 		let columns = vec![
@@ -58,8 +58,8 @@ impl BaseVTable for SystemPrimaryKeys {
 				data: ColumnData::uint8(pk_ids),
 			},
 			Column {
-				name: Fragment::internal("source_id"),
-				data: ColumnData::uint8(source_ids),
+				name: Fragment::internal("schema_id"),
+				data: ColumnData::uint8(schema_ids),
 			},
 		];
 

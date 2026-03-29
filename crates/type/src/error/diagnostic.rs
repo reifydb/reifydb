@@ -533,11 +533,11 @@ impl IntoDiagnostic for TypeError {
 			},
 
 			TypeError::IntegerPrecisionLoss {
-				source_type,
+				schema_type,
 				target,
 				fragment,
 			} => {
-				let is_signed = source_type.is_signed_integer();
+				let is_signed = schema_type.is_signed_integer();
 				let (min_limit, max_limit) = match target {
 					Type::Float4 => {
 						if is_signed {
@@ -559,7 +559,7 @@ impl IntoDiagnostic for TypeError {
 				let label = Some(format!(
 					"converting '{}' from {} to {} would lose precision",
 					fragment.text(),
-					source_type,
+					schema_type,
 					target
 				));
 

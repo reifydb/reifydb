@@ -17,7 +17,7 @@ use crate::{
 
 pub struct PrimaryKeyInfo {
 	pub def: PrimaryKey,
-	pub source_id: u64,
+	pub schema_id: u64,
 }
 
 impl CatalogStore {
@@ -49,7 +49,7 @@ impl CatalogStore {
 				if let Key::PrimaryKey(pk_key) = key {
 					// Get the source ID from the primary
 					// key record
-					let source_id = primary_key::SCHEMA.get_u64(&entry.row, primary_key::SOURCE);
+					let schema_id = primary_key::SCHEMA.get_u64(&entry.row, primary_key::SOURCE);
 
 					// Deserialize column IDs
 					let column_ids_blob =
@@ -79,7 +79,7 @@ impl CatalogStore {
 
 					result.push(PrimaryKeyInfo {
 						def: pk_def,
-						source_id,
+						schema_id,
 					});
 				}
 			}

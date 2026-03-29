@@ -67,7 +67,7 @@ impl Arena {
 				origin: 0,
 				id: node_id.0,
 			},
-			ChangeOrigin::Schema(source_id) => match source_id {
+			ChangeOrigin::Schema(schema_id) => match schema_id {
 				SchemaId::Table(id) => OriginFFI {
 					origin: 1,
 					id: id.0,

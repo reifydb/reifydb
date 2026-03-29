@@ -10,15 +10,15 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_source(txn: &mut AdminTransaction, source_id: SourceId) -> Result<()> {
-		let source = CatalogStore::find_source(&mut Transaction::Admin(&mut *txn), source_id)?;
+	pub(crate) fn drop_source(txn: &mut AdminTransaction, schema_id: SourceId) -> Result<()> {
+		let source = CatalogStore::find_source(&mut Transaction::Admin(&mut *txn), schema_id)?;
 
 		if let Some(source) = source {
 			// Delete from namespace index
-			txn.remove(&NamespaceSourceKey::encoded(source.namespace, source_id))?;
+			txn.remove(&NamespaceSourceKey::encoded(source.namespace, schema_id))?;
 
 			// Delete from main source table
-			txn.remove(&SourceKey::encoded(source_id))?;
+			txn.remove(&SourceKey::encoded(schema_id))?;
 		}
 
 		Ok(())

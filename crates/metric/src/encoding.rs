@@ -190,9 +190,9 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 
 fn encode_object_id(buf: &mut Vec<u8>, id: MetricId) {
 	match id {
-		MetricId::Source(source_id) => {
+		MetricId::Source(schema_id) => {
 			buf.push(ID_SOURCE);
-			buf.extend_from_slice(&encode_source_id(source_id));
+			buf.extend_from_slice(&encode_schema_id(schema_id));
 		}
 		MetricId::FlowNode(flow_node_id) => {
 			buf.push(ID_FLOW_NODE);
@@ -213,8 +213,8 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 			if bytes.len() < 10 {
 				return None;
 			}
-			let source_id = decode_source_id(&bytes[1..10])?;
-			Some(MetricId::Source(source_id))
+			let schema_id = decode_schema_id(&bytes[1..10])?;
+			Some(MetricId::Source(schema_id))
 		}
 		ID_FLOW_NODE => {
 			if bytes.len() < 9 {
@@ -229,14 +229,14 @@ fn decode_object_id(bytes: &[u8]) -> Option<MetricId> {
 }
 
 // SchemaId encoding (9 bytes: 1 byte discriminant + 8 bytes id)
-fn encode_source_id(source_id: SchemaId) -> [u8; 9] {
+fn encode_schema_id(schema_id: SchemaId) -> [u8; 9] {
 	let mut buf = [0u8; 9];
-	buf[0] = source_id.to_type_u8();
-	buf[1..9].copy_from_slice(&source_id.as_u64().to_be_bytes());
+	buf[0] = schema_id.to_type_u8();
+	buf[1..9].copy_from_slice(&schema_id.as_u64().to_be_bytes());
 	buf
 }
 
-fn decode_source_id(bytes: &[u8]) -> Option<SchemaId> {
+fn decode_schema_id(bytes: &[u8]) -> Option<SchemaId> {
 	if bytes.len() < 9 {
 		return None;
 	}
@@ -274,8 +274,8 @@ pub mod tests {
 	#[test]
 	fn test_storage_stats_key_source_roundtrip() {
 		let tier = Tier::Hot;
-		let source_id = SchemaId::Table(TableId(12345));
-		let id = MetricId::Source(source_id);
+		let schema_id = SchemaId::Table(TableId(12345));
+		let id = MetricId::Source(schema_id);
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();
@@ -307,8 +307,8 @@ pub mod tests {
 
 	#[test]
 	fn test_cdc_stats_key_roundtrip() {
-		let source_id = SchemaId::Table(TableId(12345));
-		let id = MetricId::Source(source_id);
+		let schema_id = SchemaId::Table(TableId(12345));
+		let id = MetricId::Source(schema_id);
 
 		let key = encode_cdc_stats_key(id);
 		let decoded = decode_cdc_stats_key(&key).unwrap();

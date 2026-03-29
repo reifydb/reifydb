@@ -1,0 +1,20 @@
+# Multiple tables across namespaces
+
+admin 'CREATE NAMESPACE ns1'
+admin 'CREATE NAMESPACE ns2'
+admin 'CREATE TABLE ns1::users { id: int4, name: utf8 }'
+admin 'CREATE TABLE ns1::orders { id: int4, total: float8 }'
+admin 'CREATE TABLE ns2::products { id: int4, sku: utf8 }'
+replicate
+---
+version: 2
+
+query 'FROM system::tables FILTER {name == "users" or name == "orders" or name == "products"} SORT {name:ASC}'
+---
++--------+----------------+------------+------------------+
+|   id   |  namespace_id  |    name    |  primary_key_id  |
++--------+----------------+------------+------------------+
+|  1026  |      1025      |   orders   |       none       |
+|  1027  |      1026      |  products  |       none       |
+|  1025  |      1025      |   users    |       none       |
++--------+----------------+------------+------------------+

@@ -1,0 +1,39 @@
+# Create, verify, delete, verify gone, recreate, verify back
+
+admin 'CREATE NAMESPACE phoenix'
+replicate
+---
+version: 2
+
+query 'FROM system::namespaces FILTER {name == "phoenix"}'
+---
++--------+-----------+--------------+-------------+
+|   id   |   name    |  local_name  |  parent_id  |
++--------+-----------+--------------+-------------+
+|  1025  |  phoenix  |   phoenix    |      0      |
++--------+-----------+--------------+-------------+
+
+admin 'DROP NAMESPACE phoenix'
+replicate
+---
+version: 3
+
+query 'FROM system::namespaces FILTER {name == "phoenix"}'
+---
++------+--------+--------------+-------------+
+|  id  |  name  |  local_name  |  parent_id  |
++------+--------+--------------+-------------+
++------+--------+--------------+-------------+
+
+admin 'CREATE NAMESPACE phoenix'
+replicate
+---
+version: 4
+
+query 'FROM system::namespaces FILTER {name == "phoenix"}'
+---
++--------+-----------+--------------+-------------+
+|   id   |   name    |  local_name  |  parent_id  |
++--------+-----------+--------------+-------------+
+|  1026  |  phoenix  |   phoenix    |      0      |
++--------+-----------+--------------+-------------+

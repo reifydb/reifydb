@@ -23,7 +23,7 @@ impl<'bump> Parser<'bump> {
 		let mut segments = self.parse_double_colon_separated_identifiers()?;
 		let name = segments.pop().unwrap().into_fragment();
 		let namespace: Vec<_> = segments.into_iter().map(|s| s.into_fragment()).collect();
-		let source_ident = MaybeQualifiedSourceIdentifier::new(name).with_namespace(namespace);
+		let schema_ident = MaybeQualifiedSourceIdentifier::new(name).with_namespace(namespace);
 
 		// Expect AS {
 		self.consume_operator(Operator::As)?;
@@ -52,7 +52,7 @@ impl<'bump> Parser<'bump> {
 
 		Ok(AstCreate::Source(AstCreateSource {
 			token,
-			name: source_ident,
+			name: schema_ident,
 			connector,
 			config,
 			target,

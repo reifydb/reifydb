@@ -127,7 +127,7 @@ pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_cou
 		) => ColumnData::none_typed(target, row_count),
 
 		(_, target) => {
-			let source_type = match expr {
+			let schema_type = match expr {
 				ConstantExpression::Bool {
 					..
 				} => Type::Boolean,
@@ -145,7 +145,7 @@ pub(crate) fn constant_value_of(expr: &ConstantExpression, target: Type, row_cou
 				} => Type::Option(Box::new(Type::Any)),
 			};
 			return Err(TypeError::UnsupportedCast {
-				from: source_type,
+				from: schema_type,
 				to: target,
 				fragment: expr.full_fragment_owned(),
 			}

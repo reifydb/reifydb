@@ -1,0 +1,20 @@
+# Sequential replicates at different versions
+
+admin 'CREATE NAMESPACE first'
+replicate
+---
+version: 2
+
+admin 'CREATE NAMESPACE second'
+replicate
+---
+version: 3
+
+query 'FROM system::namespaces FILTER {name == "first" or name == "second"} SORT {name:ASC}'
+---
++--------+----------+--------------+-------------+
+|   id   |   name   |  local_name  |  parent_id  |
++--------+----------+--------------+-------------+
+|  1025  |  first   |    first     |      0      |
+|  1026  |  second  |    second    |      0      |
++--------+----------+--------------+-------------+

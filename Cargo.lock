@@ -2615,11 +2615,13 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
+ "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
  "serde_json",
  "subtle",
+ "test_each_file",
  "thiserror 2.0.18",
  "tracing",
 ]

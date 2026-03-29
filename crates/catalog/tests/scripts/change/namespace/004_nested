@@ -1,0 +1,15 @@
+# Nested namespace creation with mkdir -p semantics
+
+admin 'CREATE NAMESPACE parent::child'
+replicate
+---
+version: 2
+
+query 'FROM system::namespaces FILTER {name == "parent" or name == "parent::child"} SORT {name:ASC}'
+---
++--------+-----------------+--------------+-------------+
+|   id   |      name       |  local_name  |  parent_id  |
++--------+-----------------+--------------+-------------+
+|  1025  |     parent      |    parent    |      0      |
+|  1026  |  parent::child  |    child     |    1025     |
++--------+-----------------+--------------+-------------+

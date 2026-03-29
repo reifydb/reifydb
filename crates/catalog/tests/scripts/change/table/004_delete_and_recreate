@@ -1,0 +1,58 @@
+# Create table, verify, drop, verify gone, recreate with different columns, verify
+
+admin 'CREATE NAMESPACE test_ns'
+admin 'CREATE TABLE test_ns::config { key: utf8, val: utf8 }'
+replicate
+---
+version: 2
+
+query 'FROM system::tables FILTER {name == "config"}'
+---
++--------+----------------+----------+------------------+
+|   id   |  namespace_id  |   name   |  primary_key_id  |
++--------+----------------+----------+------------------+
+|  1025  |      1025      |  config  |       none       |
++--------+----------------+----------+------------------+
+
+query 'FROM system::columns FILTER {table_id == 1025} SORT {index:ASC}'
+---
++------+-------------+---------------+--------+--------+------------+------------------+-----------------+
+|  id  |  schema_id  |  schema_type  |  name  |  type  |  position  |  auto_increment  |  dictionary_id  |
++------+-------------+---------------+--------+--------+------------+------------------+-----------------+
++------+-------------+---------------+--------+--------+------------+------------------+-----------------+
+
+(admin 'DROP TABLE test_ns::config')
+replicate
+---
+version: 3
+
+query 'FROM system::tables FILTER {name == "config"}'
+---
++------+----------------+--------+------------------+
+|  id  |  namespace_id  |  name  |  primary_key_id  |
++------+----------------+--------+------------------+
++------+----------------+--------+------------------+
+
+admin 'CREATE TABLE test_ns::config { id: int8, key: utf8, val: utf8, updated_at: int8 }'
+replicate
+---
+version: 4
+
+query 'FROM system::tables FILTER {name == "config"}'
+---
++--------+----------------+----------+------------------+
+|   id   |  namespace_id  |   name   |  primary_key_id  |
++--------+----------------+----------+------------------+
+|  1026  |      1025      |  config  |       none       |
++--------+----------------+----------+------------------+
+
+query 'FROM system::columns FILTER {schema_id == 1026}'
+---
++--------+-------------+---------------+--------------+--------+------------+------------------+-----------------+
+|   id   |  schema_id  |  schema_type  |     name     |  type  |  position  |  auto_increment  |  dictionary_id  |
++--------+-------------+---------------+--------------+--------+------------+------------------+-----------------+
+|  8195  |    1026     |       1       |      id      |   6    |     0      |      false       |        0        |
+|  8196  |    1026     |       1       |     key      |   8    |     1      |      false       |        0        |
+|  8197  |    1026     |       1       |     val      |   8    |     2      |      false       |        0        |
+|  8198  |    1026     |       1       |  updated_at  |   6    |     3      |      false       |        0        |
++--------+-------------+---------------+--------------+--------+------------+------------------+-----------------+
