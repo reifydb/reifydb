@@ -5,6 +5,10 @@
 pub mod tests {
 	use std::str::FromStr;
 
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::value::{
 		blob::Blob,
 		date::Date,
@@ -20,6 +24,13 @@ pub mod tests {
 	};
 
 	use crate::encoded::schema::RowSchema;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_set_bool() {
@@ -176,13 +187,14 @@ pub mod tests {
 
 	#[test]
 	fn test_set_uuid_types() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 		let mut row = schema.allocate();
 
 		// Set UUID values
 		let uuid4 = Uuid4::generate();
-		let uuid7 = Uuid7::generate();
-		let identity_id = IdentityId::generate();
+		let uuid7 = Uuid7::generate(&clock, &rng);
+		let identity_id = IdentityId::generate(&clock, &rng);
 
 		schema.set_uuid4(&mut row, 0, uuid4.clone());
 		schema.set_uuid7(&mut row, 1, uuid7.clone());

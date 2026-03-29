@@ -2,7 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{config::SystemConfig, event::EventBus};
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{clock::Clock, rng::Rng},
+};
 use reifydb_store_multi::{
 	MultiStore,
 	config::{HotConfig as MultiHotConfig, MultiStoreConfig},
@@ -134,10 +137,18 @@ pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, SingleTransaction, EventBus),
 	actor_system: ActorSystem,
 	clock: Clock,
+	rng: Rng,
 	system_config: SystemConfig,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
-	let multi =
-		MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock, system_config)
-			.unwrap();
+	let multi = MultiTransaction::new(
+		input.0,
+		input.2.clone(),
+		input.3.clone(),
+		actor_system,
+		clock,
+		rng,
+		system_config,
+	)
+	.unwrap();
 	(multi, input.2, input.3)
 }

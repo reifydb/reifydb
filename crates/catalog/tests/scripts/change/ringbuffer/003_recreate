@@ -1,0 +1,40 @@
+# Create ringbuffer, delete, recreate with different capacity
+
+admin 'CREATE NAMESPACE rb'
+admin 'CREATE RINGBUFFER rb::events { kind: utf8 } WITH { capacity: 10 }'
+replicate
+---
+version: 2
+
+query 'FROM system::ringbuffers FILTER {name == "events"}'
+---
++--------+----------------+----------+------------+------------------+
+|   id   |  namespace_id  |   name   |  capacity  |  primary_key_id  |
++--------+----------------+----------+------------+------------------+
+|  1025  |      1025      |  events  |     10     |       none       |
++--------+----------------+----------+------------+------------------+
+
+(admin 'DROP RINGBUFFER rb::events')
+replicate
+---
+version: 3
+
+query 'FROM system::ringbuffers FILTER {name == "events"}'
+---
++------+----------------+--------+------------+------------------+
+|  id  |  namespace_id  |  name  |  capacity  |  primary_key_id  |
++------+----------------+--------+------------+------------------+
++------+----------------+--------+------------+------------------+
+
+admin 'CREATE RINGBUFFER rb::events { kind: utf8, payload: utf8 } WITH { capacity: 1000 }'
+replicate
+---
+version: 4
+
+query 'FROM system::ringbuffers FILTER {name == "events"}'
+---
++--------+----------------+----------+------------+------------------+
+|   id   |  namespace_id  |   name   |  capacity  |  primary_key_id  |
++--------+----------------+----------+------------+------------------+
+|  1026  |      1025      |  events  |    1000    |       none       |
++--------+----------------+----------+------------+------------------+

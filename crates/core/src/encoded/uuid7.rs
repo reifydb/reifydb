@@ -46,47 +46,60 @@ impl RowSchema {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{thread::sleep, time::Duration};
-
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
 	use crate::encoded::schema::RowSchema;
 
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
+
 	#[test]
 	fn test_set_get_uuid7() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		schema.set_uuid7(&mut row, 0, uuid.clone());
 		assert_eq!(schema.get_uuid7(&row, 0), uuid);
 	}
 
 	#[test]
 	fn test_try_get_uuid7() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
 		assert_eq!(schema.try_get_uuid7(&row, 0), None);
 
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		schema.set_uuid7(&mut row, 0, uuid.clone());
 		assert_eq!(schema.try_get_uuid7(&row, 0), Some(uuid));
 	}
 
 	#[test]
 	fn test_multiple_generations() {
+		let (mock, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 
 		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
 		for _ in 0..10 {
 			let mut row = schema.allocate();
-			let uuid = Uuid7::generate();
+			let uuid = Uuid7::generate(&clock, &rng);
 			schema.set_uuid7(&mut row, 0, uuid.clone());
 			let retrieved = schema.get_uuid7(&row, 0);
 			assert_eq!(retrieved, uuid);
 			uuids.push(uuid);
+			mock.advance_millis(1);
 		}
 
 		// Ensure all generated UUIDs are unique
@@ -99,10 +112,11 @@ pub mod tests {
 
 	#[test]
 	fn test_version_check() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		schema.set_uuid7(&mut row, 0, uuid.clone());
 		let retrieved = schema.get_uuid7(&row, 0);
 
@@ -112,6 +126,7 @@ pub mod tests {
 
 	#[test]
 	fn test_timestamp_ordering() {
+		let (mock, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 
 		// Generate UUIDs in sequence - they should be ordered by
@@ -119,14 +134,14 @@ pub mod tests {
 		let mut uuids = Vec::new();
 		for _ in 0..5 {
 			let mut row = schema.allocate();
-			let uuid = Uuid7::generate();
+			let uuid = Uuid7::generate(&clock, &rng);
 			schema.set_uuid7(&mut row, 0, uuid.clone());
 			let retrieved = schema.get_uuid7(&row, 0);
 			assert_eq!(retrieved, uuid);
 			uuids.push(uuid);
 
-			// Small delay to ensure different timestamps
-			sleep(Duration::from_millis(1));
+			// Advance clock to ensure different timestamps
+			mock.advance_millis(1);
 		}
 
 		// Verify that UUIDs are ordered (timestamp-based)
@@ -137,11 +152,13 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
+		let (mock, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7, Type::Boolean, Type::Uuid7, Type::Int4]);
 		let mut row = schema.allocate();
 
-		let uuid1 = Uuid7::generate();
-		let uuid2 = Uuid7::generate();
+		let uuid1 = Uuid7::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let uuid2 = Uuid7::generate(&clock, &rng);
 
 		schema.set_uuid7(&mut row, 0, uuid1.clone());
 		schema.set_bool(&mut row, 1, true);
@@ -156,10 +173,11 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7, Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		schema.set_uuid7(&mut row, 0, uuid.clone());
 
 		assert_eq!(schema.try_get_uuid7(&row, 0), Some(uuid));
@@ -171,10 +189,11 @@ pub mod tests {
 
 	#[test]
 	fn test_persistence() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		let uuid_string = uuid.to_string();
 
 		schema.set_uuid7(&mut row, 0, uuid.clone());
@@ -187,10 +206,11 @@ pub mod tests {
 
 	#[test]
 	fn test_clone_consistency() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let original_uuid = Uuid7::generate();
+		let original_uuid = Uuid7::generate(&clock, &rng);
 		schema.set_uuid7(&mut row, 0, original_uuid.clone());
 
 		let retrieved_uuid = schema.get_uuid7(&row, 0);
@@ -202,12 +222,15 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
+		let (mock, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7, Type::Uuid7, Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let uuid1 = Uuid7::generate();
-		let uuid2 = Uuid7::generate();
-		let uuid3 = Uuid7::generate();
+		let uuid1 = Uuid7::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let uuid2 = Uuid7::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let uuid3 = Uuid7::generate(&clock, &rng);
 
 		schema.set_uuid7(&mut row, 0, uuid1.clone());
 		schema.set_uuid7(&mut row, 1, uuid2.clone());
@@ -225,10 +248,11 @@ pub mod tests {
 
 	#[test]
 	fn test_format_consistency() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		let original_string = uuid.to_string();
 
 		schema.set_uuid7(&mut row, 0, uuid.clone());
@@ -244,10 +268,11 @@ pub mod tests {
 
 	#[test]
 	fn test_byte_level_storage() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		let original_bytes = *uuid.as_bytes();
 
 		schema.set_uuid7(&mut row, 0, uuid.clone());
@@ -263,12 +288,13 @@ pub mod tests {
 
 	#[test]
 	fn test_time_based_properties() {
+		let (mock, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid7]);
 
 		// Generate UUIDs at different times
-		let uuid1 = Uuid7::generate();
-		sleep(Duration::from_millis(2));
-		let uuid2 = Uuid7::generate();
+		let uuid1 = Uuid7::generate(&clock, &rng);
+		mock.advance_millis(2);
+		let uuid2 = Uuid7::generate(&clock, &rng);
 
 		let mut row1 = schema.allocate();
 		let mut row2 = schema.allocate();

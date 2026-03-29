@@ -34,7 +34,11 @@ use reifydb_routine::{function::default_functions, procedure::registry::Procedur
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
 	actor::system::{ActorHandle, ActorSystem, ActorSystemConfig},
-	context::{RuntimeContext, clock::Clock},
+	context::{
+		RuntimeContext,
+		clock::{Clock, MockClock},
+		rng::Rng,
+	},
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -174,6 +178,7 @@ impl TestEngineBuilder {
 			eventbus.clone(),
 			actor_system,
 			runtime.clock().clone(),
+			runtime.rng().clone(),
 			system_config,
 		)
 		.unwrap();
@@ -217,7 +222,7 @@ impl TestEngineBuilder {
 			eventbus.clone(),
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, row_schema_registry),
-			RuntimeContext::with_clock(runtime.clock().clone()),
+			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 			default_functions().build(),
 			Procedures::empty(),
 			Transforms::empty(),
@@ -261,7 +266,8 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 		single.clone(),
 		event_bus.clone(),
 		actor_system,
-		Clock::default(),
+		Clock::Mock(MockClock::from_millis(1000)),
+		Rng::seeded(42),
 		system_config,
 	)
 	.unwrap();
@@ -286,7 +292,8 @@ pub fn create_test_admin_transaction_with_internal_schema() -> AdminTransaction 
 		single.clone(),
 		event_bus.clone(),
 		actor_system,
-		Clock::default(),
+		Clock::Mock(MockClock::from_millis(1000)),
+		Rng::seeded(42),
 		system_config,
 	)
 	.unwrap();

@@ -227,6 +227,7 @@ impl ServerBuilder {
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system.clone(),
 			runtime.clock().clone(),
+			runtime.rng().clone(),
 			system_config.clone(),
 		);
 

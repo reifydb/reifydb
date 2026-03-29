@@ -447,6 +447,10 @@ pub mod tests {
 	use std::{f64, str::FromStr};
 
 	use num_bigint::BigInt;
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::{
 		util::hex,
 		value::{
@@ -476,6 +480,13 @@ pub mod tests {
 		},
 		util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 	};
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_new() {
@@ -976,8 +987,9 @@ pub mod tests {
 
 	#[test]
 	fn test_identity_id() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let mut serializer = KeySerializer::new();
-		let id = IdentityId::generate();
+		let id = IdentityId::generate(&clock, &rng);
 		serializer.extend_identity_id(&id);
 		let result = serializer.finish();
 		assert!(result.len() > 0);
@@ -995,8 +1007,9 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let mut serializer = KeySerializer::new();
-		let uuid = Uuid7::generate();
+		let uuid = Uuid7::generate(&clock, &rng);
 		serializer.extend_uuid7(&uuid);
 		let result = serializer.finish();
 		// UUID is 16 bytes plus encoding overhead
@@ -1312,7 +1325,8 @@ pub mod tests {
 
 	#[test]
 	fn test_roundtrip_identity_id() {
-		let value = Value::IdentityId(IdentityId::generate());
+		let (_, clock, rng) = test_clock_and_rng();
+		let value = Value::IdentityId(IdentityId::generate(&clock, &rng));
 		let mut ser = KeySerializer::new();
 		ser.extend_value(&value);
 		let bytes = ser.finish();
@@ -1334,7 +1348,8 @@ pub mod tests {
 
 	#[test]
 	fn test_roundtrip_uuid7() {
-		let value = Value::Uuid7(Uuid7::generate());
+		let (_, clock, rng) = test_clock_and_rng();
+		let value = Value::Uuid7(Uuid7::generate(&clock, &rng));
 		let mut ser = KeySerializer::new();
 		ser.extend_value(&value);
 		let bytes = ser.finish();
@@ -1444,6 +1459,7 @@ pub mod tests {
 
 	#[test]
 	fn test_roundtrip_all() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let values = vec![
 			Value::none(),
 			Value::none_of(Type::Int4),
@@ -1466,9 +1482,9 @@ pub mod tests {
 			Value::DateTime(DateTime::from_ymd_hms(2024, 6, 15, 12, 30, 45).unwrap()),
 			Value::Time(Time::from_hms(12, 30, 45).unwrap()),
 			Value::Duration(Duration::from_nanoseconds(1_000_000).unwrap()),
-			Value::IdentityId(IdentityId::generate()),
+			Value::IdentityId(IdentityId::generate(&clock, &rng)),
 			Value::Uuid4(Uuid4::generate()),
-			Value::Uuid7(Uuid7::generate()),
+			Value::Uuid7(Uuid7::generate(&clock, &rng)),
 			Value::Blob(Blob::from(vec![0x01, 0x02, 0x03])),
 			Value::Int(Int(BigInt::from(-42))),
 			Value::Uint(Uint(BigInt::from(42))),

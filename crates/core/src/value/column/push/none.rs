@@ -37,9 +37,20 @@ impl ColumnData {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::value::{dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type};
 
 	use crate::value::column::ColumnData;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_bool() {
@@ -170,7 +181,8 @@ pub mod tests {
 
 	#[test]
 	fn test_identity_id() {
-		let mut col = ColumnData::identity_id(vec![IdentityId::generate()]);
+		let (_, clock, rng) = test_clock_and_rng();
+		let mut col = ColumnData::identity_id(vec![IdentityId::generate(&clock, &rng)]);
 		col.push_none();
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));

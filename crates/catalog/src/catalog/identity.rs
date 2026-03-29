@@ -10,6 +10,7 @@ use reifydb_core::interface::catalog::{
 	},
 	identity::{GrantedRole, Identity, Role, RoleId},
 };
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_transaction::{
 	change::{TransactionalGrantedRoleChanges, TransactionalIdentityChanges, TransactionalRoleChanges},
 	transaction::{Transaction, admin::AdminTransaction},
@@ -287,9 +288,15 @@ impl Catalog {
 		}
 	}
 
-	#[instrument(name = "catalog::identity::create", level = "debug", skip(self, txn))]
-	pub fn create_identity(&self, txn: &mut AdminTransaction, name: &str) -> Result<Identity> {
-		let ident = CatalogStore::create_identity(txn, name)?;
+	#[instrument(name = "catalog::identity::create", level = "debug", skip(self, txn, clock, rng))]
+	pub fn create_identity(
+		&self,
+		txn: &mut AdminTransaction,
+		name: &str,
+		clock: &Clock,
+		rng: &Rng,
+	) -> Result<Identity> {
+		let ident = CatalogStore::create_identity(txn, name, clock, rng)?;
 		txn.track_identity_created(ident.clone())?;
 		Ok(ident)
 	}

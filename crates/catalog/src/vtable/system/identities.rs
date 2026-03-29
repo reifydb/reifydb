@@ -47,13 +47,11 @@ impl BaseVTable for SystemIdentities {
 		let mut ids = ColumnData::identity_id_with_capacity(identities.len());
 		let mut names = ColumnData::utf8_with_capacity(identities.len());
 		let mut enabled_flags = ColumnData::bool_with_capacity(identities.len());
-		let mut identity_ids = ColumnData::identity_id_with_capacity(identities.len());
 
 		for u in identities {
 			ids.push(u.id);
 			names.push(u.name.as_str());
 			enabled_flags.push(u.enabled);
-			identity_ids.push(u.id);
 		}
 
 		let columns = vec![
@@ -68,10 +66,6 @@ impl BaseVTable for SystemIdentities {
 			Column {
 				name: Fragment::internal("enabled"),
 				data: enabled_flags,
-			},
-			Column {
-				name: Fragment::internal("identity"),
-				data: identity_ids,
 			},
 		];
 

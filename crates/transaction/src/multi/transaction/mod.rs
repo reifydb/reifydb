@@ -18,7 +18,13 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::{MultiVersionContains, MultiVersionGet},
 };
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	},
+};
 use reifydb_store_multi::MultiStore;
 use reifydb_type::{Result, util::hex};
 use tracing::instrument;
@@ -71,7 +77,7 @@ where
 	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
 	pub fn write(&self) -> Result<TransactionManagerCommand<L>> {
 		Ok(TransactionManagerCommand {
-			id: TransactionId::generate(),
+			id: TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 			oracle: self.inner.clone(),
 			version: self.inner.version()?,
 			read_version: None,
@@ -93,11 +99,17 @@ where
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(clock, actor_system, metrics_clock, config)
+		skip(clock, actor_system, metrics_clock, rng, config)
 	)]
-	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock, config: SystemConfig) -> Result<Self> {
+	pub fn new(
+		clock: L,
+		actor_system: ActorSystem,
+		metrics_clock: Clock,
+		rng: Rng,
+		config: SystemConfig,
+	) -> Result<Self> {
 		let version = clock.next()?;
-		let oracle = Oracle::new(clock, actor_system, metrics_clock, config);
+		let oracle = Oracle::new(clock, actor_system, metrics_clock, rng, config);
 		oracle.query.done(version);
 		oracle.command.done(version);
 		Ok(Self {
@@ -131,9 +143,17 @@ where
 
 		Ok(if let Some(version) = version {
 			assert!(version <= safe_version);
-			TransactionManagerQuery::new_time_travel(TransactionId::generate(), self.clone(), version)
+			TransactionManagerQuery::new_time_travel(
+				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
+				self.clone(),
+				version,
+			)
 		} else {
-			TransactionManagerQuery::new_current(TransactionId::generate(), self.clone(), safe_version)
+			TransactionManagerQuery::new_current(
+				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
+				self.clone(),
+				safe_version,
+			)
 		})
 	}
 
@@ -202,10 +222,11 @@ impl Inner {
 		event_bus: EventBus,
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
+		rng: Rng,
 		config: SystemConfig,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
-		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock, config)?;
+		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock, rng, config)?;
 
 		Ok(Self {
 			tm,
@@ -236,10 +257,11 @@ impl MultiTransaction {
 			SingleTransaction::new(single_store, event_bus.clone()),
 			event_bus,
 			actor_system,
-			Clock::default(),
+			Clock::Mock(MockClock::from_millis(1000)),
+			Rng::seeded(42),
 			system_config,
 		)
-		.unwrap()
+		.expect("failed to create testing MultiTransaction")
 	}
 }
 
@@ -247,7 +269,7 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, actor_system, metrics_clock, system_config)
+		skip(store, single, event_bus, actor_system, metrics_clock, rng, system_config)
 	)]
 	pub fn new(
 		store: MultiStore,
@@ -255,9 +277,18 @@ impl MultiTransaction {
 		event_bus: EventBus,
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
+		rng: Rng,
 		system_config: SystemConfig,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system, metrics_clock, system_config)?)))
+		Ok(Self(Arc::new(Inner::new(
+			store,
+			single,
+			event_bus,
+			actor_system,
+			metrics_clock,
+			rng,
+			system_config,
+		)?)))
 	}
 
 	/// Get the actor system

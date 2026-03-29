@@ -1,0 +1,16 @@
+# Create a deferred view, replicate, verify
+
+admin 'CREATE NAMESPACE vw'
+admin 'CREATE TABLE vw::employees { id: int4, name: utf8, active: bool }'
+admin 'CREATE DEFERRED VIEW vw::active_employees { id: int4, name: utf8 } AS { FROM vw::employees FILTER {active == true} MAP {id: id, name: name} }'
+replicate
+---
+version: 2
+
+query 'FROM system::views FILTER {name == "active_employees"}'
+---
++--------+----------------+--------------------+------------------+
+|   id   |  namespace_id  |        name        |  primary_key_id  |
++--------+----------------+--------------------+------------------+
+|  1027  |      1025      |  active_employees  |       none       |
++--------+----------------+--------------------+------------------+

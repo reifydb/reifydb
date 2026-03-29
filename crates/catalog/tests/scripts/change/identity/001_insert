@@ -1,0 +1,14 @@
+# Create a user identity, replicate, verify
+
+admin 'CREATE USER alice'
+replicate
+---
+version: 2
+
+query 'FROM system::identities FILTER {name == "alice"}'
+---
++----------------------------------------+---------+-----------+
+|                   id                   |  name   |  enabled  |
++----------------------------------------+---------+-----------+
+|  00000000-03e8-75b5-8fbd-4078d707571e  |  alice  |   true    |
++----------------------------------------+---------+-----------+

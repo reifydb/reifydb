@@ -6,6 +6,10 @@
 use std::str::FromStr;
 
 use reifydb_core::encoded::schema::RowSchema;
+use reifydb_runtime::context::{
+	clock::{Clock, MockClock},
+	rng::Rng,
+};
 use reifydb_type::value::{
 	blob::Blob,
 	date::Date,
@@ -20,8 +24,16 @@ use reifydb_type::value::{
 	uuid::{Uuid4, Uuid7},
 };
 
+fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+	let mock = MockClock::from_millis(1000);
+	let clock = Clock::Mock(mock.clone());
+	let rng = Rng::seeded(42);
+	(mock, clock, rng)
+}
+
 #[test]
 fn test_mixed_type_stress() {
+	let (_, clock, rng) = test_clock_and_rng();
 	// Comprehensive test with all types interacting
 	let schema = RowSchema::testing(&[
 		Type::Boolean,
@@ -74,8 +86,8 @@ fn test_mixed_type_stress() {
 	schema.set_time(&mut row, 17, Time::from_hms(23, 59, 59).unwrap());
 	schema.set_duration(&mut row, 18, Duration::from_days(365).unwrap());
 	schema.set_uuid4(&mut row, 19, Uuid4::generate());
-	schema.set_uuid7(&mut row, 20, Uuid7::generate());
-	schema.set_identity_id(&mut row, 21, IdentityId::generate());
+	schema.set_uuid7(&mut row, 20, Uuid7::generate(&clock, &rng));
+	schema.set_identity_id(&mut row, 21, IdentityId::generate(&clock, &rng));
 	schema.set_int(&mut row, 22, &Int::from(i128::MAX));
 	schema.set_uint(&mut row, 23, &Uint::from(u128::MAX));
 	schema.set_decimal(&mut row, 24, &Decimal::from_str("123.45").unwrap());

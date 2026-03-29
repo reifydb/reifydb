@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	return_internal_error,
 };
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_type::{error::Error, value::uuid::Uuid7};
 use uuid::Uuid;
 
@@ -33,7 +34,7 @@ pub struct TransactionId(pub(crate) Uuid7);
 
 impl Default for TransactionId {
 	fn default() -> Self {
-		Self::generate()
+		Self(Uuid7::default())
 	}
 }
 
@@ -46,8 +47,8 @@ impl Deref for TransactionId {
 }
 
 impl TransactionId {
-	pub fn generate() -> Self {
-		Self(Uuid7::generate())
+	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
+		Self(Uuid7::generate(clock, rng))
 	}
 }
 

@@ -1,0 +1,16 @@
+# Create a table policy, replicate, verify
+
+admin 'CREATE NAMESPACE pol'
+admin 'CREATE TABLE pol::items { id: int4, status: utf8 }'
+admin 'CREATE TABLE POLICY pub ON pol::items { read: { filter { status == "public" } } }'
+replicate
+---
+version: 2
+
+query 'FROM system::policies FILTER {name == "pub"}'
+---
++--------+--------+---------------+--------------------+-----------------+-----------+
+|   id   |  name  |  target_type  |  target_namespace  |  target_object  |  enabled  |
++--------+--------+---------------+--------------------+-----------------+-----------+
+|  1025  |  pub   |     table     |        pol         |      items      |   true    |
++--------+--------+---------------+--------------------+-----------------+-----------+

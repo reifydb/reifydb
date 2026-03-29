@@ -312,6 +312,10 @@ impl RowSchema {
 pub mod tests {
 	use std::f64::consts::E;
 
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::value::{
 		Value,
 		blob::Blob,
@@ -328,6 +332,13 @@ pub mod tests {
 	};
 
 	use crate::encoded::schema::{RowSchema, RowSchemaField};
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_set_utf8_with_dynamic_content() {
@@ -701,11 +712,12 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid_roundtrip() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7, Type::Int4]);
 		let mut row = schema.allocate();
 
 		let uuid4 = Uuid4::generate();
-		let uuid7 = Uuid7::generate();
+		let uuid7 = Uuid7::generate(&clock, &rng);
 		let values = vec![Value::Uuid4(uuid4), Value::Uuid7(uuid7), Value::Int4(123)];
 
 		schema.set_values(&mut row, &values);
@@ -717,10 +729,11 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid_with_undefined() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Uuid4, Type::Uuid7]);
 		let mut row = schema.allocate();
 
-		let values = vec![Value::none(), Value::Uuid7(Uuid7::generate())];
+		let values = vec![Value::none(), Value::Uuid7(Uuid7::generate(&clock, &rng))];
 
 		schema.set_values(&mut row, &values);
 
@@ -735,6 +748,7 @@ pub mod tests {
 
 	#[test]
 	fn test_mixed_blob_row_number_uuid_types() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[
 			Type::Blob,
 			Type::Int16,
@@ -750,7 +764,7 @@ pub mod tests {
 			Value::Int16(42424242i128),
 			Value::Uuid4(Uuid4::generate()),
 			Value::Utf8("mixed types test".to_string()),
-			Value::Uuid7(Uuid7::generate()),
+			Value::Uuid7(Uuid7::generate(&clock, &rng)),
 			Value::Int4(-999),
 		];
 
@@ -767,6 +781,7 @@ pub mod tests {
 	#[test]
 	fn test_all_types_comprehensive() {
 		// except encoded id
+		let (_, clock, rng) = test_clock_and_rng();
 
 		let schema = RowSchema::testing(&[
 			Type::Boolean,
@@ -813,7 +828,7 @@ pub mod tests {
 			Value::Time(Time::new(23, 59, 59, 999999999).unwrap()),
 			Value::Duration(Duration::from_hours(24).unwrap()),
 			Value::Uuid4(Uuid4::generate()),
-			Value::Uuid7(Uuid7::generate()),
+			Value::Uuid7(Uuid7::generate(&clock, &rng)),
 			Value::Blob(Blob::new(vec![
 				0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD,
 				0xEE, 0xFF,

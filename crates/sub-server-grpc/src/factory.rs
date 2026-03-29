@@ -137,6 +137,7 @@ impl SubsystemFactory for GrpcSubsystemFactory {
 			query_config,
 			interceptors,
 			runtime.clock().clone(),
+			runtime.rng().clone(),
 		);
 		let subsystem = GrpcSubsystem::new(
 			self.config.bind_addr.clone(),

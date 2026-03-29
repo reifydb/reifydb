@@ -1,0 +1,28 @@
+# Create table policy, verify, drop, verify gone
+
+admin 'CREATE NAMESPACE pol'
+admin 'CREATE TABLE pol::docs { id: int4, status: utf8 }'
+admin 'CREATE TABLE POLICY read_pol ON pol::docs { read: { filter { status == "public" } } }'
+replicate
+---
+version: 2
+
+query 'FROM system::policies FILTER {name == "read_pol"}'
+---
++--------+------------+---------------+--------------------+-----------------+-----------+
+|   id   |    name    |  target_type  |  target_namespace  |  target_object  |  enabled  |
++--------+------------+---------------+--------------------+-----------------+-----------+
+|  1025  |  read_pol  |     table     |        pol         |      docs       |   true    |
++--------+------------+---------------+--------------------+-----------------+-----------+
+
+admin 'DROP TABLE POLICY read_pol'
+replicate
+---
+version: 3
+
+query 'FROM system::policies FILTER {name == "read_pol"}'
+---
++------+--------+---------------+--------------------+-----------------+-----------+
+|  id  |  name  |  target_type  |  target_namespace  |  target_object  |  enabled  |
++------+--------+---------------+--------------------+-----------------+-----------+
++------+--------+---------------+--------------------+-----------------+-----------+

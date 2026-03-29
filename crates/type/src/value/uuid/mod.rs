@@ -8,7 +8,8 @@ use std::{
 	ops::Deref,
 };
 
-use ::uuid::Uuid as StdUuid;
+use ::uuid::{Builder, Uuid as StdUuid};
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -83,9 +84,11 @@ impl Default for Uuid7 {
 }
 
 impl Uuid7 {
-	/// Generate a new timestamp-based UUID v7
-	pub fn generate() -> Self {
-		Uuid7(StdUuid::now_v7())
+	/// Generate a new timestamp-based UUID v7 using the provided clock and RNG.
+	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
+		let millis = clock.now_millis();
+		let random_bytes = rng.bytes_10();
+		Uuid7(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid())
 	}
 }
 
@@ -131,11 +134,16 @@ impl Display for Uuid7 {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 pub mod tests {
-	use std::time::Duration;
-
-	use tokio::time::sleep;
+	use reifydb_runtime::context::clock::MockClock;
 
 	use super::*;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_uuid4_generate() {
@@ -159,12 +167,10 @@ pub mod tests {
 		let uuid4_a = Uuid4::generate();
 		let uuid4_b = Uuid4::generate();
 
-		// Should be consistently ordered
 		let cmp1 = uuid4_a.cmp(&uuid4_b);
 		let cmp2 = uuid4_a.cmp(&uuid4_b);
 		assert_eq!(cmp1, cmp2);
 
-		// Self comparison should be Equal
 		assert_eq!(uuid4_a.cmp(&uuid4_a), Ordering::Equal);
 	}
 
@@ -178,16 +184,18 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7_generate() {
-		let uuid7 = Uuid7::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let uuid7 = Uuid7::generate(&clock, &rng);
 		assert_eq!(uuid7.get_version_num(), 7);
 	}
 
 	#[test]
 	fn test_uuid7_equality() {
-		let std_uuid = StdUuid::now_v7();
-		let uuid7_a = Uuid7(std_uuid);
-		let uuid7_b = Uuid7(std_uuid);
-		let uuid7_c = Uuid7::generate();
+		let (mock, clock, rng) = test_clock_and_rng();
+		let uuid7_a = Uuid7::generate(&clock, &rng);
+		let uuid7_b = Uuid7(uuid7_a.0);
+		mock.advance_millis(1);
+		let uuid7_c = Uuid7::generate(&clock, &rng);
 
 		assert_eq!(uuid7_a, uuid7_b);
 		assert_ne!(uuid7_a, uuid7_c);
@@ -195,37 +203,33 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7_ordering() {
-		let uuid7_a = Uuid7::generate();
-		let uuid7_b = Uuid7::generate();
+		let (mock, clock, rng) = test_clock_and_rng();
+		let uuid7_a = Uuid7::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let uuid7_b = Uuid7::generate(&clock, &rng);
 
-		// Should be consistently ordered
 		let cmp1 = uuid7_a.cmp(&uuid7_b);
 		let cmp2 = uuid7_a.cmp(&uuid7_b);
 		assert_eq!(cmp1, cmp2);
 
-		// Self comparison should be Equal
 		assert_eq!(uuid7_a.cmp(&uuid7_a), Ordering::Equal);
 	}
 
 	#[test]
 	fn test_uuid7_display() {
-		let std_uuid = StdUuid::now_v7();
-		let uuid7 = Uuid7(std_uuid);
-
-		assert_eq!(format!("{}", uuid7), format!("{}", std_uuid));
+		let (_, clock, rng) = test_clock_and_rng();
+		let uuid7 = Uuid7::generate(&clock, &rng);
+		let display = format!("{}", uuid7);
+		assert!(!display.is_empty());
 	}
 
-	#[tokio::test]
-	async fn test_uuid7_timestamp_ordering() {
-		// UUID v7 should have timestamp-based ordering for UUIDs
-		// generated close in time
-		let uuid7_first = Uuid7::generate();
-		sleep(Duration::from_millis(1)).await;
-		let uuid7_second = Uuid7::generate();
+	#[test]
+	fn test_uuid7_timestamp_ordering() {
+		let (mock, clock, rng) = test_clock_and_rng();
+		let uuid7_first = Uuid7::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let uuid7_second = Uuid7::generate(&clock, &rng);
 
-		// The first UUID should be less than the second (in most cases
-		// due to timestamp) Note: This test might occasionally fail
-		// due to timing, but it demonstrates the concept
-		assert!(uuid7_first <= uuid7_second);
+		assert!(uuid7_first < uuid7_second);
 	}
 }

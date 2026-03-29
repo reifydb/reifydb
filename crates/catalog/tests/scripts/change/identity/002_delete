@@ -1,0 +1,26 @@
+# Create identity, verify, drop, verify gone
+
+admin 'CREATE USER ephemeral_user'
+replicate
+---
+version: 2
+
+query 'FROM system::identities FILTER {name == "ephemeral_user"} MAP {name: name, enabled: enabled}'
+---
++------------------+-----------+
+|       name       |  enabled  |
++------------------+-----------+
+|  ephemeral_user  |   true    |
++------------------+-----------+
+
+admin 'DROP USER ephemeral_user'
+replicate
+---
+version: 3
+
+query 'FROM system::identities FILTER {name == "ephemeral_user"} MAP {name: name, enabled: enabled}'
+---
++--------+-----------+
+|  name  |  enabled  |
++--------+-----------+
++--------+-----------+

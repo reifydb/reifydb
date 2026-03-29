@@ -23,14 +23,26 @@ impl CatalogStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::CatalogStore;
 
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
+
 	#[test]
 	fn test_list_granted_roles() {
 		let mut txn = create_test_admin_transaction();
-		let identity = CatalogStore::create_identity(&mut txn, "alice").unwrap();
+		let (_, clock, rng) = test_clock_and_rng();
+		let identity = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
 		let r1 = CatalogStore::create_role(&mut txn, "admin").unwrap();
 		let r2 = CatalogStore::create_role(&mut txn, "editor").unwrap();
 		CatalogStore::grant_role(&mut txn, identity.id, r1.id).unwrap();

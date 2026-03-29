@@ -25,7 +25,14 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{
+	SharedRuntimeConfig,
+	actor::system::ActorSystem,
+	context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	},
+};
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript::{
@@ -63,7 +70,8 @@ fn test_serializable(path: &Path) {
 		SingleTransaction::new(single_store, bus.clone()),
 		bus,
 		actor_system,
-		Clock::default(),
+		Clock::Mock(MockClock::from_millis(1000)),
+		Rng::seeded(42),
 		system_config,
 	)
 	.unwrap();

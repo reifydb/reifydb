@@ -1,0 +1,40 @@
+# Create dictionary, delete, recreate
+
+admin 'CREATE NAMESPACE di'
+admin 'CREATE DICTIONARY di::colors FOR utf8 AS uint2'
+replicate
+---
+version: 2
+
+query 'FROM system::dictionaries FILTER {name == "colors"}'
+---
++--------+----------------+----------+--------------+-----------+
+|   id   |  namespace_id  |   name   |  value_type  |  id_type  |
++--------+----------------+----------+--------------+-----------+
+|  1025  |      1025      |  colors  |     Utf8     |   Uint2   |
++--------+----------------+----------+--------------+-----------+
+
+(admin 'DROP DICTIONARY di::colors')
+replicate
+---
+version: 3
+
+query 'FROM system::dictionaries FILTER {name == "colors"}'
+---
++------+----------------+--------+--------------+-----------+
+|  id  |  namespace_id  |  name  |  value_type  |  id_type  |
++------+----------------+--------+--------------+-----------+
++------+----------------+--------+--------------+-----------+
+
+admin 'CREATE DICTIONARY di::colors FOR utf8 AS uint4'
+replicate
+---
+version: 4
+
+query 'FROM system::dictionaries FILTER {name == "colors"}'
+---
++--------+----------------+----------+--------------+-----------+
+|   id   |  namespace_id  |   name   |  value_type  |  id_type  |
++--------+----------------+----------+--------------+-----------+
+|  1026  |      1025      |  colors  |     Utf8     |   Uint4   |
++--------+----------------+----------+--------------+-----------+

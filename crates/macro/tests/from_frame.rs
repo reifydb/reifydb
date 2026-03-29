@@ -7,6 +7,10 @@ mod common;
 
 use common::*;
 use reifydb_macro::FromFrame;
+use reifydb_runtime::context::{
+	clock::{Clock, MockClock},
+	rng::Rng,
+};
 use reifydb_type::value::{
 	date::Date,
 	datetime::DateTime,
@@ -609,7 +613,10 @@ struct WithUuid7 {
 
 #[test]
 fn test_uuid7_type() {
-	let uuid = Uuid7::generate();
+	let mock = MockClock::from_millis(1000);
+	let clock = Clock::Mock(mock.clone());
+	let rng = Rng::seeded(42);
+	let uuid = Uuid7::generate(&clock, &rng);
 	let frame = frame(vec![int8_column("id", vec![1]), uuid7_column("uuid", vec![uuid])]);
 
 	let items: Vec<WithUuid7> = WithUuid7::from_frame(&frame).unwrap();

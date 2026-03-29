@@ -1,0 +1,15 @@
+# Create an enum sumtype, replicate, verify
+
+admin 'CREATE NAMESPACE st'
+admin 'CREATE ENUM st::status { Active, Inactive, Pending }'
+replicate
+---
+version: 2
+
+query 'FROM system::enums FILTER {name == "status"}'
+---
++--------+----------------+----------+
+|   id   |  namespace_id  |   name   |
++--------+----------------+----------+
+|  1025  |      1025      |  status  |
++--------+----------------+----------+

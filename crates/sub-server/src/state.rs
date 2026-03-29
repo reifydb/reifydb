@@ -10,7 +10,10 @@ use std::time::Duration;
 
 use reifydb_auth::service::AuthService;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{clock::Clock, rng::Rng},
+};
 
 use crate::interceptor::RequestInterceptorChain;
 
@@ -97,6 +100,7 @@ pub struct AppState {
 	config: StateConfig,
 	request_interceptors: RequestInterceptorChain,
 	clock: Clock,
+	rng: Rng,
 }
 
 impl AppState {
@@ -109,6 +113,7 @@ impl AppState {
 		config: StateConfig,
 		request_interceptors: RequestInterceptorChain,
 		clock: Clock,
+		rng: Rng,
 	) -> Self {
 		Self {
 			actor_system,
@@ -117,6 +122,7 @@ impl AppState {
 			config,
 			request_interceptors,
 			clock,
+			rng,
 		}
 	}
 
@@ -130,6 +136,7 @@ impl AppState {
 			config,
 			request_interceptors: self.request_interceptors.clone(),
 			clock: self.clock.clone(),
+			rng: self.rng.clone(),
 		}
 	}
 
@@ -195,6 +202,12 @@ impl AppState {
 	#[inline]
 	pub fn clock(&self) -> &Clock {
 		&self.clock
+	}
+
+	/// Get a reference to the RNG.
+	#[inline]
+	pub fn rng(&self) -> &Rng {
+		&self.rng
 	}
 
 	/// Get a reference to the authentication service.

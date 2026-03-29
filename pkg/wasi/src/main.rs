@@ -97,6 +97,7 @@ impl Bridge {
 			eventbus.clone(),
 			actor_system.clone(),
 			runtime.clock().clone(),
+			runtime.rng().clone(),
 			system_config.clone(),
 		)?;
 

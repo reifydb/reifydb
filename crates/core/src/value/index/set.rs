@@ -1027,22 +1027,32 @@ pub mod tests {
 	}
 
 	mod uuid7 {
-		use std::{thread::sleep, time::Duration};
-
+		use reifydb_runtime::context::{
+			clock::{Clock, MockClock},
+			rng::Rng,
+		};
 		use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 
 		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
+		fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+			let mock = MockClock::from_millis(1000);
+			let clock = Clock::Mock(mock.clone());
+			let rng = Rng::seeded(42);
+			(mock, clock, rng)
+		}
+
 		#[test]
 		fn test_asc() {
+			let (mock, clock, rng) = test_clock_and_rng();
 			let layout = IndexSchema::new(&[Type::Uuid7], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
-			let uuid1 = Uuid7::generate();
-			// Sleep a bit to ensure different timestamps
-			sleep(Duration::from_millis(10));
-			let uuid2 = Uuid7::generate();
+			let uuid1 = Uuid7::generate(&clock, &rng);
+			// Advance clock to ensure different timestamps
+			mock.advance_millis(10);
+			let uuid2 = Uuid7::generate(&clock, &rng);
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
 			layout.set_uuid7(&mut key2, 0, uuid2.clone());
@@ -1066,14 +1076,15 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
+			let (mock, clock, rng) = test_clock_and_rng();
 			let layout = IndexSchema::new(&[Type::Uuid7], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
-			let uuid1 = Uuid7::generate();
-			// Sleep a bit to ensure different timestamps
-			sleep(Duration::from_millis(10));
-			let uuid2 = Uuid7::generate();
+			let uuid1 = Uuid7::generate(&clock, &rng);
+			// Advance clock to ensure different timestamps
+			mock.advance_millis(10);
+			let uuid2 = Uuid7::generate(&clock, &rng);
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
 			layout.set_uuid7(&mut key2, 0, uuid2.clone());
@@ -1098,23 +1109,33 @@ pub mod tests {
 	}
 
 	mod identity_id {
-		use std::{thread::sleep, time::Duration};
-
+		use reifydb_runtime::context::{
+			clock::{Clock, MockClock},
+			rng::Rng,
+		};
 		use reifydb_type::value::{identity::IdentityId, r#type::Type, uuid::Uuid7};
 
 		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
+		fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+			let mock = MockClock::from_millis(1000);
+			let clock = Clock::Mock(mock.clone());
+			let rng = Rng::seeded(42);
+			(mock, clock, rng)
+		}
+
 		#[test]
 		fn test_asc() {
+			let (mock, clock, rng) = test_clock_and_rng();
 			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
-			let id1 = IdentityId::generate();
-			// Sleep a bit to ensure different timestamps
+			let id1 = IdentityId::generate(&clock, &rng);
+			// Advance clock to ensure different timestamps
 			// (IdentityId wraps Uuid7)
-			sleep(Duration::from_millis(10));
-			let id2 = IdentityId::generate();
+			mock.advance_millis(10);
+			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
@@ -1140,14 +1161,15 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
+			let (mock, clock, rng) = test_clock_and_rng();
 			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
-			let id1 = IdentityId::generate();
-			// Sleep a bit to ensure different timestamps
-			sleep(Duration::from_millis(10));
-			let id2 = IdentityId::generate();
+			let id1 = IdentityId::generate(&clock, &rng);
+			// Advance clock to ensure different timestamps
+			mock.advance_millis(10);
+			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());

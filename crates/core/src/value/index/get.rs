@@ -918,22 +918,32 @@ pub mod tests {
 	}
 
 	mod identity_id {
-		use std::{thread::sleep, time::Duration};
-
+		use reifydb_runtime::context::{
+			clock::{Clock, MockClock},
+			rng::Rng,
+		};
 		use reifydb_type::value::{identity::IdentityId, r#type::Type};
 
 		use crate::{sort::SortDirection, value::index::schema::IndexSchema};
 
+		fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+			let mock = MockClock::from_millis(1000);
+			let clock = Clock::Mock(mock.clone());
+			let rng = Rng::seeded(42);
+			(mock, clock, rng)
+		}
+
 		#[test]
 		fn test_asc() {
+			let (mock, clock, rng) = test_clock_and_rng();
 			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
-			let id1 = IdentityId::generate();
-			// Sleep to ensure different timestamps
-			sleep(Duration::from_millis(10));
-			let id2 = IdentityId::generate();
+			let id1 = IdentityId::generate(&clock, &rng);
+			// Advance clock to ensure different timestamps
+			mock.advance_millis(10);
+			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
@@ -947,14 +957,15 @@ pub mod tests {
 
 		#[test]
 		fn test_desc() {
+			let (mock, clock, rng) = test_clock_and_rng();
 			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
-			let id1 = IdentityId::generate();
-			// Sleep to ensure different timestamps
-			sleep(Duration::from_millis(10));
-			let id2 = IdentityId::generate();
+			let id1 = IdentityId::generate(&clock, &rng);
+			// Advance clock to ensure different timestamps
+			mock.advance_millis(10);
+			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
@@ -968,9 +979,10 @@ pub mod tests {
 
 		#[test]
 		fn test_roundtrip() {
+			let (_, clock, rng) = test_clock_and_rng();
 			let layout = IndexSchema::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 
-			let id = IdentityId::generate();
+			let id = IdentityId::generate(&clock, &rng);
 			let mut key = layout.allocate_key();
 
 			// Set and get should preserve the value

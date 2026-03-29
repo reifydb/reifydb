@@ -1,0 +1,15 @@
+# Create a series, replicate, verify
+
+admin 'CREATE NAMESPACE si'
+admin 'CREATE SERIES si::metrics { timestamp: datetime, value: float8 } WITH { key: timestamp }'
+replicate
+---
+version: 2
+
+query 'FROM system::series FILTER {name == "metrics"}'
+---
++--------+----------------+-----------+----------+--------------+-------------------------+
+|   id   |  namespace_id  |   name    |  tag_id  |  key_column  |        key_kind         |
++--------+----------------+-----------+----------+--------------+-------------------------+
+|  1025  |      1025      |  metrics  |   none   |  timestamp   |  datetime(millisecond)  |
++--------+----------------+-----------+----------+--------------+-------------------------+

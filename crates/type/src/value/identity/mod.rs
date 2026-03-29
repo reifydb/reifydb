@@ -3,6 +3,7 @@
 
 use std::{fmt, ops::Deref, str::FromStr};
 
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 use uuid::Uuid;
 
@@ -14,9 +15,9 @@ use crate::value::uuid::Uuid7;
 pub struct IdentityId(pub Uuid7);
 
 impl IdentityId {
-	/// Create a new IdentityId with a generated UUID v7
-	pub fn generate() -> Self {
-		IdentityId(Uuid7::generate())
+	/// Create a new IdentityId with a generated UUID v7 using the provided clock and RNG.
+	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
+		IdentityId(Uuid7::generate(clock, rng))
 	}
 
 	/// Create a new IdentityId from an existing Uuid7
@@ -171,31 +172,44 @@ impl<'de> Deserialize<'de> for IdentityId {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_runtime::context::clock::MockClock;
+
 	use super::*;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_identity_id_creation() {
-		let id = IdentityId::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let id = IdentityId::generate(&clock, &rng);
 		assert_ne!(id, IdentityId::default());
 	}
 
 	#[test]
 	fn test_identity_id_from_uuid7() {
-		let uuid = Uuid7::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let uuid = Uuid7::generate(&clock, &rng);
 		let id = IdentityId::from(uuid);
 		assert_eq!(id.value(), uuid);
 	}
 
 	#[test]
 	fn test_identity_id_display() {
-		let id = IdentityId::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let id = IdentityId::generate(&clock, &rng);
 		let display = format!("{}", id);
 		assert!(!display.is_empty());
 	}
 
 	#[test]
 	fn test_identity_id_equality() {
-		let uuid = Uuid7::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let uuid = Uuid7::generate(&clock, &rng);
 		let id1 = IdentityId::from(uuid);
 		let id2 = IdentityId::from(uuid);
 		assert_eq!(id1, id2);

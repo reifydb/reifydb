@@ -1,0 +1,15 @@
+# Create a dictionary, replicate, verify
+
+admin 'CREATE NAMESPACE di'
+admin 'CREATE DICTIONARY di::colors FOR utf8 AS uint2'
+replicate
+---
+version: 2
+
+query 'FROM system::dictionaries FILTER {name == "colors"}'
+---
++--------+----------------+----------+--------------+-----------+
+|   id   |  namespace_id  |   name   |  value_type  |  id_type  |
++--------+----------------+----------+--------------+-----------+
+|  1025  |      1025      |  colors  |     Utf8     |   Uint2   |
++--------+----------------+----------+--------------+-----------+

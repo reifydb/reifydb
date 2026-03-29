@@ -66,7 +66,7 @@ pub async fn handle_connection(
 	mut shutdown: watch::Receiver<bool>,
 ) {
 	let peer = stream.peer_addr().ok();
-	let connection_id = Uuid7::generate();
+	let connection_id = Uuid7::generate(state.clock(), state.rng());
 
 	// Set TCP_NODELAY to disable Nagle's algorithm for lower latency
 	if let Err(e) = stream.set_nodelay(true) {

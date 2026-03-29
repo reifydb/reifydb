@@ -33,7 +33,7 @@ impl AuthService {
 		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();
 
-		let ident = catalog.create_identity(&mut admin, identifier)?;
+		let ident = catalog.create_identity(&mut admin, identifier, &self.clock, &self.rng)?;
 		catalog.create_authentication(&mut admin, ident.id, "solana", properties.clone())?;
 		admin.commit()?;
 
@@ -46,6 +46,8 @@ impl AuthService {
 					identifier.to_string(),
 					"solana".to_string(),
 					payload.clone(),
+					&self.clock,
+					&self.rng,
 				);
 				Ok(AuthResponse::Challenge {
 					challenge_id,

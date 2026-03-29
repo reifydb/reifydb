@@ -1,0 +1,27 @@
+# Create dictionary, verify, delete, verify gone
+
+admin 'CREATE NAMESPACE di'
+admin 'CREATE DICTIONARY di::tags FOR utf8 AS uint2'
+replicate
+---
+version: 2
+
+query 'FROM system::dictionaries FILTER {name == "tags"}'
+---
++--------+----------------+--------+--------------+-----------+
+|   id   |  namespace_id  |  name  |  value_type  |  id_type  |
++--------+----------------+--------+--------------+-----------+
+|  1025  |      1025      |  tags  |     Utf8     |   Uint2   |
++--------+----------------+--------+--------------+-----------+
+
+admin 'DROP DICTIONARY di::tags'
+replicate
+---
+version: 3
+
+query 'FROM system::dictionaries FILTER {name == "tags"}'
+---
++------+----------------+--------+--------------+-----------+
+|  id  |  namespace_id  |  name  |  value_type  |  id_type  |
++------+----------------+--------+--------------+-----------+
++------+----------------+--------+--------------+-----------+

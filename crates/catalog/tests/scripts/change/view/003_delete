@@ -1,0 +1,28 @@
+# Create deferred view, verify, drop, verify gone
+
+admin 'CREATE NAMESPACE vw'
+admin 'CREATE TABLE vw::data { id: int4, val: utf8 }'
+admin 'CREATE DEFERRED VIEW vw::summary { id: int4, val: utf8 } AS { FROM vw::data MAP { id: id, val: val } }'
+replicate
+---
+version: 2
+
+query 'FROM system::views FILTER {name == "summary"}'
+---
++--------+----------------+-----------+------------------+
+|   id   |  namespace_id  |   name    |  primary_key_id  |
++--------+----------------+-----------+------------------+
+|  1027  |      1025      |  summary  |       none       |
++--------+----------------+-----------+------------------+
+
+admin 'DROP VIEW vw::summary'
+replicate
+---
+version: 3
+
+query 'FROM system::views FILTER {name == "summary"}'
+---
++------+----------------+--------+--------+------------------+
+|  id  |  namespace_id  |  name  |  kind  |  primary_key_id  |
++------+----------------+--------+--------+------------------+
++------+----------------+--------+--------+------------------+

@@ -192,6 +192,10 @@ impl ColumnData {
 #[cfg(test)]
 #[allow(clippy::approx_constant)]
 pub mod tests {
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::value::{
 		Value,
 		date::Date,
@@ -207,6 +211,13 @@ pub mod tests {
 	};
 
 	use crate::value::column::ColumnData;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_bool() {
@@ -761,8 +772,10 @@ pub mod tests {
 
 	#[test]
 	fn test_identity_id() {
-		let id1 = IdentityId::generate();
-		let id2 = IdentityId::generate();
+		let (mock, clock, rng) = test_clock_and_rng();
+		let id1 = IdentityId::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let id2 = IdentityId::generate(&clock, &rng);
 		let mut col = ColumnData::identity_id(vec![id1]);
 		col.push_value(Value::IdentityId(id2));
 		let ColumnData::IdentityId(container) = col else {
@@ -773,7 +786,8 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_identity_id() {
-		let id1 = IdentityId::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let id1 = IdentityId::generate(&clock, &rng);
 		let mut col = ColumnData::identity_id(vec![id1]);
 		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
@@ -783,7 +797,8 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_identity_id() {
-		let id = IdentityId::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let id = IdentityId::generate(&clock, &rng);
 		let mut col = ColumnData::none_typed(Type::Boolean, 1);
 		col.push_value(Value::IdentityId(id));
 		assert_eq!(col.len(), 2);
@@ -827,8 +842,10 @@ pub mod tests {
 
 	#[test]
 	fn test_uuid7() {
-		let uuid1 = Uuid7::generate();
-		let uuid2 = Uuid7::generate();
+		let (mock, clock, rng) = test_clock_and_rng();
+		let uuid1 = Uuid7::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let uuid2 = Uuid7::generate(&clock, &rng);
 		let mut col = ColumnData::uuid7(vec![uuid1]);
 		col.push_value(Value::Uuid7(uuid2));
 		let ColumnData::Uuid7(container) = col else {
@@ -839,7 +856,8 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_uuid7() {
-		let uuid1 = Uuid7::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let uuid1 = Uuid7::generate(&clock, &rng);
 		let mut col = ColumnData::uuid7(vec![uuid1]);
 		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
@@ -849,7 +867,8 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_uuid7() {
-		let uuid = Uuid7::generate();
+		let (_, clock, rng) = test_clock_and_rng();
+		let uuid = Uuid7::generate(&clock, &rng);
 		let mut col = ColumnData::none_typed(Type::Boolean, 1);
 		col.push_value(Value::Uuid7(uuid));
 		assert_eq!(col.len(), 2);

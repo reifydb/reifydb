@@ -11,6 +11,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_type::value::uuid::Uuid7;
 
 /// A pending authentication challenge.
@@ -47,8 +48,15 @@ impl ChallengeStore {
 	}
 
 	/// Create a new challenge and return its ID.
-	pub fn create(&self, identifier: String, method: String, payload: HashMap<String, String>) -> String {
-		let challenge_id = Uuid7::generate().to_string();
+	pub fn create(
+		&self,
+		identifier: String,
+		method: String,
+		payload: HashMap<String, String>,
+		clock: &Clock,
+		rng: &Rng,
+	) -> String {
+		let challenge_id = Uuid7::generate(clock, rng).to_string();
 		let entry = ChallengeEntry {
 			identifier,
 			method,
@@ -89,14 +97,22 @@ impl ChallengeStore {
 mod tests {
 	use std::thread;
 
+	use reifydb_runtime::context::clock::MockClock;
+
 	use super::*;
+
+	fn test_clock_and_rng() -> (Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		(Clock::Mock(mock), Rng::seeded(42))
+	}
 
 	#[test]
 	fn test_create_and_consume() {
+		let (clock, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_secs(60));
 		let data = HashMap::from([("nonce".to_string(), "abc123".to_string())]);
 
-		let id = store.create("alice".to_string(), "solana".to_string(), data);
+		let id = store.create("alice".to_string(), "solana".to_string(), data, &clock, &rng);
 		let info = store.consume(&id).unwrap();
 
 		assert_eq!(info.identifier, "alice");
@@ -106,8 +122,9 @@ mod tests {
 
 	#[test]
 	fn test_one_time_use() {
+		let (clock, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_secs(60));
-		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new());
+		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
 
 		assert!(store.consume(&id).is_some());
 		assert!(store.consume(&id).is_none()); // second attempt fails
@@ -121,8 +138,9 @@ mod tests {
 
 	#[test]
 	fn test_expired_challenge() {
+		let (clock, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_millis(1));
-		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new());
+		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
 
 		thread::sleep(Duration::from_millis(10));
 		assert!(store.consume(&id).is_none());

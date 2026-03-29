@@ -1,0 +1,15 @@
+# Create a ringbuffer, replicate, verify
+
+admin 'CREATE NAMESPACE rb'
+admin 'CREATE RINGBUFFER rb::logs { level: utf8, msg: utf8 } WITH { capacity: 100 }'
+replicate
+---
+version: 2
+
+query 'FROM system::ringbuffers FILTER {name == "logs"}'
+---
++--------+----------------+--------+------------+------------------+
+|   id   |  namespace_id  |  name  |  capacity  |  primary_key_id  |
++--------+----------------+--------+------------+------------------+
+|  1025  |      1025      |  logs  |    100     |       none       |
++--------+----------------+--------+------------+------------------+

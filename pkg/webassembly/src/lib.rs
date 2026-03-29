@@ -194,6 +194,7 @@ impl WasmDB {
 			eventbus.clone(),
 			actor_system.clone(),
 			runtime.clock().clone(),
+			runtime.rng().clone(),
 			system_config.clone(),
 		)
 		.map_err(|e| JsError::from_error(&e))?;

@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
+use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{fragment::Fragment, value::identity::IdentityId};
 
@@ -33,7 +34,12 @@ impl CatalogStore {
 		})
 	}
 
-	pub(crate) fn create_identity(txn: &mut AdminTransaction, name: &str) -> Result<Identity> {
+	pub(crate) fn create_identity(
+		txn: &mut AdminTransaction,
+		name: &str,
+		clock: &Clock,
+		rng: &Rng,
+	) -> Result<Identity> {
 		if let Some(_) = Self::find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)? {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Identity,
@@ -44,7 +50,7 @@ impl CatalogStore {
 			.into());
 		}
 
-		let id = IdentityId::generate();
+		let id = IdentityId::generate(clock, rng);
 
 		let mut row = SCHEMA.allocate();
 		SCHEMA.set_identity_id(&mut row, IDENTITY, id);
@@ -64,13 +70,25 @@ impl CatalogStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 
 	use crate::CatalogStore;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_create_identity() {
 		let mut txn = create_test_admin_transaction();
-		let identity = CatalogStore::create_identity(&mut txn, "alice").unwrap();
+		let (_, clock, rng) = test_clock_and_rng();
+		let identity = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
 		assert_eq!(identity.name, "alice");
 		assert!(identity.enabled);
 	}
@@ -78,8 +96,9 @@ mod tests {
 	#[test]
 	fn test_create_identity_duplicate() {
 		let mut txn = create_test_admin_transaction();
-		CatalogStore::create_identity(&mut txn, "alice").unwrap();
-		let err = CatalogStore::create_identity(&mut txn, "alice").unwrap_err();
+		let (_, clock, rng) = test_clock_and_rng();
+		CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap();
+		let err = CatalogStore::create_identity(&mut txn, "alice", &clock, &rng).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_040");
 	}
 }

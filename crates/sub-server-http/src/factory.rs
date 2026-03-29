@@ -139,6 +139,7 @@ impl SubsystemFactory for HttpSubsystemFactory {
 			query_config,
 			interceptors,
 			runtime.clock().clone(),
+			runtime.rng().clone(),
 		);
 		let subsystem = HttpSubsystem::new(
 			self.config.bind_addr.clone(),

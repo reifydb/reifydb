@@ -1,0 +1,27 @@
+# Create ringbuffer, verify, delete, verify gone
+
+admin 'CREATE NAMESPACE rb'
+admin 'CREATE RINGBUFFER rb::logs { level: utf8, msg: utf8 } WITH { capacity: 50 }'
+replicate
+---
+version: 2
+
+query 'FROM system::ringbuffers FILTER {name == "logs"}'
+---
++--------+----------------+--------+------------+------------------+
+|   id   |  namespace_id  |  name  |  capacity  |  primary_key_id  |
++--------+----------------+--------+------------+------------------+
+|  1025  |      1025      |  logs  |     50     |       none       |
++--------+----------------+--------+------------+------------------+
+
+admin 'DROP RINGBUFFER rb::logs'
+replicate
+---
+version: 3
+
+query 'FROM system::ringbuffers FILTER {name == "logs"}'
+---
++------+----------------+--------+------------+------------------+
+|  id  |  namespace_id  |  name  |  capacity  |  primary_key_id  |
++------+----------------+--------+------------+------------------+
++------+----------------+--------+------------+------------------+

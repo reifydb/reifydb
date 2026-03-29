@@ -10,7 +10,10 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::users::*, vtable::IDENTITIES};
+use super::ids::{
+	columns::users::{ENABLED, ID, NAME},
+	vtable::IDENTITIES,
+};
 
 /// Returns the static definition for the system.identities virtual table
 /// This table exposes information about all identities in the database
@@ -26,7 +29,7 @@ pub fn identities() -> Arc<VTable> {
 				Column {
 					id: ID,
 					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					constraint: TypeConstraint::unconstrained(Type::IdentityId),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -47,15 +50,6 @@ pub fn identities() -> Arc<VTable> {
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
 					properties: vec![],
 					index: ColumnIndex(2),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				Column {
-					id: IDENTITY,
-					name: "identity".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::IdentityId),
-					properties: vec![],
-					index: ColumnIndex(3),
 					auto_increment: false,
 					dictionary_id: None,
 				},

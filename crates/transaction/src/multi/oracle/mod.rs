@@ -8,7 +8,11 @@ use std::{
 
 use cleanup::cleanup_old_windows;
 use reifydb_core::{common::CommitVersion, config::SystemConfig, encoded::key::EncodedKey, util::bloom::BloomFilter};
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, sync::rwlock::RwLock};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::{clock::Clock, rng::Rng},
+	sync::rwlock::RwLock,
+};
 use reifydb_type::{Result, value::Value};
 use tracing::{Span, field, instrument};
 
@@ -138,6 +142,7 @@ where
 	shutdown_signal: Arc<RwLock<bool>>,
 	actor_system: ActorSystem,
 	metrics_clock: Clock,
+	rng: Rng,
 	system_config: SystemConfig,
 }
 
@@ -145,7 +150,13 @@ impl<L> Oracle<L>
 where
 	L: VersionProvider,
 {
-	pub fn new(clock: L, actor_system: ActorSystem, metrics_clock: Clock, system_config: SystemConfig) -> Self {
+	pub fn new(
+		clock: L,
+		actor_system: ActorSystem,
+		metrics_clock: Clock,
+		rng: Rng,
+		system_config: SystemConfig,
+	) -> Self {
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
 		Self {
@@ -161,6 +172,7 @@ where
 			shutdown_signal,
 			actor_system,
 			metrics_clock,
+			rng,
 			system_config,
 		}
 	}
@@ -173,6 +185,16 @@ where
 	/// Get the actor system
 	pub fn actor_system(&self) -> ActorSystem {
 		self.actor_system.clone()
+	}
+
+	/// Get the metrics clock
+	pub fn metrics_clock(&self) -> &Clock {
+		&self.metrics_clock
+	}
+
+	/// Get the RNG
+	pub fn rng(&self) -> &Rng {
+		&self.rng
 	}
 
 	/// Efficient conflict detection using time windows and key indexing
@@ -458,7 +480,7 @@ pub mod tests {
 	};
 
 	use reifydb_core::encoded::key::EncodedKeyRange;
-	use reifydb_runtime::SharedRuntimeConfig;
+	use reifydb_runtime::{SharedRuntimeConfig, context::clock::MockClock};
 
 	use super::{register_defaults, *};
 	use crate::multi::transaction::version::VersionProvider;
@@ -500,7 +522,7 @@ pub mod tests {
 		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
 		let config = SystemConfig::new();
 		register_defaults(&config);
-		Oracle::new(clock, actor_system, Clock::default(), config)
+		Oracle::new(clock, actor_system, Clock::Mock(MockClock::from_millis(1000)), Rng::seeded(42), config)
 	}
 
 	#[test]

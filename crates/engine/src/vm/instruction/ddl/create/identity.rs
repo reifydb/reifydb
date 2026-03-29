@@ -15,7 +15,7 @@ pub(crate) fn create_identity(
 ) -> Result<Columns> {
 	let name = plan.name.text();
 
-	services.catalog.create_identity(txn, name)?;
+	services.catalog.create_identity(txn, name, &services.runtime_context.clock, &services.runtime_context.rng)?;
 
 	Ok(Columns::single_row([("identity", Value::Utf8(name.to_string())), ("created", Value::Boolean(true))]))
 }

@@ -2770,6 +2770,7 @@ name = "reifydb-macro"
 version = "0.4.7"
 dependencies = [
  "reifydb-macro-impl",
+ "reifydb-runtime",
  "reifydb-type",
 ]
 

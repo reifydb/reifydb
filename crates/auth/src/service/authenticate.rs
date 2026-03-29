@@ -100,6 +100,8 @@ impl AuthService {
 					identifier.to_string(),
 					method.to_string(),
 					payload.clone(),
+					&self.clock,
+					&self.rng,
 				);
 				Ok(AuthResponse::Challenge {
 					challenge_id,

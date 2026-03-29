@@ -30,9 +30,20 @@ impl ColumnData {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, r#type::Type};
 
 	use crate::value::column::ColumnData;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_reorder_bool() {
@@ -100,9 +111,12 @@ pub mod tests {
 
 	#[test]
 	fn test_reorder_identity_id() {
-		let id1 = IdentityId::generate();
-		let id2 = IdentityId::generate();
-		let id3 = IdentityId::generate();
+		let (mock, clock, rng) = test_clock_and_rng();
+		let id1 = IdentityId::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let id2 = IdentityId::generate(&clock, &rng);
+		mock.advance_millis(1);
+		let id3 = IdentityId::generate(&clock, &rng);
 
 		let mut col = ColumnData::identity_id([id1, id2, id3]);
 		col.reorder(&[2, 0, 1]);

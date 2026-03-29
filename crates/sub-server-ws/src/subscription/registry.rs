@@ -251,12 +251,25 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
+
 	use super::*;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[tokio::test]
 	async fn test_subscribe_unsubscribe() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let registry = SubscriptionRegistry::new();
-		let connection_id = Uuid7::generate();
+		let connection_id = Uuid7::generate(&clock, &rng);
 		let (tx, mut rx) = mpsc::channel(10);
 
 		let sub_id = SubscriptionId(12345);
@@ -304,8 +317,9 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_cleanup_connection() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let registry = SubscriptionRegistry::new();
-		let connection_id = Uuid7::generate();
+		let connection_id = Uuid7::generate(&clock, &rng);
 		let (tx1, _rx1) = mpsc::channel(10);
 		let (tx2, _rx2) = mpsc::channel(10);
 
@@ -322,8 +336,9 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_partial_unsubscribe() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let registry = SubscriptionRegistry::new();
-		let connection_id = Uuid7::generate();
+		let connection_id = Uuid7::generate(&clock, &rng);
 		let (tx1, _rx1) = mpsc::channel(10);
 		let (tx2, _rx2) = mpsc::channel(10);
 

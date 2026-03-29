@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::data::ColumnData;
 use reifydb_type::value::{r#type::Type, uuid::Uuid7};
-use uuid::{Builder, Uuid};
+use uuid::Uuid;
 
 use crate::function::{
 	ScalarFunction, ScalarFunctionContext,
@@ -38,11 +38,7 @@ impl ScalarFunction for UuidV7 {
 		if ctx.columns.is_empty() {
 			let mut data = Vec::with_capacity(row_count);
 			for _ in 0..row_count {
-				let millis = ctx.runtime_context.clock.now_millis();
-				let random_bytes = ctx.runtime_context.rng.bytes_10();
-				let uuid = Uuid7::from(
-					Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid(),
-				);
+				let uuid = Uuid7::generate(&ctx.runtime_context.clock, &ctx.runtime_context.rng);
 				data.push(uuid);
 			}
 			return Ok(ColumnData::uuid7(data));

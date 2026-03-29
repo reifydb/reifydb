@@ -9,6 +9,10 @@ use std::{f64::consts::E, str::FromStr};
 
 use num_bigint::BigInt;
 use reifydb_core::encoded::schema::RowSchema;
+use reifydb_runtime::context::{
+	clock::{Clock, MockClock},
+	rng::Rng,
+};
 use reifydb_type::value::{
 	Value,
 	blob::Blob,
@@ -25,6 +29,13 @@ use reifydb_type::value::{
 	uint::Uint,
 	uuid::{Uuid4, Uuid7},
 };
+
+fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+	let mock = MockClock::from_millis(1000);
+	let clock = Clock::Mock(mock.clone());
+	let rng = Rng::seeded(42);
+	(mock, clock, rng)
+}
 
 #[test]
 fn test_utf8_update_same_size() {
@@ -546,6 +557,7 @@ fn test_decimal_update_with_other_dynamic_fields() {
 
 #[test]
 fn test_any_cycle_all_types() {
+	let (_, clock, rng) = test_clock_and_rng();
 	let schema = RowSchema::testing(&[Type::Any]);
 	let mut row = schema.allocate();
 
@@ -568,8 +580,8 @@ fn test_any_cycle_all_types() {
 		Value::Time(Time::new(23, 59, 59, 999999999).unwrap()),
 		Value::Duration(Duration::new(12, 30, 1_000_000_000).unwrap()),
 		Value::Uuid4(Uuid4::generate()),
-		Value::Uuid7(Uuid7::generate()),
-		Value::IdentityId(IdentityId::generate()),
+		Value::Uuid7(Uuid7::generate(&clock, &rng)),
+		Value::IdentityId(IdentityId::generate(&clock, &rng)),
 		Value::Utf8("hello world".to_string()),
 		Value::Blob(Blob::from_slice(&[0xDE, 0xAD, 0xBE, 0xEF])),
 	];

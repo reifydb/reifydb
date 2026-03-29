@@ -1,0 +1,24 @@
+# Create role, grant to user, replicate, verify
+
+admin 'CREATE USER bob'
+admin 'CREATE ROLE editors'
+admin 'GRANT editors TO bob'
+replicate
+---
+version: 2
+
+query 'FROM system::roles FILTER {name == "editors"}'
+---
++--------+-----------+
+|   id   |   name    |
++--------+-----------+
+|  1025  |  editors  |
++--------+-----------+
+
+query 'FROM system::granted_roles'
+---
++----------------------------------------+-----------+
+|                identity                |  role_id  |
++----------------------------------------+-----------+
+|  00000000-03e8-75b5-8fbd-4078d707571e  |   1025    |
++----------------------------------------+-----------+

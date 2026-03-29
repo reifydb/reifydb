@@ -1,0 +1,41 @@
+# Create view, delete, recreate with different columns
+
+admin 'CREATE NAMESPACE vw'
+admin 'CREATE TABLE vw::employees { id: int4, name: utf8, dept: utf8, active: bool }'
+admin 'CREATE DEFERRED VIEW vw::staff { id: int4 } AS { FROM vw::employees MAP { id: id } }'
+replicate
+---
+version: 2
+
+query 'FROM system::views FILTER {name == "staff"}'
+---
++--------+----------------+---------+------------------+
+|   id   |  namespace_id  |  name   |  primary_key_id  |
++--------+----------------+---------+------------------+
+|  1027  |      1025      |  staff  |       none       |
++--------+----------------+---------+------------------+
+
+(admin 'DROP VIEW vw::staff')
+replicate
+---
+version: 3
+
+query 'FROM system::views FILTER {name == "staff"}'
+---
++------+----------------+--------+--------+------------------+
+|  id  |  namespace_id  |  name  |  kind  |  primary_key_id  |
++------+----------------+--------+--------+------------------+
++------+----------------+--------+--------+------------------+
+
+admin 'CREATE DEFERRED VIEW vw::staff { id: int4, name: utf8, dept: utf8 } AS { FROM vw::employees FILTER {active == true} MAP { id: id, name: name, dept: dept } }'
+replicate
+---
+version: 4
+
+query 'FROM system::views FILTER {name == "staff"}'
+---
++--------+----------------+---------+------------------+
+|   id   |  namespace_id  |  name   |  primary_key_id  |
++--------+----------------+---------+------------------+
+|  1029  |      1025      |  staff  |       none       |
++--------+----------------+---------+------------------+

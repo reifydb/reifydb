@@ -254,6 +254,10 @@ impl RowSchema {
 pub mod tests {
 	use std::f64::consts::E;
 
+	use reifydb_runtime::context::{
+		clock::{Clock, MockClock},
+		rng::Rng,
+	};
 	use reifydb_type::value::{
 		Value,
 		blob::Blob,
@@ -268,6 +272,13 @@ pub mod tests {
 	};
 
 	use crate::encoded::schema::RowSchema;
+
+	fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
+		let mock = MockClock::from_millis(1000);
+		let clock = Clock::Mock(mock.clone());
+		let rng = Rng::seeded(42);
+		(mock, clock, rng)
+	}
 
 	#[test]
 	fn test_any_boolean() {
@@ -343,6 +354,7 @@ pub mod tests {
 
 	#[test]
 	fn test_any_uuid() {
+		let (_, clock, rng) = test_clock_and_rng();
 		let schema = RowSchema::testing(&[Type::Any]);
 
 		let u4 = Value::Uuid4(Uuid4::generate());
@@ -350,7 +362,7 @@ pub mod tests {
 		schema.set_any(&mut row, 0, &u4);
 		assert_eq!(schema.get_any(&row, 0), u4);
 
-		let u7 = Value::Uuid7(Uuid7::generate());
+		let u7 = Value::Uuid7(Uuid7::generate(&clock, &rng));
 		let mut row2 = schema.allocate();
 		schema.set_any(&mut row2, 0, &u7);
 		assert_eq!(schema.get_any(&row2, 0), u7);

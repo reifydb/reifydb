@@ -1,0 +1,15 @@
+# Create an event sumtype, replicate, verify via system::events
+
+admin 'CREATE NAMESPACE ev'
+admin 'CREATE EVENT ev::order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }'
+replicate
+---
+version: 2
+
+query 'FROM system::events FILTER {name == "order_event"}'
+---
++--------+----------------+---------------+
+|   id   |  namespace_id  |     name      |
++--------+----------------+---------------+
+|  1025  |      1025      |  order_event  |
++--------+----------------+---------------+

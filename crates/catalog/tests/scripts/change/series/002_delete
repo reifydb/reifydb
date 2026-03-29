@@ -1,0 +1,27 @@
+# Create series, verify, delete, verify gone
+
+admin 'CREATE NAMESPACE si'
+admin 'CREATE SERIES si::temps { timestamp: datetime, celsius: float8 } WITH { key: timestamp }'
+replicate
+---
+version: 2
+
+query 'FROM system::series FILTER {name == "temps"}'
+---
++--------+----------------+---------+----------+--------------+-------------------------+
+|   id   |  namespace_id  |  name   |  tag_id  |  key_column  |        key_kind         |
++--------+----------------+---------+----------+--------------+-------------------------+
+|  1025  |      1025      |  temps  |   none   |  timestamp   |  datetime(millisecond)  |
++--------+----------------+---------+----------+--------------+-------------------------+
+
+admin 'DROP SERIES si::temps'
+replicate
+---
+version: 3
+
+query 'FROM system::series FILTER {name == "temps"}'
+---
++------+----------------+--------+----------+--------------+------------+
+|  id  |  namespace_id  |  name  |  tag_id  |  key_column  |  key_kind  |
++------+----------------+--------+----------+--------------+------------+
++------+----------------+--------+----------+--------------+------------+
