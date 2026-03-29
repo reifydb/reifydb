@@ -37,4 +37,11 @@ impl MultiTransaction {
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.tm.wait_for_mark_timeout(version, timeout)
 	}
+
+	/// Advance the version state for replica replication.
+	///
+	/// This must only be called from the replica applier in sequential version order.
+	pub fn advance_version_for_replica(&self, version: CommitVersion) {
+		self.tm.advance_version_for_replica(version);
+	}
 }

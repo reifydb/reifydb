@@ -11,6 +11,11 @@ use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowBuilder;
+#[cfg(feature = "sub_replication")]
+use reifydb_sub_replication::{
+	builder::{ReplicationConfig, ReplicationConfigurator},
+	factory::ReplicationSubsystemFactory,
+};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingBuilder;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
@@ -38,6 +43,8 @@ pub struct EmbeddedBuilder {
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
+	#[cfg(feature = "sub_replication")]
+	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
 	migrations: Vec<Migration>,
 }
@@ -61,6 +68,8 @@ impl EmbeddedBuilder {
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
+			#[cfg(feature = "sub_replication")]
+			replication_factory: None,
 			auth_configurator: None,
 			migrations: Vec::new(),
 		}
@@ -205,6 +214,11 @@ impl EmbeddedBuilder {
 			builder = builder.with_flow(configurator);
 		}
 
+		#[cfg(feature = "sub_replication")]
+		if let Some(factory) = self.replication_factory {
+			builder = builder.add_replication_factory(factory);
+		}
+
 		for factory in self.subsystem_factories {
 			builder = builder.add_subsystem_factory(factory);
 		}
@@ -233,6 +247,16 @@ impl WithSubsystem for EmbeddedBuilder {
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(feature = "sub_replication")]
+	fn with_replication<F, C>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
+		C: Into<ReplicationConfig> + 'static,
+	{
+		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::new(configurator)));
 		self
 	}
 

@@ -191,6 +191,17 @@ where
 	pub fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
 		self.inner.command.wait_for_mark_timeout(version, timeout)
 	}
+
+	/// Advance the version state for replica replication.
+	///
+	/// This advances the watermark, the version provider counter, and the query
+	/// watermark so that queries can see replicated data. Must only be called
+	/// from the replica applier in sequential version order.
+	pub fn advance_version_for_replica(&self, version: CommitVersion) {
+		self.inner.advance_version_for_replica(version);
+		self.inner.command.advance_to(version);
+		self.inner.query.advance_to(version);
+	}
 }
 
 pub struct MultiTransaction(Arc<Inner>);
@@ -341,17 +352,6 @@ impl MultiTransaction {
 	#[instrument(name = "transaction::begin_replica", level = "debug", skip(self), fields(version = %version.0))]
 	pub fn begin_replica(&self, version: CommitVersion) -> Result<MultiReplicaTransaction> {
 		MultiReplicaTransaction::new(self.clone(), version)
-	}
-
-	/// Advance the replica's version tracking for a primary version
-	/// that had no catalog changes (e.g. data-only commits).
-	///
-	/// Registers and immediately completes the version in the command
-	/// watermark, and advances the clock so queries see the latest state.
-	pub fn advance_version_for_replica(&self, version: CommitVersion) {
-		self.0.tm.begin_commit(version);
-		self.0.tm.done_commit(version);
-		self.0.tm.advance_clock_to(version);
 	}
 }
 

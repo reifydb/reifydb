@@ -106,7 +106,8 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		| KeyKind::VariantHandler
 		| KeyKind::PolicyOp => dispatch::<PassthroughApplier>(catalog, txn, change),
 
-		_ => Ok(()),
+		// All other keys (Row data, etc.) — write to txn, no materialized catalog action
+		_ => dispatch::<PassthroughApplier>(catalog, txn, change),
 	}
 }
 

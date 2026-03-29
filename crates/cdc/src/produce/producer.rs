@@ -148,6 +148,13 @@ where
 						};
 						if let Some(diff) = decoded {
 							diffs_by_object.entry(object).or_default().push(diff);
+							// Also keep as SystemChange for replication
+							push_raw_system_change(
+								&delta,
+								self.transaction_store.as_ref(),
+								version,
+								&mut system_changes,
+							);
 							continue;
 						}
 					}
@@ -198,6 +205,13 @@ where
 
 						if let Some(diff) = decoded {
 							diffs_by_object.entry(row_key.object).or_default().push(diff);
+							// Also keep as SystemChange for replication
+							push_raw_system_change(
+								&delta,
+								self.transaction_store.as_ref(),
+								version,
+								&mut system_changes,
+							);
 							continue;
 						}
 					}
@@ -318,6 +332,53 @@ where
 			error!("CDC cleanup failed: {:?}", e);
 		}
 	}
+}
+
+/// Push a raw SystemChange for a delta, preserving the encoded key-value
+/// data alongside the decoded columnar form. This enables replication consumers
+/// to access the original bytes without re-encoding.
+fn push_raw_system_change(
+	delta: &Delta,
+	transaction_store: &dyn MultiVersionGetPrevious,
+	version: CommitVersion,
+	system_changes: &mut Vec<SystemChange>,
+) {
+	let change = match delta {
+		Delta::Set {
+			key,
+			row,
+		} => {
+			let pre = transaction_store.get_previous_version(key, version).ok().flatten();
+			if let Some(prev) = pre {
+				SystemChange::Update {
+					key: key.clone(),
+					pre: prev.row,
+					post: row.clone(),
+				}
+			} else {
+				SystemChange::Insert {
+					key: key.clone(),
+					post: row.clone(),
+				}
+			}
+		}
+		Delta::Unset {
+			key,
+			row,
+		} => {
+			let pre = if row.is_empty() {
+				None
+			} else {
+				Some(row.clone())
+			};
+			SystemChange::Delete {
+				key: key.clone(),
+				pre,
+			}
+		}
+		_ => return,
+	};
+	system_changes.push(change);
 }
 
 /// Merge diffs that share the same variant (Insert/Update/Remove) by appending

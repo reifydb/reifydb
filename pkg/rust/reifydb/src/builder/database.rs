@@ -51,6 +51,11 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowBuilder, subsystem::factory::FlowSubsystemFactory};
+#[cfg(feature = "sub_replication")]
+use reifydb_sub_replication::{
+	builder::{ReplicationConfig, ReplicationConfigurator},
+	factory::ReplicationSubsystemFactory,
+};
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
 use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
@@ -85,6 +90,8 @@ pub struct DatabaseBuilder {
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
+	#[cfg(feature = "sub_replication")]
+	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
 	migrations: Vec<Migration>,
@@ -124,6 +131,8 @@ impl DatabaseBuilder {
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
+			#[cfg(feature = "sub_replication")]
+			replication_factory: None,
 			task_factory: None,
 			auth_configurator: None,
 			migrations: Vec::new(),
@@ -152,6 +161,22 @@ impl DatabaseBuilder {
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
 	{
 		self.flow_factory = Some(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
+	#[cfg(feature = "sub_replication")]
+	pub fn with_replication<F, C>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
+		C: Into<ReplicationConfig> + 'static,
+	{
+		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::new(configurator)));
+		self
+	}
+
+	#[cfg(feature = "sub_replication")]
+	pub fn add_replication_factory(mut self, factory: Box<dyn SubsystemFactory>) -> Self {
+		self.replication_factory = Some(factory);
 		self
 	}
 
@@ -253,6 +278,11 @@ impl DatabaseBuilder {
 
 		#[cfg(feature = "sub_flow")]
 		if let Some(ref factory) = self.flow_factory {
+			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
+		}
+
+		#[cfg(feature = "sub_replication")]
+		if let Some(ref factory) = self.replication_factory {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
@@ -419,6 +449,13 @@ impl DatabaseBuilder {
 
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		#[cfg(feature = "sub_replication")]
+		if let Some(factory) = self.replication_factory {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

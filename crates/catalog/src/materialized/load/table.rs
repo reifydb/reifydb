@@ -16,7 +16,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
 use crate::{
-	Result,
+	CatalogStore, Result,
 	store::table::schema::{
 		table,
 		table::{ID, NAME, NAMESPACE, PRIMARY_KEY},
@@ -27,6 +27,7 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalo
 	let range = TableKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 
+	let mut tables = Vec::new();
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
@@ -34,7 +35,12 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalo
 		let pk_id = get_table_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
 		let table = convert_table(multi, primary_key);
+		tables.push((table, version));
+	}
+	drop(stream);
 
+	for (mut table, version) in tables {
+		table.columns = CatalogStore::list_columns(rx, table.id)?;
 		catalog.set_table(table.id, version, Some(table));
 	}
 

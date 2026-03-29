@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
-	Result,
+	CatalogStore, Result,
 	materialized::MaterializedCatalog,
 	store::view::{
 		find::decode_view,
@@ -23,6 +23,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	let range = ViewKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 
+	let mut views = Vec::new();
 	while let Some(entry) = stream.next() {
 		let multi = entry?;
 		let version = multi.version;
@@ -30,7 +31,12 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 		let pk_id = get_view_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
 		let view = convert_view(multi, primary_key)?;
+		views.push((view, version));
+	}
+	drop(stream);
 
+	for (mut view, version) in views {
+		*view.columns_mut() = CatalogStore::list_columns(rx, view.id())?;
 		catalog.set_view(view.id(), version, Some(view));
 	}
 

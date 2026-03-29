@@ -2559,6 +2559,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-flow",
+ "reifydb-sub-replication",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
  "reifydb-sub-server-grpc",
@@ -2983,6 +2984,27 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_bytes",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-replication"
+version = "0.4.7"
+dependencies = [
+ "prost",
+ "reifydb-catalog",
+ "reifydb-cdc",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-runtime",
+ "reifydb-store-multi",
+ "reifydb-sub-api",
+ "reifydb-transaction",
+ "reifydb-type",
+ "tokio",
+ "tokio-stream",
+ "tonic",
+ "tonic-prost",
  "tracing",
 ]
 

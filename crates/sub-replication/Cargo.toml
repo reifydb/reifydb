@@ -1,0 +1,32 @@
+[package]
+name = "reifydb-sub-replication"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "CDC-based replication subsystem for ReifyDB"
+
+[features]
+default = []
+
+[dependencies]
+reifydb-catalog = { workspace = true }
+reifydb-cdc = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
+
+# gRPC
+tonic = { workspace = true }
+tonic-prost = { workspace = true }
+prost = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+
+# Logging
+tracing = { workspace = true }

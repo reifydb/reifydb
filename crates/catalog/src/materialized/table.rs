@@ -49,6 +49,11 @@ impl MaterializedCatalog {
 		})
 	}
 
+	/// List the latest version of all tables.
+	pub fn list_tables(&self) -> Vec<Table> {
+		self.tables.iter().filter_map(|entry| entry.value().get_latest()).collect()
+	}
+
 	pub fn set_table(&self, id: TableId, version: CommitVersion, table: Option<Table>) {
 		if let Some(entry) = self.tables.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {

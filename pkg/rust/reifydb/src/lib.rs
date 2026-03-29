@@ -52,6 +52,8 @@ pub use reifydb_sub_flow::{
 	operator::{BoxedOperator, Operator, Operators},
 	transaction::FlowTransaction,
 };
+#[cfg(feature = "sub_replication")]
+pub use reifydb_sub_replication as sub_replication;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server")]

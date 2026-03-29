@@ -174,10 +174,7 @@ impl WatermarkState {
 		}
 
 		if until != old_done_until {
-			assert_eq!(
-				done_until.compare_exchange(old_done_until, until, Ordering::SeqCst, Ordering::Acquire),
-				Ok(old_done_until)
-			);
+			done_until.fetch_max(until, Ordering::SeqCst);
 
 			// Notify all waiters up to the new mark
 			self.notify_waiters(old_done_until, until);

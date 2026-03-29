@@ -36,6 +36,7 @@ reifydb-sub-server-grpc = { workspace = true, optional = true }
 reifydb-sub-server-http = { workspace = true, optional = true }
 reifydb-sub-server-otel = { workspace = true, optional = true }
 reifydb-sub-server-ws = { workspace = true, optional = true }
+reifydb-sub-replication = { workspace = true, optional = true }
 
 rayon = { workspace = true }
 tokio = { workspace = true }
@@ -63,3 +64,4 @@ sub_server_grpc = ["dep:reifydb-sub-server-grpc", "sub_server"]
 sub_server_http = ["dep:reifydb-sub-server-http", "sub_server"]
 sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:tracing-opentelemetry", "sub_server"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
+sub_replication = ["dep:reifydb-sub-replication"]

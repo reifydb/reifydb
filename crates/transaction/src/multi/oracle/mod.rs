@@ -426,6 +426,11 @@ where
 	pub(crate) fn done_commit(&self, version: CommitVersion) {
 		self.command.done(version);
 	}
+
+	/// Advance the version provider for replica replication.
+	pub(crate) fn advance_version_for_replica(&self, version: CommitVersion) {
+		self.inner.read().clock.advance_to(version);
+	}
 }
 
 impl<L> OracleInner<L>

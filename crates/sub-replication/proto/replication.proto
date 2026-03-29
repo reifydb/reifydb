@@ -1,0 +1,37 @@
+syntax = "proto3";
+package reifydb.replication.v1;
+
+service ReifyDBReplication {
+  rpc StreamCdc(StreamCdcRequest) returns (stream CdcEntry);
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+}
+
+message StreamCdcRequest {
+  uint64 since_version = 1;
+  uint64 batch_size = 2;
+}
+
+message CdcEntry {
+  uint64 version = 1;
+  uint64 timestamp = 2;
+  repeated SystemChangeProto system_changes = 3;
+}
+
+message SystemChangeProto {
+  oneof change {
+    InsertChange insert = 1;
+    UpdateChange update = 2;
+    DeleteChange delete = 3;
+  }
+}
+
+message InsertChange  { bytes key = 1; bytes post = 2; }
+message UpdateChange  { bytes key = 1; bytes pre = 2; bytes post = 3; }
+message DeleteChange  { bytes key = 1; bytes pre = 2; bool has_pre = 3; }
+
+message GetVersionRequest {}
+message GetVersionResponse {
+  uint64 current_version = 1;
+  uint64 min_cdc_version = 2;
+  uint64 max_cdc_version = 3;
+}

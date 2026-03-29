@@ -12,6 +12,11 @@ use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowBuilder;
+#[cfg(feature = "sub_replication")]
+use reifydb_sub_replication::{
+	builder::{ReplicationConfig, ReplicationConfigurator},
+	factory::ReplicationSubsystemFactory,
+};
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
 #[cfg(feature = "sub_server_admin")]
@@ -51,6 +56,8 @@ pub struct ServerBuilder {
 	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
+	#[cfg(feature = "sub_replication")]
+	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 	otel_tracing_config: Option<(OtelConfig, Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>)>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
@@ -75,6 +82,8 @@ impl ServerBuilder {
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
+			#[cfg(feature = "sub_replication")]
+			replication_factory: None,
 			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
 			otel_tracing_config: None,
 			auth_configurator: None,
@@ -308,6 +317,11 @@ impl ServerBuilder {
 			database_builder = database_builder.with_flow(configurator);
 		}
 
+		#[cfg(feature = "sub_replication")]
+		if let Some(factory) = self.replication_factory {
+			database_builder = database_builder.add_replication_factory(factory);
+		}
+
 		for factory in self.subsystem_factories {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
@@ -332,6 +346,16 @@ impl WithSubsystem for ServerBuilder {
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(feature = "sub_replication")]
+	fn with_replication<F, C>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
+		C: Into<ReplicationConfig> + 'static,
+	{
+		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::new(configurator)));
 		self
 	}
 

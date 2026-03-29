@@ -128,6 +128,17 @@ impl WaterMark {
 		CommitVersion(self.shared.last_index.load(Ordering::SeqCst))
 	}
 
+	/// Advance the watermark to the given version for replica replication.
+	///
+	/// Directly sets `done_until` and `last_index` atomically, bypassing the
+	/// gap-based watermark logic. This is correct for replicas because they
+	/// apply entries sequentially with no concurrent transactions, and the
+	/// primary's version space is independent from the replica's.
+	pub fn advance_to(&self, version: CommitVersion) {
+		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
+		self.shared.done_until.fetch_max(version.0, Ordering::SeqCst);
+	}
+
 	/// Waits until the given index is marked as done with a default
 	/// timeout.
 	pub fn wait_for_mark(&self, index: u64) {

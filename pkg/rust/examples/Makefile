@@ -33,6 +33,9 @@ help:
 	@echo "Subscription Examples:"
 	@echo "  make subscription-cursor  - Pull-based subscription cursor (CDC data consumption)"
 	@echo ""
+	@echo "Replication Examples:"
+	@echo "  make replication-basic    - CDC-based primary/replica replication"
+	@echo ""
 	@echo "Utility targets:"
 	@echo "  make run-all             - Run all examples in order (by directory, then by filename)"
 	@echo "  make list                - List all available example binaries"
@@ -110,6 +113,11 @@ intercept-deferred-view:
 .PHONY: subscription-cursor
 subscription-cursor:
 	RUST_LOG=info cargo run --bin subscription-cursor
+
+# Replication Examples
+.PHONY: replication-basic
+replication-basic:
+	RUST_LOG=info cargo run --bin replication-basic
 
 # Define example groups
 BASIC_EXAMPLES := basic-hello-world basic-tables basic-enums basic-events-and-handlers
