@@ -1,8 +1,8 @@
 #!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2025 ReifyDB
-# Check for section-divider comments (e.g. "// ---- Section name ----" or
-# "// -------...").
+# Check for section-divider comments (e.g. "// ---- Section name ----",
+# "// -------...", or "// ── Section ──────...").
 #
 # These add visual noise without value — use blank lines or doc-comments
 # to separate logical sections instead.
@@ -37,7 +37,7 @@ while IFS= read -r file; do
     #   // ====...          (4+ equals)
     #   // -- Section --    (bracketed with 2+ dashes on each side)
     #   // == Section ==    (bracketed with 2+ equals on each side)
-    result=$(grep -nE '^\s*//\s*(-{4,}|={4,}|--+\s+.*\s+--+\s*$|==+\s+.*\s+==+\s*$)' "$file" || true)
+    result=$(grep -nE '^\s*//\s*(-{4,}|={4,}|─{2,}|--+\s+.*\s+--+\s*$|==+\s+.*\s+==+\s*$|─+\s+.*\s+─+\s*$)' "$file" || true)
 
     if [ -n "$result" ]; then
         while IFS= read -r violation; do
@@ -71,6 +71,7 @@ if [ "$violations_found" = true ]; then
     echo "  ❌ // ==== Section name ===="
     echo "  ❌ // ---------------------------------------------------------------------------"
     echo "  ❌ // ========================================================================="
+    echo "  ❌ // ── Section name ──────────────────────────────────────────"
     echo ""
     echo "Use blank lines or doc-comments to separate sections instead."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

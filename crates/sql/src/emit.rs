@@ -17,8 +17,6 @@ pub fn emit(stmt: &Statement) -> Result<String, Error> {
 	}
 }
 
-// ── SELECT → RQL pipeline ───────────────────────────────────────────────
-
 fn emit_select_top(sel: &SelectStatement) -> Result<String, Error> {
 	let mut cte_names = HashSet::new();
 	let mut parts = Vec::new();
@@ -279,8 +277,6 @@ fn extract_join_columns(left: &Expr, right: &Expr, right_alias: &str) -> Result<
 	Ok((left_col, right_col))
 }
 
-// ── INSERT → RQL ────────────────────────────────────────────────────────
-
 fn emit_insert(ins: &InsertStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = ins.schema {
 		format!("{schema}::{}", ins.table)
@@ -324,8 +320,6 @@ fn emit_insert(ins: &InsertStatement) -> Result<String, Error> {
 	}
 }
 
-// ── UPDATE → RQL ────────────────────────────────────────────────────────
-
 fn emit_update(upd: &UpdateStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = upd.schema {
 		format!("{schema}::{}", upd.table)
@@ -347,8 +341,6 @@ fn emit_update(upd: &UpdateStatement) -> Result<String, Error> {
 	Ok(result)
 }
 
-// ── DELETE → RQL ────────────────────────────────────────────────────────
-
 fn emit_delete(del: &DeleteStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = del.schema {
 		format!("{schema}::{}", del.table)
@@ -364,8 +356,6 @@ fn emit_delete(del: &DeleteStatement) -> Result<String, Error> {
 
 	Ok(result)
 }
-
-// ── CREATE TABLE → RQL ──────────────────────────────────────────────────
 
 fn emit_create_table(ct: &CreateTableStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = ct.schema {
@@ -398,8 +388,6 @@ fn emit_create_table(ct: &CreateTableStatement) -> Result<String, Error> {
 	Ok(result)
 }
 
-// ── CREATE INDEX → RQL ──────────────────────────────────────────────────
-
 fn emit_create_index(ci: &CreateIndexStatement) -> Result<String, Error> {
 	let unique = if ci.unique {
 		"UNIQUE "
@@ -423,8 +411,6 @@ fn emit_create_index(ci: &CreateIndexStatement) -> Result<String, Error> {
 
 	Ok(format!("CREATE {unique}INDEX {} ON {table} {{{}}}", ci.index_name, col_parts.join(", ")))
 }
-
-// ── DROP TABLE → RQL ────────────────────────────────────────────────────
 
 fn emit_drop_table(dt: &DropTableStatement) -> Result<String, Error> {
 	let table = if let Some(ref schema) = dt.schema {
@@ -453,8 +439,6 @@ fn emit_rql_type(ty: &SqlType) -> &'static str {
 		SqlType::Blob => "blob",
 	}
 }
-
-// ── Expression emitter ──────────────────────────────────────────────────
 
 fn emit_expr(expr: &Expr) -> Result<String, Error> {
 	match expr {
@@ -653,8 +637,6 @@ fn format_float(f: f64) -> String {
 		format!("{s}.0")
 	}
 }
-
-// ── Helpers ─────────────────────────────────────────────────────────────
 
 fn is_all_columns(cols: &[SelectColumn]) -> bool {
 	cols.len() == 1 && matches!(cols[0], SelectColumn::AllColumns)
@@ -1079,8 +1061,6 @@ mod tests {
 			"LET $a = FROM users; LET $b = FROM $a MAP {id}; FROM $b"
 		);
 	}
-
-	// ── New tests ────────────────────────────────────────────────────────
 
 	// CASE expressions
 	#[test]

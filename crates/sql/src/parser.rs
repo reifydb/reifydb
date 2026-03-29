@@ -38,8 +38,6 @@ impl Parser {
 		Ok(stmt)
 	}
 
-	// ── Helpers ──────────────────────────────────────────────────────────
-
 	fn peek(&self) -> Result<&Token, Error> {
 		self.tokens.get(self.pos).ok_or_else(|| Error("unexpected end of input".into()))
 	}
@@ -103,8 +101,6 @@ impl Parser {
 			_ => false,
 		}
 	}
-
-	// ── SELECT ──────────────────────────────────────────────────────────
 
 	fn parse_select(&mut self) -> Result<Statement, Error> {
 		let sel = self.parse_select_statement()?;
@@ -381,8 +377,6 @@ impl Parser {
 		Ok(from)
 	}
 
-	// ── JOIN ────────────────────────────────────────────────────────────
-
 	/// Check if the next tokens form a JOIN clause.  Returns true and
 	/// consumes the join-type keywords (INNER/LEFT/CROSS and JOIN) if present.
 	fn parse_join_if_present(&mut self) -> Result<bool, Error> {
@@ -486,8 +480,6 @@ impl Parser {
 		})
 	}
 
-	// ── INSERT ──────────────────────────────────────────────────────────
-
 	fn parse_insert(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Insert)?;
 		self.expect_keyword(Keyword::Into)?;
@@ -537,8 +529,6 @@ impl Parser {
 		}))
 	}
 
-	// ── UPDATE ──────────────────────────────────────────────────────────
-
 	fn parse_update(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Update)?;
 		let (schema, table) = self.parse_table_name()?;
@@ -572,8 +562,6 @@ impl Parser {
 		}))
 	}
 
-	// ── DELETE ──────────────────────────────────────────────────────────
-
 	fn parse_delete(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Delete)?;
 		self.expect_keyword(Keyword::From)?;
@@ -592,8 +580,6 @@ impl Parser {
 			where_clause,
 		}))
 	}
-
-	// ── CREATE TABLE / CREATE INDEX ────────────────────────────────────
 
 	fn parse_create(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Create)?;
@@ -757,8 +743,6 @@ impl Parser {
 		}))
 	}
 
-	// ── DROP TABLE ─────────────────────────────────────────────────────
-
 	fn parse_drop(&mut self) -> Result<Statement, Error> {
 		self.expect_keyword(Keyword::Drop)?;
 
@@ -800,8 +784,6 @@ impl Parser {
 			if_exists,
 		}))
 	}
-
-	// ── Type parsing ────────────────────────────────────────────────────
 
 	fn parse_sql_type(&mut self) -> Result<SqlType, Error> {
 		let tok = self.advance()?;
@@ -855,8 +837,6 @@ impl Parser {
 			_ => Err(Error(format!("expected SQL type, got {tok:?}"))),
 		}
 	}
-
-	// ── Expression parsing (Pratt-style precedence) ─────────────────────
 
 	fn parse_expr(&mut self) -> Result<Expr, Error> {
 		self.parse_or()
@@ -1350,8 +1330,6 @@ impl Parser {
 			else_clause,
 		})
 	}
-
-	// ── Utility ─────────────────────────────────────────────────────────
 
 	fn parse_expr_list(&mut self) -> Result<Vec<Expr>, Error> {
 		let mut exprs = Vec::new();
