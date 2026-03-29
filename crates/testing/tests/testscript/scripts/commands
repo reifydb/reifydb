@@ -70,7 +70,7 @@ Command { name: "command", args: [Argument { key: Some("arg"), value: "" }], pre
 ---
 Command { name: "command arg \"quoted\" key=value [tag] # comment", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 66 }
 Command { name: "", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 67 }
-Command { name: "!", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 68 }
+Command { name: "", args: [], prefix: None, tags: {}, silent: false, fail: true, line_number: 68 }
 Command { name: "> >", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 69 }
 
 # > also works with prefix, tags, and error markers.

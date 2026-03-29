@@ -133,6 +133,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	/// Returns a summary of what was inserted. On error, the entire
 	/// transaction is rolled back (no partial inserts).
 	pub fn execute(self) -> Result<BulkInsertResult> {
+		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
 		let mut result = BulkInsertResult::default();

@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{
+	ops::Deref,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	time::Duration,
+};
 
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
@@ -17,7 +24,7 @@ use reifydb_catalog::{
 use reifydb_cdc::{consume::host::CdcHost, storage::CdcStore};
 use reifydb_core::{
 	common::CommitVersion,
-	error::diagnostic::catalog::namespace_not_found,
+	error::diagnostic::{catalog::namespace_not_found, engine::read_only_rejection},
 	event::{Event, EventBus},
 	interface::{
 		WithEventBus,
@@ -135,6 +142,7 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		self.reject_if_read_only()?;
 		(|| {
 			let mut txn = self.begin_admin(identity)?;
 			let frames = self.executor.admin(
@@ -155,6 +163,7 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		self.reject_if_read_only()?;
 		(|| {
 			let mut txn = self.begin_command(identity)?;
 			let frames = self.executor.command(
@@ -193,6 +202,7 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::subscription", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn subscription_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+		self.reject_if_read_only()?;
 		(|| {
 			let mut txn = self.begin_subscription(identity)?;
 			let frames = self.executor.subscription(
@@ -214,6 +224,7 @@ impl StandardEngine {
 	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
 	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>> {
+		self.reject_if_read_only()?;
 		let mut txn = self.begin_command(identity)?;
 		let frames = self.executor.call_procedure(&mut txn, name, &params)?;
 		txn.commit()?;
@@ -340,6 +351,7 @@ pub struct Inner {
 	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
 	flow_operator_store: SystemFlowOperatorStore,
+	read_only: AtomicBool,
 }
 
 impl StandardEngine {
@@ -395,6 +407,7 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			flow_operator_store,
+			read_only: AtomicBool::new(false),
 		}))
 	}
 
@@ -509,6 +522,24 @@ impl StandardEngine {
 	#[inline]
 	pub fn cdc_store(&self) -> CdcStore {
 		self.executor.ioc.resolve::<CdcStore>().expect("CdcStore must be registered")
+	}
+
+	/// Mark this engine as read-only (replica mode).
+	/// Once set, all write-path methods will return ENG_007 immediately.
+	pub fn set_read_only(&self) {
+		self.read_only.store(true, Ordering::SeqCst);
+	}
+
+	/// Whether this engine is in read-only (replica) mode.
+	pub fn is_read_only(&self) -> bool {
+		self.read_only.load(Ordering::SeqCst)
+	}
+
+	pub(crate) fn reject_if_read_only(&self) -> Result<()> {
+		if self.is_read_only() {
+			return Err(Error(read_only_rejection(Fragment::None)));
+		}
+		Ok(())
 	}
 
 	pub fn shutdown(&self) {

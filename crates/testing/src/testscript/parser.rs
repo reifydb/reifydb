@@ -321,6 +321,14 @@ impl<'a> Parser<'a> {
 		if self.peek_char() == Some('>') {
 			self.advance();
 			self.skip_whitespace();
+			// Also support >! (fail marker after literal marker)
+			let fail = if !fail && self.peek_char() == Some('!') {
+				self.advance();
+				self.skip_whitespace();
+				true
+			} else {
+				fail
+			};
 			let name = self.parse_line_continuation()?;
 			return Ok(Command {
 				name,

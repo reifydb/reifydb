@@ -107,3 +107,19 @@ pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// Write operation rejected because the engine is in read-only (replica) mode.
+pub fn read_only_rejection(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "ENG_007".to_string(),
+		statement: None,
+		message: "Cannot execute write operations on a read-only replica".to_string(),
+		column: None,
+		fragment,
+		label: Some("write rejected".to_string()),
+		help: Some("Send write operations (admin, command, subscription) to the primary node".to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
