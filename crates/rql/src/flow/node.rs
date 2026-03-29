@@ -95,73 +95,32 @@ pub enum FlowNodeType {
 }
 
 impl FlowNodeType {
-	/// Returns a discriminator value for this node type variant
+	/// Returns a discriminator value for this node type variant.
+	/// Must match indices in FLOW_NODE_TYPE_NAMES in catalog/vtable/system/flow_node_types.rs
 	pub fn discriminator(&self) -> u8 {
 		match self {
-			FlowNodeType::SourceInlineData {
-				..
-			} => 0,
-			FlowNodeType::SourceTable {
-				..
-			} => 1,
-			FlowNodeType::SourceView {
-				..
-			} => 2,
-			FlowNodeType::SourceFlow {
-				..
-			} => 3,
-			FlowNodeType::SourceRingBuffer {
-				..
-			} => 17,
-			FlowNodeType::Filter {
-				..
-			} => 4,
-			FlowNodeType::Gate {
-				..
-			} => 19,
-			FlowNodeType::Map {
-				..
-			} => 5,
-			FlowNodeType::Extend {
-				..
-			} => 6,
-			FlowNodeType::Join {
-				..
-			} => 7,
-			FlowNodeType::Aggregate {
-				..
-			} => 8,
+			FlowNodeType::SourceInlineData { .. } => 0,
+			FlowNodeType::SourceTable { .. } => 1,
+			FlowNodeType::SourceView { .. } => 2,
+			FlowNodeType::SourceFlow { .. } => 3,
+			FlowNodeType::Filter { .. } => 4,
+			FlowNodeType::Map { .. } => 5,
+			FlowNodeType::Extend { .. } => 6,
+			FlowNodeType::Join { .. } => 7,
+			FlowNodeType::Aggregate { .. } => 8,
 			FlowNodeType::Append => 9,
-			FlowNodeType::Sort {
-				..
-			} => 10,
-			FlowNodeType::Take {
-				..
-			} => 11,
-			FlowNodeType::Distinct {
-				..
-			} => 12,
-			FlowNodeType::Apply {
-				..
-			} => 13,
-			FlowNodeType::SinkTableView {
-				..
-			} => 20,
-			FlowNodeType::SinkRingBufferView {
-				..
-			} => 21,
-			FlowNodeType::SinkSeriesView {
-				..
-			} => 22,
-			FlowNodeType::SinkSubscription {
-				..
-			} => 15,
-			FlowNodeType::Window {
-				..
-			} => 16,
-			FlowNodeType::SourceSeries {
-				..
-			} => 18,
+			FlowNodeType::Sort { .. } => 10,
+			FlowNodeType::Take { .. } => 11,
+			FlowNodeType::Distinct { .. } => 12,
+			FlowNodeType::Apply { .. } => 13,
+			FlowNodeType::SinkSubscription { .. } => 14,
+			FlowNodeType::Window { .. } => 15,
+			FlowNodeType::SourceRingBuffer { .. } => 16,
+			FlowNodeType::SourceSeries { .. } => 17,
+			FlowNodeType::Gate { .. } => 18,
+			FlowNodeType::SinkTableView { .. } => 19,
+			FlowNodeType::SinkRingBufferView { .. } => 20,
+			FlowNodeType::SinkSeriesView { .. } => 21,
 		}
 	}
 }

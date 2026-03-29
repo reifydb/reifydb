@@ -31,24 +31,32 @@ impl SystemFlowNodeTypes {
 	}
 }
 
-/// FlowNodeType variant names in order of their discriminator values
-const FLOW_NODE_TYPE_NAMES: [&str; 16] = [
-	"source_inline_data",
-	"source_table",
-	"source_view",
-	"source_flow",
-	"filter",
-	"map",
-	"extend",
-	"join",
-	"aggregate",
-	"append",
-	"sort",
-	"take",
-	"distinct",
-	"apply",
-	"sink_view",
-	"window",
+/// FlowNodeType variant names indexed by their discriminator values.
+/// Discriminators are sparse (0-22 with a gap at 14), so we use an array
+/// covering the full range with an empty string for the unused slot.
+const FLOW_NODE_TYPE_NAMES: [&str; 22] = [
+	"source_inline_data",    // 0
+	"source_table",          // 1
+	"source_view",           // 2
+	"source_flow",           // 3
+	"filter",                // 4
+	"map",                   // 5
+	"extend",                // 6
+	"join",                  // 7
+	"aggregate",             // 8
+	"append",                // 9
+	"sort",                  // 10
+	"take",                  // 11
+	"distinct",              // 12
+	"apply",                 // 13
+	"sink_subscription",     // 14
+	"window",                // 15
+	"source_ring_buffer",    // 16
+	"source_series",         // 17
+	"gate",                  // 18
+	"sink_table_view",       // 19
+	"sink_ring_buffer_view", // 20
+	"sink_series_view",      // 21
 ];
 
 impl BaseVTable for SystemFlowNodeTypes {
