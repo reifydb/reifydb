@@ -127,7 +127,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_expressions() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions: Vec<Expression> = vec![];
 
@@ -138,7 +138,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_string() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![create_alias_expression("key1", create_constant_text("value1"))];
 
@@ -150,7 +150,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_number() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![create_alias_expression("count", create_constant_number(42))];
 
@@ -162,7 +162,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_bool() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![create_alias_expression("enabled", create_constant_bool(true))];
 
@@ -174,7 +174,7 @@ pub mod tests {
 
 	#[test]
 	fn test_single_alias_undefined() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![create_alias_expression("optional", create_constant_undefined())];
 
@@ -186,7 +186,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_aliases() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![
 			create_alias_expression("key1", create_constant_text("value1")),
@@ -206,7 +206,7 @@ pub mod tests {
 
 	#[test]
 	fn test_non_alias_expressions_skipped() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![
 			create_alias_expression("valid", create_constant_text("included")),
@@ -222,7 +222,7 @@ pub mod tests {
 
 	#[test]
 	fn test_only_non_alias_expressions() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions =
 			vec![create_constant_text("text"), create_constant_number(42), create_constant_bool(true)];
@@ -236,7 +236,7 @@ pub mod tests {
 
 	#[test]
 	fn test_all_basic_value_types() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![
 			create_alias_expression("text_val", create_constant_text("hello")),
@@ -258,7 +258,7 @@ pub mod tests {
 
 	#[test]
 	fn test_duplicate_alias_names_last_wins() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![
 			create_alias_expression("key", create_constant_text("first")),
@@ -274,7 +274,7 @@ pub mod tests {
 
 	#[test]
 	fn test_empty_string_value() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![create_alias_expression("empty", create_constant_text(""))];
 
@@ -286,7 +286,7 @@ pub mod tests {
 
 	#[test]
 	fn test_special_characters_in_alias_name() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![
 			create_alias_expression("key_with_underscore", create_constant_number(1)),
@@ -304,7 +304,7 @@ pub mod tests {
 
 	#[test]
 	fn test_large_number_values() {
-		let functions = Functions::builder().build();
+		let functions = Functions::builder().configure();
 		let runtime_context = RuntimeContext::default();
 		let expressions = vec![
 			create_alias_expression("small", create_constant_number(0)),

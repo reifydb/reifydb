@@ -21,30 +21,29 @@ use reifydb_type::Result;
 
 use crate::subsystem::WsSubsystem;
 
-/// Configuration for the WebSocket server subsystem.
-#[derive(Clone, Debug)]
-pub struct WsConfig {
+/// Configurator for the WebSocket server subsystem.
+pub struct WsConfigurator {
 	/// Address to bind the WebSocket server to (e.g., "0.0.0.0:8090").
-	pub bind_addr: Option<String>,
+	bind_addr: Option<String>,
 	/// Address to bind the admin WebSocket server to (e.g., "127.0.0.1:9090").
 	/// When set, admin operations are only available on this port.
 	/// When not set, admin operations are not available.
-	pub admin_bind_addr: Option<String>,
+	admin_bind_addr: Option<String>,
 	/// Maximum number of concurrent connections.
-	pub max_connections: usize,
+	max_connections: usize,
 	/// Timeout for query execution.
-	pub query_timeout: Duration,
+	query_timeout: Duration,
 	/// Maximum WebSocket frame size in bytes.
-	pub max_frame_size: usize,
-	/// Optional shared runtime .
-	pub runtime: Option<SharedRuntime>,
+	max_frame_size: usize,
+	/// Optional shared runtime.
+	runtime: Option<SharedRuntime>,
 	/// Subscription polling interval (how often to check for new data).
-	pub poll_interval: Duration,
+	poll_interval: Duration,
 	/// Maximum rows to read per subscription per poll cycle.
-	pub poll_batch_size: usize,
+	poll_batch_size: usize,
 }
 
-impl Default for WsConfig {
+impl Default for WsConfigurator {
 	fn default() -> Self {
 		Self {
 			bind_addr: None,
@@ -59,8 +58,8 @@ impl Default for WsConfig {
 	}
 }
 
-impl WsConfig {
-	/// Create a new WebSocket config with default values.
+impl WsConfigurator {
+	/// Create a new WebSocket configurator with default values.
 	pub fn new() -> Self {
 		Self::default()
 	}
@@ -113,33 +112,80 @@ impl WsConfig {
 		self.poll_batch_size = size;
 		self
 	}
+
+	/// Consume the configurator and produce an immutable config.
+	pub(crate) fn configure(self) -> WsConfig {
+		WsConfig {
+			bind_addr: self.bind_addr,
+			admin_bind_addr: self.admin_bind_addr,
+			max_connections: self.max_connections,
+			query_timeout: self.query_timeout,
+			max_frame_size: self.max_frame_size,
+			runtime: self.runtime,
+			poll_interval: self.poll_interval,
+			poll_batch_size: self.poll_batch_size,
+		}
+	}
+}
+
+/// Configuration for the WebSocket server subsystem.
+#[derive(Clone, Debug)]
+pub struct WsConfig {
+	/// Address to bind the WebSocket server to (e.g., "0.0.0.0:8090").
+	pub bind_addr: Option<String>,
+	/// Address to bind the admin WebSocket server to (e.g., "127.0.0.1:9090").
+	/// When set, admin operations are only available on this port.
+	/// When not set, admin operations are not available.
+	pub admin_bind_addr: Option<String>,
+	/// Maximum number of concurrent connections.
+	pub max_connections: usize,
+	/// Timeout for query execution.
+	pub query_timeout: Duration,
+	/// Maximum WebSocket frame size in bytes.
+	pub max_frame_size: usize,
+	/// Optional shared runtime.
+	pub runtime: Option<SharedRuntime>,
+	/// Subscription polling interval (how often to check for new data).
+	pub poll_interval: Duration,
+	/// Maximum rows to read per subscription per poll cycle.
+	pub poll_batch_size: usize,
+}
+
+impl Default for WsConfig {
+	fn default() -> Self {
+		WsConfigurator::new().configure()
+	}
 }
 
 /// Factory for creating WebSocket subsystem instances.
 pub struct WsSubsystemFactory {
-	config: WsConfig,
+	config_fn: Box<dyn FnOnce() -> WsConfig + Send>,
 }
 
 impl WsSubsystemFactory {
-	/// Create a new WebSocket subsystem factory with the given configuration.
-	pub fn new(config: WsConfig) -> Self {
+	/// Create a new WebSocket subsystem factory with a configurator closure.
+	pub fn new<F>(configurator: F) -> Self
+	where
+		F: FnOnce(WsConfigurator) -> WsConfigurator + Send + 'static,
+	{
 		Self {
-			config,
+			config_fn: Box::new(move || configurator(WsConfigurator::new()).configure()),
 		}
 	}
 }
 
 impl SubsystemFactory for WsSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+		let config = (self.config_fn)();
+
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 
-		let query_config = StateConfig::new()
-			.query_timeout(self.config.query_timeout)
-			.max_connections(self.config.max_connections);
+		let query_config =
+			StateConfig::new().query_timeout(config.query_timeout).max_connections(config.max_connections);
 
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
-		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
+		let runtime = config.runtime.unwrap_or(ioc_runtime);
 
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
@@ -159,12 +205,12 @@ impl SubsystemFactory for WsSubsystemFactory {
 			runtime.rng().clone(),
 		);
 		let subsystem = WsSubsystem::new(
-			self.config.bind_addr.clone(),
-			self.config.admin_bind_addr.clone(),
+			config.bind_addr.clone(),
+			config.admin_bind_addr.clone(),
 			state,
 			runtime,
-			self.config.poll_interval,
-			self.config.poll_batch_size,
+			config.poll_interval,
+			config.poll_batch_size,
 		);
 
 		Ok(Box::new(subsystem))

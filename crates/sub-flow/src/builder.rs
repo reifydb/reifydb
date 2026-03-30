@@ -20,21 +20,21 @@ use crate::{connector::ConnectorRegistry, operator::BoxedOperator};
 
 pub type OperatorFactory = Arc<dyn Fn(FlowNodeId, &BTreeMap<String, Value>) -> Result<BoxedOperator> + Send + Sync>;
 
-pub struct FlowBuilder {
+pub struct FlowConfigurator {
 	operators_dir: Option<PathBuf>,
 	num_workers: Option<usize>,
 	custom_operators: HashMap<String, OperatorFactory>,
 	connector_registry: ConnectorRegistry,
 }
 
-impl Default for FlowBuilder {
+impl Default for FlowConfigurator {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl FlowBuilder {
-	/// Create a new FlowBuilder with default settings
+impl FlowConfigurator {
+	/// Create a new FlowConfigurator with default settings
 	pub fn new() -> Self {
 		Self {
 			operators_dir: None,
@@ -80,8 +80,8 @@ impl FlowBuilder {
 	}
 
 	/// Build the configuration (internal use only)
-	pub(crate) fn build_config(self) -> FlowBuilderConfig {
-		FlowBuilderConfig {
+	pub(crate) fn configure(self) -> FlowConfig {
+		FlowConfig {
 			operators_dir: self.operators_dir,
 			num_workers: self.num_workers.unwrap_or(1),
 			custom_operators: self.custom_operators,
@@ -91,12 +91,12 @@ impl FlowBuilder {
 }
 
 /// Configuration for FlowSubsystem
-pub struct FlowBuilderConfig {
+pub struct FlowConfig {
 	/// Directory containing FFI operator shared libraries (native only)
 	pub operators_dir: Option<PathBuf>,
 	/// Number of worker threads for flow processing
 	pub num_workers: usize,
-	/// Native Rust operator factories registered via FlowBuilder::register_operator
+	/// Native Rust operator factories registered via FlowConfigurator::register_operator
 	pub custom_operators: HashMap<String, OperatorFactory>,
 	/// Registry of source and sink connectors
 	pub connector_registry: ConnectorRegistry,

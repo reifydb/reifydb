@@ -148,7 +148,7 @@ pub fn propagate_options(
 	}))
 }
 
-pub fn default_functions() -> registry::FunctionsBuilder {
+pub fn default_functions() -> registry::FunctionsConfigurator {
 	let builder = registry::Functions::builder()
 		.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
 		.register_aggregate("math::min", math::aggregate::min::Min::new)

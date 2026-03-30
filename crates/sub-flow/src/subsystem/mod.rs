@@ -42,7 +42,7 @@ use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::{info, warn};
 
 use crate::{
-	builder::FlowBuilderConfig,
+	builder::FlowConfig,
 	catalog::FlowCatalog,
 	deferred::{
 		coordinator::{CoordinatorActor, CoordinatorMsg, FlowConsumeRef, extract_new_flow_ids},
@@ -130,7 +130,7 @@ pub struct FlowSubsystem {
 
 impl FlowSubsystem {
 	/// Create a new flow subsystem.
-	pub fn new(config: FlowBuilderConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
+	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
 		let catalog = engine.catalog();
 		let executor = engine.executor();
 		let event_bus = engine.event_bus().clone();

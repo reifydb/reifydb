@@ -3,21 +3,21 @@
 
 use std::path::PathBuf;
 
-use reifydb_auth::service::AuthServiceConfig;
+use reifydb_auth::service::AuthConfigurator;
 use reifydb_core::config::SystemConfig;
-use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::{function::registry::FunctionsBuilder, procedure::registry::ProceduresBuilder};
+use reifydb_extension::transform::registry::TransformsConfigurator;
+use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::builder::FlowBuilder;
+use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::{
 	builder::{ReplicationConfig, ReplicationConfigurator},
 	factory::ReplicationSubsystemFactory,
 };
 #[cfg(feature = "sub_tracing")]
-use reifydb_sub_tracing::builder::TracingBuilder;
+use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
@@ -32,20 +32,24 @@ pub struct EmbeddedBuilder {
 	runtime_config: Option<SharedRuntimeConfig>,
 	interceptors: InterceptorBuilder,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
-	handlers_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	functions_configurator:
+		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
+	procedures_configurator:
+		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	handlers_configurator:
+		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
-	transforms: Option<Transforms>,
+	transforms_configurator:
+		Option<Box<dyn FnOnce(TransformsConfigurator) -> TransformsConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_tracing")]
-	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
+	tracing_configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
-	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
+	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
-	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	migrations: Vec<Migration>,
 }
 
@@ -63,7 +67,7 @@ impl EmbeddedBuilder {
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
 			wasm_procedure_dir: None,
-			transforms: None,
+			transforms_configurator: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
 			#[cfg(feature = "sub_flow")]
@@ -94,7 +98,7 @@ impl EmbeddedBuilder {
 
 	pub fn with_functions<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
+		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
 		self
@@ -102,7 +106,7 @@ impl EmbeddedBuilder {
 
 	pub fn with_procedures<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
 		self
@@ -110,7 +114,7 @@ impl EmbeddedBuilder {
 
 	pub fn with_handlers<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -127,8 +131,11 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn with_transforms(mut self, transforms: Transforms) -> Self {
-		self.transforms = Some(transforms);
+	pub fn with_transforms<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(TransformsConfigurator) -> TransformsConfigurator + Send + 'static,
+	{
+		self.transforms_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -138,7 +145,7 @@ impl EmbeddedBuilder {
 	/// applied in name order. Already-applied migrations are skipped.
 	pub fn with_auth<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
 	{
 		self.auth_configurator = Some(Box::new(configurator));
 		self
@@ -199,8 +206,8 @@ impl EmbeddedBuilder {
 			builder = builder.with_wasm_procedure_dir(dir);
 		}
 
-		if let Some(transforms) = self.transforms {
-			builder = builder.with_transforms(transforms);
+		if let Some(configurator) = self.transforms_configurator {
+			builder = builder.with_transforms(configurator);
 		}
 
 		#[cfg(feature = "sub_tracing")]
@@ -235,7 +242,7 @@ impl WithSubsystem for EmbeddedBuilder {
 	#[cfg(feature = "sub_tracing")]
 	fn with_tracing<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
+		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
 	{
 		self.tracing_configurator = Some(Box::new(configurator));
 		self
@@ -244,7 +251,7 @@ impl WithSubsystem for EmbeddedBuilder {
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
+		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
 		self

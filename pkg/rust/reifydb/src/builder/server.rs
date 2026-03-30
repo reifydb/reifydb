@@ -5,13 +5,13 @@ use std::path::PathBuf;
 #[cfg(feature = "sub_server")]
 use std::sync::Arc;
 
-use reifydb_auth::service::AuthServiceConfig;
+use reifydb_auth::service::AuthConfigurator;
 use reifydb_core::config::SystemConfig;
-use reifydb_routine::{function::registry::FunctionsBuilder, procedure::registry::ProceduresBuilder};
+use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::builder::FlowBuilder;
+use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::{
 	builder::{ReplicationConfig, ReplicationConfigurator},
@@ -20,17 +20,17 @@ use reifydb_sub_replication::{
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
 #[cfg(feature = "sub_server_admin")]
-use reifydb_sub_server_admin::{config::AdminConfig, factory::AdminSubsystemFactory};
+use reifydb_sub_server_admin::{config::AdminConfigurator, factory::AdminSubsystemFactory};
 #[cfg(feature = "sub_server_grpc")]
-use reifydb_sub_server_grpc::factory::{GrpcConfig, GrpcSubsystemFactory};
+use reifydb_sub_server_grpc::factory::{GrpcConfigurator, GrpcSubsystemFactory};
 #[cfg(feature = "sub_server_http")]
-use reifydb_sub_server_http::factory::{HttpConfig, HttpSubsystemFactory};
+use reifydb_sub_server_http::factory::{HttpConfigurator, HttpSubsystemFactory};
 #[cfg(feature = "sub_server_otel")]
-use reifydb_sub_server_otel::{config::OtelConfig, factory::OtelSubsystemFactory, subsystem::OtelSubsystem};
+use reifydb_sub_server_otel::{config::OtelConfigurator, factory::OtelSubsystemFactory, subsystem::OtelSubsystem};
 #[cfg(feature = "sub_server_ws")]
-use reifydb_sub_server_ws::factory::{WsConfig, WsSubsystemFactory};
+use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
-use reifydb_sub_tracing::builder::TracingBuilder;
+use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
@@ -47,20 +47,26 @@ pub struct ServerBuilder {
 	#[cfg(feature = "sub_server")]
 	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
-	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
-	handlers_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	functions_configurator:
+		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
+	procedures_configurator:
+		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	handlers_configurator:
+		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
-	tracing_configurator: Option<Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>>,
+	tracing_configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
-	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
+	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
-	otel_tracing_config: Option<(OtelConfig, Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static>)>,
-	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
+	otel_tracing_config: Option<(
+		Box<dyn FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static>,
+		Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>,
+	)>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 }
 
 impl ServerBuilder {
@@ -100,7 +106,7 @@ impl ServerBuilder {
 
 	pub fn with_auth<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
 	{
 		self.auth_configurator = Some(Box::new(configurator));
 		self
@@ -113,7 +119,7 @@ impl ServerBuilder {
 
 	pub fn with_functions<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
+		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
 		self
@@ -121,7 +127,7 @@ impl ServerBuilder {
 
 	pub fn with_procedures<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
 		self
@@ -129,7 +135,7 @@ impl ServerBuilder {
 
 	pub fn with_handlers<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -143,32 +149,44 @@ impl ServerBuilder {
 
 	/// Configure and add a gRPC subsystem.
 	#[cfg(feature = "sub_server_grpc")]
-	pub fn with_grpc(mut self, config: GrpcConfig) -> Self {
-		let factory = GrpcSubsystemFactory::new(config);
+	pub fn with_grpc<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(GrpcConfigurator) -> GrpcConfigurator + Send + 'static,
+	{
+		let factory = GrpcSubsystemFactory::new(configurator);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 
 	/// Configure and add an HTTP subsystem.
 	#[cfg(feature = "sub_server_http")]
-	pub fn with_http(mut self, config: HttpConfig) -> Self {
-		let factory = HttpSubsystemFactory::new(config);
+	pub fn with_http<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(HttpConfigurator) -> HttpConfigurator + Send + 'static,
+	{
+		let factory = HttpSubsystemFactory::new(configurator);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 
 	/// Configure and add a WebSocket subsystem.
 	#[cfg(feature = "sub_server_ws")]
-	pub fn with_ws(mut self, config: WsConfig) -> Self {
-		let factory = WsSubsystemFactory::new(config);
+	pub fn with_ws<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WsConfigurator) -> WsConfigurator + Send + 'static,
+	{
+		let factory = WsSubsystemFactory::new(configurator);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
 
 	/// Configure and add an OpenTelemetry subsystem.
 	#[cfg(feature = "sub_server_otel")]
-	pub fn with_otel(mut self, config: OtelConfig) -> Self {
-		let factory = OtelSubsystemFactory::new(config);
+	pub fn with_otel<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static,
+	{
+		let factory = OtelSubsystemFactory::new(configurator);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
@@ -182,7 +200,7 @@ impl ServerBuilder {
 	/// # Arguments
 	///
 	/// * `otel_config` - OpenTelemetry configuration
-	/// * `tracing_configurator` - Function to configure the TracingBuilder
+	/// * `tracing_configurator` - Function to configure the TracingConfigurator
 	///
 	/// # Example
 	///
@@ -197,12 +215,13 @@ impl ServerBuilder {
 	///     .build()?;
 	/// ```
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
-	pub fn with_tracing_otel<F>(mut self, otel_config: OtelConfig, tracing_configurator: F) -> Self
+	pub fn with_tracing_otel<O, F>(mut self, otel_configurator: O, tracing_configurator: F) -> Self
 	where
-		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
+		O: FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static,
+		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
 	{
-		// Store the config and configurator to be initialized later in build()
-		self.otel_tracing_config = Some((otel_config, Box::new(tracing_configurator)));
+		// Store the configurators to be initialized later in build()
+		self.otel_tracing_config = Some((Box::new(otel_configurator), Box::new(tracing_configurator)));
 		self
 	}
 
@@ -217,8 +236,11 @@ impl ServerBuilder {
 	}
 
 	#[cfg(feature = "sub_server_admin")]
-	pub fn with_admin(mut self, config: AdminConfig) -> Self {
-		let factory = AdminSubsystemFactory::new(config);
+	pub fn with_admin<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(AdminConfigurator) -> AdminConfigurator + Send + 'static,
+	{
+		let factory = AdminSubsystemFactory::new(configurator);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
@@ -278,9 +300,10 @@ impl ServerBuilder {
 		}
 
 		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
-		if let Some((otel_config, tracing_configurator)) = self.otel_tracing_config {
+		if let Some((otel_configurator, tracing_configurator)) = self.otel_tracing_config {
 			use reifydb_sub_api::subsystem::Subsystem;
 
+			let otel_config = otel_configurator(OtelConfigurator::new()).configure();
 			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.clone());
 			otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
 
@@ -334,7 +357,7 @@ impl WithSubsystem for ServerBuilder {
 	#[cfg(feature = "sub_tracing")]
 	fn with_tracing<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
+		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
 	{
 		self.tracing_configurator = Some(Box::new(configurator));
 		self
@@ -343,7 +366,7 @@ impl WithSubsystem for ServerBuilder {
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
+		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
 		self

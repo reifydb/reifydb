@@ -10,7 +10,7 @@ pub mod clock;
 pub mod set;
 
 use error::ProcedureError;
-use registry::{Procedures, ProceduresBuilder};
+use registry::{Procedures, ProceduresConfigurator};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_transaction::transaction::Transaction;
 
@@ -19,7 +19,7 @@ pub trait Procedure: Send + Sync {
 	fn call(&self, ctx: &context::ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError>;
 }
 
-pub fn default_procedures() -> ProceduresBuilder {
+pub fn default_procedures() -> ProceduresConfigurator {
 	Procedures::builder()
 		.with_procedure("system::config::set", set::config::SetConfigProcedure::new)
 		.with_procedure("clock::set", clock::set::ClockSetProcedure::new)

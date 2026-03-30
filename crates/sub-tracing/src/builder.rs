@@ -14,21 +14,21 @@ use tracing_subscriber::{
 use crate::{backend::console_builder::ConsoleBuilder, subsystem::TracingSubsystem};
 
 /// Builder for configuring the tracing subsystem with tracing_subscriber
-pub struct TracingBuilder {
+pub struct TracingConfigurator {
 	filter: Option<String>,
 	console_config: Option<ConsoleBuilder>,
 	with_spans: bool,
 	external_layer: Option<Box<dyn Layer<Registry> + Send + Sync>>,
 }
 
-impl Default for TracingBuilder {
+impl Default for TracingConfigurator {
 	fn default() -> Self {
 		Self::new().with_console(|c| c)
 	}
 }
 
-impl TracingBuilder {
-	/// Create a new TracingBuilder with default settings
+impl TracingConfigurator {
+	/// Create a new TracingConfigurator with default settings
 	pub fn new() -> Self {
 		Self {
 			filter: None,
@@ -42,7 +42,7 @@ impl TracingBuilder {
 	///
 	/// # Example
 	/// ```ignore
-	/// TracingBuilder::new()
+	/// TracingConfigurator::new()
 	///     .with_console(|console| console.color(true).stderr_for_errors(true))
 	/// ```
 	pub fn with_console<F>(mut self, builder_fn: F) -> Self
@@ -61,7 +61,7 @@ impl TracingBuilder {
 	///
 	/// # Example
 	/// ```ignore
-	/// TracingBuilder::new()
+	/// TracingConfigurator::new()
 	///     .without_console()  // Disable console output
 	///     .with_layer(otel_layer)  // Only use OpenTelemetry
 	///     .with_filter("trace")  // Can still filter what spans are recorded
@@ -113,7 +113,7 @@ impl TracingBuilder {
 	/// let tracer = opentelemetry::global::tracer("reifydb");
 	/// let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
 	///
-	/// TracingBuilder::new()
+	/// TracingConfigurator::new()
 	///     .with_layer(otel_layer)
 	///     .with_filter("info")
 	///     .build()
@@ -129,7 +129,7 @@ impl TracingBuilder {
 	/// Build and initialize the tracing subsystem
 	///
 	/// This sets up the global tracing subscriber. It should only be called once.
-	pub fn build(self) -> TracingSubsystem {
+	pub fn configure(self) -> TracingSubsystem {
 		// Build the filter
 		let filter = self
 			.filter

@@ -9,18 +9,25 @@ use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_type::Result;
 
-use crate::{config::AdminConfig, state::AdminState, subsystem::AdminSubsystem};
+use crate::{
+	config::{AdminConfig, AdminConfigurator},
+	state::AdminState,
+	subsystem::AdminSubsystem,
+};
 
 /// Factory for creating admin subsystem instances.
 pub struct AdminSubsystemFactory {
-	config: AdminConfig,
+	config_fn: Box<dyn FnOnce() -> AdminConfig + Send>,
 }
 
 impl AdminSubsystemFactory {
-	/// Create a new admin subsystem factory with the given configuration.
-	pub fn new(config: AdminConfig) -> Self {
+	/// Create a new admin subsystem factory with the given configurator.
+	pub fn new<F>(configurator: F) -> Self
+	where
+		F: FnOnce(AdminConfigurator) -> AdminConfigurator + Send + 'static,
+	{
 		Self {
-			config,
+			config_fn: Box::new(move || configurator(AdminConfigurator::new()).configure()),
 		}
 	}
 }
@@ -30,20 +37,19 @@ impl SubsystemFactory for AdminSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 
+		let config = (self.config_fn)();
+
 		// Create admin state from config
 		let state = AdminState::new(
 			engine,
-			self.config.max_connections,
-			self.config.request_timeout,
-			self.config.auth_required,
-			self.config.auth_token.clone(),
+			config.max_connections,
+			config.request_timeout,
+			config.auth_required,
+			config.auth_token.clone(),
 		);
 
-		let subsystem = AdminSubsystem::new(
-			self.config.bind_addr.clone(),
-			state,
-			self.config.runtime.unwrap_or(ioc_runtime),
-		);
+		let subsystem =
+			AdminSubsystem::new(config.bind_addr.clone(), state, config.runtime.unwrap_or(ioc_runtime));
 
 		Ok(Box::new(subsystem))
 	}

@@ -229,7 +229,7 @@ impl TestEngineBuilder {
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, row_shape_registry),
 			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-			default_functions().build(),
+			default_functions().configure(),
 			Procedures::empty(),
 			Transforms::empty(),
 			ioc,

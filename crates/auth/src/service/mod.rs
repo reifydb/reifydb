@@ -56,25 +56,26 @@ pub enum AuthResponse {
 	},
 }
 
-/// Configuration for the authentication service.
-#[derive(Debug, Clone)]
-pub struct AuthServiceConfig {
-	/// Default session token TTL. `None` means tokens don't expire.
-	pub session_ttl: Option<Duration>,
-	/// TTL for pending challenges (default: 60 seconds).
-	pub challenge_ttl: Duration,
+/// Configurator for the authentication service.
+pub struct AuthConfigurator {
+	session_ttl: Option<Duration>,
+	challenge_ttl: Duration,
 }
 
-impl Default for AuthServiceConfig {
+impl Default for AuthConfigurator {
 	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl AuthConfigurator {
+	pub fn new() -> Self {
 		Self {
 			session_ttl: Some(Duration::from_secs(24 * 60 * 60)), // 24 hours
 			challenge_ttl: Duration::from_secs(60),
 		}
 	}
-}
 
-impl AuthServiceConfig {
 	pub fn session_ttl(mut self, ttl: Duration) -> Self {
 		self.session_ttl = Some(ttl);
 		self
@@ -88,6 +89,28 @@ impl AuthServiceConfig {
 	pub fn challenge_ttl(mut self, ttl: Duration) -> Self {
 		self.challenge_ttl = ttl;
 		self
+	}
+
+	pub fn configure(self) -> AuthServiceConfig {
+		AuthServiceConfig {
+			session_ttl: self.session_ttl,
+			challenge_ttl: self.challenge_ttl,
+		}
+	}
+}
+
+/// Immutable configuration for the authentication service.
+#[derive(Debug, Clone)]
+pub struct AuthServiceConfig {
+	/// Default session token TTL. `None` means tokens don't expire.
+	pub session_ttl: Option<Duration>,
+	/// TTL for pending challenges (default: 60 seconds).
+	pub challenge_ttl: Duration,
+}
+
+impl Default for AuthServiceConfig {
+	fn default() -> Self {
+		AuthConfigurator::new().configure()
 	}
 }
 

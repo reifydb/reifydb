@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{columns::Columns, data::ColumnData};
 use reifydb_type::value::{Value, r#type::Type};
 
-use crate::function::registry::FunctionsBuilder;
+use crate::function::registry::FunctionsConfigurator;
 
 mod changed;
 mod event;
@@ -14,7 +14,7 @@ use changed::TestingChanged;
 use event::TestingEventsDispatched;
 use handler::TestingHandlersInvoked;
 
-pub fn register_testing_functions(builder: FunctionsBuilder) -> FunctionsBuilder {
+pub fn register_testing_functions(builder: FunctionsConfigurator) -> FunctionsConfigurator {
 	builder.register_generator("testing::events::dispatched", TestingEventsDispatched::new)
 		.register_generator("testing::handlers::invoked", TestingHandlersInvoked::new)
 		.register_generator("testing::tables::changed", || TestingChanged::new("tables"))

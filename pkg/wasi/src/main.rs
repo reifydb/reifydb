@@ -50,7 +50,7 @@ use reifydb_store_multi::{
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::Subsystem;
-use reifydb_sub_flow::{builder::FlowBuilderConfig, subsystem::FlowSubsystem};
+use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
 	TransactionVersion,
 	interceptor::factory::InterceptorFactory,
@@ -122,7 +122,7 @@ impl Bridge {
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &shape_registry, &eventbus)?;
 		load_shape_registry(&multi, &single, &shape_registry)?;
 
-		let procedures = default_procedures().build();
+		let procedures = default_procedures().configure();
 
 		let eventbus_clone = eventbus.clone();
 		let engine = StandardEngine::new(
@@ -132,7 +132,7 @@ impl Bridge {
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, shape_registry),
 			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-			default_functions().build(),
+			default_functions().configure(),
 			procedures,
 			Transforms::empty(),
 			ioc,
@@ -154,7 +154,7 @@ impl Bridge {
 		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
 		eprintln!("[WASI] CDC producer actor registered!");
 
-		let flow_config = FlowBuilderConfig {
+		let flow_config = FlowConfig {
 			operators_dir: None,
 			num_workers: 1,
 			custom_operators: HashMap::new(),

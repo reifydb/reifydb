@@ -9,13 +9,13 @@
 //! Start the data server first: `cargo run --bin router-data`
 //! Then run this: `cargo run --bin router`
 
-use reifydb::{Params, WithSubsystem, server, sub_server_grpc::factory::GrpcConfig};
+use reifydb::{Params, WithSubsystem, server};
 use tracing::info;
 
 fn main() {
 	let mut db = server::memory()
 		.with_tracing(|c| c.with_console(|f| f.color(true)))
-		.with_grpc(GrpcConfig::default().bind_addr("[::1]:50051"))
+		.with_grpc(|c| c.bind_addr("[::1]:50051"))
 		.build()
 		.unwrap();
 

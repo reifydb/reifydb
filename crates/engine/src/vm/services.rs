@@ -87,7 +87,7 @@ impl Services {
 		let mut services = Self::new(
 			Catalog::testing(),
 			RuntimeContext::default(),
-			default_functions().build(),
+			default_functions().configure(),
 			Procedures::empty(),
 			Transforms::empty(),
 			SystemFlowOperatorStore::new(),

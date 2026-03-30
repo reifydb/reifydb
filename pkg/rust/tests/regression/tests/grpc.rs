@@ -3,7 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::util::retry::retry, server, sub_server_grpc::factory::GrpcConfig};
+use reifydb::{Database, core::util::retry::retry, server};
 use reifydb_client::GrpcClient;
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
@@ -18,10 +18,8 @@ pub struct GrpcRunner {
 
 impl GrpcRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
-		let instance = server::memory()
-			.with_grpc(GrpcConfig::default().bind_addr("::1:0").admin_bind_addr("::1:0"))
-			.build()
-			.unwrap();
+		let instance =
+			server::memory().with_grpc(|c| c.bind_addr("::1:0").admin_bind_addr("::1:0")).build().unwrap();
 
 		Self {
 			instance: Some(instance),

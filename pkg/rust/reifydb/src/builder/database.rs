@@ -6,7 +6,7 @@ use std::{path::PathBuf, sync::Arc};
 use reifydb_auth::{
 	AuthVersion,
 	registry::AuthenticationRegistry,
-	service::{AuthService, AuthServiceConfig},
+	service::{AuthConfigurator, AuthService, AuthServiceConfig},
 };
 use reifydb_catalog::{
 	CatalogVersion,
@@ -36,13 +36,13 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry};
-use reifydb_extension::transform::registry::Transforms;
+use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_routine::{
-	function::{default_functions, registry::FunctionsBuilder},
-	procedure::{default_procedures, registry::ProceduresBuilder},
+	function::{default_functions, registry::FunctionsConfigurator},
+	procedure::{default_procedures, registry::ProceduresConfigurator},
 };
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, context::RuntimeContext};
@@ -50,7 +50,7 @@ use reifydb_store_multi::{MultiStore, MultiStoreVersion};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::{builder::FlowBuilder, subsystem::factory::FlowSubsystemFactory};
+use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::{
 	builder::{ReplicationConfig, ReplicationConfigurator},
@@ -60,7 +60,7 @@ use reifydb_sub_replication::{
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
 use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
-use reifydb_sub_tracing::builder::TracingBuilder;
+use reifydb_sub_tracing::builder::TracingConfigurator;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::factory::TracingSubsystemFactory;
 use reifydb_transaction::{
@@ -77,13 +77,17 @@ pub struct DatabaseBuilder {
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
 	actor_system: Option<ActorSystem>,
-	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
-	procedures_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
-	handlers_configurator: Option<Box<dyn FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static>>,
+	functions_configurator:
+		Option<Box<dyn FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static>>,
+	procedures_configurator:
+		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
+	handlers_configurator:
+		Option<Box<dyn FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static>>,
 	#[cfg(reifydb_target = "native")]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
-	transforms: Option<Transforms>,
+	transforms_configurator:
+		Option<Box<dyn FnOnce(TransformsConfigurator) -> TransformsConfigurator + Send + 'static>>,
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
 	#[cfg(feature = "sub_tracing")]
@@ -93,7 +97,7 @@ pub struct DatabaseBuilder {
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	task_factory: Option<Box<dyn SubsystemFactory>>,
-	auth_configurator: Option<Box<dyn FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static>>,
+	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	migrations: Vec<Migration>,
 }
 
@@ -124,7 +128,7 @@ impl DatabaseBuilder {
 			#[cfg(reifydb_target = "native")]
 			procedure_dir: None,
 			wasm_procedure_dir: None,
-			transforms: None,
+			transforms_configurator: None,
 			multi_store: None,
 			single_store: None,
 			#[cfg(feature = "sub_tracing")]
@@ -149,7 +153,7 @@ impl DatabaseBuilder {
 	#[cfg(feature = "sub_tracing")]
 	pub fn with_tracing<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
+		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
 	{
 		self.tracing_factory = Some(Box::new(TracingSubsystemFactory::with_configurator(configurator)));
 		self
@@ -158,7 +162,7 @@ impl DatabaseBuilder {
 	#[cfg(feature = "sub_flow")]
 	pub fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
+		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static,
 	{
 		self.flow_factory = Some(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
 		self
@@ -198,7 +202,7 @@ impl DatabaseBuilder {
 
 	pub fn with_functions_configurator<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
+		F: FnOnce(FunctionsConfigurator) -> FunctionsConfigurator + Send + 'static,
 	{
 		self.functions_configurator = Some(Box::new(configurator));
 		self
@@ -206,7 +210,7 @@ impl DatabaseBuilder {
 
 	pub fn with_procedures_configurator<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
 	{
 		self.procedures_configurator = Some(Box::new(configurator));
 		self
@@ -214,7 +218,7 @@ impl DatabaseBuilder {
 
 	pub fn with_handlers_configurator<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(ProceduresBuilder) -> ProceduresBuilder + Send + 'static,
+		F: FnOnce(ProceduresConfigurator) -> ProceduresConfigurator + Send + 'static,
 	{
 		self.handlers_configurator = Some(Box::new(configurator));
 		self
@@ -231,8 +235,11 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_transforms(mut self, transforms: Transforms) -> Self {
-		self.transforms = Some(transforms);
+	pub fn with_transforms<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(TransformsConfigurator) -> TransformsConfigurator + Send + 'static,
+	{
+		self.transforms_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -251,7 +258,7 @@ impl DatabaseBuilder {
 
 	pub fn with_auth<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(AuthServiceConfig) -> AuthServiceConfig + Send + 'static,
+		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
 	{
 		self.auth_configurator = Some(Box::new(configurator));
 		self
@@ -333,12 +340,16 @@ impl DatabaseBuilder {
 		self.ioc = self.ioc.register(single_store);
 
 		let functions = if let Some(configurator) = self.functions_configurator {
-			configurator(default_builder).build()
+			configurator(default_builder).configure()
 		} else {
-			default_builder.build()
+			default_builder.configure()
 		};
 
-		let transforms = self.transforms.unwrap_or_else(Transforms::empty);
+		let transforms = if let Some(configurator) = self.transforms_configurator {
+			configurator(Transforms::builder()).configure()
+		} else {
+			Transforms::empty()
+		};
 
 		let procedures = {
 			let mut procedures_builder = default_procedures();
@@ -368,7 +379,7 @@ impl DatabaseBuilder {
 				procedures_builder = configurator(procedures_builder);
 			}
 
-			procedures_builder.build()
+			procedures_builder.configure()
 		};
 
 		// Create RemoteRegistry for forwarding queries to remote namespaces
@@ -398,7 +409,7 @@ impl DatabaseBuilder {
 			runtime.rng().clone(),
 			runtime.clock().clone(),
 			match self.auth_configurator {
-				Some(configurator) => configurator(AuthServiceConfig::default()),
+				Some(configurator) => configurator(AuthConfigurator::new()).configure(),
 				None => AuthServiceConfig::default(),
 			},
 		);

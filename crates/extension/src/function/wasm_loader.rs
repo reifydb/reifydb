@@ -5,15 +5,18 @@
 
 use std::{fs, path::Path};
 
-use reifydb_routine::function::registry::{Functions, FunctionsBuilder};
+use reifydb_routine::function::registry::{Functions, FunctionsConfigurator};
 use reifydb_sdk::error::FFIError;
 use reifydb_type::Result;
 
 use super::wasm::WasmScalarFunction;
 
 /// Scan a directory for `.wasm` files and register each as a `WasmScalarFunction` into the given
-/// `FunctionsBuilder`, returning the updated builder.
-pub fn register_wasm_scalar_functions_from_dir(dir: &Path, mut builder: FunctionsBuilder) -> Result<FunctionsBuilder> {
+/// `FunctionsConfigurator`, returning the updated builder.
+pub fn register_wasm_scalar_functions_from_dir(
+	dir: &Path,
+	mut builder: FunctionsConfigurator,
+) -> Result<FunctionsConfigurator> {
 	let entries = fs::read_dir(dir).map_err(|e| {
 		FFIError::Other(format!("Failed to read WASM scalar function directory {}: {}", dir.display(), e))
 	})?;
@@ -45,5 +48,5 @@ pub fn register_wasm_scalar_functions_from_dir(dir: &Path, mut builder: Function
 
 /// Scan a directory for `.wasm` files and return a `Functions` registry with scalar functions.
 pub fn load_wasm_scalar_functions_from_dir(dir: &Path) -> Result<Functions> {
-	Ok(register_wasm_scalar_functions_from_dir(dir, Functions::builder())?.build())
+	Ok(register_wasm_scalar_functions_from_dir(dir, Functions::builder())?.configure())
 }

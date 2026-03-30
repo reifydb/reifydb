@@ -17,7 +17,10 @@ use reifydb_abi::transform::{
 };
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
-use super::{ffi::NativeTransformFFI, registry::Transforms};
+use super::{
+	ffi::NativeTransformFFI,
+	registry::{Transforms, TransformsConfigurator},
+};
 use crate::loader::ffi::{LibraryCache, buffer_to_string, validate_api_version};
 
 /// Global singleton FFI transform loader
@@ -169,9 +172,12 @@ impl Default for TransformLoader {
 	}
 }
 
-/// Scan a directory for FFI transform shared libraries, register them,
-/// and return a `Transforms` registry with factory functions for each.
-pub fn load_transforms_from_dir(dir: &Path) -> FFIResult<Transforms> {
+/// Scan a directory for FFI transform shared libraries and register them
+/// onto an existing `TransformsConfigurator`.
+pub fn register_transforms_from_dir(
+	dir: &Path,
+	mut builder: TransformsConfigurator,
+) -> FFIResult<TransformsConfigurator> {
 	let loader = ffi_transform_loader();
 	let mut loader_guard = loader.write().unwrap();
 
@@ -206,7 +212,6 @@ pub fn load_transforms_from_dir(dir: &Path) -> FFIResult<Transforms> {
 
 	drop(loader_guard);
 
-	let mut builder = Transforms::builder();
 	for name in names {
 		let name_clone = name.clone();
 		builder = builder.register(&name, move || {
@@ -216,5 +221,11 @@ pub fn load_transforms_from_dir(dir: &Path) -> FFIResult<Transforms> {
 		});
 	}
 
-	Ok(builder.build())
+	Ok(builder)
+}
+
+/// Scan a directory for FFI transform shared libraries, register them,
+/// and return a `Transforms` registry with factory functions for each.
+pub fn load_transforms_from_dir(dir: &Path) -> FFIResult<Transforms> {
+	Ok(register_transforms_from_dir(dir, Transforms::builder())?.configure())
 }

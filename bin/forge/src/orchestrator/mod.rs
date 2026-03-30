@@ -11,23 +11,22 @@ use axum::{
 	extract::Request,
 	response::{IntoResponse, Response},
 };
-use reifydb::{
-	WithSubsystem, server, sub_server_grpc::factory::GrpcConfig, sub_server_ws::factory::WsConfig,
-	sub_tracing::builder::TracingBuilder,
-};
+use reifydb::{WithSubsystem, server, sub_tracing::builder::TracingConfigurator};
 
 use crate::{cli::Cli, shared::shape};
 
-fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
+fn tracing_configuration(tracing: TracingConfigurator) -> TracingConfigurator {
 	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("debug,reifydb=trace")
 }
 
 pub fn start(cli: &Cli) {
 	let http_addr = cli.http_addr.clone();
+	let grpc_addr = cli.grpc_addr.clone();
+	let ws_addr = cli.ws_addr.clone();
 
 	let mut db = server::memory()
-		.with_grpc(GrpcConfig::default().bind_addr(&cli.grpc_addr))
-		.with_ws(WsConfig::default().bind_addr(&cli.ws_addr))
+		.with_grpc(|c| c.bind_addr(grpc_addr))
+		.with_ws(|ws| ws.bind_addr(ws_addr))
 		.with_tracing(tracing_configuration)
 		.with_migrations(shape::migrations())
 		.with_procedures(|builder| {

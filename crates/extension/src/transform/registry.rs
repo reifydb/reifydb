@@ -10,11 +10,11 @@ pub struct Transforms(Arc<TransformsInner>);
 
 impl Transforms {
 	pub fn empty() -> Transforms {
-		Transforms::builder().build()
+		Transforms::builder().configure()
 	}
 
-	pub fn builder() -> TransformsBuilder {
-		TransformsBuilder(TransformsInner {
+	pub fn builder() -> TransformsConfigurator {
+		TransformsConfigurator(TransformsInner {
 			transforms: HashMap::new(),
 		})
 	}
@@ -43,9 +43,9 @@ impl TransformsInner {
 	}
 }
 
-pub struct TransformsBuilder(TransformsInner);
+pub struct TransformsConfigurator(TransformsInner);
 
-impl TransformsBuilder {
+impl TransformsConfigurator {
 	pub fn register<F, T>(mut self, name: &str, init: F) -> Self
 	where
 		F: Fn() -> T + Send + Sync + 'static,
@@ -56,7 +56,7 @@ impl TransformsBuilder {
 		self
 	}
 
-	pub fn build(self) -> Transforms {
+	pub fn configure(self) -> Transforms {
 		Transforms(Arc::new(self.0))
 	}
 }

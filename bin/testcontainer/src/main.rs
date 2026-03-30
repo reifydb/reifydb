@@ -5,32 +5,25 @@
 
 use std::time::Duration;
 
-use reifydb::{
-	WithSubsystem, server, sub_server_http::factory::HttpConfig, sub_server_otel::config::OtelConfig,
-	sub_server_ws::factory::WsConfig,
-};
+use reifydb::{WithSubsystem, server};
 use reifydb_type::params::Params;
 use tracing::info;
 
 fn main() {
-	let http_config = HttpConfig::default().admin_bind_addr("0.0.0.0:8091");
-	let ws_config = WsConfig::default().admin_bind_addr("0.0.0.0:8090");
-
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
 		.with_tracing_otel(
-			OtelConfig::new()
-				.service_name("testcontainer")
+			|c| c.service_name("testcontainer")
 				.endpoint("http://localhost:4317")
 				.sample_ratio(1.0)
 				.scheduled_delay(Duration::from_millis(500)),
-			|t| t.without_console()  // Disable console logging for better performance
-				.with_filter("trace"),  // Only affects OpenTelemetry layer
+			|t| t.without_console()
+				.with_filter("trace"),
 		)
-		.with_http(http_config)
-		.with_ws(ws_config)
+		.with_http(|c| c.admin_bind_addr("0.0.0.0:8091"))
+		.with_ws(|c| c.admin_bind_addr("0.0.0.0:8090"))
 		.with_flow(|flow| flow)
-		// .with_admin(AdminConfig::default())
+		// .with_admin(|c| c)
 		.build()
 		.unwrap();
 
