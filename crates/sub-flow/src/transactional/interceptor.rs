@@ -13,7 +13,10 @@
 //! After a `CREATE VIEW` (transactional) commits, eagerly registers the
 //! flow so it is available for the very next transaction's pre-commit phase.
 
-use std::sync::{Arc, RwLock};
+use std::{
+	mem,
+	sync::{Arc, RwLock},
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
@@ -28,8 +31,9 @@ use reifydb_transaction::{
 		transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
 	},
 	multi::transaction::read::MultiReadTransaction,
+	transaction::Transaction,
 };
-use reifydb_type::Result;
+use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::warn;
 
 use crate::{
@@ -58,7 +62,16 @@ pub struct TransactionalFlowPreCommitInterceptor {
 impl PreCommitInterceptor for TransactionalFlowPreCommitInterceptor {
 	fn intercept(&self, ctx: &mut PreCommitContext) -> Result<()> {
 		let engine = self.flow_engine.read().unwrap();
-		execute_inline_flow_changes(&engine, &self.engine, &self.catalog, ctx)
+		execute_inline_flow_changes(&engine, &self.engine, &self.catalog, ctx)?;
+
+		if !ctx.pending_shapes.is_empty() {
+			let shapes = mem::take(&mut ctx.pending_shapes);
+			let mut cmd = self.engine.begin_command(IdentityId::system())?;
+			self.catalog.persist_pending_shapes(&mut Transaction::Command(&mut cmd), shapes)?;
+			cmd.commit()?;
+		}
+
+		Ok(())
 	}
 }
 
@@ -139,6 +152,9 @@ pub(crate) fn execute_inline_flow_changes(
 			});
 		}
 		ctx.view_entries.extend(view_entries);
+
+		let flow_pending_shapes = flow_txn.take_pending_shapes();
+		ctx.pending_shapes.extend(flow_pending_shapes);
 
 		let flow_pending = flow_txn.take_pending();
 		for (key, pw) in flow_pending.iter_sorted() {

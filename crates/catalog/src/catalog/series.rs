@@ -141,7 +141,7 @@ impl Catalog {
 		txn.track_series_created(series.clone())?;
 
 		let shape = RowShape::from(series.columns.as_slice());
-		let _registered_shape = self.shape.get_or_create(shape.fields().to_vec())?;
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(series)
 	}

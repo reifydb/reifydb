@@ -14,7 +14,6 @@ use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	shape::RowShapeRegistry,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -319,8 +318,8 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn row_shape_registry(&self) -> &RowShapeRegistry {
-		&self.catalog.shape
+	fn materialized_catalog(&self) -> &MaterializedCatalog {
+		&self.catalog.materialized
 	}
 }
 

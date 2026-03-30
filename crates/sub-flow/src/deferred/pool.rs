@@ -12,6 +12,7 @@ use std::{collections::BTreeMap, mem::replace};
 
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::shape::RowShape,
 	interface::{catalog::flow::FlowId, change::Change},
 	internal,
 };
@@ -68,9 +69,10 @@ pub enum PoolMsg {
 
 /// Response from the pool actor
 pub enum PoolResponse {
-	/// Operation succeeded with pending writes and view changes for cascading
+	/// Operation succeeded with pending writes, pending shapes, and view changes
 	Success {
 		pending: Pending,
+		pending_shapes: Vec<RowShape>,
 		view_changes: Vec<Change>,
 	},
 	/// Registration succeeded
@@ -87,6 +89,7 @@ enum Phase {
 	WaitingForWorkers {
 		pending_count: usize,
 		results: Vec<Pending>,
+		pending_shapes: Vec<RowShape>,
 		view_changes: Vec<Change>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 		started_at: Instant,
@@ -295,6 +298,7 @@ impl PoolActor {
 		state.phase = Phase::WaitingForWorkers {
 			pending_count: batch_count,
 			results: Vec::with_capacity(batch_count),
+			pending_shapes: Vec::new(),
 			view_changes: Vec::new(),
 			reply,
 			started_at: start,
@@ -344,6 +348,7 @@ impl PoolActor {
 		state.phase = Phase::WaitingForWorkers {
 			pending_count: tick_count,
 			results: Vec::with_capacity(tick_count),
+			pending_shapes: Vec::new(),
 			view_changes: Vec::new(),
 			reply,
 			started_at: self.clock.instant(),
@@ -362,6 +367,7 @@ impl PoolActor {
 				let resp = match response {
 					FlowResponse::Success {
 						pending,
+						pending_shapes,
 						view_changes,
 					} => {
 						if is_register {
@@ -369,6 +375,7 @@ impl PoolActor {
 						} else {
 							PoolResponse::Success {
 								pending,
+								pending_shapes,
 								view_changes,
 							}
 						}
@@ -381,6 +388,7 @@ impl PoolActor {
 			Phase::WaitingForWorkers {
 				mut pending_count,
 				mut results,
+				mut pending_shapes,
 				mut view_changes,
 				reply: original_reply,
 				started_at: start,
@@ -388,9 +396,11 @@ impl PoolActor {
 				match response {
 					FlowResponse::Success {
 						pending,
+						pending_shapes: worker_pending_shapes,
 						view_changes: worker_view_changes,
 					} => {
 						results.push(pending);
+						pending_shapes.extend(worker_pending_shapes);
 						view_changes.extend(worker_view_changes);
 						pending_count -= 1;
 
@@ -404,6 +414,7 @@ impl PoolActor {
 									);
 									(original_reply)(PoolResponse::Success {
 										pending: combined,
+										pending_shapes,
 										view_changes,
 									});
 								}
@@ -417,6 +428,7 @@ impl PoolActor {
 							state.phase = Phase::WaitingForWorkers {
 								pending_count,
 								results,
+								pending_shapes,
 								view_changes,
 								reply: original_reply,
 								started_at: start,

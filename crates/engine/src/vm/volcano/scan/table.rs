@@ -86,7 +86,7 @@ impl TableScanNode {
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("TableScanNode context not set");
-		let shape = stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 			error!(diagnostic::internal::internal(format!(
 				"RowShape with fingerprint {:?} not found for table {}",
 				fingerprint,

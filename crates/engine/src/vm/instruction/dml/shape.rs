@@ -36,7 +36,7 @@ pub fn get_or_create_table_shape(catalog: &Catalog, table: &Table, txn: &mut Tra
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
 
-	catalog.shape.get_or_create(fields)
+	catalog.get_or_create_row_shape(txn, fields)
 }
 
 /// Get or create a shape for a ring buffer, properly handling dictionary-encoded columns
@@ -68,14 +68,14 @@ pub fn get_or_create_ringbuffer_shape(
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
 
-	catalog.shape.get_or_create(fields)
+	catalog.get_or_create_row_shape(txn, fields)
 }
 
 /// Get or create a shape for a series.
 ///
 /// The shape includes a leading key column field followed by the series data columns.
 /// This ensures series rows are encoded with a fingerprint header, enabling the CDC pipeline
-/// to decode them via RowShapeRegistry lookup.
+/// to decode them via MaterializedCatalog lookup.
 pub fn get_or_create_series_shape(catalog: &Catalog, series: &Series, txn: &mut Transaction<'_>) -> Result<RowShape> {
 	let mut fields = Vec::with_capacity(1 + series.columns.len());
 	// Find the key column's type from the declared columns
@@ -96,5 +96,5 @@ pub fn get_or_create_series_shape(catalog: &Catalog, series: &Series, txn: &mut 
 		};
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
-	catalog.shape.get_or_create(fields)
+	catalog.get_or_create_row_shape(txn, fields)
 }

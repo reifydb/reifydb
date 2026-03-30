@@ -77,7 +77,6 @@ impl GeneratorFunction for InspectSubscription {
 		drop(stream); // Explicitly drop to release the borrow on txn
 
 		let catalog = ctx.catalog;
-		let row_shape_registry = &catalog.shape;
 
 		// Process collected entries
 		for entry in entries {
@@ -85,7 +84,7 @@ impl GeneratorFunction for InspectSubscription {
 				row_numbers.push(sub_row_key.row);
 
 				let fingerprint = entry.row.fingerprint();
-				let shape = row_shape_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
+				let shape = catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 					Error(Box::new(internal(format!(
 						"Shape not found for fingerprint: {:?}",
 						fingerprint

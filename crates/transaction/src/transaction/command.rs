@@ -228,6 +228,7 @@ impl CommandTransaction {
 		let mut ctx = PreCommitContext {
 			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
 			pending_writes: Vec::new(),
+			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
 		};

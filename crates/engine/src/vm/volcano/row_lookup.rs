@@ -62,7 +62,7 @@ impl RowPointLookupNode {
 
 		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
 		let shape =
-			stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 				internal_error!("RowShape with fingerprint {:?} not found", fingerprint)
 			})?;
 
@@ -139,7 +139,7 @@ impl RowListLookupNode {
 
 		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
 		let shape =
-			stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 				internal_error!("RowShape with fingerprint {:?} not found", fingerprint)
 			})?;
 
@@ -243,7 +243,7 @@ impl RowRangeScanNode {
 
 		let stored_ctx = self.context.as_ref().expect("RowRangeScanNode context not set");
 		let shape =
-			stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+			stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 				internal_error!("RowShape with fingerprint {:?} not found", fingerprint)
 			})?;
 

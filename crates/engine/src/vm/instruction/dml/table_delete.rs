@@ -165,13 +165,14 @@ pub(crate) fn delete(
 			if let Some(ref pk_def) = pk_def {
 				// Load shape from the row data
 				let fingerprint = row_values.fingerprint();
-				let shape = services.catalog.shape.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-					internal_error!(
-						"Shape with fingerprint {:?} not found for table {}",
-						fingerprint,
-						table.name
-					)
-				})?;
+				let shape =
+					services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+						internal_error!(
+							"Shape with fingerprint {:?} not found for table {}",
+							fingerprint,
+							table.name
+						)
+					})?;
 				let index_key = primary_key::encode_primary_key(pk_def, &row_values, &table, &shape)?;
 
 				txn.remove(
@@ -204,13 +205,14 @@ pub(crate) fn delete(
 		for multi in rows {
 			if let Some(ref pk_def) = pk_def {
 				let fingerprint = multi.row.fingerprint();
-				let shape = services.catalog.shape.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-					internal_error!(
-						"Shape with fingerprint {:?} not found for table {}",
-						fingerprint,
-						table.name
-					)
-				})?;
+				let shape =
+					services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+						internal_error!(
+							"Shape with fingerprint {:?} not found for table {}",
+							fingerprint,
+							table.name
+						)
+					})?;
 				let index_key = primary_key::encode_primary_key(pk_def, &multi.row, &table, &shape)?;
 
 				txn.remove(

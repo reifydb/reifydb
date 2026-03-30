@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::{key::EncodedKey, row::EncodedRow},
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::shape::ShapeId,
 		change::{Change, Diff},
@@ -27,6 +27,8 @@ pub struct PreCommitContext {
 	/// View writes produced by flow interceptors to merge back into the transaction.
 	/// `Some(value)` = set the key, `None` = remove the key.
 	pub pending_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
+	/// Row shapes created during flow processing, to be persisted at commit time.
+	pub pending_shapes: Vec<RowShape>,
 	/// Snapshot of the committing transaction's pending KV writes (read-only base for flow processing).
 	/// `Some(value)` = set the key, `None` = remove the key.
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
@@ -40,6 +42,7 @@ impl PreCommitContext {
 		Self {
 			flow_changes: Vec::new(),
 			pending_writes: Vec::new(),
+			pending_shapes: Vec::new(),
 			transaction_writes: Vec::new(),
 			view_entries: Vec::new(),
 		}

@@ -245,6 +245,7 @@ impl<'a> TestTransaction<'a> {
 		let mut ctx = PreCommitContext {
 			flow_changes: self.inner.accumulator.take_changes_from(offset, CommitVersion(0)),
 			pending_writes: Vec::new(),
+			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
 		};

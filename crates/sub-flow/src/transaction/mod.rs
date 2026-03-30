@@ -7,6 +7,7 @@ use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::shape::RowShape,
 	interface::{
 		catalog::shape::ShapeId,
 		change::{Change, ChangeOrigin, Diff},
@@ -91,6 +92,7 @@ pub mod write;
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
+	pub pending_shapes: Vec<RowShape>,
 	pub primitive_query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
 	pub catalog: Catalog,
@@ -178,7 +180,7 @@ impl FlowTransaction {
 		}
 	}
 
-	fn inner_mut(&mut self) -> &mut FlowTransactionInner {
+	pub(crate) fn inner_mut(&mut self) -> &mut FlowTransactionInner {
 		match self {
 			Self::Deferred {
 				inner,
@@ -210,6 +212,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending: Pending::new(),
+				pending_shapes: Vec::new(),
 				primitive_query,
 				state_query,
 				catalog,
@@ -234,6 +237,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending,
+				pending_shapes: Vec::new(),
 				primitive_query,
 				state_query,
 				catalog,
@@ -261,6 +265,7 @@ impl FlowTransaction {
 			inner: FlowTransactionInner {
 				version,
 				pending,
+				pending_shapes: Vec::new(),
 				primitive_query,
 				state_query,
 				catalog,
@@ -279,6 +284,11 @@ impl FlowTransaction {
 	/// Extract pending writes, replacing them with an empty buffer.
 	pub fn take_pending(&mut self) -> Pending {
 		mem::take(&mut self.inner_mut().pending)
+	}
+
+	/// Extract pending shapes, replacing them with an empty buffer.
+	pub fn take_pending_shapes(&mut self) -> Vec<RowShape> {
+		mem::take(&mut self.inner_mut().pending_shapes)
 	}
 
 	/// Track a view-level flow change in this transaction's accumulator.

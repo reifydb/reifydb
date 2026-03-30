@@ -16,6 +16,7 @@ pub mod primary_key;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
+pub mod row_shape;
 pub mod shape_retention_policy;
 pub mod sink;
 pub mod source;
@@ -31,6 +32,7 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	common::CommitVersion,
 	config::SystemConfig,
+	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
 		config::Config,
 		dictionary::Dictionary,
@@ -194,6 +196,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) vtable_user: SkipMap<VTableId, Arc<VTable>>,
 	/// Index from (namespace_id, table_name) to virtual table ID for fast name lookups
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
+	/// Content-addressed row shapes indexed by fingerprint
+	pub(crate) row_shapes: SkipMap<RowShapeFingerprint, RowShape>,
 }
 
 impl ops::Deref for MaterializedCatalog {
@@ -269,6 +273,7 @@ impl MaterializedCatalog {
 			sinks_by_name: SkipMap::new(),
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
+			row_shapes: SkipMap::new(),
 		}))
 	}
 

@@ -10,7 +10,6 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 	materialized::MaterializedCatalog,
-	shape::RowShapeRegistry,
 };
 use reifydb_cdc::{
 	produce::producer::{CdcProduceMsg, CdcProducerEventListener, spawn_cdc_producer},
@@ -194,9 +193,6 @@ impl TestEngineBuilder {
 		let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
 		ioc = ioc.register(materialized_catalog.clone());
 
-		let row_shape_registry = RowShapeRegistry::new(single.clone());
-		ioc = ioc.register(row_shape_registry.clone());
-
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
 
@@ -224,10 +220,10 @@ impl TestEngineBuilder {
 
 		let engine = StandardEngine::new(
 			multi,
-			single,
+			single.clone(),
 			eventbus.clone(),
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog, row_shape_registry),
+			Catalog::new(materialized_catalog),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 				functions: default_functions().configure(),
@@ -315,8 +311,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	.unwrap();
 
 	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
-	let row_shape_registry = RowShapeRegistry::new(single);
-	let catalog = Catalog::new(materialized_catalog, row_shape_registry);
+	let catalog = Catalog::new(materialized_catalog);
 
 	let namespace = catalog
 		.create_namespace(

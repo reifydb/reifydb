@@ -86,7 +86,7 @@ where
 	fn process(&self, version: CommitVersion, timestamp: u64, deltas: Vec<Delta>) {
 		let mut diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
-		let registry = self.host.row_shape_registry();
+		let catalog = self.host.materialized_catalog();
 
 		trace!(version = version.0, delta_count = deltas.len(), "Processing CDC");
 
@@ -117,14 +117,14 @@ where
 									.flatten();
 								if let Some(prev) = pre {
 									build_update_diff(
-										registry,
+										catalog,
 										row_number,
 										prev.row,
 										row.clone(),
 									)
 								} else {
 									build_insert_diff(
-										registry,
+										catalog,
 										row_number,
 										row.clone(),
 									)
@@ -136,7 +136,7 @@ where
 							} => {
 								if !row.is_empty() {
 									build_remove_diff(
-										registry,
+										catalog,
 										row_number,
 										row.clone(),
 									)
@@ -173,14 +173,14 @@ where
 									.flatten();
 								if let Some(prev) = pre {
 									build_update_diff(
-										registry,
+										catalog,
 										row_key.row,
 										prev.row,
 										row.clone(),
 									)
 								} else {
 									build_insert_diff(
-										registry,
+										catalog,
 										row_key.row,
 										row.clone(),
 									)
@@ -192,7 +192,7 @@ where
 							} => {
 								if !row.is_empty() {
 									build_remove_diff(
-										registry,
+										catalog,
 										row_key.row,
 										row.clone(),
 									)
@@ -569,7 +569,7 @@ where
 pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
-	use reifydb_catalog::shape::RowShapeRegistry;
+	use reifydb_catalog::materialized::MaterializedCatalog;
 	use reifydb_core::{
 		config::SystemConfig,
 		encoded::{key::EncodedKey, row::EncodedRow},
@@ -608,7 +608,7 @@ pub mod tests {
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		event_bus: EventBus,
-		row_shape_registry: RowShapeRegistry,
+		materialized_catalog: MaterializedCatalog,
 	}
 
 	impl TestCdcHost {
@@ -634,7 +634,7 @@ pub mod tests {
 				multi,
 				single,
 				event_bus,
-				row_shape_registry: RowShapeRegistry::testing(),
+				materialized_catalog: MaterializedCatalog::new(SystemConfig::new()),
 			}
 		}
 	}
@@ -666,8 +666,8 @@ pub mod tests {
 			true
 		}
 
-		fn row_shape_registry(&self) -> &RowShapeRegistry {
-			&self.row_shape_registry
+		fn materialized_catalog(&self) -> &MaterializedCatalog {
+			&self.materialized_catalog
 		}
 	}
 

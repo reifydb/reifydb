@@ -12,6 +12,7 @@ pub mod policy;
 pub mod primary_key;
 pub mod ringbuffer;
 pub mod role;
+pub mod row_shape;
 pub mod shape_retention_policy;
 pub mod sink;
 pub mod source;
@@ -32,6 +33,7 @@ use primary_key::load_primary_keys;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
+use row_shape::load_row_shapes;
 use shape_retention_policy::load_shape_retention_policies;
 use sink::load_sinks;
 use source::load_sources;
@@ -68,6 +70,8 @@ impl MaterializedCatalogLoader {
 		load_configs(rx, catalog)?;
 		load_namespaces(rx, catalog)?;
 		load_primary_keys(rx, catalog)?;
+
+		load_row_shapes(rx, catalog)?;
 
 		load_tables(rx, catalog)?;
 		load_views(rx, catalog)?;

@@ -45,7 +45,7 @@ impl BaseVTable for SystemShapeFields {
 			return Ok(None);
 		}
 
-		let shapes = self.catalog.shape.list_all();
+		let shapes = self.catalog.materialized.list_row_shapes();
 
 		let total_fields: usize = shapes.iter().map(|s| s.field_count()).sum();
 

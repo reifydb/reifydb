@@ -26,7 +26,6 @@ use crate::{
 		MaterializedCatalog,
 		load::{MaterializedCatalogLoader, identity::load_identities},
 	},
-	shape::{RowShapeRegistry, load::RowShapeRegistryLoader},
 };
 
 /// Load all catalog data from storage into MaterializedCatalog.
@@ -66,10 +65,9 @@ pub fn bootstrap_system_procedures(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
-	row_shape_registry: &RowShapeRegistry,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	let catalog_api = Catalog::new(catalog.clone(), row_shape_registry.clone());
+	let catalog_api = Catalog::new(catalog.clone());
 	let mut admin = AdminTransaction::new(
 		multi.clone(),
 		single.clone(),
@@ -170,16 +168,5 @@ pub fn bootstrap_root_identity(
 	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
 	load_identities(&mut Transaction::Query(&mut qt), catalog)?;
 
-	Ok(())
-}
-
-/// Load shapes from storage into RowShapeRegistry.
-pub fn load_shape_registry(
-	multi: &MultiTransaction,
-	single: &SingleTransaction,
-	registry: &RowShapeRegistry,
-) -> Result<()> {
-	let mut qt = QueryTransaction::new(multi.begin_query()?, single.clone(), IdentityId::system());
-	RowShapeRegistryLoader::load_all(&mut Transaction::Query(&mut qt), registry)?;
 	Ok(())
 }

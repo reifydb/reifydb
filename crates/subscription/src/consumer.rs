@@ -47,9 +47,7 @@ impl SubscriptionConsumer {
 			}
 		};
 
-		// Get shape registry for resolving per-row shapes
 		let catalog = engine.catalog();
-		let row_shape_registry = &catalog.shape;
 
 		// Create range for scanning rows
 		let range = if let Some(last_key) = last_consumed_key {
@@ -82,9 +80,9 @@ impl SubscriptionConsumer {
 				// Extract shape fingerprint from the encoded row
 				let fingerprint = entry.row.fingerprint();
 
-				// Resolve shape using RowShapeRegistry
-				let shape = row_shape_registry
-					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
+				// Resolve shape using catalog
+				let shape = catalog
+					.get_or_load_row_shape(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
 					.ok_or_else(|| {
 						Error(Box::new(internal(format!(
 							"Shape not found for fingerprint: {:?}",

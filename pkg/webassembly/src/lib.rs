@@ -23,12 +23,9 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{
-		bootstrap_configaults, bootstrap_system_procedures, load_materialized_catalog, load_shape_registry,
-	},
+	bootstrap::{bootstrap_configaults, bootstrap_system_procedures, load_materialized_catalog},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	shape::RowShapeRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -220,17 +217,13 @@ impl WasmDB {
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
-		// Create RowShapeRegistry for bootstrap
-		let shape_registry = RowShapeRegistry::new(single.clone());
-
 		// Run shared bootstrap: load catalog, config defaults, system procedures, shapes
 		load_materialized_catalog(&multi, &single, &materialized_catalog)
 			.map_err(|e| JsError::from_error(&e))?;
 		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
-		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &shape_registry, &eventbus)
+		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
-		load_shape_registry(&multi, &single, &shape_registry).map_err(|e| JsError::from_error(&e))?;
 
 		let procedures = default_procedures().configure();
 
@@ -241,7 +234,7 @@ impl WasmDB {
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog, shape_registry),
+			Catalog::new(materialized_catalog),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 				functions: default_functions().configure(),

@@ -173,9 +173,7 @@ impl ReplicationSubsystem {
 		let reconnect_interval = config.reconnect_interval;
 		let batch_size = config.batch_size;
 
-		let multi = engine.multi_owned();
-		let catalog = engine.catalog();
-		let applier = ReplicaApplier::new(multi, catalog);
+		let applier = ReplicaApplier::new(engine.clone());
 		let client = ReplicationClient::new(primary_addr, applier, reconnect_interval, batch_size);
 
 		let (shutdown_tx, shutdown_rx) = watch::channel(false);
