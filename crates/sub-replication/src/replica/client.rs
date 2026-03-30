@@ -102,7 +102,9 @@ impl ReplicationClient {
 			    msg = stream.message() => {
 				match msg {
 				    Ok(Some(entry)) => {
-					if let Err(e) = self.applier.apply(&entry) {
+					let applier = &self.applier;
+					let result = tokio::task::block_in_place(|| applier.apply(&entry));
+					if let Err(e) = result {
 					    error!(version = entry.version, "Failed to apply CDC entry: {:?}", e);
 					    return Err(e.into());
 					}

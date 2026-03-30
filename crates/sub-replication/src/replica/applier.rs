@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use reifydb_catalog::{catalog::Catalog, change::apply_system_change};
 use reifydb_core::{common::CommitVersion, encoded::shape::RowShapeField};
 use reifydb_transaction::{
@@ -16,13 +18,16 @@ use crate::{convert::proto_entry_to_system_changes, generated::CdcEntry};
 pub struct ReplicaApplier {
 	multi: MultiTransaction,
 	catalog: Catalog,
+	last_applied: AtomicU64,
 }
 
 impl ReplicaApplier {
 	pub fn new(multi: MultiTransaction, catalog: Catalog) -> Self {
+		let last_applied = AtomicU64::new(multi.done_until().0);
 		Self {
 			multi,
 			catalog,
+			last_applied,
 		}
 	}
 
@@ -34,6 +39,7 @@ impl ReplicaApplier {
 
 		if system_changes.is_empty() {
 			self.multi.advance_version_for_replica(version);
+			self.last_applied.store(version.0, Ordering::SeqCst);
 			return Ok(());
 		}
 
@@ -46,6 +52,7 @@ impl ReplicaApplier {
 
 		self.ensure_shapes()?;
 
+		self.last_applied.store(version.0, Ordering::SeqCst);
 		debug!(version = version.0, "Replica applied CDC entry");
 		Ok(())
 	}
@@ -78,8 +85,8 @@ impl ReplicaApplier {
 		Ok(())
 	}
 
-	/// Get the current replicated version (done_until on the replica).
+	/// Get the last successfully applied CDC entry version.
 	pub fn current_version(&self) -> CommitVersion {
-		self.multi.done_until()
+		CommitVersion(self.last_applied.load(Ordering::SeqCst))
 	}
 }
