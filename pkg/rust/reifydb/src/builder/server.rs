@@ -39,6 +39,12 @@ use crate::{
 	api::{StorageFactory, transaction},
 };
 
+#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+type OtelTracingConfig = (
+	Box<dyn FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static>,
+	Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>,
+);
+
 pub struct ServerBuilder {
 	storage_factory: StorageFactory,
 	runtime_config: Option<SharedRuntimeConfig>,
@@ -62,10 +68,7 @@ pub struct ServerBuilder {
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
-	otel_tracing_config: Option<(
-		Box<dyn FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static>,
-		Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>,
-	)>,
+	otel_tracing_config: Option<OtelTracingConfig>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 }
 

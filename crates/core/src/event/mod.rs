@@ -25,6 +25,8 @@ pub mod procedure;
 pub mod store;
 pub mod transaction;
 
+type EventListenerInstaller = Box<dyn FnOnce(&mut HashMap<TypeId, Box<dyn EventListenerList>>) + Send>;
+
 pub trait Event: Any + Send + Sync + Clone + 'static {
 	fn as_any(&self) -> &dyn Any;
 	fn into_any(self) -> Box<dyn Any + Send>;
@@ -86,7 +88,7 @@ struct EventEnvelope {
 enum EventBusMsg {
 	Emit(EventEnvelope),
 	Register {
-		installer: Box<dyn FnOnce(&mut HashMap<TypeId, Box<dyn EventListenerList>>) + Send>,
+		installer: EventListenerInstaller,
 	},
 	WaitForCompletion(Sender<()>),
 }
@@ -144,13 +146,10 @@ impl EventBus {
 		let type_id = TypeId::of::<E>();
 		let listener = Arc::new(listener);
 
-		let installer: Box<dyn FnOnce(&mut HashMap<TypeId, Box<dyn EventListenerList>>) + Send> =
-			Box::new(move |map| {
-				let list = map
-					.entry(type_id)
-					.or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()));
-				list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(listener);
-			});
+		let installer: EventListenerInstaller = Box::new(move |map| {
+			let list = map.entry(type_id).or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()));
+			list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(listener);
+		});
 
 		let _ = self.actor_ref.send(EventBusMsg::Register {
 			installer,

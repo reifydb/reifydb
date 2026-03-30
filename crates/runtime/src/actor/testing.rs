@@ -9,36 +9,39 @@
 //! # Example
 //!
 //! ```
-//! #[test]
-//! fn test_counter() {
-//! 	struct Counter;
+//! use reifydb_runtime::actor::{
+//! 	context::Context,
+//! 	testing::TestHarness,
+//! 	traits::{Actor, Directive},
+//! };
 //!
-//! 	impl Actor for Counter {
-//! 		type State = i64;
-//! 		type Message = i64;
+//! struct Counter;
 //!
-//! 		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
-//! 			0
-//! 		}
+//! impl Actor for Counter {
+//! 	type State = i64;
+//! 	type Message = i64;
 //!
-//! 		fn handle(
-//! 			&self,
-//! 			state: &mut Self::State,
-//! 			msg: Self::Message,
-//! 			_ctx: &Context<Self::Message>,
-//! 		) -> Directive {
-//! 			*state += msg;
-//! 			Directive::Continue
-//! 		}
+//! 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+//! 		0
 //! 	}
 //!
-//! 	let mut harness = TestHarness::new(Counter);
-//! 	harness.send(5);
-//! 	harness.send(3);
-//! 	harness.process_all();
-//!
-//! 	assert_eq!(*harness.state(), 8);
+//! 	fn handle(
+//! 		&self,
+//! 		state: &mut Self::State,
+//! 		msg: Self::Message,
+//! 		_ctx: &Context<Self::Message>,
+//! 	) -> Directive {
+//! 		*state += msg;
+//! 		Directive::Continue
+//! 	}
 //! }
+//!
+//! let mut harness = TestHarness::new(Counter);
+//! harness.send(5);
+//! harness.send(3);
+//! harness.process_all();
+//!
+//! assert_eq!(*harness.state(), 8);
 //! ```
 
 use std::{collections::VecDeque, marker::PhantomData};

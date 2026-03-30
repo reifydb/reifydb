@@ -14,6 +14,14 @@ use reifydb_type::Result;
 
 use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policies};
 
+/// Identifies the target of a policy enforcement check.
+pub struct PolicyTarget<'a> {
+	pub namespace: &'a str,
+	pub object: &'a str,
+	pub operation: &'a str,
+	pub target_type: PolicyTargetType,
+}
+
 /// Enforce write policies for a DML operation (insert, update, delete).
 ///
 /// - Root bypasses all policies.
@@ -23,11 +31,8 @@ use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policie
 pub fn enforce_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	target_namespace: &str,
-	target_object: &str,
-	operation: &str,
+	target: &PolicyTarget<'_>,
 	row_columns: &Columns,
-	target_type: PolicyTargetType,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
 	let identity = tx.identity();
@@ -35,20 +40,27 @@ pub fn enforce_write_policies(
 		return Ok(());
 	}
 
-	let target_type_str = target_type.as_str().to_string();
-	let policies = resolve_write_policies(catalog, tx, target_namespace, target_object, operation, target_type)?;
+	let target_type_str = target.target_type.as_str().to_string();
+	let policies = resolve_write_policies(
+		catalog,
+		tx,
+		target.namespace,
+		target.object,
+		target.operation,
+		target.target_type,
+	)?;
 
 	if policies.is_empty() {
 		return Err(PolicyError::NoPolicyined {
-			operation: operation.to_string(),
-			target: format!("{}::{}", target_namespace, target_object),
+			operation: target.operation.to_string(),
+			target: format!("{}::{}", target.namespace, target.object),
 			target_type: target_type_str,
 		}
 		.into());
 	}
 
 	let bump = Bump::new();
-	let target = format!("{}::{}", target_namespace, target_object);
+	let target_name = format!("{}::{}", target.namespace, target.object);
 
 	for (policy, op) in &policies {
 		let policy_name = policy.name.as_deref().unwrap_or("<unnamed>");
@@ -85,8 +97,8 @@ pub fn enforce_write_policies(
 				if !passed {
 					return Err(PolicyError::PolicyDenied {
 						policy_name: policy_name.to_string(),
-						operation: operation.to_string(),
-						target: target.clone(),
+						operation: target.operation.to_string(),
+						target: target_name.clone(),
 					}
 					.into());
 				}
@@ -176,10 +188,7 @@ pub fn enforce_session_policy(
 pub fn enforce_identity_policy(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
-	target_namespace: &str,
-	target_object: &str,
-	operation: &str,
-	target_type: PolicyTargetType,
+	target: &PolicyTarget<'_>,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
 	let identity = tx.identity();
@@ -187,20 +196,27 @@ pub fn enforce_identity_policy(
 		return Ok(());
 	}
 
-	let target_type_str = target_type.as_str().to_string();
-	let policies = resolve_write_policies(catalog, tx, target_namespace, target_object, operation, target_type)?;
+	let target_type_str = target.target_type.as_str().to_string();
+	let policies = resolve_write_policies(
+		catalog,
+		tx,
+		target.namespace,
+		target.object,
+		target.operation,
+		target.target_type,
+	)?;
 
 	if policies.is_empty() {
 		return Err(PolicyError::NoPolicyined {
-			operation: operation.to_string(),
-			target: format!("{}::{}", target_namespace, target_object),
+			operation: target.operation.to_string(),
+			target: format!("{}::{}", target.namespace, target.object),
 			target_type: target_type_str,
 		}
 		.into());
 	}
 
 	let bump = Bump::new();
-	let target = format!("{}::{}", target_namespace, target_object);
+	let target_name = format!("{}::{}", target.namespace, target.object);
 	let empty_columns = Columns::empty();
 
 	for (policy, op) in &policies {
@@ -229,8 +245,8 @@ pub fn enforce_identity_policy(
 				if !passed {
 					return Err(PolicyError::PolicyDenied {
 						policy_name: policy_name.to_string(),
-						operation: operation.to_string(),
-						target: target.clone(),
+						operation: target.operation.to_string(),
+						target: target_name.clone(),
 					}
 					.into());
 				}

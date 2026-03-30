@@ -5,16 +5,13 @@ use std::{ops::Deref, sync::Arc};
 
 use bumpalo::Bump;
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
-use reifydb_core::{error::diagnostic::subscription, util::ioc::IocContainer, value::column::columns::Columns};
-use reifydb_extension::transform::registry::Transforms;
+use reifydb_core::{error::diagnostic::subscription, value::column::columns::Columns};
 use reifydb_metric::metric::MetricReader;
 use reifydb_policy::inject_read_policies;
-use reifydb_routine::{function::registry::Functions, procedure::registry::Procedures};
 use reifydb_rql::{
 	ast::parse_str,
 	compiler::{CompilationResult, Compiled, constrain_policy},
 };
-use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
@@ -30,13 +27,13 @@ use reifydb_type::{
 use tracing::instrument;
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::remote::{self, RemoteRegistry};
+use crate::remote;
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
 	vm::{
 		Admin, Command, Query, Subscription, Test,
-		services::Services,
+		services::{EngineConfig, Services},
 		stack::{SymbolTable, Variable},
 		vm::Vm,
 	},
@@ -62,27 +59,11 @@ impl Deref for Executor {
 impl Executor {
 	pub fn new(
 		catalog: Catalog,
-		runtime_context: RuntimeContext,
-		functions: Functions,
-		procedures: Procedures,
-		transforms: Transforms,
+		config: EngineConfig,
 		flow_operator_store: SystemFlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
-		ioc: IocContainer,
-		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
-		Self(Arc::new(Services::new(
-			catalog,
-			runtime_context,
-			functions,
-			procedures,
-			transforms,
-			flow_operator_store,
-			stats_reader,
-			ioc,
-			#[cfg(not(target_arch = "wasm32"))]
-			remote_registry,
-		)))
+		Self(Arc::new(Services::new(catalog, config, flow_operator_store, stats_reader)))
 	}
 
 	/// Get a reference to the underlying Services

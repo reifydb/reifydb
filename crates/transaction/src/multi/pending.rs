@@ -136,11 +136,6 @@ impl PendingWrites {
 		self.writes.iter()
 	}
 
-	/// Consume and iterate over all pending writes in sorted order
-	pub fn into_iter(self) -> BTreeMapIntoIter<EncodedKey, Pending> {
-		self.writes.into_iter()
-	}
-
 	/// Consume and iterate over pending writes in insertion order
 	/// Uses the insertion_order Vec to maintain original insertion sequence
 	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (EncodedKey, Pending)> {
@@ -197,6 +192,16 @@ impl PendingWrites {
 	#[inline]
 	pub fn remove_entry_comparable(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
 		self.remove_entry(key)
+	}
+}
+
+impl IntoIterator for PendingWrites {
+	type Item = (EncodedKey, Pending);
+	type IntoIter = BTreeMapIntoIter<EncodedKey, Pending>;
+
+	/// Consume and iterate over all pending writes in sorted order
+	fn into_iter(self) -> Self::IntoIter {
+		self.writes.into_iter()
 	}
 }
 

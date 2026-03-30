@@ -42,6 +42,7 @@ impl SubscriptionCursor {
 	/// Fetch the next batch of subscription data.
 	///
 	/// Returns `None` if there is no new data available.
+	#[allow(clippy::should_implement_trait)]
 	pub fn next(&mut self) -> Result<Option<Columns>> {
 		let sub_id = self.subscription_id;
 		let last_key = self.last_consumed_key.clone();

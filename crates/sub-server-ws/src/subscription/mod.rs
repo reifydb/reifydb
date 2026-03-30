@@ -9,4 +9,4 @@
 pub mod handler;
 pub mod registry;
 
-use registry::{PushMessage, SubscriptionRegistry};
+use registry::PushMessage;

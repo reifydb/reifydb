@@ -41,7 +41,7 @@ use reifydb_type::{
 use super::{
 	column::JoinedColumnsBuilder,
 	state::{JoinSide, JoinState},
-	strategy::JoinStrategy,
+	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
 	operator::{
@@ -53,6 +53,13 @@ use crate::{
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
+
+/// Configuration for one side (left or right) of a join operator.
+pub struct JoinSideConfig {
+	pub parent: Arc<Operators>,
+	pub node: FlowNodeId,
+	pub exprs: Vec<Expression>,
+}
 
 pub struct JoinOperator {
 	pub(crate) left_parent: Arc<Operators>,
@@ -75,17 +82,19 @@ pub struct JoinOperator {
 
 impl JoinOperator {
 	pub fn new(
-		left_parent: Arc<Operators>,
-		right_parent: Arc<Operators>,
+		left: JoinSideConfig,
+		right: JoinSideConfig,
 		node: FlowNodeId,
 		join_type: JoinType,
-		left_node: FlowNodeId,
-		right_node: FlowNodeId,
-		left_exprs: Vec<Expression>,
-		right_exprs: Vec<Expression>,
 		alias: Option<String>,
 		executor: Executor,
 	) -> Self {
+		let left_parent = left.parent;
+		let right_parent = right.parent;
+		let left_node = left.node;
+		let right_node = right.node;
+		let left_exprs = left.exprs;
+		let right_exprs = right.exprs;
 		let strategy = JoinStrategy::from(join_type);
 		let shape = Self::state_shape();
 		let row_number_provider = RowNumberProvider::new(node);
@@ -516,17 +525,29 @@ impl Operator for JoinOperator {
 
 					// Process inserts with defined keys (batched by key)
 					for (key_hash, indices) in inserts_by_key {
-						let diffs = self.strategy.handle_insert(
-							txn, &post, &indices, side, &key_hash, &mut state, self,
-						)?;
+						let mut ctx = JoinContext {
+							side,
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_insert(txn, &post, &indices, &key_hash, &mut ctx)?;
 						result.extend(diffs);
 					}
 
 					// Process inserts with undefined keys individually
 					for idx in inserts_undefined {
-						let diffs = self.strategy.handle_insert_undefined(
-							txn, &post, idx, side, &mut state, self,
-						)?;
+						let mut ctx = JoinContext {
+							side,
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_insert_undefined(txn, &post, idx, &mut ctx)?;
 						result.extend(diffs);
 					}
 				}
@@ -550,30 +571,29 @@ impl Operator for JoinOperator {
 
 					// Process removes with defined keys (batched by key)
 					for (key_hash, indices) in removes_by_key {
-						let diffs = self.strategy.handle_remove(
-							txn,
-							&pre,
-							&indices,
+						let mut ctx = JoinContext {
 							side,
-							&key_hash,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_remove(txn, &pre, &indices, &key_hash, &mut ctx)?;
 						result.extend(diffs);
 					}
 
 					// Process removes with undefined keys individually
 					for idx in removes_undefined {
-						let diffs = self.strategy.handle_remove_undefined(
-							txn,
-							&pre,
-							idx,
+						let mut ctx = JoinContext {
 							side,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_remove_undefined(txn, &pre, idx, &mut ctx)?;
 						result.extend(diffs);
 					}
 				}
@@ -610,33 +630,33 @@ impl Operator for JoinOperator {
 
 					// Process updates with defined keys (batched by key pair)
 					for ((pre_key, post_key), indices) in updates_by_key {
-						let diffs = self.strategy.handle_update(
-							txn,
-							&pre,
-							&post,
-							&indices,
+						let mut ctx = JoinContext {
 							side,
-							&pre_key,
-							&post_key,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let keys = UpdateKeys {
+							pre: &pre_key,
+							post: &post_key,
+						};
+						let diffs = self
+							.strategy
+							.handle_update(txn, &pre, &post, &indices, keys, &mut ctx)?;
 						result.extend(diffs);
 					}
 
 					// Process updates with undefined keys individually
 					for row_idx in updates_undefined {
-						let diffs = self.strategy.handle_update_undefined(
-							txn,
-							&pre,
-							&post,
-							row_idx,
+						let mut ctx = JoinContext {
 							side,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_update_undefined(txn, &pre, &post, row_idx, &mut ctx)?;
 						result.extend(diffs);
 					}
 				}

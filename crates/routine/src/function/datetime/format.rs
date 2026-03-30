@@ -33,6 +33,7 @@ fn compute_day_of_year(year: i32, month: u32, day: u32) -> u32 {
 	doy + day
 }
 
+#[allow(clippy::too_many_arguments)]
 fn format_datetime(
 	year: i32,
 	month: u32,

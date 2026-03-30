@@ -31,6 +31,7 @@ impl Blob {
 		String::from_utf8_lossy(self.as_bytes()).to_string()
 	}
 
+	#[allow(clippy::should_implement_trait)]
 	pub fn from_str(fragment: Fragment) -> Self {
 		Self::from_utf8(fragment)
 	}

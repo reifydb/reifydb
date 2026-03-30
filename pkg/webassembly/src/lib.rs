@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 //! WebAssembly bindings for ReifyDB query engine
 //!
@@ -42,7 +43,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine};
+use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_routine::{function::default_functions, procedure::default_procedures};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
@@ -241,13 +242,15 @@ impl WasmDB {
 			eventbus,
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, shape_registry),
-			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-			default_functions().configure(),
-			procedures,
-			Transforms::empty(),
-			ioc,
-			#[cfg(not(target_arch = "wasm32"))]
-			None,
+			EngineConfig {
+				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				functions: default_functions().configure(),
+				procedures,
+				transforms: Transforms::empty(),
+				ioc,
+				#[cfg(not(target_arch = "wasm32"))]
+				remote_registry: None,
+			},
 		);
 
 		// Spawn CDC producer actor on the shared runtime, passing engine as CdcHost

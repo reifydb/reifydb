@@ -5,14 +5,17 @@ use std::sync::{Arc, RwLock};
 
 use crate::interceptor::interceptors::Interceptors;
 
+type InterceptorFactoryFn = Box<dyn Fn(&mut Interceptors) + Send + Sync>;
+type LateInterceptorFactoryFn = Arc<dyn Fn(&mut Interceptors) + Send + Sync>;
+
 /// Concrete factory for creating interceptor instances for each transaction.
 ///
 /// Stores both eagerly-registered factory closures (via `add`) and
 /// late-bound factory closures (via `add_late`) that can be registered
 /// after construction through `&self`.
 pub struct InterceptorFactory {
-	pub(crate) factories: Vec<Box<dyn Fn(&mut Interceptors) + Send + Sync>>,
-	late: RwLock<Vec<Arc<dyn Fn(&mut Interceptors) + Send + Sync>>>,
+	pub(crate) factories: Vec<InterceptorFactoryFn>,
+	late: RwLock<Vec<LateInterceptorFactoryFn>>,
 }
 
 impl Default for InterceptorFactory {
@@ -26,12 +29,12 @@ impl Default for InterceptorFactory {
 
 impl InterceptorFactory {
 	/// Add a factory closure during construction (requires `&mut self`).
-	pub fn add(&mut self, factory: Box<dyn Fn(&mut Interceptors) + Send + Sync>) {
+	pub fn add(&mut self, factory: InterceptorFactoryFn) {
 		self.factories.push(factory);
 	}
 
 	/// Add a late-bound factory closure (thread-safe, takes `&self`).
-	pub fn add_late(&self, factory: Arc<dyn Fn(&mut Interceptors) + Send + Sync>) {
+	pub fn add_late(&self, factory: LateInterceptorFactoryFn) {
 		self.late.write().unwrap().push(factory);
 	}
 

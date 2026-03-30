@@ -5,7 +5,7 @@
 //!
 //! This module provides:
 //! - [`CoordinatorActor`]: Processes CDC events and coordinates flow workers
-//! - [`CoordinatorMsg`]: Messages (Consume, PoolReply)
+//! - [`CoordinatorMsg`] -- Messages (Consume, PoolReply)
 //! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
 
 use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc, time::Duration};

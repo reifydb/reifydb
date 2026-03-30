@@ -16,8 +16,10 @@ use std::{error::Error, ops::Bound};
 use reifydb_core::util::encoding::binary::decode_binary;
 use reifydb_type::util::cowvec::CowVec;
 
+type KeyRange = (Bound<CowVec<u8>>, Bound<CowVec<u8>>);
+
 /// Parses an binary key range, using Rust range syntax.
-pub fn parse_key_range(s: &str) -> Result<(Bound<CowVec<u8>>, Bound<CowVec<u8>>), Box<dyn Error>> {
+pub fn parse_key_range(s: &str) -> Result<KeyRange, Box<dyn Error>> {
 	let mut bound = (Bound::<CowVec<u8>>::Unbounded, Bound::<CowVec<u8>>::Unbounded);
 
 	if let Some(dot_pos) = s.find("..") {

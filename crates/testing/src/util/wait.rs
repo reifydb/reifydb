@@ -30,6 +30,7 @@ pub async fn wait_for_condition<F>(condition: F, timeout: Duration, poll_interva
 where
 	F: Fn() -> bool,
 {
+	#[allow(clippy::disallowed_methods)]
 	let start = Instant::now();
 	let mut poll_count = 0u64;
 

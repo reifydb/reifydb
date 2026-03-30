@@ -5,6 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	internal_error,
+	testing::CapturedInvocation,
 	value::column::{Column, columns::Columns},
 };
 use reifydb_routine::procedure::context::ProcedureContext;
@@ -122,15 +123,16 @@ pub(crate) fn dispatch(
 						params,
 						&mut handler_result,
 					) {
-						tx.record_test_handler(
-							plan.namespace.name().to_string(),
-							procedure.name.clone(),
-							sumtype.name.clone(),
-							plan.variant_name.clone(),
-							handler_start.elapsed().as_nanos() as u64,
-							"error".to_string(),
-							format!("{}", e),
-						);
+						tx.record_test_handler(CapturedInvocation {
+							sequence: 0,
+							namespace: plan.namespace.name().to_string(),
+							handler: procedure.name.clone(),
+							event: sumtype.name.clone(),
+							variant: plan.variant_name.clone(),
+							duration_ns: handler_start.elapsed().as_nanos() as u64,
+							outcome: "error".to_string(),
+							message: format!("{}", e),
+						});
 						return Err(e);
 					}
 				}
@@ -138,15 +140,16 @@ pub(crate) fn dispatch(
 				vm.ip = saved_ip;
 				let _ = vm.symbols.exit_scope();
 
-				tx.record_test_handler(
-					plan.namespace.name().to_string(),
-					procedure.name.clone(),
-					sumtype.name.clone(),
-					plan.variant_name.clone(),
-					handler_start.elapsed().as_nanos() as u64,
-					"success".to_string(),
-					String::new(),
-				);
+				tx.record_test_handler(CapturedInvocation {
+					sequence: 0,
+					namespace: plan.namespace.name().to_string(),
+					handler: procedure.name.clone(),
+					event: sumtype.name.clone(),
+					variant: plan.variant_name.clone(),
+					duration_ns: handler_start.elapsed().as_nanos() as u64,
+					outcome: "success".to_string(),
+					message: String::new(),
+				});
 			}
 			CompilationResult::Incremental(_) => {
 				return Err(internal_error!("Handler body requires more input during dispatch"));

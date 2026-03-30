@@ -5,6 +5,7 @@ use tracing::instrument;
 
 use crate::{Result, ast::ast::AstStatement, bump::Bump, token::tokenize};
 
+#[allow(clippy::module_inception)]
 pub mod ast;
 pub mod identifier;
 pub(crate) mod parse;

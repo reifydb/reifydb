@@ -10,6 +10,7 @@
 //! or `reifydb-client-derive` instead.
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 pub mod from_frame;
 pub mod generate;

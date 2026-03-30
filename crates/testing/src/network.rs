@@ -8,6 +8,7 @@ use std::{
 
 pub fn busy_wait(f: impl Fn() -> Option<SocketAddr>) -> SocketAddr {
 	let mut socket_addr: Option<SocketAddr>;
+	#[allow(clippy::disallowed_methods)]
 	let start = Instant::now();
 	loop {
 		socket_addr = f();

@@ -15,7 +15,7 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
-use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
+use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
@@ -169,11 +169,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		total_entry_count = field::Empty,
 		version = version.0
 	))]
-	fn set(
-		&self,
-		version: CommitVersion,
-		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
-	) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
 		batches.into_iter().for_each(|(table, entries)| {

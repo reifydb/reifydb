@@ -38,6 +38,13 @@ use crate::{
 	},
 };
 
+/// Groups the shared (services, tx, params) triple passed to call-family methods.
+pub(crate) struct CallContext<'a, 'b> {
+	pub services: &'a Arc<Services>,
+	pub tx: &'a mut Transaction<'b>,
+	pub params: &'a Params,
+}
+
 /// Collect the return value from a function/procedure/closure execution.
 /// This pattern was previously copy-pasted 4 times in the Call handler.
 fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
@@ -98,16 +105,26 @@ impl Vm {
 
 		match proc_def {
 			Some(ResolvedProcedure::Local(proc_def)) => {
-				self.call_local_procedure(services, tx, params, &proc_def, args, name, func_name)
+				let ctx = CallContext {
+					services,
+					tx,
+					params,
+				};
+				self.call_local_procedure(ctx, &proc_def, args, name, func_name)
 			}
 			Some(ResolvedProcedure::Test(proc_def)) => {
-				self.call_test_procedure(services, tx, params, &proc_def, args, name, func_name)
+				let ctx = CallContext {
+					services,
+					tx,
+					params,
+				};
+				self.call_test_procedure(ctx, &proc_def, args, name, func_name)
 			}
 			#[cfg(not(target_arch = "wasm32"))]
 			Some(ResolvedProcedure::Remote {
 				address,
 				token,
-			}) => self.call_remote_procedure(services, tx, args, name, func_name, &address, token.as_deref()),
+			}) => self.call_remote_procedure(services, args, name, func_name, &address, token.as_deref()),
 			#[cfg(target_arch = "wasm32")]
 			Some(ResolvedProcedure::Remote {
 				..
@@ -119,16 +136,14 @@ impl Vm {
 				fragment: name.clone(),
 			}
 			.into()),
-			None => self.call_builtin_or_error(
-				services,
-				tx,
-				params,
-				args,
-				name,
-				func_name,
-				is_procedure_call,
-				arity,
-			),
+			None => {
+				let ctx = CallContext {
+					services,
+					tx,
+					params,
+				};
+				self.call_builtin_or_error(ctx, args, name, func_name, is_procedure_call, arity)
+			}
 		}
 	}
 
@@ -193,9 +208,7 @@ impl Vm {
 
 	fn call_local_procedure(
 		&mut self,
-		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
-		params: &Params,
+		ctx: CallContext<'_, '_>,
 		proc_def: &Procedure,
 		args: Vec<Value>,
 		name: &Fragment,
@@ -207,8 +220,8 @@ impl Vm {
 		} else {
 			("default".to_string(), func_name.to_string())
 		};
-		PolicyEvaluator::new(services, &self.symbols).enforce_identity_policy(
-			tx,
+		PolicyEvaluator::new(ctx.services, &self.symbols).enforce_identity_policy(
+			ctx.tx,
 			&pol_ns,
 			&pol_name,
 			"call",
@@ -220,16 +233,17 @@ impl Vm {
 				native_name,
 			} => {
 				let native_name = native_name.clone();
-				if let Some(proc_impl) = services.procedures.get_procedure(&native_name) {
+				if let Some(proc_impl) = ctx.services.procedures.get_procedure(&native_name) {
 					let call_params = Params::Positional(Arc::new(args));
-					let ctx = ProcedureContext {
+					let proc_ctx = ProcedureContext {
 						params: &call_params,
-						catalog: &services.catalog,
-						functions: &services.functions,
-						runtime_context: &services.runtime_context,
+						catalog: &ctx.services.catalog,
+						functions: &ctx.services.functions,
+						runtime_context: &ctx.services.runtime_context,
 					};
-					let columns =
-						proc_impl.call(&ctx, tx).map_err(|e| e.with_context(name.clone()))?;
+					let columns = proc_impl
+						.call(&proc_ctx, ctx.tx)
+						.map_err(|e| e.with_context(name.clone()))?;
 					self.stack.push(Variable::Columns(columns));
 					Ok(())
 				} else {
@@ -242,13 +256,11 @@ impl Vm {
 			_ => {
 				// Catalog-stored RQL procedure
 				let source = proc_def.body.clone();
-				let compiled = services.compiler.compile(tx, &source)?;
+				let compiled = ctx.services.compiler.compile(ctx.tx, &source)?;
 				match compiled {
 					CompilationResult::Ready(compiled_list) => {
 						self.execute_procedure_body(
-							services,
-							tx,
-							params,
+							ctx,
 							&compiled_list,
 							&proc_def.params,
 							args,
@@ -266,15 +278,13 @@ impl Vm {
 
 	fn call_test_procedure(
 		&mut self,
-		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
-		params: &Params,
+		ctx: CallContext<'_, '_>,
 		proc_def: &Procedure,
 		args: Vec<Value>,
 		name: &Fragment,
 		func_name: &str,
 	) -> Result<()> {
-		if !matches!(tx, Transaction::Test(..)) {
+		if !matches!(ctx.tx, Transaction::Test(..)) {
 			return Err(TypeError::Procedure {
 				kind: ProcedureErrorKind::UndefinedProcedure {
 					name: func_name.to_string(),
@@ -286,18 +296,10 @@ impl Vm {
 		}
 
 		let source = proc_def.body.clone();
-		let compiled = services.compiler.compile(tx, &source)?;
+		let compiled = ctx.services.compiler.compile(ctx.tx, &source)?;
 		match compiled {
 			CompilationResult::Ready(compiled_list) => {
-				self.execute_procedure_body(
-					services,
-					tx,
-					params,
-					&compiled_list,
-					&proc_def.params,
-					args,
-					name,
-				)?;
+				self.execute_procedure_body(ctx, &compiled_list, &proc_def.params, args, name)?;
 				Ok(())
 			}
 			CompilationResult::Incremental(_) => {
@@ -309,9 +311,7 @@ impl Vm {
 	/// Shared logic for executing a compiled procedure body (used by both Local and Test procedures).
 	fn execute_procedure_body(
 		&mut self,
-		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
-		params: &Params,
+		ctx: CallContext<'_, '_>,
 		compiled_list: &[Compiled],
 		proc_params: &[ProcedureParam],
 		args: Vec<Value>,
@@ -327,7 +327,7 @@ impl Vm {
 		let mut proc_result = Vec::new();
 		for compiled in compiled_list.iter() {
 			self.ip = 0;
-			self.run(services, tx, &compiled.instructions, params, &mut proc_result)?;
+			self.run(ctx.services, ctx.tx, &compiled.instructions, ctx.params, &mut proc_result)?;
 			if !self.control_flow.is_normal() {
 				break;
 			}
@@ -344,7 +344,6 @@ impl Vm {
 	fn call_remote_procedure(
 		&mut self,
 		services: &Arc<Services>,
-		_tx: &mut Transaction<'_>,
 		args: Vec<Value>,
 		name: &Fragment,
 		func_name: &str,
@@ -381,9 +380,7 @@ impl Vm {
 
 	fn call_builtin_or_error(
 		&mut self,
-		services: &Arc<Services>,
-		tx: &mut Transaction<'_>,
-		params: &Params,
+		ctx: CallContext<'_, '_>,
 		args: Vec<Value>,
 		name: &Fragment,
 		func_name: &str,
@@ -391,22 +388,22 @@ impl Vm {
 		arity: usize,
 	) -> Result<()> {
 		// Runtime-registered native procedure (no catalog entry needed)
-		if let Some(proc_impl) = services.get_procedure(func_name) {
+		if let Some(proc_impl) = ctx.services.get_procedure(func_name) {
 			let call_params = Params::Positional(Arc::new(args));
-			let ctx = ProcedureContext {
+			let proc_ctx = ProcedureContext {
 				params: &call_params,
-				catalog: &services.catalog,
-				functions: &services.functions,
-				runtime_context: &services.runtime_context,
+				catalog: &ctx.services.catalog,
+				functions: &ctx.services.functions,
+				runtime_context: &ctx.services.runtime_context,
 			};
-			let columns = proc_impl.call(&ctx, tx).map_err(|e| e.with_context(name.clone()))?;
+			let columns = proc_impl.call(&proc_ctx, ctx.tx).map_err(|e| e.with_context(name.clone()))?;
 
 			// Special handling: identity::inject updates the transaction's identity
 			if func_name == "identity::inject"
 				&& let Some(col) = columns.first()
 				&& let Value::IdentityId(id) = col.data().get_value(0)
 			{
-				tx.set_identity(id);
+				ctx.tx.set_identity(id);
 			}
 
 			self.stack.push(Variable::Columns(columns));
@@ -414,7 +411,7 @@ impl Vm {
 		}
 
 		// Generator function
-		if let Some(generator) = services.functions.get_generator(func_name) {
+		if let Some(generator) = ctx.services.functions.get_generator(func_name) {
 			let arg_columns: Vec<Column> = args
 				.into_iter()
 				.enumerate()
@@ -424,17 +421,17 @@ impl Vm {
 					Column::new(format!("arg{}", i), data)
 				})
 				.collect();
-			let identity = tx.identity();
+			let identity = ctx.tx.identity();
 			// SAFETY: GeneratorContext requires &'a mut Transaction<'a> but we only have
 			// &mut Transaction<'_>. The generator does not hold the reference beyond this call.
 			// This matches the pattern in GeneratorNode.
 			let columns = generator.generate(GeneratorContext {
 				fragment: name.clone(),
 				params: Columns::new(arg_columns),
-				txn: unsafe { mem::transmute::<&mut Transaction, &mut Transaction>(tx) },
-				catalog: &services.catalog,
+				txn: unsafe { mem::transmute::<&mut Transaction, &mut Transaction>(ctx.tx) },
+				catalog: &ctx.services.catalog,
 				identity,
-				ioc: &services.ioc,
+				ioc: &ctx.services.ioc,
 			})?;
 			self.stack.push(Variable::Columns(columns));
 			return Ok(());
@@ -454,12 +451,12 @@ impl Vm {
 
 		// Built-in function: evaluate via column evaluator
 		let vm_session = EvalSession {
-			params,
+			params: ctx.params,
 			symbols: &self.symbols,
-			functions: &services.functions,
-			runtime_context: &services.runtime_context,
+			functions: &ctx.services.functions,
+			runtime_context: &ctx.services.runtime_context,
 			arena: None,
-			identity: tx.identity(),
+			identity: ctx.tx.identity(),
 			is_aggregate_context: false,
 		};
 		let evaluation_context = vm_session.eval_empty();
@@ -533,7 +530,7 @@ fn value_to_expression(value: &Value) -> Expression {
 			fragment: Fragment::internal(s),
 		}),
 		_ => Expression::Constant(ConstantExpression::Number {
-			fragment: Fragment::internal(&format!("{}", value)),
+			fragment: Fragment::internal(format!("{}", value)),
 		}),
 	}
 }

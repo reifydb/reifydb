@@ -9,6 +9,7 @@ pub mod keyword;
 pub mod literal;
 pub mod operator;
 pub mod separator;
+#[allow(clippy::module_inception)]
 pub mod token;
 pub mod variable;
 

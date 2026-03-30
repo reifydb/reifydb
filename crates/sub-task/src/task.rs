@@ -14,6 +14,14 @@ use std::{
 
 use crate::{context::TaskContext, schedule::Schedule};
 
+/// A synchronous task function that runs on the compute pool.
+type SyncTaskFn = Arc<dyn Fn(TaskContext) -> Result<(), Box<dyn Error + Send>> + Send + Sync>;
+
+/// An asynchronous task function that runs on the tokio runtime.
+type AsyncTaskFn = Arc<
+	dyn Fn(TaskContext) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send>>> + Send>> + Send + Sync,
+>;
+
 /// Unique identifier for a scheduled task
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TaskId(u64);
@@ -42,17 +50,9 @@ impl fmt::Display for TaskId {
 #[derive(Clone)]
 pub enum TaskWork {
 	/// Synchronous blocking work (runs on compute pool)
-	Sync(Arc<dyn Fn(TaskContext) -> Result<(), Box<dyn Error + Send>> + Send + Sync>),
+	Sync(SyncTaskFn),
 	/// Asynchronous work (runs on tokio runtime)
-	Async(
-		Arc<
-			dyn Fn(
-					TaskContext,
-				) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send>>> + Send>>
-				+ Send
-				+ Sync,
-		>,
-	),
+	Async(AsyncTaskFn),
 }
 
 impl fmt::Debug for TaskWork {

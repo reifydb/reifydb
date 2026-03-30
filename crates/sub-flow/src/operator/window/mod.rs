@@ -149,6 +149,18 @@ impl WindowState {
 	}
 }
 
+/// Configuration for constructing a WindowOperator.
+pub struct WindowConfig {
+	pub parent: Arc<Operators>,
+	pub node: FlowNodeId,
+	pub kind: WindowKind,
+	pub group_by: Vec<Expression>,
+	pub aggregations: Vec<Expression>,
+	pub ts: Option<String>,
+	pub runtime_context: RuntimeContext,
+	pub functions: Functions,
+}
+
 /// The main window operator
 pub struct WindowOperator {
 	pub parent: Arc<Operators>,
@@ -169,52 +181,45 @@ pub struct WindowOperator {
 }
 
 impl WindowOperator {
-	pub fn new(
-		parent: Arc<Operators>,
-		node: FlowNodeId,
-		kind: WindowKind,
-		group_by: Vec<Expression>,
-		aggregations: Vec<Expression>,
-		ts: Option<String>,
-		runtime_context: RuntimeContext,
-		functions: Functions,
-	) -> Self {
+	pub fn new(config: WindowConfig) -> Self {
 		let symbols = SymbolTable::new();
 		let compile_ctx = CompileContext {
-			functions: &functions,
+			functions: &config.functions,
 			symbols: &symbols,
 		};
 
 		// Compile group_by expressions
-		let compiled_group_by: Vec<CompiledExpr> = group_by
+		let compiled_group_by: Vec<CompiledExpr> = config
+			.group_by
 			.iter()
 			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile group_by expression"))
 			.collect();
 
 		// Compile aggregation expressions
-		let compiled_aggregations: Vec<CompiledExpr> = aggregations
+		let compiled_aggregations: Vec<CompiledExpr> = config
+			.aggregations
 			.iter()
 			.map(|e| compile_expression(&compile_ctx, e).expect("Failed to compile aggregation expression"))
 			.collect();
 
-		let mut needed = collect_all_column_names(&group_by);
-		needed.extend(collect_all_column_names(&aggregations));
+		let mut needed = collect_all_column_names(&config.group_by);
+		needed.extend(collect_all_column_names(&config.aggregations));
 		let mut projected_columns: Vec<String> = needed.into_iter().collect();
 		projected_columns.sort();
 
 		Self {
-			parent,
-			node,
-			kind,
-			group_by,
-			aggregations,
-			ts,
+			parent: config.parent,
+			node: config.node,
+			kind: config.kind,
+			group_by: config.group_by,
+			aggregations: config.aggregations,
+			ts: config.ts,
 			compiled_group_by,
 			compiled_aggregations,
 			layout: RowShape::testing(&[Type::Blob]),
-			functions,
-			row_number_provider: RowNumberProvider::new(node),
-			runtime_context,
+			functions: config.functions,
+			row_number_provider: RowNumberProvider::new(config.node),
+			runtime_context: config.runtime_context,
 			projected_columns,
 		}
 	}

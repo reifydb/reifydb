@@ -15,6 +15,7 @@
 //! - **State**: Application state for request handler
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 pub mod auth;
 pub mod execute;

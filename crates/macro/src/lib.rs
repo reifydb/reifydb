@@ -11,6 +11,7 @@
 //! # Example
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
 //! ```ignore
 //! use reifydb_type::FromFrame;
 //!

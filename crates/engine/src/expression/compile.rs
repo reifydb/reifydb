@@ -33,14 +33,17 @@ use crate::{
 	vm::stack::Variable,
 };
 
+type SingleExprFn = Box<dyn Fn(&EvalContext) -> Result<Column> + Send + Sync>;
+type MultiExprFn = Box<dyn Fn(&EvalContext) -> Result<Vec<Column>> + Send + Sync>;
+
 pub struct CompiledExpr {
 	inner: CompiledExprInner,
 	access_column_name: Option<String>,
 }
 
 enum CompiledExprInner {
-	Single(Box<dyn Fn(&EvalContext) -> Result<Column> + Send + Sync>),
-	Multi(Box<dyn Fn(&EvalContext) -> Result<Vec<Column>> + Send + Sync>),
+	Single(SingleExprFn),
+	Multi(MultiExprFn),
 }
 
 impl CompiledExpr {

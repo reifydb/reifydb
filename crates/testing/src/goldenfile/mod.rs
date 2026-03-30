@@ -45,6 +45,7 @@ impl Mint {
 				// Use a more unique temp directory name to
 				// avoid conflicts Include thread ID for
 				// better uniqueness in concurrent scenarios
+				#[allow(clippy::disallowed_methods)]
 				let tempdir = env::temp_dir().join(format!(
 					"goldenfiles-{}-{}-{:?}",
 					id(),

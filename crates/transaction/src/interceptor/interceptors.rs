@@ -68,6 +68,7 @@ use super::{
 use crate::transaction::TestTransaction;
 
 pub type Chain<I> = InterceptorChain<I>;
+type TestPreCommitHook = Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>;
 
 pub struct Interceptors {
 	pub table_row_pre_insert: Chain<dyn TableRowPreInsertInterceptor + Send + Sync>,
@@ -144,7 +145,7 @@ pub struct Interceptors {
 	/// running the pre-commit interceptor chain.
 	///
 	/// Use [`set_test_pre_commit`](Interceptors::set_test_pre_commit) to configure.
-	pub(crate) test_pre_commit: Option<Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>>,
+	pub(crate) test_pre_commit: Option<TestPreCommitHook>,
 }
 
 impl Default for Interceptors {
@@ -233,7 +234,7 @@ impl Interceptors {
 	/// This hook is called by [`TestTransaction::capture_testing_pre_commit`] to
 	/// rebuild the shared flow engine from all catalog flows (including uncommitted
 	/// ones) before the pre-commit interceptor chain runs.
-	pub fn set_test_pre_commit(&mut self, hook: Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>) {
+	pub fn set_test_pre_commit(&mut self, hook: TestPreCommitHook) {
 		self.test_pre_commit = Some(hook);
 	}
 }

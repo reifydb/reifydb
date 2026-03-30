@@ -6,33 +6,23 @@
 //! Handles WebSocket subscription requests by creating database subscriptions
 //! and registering them with the registry and poller for real-time updates.
 
-use std::collections::HashMap;
-
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::frame::response::convert_frames};
 use reifydb_sub_server::{
 	interceptor::{Protocol, RequestMetadata},
 	remote::{connect_remote, proxy_remote},
-	state::AppState,
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
-use reifydb_subscription::poller::SubscriptionPoller;
-use reifydb_type::value::{identity::IdentityId, uuid::Uuid7};
+use reifydb_type::value::identity::IdentityId;
 use serde_json::json;
-use tokio::{
-	spawn,
-	sync::{mpsc, watch},
-	task::JoinHandle,
-};
+use tokio::spawn;
 use tracing::info;
 
 use crate::{
-	handler::error_to_response,
+	handler::{ConnectionContext, error_to_response},
 	protocol::SubscribeRequest,
 	response::{CONTENT_TYPE_FRAMES, Response},
-	subscription::{PushMessage, SubscriptionRegistry},
+	subscription::PushMessage,
 };
-
-type ConnectionId = Uuid7;
 
 /// Handle a subscription request.
 ///
@@ -40,14 +30,7 @@ type ConnectionId = Uuid7;
 ///
 /// * `request_id` - The WebSocket request ID for response correlation
 /// * `sub` - The subscription request containing the query
-/// * `identity` - Optional authenticated identity (uses root if None)
-/// * `connection_id` - The WebSocket connection ID
-/// * `state` - Application state with database access
-/// * `registry` - Subscription registry for tracking subscriptions
-/// * `poller` - Subscription poller for consuming subscription data
-/// * `push_tx` - Channel for sending push messages to the client
-/// * `remote_tasks` - Map of remote subscription ID → proxy task handle
-/// * `shutdown` - Watch channel for shutdown signal
+/// * `conn` - The connection context with shared state
 ///
 /// # Returns
 ///
@@ -55,27 +38,19 @@ type ConnectionId = Uuid7;
 pub(crate) async fn handle_subscribe(
 	request_id: &str,
 	sub: SubscribeRequest,
-	identity: Option<IdentityId>,
-	auth_token: &Option<String>,
-	connection_id: ConnectionId,
-	state: &AppState,
-	registry: &SubscriptionRegistry,
-	poller: &SubscriptionPoller,
-	push_tx: mpsc::Sender<PushMessage>,
-	remote_tasks: &mut HashMap<String, JoinHandle<()>>,
-	shutdown: watch::Receiver<bool>,
+	conn: &mut ConnectionContext<'_>,
 ) -> Option<String> {
-	let id: IdentityId = identity.unwrap_or_else(IdentityId::root);
+	let id: IdentityId = conn.identity.unwrap_or_else(IdentityId::root);
 	let user_query = sub.query.clone();
 	// TODO: capture upgrade request headers via accept_hdr_async
 	let metadata = RequestMetadata::new(Protocol::WebSocket);
 
-	match create_subscription(state, id, &user_query, metadata).await {
+	match create_subscription(conn.state, id, &user_query, metadata).await {
 		Ok(Local(subscription_id)) => {
-			registry.subscribe(subscription_id, connection_id, user_query, push_tx);
-			poller.register(subscription_id);
+			conn.registry.subscribe(subscription_id, conn.connection_id, user_query, conn.push_tx.clone());
+			conn.poller.register(subscription_id);
 
-			info!("Connection {} subscribed: subscription_id={}", connection_id, subscription_id);
+			info!("Connection {} subscribed: subscription_id={}", conn.connection_id, subscription_id);
 
 			Some(Response::subscribed(request_id, subscription_id.to_string()).to_json())
 		}
@@ -83,7 +58,7 @@ pub(crate) async fn handle_subscribe(
 			address,
 			query,
 		}) => {
-			let remote_sub = match connect_remote(&address, &query, auth_token.as_deref()).await {
+			let remote_sub = match connect_remote(&address, &query, conn.auth_token.as_deref()).await {
 				Ok(s) => s,
 				Err(e) => {
 					return Some(Response::internal_error(
@@ -108,7 +83,9 @@ pub(crate) async fn handle_subscribe(
 				}
 			};
 
+			let push_tx = conn.push_tx.clone();
 			let push_tx_close = push_tx.clone();
+			let shutdown = conn.shutdown.clone();
 			let handle = spawn(async move {
 				proxy_remote(remote_sub, push_tx, shutdown, move |frames| {
 					let ws_frames = convert_frames(&frames);
@@ -125,9 +102,9 @@ pub(crate) async fn handle_subscribe(
 					})
 					.await;
 			});
-			remote_tasks.insert(remote_id.clone(), handle);
+			conn.remote_tasks.insert(remote_id.clone(), handle);
 
-			info!("Connection {} subscribed to remote: subscription_id={}", connection_id, remote_id);
+			info!("Connection {} subscribed to remote: subscription_id={}", conn.connection_id, remote_id);
 
 			Some(Response::subscribed(request_id, remote_id).to_json())
 		}

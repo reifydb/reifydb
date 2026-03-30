@@ -35,7 +35,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry};
+use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
 use reifydb_metric::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
@@ -392,12 +392,14 @@ impl DatabaseBuilder {
 			eventbus.clone(),
 			self.interceptors.build(),
 			Catalog::new(catalog, shape_registry),
-			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-			functions,
-			procedures,
-			transforms,
-			self.ioc.clone(),
-			Some(remote_registry),
+			EngineConfig {
+				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				functions,
+				procedures,
+				transforms,
+				ioc: self.ioc.clone(),
+				remote_registry: Some(remote_registry),
+			},
 		);
 
 		self.ioc = self.ioc.register(engine.clone());

@@ -230,10 +230,6 @@ impl Columns {
 		(row_count, self.len())
 	}
 
-	pub fn into_iter(self) -> impl Iterator<Item = Column> {
-		self.columns.into_iter()
-	}
-
 	pub fn is_empty(&self) -> bool {
 		self.shape().0 == 0
 	}
@@ -256,6 +252,15 @@ impl Columns {
 
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
 		self.iter().map(|col| col.data().get_value(index)).collect()
+	}
+}
+
+impl IntoIterator for Columns {
+	type Item = Column;
+	type IntoIter = std::vec::IntoIter<Column>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.columns.into_iter()
 	}
 }
 

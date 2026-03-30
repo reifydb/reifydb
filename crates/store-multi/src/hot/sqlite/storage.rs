@@ -23,7 +23,7 @@ use super::{
 	entry::entry_id_to_name,
 	query::{build_versioned_range_query, version_to_bytes},
 };
-use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
+use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// SQLite-based primitive storage implementation with MVCC versioning.
 ///
@@ -165,11 +165,7 @@ impl TierStorage for SqlitePrimitiveStorage {
 	}
 
 	#[instrument(name = "store::multi::sqlite::set", level = "debug", skip(self, batches), fields(table_count = batches.len(), version = version.0))]
-	fn set(
-		&self,
-		version: CommitVersion,
-		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
-	) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		if batches.is_empty() {
 			return Ok(());
 		}

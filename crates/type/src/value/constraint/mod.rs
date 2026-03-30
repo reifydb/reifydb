@@ -364,6 +364,7 @@ impl TypeConstraint {
 	}
 
 	/// Get a human-readable string representation
+	#[allow(clippy::inherent_to_string)]
 	pub fn to_string(&self) -> String {
 		match &self.constraint {
 			None => format!("{}", self.base_type),

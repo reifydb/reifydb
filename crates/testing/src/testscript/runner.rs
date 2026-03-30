@@ -112,6 +112,7 @@ pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> io::Result
 	let input = test.into();
 
 	let dir = temp_dir();
+	#[allow(clippy::disallowed_methods)]
 	let file_name = format!(
 		"test-{}-{}.txt",
 		process::id(),

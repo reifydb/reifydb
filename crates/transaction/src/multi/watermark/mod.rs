@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 pub mod actor;
+#[allow(clippy::module_inception)]
 pub mod watermark;
 
 // Configuration constants for watermark processing

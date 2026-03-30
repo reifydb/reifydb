@@ -721,28 +721,13 @@ impl<'a> Transaction<'a> {
 	}
 
 	/// Record a test handler invocation. No-op for non-Test transactions.
-	pub fn record_test_handler(
-		&mut self,
-		namespace: String,
-		handler: String,
-		event: String,
-		variant: String,
-		duration_ns: u64,
-		outcome: String,
-		message: String,
-	) {
+	///
+	/// The `sequence` field of `invocation` will be overwritten with the next handler sequence number.
+	pub fn record_test_handler(&mut self, mut invocation: CapturedInvocation) {
 		if let Transaction::Test(t) = self {
 			*t.handler_seq += 1;
-			t.invocations.push(CapturedInvocation {
-				sequence: *t.handler_seq,
-				namespace,
-				handler,
-				event,
-				variant,
-				duration_ns,
-				outcome,
-				message,
-			});
+			invocation.sequence = *t.handler_seq;
+			t.invocations.push(invocation);
 		}
 	}
 }

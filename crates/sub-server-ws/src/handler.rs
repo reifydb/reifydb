@@ -139,15 +139,17 @@ pub async fn handle_connection(
 					Some(Ok(Message::Text(text))) => {
 						let response = process_message(
 							&text,
-							&state,
-							&mut identity,
-							&mut auth_token,
-							connection_id,
-							&registry,
-							&poller,
-							push_tx.clone(),
-							&mut remote_tasks,
-							shutdown.clone(),
+							&mut ConnectionContext {
+								state: &state,
+								identity: &mut identity,
+								auth_token: &mut auth_token,
+								connection_id,
+								registry: &registry,
+								poller: &poller,
+								push_tx: push_tx.clone(),
+								remote_tasks: &mut remote_tasks,
+								shutdown: shutdown.clone(),
+							},
 						).await;
 						if let Some(resp) = response
 							&& sender.send(Message::Text(resp.into())).await.is_err() {
@@ -212,22 +214,24 @@ pub async fn handle_connection(
 /// Connection ID type alias for clarity.
 type ConnectionId = Uuid7;
 
+/// Groups the shared connection state passed to message processing and subscription handlers.
+pub(crate) struct ConnectionContext<'a> {
+	pub state: &'a AppState,
+	pub identity: &'a mut Option<IdentityId>,
+	pub auth_token: &'a mut Option<String>,
+	pub connection_id: ConnectionId,
+	pub registry: &'a SubscriptionRegistry,
+	pub poller: &'a SubscriptionPoller,
+	pub push_tx: mpsc::Sender<PushMessage>,
+	pub remote_tasks: &'a mut HashMap<String, JoinHandle<()>>,
+	pub shutdown: watch::Receiver<bool>,
+}
+
 /// Process a single WebSocket message.
 ///
 /// Parses the message and routes to the appropriate handler based on type.
 /// Returns None if no response should be sent (e.g., for internal errors already logged).
-async fn process_message(
-	text: &str,
-	state: &AppState,
-	identity: &mut Option<IdentityId>,
-	auth_token: &mut Option<String>,
-	connection_id: ConnectionId,
-	registry: &SubscriptionRegistry,
-	poller: &SubscriptionPoller,
-	push_tx: mpsc::Sender<PushMessage>,
-	remote_tasks: &mut HashMap<String, JoinHandle<()>>,
-	shutdown: watch::Receiver<bool>,
-) -> Option<String> {
+async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option<String> {
 	let request: Request = match from_str(text) {
 		Ok(r) => r,
 		Err(e) => {
@@ -239,13 +243,13 @@ async fn process_message(
 		RequestPayload::Auth(auth) => {
 			if let Some(method) = auth.method.as_deref() {
 				let credentials = auth.credentials.unwrap_or_default();
-				match state.auth_service().authenticate(method, credentials) {
+				match conn.state.auth_service().authenticate(method, credentials) {
 					Ok(AuthResponse::Authenticated {
 						identity: id,
 						token,
 					}) => {
-						*identity = Some(id);
-						*auth_token = Some(token.clone());
+						*conn.identity = Some(id);
+						*conn.auth_token = Some(token.clone());
 						Some(Response::auth_authenticated(&request.id, token, id.to_string())
 							.to_json())
 					}
@@ -260,10 +264,10 @@ async fn process_message(
 				}
 			} else {
 				// Token validation flow (existing behavior)
-				match extract_identity_from_ws_auth(state.auth_service(), auth.token.as_deref()) {
+				match extract_identity_from_ws_auth(conn.state.auth_service(), auth.token.as_deref()) {
 					Ok(id) => {
-						*identity = Some(id);
-						*auth_token = auth.token;
+						*conn.identity = Some(id);
+						*conn.auth_token = auth.token;
 						Some(Response::auth(&request.id).to_json())
 					}
 					Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
@@ -271,12 +275,12 @@ async fn process_message(
 			}
 		}
 
-		RequestPayload::Admin(_) if !state.admin_enabled() => {
+		RequestPayload::Admin(_) if !conn.state.admin_enabled() => {
 			Some(build_error(&request.id, "NOT_FOUND", "Unknown request type"))
 		}
 
 		RequestPayload::Admin(a) => {
-			let id: IdentityId = match identity.as_ref() {
+			let id: IdentityId = match conn.identity.as_ref() {
 				Some(id) => *id,
 				None => {
 					return Some(build_error(
@@ -296,8 +300,8 @@ async fn process_message(
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let timeout = state.query_timeout();
-			let metadata = build_ws_metadata(auth_token);
+			let timeout = conn.state.query_timeout();
+			let metadata = build_ws_metadata(conn.auth_token);
 
 			let ctx = RequestContext {
 				identity: id,
@@ -308,12 +312,12 @@ async fn process_message(
 			};
 
 			match execute(
-				state.request_interceptors(),
-				state.actor_system(),
-				state.engine_clone(),
+				conn.state.request_interceptors(),
+				conn.state.actor_system(),
+				conn.state.engine_clone(),
 				ctx,
 				timeout,
-				state.clock(),
+				conn.state.clock(),
 			)
 			.await
 			{
@@ -327,7 +331,7 @@ async fn process_message(
 		}
 
 		RequestPayload::Query(q) => {
-			let id: IdentityId = match identity.as_ref() {
+			let id: IdentityId = match conn.identity.as_ref() {
 				Some(id) => *id,
 				None => {
 					return Some(build_error(
@@ -347,8 +351,8 @@ async fn process_message(
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let timeout = state.query_timeout();
-			let metadata = build_ws_metadata(auth_token);
+			let timeout = conn.state.query_timeout();
+			let metadata = build_ws_metadata(conn.auth_token);
 
 			let ctx = RequestContext {
 				identity: id,
@@ -359,12 +363,12 @@ async fn process_message(
 			};
 
 			match execute(
-				state.request_interceptors(),
-				state.actor_system(),
-				state.engine_clone(),
+				conn.state.request_interceptors(),
+				conn.state.actor_system(),
+				conn.state.engine_clone(),
 				ctx,
 				timeout,
-				state.clock(),
+				conn.state.clock(),
 			)
 			.await
 			{
@@ -378,7 +382,7 @@ async fn process_message(
 		}
 
 		RequestPayload::Command(c) => {
-			let id: IdentityId = match identity.as_ref() {
+			let id: IdentityId = match conn.identity.as_ref() {
 				Some(id) => *id,
 				None => {
 					return Some(build_error(
@@ -398,8 +402,8 @@ async fn process_message(
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let timeout = state.query_timeout();
-			let metadata = build_ws_metadata(auth_token);
+			let timeout = conn.state.query_timeout();
+			let metadata = build_ws_metadata(conn.auth_token);
 
 			let ctx = RequestContext {
 				identity: id,
@@ -410,12 +414,12 @@ async fn process_message(
 			};
 
 			match execute(
-				state.request_interceptors(),
-				state.actor_system(),
-				state.engine_clone(),
+				conn.state.request_interceptors(),
+				conn.state.actor_system(),
+				conn.state.engine_clone(),
 				ctx,
 				timeout,
-				state.clock(),
+				conn.state.clock(),
 			)
 			.await
 			{
@@ -428,29 +432,14 @@ async fn process_message(
 			}
 		}
 
-		RequestPayload::Subscribe(sub) => {
-			handle_subscribe(
-				&request.id,
-				sub,
-				*identity,
-				auth_token,
-				connection_id,
-				state,
-				registry,
-				poller,
-				push_tx,
-				remote_tasks,
-				shutdown,
-			)
-			.await
-		}
+		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await,
 
 		RequestPayload::Logout => {
-			if let Some(token) = auth_token.as_ref() {
-				let revoked = state.auth_service().revoke_token(token);
+			if let Some(token) = conn.auth_token.as_ref() {
+				let revoked = conn.state.auth_service().revoke_token(token);
 				if revoked {
-					*identity = Some(IdentityId::anonymous());
-					*auth_token = None;
+					*conn.identity = Some(IdentityId::anonymous());
+					*conn.auth_token = None;
 					Some(Response::logout(&request.id).to_json())
 				} else {
 					Some(build_error(&request.id, "LOGOUT_FAILED", "Token revocation failed"))
@@ -462,11 +451,11 @@ async fn process_message(
 
 		RequestPayload::Unsubscribe(unsub) => {
 			// Check remote tasks first (not registered in registry/poller)
-			if let Some(handle) = remote_tasks.remove(&unsub.subscription_id) {
+			if let Some(handle) = conn.remote_tasks.remove(&unsub.subscription_id) {
 				handle.abort();
 				info!(
 					"Connection {} unsubscribed from remote {}",
-					connection_id, unsub.subscription_id
+					conn.connection_id, unsub.subscription_id
 				);
 				return Some(Response::unsubscribed(&request.id, unsub.subscription_id).to_json());
 			}
@@ -483,27 +472,27 @@ async fn process_message(
 			};
 
 			// Unregister from poller
-			poller.unregister(&subscription_id);
+			conn.poller.unregister(&subscription_id);
 
 			// Unsubscribe from registry
-			let removed = registry.unsubscribe(subscription_id);
+			let removed = conn.registry.unsubscribe(subscription_id);
 
 			if removed {
 				// Cleanup the subscription from the database
-				if let Err(e) = cleanup_subscription(state, subscription_id).await {
+				if let Err(e) = cleanup_subscription(conn.state, subscription_id).await {
 					warn!(
 						"Failed to cleanup subscription {} from database: {:?}",
 						subscription_id, e
 					);
 				}
 
-				info!("Connection {} unsubscribed from {}", connection_id, subscription_id);
+				info!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			} else {
 				// Already removed (e.g., by cleanup_connection) — treat as success
 				info!(
 					"Connection {} unsubscribe for {} (already removed)",
-					connection_id, subscription_id
+					conn.connection_id, subscription_id
 				);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			}

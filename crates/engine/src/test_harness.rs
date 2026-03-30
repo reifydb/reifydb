@@ -54,7 +54,7 @@ use reifydb_type::{
 	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, r#type::Type},
 };
 
-use crate::engine::StandardEngine;
+use crate::{engine::StandardEngine, vm::services::EngineConfig};
 
 pub struct TestEngine {
 	engine: StandardEngine,
@@ -228,13 +228,15 @@ impl TestEngineBuilder {
 			eventbus.clone(),
 			InterceptorFactory::default(),
 			Catalog::new(materialized_catalog, row_shape_registry),
-			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-			default_functions().configure(),
-			Procedures::empty(),
-			Transforms::empty(),
-			ioc,
-			#[cfg(not(target_arch = "wasm32"))]
-			None,
+			EngineConfig {
+				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				functions: default_functions().configure(),
+				procedures: Procedures::empty(),
+				transforms: Transforms::empty(),
+				ioc,
+				#[cfg(not(target_arch = "wasm32"))]
+				remote_registry: None,
+			},
 		);
 
 		if self.cdc {

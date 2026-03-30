@@ -6,6 +6,7 @@
 //! Unified extension loading for ReifyDB (FFI, WASM, native)
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 pub mod error;
 pub mod function;

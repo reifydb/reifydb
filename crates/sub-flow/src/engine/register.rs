@@ -39,7 +39,7 @@ use crate::{
 		extend::ExtendOperator,
 		filter::FilterOperator,
 		gate::GateOperator,
-		join::operator::JoinOperator,
+		join::operator::{JoinOperator, JoinSideConfig},
 		map::MapOperator,
 		scan::{
 			flow::PrimitiveFlowOperator, ringbuffer::PrimitiveRingBufferOperator,
@@ -51,7 +51,7 @@ use crate::{
 		},
 		sort::SortOperator,
 		take::TakeOperator,
-		window::WindowOperator,
+		window::{WindowConfig, WindowOperator},
 	},
 };
 
@@ -418,14 +418,18 @@ impl FlowEngine {
 				self.operators.insert(
 					node.id,
 					Arc::new(Operators::Join(JoinOperator::new(
-						left_parent,
-						right_parent,
+						JoinSideConfig {
+							parent: left_parent,
+							node: left_node,
+							exprs: left,
+						},
+						JoinSideConfig {
+							parent: right_parent,
+							node: right_node,
+							exprs: right,
+						},
 						node.id,
 						join_type,
-						left_node,
-						right_node,
-						left,
-						right,
 						alias,
 						self.executor.clone(),
 					))),
@@ -547,16 +551,16 @@ impl FlowEngine {
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
-				let operator = WindowOperator::new(
+				let operator = WindowOperator::new(WindowConfig {
 					parent,
-					node.id,
-					kind.clone(),
-					group_by.clone(),
-					aggregations.clone(),
-					ts.clone(),
-					self.runtime_context.clone(),
-					self.executor.functions.clone(),
-				);
+					node: node.id,
+					kind: kind.clone(),
+					group_by: group_by.clone(),
+					aggregations: aggregations.clone(),
+					ts: ts.clone(),
+					runtime_context: self.runtime_context.clone(),
+					functions: self.executor.functions.clone(),
+				});
 				self.operators.insert(node.id, Arc::new(Operators::Window(operator)));
 			}
 		}
