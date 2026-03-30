@@ -174,12 +174,30 @@ impl AuthService {
 		}
 	}
 
-	/// Persist a token to the database.
+	/// Persist a session token to the database using the configured session TTL.
 	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<Token, Error> {
 		let mut admin = self.engine.begin_admin()?;
 
 		let def = create_token(&mut admin, token, identity, self.expires_at()?, self.now()?)?;
 
+		admin.commit()?;
+		Ok(def)
+	}
+
+	/// Create a token for an identity with an explicit expiration.
+	///
+	/// Unlike `persist_token` (which uses the configured session TTL), this
+	/// accepts an explicit `expires_at` — pass `None` for non-expiring tokens.
+	///
+	/// Used by applications to issue API tokens.
+	pub fn create_token(
+		&self,
+		token: &str,
+		identity: IdentityId,
+		expires_at: Option<DateTime>,
+	) -> Result<Token, Error> {
+		let mut admin = self.engine.begin_admin()?;
+		let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
 		admin.commit()?;
 		Ok(def)
 	}
