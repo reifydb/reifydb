@@ -22,6 +22,12 @@ pub struct TestContext {
 	logs: Arc<Mutex<Vec<String>>>,
 }
 
+impl Default for TestContext {
+	fn default() -> Self {
+		Self::new(CommitVersion(1))
+	}
+}
+
 impl TestContext {
 	/// Create a new test context with the given version
 	pub fn new(version: CommitVersion) -> Self {
@@ -30,11 +36,6 @@ impl TestContext {
 			version,
 			logs: Arc::new(Mutex::new(Vec::new())),
 		}
-	}
-
-	/// Create a new mock context with version 1
-	pub fn default() -> Self {
-		Self::new(CommitVersion(1))
 	}
 
 	/// Get a reference to the internal state store for inspection

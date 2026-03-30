@@ -140,14 +140,14 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 		// Process all pending table inserts
 		for pending in self.pending_tables {
-			let table_result = execute_table_insert::<V>(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
+			let table_result = execute_table_insert(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
 			result.tables.push(table_result);
 		}
 
 		// Process all pending ring buffer inserts
 		for pending in self.pending_ringbuffers {
 			let rb_result =
-				execute_ringbuffer_insert::<V>(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
+				execute_ringbuffer_insert(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
 			result.ringbuffers.push(rb_result);
 		}
 
@@ -159,7 +159,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 }
 
 /// Execute a table insert within a transaction
-fn execute_table_insert<V: ValidationMode>(
+fn execute_table_insert(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
@@ -294,7 +294,7 @@ fn execute_table_insert<V: ValidationMode>(
 }
 
 /// Execute a ring buffer insert within a transaction
-fn execute_ringbuffer_insert<V: ValidationMode>(
+fn execute_ringbuffer_insert(
 	catalog: &Catalog,
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,

@@ -136,7 +136,7 @@ pub(crate) fn compile<'a>(
 						}
 						_ => None,
 					})
-					.expect(&format!("TAKE variable ${} must be a numeric value", name)),
+					.unwrap_or_else(|| panic!("TAKE variable ${} must be a numeric value", name)),
 			};
 			// Optimize: TAKE over SORT becomes TopK
 			if let RqlQueryPlan::Sort(sort_node) = *input {

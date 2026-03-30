@@ -218,11 +218,7 @@ impl InlineDataNode {
 												== variant_name_lower
 										})
 										.map(|v| v.tag);
-									if let Some(tag) = maybe_tag {
-										Some((sumtype, tag))
-									} else {
-										None
-									}
+									maybe_tag.map(|tag| (sumtype, tag))
 								} else {
 									None
 								}
@@ -243,11 +239,7 @@ impl InlineDataNode {
 												== variant_name_lower
 										})
 										.map(|v| v.tag);
-									if let Some(tag) = maybe_tag {
-										Some((sumtype, tag))
-									} else {
-										None
-									}
+									maybe_tag.map(|tag| (sumtype, tag))
 								} else {
 									None
 								}

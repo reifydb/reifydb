@@ -72,7 +72,7 @@ pub fn evaluate_operator_config(
 			let expr = compile_expression(&compile_ctx, &alias_expr.expression)?;
 			let column = expr.execute(&exec_ctx)?;
 
-			let value = if column.data().len() > 0 {
+			let value = if !column.data().is_empty() {
 				column.data().get_value(0)
 			} else {
 				Value::none()

@@ -409,6 +409,10 @@ impl<'bump> AstInline<'bump> {
 	pub fn len(&self) -> usize {
 		self.keyed_values.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 impl<'bump> Index<usize> for AstInline<'bump> {
@@ -1063,6 +1067,10 @@ impl<'bump> AstList<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 impl<'bump> Index<usize> for AstList<'bump> {
@@ -1345,6 +1353,10 @@ impl<'bump> AstMap<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 #[derive(Debug)]
@@ -1365,6 +1377,10 @@ impl<'bump> Index<usize> for AstGenerator<'bump> {
 impl<'bump> AstGenerator<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 
@@ -1387,6 +1403,10 @@ impl<'bump> AstExtend<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 #[derive(Debug)]
@@ -1399,6 +1419,10 @@ pub struct AstPatch<'bump> {
 impl<'bump> AstPatch<'bump> {
 	pub fn len(&self) -> usize {
 		self.assignments.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 
@@ -1419,6 +1443,10 @@ pub struct AstTuple<'bump> {
 impl<'bump> AstTuple<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 

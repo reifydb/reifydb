@@ -216,7 +216,7 @@ pub(crate) fn delete_series(
 		let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
 		let mut stream = txn.range(range, 4096)?;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let entry = entry?;
 			entries_to_delete.push((entry.key, entry.row));
 		}

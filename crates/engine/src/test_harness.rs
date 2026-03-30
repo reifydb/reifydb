@@ -60,6 +60,12 @@ pub struct TestEngine {
 	engine: StandardEngine,
 }
 
+impl Default for TestEngine {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TestEngine {
 	/// Create a new TestEngine with all subsystems (CDC, metrics, etc.).
 	pub fn new() -> Self {

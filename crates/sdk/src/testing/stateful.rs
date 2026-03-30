@@ -196,7 +196,7 @@ impl WindowStatefulTestHelper {
 		let mut encoded = self.shape.allocate();
 		self.shape.set_values(&mut encoded, values);
 
-		self.windows.entry(window_id).or_insert_with(HashMap::new).insert(key.into_encoded_key(), encoded);
+		self.windows.entry(window_id).or_default().insert(key.into_encoded_key(), encoded);
 	}
 
 	/// Get state for a window and key

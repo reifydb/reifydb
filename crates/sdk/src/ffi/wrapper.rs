@@ -59,7 +59,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 /// Unmarshal FFI input to Change
 #[inline]
 #[instrument(name = "unmarshal", level = "trace", skip_all)]
-fn unmarshal_input<O: FFIOperator>(arena: &mut Arena, input: *const ChangeFFI) -> Result<Change, i32> {
+fn unmarshal_input(arena: &mut Arena, input: *const ChangeFFI) -> Result<Change, i32> {
 	unsafe {
 		match arena.unmarshal_change(&*input) {
 			Ok(change) => Ok(change),
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 		arena.clear();
 
 		// Unmarshal input
-		let input_change = match unmarshal_input::<O>(&mut arena, input) {
+		let input_change = match unmarshal_input(&mut arena, input) {
 			Ok(change) => {
 				Span::current().record("input_diffs", change.diffs.len());
 				change

@@ -165,6 +165,12 @@ pub struct TestHarnessBuilder<T: FFIOperator> {
 	_phantom: PhantomData<T>,
 }
 
+impl<T: FFIOperator> Default for TestHarnessBuilder<T> {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl<T: FFIOperator> TestHarnessBuilder<T> {
 	/// Create a new builder
 	pub fn new() -> Self {

@@ -16,7 +16,6 @@ use super::StateIterator;
 use crate::transaction::FlowTransaction;
 
 /// Helper functions for state operations that can be used by any stateful trait
-
 /// Get raw bytes for a key
 pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());

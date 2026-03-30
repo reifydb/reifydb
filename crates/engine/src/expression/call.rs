@@ -398,7 +398,7 @@ fn execute_function_body_for_scalar(
 					};
 					let evaluation_context = call_session.eval_empty();
 					let result_column = evaluate(&evaluation_context, &map_node.map[0])?;
-					if result_column.data.len() > 0 {
+					if !result_column.data.is_empty() {
 						stack.push(result_column.data.get_value(0));
 					}
 				}
@@ -462,7 +462,7 @@ fn execute_function_body_for_scalar(
 							identity,
 						})
 						.map_err(|e| e.with_context(fn_fragment))?;
-					if result_data.len() > 0 {
+					if !result_data.is_empty() {
 						stack.push(result_data.get_value(0));
 					} else {
 						stack.push(Value::none());

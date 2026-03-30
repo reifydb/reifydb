@@ -131,9 +131,9 @@ impl<S: Storage> AnyContainer<S> {
 		DataVec::push(&mut self.data, Box::new(Value::none()));
 	}
 
-	pub fn get(&self, index: usize) -> Option<&Box<Value>> {
+	pub fn get(&self, index: usize) -> Option<&Value> {
 		if index < self.len() {
-			DataVec::get(&self.data, index)
+			DataVec::get(&self.data, index).map(Box::as_ref)
 		} else {
 			None
 		}

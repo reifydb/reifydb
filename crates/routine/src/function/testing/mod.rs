@@ -29,7 +29,7 @@ pub(crate) fn extract_optional_string_arg(params: &Columns) -> Option<String> {
 		return None;
 	}
 	let col = params.iter().next()?;
-	if col.data().len() == 0 {
+	if col.data().is_empty() {
 		return None;
 	}
 	match col.data().get_value(0) {

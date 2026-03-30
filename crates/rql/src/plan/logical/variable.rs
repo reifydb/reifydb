@@ -31,7 +31,7 @@ impl<'bump> Compiler<'bump> {
 			AstLetValue::Expression(expr) => {
 				let inner = BumpBox::into_inner(expr);
 				// Detect LET $x = [] → empty Frame
-				if matches!(&inner, Ast::List(list) if list.len() == 0) {
+				if matches!(&inner, Ast::List(list) if list.is_empty()) {
 					LetValue::EmptyFrame
 				} else if matches!(&inner, Ast::Closure(_)) {
 					// Closures require statement-level compilation (not expression-level)

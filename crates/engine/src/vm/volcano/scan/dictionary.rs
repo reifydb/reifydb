@@ -76,10 +76,10 @@ impl QueryNode for DictionaryScanNode {
 		let mut new_last_key = None;
 
 		// Get entries from storage using stream
-		let mut stream = rx.range(range, batch_size as usize)?;
+		let stream = rx.range(range, batch_size as usize)?;
 		let mut count = 0;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
 
 			// Skip entries we've already seen

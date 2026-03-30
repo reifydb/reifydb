@@ -45,7 +45,7 @@ fn collect_call_result(vm: &mut Vm, func_result: &mut Vec<Frame>) -> Variable {
 		ControlFlow::Return(c) => Variable::Scalar(c.unwrap_or(Columns::scalar(Value::none()))),
 		_ => {
 			if let Some(frame) = func_result.pop() {
-				if !frame.columns.is_empty() && frame.columns[0].data.len() > 0 {
+				if !frame.columns.is_empty() && !frame.columns[0].data.is_empty() {
 					Variable::Columns(frame.into())
 				} else {
 					Variable::scalar(Value::none())
@@ -70,7 +70,7 @@ impl Vm {
 		let arity = arity as usize;
 		let func_name = name.text();
 
-		if func_name.starts_with("testing::") {}
+		// testing:: prefix reserved for future use
 
 		let mut args = Vec::with_capacity(arity);
 		for _ in 0..arity {
@@ -476,7 +476,7 @@ impl Vm {
 		});
 
 		let result_column = evaluate(&evaluation_context, &proper_call)?;
-		let value = if result_column.data.len() > 0 {
+		let value = if !result_column.data.is_empty() {
 			result_column.data.get_value(0)
 		} else {
 			Value::none()

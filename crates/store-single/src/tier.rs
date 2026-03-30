@@ -82,7 +82,6 @@ impl Default for RangeCursor {
 /// Single-version storage maintains only the current value for each key.
 ///
 /// Implementations must be thread-safe and cloneable.
-
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key, or None if not found.
 	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>>;

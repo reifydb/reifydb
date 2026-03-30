@@ -101,7 +101,6 @@ impl Default for RangeCursor {
 /// All MVCC, CDC, and routing logic belongs in the store layer above.
 ///
 /// Implementations must be thread-safe and cloneable.
-
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key at or before the given version.
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>>;

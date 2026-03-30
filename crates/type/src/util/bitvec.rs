@@ -186,6 +186,10 @@ impl BitVec {
 		self.inner.len
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	pub fn capacity(&self) -> usize {
 		self.inner.bits.capacity() * 8
 	}
