@@ -209,7 +209,11 @@ impl FlowWorkerActor {
 		instructions = batch.instructions.len(),
 		total_changes = field::Empty
 	))]
-	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
+	fn process_request(
+		&self,
+		flow_engine: &mut FlowEngine,
+		batch: WorkerBatch,
+	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 

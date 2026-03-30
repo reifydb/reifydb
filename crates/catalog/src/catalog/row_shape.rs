@@ -52,7 +52,11 @@ impl Catalog {
 		skip(self, txn, fields),
 		fields(fingerprint = field::Empty, field_count = fields.len())
 	)]
-	pub fn get_or_create_row_shape(&self, txn: &mut Transaction<'_>, fields: Vec<RowShapeField>) -> Result<RowShape> {
+	pub fn get_or_create_row_shape(
+		&self,
+		txn: &mut Transaction<'_>,
+		fields: Vec<RowShapeField>,
+	) -> Result<RowShape> {
 		let shape = RowShape::new(fields);
 		let fingerprint = shape.fingerprint();
 		Span::current().record("fingerprint", field::debug(&fingerprint));
@@ -195,11 +199,7 @@ impl Catalog {
 	///
 	/// For each shape, acquires a single-version write lock, checks if the shape
 	/// already exists in storage (idempotent), and writes it if not.
-	pub fn persist_pending_shapes(
-		&self,
-		txn: &mut Transaction<'_>,
-		shapes: Vec<RowShape>,
-	) -> Result<()> {
+	pub fn persist_pending_shapes(&self, txn: &mut Transaction<'_>, shapes: Vec<RowShape>) -> Result<()> {
 		for shape in shapes {
 			let fingerprint = shape.fingerprint();
 			let keys = compute_shape_keys(fingerprint, shape.field_count());
