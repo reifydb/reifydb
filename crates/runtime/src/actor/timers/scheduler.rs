@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+#![allow(clippy::disallowed_methods)]
+
 use std::{
 	cmp::Ordering as CmpOrdering,
 	collections::BinaryHeap,

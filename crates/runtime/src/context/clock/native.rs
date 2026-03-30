@@ -13,6 +13,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[allow(clippy::disallowed_methods)]
 #[inline(always)]
 fn platform_now_nanos() -> u128 {
 	SystemTime::now().duration_since(UNIX_EPOCH).expect("System time is before Unix epoch").as_nanos()
@@ -51,6 +52,7 @@ impl Clock {
 		(self.now_nanos() / 1_000_000_000) as u64
 	}
 
+	#[allow(clippy::disallowed_methods)]
 	pub fn instant(&self) -> Instant {
 		match self {
 			Clock::Real => Instant {

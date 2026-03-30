@@ -148,6 +148,7 @@ impl ActorSystem {
 	}
 
 	/// Wait for all actors to finish after shutdown, with a custom timeout.
+	#[allow(clippy::disallowed_methods)]
 	pub fn join_timeout(&self, timeout: Duration) -> Result<(), JoinError> {
 		let deadline = time::Instant::now() + timeout;
 		let rxs: Vec<_> = mem::take(&mut *self.inner.done_rxs.lock().unwrap());
