@@ -14,11 +14,12 @@ use reifydb_type::{
 use super::*;
 use crate::error::TransactionError;
 
-/// Holds both the Arc and the guard to keep the lock alive
-#[allow(dead_code)]
+/// Holds both the Arc and the guard to keep the lock alive.
+/// IMPORTANT: _guard must be declared before _arc so it is dropped first —
+/// the guard borrows from the RwLock inside the Arc.
 pub struct KeyWriteLock {
-	pub(super) _arc: Arc<RwLock<()>>,
 	pub(super) _guard: RwLockWriteGuard<'static, ()>,
+	pub(super) _arc: Arc<RwLock<()>>,
 }
 
 impl KeyWriteLock {
