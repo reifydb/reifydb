@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use dashmap::DashMap;
+use reifydb_runtime::context::clock::Instant;
 
 use crate::task::{ScheduledTask, TaskId};
 
@@ -32,7 +33,7 @@ impl TaskInfo {
 		Self {
 			id,
 			name: entry.task.name.clone(),
-			next_execution: entry.next_execution,
+			next_execution: entry.next_execution.clone(),
 		}
 	}
 }

@@ -437,7 +437,7 @@ impl DatabaseBuilder {
 		// Create subsystems from factories and collect their versions
 		// IMPORTANT: Order matters for shutdown! Subsystems are stopped in REVERSE order.
 		// Add logging FIRST so it's stopped LAST and can log shutdown messages from other subsystems.
-		let health_monitor = Arc::new(HealthMonitor::new());
+		let health_monitor = Arc::new(HealthMonitor::new(runtime.clock().clone()));
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
 		#[cfg(feature = "sub_tracing")]

@@ -5,13 +5,12 @@
 //!
 //! Challenges are one-time-use and expire after a configurable TTL.
 
-use std::{
-	collections::HashMap,
-	sync::RwLock,
-	time::{Duration, Instant},
-};
+use std::{collections::HashMap, sync::RwLock, time::Duration};
 
-use reifydb_runtime::context::{clock::Clock, rng::Rng};
+use reifydb_runtime::context::{
+	clock::{Clock, Instant},
+	rng::Rng,
+};
 use reifydb_type::value::uuid::Uuid7;
 
 /// A pending authentication challenge.
@@ -61,7 +60,7 @@ impl ChallengeStore {
 			identifier,
 			method,
 			payload,
-			created_at: Instant::now(),
+			created_at: clock.instant(),
 		};
 		let mut entries = self.entries.write().unwrap();
 		entries.insert(challenge_id.clone(), entry);
@@ -95,20 +94,18 @@ impl ChallengeStore {
 
 #[cfg(test)]
 mod tests {
-	use std::thread;
-
 	use reifydb_runtime::context::clock::MockClock;
 
 	use super::*;
 
-	fn test_clock_and_rng() -> (Clock, Rng) {
+	fn test_clock_and_rng() -> (Clock, MockClock, Rng) {
 		let mock = MockClock::from_millis(1000);
-		(Clock::Mock(mock), Rng::seeded(42))
+		(Clock::Mock(mock.clone()), mock, Rng::seeded(42))
 	}
 
 	#[test]
 	fn test_create_and_consume() {
-		let (clock, rng) = test_clock_and_rng();
+		let (clock, _, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_secs(60));
 		let data = HashMap::from([("nonce".to_string(), "abc123".to_string())]);
 
@@ -122,7 +119,7 @@ mod tests {
 
 	#[test]
 	fn test_one_time_use() {
-		let (clock, rng) = test_clock_and_rng();
+		let (clock, _, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_secs(60));
 		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
 
@@ -138,11 +135,11 @@ mod tests {
 
 	#[test]
 	fn test_expired_challenge() {
-		let (clock, rng) = test_clock_and_rng();
+		let (clock, mock, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_millis(1));
 		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), &clock, &rng);
 
-		thread::sleep(Duration::from_millis(10));
+		mock.advance_millis(10);
 		assert!(store.consume(&id).is_none());
 	}
 }

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync::Arc, time::Instant};
+use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync::Arc};
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::SharedRuntime;
+use reifydb_runtime::{SharedRuntime, context::clock::Instant};
 use tokio::{select, sync::mpsc, time};
 use tracing::{debug, error, info};
 
@@ -68,7 +68,7 @@ pub async fn run_coordinator(
 	// Build initial heap from registry
 	for entry in registry.iter() {
 		heap.push(HeapEntry {
-			next_execution: entry.value().next_execution,
+			next_execution: entry.value().next_execution.clone(),
 			task_id: *entry.key(),
 		});
 	}
@@ -76,9 +76,9 @@ pub async fn run_coordinator(
 	loop {
 		// Calculate sleep duration until next task
 		let sleep_duration = heap.peek().map(|entry| {
-			let now = Instant::now();
+			let now = runtime.clock().instant();
 			if entry.next_execution > now {
-				entry.next_execution - now
+				&entry.next_execution - &now
 			} else {
 				time::Duration::ZERO
 			}
@@ -120,7 +120,7 @@ pub async fn run_coordinator(
 			if let Some(mut entry) = registry.get_mut(&task_id) {
 			    if let Some(next_exec) = entry.task.schedule.next_execution(completed_at) {
 				// Update next execution time
-				entry.next_execution = next_exec;
+				entry.next_execution = next_exec.clone();
 
 				// Add back to heap
 				heap.push(HeapEntry {
@@ -144,14 +144,14 @@ pub async fn run_coordinator(
 			match msg {
 			    CoordinatorMessage::Register(task) => {
 				let task_id = task.id;
-				let next_execution = Instant::now() + task.schedule.initial_delay();
+				let next_execution = runtime.clock().instant() + task.schedule.initial_delay();
 
 				info!("Registering task: {} (id: {})", task.name, task_id);
 
 				// Add to registry
 				registry.insert(task_id, TaskEntry {
 				    task: Arc::new(task),
-				    next_execution,
+				    next_execution: next_execution.clone(),
 				});
 
 				// Add to heap
@@ -171,7 +171,7 @@ pub async fn run_coordinator(
 				heap.clear();
 				for entry in registry.iter() {
 				    heap.push(HeapEntry {
-					next_execution: entry.value().next_execution,
+					next_execution: entry.value().next_execution.clone(),
 					task_id: *entry.key(),
 				    });
 				}
@@ -210,7 +210,7 @@ fn spawn_task(
 
 	runtime.spawn(async move {
 		let runtime = runtime_clone;
-		let start = Instant::now();
+		let start = runtime.clock().instant();
 		let ctx = TaskContext::new(engine);
 
 		// Execute the work
@@ -236,7 +236,7 @@ fn spawn_task(
 		};
 
 		let duration = start.elapsed();
-		let completed_at = Instant::now();
+		let completed_at = runtime.clock().instant();
 
 		// Log result
 		match result {

@@ -7,7 +7,6 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	time::Instant,
 };
 
 use dashmap::DashMap;
@@ -98,7 +97,7 @@ impl Subsystem for TaskSubsystem {
 
 		// Register initial tasks in the registry
 		for task in self.initial_tasks.drain(..) {
-			let next_execution = Instant::now() + task.schedule.initial_delay();
+			let next_execution = self.runtime.clock().instant() + task.schedule.initial_delay();
 			self.registry.insert(
 				task.id,
 				TaskEntry {

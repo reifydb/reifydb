@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	fmt,
-	fmt::{Display, Formatter},
-	time::{SystemTime, UNIX_EPOCH},
-};
+use std::fmt::{self, Display, Formatter};
 
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
@@ -140,15 +136,6 @@ impl Date {
 	pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, TypeError> {
 		Self::new(year, month, day)
 			.ok_or_else(|| Self::overflow_err(format!("invalid date: {}-{:02}-{:02}", year, month, day)))
-	}
-
-	pub fn today() -> Self {
-		let duration = SystemTime::now().duration_since(UNIX_EPOCH).expect("System time before Unix epoch");
-
-		let days = duration.as_secs() / 86400;
-		Self {
-			days_since_epoch: days as i32,
-		}
 	}
 
 	pub fn year(&self) -> i32 {

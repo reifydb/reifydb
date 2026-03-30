@@ -1080,7 +1080,7 @@ impl CoordinatorActor {
 
 		for (flow_id, schedule) in &mut state.tick_schedules {
 			let tick_std = Duration::from_nanos(schedule.tick.as_nanos() as u64);
-			if now.duration_since(schedule.last_tick.clone()) >= tick_std {
+			if now.duration_since(&schedule.last_tick) >= tick_std {
 				let worker_id = (flow_id.0 as usize) % self.num_workers;
 				due_flows.entry(worker_id).or_default().push(*flow_id);
 				schedule.last_tick = now.clone();

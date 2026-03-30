@@ -3,10 +3,12 @@
 
 use std::{
 	collections::HashMap,
+	fmt,
 	sync::{Arc, Mutex},
-	time::{Duration, Instant},
+	time::Duration,
 };
 
+use reifydb_runtime::context::clock::{Clock, Instant};
 use reifydb_sub_api::subsystem::HealthStatus;
 
 #[derive(Debug, Clone)]
@@ -17,15 +19,22 @@ pub struct ComponentHealth {
 	pub is_running: bool,
 }
 
-#[derive(Debug)]
 pub struct HealthMonitor {
 	components: Arc<Mutex<HashMap<String, ComponentHealth>>>,
+	clock: Clock,
+}
+
+impl fmt::Debug for HealthMonitor {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("HealthMonitor").field("components", &self.components).finish_non_exhaustive()
+	}
 }
 
 impl HealthMonitor {
-	pub fn new() -> Self {
+	pub fn new(clock: Clock) -> Self {
 		Self {
 			components: Arc::new(Mutex::new(HashMap::new())),
+			clock,
 		}
 	}
 
@@ -36,7 +45,7 @@ impl HealthMonitor {
 			ComponentHealth {
 				name,
 				status,
-				last_updated: Instant::now(),
+				last_updated: self.clock.instant(),
 				is_running,
 			},
 		);
@@ -105,12 +114,12 @@ impl HealthMonitor {
 
 	pub fn get_stale_components(&self, max_age: Duration) -> Vec<String> {
 		let components = self.components.lock().unwrap();
-		let now = Instant::now();
+		let now = self.clock.instant();
 
 		components
 			.values()
 			.filter_map(|health| {
-				if now.duration_since(health.last_updated) > max_age {
+				if now.duration_since(&health.last_updated) > max_age {
 					Some(health.name.clone())
 				} else {
 					None
@@ -122,6 +131,6 @@ impl HealthMonitor {
 
 impl Default for HealthMonitor {
 	fn default() -> Self {
-		Self::new()
+		Self::new(Clock::default())
 	}
 }

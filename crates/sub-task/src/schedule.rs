@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use reifydb_runtime::context::clock::Instant;
 
 /// Defines when and how often a task should be executed
 #[derive(Debug, Clone)]
@@ -51,21 +53,25 @@ impl Schedule {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_runtime::context::clock::Clock;
+
 	use super::*;
 
 	#[test]
 	fn test_fixed_interval_next_execution() {
+		let clock = Clock::default();
 		let schedule = Schedule::FixedInterval(Duration::from_secs(10));
-		let now = Instant::now();
-		let next = schedule.next_execution(now);
+		let now = clock.instant();
+		let next = schedule.next_execution(now.clone());
 		assert!(next.is_some());
 		assert_eq!(next.unwrap(), now + Duration::from_secs(10));
 	}
 
 	#[test]
 	fn test_once_next_execution() {
+		let clock = Clock::default();
 		let schedule = Schedule::Once(Duration::from_secs(5));
-		let now = Instant::now();
+		let now = clock.instant();
 		let next = schedule.next_execution(now);
 		assert!(next.is_none());
 	}
