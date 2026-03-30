@@ -35,8 +35,8 @@ export async function handleDotCommand(
       await showTables(context);
       return { handled: true };
 
-    case '.schema':
-      await showSchema(args, context);
+    case '.shape':
+      await showShape(args, context);
       return { handled: true };
 
     case '.fullscreen':
@@ -70,7 +70,7 @@ function showHelp(terminal: TerminalAdapter): void {
   terminal.writeln(`  ${C.green}.mode${C.reset} [mode]       Set display mode (truncate|full)`);
   terminal.writeln(`  ${C.green}.history${C.reset}           Show command history`);
   terminal.writeln(`  ${C.green}.tables${C.reset}            List all tables`);
-  terminal.writeln(`  ${C.green}.schema${C.reset} [table]    Show table schema`);
+  terminal.writeln(`  ${C.green}.shape${C.reset} [table]     Show table shape`);
   terminal.writeln(`  ${C.green}.fullscreen${C.reset}        Enter fullscreen mode`);
   terminal.writeln(`  ${C.green}.exit${C.reset}              Exit fullscreen mode`);
   terminal.writeln('');
@@ -162,25 +162,25 @@ async function showTables(context: DotCommandContext): Promise<void> {
   terminal.writeln('');
 }
 
-async function showSchema(args: string[], context: DotCommandContext): Promise<void> {
+async function showShape(args: string[], context: DotCommandContext): Promise<void> {
   const terminal = context.terminal;
 
-  if (!context.executor.getSchema) {
-    terminal.writeln(`${C.dim}.schema command not supported by this executor${C.reset}`);
+  if (!context.executor.getShape) {
+    terminal.writeln(`${C.dim}.shape command not supported by this executor${C.reset}`);
     return;
   }
 
   if (args.length === 0) {
-    terminal.writeln(`${C.red}Usage: .schema <table_name>${C.reset}`);
+    terminal.writeln(`${C.red}Usage: .shape <table_name>${C.reset}`);
     return;
   }
 
   const tableName = args[0];
-  const schema = await context.executor.getSchema(tableName);
+  const shape = await context.executor.getShape(tableName);
 
-  if (schema) {
+  if (shape) {
     terminal.writeln('');
-    terminal.writeln(schema);
+    terminal.writeln(shape);
     terminal.writeln('');
   } else {
     terminal.writeln(`${C.red}Table not found: ${tableName}${C.reset}`);

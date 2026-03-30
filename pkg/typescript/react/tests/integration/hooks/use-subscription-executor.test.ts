@@ -3,7 +3,7 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useSubscriptionExecutor, getConnection, clearConnection, Schema} from '../../../src';
+import {useSubscriptionExecutor, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabase} from '../setup';
 import {
     createTestTableForHook,
@@ -48,7 +48,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), name: Schema.string()})
+                    Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
@@ -71,7 +71,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -94,7 +94,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -127,7 +127,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -153,7 +153,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.string()})
+                    Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
@@ -199,7 +199,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), name: Schema.string()})
+                    Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
@@ -240,7 +240,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -279,7 +279,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -306,7 +306,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), name: Schema.string()})
+                    Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
@@ -352,7 +352,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.string()})
+                    Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
@@ -398,7 +398,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.string()})
+                    Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
@@ -437,7 +437,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.string()})
+                    Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
@@ -491,7 +491,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), name: Schema.string()})
+                    Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
@@ -555,7 +555,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.string()})
+                    Shape.object({id: Shape.number(), value: Shape.string()})
                 );
             });
 
@@ -595,7 +595,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     'from nonexistent::table',
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -614,7 +614,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     'INVALID QUERY SYNTAX',
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -632,7 +632,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     'from test::table_that_does_not_exist_xyz',
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -648,7 +648,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     'from invalid::syntax.here',
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -678,12 +678,12 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result1.current.subscribe(
                     `from test::${table1}`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
                 await result2.current.subscribe(
                     `from test::${table2}`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -719,7 +719,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 await result.current.subscribe(
                     `from test::${tableName} filter id > 1000`,
                     null,
-                    Schema.object({id: Schema.number()})
+                    Shape.object({id: Shape.number()})
                 );
             });
 
@@ -731,10 +731,10 @@ describe('useSubscriptionExecutor Hook', () => {
             expect(result.current.state.changes).toEqual([]);
         });
 
-        it('should handle subscription without schema', async () => {
+        it('should handle subscription without shape', async () => {
             const {result} = renderHook(() => useSubscriptionExecutor());
             const tableName = await createTestTableForHook(
-                'sub_no_schema',
+                'sub_no_shape',
                 ['id Int4', 'value Utf8']
             );
 
@@ -759,7 +759,7 @@ describe('useSubscriptionExecutor Hook', () => {
                 expect(result.current.state.changes.length).toBe(1);
             });
 
-            // Without schema, data comes through as raw Arrow values
+            // Without shape, data comes through as raw Arrow values
             expect(result.current.state.changes[0].operation).toBe('INSERT');
             expect(result.current.state.changes[0].rows.length).toBe(1);
         });

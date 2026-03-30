@@ -5,7 +5,7 @@ import {
     Value
 } from "@reifydb/core";
 import type {
-    SchemaNode,
+    ShapeNode,
     FrameResults,
 } from "@reifydb/core";
 
@@ -106,10 +106,10 @@ export class HttpClient {
         }
     }
 
-    async admin<const S extends readonly SchemaNode[]>(
+    async admin<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        schemas: S
+        shapes: S
     ): Promise<FrameResults<S>> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -123,20 +123,20 @@ export class HttpClient {
         const result = await this.send('admin', outputStatements, encodedParams);
 
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameSchema = schemas[frameIndex];
-            if (!frameSchema) {
+            const frameShape = shapes[frameIndex];
+            if (!frameShape) {
                 return frame;
             }
-            return frame.map((row: any) => this.transformResult(row, frameSchema));
+            return frame.map((row: any) => this.transformResult(row, frameShape));
         });
 
         return transformedFrames as FrameResults<S>;
     }
 
-    async command<const S extends readonly SchemaNode[]>(
+    async command<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        schemas: S
+        shapes: S
     ): Promise<FrameResults<S>> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -150,20 +150,20 @@ export class HttpClient {
         const result = await this.send('command', outputStatements, encodedParams);
 
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameSchema = schemas[frameIndex];
-            if (!frameSchema) {
+            const frameShape = shapes[frameIndex];
+            if (!frameShape) {
                 return frame;
             }
-            return frame.map((row: any) => this.transformResult(row, frameSchema));
+            return frame.map((row: any) => this.transformResult(row, frameShape));
         });
 
         return transformedFrames as FrameResults<S>;
     }
 
-    async query<const S extends readonly SchemaNode[]>(
+    async query<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        schemas: S
+        shapes: S
     ): Promise<FrameResults<S>> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -177,11 +177,11 @@ export class HttpClient {
         const result = await this.send('query', outputStatements, encodedParams);
 
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameSchema = schemas[frameIndex];
-            if (!frameSchema) {
+            const frameShape = shapes[frameIndex];
+            if (!frameShape) {
                 return frame;
             }
-            return frame.map((row: any) => this.transformResult(row, frameSchema));
+            return frame.map((row: any) => this.transformResult(row, frameShape));
         });
 
         return transformedFrames as FrameResults<S>;
@@ -248,62 +248,62 @@ export class HttpClient {
         }
     }
 
-    private transformResult(row: any, resultSchema: any): any {
-        if (resultSchema && resultSchema.kind === 'object' && resultSchema.properties) {
+    private transformResult(row: any, resultShape: any): any {
+        if (resultShape && resultShape.kind === 'object' && resultShape.properties) {
             const transformedRow: any = {};
             for (const [key, value] of Object.entries(row)) {
-                const propertySchema = resultSchema.properties[key];
-                if (propertySchema && propertySchema.kind === 'primitive') {
+                const propertyShape = resultShape.properties[key];
+                if (propertyShape && propertyShape.kind === 'primitive') {
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
                         const rawValue = (value as any).valueOf();
-                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertySchema.type);
+                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertyShape.type);
                     } else {
-                        transformedRow[key] = this.coerceToPrimitiveType(value, propertySchema.type);
+                        transformedRow[key] = this.coerceToPrimitiveType(value, propertyShape.type);
                     }
-                } else if (propertySchema && propertySchema.kind === 'value') {
+                } else if (propertyShape && propertyShape.kind === 'value') {
                     transformedRow[key] = value;
                 } else {
-                    transformedRow[key] = propertySchema ? this.transformResult(value, propertySchema) : value;
+                    transformedRow[key] = propertyShape ? this.transformResult(value, propertyShape) : value;
                 }
             }
             return transformedRow;
         }
 
-        if (resultSchema && resultSchema.kind === 'primitive') {
+        if (resultShape && resultShape.kind === 'primitive') {
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerceToPrimitiveType(row.valueOf(), resultSchema.type);
+                return this.coerceToPrimitiveType(row.valueOf(), resultShape.type);
             }
-            return this.coerceToPrimitiveType(row, resultSchema.type);
+            return this.coerceToPrimitiveType(row, resultShape.type);
         }
 
-        if (resultSchema && resultSchema.kind === 'value') {
+        if (resultShape && resultShape.kind === 'value') {
             return row;
         }
 
-        if (resultSchema && resultSchema.kind === 'array') {
+        if (resultShape && resultShape.kind === 'array') {
             if (Array.isArray(row)) {
-                return row.map((item: any) => this.transformResult(item, resultSchema.items));
+                return row.map((item: any) => this.transformResult(item, resultShape.items));
             }
             return row;
         }
 
-        if (resultSchema && resultSchema.kind === 'optional') {
+        if (resultShape && resultShape.kind === 'optional') {
             if (row === undefined || row === null) {
                 return undefined;
             }
-            return this.transformResult(row, resultSchema.schema);
+            return this.transformResult(row, resultShape.shape);
         }
 
         return row;
     }
 
-    private coerceToPrimitiveType(value: any, schemaType: string): any {
+    private coerceToPrimitiveType(value: any, shapeType: string): any {
         if (value === undefined || value === null) {
             return value;
         }
 
         const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigintTypes.includes(schemaType)) {
+        if (bigintTypes.includes(shapeType)) {
             if (typeof value === 'bigint') {
                 return value;
             }

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import {useEffect, useMemo} from 'react';
-import {SchemaNode, InferSchema} from '@reifydb/core';
+import {ShapeNode, InferShape} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useAdminExecutor, type AdminResult, type AdminExecutorOptions} from './use-admin-executor';
 
@@ -11,14 +11,14 @@ export interface AdminOptions extends AdminExecutorOptions {
 }
 
 // Single admin hook - returns a single result
-export function useAdminOne<S extends SchemaNode = any>(
+export function useAdminOne<S extends ShapeNode = any>(
     statement: string,
     params?: any,
-    schema?: S,
+    shape?: S,
     options?: AdminOptions
 ): {
     isExecuting: boolean;
-    result: AdminResult<S extends SchemaNode ? InferSchema<S> : any> | undefined;
+    result: AdminResult<S extends ShapeNode ? InferShape<S> : any> | undefined;
     error: string | undefined;
 } {
     const {
@@ -26,12 +26,12 @@ export function useAdminOne<S extends SchemaNode = any>(
         results,
         error,
         admin
-    } = useAdminExecutor<S extends SchemaNode ? InferSchema<S> : any>(options);
+    } = useAdminExecutor<S extends ShapeNode ? InferShape<S> : any>(options);
 
     useEffect(() => {
-        // Pass schema as array for the executor
-        const schemas = schema ? [schema] : undefined;
-        admin(statement, params, schemas);
+        // Pass shape as array for the executor
+        const shapes = shape ? [shape] : undefined;
+        admin(statement, params, shapes);
     }, [statement, params, admin]);
 
     // Extract first result for single admin convenience
@@ -43,14 +43,14 @@ export function useAdminOne<S extends SchemaNode = any>(
 }
 
 // Multiple admin hook - returns multiple results
-export function useAdminMany<S extends readonly SchemaNode[] = readonly SchemaNode[]>(
+export function useAdminMany<S extends readonly ShapeNode[] = readonly ShapeNode[]>(
     statements: string | string[],
     params?: any,
-    schemas?: S,
+    shapes?: S,
     options?: AdminOptions
 ): {
     isExecuting: boolean;
-    results: AdminResult<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>[] | undefined;
+    results: AdminResult<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>[] | undefined;
     error: string | undefined;
 } {
     const {
@@ -58,10 +58,10 @@ export function useAdminMany<S extends readonly SchemaNode[] = readonly SchemaNo
         results,
         error,
         admin
-    } = useAdminExecutor<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>(options);
+    } = useAdminExecutor<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>(options);
 
     useEffect(() => {
-        admin(statements, params, schemas);
+        admin(statements, params, shapes);
     }, [statements, params, admin]);
 
     return {isExecuting, results, error};

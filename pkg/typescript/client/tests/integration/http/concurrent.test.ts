@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, HttpClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 
 describe('Concurrent requests', () => {
     let httpClient: HttpClient;
@@ -20,17 +20,17 @@ describe('Concurrent requests', () => {
                 httpClient.admin(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 httpClient.admin(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 httpClient.admin(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -47,17 +47,17 @@ describe('Concurrent requests', () => {
                 httpClient.command(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 httpClient.command(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 httpClient.command(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -75,17 +75,17 @@ describe('Concurrent requests', () => {
                 httpClient.query(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 httpClient.query(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 httpClient.query(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -102,17 +102,17 @@ describe('Concurrent requests', () => {
                 httpClient.admin(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 httpClient.query(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 httpClient.admin(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -129,17 +129,17 @@ describe('Concurrent requests', () => {
                 httpClient.command(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 httpClient.query(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 httpClient.command(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 

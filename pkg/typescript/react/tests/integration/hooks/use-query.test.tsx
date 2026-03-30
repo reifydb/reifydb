@@ -9,7 +9,7 @@ import {
     ConnectionProvider,
     getConnection,
     clearConnection,
-    Schema,
+    Shape,
     useCommandOne
 } from '../../../src';
 import {waitForDatabase} from '../setup';
@@ -30,12 +30,12 @@ describe('useQuery Hooks', () => {
 
     describe('useQueryOne', () => {
         it('should execute a single query and return one result', async () => {
-            const schema = Schema.object({answer: Schema.number()});
+            const shape = Shape.object({answer: Shape.number()});
             const {result} = renderHook(() =>
                 useQueryOne(
                     `MAP {answer: 42}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -53,13 +53,13 @@ describe('useQuery Hooks', () => {
         });
 
         it('should handle parameters', async () => {
-            const schema = Schema.object({result: Schema.string()});
+            const shape = Shape.object({result: Shape.string()});
             const params = {value: 'hello'};
             const {result} = renderHook(() =>
                 useQueryOne(
                     `MAP {result: $value}`,
                     params,
-                    schema
+                    shape
                 )
             );
 
@@ -73,7 +73,7 @@ describe('useQuery Hooks', () => {
 
         it('should re-execute when query changes', async () => {
             const {result, rerender} = renderHook(
-                ({query}) => useQueryOne(query, undefined, Schema.object({num: Schema.number()})),
+                ({query}) => useQueryOne(query, undefined, Shape.object({num: Shape.number()})),
                 {initialProps: {query: `MAP {num: 1}`}}
             );
 
@@ -92,9 +92,9 @@ describe('useQuery Hooks', () => {
         });
 
         it('should re-execute when params change', async () => {
-            const schema = Schema.object({result: Schema.number()});
+            const shape = Shape.object({result: Shape.number()});
             const {result, rerender} = renderHook(
-                ({params}) => useQueryOne(`MAP {result: $value}`, params, schema),
+                ({params}) => useQueryOne(`MAP {result: $value}`, params, shape),
                 {initialProps: {params: {value: 10}}}
             );
 
@@ -112,17 +112,17 @@ describe('useQuery Hooks', () => {
             });
         });
 
-        it('should handle schema conversion', async () => {
-            const schema = Schema.object({
-                name: Schema.string(),
-                age: Schema.number()
+        it('should handle shape conversion', async () => {
+            const shape = Shape.object({
+                name: Shape.string(),
+                age: Shape.number()
             });
 
             const {result} = renderHook(() =>
                 useQueryOne(
                     `MAP {name: 'Alice', age: 30}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -138,7 +138,7 @@ describe('useQuery Hooks', () => {
             const {result} = renderHook(() =>
                 useQueryOne('INVALID QUERY SYNTAX',
                     undefined,
-                    Schema.object({nothing: Schema.boolean()})
+                    Shape.object({nothing: Shape.boolean()})
                 ),
             );
 
@@ -152,7 +152,7 @@ describe('useQuery Hooks', () => {
 
         it('should handle empty results', async () => {
             const {result} = renderHook(() =>
-                useQueryOne(`FROM [{x:1}] FILTER x > 10`, undefined, Schema.object({x: Schema.number()}))
+                useQueryOne(`FROM [{x:1}] FILTER x > 10`, undefined, Shape.object({x: Shape.number()}))
             );
 
             await waitFor(() => {
@@ -166,10 +166,10 @@ describe('useQuery Hooks', () => {
 
     describe('useQueryMany', () => {
         it('should execute multiple queries', async () => {
-            const schemas = [
-                Schema.object({first: Schema.number()}),
-                Schema.object({second: Schema.number()}),
-                Schema.object({third: Schema.number()})
+            const shapes = [
+                Shape.object({first: Shape.number()}),
+                Shape.object({second: Shape.number()}),
+                Shape.object({third: Shape.number()})
             ] as const;
             const queries = [
                 `MAP {first: 1}`,
@@ -178,7 +178,7 @@ describe('useQuery Hooks', () => {
             ];
 
             const {result} = renderHook(() =>
-                useQueryMany(queries, undefined, schemas)
+                useQueryMany(queries, undefined, shapes)
             );
 
             await waitFor(() => {
@@ -197,7 +197,7 @@ describe('useQuery Hooks', () => {
                 useQueryMany(
                     `MAP {answer: 42}`,
                     undefined,
-                    [Schema.object({answer: Schema.number()})]
+                    [Shape.object({answer: Shape.number()})]
                 )
             );
 
@@ -210,9 +210,9 @@ describe('useQuery Hooks', () => {
         });
 
         it('should handle parameters for multiple queries', async () => {
-            const schemas = [
-                Schema.object({first: Schema.number()}),
-                Schema.object({second: Schema.number()})
+            const shapes = [
+                Shape.object({first: Shape.number()}),
+                Shape.object({second: Shape.number()})
             ] as const;
             const queries = [
                 `MAP {first: $x}`,
@@ -221,7 +221,7 @@ describe('useQuery Hooks', () => {
             const params = {x: 10, y: 20};
 
             const {result} = renderHook(() =>
-                useQueryMany(queries, params, schemas)
+                useQueryMany(queries, params, shapes)
             );
 
             await waitFor(() => {
@@ -232,10 +232,10 @@ describe('useQuery Hooks', () => {
             expect(result.current.results![1].rows[0]).toEqual({second: 20});
         });
 
-        it('should handle multiple schemas', async () => {
-            const schemas = [
-                Schema.object({value: Schema.number()}),
-                Schema.object({name: Schema.string()})
+        it('should handle multiple shapes', async () => {
+            const shapes = [
+                Shape.object({value: Shape.number()}),
+                Shape.object({name: Shape.string()})
             ] as const;
 
             const queries = [
@@ -244,7 +244,7 @@ describe('useQuery Hooks', () => {
             ];
 
             const {result} = renderHook(() =>
-                useQueryMany(queries, undefined, schemas)
+                useQueryMany(queries, undefined, shapes)
             );
 
             await waitFor(() => {
@@ -257,7 +257,7 @@ describe('useQuery Hooks', () => {
 
         it('should re-execute when statements change', async () => {
             const {result, rerender} = renderHook(
-                ({queries}) => useQueryMany(queries, undefined, [Schema.object({x: Schema.number()})]),
+                ({queries}) => useQueryMany(queries, undefined, [Shape.object({x: Shape.number()})]),
                 {initialProps: {queries: [`MAP {x: 1}`]}}
             );
 
@@ -281,13 +281,13 @@ describe('useQuery Hooks', () => {
                 `FROM [{x:1}] FILTER x > 10`,
                 `MAP {value: 2}`
             ];
-            const schemas = [
-                Schema.object({value: Schema.number()}),
-                Schema.object({value: Schema.number()}),
-                Schema.object({value: Schema.number()}),
+            const shapes = [
+                Shape.object({value: Shape.number()}),
+                Shape.object({value: Shape.number()}),
+                Shape.object({value: Shape.number()}),
             ];
             const {result} = renderHook(() =>
-                useQueryMany(queries, undefined, schemas)
+                useQueryMany(queries, undefined, shapes)
             );
 
             await waitFor(() => {
@@ -306,13 +306,13 @@ describe('useQuery Hooks', () => {
                 'INVALID SYNTAX',
                 `MAP {valid: 2}`
             ];
-            const schemas = [
-                Schema.object({valid: Schema.number()}),
-                Schema.object({valid: Schema.number()}),
-                Schema.object({valid: Schema.number()}),
+            const shapes = [
+                Shape.object({valid: Shape.number()}),
+                Shape.object({valid: Shape.number()}),
+                Shape.object({valid: Shape.number()}),
             ];
             const {result} = renderHook(() =>
-                useQueryMany(queries, undefined, schemas)
+                useQueryMany(queries, undefined, shapes)
             );
 
             await waitFor(() => {
@@ -327,18 +327,18 @@ describe('useQuery Hooks', () => {
 
     describe('Hook interaction', () => {
         it('should allow multiple hooks to run different queries simultaneously', async () => {
-            const schema1 = Schema.object({value: Schema.number()});
+            const shape1 = Shape.object({value: Shape.number()});
             const {result: result1} = renderHook(() =>
-                useQueryOne(`MAP {value: 100}`, undefined, schema1)
+                useQueryOne(`MAP {value: 100}`, undefined, shape1)
             );
 
             const queries2 = [`MAP {x: 200}`, `MAP {y: 300}`];
-            const schemas2 = [
-                Schema.object({x: Schema.number()}),
-                Schema.object({y: Schema.number()})
+            const shapes2 = [
+                Shape.object({x: Shape.number()}),
+                Shape.object({y: Shape.number()})
             ] as const;
             const {result: result2} = renderHook(() =>
-                useQueryMany(queries2, undefined, schemas2)
+                useQueryMany(queries2, undefined, shapes2)
             );
 
             await waitFor(() => {
@@ -357,9 +357,9 @@ describe('useQuery Hooks', () => {
                 <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
             );
 
-            const schema = Schema.object({value: Schema.number()});
+            const shape = Shape.object({value: Shape.number()});
             const {result} = renderHook(
-                () => useQueryOne(`MAP {value: 999}`, undefined, schema),
+                () => useQueryOne(`MAP {value: 999}`, undefined, shape),
                 {wrapper}
             );
 
@@ -371,7 +371,7 @@ describe('useQuery Hooks', () => {
         });
 
         it('should support config override in hooks', async () => {
-            const schema = Schema.object({test: Schema.string()});
+            const shape = Shape.object({test: Shape.string()});
             const overrideConfig = {url: 'ws://127.0.0.1:8090', options: {timeoutMs: 2000}};
 
             // Use override config (different timeout to ensure it's treated as a separate connection)
@@ -379,7 +379,7 @@ describe('useQuery Hooks', () => {
                 useQueryOne(
                     `MAP {test: 'override'}`,
                     undefined,
-                    schema,
+                    shape,
                     {connectionConfig: overrideConfig}
                 )
             );

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import {useEffect, useMemo} from 'react';
-import {SchemaNode, InferSchema} from '@reifydb/core';
+import {ShapeNode, InferShape} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useQueryExecutor, type QueryResult, type QueryExecutorOptions} from './use-query-executor';
 
@@ -11,14 +11,14 @@ export interface QueryOptions extends QueryExecutorOptions {
 }
 
 // Single query hook - returns a single result
-export function useQueryOne<S extends SchemaNode = any>(
+export function useQueryOne<S extends ShapeNode = any>(
     rql: string,
     params?: any,
-    schema?: S,
+    shape?: S,
     options?: QueryOptions
 ): {
     isExecuting: boolean;
-    result: QueryResult<S extends SchemaNode ? InferSchema<S> : any> | undefined;
+    result: QueryResult<S extends ShapeNode ? InferShape<S> : any> | undefined;
     error: string | undefined;
 } {
     const {
@@ -26,12 +26,12 @@ export function useQueryOne<S extends SchemaNode = any>(
         results,
         error,
         query
-    } = useQueryExecutor<S extends SchemaNode ? InferSchema<S> : any>(options);
+    } = useQueryExecutor<S extends ShapeNode ? InferShape<S> : any>(options);
 
     useEffect(() => {
-        // Pass schema as array for the executor
-        const schemas = schema ? [schema] : undefined;
-        query(rql, params, schemas);
+        // Pass shape as array for the executor
+        const shapes = shape ? [shape] : undefined;
+        query(rql, params, shapes);
     }, [rql, params, query]);
 
     // Extract first result for single query convenience
@@ -43,14 +43,14 @@ export function useQueryOne<S extends SchemaNode = any>(
 }
 
 // Multiple query hook - returns multiple results
-export function useQueryMany<S extends readonly SchemaNode[] = readonly SchemaNode[]>(
+export function useQueryMany<S extends readonly ShapeNode[] = readonly ShapeNode[]>(
     statements: string | string[],
     params?: any,
-    schemas?: S,
+    shapes?: S,
     options?: QueryOptions
 ): {
     isExecuting: boolean;
-    results: QueryResult<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>[] | undefined;
+    results: QueryResult<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>[] | undefined;
     error: string | undefined;
 } {
     const {
@@ -58,10 +58,10 @@ export function useQueryMany<S extends readonly SchemaNode[] = readonly SchemaNo
         results,
         error,
         query
-    } = useQueryExecutor<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>(options);
+    } = useQueryExecutor<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>(options);
 
     useEffect(() => {
-        query(statements, params, schemas);
+        query(statements, params, shapes);
     }, [statements, params, query]);
 
     return {isExecuting, results, error};

@@ -20,7 +20,7 @@ const KEYWORDS = [
   // Functions & casting
   'fun', 'call', 'apply', 'cast',
 
-  // DDL & schema commands
+  // DDL & shape commands
   'describe', 'show', 'create', 'alter', 'drop', 'filter', 'gate', 'flow', 'window',
 
   // Operators & predicates

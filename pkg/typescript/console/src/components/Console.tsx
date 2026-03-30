@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Client } from '@reifydb/client';
 import type { editor } from 'monaco-editor';
-import type { Executor } from '../types';
+import type { Executor, TransactionType } from '../types';
 import { WsExecutor, type WsClient } from '../executor/ws-executor';
 import { ConsoleProvider, useConsoleStore } from '../state/use-console-store';
 import { loadHistory, saveHistory } from '../state/history';
@@ -13,7 +13,7 @@ import { TabBar } from './layout/TabBar';
 import { QueryEditor } from './editor/QueryEditor';
 import { EditorToolbar } from './editor/EditorToolbar';
 import { ResultsPanel } from './results/ResultsPanel';
-import { SchemaBrowser } from './schema/SchemaBrowser';
+import { ShapeBrowser } from './shape/ShapeBrowser';
 import { HistoryPanel } from './history/HistoryPanel';
 import { ConnectionPanel } from './connection/ConnectionPanel';
 import type { ConnectionMode, ConnectionStatus } from './connection/ConnectionPanel';
@@ -36,7 +36,7 @@ export interface ConsoleProps {
 const TABS = [
   { id: 'results', label: 'Results' },
   { id: 'history', label: 'History' },
-  { id: 'schema', label: 'Schema' },
+  { id: 'shape', label: 'Shape' },
 ];
 
 const WS_URL_STORAGE_KEY = 'rdb-console-ws-url';
@@ -62,6 +62,7 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
   );
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [activeExecutor, setActiveExecutor] = useState<Executor>(executor);
+  const [transactionType, setTransactionType] = useState<TransactionType>('query');
   const [showConnectionPanel, setShowConnectionPanel] = useState(false);
   const wsClientRef = useRef<{ disconnect(): void } | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,6 +111,7 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
         }
         wsClientRef.current = client;
         const wsExecutor = new WsExecutor(client as unknown as WsClient);
+        wsExecutor.transactionType = transactionType;
         setActiveExecutor(wsExecutor);
         setConnectionStatus('connected');
         backoff = 1000; // reset backoff on success
@@ -168,13 +170,14 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
       const client = await Client.connect_ws(wsUrl, { timeoutMs: 30_000 });
       wsClientRef.current = client;
       const wsExecutor = new WsExecutor(client as unknown as WsClient);
+      wsExecutor.transactionType = transactionType;
       setActiveExecutor(wsExecutor);
       setConnectionStatus('connected');
     } catch (err) {
       setConnectionStatus('error');
       setConnectionError(err instanceof Error ? err.message : String(err));
     }
-  }, [wsUrl]);
+  }, [wsUrl, transactionType]);
 
   const handleDisconnect = useCallback(() => {
     if (wsClientRef.current) {
@@ -186,6 +189,13 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
     setConnectionStatus('connected');
     setConnectionError(null);
   }, [executor]);
+
+  const handleTransactionTypeChange = useCallback((type: TransactionType) => {
+    setTransactionType(type);
+    if (activeExecutor instanceof WsExecutor) {
+      activeExecutor.transactionType = type;
+    }
+  }, [activeExecutor]);
 
   const handleModeChange = useCallback((mode: ConnectionMode) => {
     if (mode === 'wasm' && connectionMode === 'websocket') {
@@ -262,6 +272,9 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
           connectionStatus={connectionStatus}
           connectionLocked={connectionLocked}
           onToggleConnectionPanel={() => setShowConnectionPanel((v) => !v)}
+          connectionMode={connectionMode}
+          transactionType={transactionType}
+          onTransactionTypeChange={handleTransactionTypeChange}
         />
         {!connectionLocked && showConnectionPanel && (
           <ConnectionPanel
@@ -295,7 +308,7 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
       <TabBar
         activeTab={state.activeTab}
         tabs={TABS}
-        onTabChange={(tab) => dispatch({ type: 'SET_TAB', tab: tab as 'results' | 'history' | 'schema' })}
+        onTabChange={(tab) => dispatch({ type: 'SET_TAB', tab: tab as 'results' | 'history' | 'shape' })}
       />
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         {state.activeTab === 'results' ? (
@@ -303,7 +316,7 @@ function ConsoleInner({ executor, historyKey, connection, theme = 'light', monac
         ) : state.activeTab === 'history' ? (
           <HistoryPanel entries={state.history} onSelect={handleSelectHistory} />
         ) : (
-          <SchemaBrowser executor={activeExecutor} />
+          <ShapeBrowser executor={activeExecutor} />
         )}
       </div>
     </div>

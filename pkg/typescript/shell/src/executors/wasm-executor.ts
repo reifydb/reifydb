@@ -76,9 +76,9 @@ export class WasmExecutor implements Executor {
     }
   }
 
-  async getSchema(tableName: string): Promise<string | null> {
+  async getShape(tableName: string): Promise<string | null> {
     try {
-      // Query system catalog for table schema
+      // Query system catalog for table shape
       const result = await this.db.admin(
         `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`
       );

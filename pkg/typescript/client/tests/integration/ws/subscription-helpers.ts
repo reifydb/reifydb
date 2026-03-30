@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import type { WsClient } from "../../../src";
-import type { SchemaNode, InferSchema } from '@reifydb/core';
+import type { ShapeNode, InferShape } from '@reifydb/core';
 
 /**
  * Create a unique test table name to avoid conflicts
@@ -12,7 +12,7 @@ export function createTestTableName(prefix: string = 'test'): string {
 }
 
 /**
- * Helper to create a test table with schema
+ * Helper to create a test table with shape
  * Creates a 'test' namespace if it doesn't exist and uses test::table_name
  */
 export async function createTestTable(
@@ -42,17 +42,17 @@ export async function createTestTable(
 /**
  * Wait for a subscription callback to be invoked with timeout
  */
-// Overload 1: With schema (type inferred)
+// Overload 1: With shape (type inferred)
 // @ts-ignore
-export function waitForCallback<S extends SchemaNode>(
-    schema: S,
+export function waitForCallback<S extends ShapeNode>(
+    shape: S,
     timeoutMs?: number
 ): {
-    promise: Promise<InferSchema<S>[]>,
-    callback: (rows: InferSchema<S>[]) => void
+    promise: Promise<InferShape<S>[]>,
+    callback: (rows: InferShape<S>[]) => void
 };
 
-// Overload 2: Without schema (explicit type)
+// Overload 2: Without shape (explicit type)
 export function waitForCallback<T = any>(
     timeoutMs?: number
 ): {
@@ -61,15 +61,15 @@ export function waitForCallback<T = any>(
 };
 
 // Implementation
-export function waitForCallback<S extends SchemaNode = any>(
-    schemaOrTimeout?: S | number,
+export function waitForCallback<S extends ShapeNode = any>(
+    shapeOrTimeout?: S | number,
     timeoutMs: number = 500
 ): {
     promise: Promise<any[]>,
     callback: (rows: any[]) => void
 } {
     // Handle overload parameters
-    const timeout = typeof schemaOrTimeout === 'number' ? schemaOrTimeout : timeoutMs;
+    const timeout = typeof shapeOrTimeout === 'number' ? shapeOrTimeout : timeoutMs;
 
     let resolve: (rows: any[]) => void;
     let reject: (err: Error) => void;
@@ -94,20 +94,20 @@ export function waitForCallback<S extends SchemaNode = any>(
 /**
  * Create a callback tracker for testing multiple invocations
  */
-// Overload 1: With schema (type inferred)
-export function createCallbackTracker<S extends SchemaNode>(
-    schema: S
+// Overload 1: With shape (type inferred)
+export function createCallbackTracker<S extends ShapeNode>(
+    shape: S
 ): {
-    callback: (rows: InferSchema<S>[]) => void;
-    getCalls: () => InferSchema<S>[][];
+    callback: (rows: InferShape<S>[]) => void;
+    getCalls: () => InferShape<S>[][];
     getCallCount: () => number;
-    getAllRows: () => InferSchema<S>[];
+    getAllRows: () => InferShape<S>[];
     clear: () => void;
-    waitForCall: (timeoutMs?: number) => Promise<InferSchema<S>[]>;
+    waitForCall: (timeoutMs?: number) => Promise<InferShape<S>[]>;
     waitForRows: (count: number, timeoutMs?: number) => Promise<void>;
 };
 
-// Overload 2: Without schema (explicit type)
+// Overload 2: Without shape (explicit type)
 export function createCallbackTracker<T = any>(): {
     callback: (rows: T[]) => void;
     getCalls: () => T[][];
@@ -119,8 +119,8 @@ export function createCallbackTracker<T = any>(): {
 };
 
 // Implementation
-export function createCallbackTracker<S extends SchemaNode = any>(
-    schema?: S
+export function createCallbackTracker<S extends ShapeNode = any>(
+    shape?: S
 ) {
     const calls: any[][] = [];
     let pendingResolve: ((rows: any[]) => void) | null = null;

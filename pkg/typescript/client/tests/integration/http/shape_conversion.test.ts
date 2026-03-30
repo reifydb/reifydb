@@ -2,20 +2,20 @@
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from "vitest";
 import {Client, HttpClient} from "../../../src";
-import {Schema, Utf8Value, Int4Value, Int1Value, InferSchema} from "@reifydb/core";
+import {Shape, Utf8Value, Int4Value, Int1Value, InferShape} from "@reifydb/core";
 
-// Define the schema once
-const versionSchema = Schema.object({
-    name: Schema.string(),
-    type: Schema.string(),
-    version: Schema.string(),
-    description: Schema.string()
+// Define the shape once
+const versionShape = Shape.object({
+    name: Shape.string(),
+    type: Shape.string(),
+    version: Shape.string(),
+    description: Shape.string()
 });
 
-// Infer the TypeScript type from the schema
-type VersionRow = InferSchema<typeof versionSchema>;
+// Infer the TypeScript type from the shape
+type VersionRow = InferShape<typeof versionShape>;
 
-describe('Schema Type Conversion', () => {
+describe('Shape Type Conversion', () => {
     let httpClient: HttpClient;
 
     beforeAll(async () => {
@@ -25,12 +25,12 @@ describe('Schema Type Conversion', () => {
         });
     });
 
-    describe('Primitive Schema Conversion', () => {
-        it('should convert Value objects to primitives when using primitive schema', async () => {
+    describe('Primitive Shape Conversion', () => {
+        it('should convert Value objects to primitives when using primitive shape', async () => {
             const result = await httpClient.query(
                 "FROM system::versions TAKE 1",
                 null,
-                [versionSchema]
+                [versionShape]
             );
 
             expect(result).toBeDefined();
@@ -60,17 +60,17 @@ describe('Schema Type Conversion', () => {
         }, 5000);
 
         it('should handle mixed primitive types correctly', async () => {
-            const schema = Schema.object({
-                str_val: Schema.string(),
-                int_val: Schema.int4(),
-                bool_val: Schema.boolean(),
-                float_val: Schema.float8()
+            const shape = Shape.object({
+                str_val: Shape.string(),
+                int_val: Shape.int4(),
+                bool_val: Shape.boolean(),
+                float_val: Shape.float8()
             });
 
             const result = await httpClient.admin(
                 "MAP { str_val: 'test', int_val: 42, bool_val: true, float_val: 3.14 }",
                 null,
-                [schema]
+                [shape]
             );
 
             expect(result).toHaveLength(1);
@@ -93,15 +93,15 @@ describe('Schema Type Conversion', () => {
         }, 5000);
 
         it('should handle bigint types correctly', async () => {
-            const schema = Schema.object({
-                big_val: Schema.int8(),
-                another_val: Schema.int8()
+            const shape = Shape.object({
+                big_val: Shape.int8(),
+                another_val: Shape.int8()
             });
 
             const result = await httpClient.admin(
                 "MAP { big_val: 9223372036854775807, another_val: 1 }",
                 null,
-                [schema]
+                [shape]
             );
 
             expect(result).toHaveLength(1);
@@ -118,17 +118,17 @@ describe('Schema Type Conversion', () => {
         }, 5000);
     });
 
-    describe('Value Schema Preservation', () => {
-        it('should keep Value objects when using value schema', async () => {
-            const valueSchema = Schema.object({
-                name: Schema.utf8Value(),
-                count: Schema.int4Value()
+    describe('Value Shape Preservation', () => {
+        it('should keep Value objects when using value shape', async () => {
+            const valueShape = Shape.object({
+                name: Shape.utf8Value(),
+                count: Shape.int4Value()
             });
 
             const result = await httpClient.admin(
                 "MAP { name: 'test', count: 42 }",
                 null,
-                [valueSchema]
+                [valueShape]
             );
 
             expect(result).toHaveLength(1);
@@ -151,8 +151,8 @@ describe('Schema Type Conversion', () => {
         }, 5000);
     });
 
-    describe('Without Schema (backward compatibility)', () => {
-        it('should return Value objects when no schema is provided', async () => {
+    describe('Without Shape (backward compatibility)', () => {
+        it('should return Value objects when no shape is provided', async () => {
             const result = await httpClient.query(
                 "FROM system::versions TAKE 1",
                 null,
@@ -170,7 +170,7 @@ describe('Schema Type Conversion', () => {
             // @ts-ignore
             const row = frames![0];
 
-            // Without schema, should get Value objects
+            // Without shape, should get Value objects
             expect(row.name).toBeInstanceOf(Utf8Value);
             expect(row.type).toBeInstanceOf(Utf8Value);
             expect(row.version).toBeInstanceOf(Utf8Value);

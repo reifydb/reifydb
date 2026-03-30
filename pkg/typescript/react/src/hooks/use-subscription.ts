@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import { useEffect, useMemo } from 'react';
-import { SchemaNode, InferSchema } from '@reifydb/core';
+import { ShapeNode, InferShape } from '@reifydb/core';
 import {
     useSubscriptionExecutor,
     type SubscriptionExecutorOptions,
@@ -13,14 +13,14 @@ export interface SubscriptionOptions extends SubscriptionExecutorOptions {
     enabled?: boolean;  // Auto-subscribe (default: true)
 }
 
-export function useSubscription<S extends SchemaNode = any>(
+export function useSubscription<S extends ShapeNode = any>(
     query: string,
     params?: any,
-    schema?: S,
+    shape?: S,
     options?: SubscriptionOptions
 ): {
-    data: InferSchema<S>[];
-    changes: ChangeEvent<InferSchema<S>>[];
+    data: InferShape<S>[];
+    changes: ChangeEvent<InferShape<S>>[];
     isSubscribed: boolean;
     isSubscribing: boolean;
     error: string | undefined;
@@ -30,7 +30,7 @@ export function useSubscription<S extends SchemaNode = any>(
         state,
         subscribe,
         unsubscribe
-    } = useSubscriptionExecutor<InferSchema<S>>(options);
+    } = useSubscriptionExecutor<InferShape<S>>(options);
 
     // Serialize params for stable comparison (objects create new refs each render)
     const paramsKey = useMemo(() => JSON.stringify(params), [params]);
@@ -38,12 +38,12 @@ export function useSubscription<S extends SchemaNode = any>(
     useEffect(() => {
         if (options?.enabled === false) return;
 
-        subscribe(query, params, schema);
+        subscribe(query, params, shape);
 
         return () => {
             unsubscribe();
         };
-    }, [query, paramsKey, schema, options?.enabled, subscribe, unsubscribe]);
+    }, [query, paramsKey, shape, options?.enabled, subscribe, unsubscribe]);
 
     return {
         data: state.data,

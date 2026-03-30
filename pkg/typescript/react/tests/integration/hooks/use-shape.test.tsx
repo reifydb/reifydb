@@ -3,14 +3,14 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useSchema, getConnection, clearConnection, Client, ConnectionProvider} from '../../../src';
+import {useShape, getConnection, clearConnection, Client, ConnectionProvider} from '../../../src';
 import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from 'react';
 
-const TEST_NAMESPACE = `test_schema_${crypto.randomUUID().replace(/-/g, '')}`;
+const TEST_NAMESPACE = `test_shape_${crypto.randomUUID().replace(/-/g, '')}`;
 
-describe('useSchema Hook', () => {
+describe('useShape Hook', () => {
     let setupClient: Awaited<ReturnType<typeof Client.connect_ws>> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
@@ -115,14 +115,14 @@ describe('useSchema Hook', () => {
     });
 
     it('should return loading state initially', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         // Initially should be loading
         expect(result.current[0]).toBe(true);
     });
 
-    it('should fetch schema and return table info', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+    it('should fetch shape and return table info', async () => {
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -131,14 +131,14 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [isLoading, schema, error] = result.current;
+        const [isLoading, shape, error] = result.current;
 
         expect(isLoading).toBe(false);
         expect(error).toBeUndefined();
-        expect(schema.length).toBeGreaterThan(0);
+        expect(shape.length).toBeGreaterThan(0);
 
         // Find our test tables
-        const testTables = schema.filter((t) => t.name.startsWith(`${TEST_NAMESPACE}::`));
+        const testTables = shape.filter((t) => t.name.startsWith(`${TEST_NAMESPACE}::`));
         expect(testTables.length).toBe(6);
 
         // Verify table names
@@ -152,7 +152,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should correctly map integer column types', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -161,8 +161,8 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
-        const integersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_integers`);
+        const [, shape] = result.current;
+        const integersTable = shape.find((t) => t.name === `${TEST_NAMESPACE}::types_integers`);
 
         expect(integersTable).toBeDefined();
         expect(integersTable!.columns).toHaveLength(12);
@@ -184,7 +184,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should correctly map float column types', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -193,8 +193,8 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
-        const floatsTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_floats`);
+        const [, shape] = result.current;
+        const floatsTable = shape.find((t) => t.name === `${TEST_NAMESPACE}::types_floats`);
 
         expect(floatsTable).toBeDefined();
         expect(floatsTable!.columns).toHaveLength(3);
@@ -207,7 +207,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should correctly map text and binary column types', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -216,8 +216,8 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
-        const textTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_text`);
+        const [, shape] = result.current;
+        const textTable = shape.find((t) => t.name === `${TEST_NAMESPACE}::types_text`);
 
         expect(textTable).toBeDefined();
         expect(textTable!.columns).toHaveLength(2);
@@ -229,7 +229,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should correctly map temporal column types', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -238,8 +238,8 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
-        const temporalTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_temporal`);
+        const [, shape] = result.current;
+        const temporalTable = shape.find((t) => t.name === `${TEST_NAMESPACE}::types_temporal`);
 
         expect(temporalTable).toBeDefined();
         expect(temporalTable!.columns).toHaveLength(4);
@@ -253,7 +253,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should correctly map identifier column types', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -262,8 +262,8 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
-        const identifiersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_identifiers`);
+        const [, shape] = result.current;
+        const identifiersTable = shape.find((t) => t.name === `${TEST_NAMESPACE}::types_identifiers`);
 
         expect(identifiersTable).toBeDefined();
         expect(identifiersTable!.columns).toHaveLength(2);
@@ -276,7 +276,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should correctly map boolean column type', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -285,8 +285,8 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
-        const miscTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_misc`);
+        const [, shape] = result.current;
+        const miscTable = shape.find((t) => t.name === `${TEST_NAMESPACE}::types_misc`);
 
         expect(miscTable).toBeDefined();
         expect(miscTable!.columns).toHaveLength(1);
@@ -295,7 +295,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should preserve column order by position', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -304,8 +304,8 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
-        const integersTable = schema.find((t) => t.name === `${TEST_NAMESPACE}::types_integers`);
+        const [, shape] = result.current;
+        const integersTable = shape.find((t) => t.name === `${TEST_NAMESPACE}::types_integers`);
 
         expect(integersTable).toBeDefined();
 
@@ -326,7 +326,7 @@ describe('useSchema Hook', () => {
     });
 
     it('should return tables sorted alphabetically by name', async () => {
-        const {result} = renderHook(() => useSchema(), {wrapper});
+        const {result} = renderHook(() => useShape(), {wrapper});
 
         await waitFor(
             () => {
@@ -335,10 +335,10 @@ describe('useSchema Hook', () => {
             {timeout: 10000}
         );
 
-        const [, schema] = result.current;
+        const [, shape] = result.current;
 
-        // Verify schema is sorted
-        const tableNames = schema.map((t) => t.name);
+        // Verify shape is sorted
+        const tableNames = shape.map((t) => t.name);
         const sortedNames = [...tableNames].sort((a, b) => a.localeCompare(b));
         expect(tableNames).toEqual(sortedNames);
     });

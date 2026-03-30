@@ -3,9 +3,9 @@
 
 import { useEffect, useState } from 'react';
 import type { Executor } from '../../types';
-import { SchemaNode } from './SchemaNode';
+import { ShapeNode } from './ShapeNode';
 
-interface SchemaBrowserProps {
+interface ShapeBrowserProps {
   executor: Executor;
 }
 
@@ -36,7 +36,7 @@ const TYPE_NAMES: Record<number, string> = {
   27: 'DictionaryId', 28: 'List',
 };
 
-// source_type: 1=Table, 2=View, 3=VTable, 4=RingBuffer
+// shape_type: 1=Table, 2=View, 3=VTable, 4=RingBuffer
 const SOURCE_TYPE_TABLE = 1;
 const SOURCE_TYPE_VIEW = 2;
 const SOURCE_TYPE_VTABLE = 3;
@@ -81,15 +81,15 @@ function typeColorClass(typeName: string): string | undefined {
     case 'Int1': case 'Int2': case 'Int4': case 'Int8': case 'Int16':
     case 'Uint1': case 'Uint2': case 'Uint4': case 'Uint8': case 'Uint16':
     case 'Int': case 'Uint': case 'Decimal':
-      return 'rdb-schema__node-type--numeric';
+      return 'rdb-shape__node-type--numeric';
     case 'Utf8': case 'Blob':
-      return 'rdb-schema__node-type--string';
+      return 'rdb-shape__node-type--string';
     case 'Boolean':
-      return 'rdb-schema__node-type--boolean';
+      return 'rdb-shape__node-type--boolean';
     case 'Date': case 'DateTime': case 'Time': case 'Duration':
-      return 'rdb-schema__node-type--temporal';
+      return 'rdb-shape__node-type--temporal';
     case 'IdentityId': case 'Uuid4': case 'Uuid7': case 'DictionaryId':
-      return 'rdb-schema__node-type--identity';
+      return 'rdb-shape__node-type--identity';
     default:
       return undefined;
   }
@@ -108,11 +108,11 @@ const CATEGORY_GROUPS: { key: SourceInfo['category']; label: string }[] = [
   { key: 'migration', label: 'Migrations' },
 ];
 
-export function SchemaBrowser({ executor }: SchemaBrowserProps) {
+export function ShapeBrowser({ executor }: ShapeBrowserProps) {
   const [namespaces, setNamespaces] = useState<NamespaceInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadSchema = async () => {
+  const loadShape = async () => {
     setLoading(true);
     try {
       const [nsRows, tableRows, viewRows, vtableRows, rbRows, colRows, vtableColRows, procRows, handlerRows, enumRows, eventRows, dictRows, migrationRows] = await Promise.all([
@@ -121,7 +121,7 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
         queryRows(executor, 'FROM system::views MAP { id, namespace_id, name, kind }'),
         queryRows(executor, 'FROM system::virtual_tables MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::ringbuffers MAP { id, namespace_id, name }'),
-        queryRows(executor, 'FROM system::columns MAP { source_id, source_type, name, type, position }'),
+        queryRows(executor, 'FROM system::columns MAP { shape_id, shape_type, name, type, position }'),
         queryRows(executor, 'FROM system::virtual_table_columns MAP { vtable_id, name, type, position }'),
         queryRows(executor, 'FROM system::procedures MAP { id, namespace_id, name }'),
         queryRows(executor, 'FROM system::handlers MAP { id, namespace_id, name }'),
@@ -137,12 +137,12 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
         nsMap.set(extractNum(row.id), extractStr(row.name));
       }
 
-      // Build column lookup: `${source_type}:${source_id}` → columns
+      // Build column lookup: `${shape_type}:${shape_id}` → columns
       const columnsBySource = new Map<string, ColumnInfo[]>();
       // First collect with position for sorting
       const rawColumns = new Map<string, { name: string; type: string; position: number }[]>();
       for (const row of colRows) {
-        const key = `${extractNum(row.source_type)}:${extractNum(row.source_id)}`;
+        const key = `${extractNum(row.shape_type)}:${extractNum(row.shape_id)}`;
         if (!rawColumns.has(key)) rawColumns.set(key, []);
         rawColumns.get(key)!.push({
           name: extractStr(row.name),
@@ -236,14 +236,14 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
   };
 
   useEffect(() => {
-    loadSchema();
+    loadShape();
   }, [executor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toolbar = (
-    <div className="rdb-schema__toolbar">
+    <div className="rdb-shape__toolbar">
       <button
-        className="rdb-schema__reload-btn"
-        onClick={loadSchema}
+        className="rdb-shape__reload-btn"
+        onClick={loadShape}
         disabled={loading}
       >
         {loading ? '[loading...]' : '[reload]'}
@@ -255,7 +255,7 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
     return (
       <>
         {toolbar}
-        <div className="rdb-history__empty">$ loading schema...</div>
+        <div className="rdb-history__empty">$ loading shape...</div>
       </>
     );
   }
@@ -274,31 +274,31 @@ export function SchemaBrowser({ executor }: SchemaBrowserProps) {
       {toolbar}
       <div>
         {namespaces.map(ns => (
-          <SchemaNode key={ns.name} label={ns.name} labelClass="rdb-schema__node-label--namespace">
+          <ShapeNode key={ns.name} label={ns.name} labelClass="rdb-shape__node-label--namespace">
             {CATEGORY_GROUPS.map(({ key, label }) => {
               const sources = ns.sources.filter(s => s.category === key);
               if (sources.length === 0) return null;
               return (
-                <SchemaNode key={key} label={`${label} (${sources.length})`} labelClass="rdb-schema__node-label--category">
+                <ShapeNode key={key} label={`${label} (${sources.length})`} labelClass="rdb-shape__node-label--category">
                   {sources.map(source => (
-                    <SchemaNode key={source.name} label={source.name}>
+                    <ShapeNode key={source.name} label={source.name}>
                       {source.columns.length > 0
                         ? source.columns.map(col => (
-                          <SchemaNode
+                          <ShapeNode
                             key={col.name}
                             label={col.name}
-                            labelClass="rdb-schema__node-label--column"
+                            labelClass="rdb-shape__node-label--column"
                             type={col.type}
                             typeClass={typeColorClass(col.type)}
                           />
                         ))
                         : undefined}
-                    </SchemaNode>
+                    </ShapeNode>
                   ))}
-                </SchemaNode>
+                </ShapeNode>
               );
             })}
-          </SchemaNode>
+          </ShapeNode>
         ))}
       </div>
     </>

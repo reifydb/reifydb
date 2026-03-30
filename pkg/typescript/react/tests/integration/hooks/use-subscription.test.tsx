@@ -3,7 +3,7 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor, act} from '@testing-library/react';
-import {useSubscription, ConnectionProvider, getConnection, clearConnection, Schema} from '../../../src';
+import {useSubscription, ConnectionProvider, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabase} from '../setup';
 import {createTestTableForHook} from './subscription-test-helpers';
 // @ts-ignore
@@ -35,12 +35,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'name Utf8']
             );
 
-            const schema = Schema.object({id: Schema.number(), name: Schema.string()});
+            const shape = Shape.object({id: Shape.number(), name: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema
+                    shape
                 ),
                 {wrapper}
             );
@@ -63,12 +63,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result} = renderHook(
                 () => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema,
+                    shape,
                     {enabled: false}
                 ),
                 {wrapper}
@@ -88,12 +88,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema,
+                    shape,
                     {enabled}
                 ),
                 {initialProps: {enabled: false}, wrapper}
@@ -117,12 +117,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema,
+                    shape,
                     {enabled}
                 ),
                 {initialProps: {enabled: true}, wrapper}
@@ -151,12 +151,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result, unmount} = renderHook(
                 () => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema
+                    shape
                 ),
                 {wrapper}
             );
@@ -184,12 +184,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({query}) => useSubscription(
                     query,
                     null,
-                    schema
+                    shape
                 ),
                 {initialProps: {query: `from test::${table1}`}, wrapper}
             );
@@ -216,12 +216,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'value Int4']
             );
 
-            const schema = Schema.object({id: Schema.number(), value: Schema.number()});
+            const shape = Shape.object({id: Shape.number(), value: Shape.number()});
             const {result, rerender} = renderHook(
                 ({params}) => useSubscription(
                     `from test::${tableName} filter value == $val`,
                     params,
-                    schema
+                    shape
                 ),
                 {initialProps: {params: {val: 1}}, wrapper}
             );
@@ -242,22 +242,22 @@ describe('useSubscription Hook', () => {
             expect(result.current.isSubscribed).toBe(true);
         });
 
-        it('should re-subscribe when schema changes', async () => {
+        it('should re-subscribe when shape changes', async () => {
             const tableName = await createTestTableForHook(
-                'schema_change',
+                'shape_change',
                 ['id Int4', 'name Utf8', 'value Int4']
             );
 
-            const schema1 = Schema.object({id: Schema.number(), name: Schema.string()});
-            const schema2 = Schema.object({id: Schema.number(), value: Schema.number()});
+            const shape1 = Shape.object({id: Shape.number(), name: Shape.string()});
+            const shape2 = Shape.object({id: Shape.number(), value: Shape.number()});
 
             const {result, rerender} = renderHook(
-                ({schema}) => useSubscription(
+                ({shape}) => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema as any
+                    shape as any
                 ),
-                {initialProps: {schema: schema1}, wrapper}
+                {initialProps: {shape: shape1}, wrapper}
             );
 
             await waitFor(() => {
@@ -266,8 +266,8 @@ describe('useSubscription Hook', () => {
 
             const firstSubId = result.current.subscriptionId;
 
-            // Change schema
-            rerender({schema: schema2});
+            // Change shape
+            rerender({shape: shape2});
 
             await waitFor(() => {
                 expect(result.current.subscriptionId).not.toBe(firstSubId);
@@ -286,12 +286,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({query}) => useSubscription(
                     query,
                     null,
-                    schema
+                    shape
                 ),
                 {initialProps: {query: `from test::${table1}`}, wrapper}
             );
@@ -321,12 +321,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'name Utf8']
             );
 
-            const schema = Schema.object({id: Schema.number(), name: Schema.string()});
+            const shape = Shape.object({id: Shape.number(), name: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema
+                    shape
                 ),
                 {wrapper}
             );
@@ -360,13 +360,13 @@ describe('useSubscription Hook', () => {
             );
 
             const overrideConfig = {url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN, options: {timeoutMs: 2000}};
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
 
             const {result, unmount} = renderHook(
                 () => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema,
+                    shape,
                     {connectionConfig: overrideConfig}
                 ),
                 {wrapper}
@@ -389,12 +389,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'value Utf8']
             );
 
-            const schema = Schema.object({id: Schema.number(), value: Schema.string()});
+            const shape = Shape.object({id: Shape.number(), value: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema
+                    shape
                 ),
                 {wrapper}
             );
@@ -420,12 +420,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4', 'name Utf8']
             );
 
-            const schema = Schema.object({id: Schema.number(), name: Schema.string()});
+            const shape = Shape.object({id: Shape.number(), name: Shape.string()});
             const {result} = renderHook(
                 () => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema
+                    shape
                 ),
                 {wrapper}
             );
@@ -459,12 +459,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result, rerender} = renderHook(
                 ({enabled}) => useSubscription(
                     `from test::${tableName}`,
                     null,
-                    schema,
+                    shape,
                     {enabled}
                 ),
                 {initialProps: {enabled: true}, wrapper}
@@ -489,12 +489,12 @@ describe('useSubscription Hook', () => {
                 ['id Int4']
             );
 
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result} = renderHook(
                 () => useSubscription(
                     `from test::${tableName} filter id > 1000`,
                     null,
-                    schema
+                    shape
                 ),
                 {wrapper}
             );
@@ -508,12 +508,12 @@ describe('useSubscription Hook', () => {
         });
 
         it('should handle subscription errors', async () => {
-            const schema = Schema.object({id: Schema.number()});
+            const shape = Shape.object({id: Shape.number()});
             const {result} = renderHook(
                 () => useSubscription(
                     'from nonexistent::table',
                     null,
-                    schema
+                    shape
                 ),
                 {wrapper}
             );

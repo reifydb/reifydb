@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {Type} from '../value';
-import {SchemaNode} from '.';
+import {ShapeNode} from '.';
 
-export function validateSchema(schema: SchemaNode, value: any): boolean {
-    if (schema.kind === 'primitive') {
-        const schemaType = schema.type as Type;
+export function validateShape(shape: ShapeNode, value: any): boolean {
+    if (shape.kind === 'primitive') {
+        const shapeType = shape.type as Type;
         if (value === null || value === undefined) {
-            return schemaType === 'None';
+            return shapeType === 'None';
         }
 
-        switch (schemaType) {
+        switch (shapeType) {
             case 'Boolean':
                 return typeof value === 'boolean';
             case 'Float4':
@@ -46,38 +46,38 @@ export function validateSchema(schema: SchemaNode, value: any): boolean {
         }
     }
 
-    if (schema.kind === 'object') {
+    if (shape.kind === 'object') {
         if (typeof value !== 'object' || value === null) {
             return false;
         }
-        for (const [key, propSchema] of Object.entries(schema.properties)) {
-            if (!validateSchema(propSchema, value[key])) {
+        for (const [key, propShape] of Object.entries(shape.properties)) {
+            if (!validateShape(propShape, value[key])) {
                 return false;
             }
         }
         return true;
     }
 
-    if (schema.kind === 'array') {
+    if (shape.kind === 'array') {
         if (!Array.isArray(value)) {
             return false;
         }
-        return value.every(item => validateSchema(schema.items, item));
+        return value.every(item => validateShape(shape.items, item));
     }
 
-    if (schema.kind === 'optional') {
+    if (shape.kind === 'optional') {
         if (value === undefined) {
             return true;
         }
-        return validateSchema(schema.schema, value);
+        return validateShape(shape.shape, value);
     }
 
-    if (schema.kind === 'value') {
+    if (shape.kind === 'value') {
         if (value === null || value === undefined) {
-            return schema.type === 'None';
+            return shape.type === 'None';
         }
         if (typeof value === 'object' && value !== null && 'type' in value && 'encode' in value) {
-            return value.type === schema.type;
+            return value.type === shape.type;
         }
         return false;
     }

@@ -5,7 +5,7 @@ import {
     Value
 } from "@reifydb/core";
 import type {
-    SchemaNode,
+    ShapeNode,
     FrameResults,
 } from "@reifydb/core";
 
@@ -47,7 +47,7 @@ interface SubscriptionState<T = any> {
     subscriptionId: string;
     query: string;
     params?: any;
-    schema?: SchemaNode;
+    shape?: ShapeNode;
     callbacks: SubscriptionCallbacks<T>;
 }
 
@@ -123,16 +123,16 @@ export class WsClient {
     }
 
     /**
-     * Execute admin operation(s) with schemas for each statement for proper type inference.
+     * Execute admin operation(s) with shapes for each statement for proper type inference.
      * Admin operations support DDL (CREATE TABLE, ALTER, etc.), DML, and queries.
      * @param statements - Single statement or array of RQL statements
      * @param params - Parameters for the statements (use null or {} if no params)
-     * @param schemas - Schema for each statement's result
+     * @param shapes - Shape for each statement's result
      */
-    async admin<const S extends readonly SchemaNode[]>(
+    async admin<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        schemas: S
+        shapes: S
     ): Promise<FrameResults<S>> {
         const id = `req-${this.nextId++}`;
 
@@ -143,7 +143,7 @@ export class WsClient {
             ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
             : statementArray;
 
-        // Encode params without schema assumptions
+        // Encode params without shape assumptions
         const encodedParams = params !== undefined && params !== null
             ? encodeParams(params)
             : undefined;
@@ -157,28 +157,28 @@ export class WsClient {
             },
         });
 
-        // Transform each frame with its corresponding schema
+        // Transform each frame with its corresponding shape
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameSchema = schemas[frameIndex];
-            if (!frameSchema) {
-                return frame; // No schema for this frame, return as-is
+            const frameShape = shapes[frameIndex];
+            if (!frameShape) {
+                return frame; // No shape for this frame, return as-is
             }
-            return frame.map((row: any) => this.transformResult(row, frameSchema));
+            return frame.map((row: any) => this.transformResult(row, frameShape));
         });
 
         return transformedFrames as FrameResults<S>;
     }
 
     /**
-     * Execute command(s) with schemas for each statement for proper type inference
+     * Execute command(s) with shapes for each statement for proper type inference
      * @param statements - Single statement or array of RQL commands
      * @param params - Parameters for the commands (use null or {} if no params)
-     * @param schemas - Schema for each statement's result
+     * @param shapes - Shape for each statement's result
      */
-    async command<const S extends readonly SchemaNode[]>(
+    async command<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        schemas: S
+        shapes: S
     ): Promise<FrameResults<S>> {
         const id = `req-${this.nextId++}`;
 
@@ -189,7 +189,7 @@ export class WsClient {
             ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
             : statementArray;
 
-        // Encode params without schema assumptions
+        // Encode params without shape assumptions
         const encodedParams = params !== undefined && params !== null
             ? encodeParams(params)
             : undefined;
@@ -203,13 +203,13 @@ export class WsClient {
             },
         });
 
-        // Transform each frame with its corresponding schema
+        // Transform each frame with its corresponding shape
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameSchema = schemas[frameIndex];
-            if (!frameSchema) {
-                return frame; // No schema for this frame, return as-is
+            const frameShape = shapes[frameIndex];
+            if (!frameShape) {
+                return frame; // No shape for this frame, return as-is
             }
-            return frame.map((row: any) => this.transformResult(row, frameSchema));
+            return frame.map((row: any) => this.transformResult(row, frameShape));
         });
 
         return transformedFrames as FrameResults<S>;
@@ -217,15 +217,15 @@ export class WsClient {
 
 
     /**
-     * Execute query(s) with schemas for each statement for proper type inference
+     * Execute query(s) with shapes for each statement for proper type inference
      * @param statements - Single statement or array of RQL queries
      * @param params - Parameters for the queries (use null or {} if no params)
-     * @param schemas - Schema for each statement's result
+     * @param shapes - Shape for each statement's result
      */
-    async query<const S extends readonly SchemaNode[]>(
+    async query<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        schemas: S
+        shapes: S
     ): Promise<FrameResults<S>> {
         const id = `req-${this.nextId++}`;
 
@@ -236,7 +236,7 @@ export class WsClient {
             ? statementArray.map(s => s.trim() ? `OUTPUT ${s}` : s)
             : statementArray;
 
-        // Encode params without schema assumptions
+        // Encode params without shape assumptions
         const encodedParams = params !== undefined && params !== null
             ? encodeParams(params)
             : undefined;
@@ -250,13 +250,13 @@ export class WsClient {
             },
         });
 
-        // Transform each frame with its corresponding schema
+        // Transform each frame with its corresponding shape
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
-            const frameSchema = schemas[frameIndex];
-            if (!frameSchema) {
-                return frame; // No schema for this frame, return as-is
+            const frameShape = shapes[frameIndex];
+            if (!frameShape) {
+                return frame; // No shape for this frame, return as-is
             }
-            return frame.map((row: any) => this.transformResult(row, frameSchema));
+            return frame.map((row: any) => this.transformResult(row, frameShape));
         });
 
         return transformedFrames as FrameResults<S>;
@@ -265,7 +265,7 @@ export class WsClient {
     async subscribe<T = any>(
         query: string,
         params: any,
-        schema: SchemaNode | undefined,
+        shape: ShapeNode | undefined,
         callbacks: SubscriptionCallbacks<T>
     ): Promise<string> {
         const id = `sub-${this.nextId++}`;
@@ -288,7 +288,7 @@ export class WsClient {
                         subscriptionId,
                         query,
                         params,
-                        schema,
+                        shape,
                         callbacks
                     });
 
@@ -375,61 +375,61 @@ export class WsClient {
     }
 
 
-    private transformResult(row: any, resultSchema: any): any {
-        // Handle object schema with primitive or value properties
-        if (resultSchema && resultSchema.kind === 'object' && resultSchema.properties) {
+    private transformResult(row: any, resultShape: any): any {
+        // Handle object shape with primitive or value properties
+        if (resultShape && resultShape.kind === 'object' && resultShape.properties) {
             const transformedRow: any = {};
             for (const [key, value] of Object.entries(row)) {
-                const propertySchema = resultSchema.properties[key];
-                if (propertySchema && propertySchema.kind === 'primitive') {
-                    // Convert Value objects to primitives for primitive schema properties
+                const propertyShape = resultShape.properties[key];
+                if (propertyShape && propertyShape.kind === 'primitive') {
+                    // Convert Value objects to primitives for primitive shape properties
                     // Check if it's a Value instance by checking for valueOf method
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
                         const rawValue = (value as any).valueOf();
-                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertySchema.type);
+                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertyShape.type);
                     } else {
-                        transformedRow[key] = this.coerceToPrimitiveType(value, propertySchema.type);
+                        transformedRow[key] = this.coerceToPrimitiveType(value, propertyShape.type);
                     }
-                } else if (propertySchema && propertySchema.kind === 'value') {
-                    // Keep Value objects as-is for value schema properties
+                } else if (propertyShape && propertyShape.kind === 'value') {
+                    // Keep Value objects as-is for value shape properties
                     transformedRow[key] = value;
                 } else {
                     // Recursively transform nested structures
-                    transformedRow[key] = propertySchema ? this.transformResult(value, propertySchema) : value;
+                    transformedRow[key] = propertyShape ? this.transformResult(value, propertyShape) : value;
                 }
             }
             return transformedRow;
         }
 
-        // Handle primitive schema transformation
-        if (resultSchema && resultSchema.kind === 'primitive') {
+        // Handle primitive shape transformation
+        if (resultShape && resultShape.kind === 'primitive') {
             // Single primitive value - extract from Value object if needed
             // Check if it's a Value instance by checking for valueOf method
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                return this.coerceToPrimitiveType(row.valueOf(), resultSchema.type);
+                return this.coerceToPrimitiveType(row.valueOf(), resultShape.type);
             }
-            return this.coerceToPrimitiveType(row, resultSchema.type);
+            return this.coerceToPrimitiveType(row, resultShape.type);
         }
 
-        // Handle value schema transformation - keep Value objects as-is
-        if (resultSchema && resultSchema.kind === 'value') {
+        // Handle value shape transformation - keep Value objects as-is
+        if (resultShape && resultShape.kind === 'value') {
             return row;
         }
 
-        // Handle array schema
-        if (resultSchema && resultSchema.kind === 'array') {
+        // Handle array shape
+        if (resultShape && resultShape.kind === 'array') {
             if (Array.isArray(row)) {
-                return row.map((item: any) => this.transformResult(item, resultSchema.items));
+                return row.map((item: any) => this.transformResult(item, resultShape.items));
             }
             return row;
         }
 
-        // Handle optional schema
-        if (resultSchema && resultSchema.kind === 'optional') {
+        // Handle optional shape
+        if (resultShape && resultShape.kind === 'optional') {
             if (row === undefined || row === null) {
                 return undefined;
             }
-            return this.transformResult(row, resultSchema.schema);
+            return this.transformResult(row, resultShape.shape);
         }
 
         // Default: return as-is
@@ -437,18 +437,18 @@ export class WsClient {
     }
 
     /**
-     * Coerce a value to the expected primitive type based on schema.
+     * Coerce a value to the expected primitive type based on shape.
      * This handles cases where the server returns a smaller integer type
-     * but the schema expects a bigint type (Int8, Int16, Uint8, Uint16).
+     * but the shape expects a bigint type (Int8, Int16, Uint8, Uint16).
      */
-    private coerceToPrimitiveType(value: any, schemaType: string): any {
+    private coerceToPrimitiveType(value: any, shapeType: string): any {
         if (value === undefined || value === null) {
             return value;
         }
 
         // Bigint types: Int8, Int16, Uint8, Uint16
         const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
-        if (bigintTypes.includes(schemaType)) {
+        if (bigintTypes.includes(shapeType)) {
             if (typeof value === 'bigint') {
                 return value;
             }
@@ -640,7 +640,7 @@ export class WsClient {
             try {
                 // Re-subscribe with same parameters
                 // Cast to avoid overload resolution issues in internal call
-                await (this.subscribe as any)(state.query, state.params, state.schema, state.callbacks);
+                await (this.subscribe as any)(state.query, state.params, state.shape, state.callbacks);
             } catch (err) {
                 console.error(`Failed to resubscribe to ${state.query}:`, err);
             }
@@ -668,7 +668,7 @@ export class WsClient {
         }
 
         // Transform frame to rows using existing transformResult logic
-        const rows = this.frameToRows(frame, state.schema);
+        const rows = this.frameToRows(frame, state.shape);
 
         // Group rows by operation type (defensive - usually all same type)
         // Process in order to maintain sequential execution
@@ -708,7 +708,7 @@ export class WsClient {
         }
     }
 
-    private frameToRows(frame: any, schema?: SchemaNode): any[] {
+    private frameToRows(frame: any, shape?: ShapeNode): any[] {
         // Convert frame columns to array of row objects
         if (!frame.columns || frame.columns.length === 0) return [];
 
@@ -723,9 +723,9 @@ export class WsClient {
             rows.push(row);
         }
 
-        // Apply schema transformation if provided
-        if (schema) {
-            return rows.map(row => this.transformResult(row, schema));
+        // Apply shape transformation if provided
+        if (shape) {
+            return rows.map(row => this.transformResult(row, shape));
         }
 
         return rows;

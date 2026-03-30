@@ -10,7 +10,7 @@ import {
     Uuid4Value, Uuid7Value, IdentityIdValue,
     BaseType
 } from '../value';
-import {SchemaNode} from '.';
+import {ShapeNode} from '.';
 import {PrimitiveToValue} from './inference';
 
 function createValueInstance<T extends BaseType>(type: T, value: any): PrimitiveToValue<T> {
@@ -68,45 +68,45 @@ function createValueInstance<T extends BaseType>(type: T, value: any): Primitive
     }
 }
 
-export function parseValue(schema: SchemaNode, value: any): any {
-    if (schema.kind === 'primitive') {
+export function parseValue(shape: ShapeNode, value: any): any {
+    if (shape.kind === 'primitive') {
         if (value === null || value === undefined) {
             return undefined;
         }
-        return createValueInstance(schema.type as BaseType, value);
+        return createValueInstance(shape.type as BaseType, value);
     }
 
-    if (schema.kind === 'object') {
+    if (shape.kind === 'object') {
         if (value === null || value === undefined) {
             return undefined;
         }
         const result: Record<string, any> = {};
-        for (const [key, propSchema] of Object.entries(schema.properties)) {
-            result[key] = parseValue(propSchema, value[key]);
+        for (const [key, propShape] of Object.entries(shape.properties)) {
+            result[key] = parseValue(propShape, value[key]);
         }
         return result;
     }
 
-    if (schema.kind === 'array') {
+    if (shape.kind === 'array') {
         if (!Array.isArray(value)) {
             return [];
         }
-        return value.map(item => parseValue(schema.items, item));
+        return value.map(item => parseValue(shape.items, item));
     }
 
-    if (schema.kind === 'optional') {
+    if (shape.kind === 'optional') {
         if (value === undefined) {
             return undefined;
         }
-        return parseValue(schema.schema, value);
+        return parseValue(shape.shape, value);
     }
 
-    if (schema.kind === 'value') {
+    if (shape.kind === 'value') {
         if (value === null || value === undefined) {
             return undefined;
         }
-        return createValueInstance(schema.type as BaseType, value);
+        return createValueInstance(shape.type as BaseType, value);
     }
 
-    throw new Error(`Unknown schema kind: ${(schema as any).kind}`);
+    throw new Error(`Unknown shape kind: ${(shape as any).kind}`);
 }

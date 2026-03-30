@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import {useState, useCallback, useRef, useEffect} from 'react';
-import {Column, SchemaNode} from '@reifydb/core';
+import {Column, ShapeNode} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useConnection} from './use-connection';
 
@@ -48,14 +48,14 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
     const executionIdRef = useRef(0);
 
     // Stash pending call if client isn't ready yet
-    const pendingRef = useRef<{statements: string | string[], params?: any, schemas?: readonly SchemaNode[]} | null>(null);
+    const pendingRef = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const admin = useCallback(
-        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): Promise<void> => {
+        (statements: string | string[], params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
             const currentClient = clientRef.current;
             // If no client yet, stash the request for replay when client connects
             if (!currentClient) {
-                pendingRef.current = {statements, params, schemas};
+                pendingRef.current = {statements, params, shapes};
                 setState(prev => ({...prev, isExecuting: true, error: undefined}));
                 return Promise.resolve();
             }
@@ -69,7 +69,7 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
 
             return (async () => {
                 try {
-                    const frameResults = await currentClient.admin(statements, params || null, schemas || []) || [];
+                    const frameResults = await currentClient.admin(statements, params || null, shapes || []) || [];
 
                     // If this execution was superseded by a newer one, discard results
                     if (executionIdRef.current !== thisExecution) return;
@@ -159,8 +159,8 @@ export function useAdminExecutor<T = any>(options?: AdminExecutorOptions) {
     // Replay pending request when client becomes available
     useEffect(() => {
         if (client && pendingRef.current) {
-            const {statements, params, schemas} = pendingRef.current;
-            admin(statements, params, schemas);
+            const {statements, params, shapes} = pendingRef.current;
+            admin(statements, params, shapes);
         }
     }, [client, admin]);
 

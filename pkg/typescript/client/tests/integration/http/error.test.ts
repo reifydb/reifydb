@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, HttpClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 
 
 describe('Error', () => {
@@ -21,7 +21,7 @@ describe('Error', () => {
                 httpClient.admin(
                     "MAP {result: cast(129, int1)};",
                     {},
-                    [Schema.object({result: Schema.int1Value()})]
+                    [Shape.object({result: Shape.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
@@ -50,7 +50,7 @@ describe('Error', () => {
                 httpClient.command(
                     "MAP {result: cast(129, int1)};",
                     {},
-                    [Schema.object({result: Schema.int1Value()})]
+                    [Shape.object({result: Shape.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
@@ -80,7 +80,7 @@ describe('Error', () => {
                 httpClient.query(
                     "MAP {result: cast(129, int1)};",
                     {},
-                    [Schema.object({result: Schema.int1Value()})]
+                    [Shape.object({result: Shape.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',

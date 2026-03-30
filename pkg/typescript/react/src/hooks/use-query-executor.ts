@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import {useState, useCallback, useRef, useEffect} from 'react';
-import {Column, SchemaNode} from '@reifydb/core';
+import {Column, ShapeNode} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useConnection} from './use-connection';
 
@@ -43,14 +43,14 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
     }, []);
 
     const executionIdRef = useRef(0);
-    const pendingRef = useRef<{statements: string | string[], params?: any, schemas?: readonly SchemaNode[]} | null>(null);
+    const pendingRef = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const query = useCallback(
-        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): Promise<void> => {
+        (statements: string | string[], params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
             const currentClient = clientRef.current;
 
             if (!currentClient) {
-                pendingRef.current = {statements, params, schemas};
+                pendingRef.current = {statements, params, shapes};
                 setState(prev => ({...prev, isExecuting: true, error: undefined}));
                 return Promise.resolve();
             }
@@ -64,7 +64,7 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
 
             return (async () => {
                 try {
-                    const frameResults = await currentClient.query(statements, params || null, schemas || []) || [];
+                    const frameResults = await currentClient.query(statements, params || null, shapes || []) || [];
 
                     if (executionIdRef.current !== thisExecution) return;
 
@@ -149,8 +149,8 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
 
     useEffect(() => {
         if (client && pendingRef.current) {
-            const {statements, params, schemas} = pendingRef.current;
-            query(statements, params, schemas);
+            const {statements, params, shapes} = pendingRef.current;
+            query(statements, params, shapes);
         }
     }, [client, query]);
 

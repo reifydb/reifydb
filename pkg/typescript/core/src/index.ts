@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 export {NONE_VALUE} from './constant';
 export {decode} from './decoder';
-export * from './schema'
+export * from './shape'
 export * from './value';
 export type {
     Params,

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {describe, expect, it} from 'vitest';
-import {parseValue} from '../../src/schema/parser';
-import {SchemaNode} from '../../src/schema';
+import {parseValue} from '../../src/shape/parser';
+import {ShapeNode} from '../../src/shape';
 import {
     BlobValue, BooleanValue, DateValue, DateTimeValue, DecimalValue,
     Float4Value, Float8Value,
@@ -40,31 +40,31 @@ describe('parseValue', () => {
 
         primitiveTests.forEach(({type, value, expectedClass}) => {
             it(`should parse ${type} with actual value`, () => {
-                const schema: SchemaNode = {kind: 'primitive', type};
-                const result = parseValue(schema, value);
+                const shape: ShapeNode = {kind: 'primitive', type};
+                const result = parseValue(shape, value);
                 expect(result).toBeInstanceOf(expectedClass);
             });
         });
 
         it('should return undefined for None type with undefined value', () => {
-            const schema: SchemaNode = {kind: 'primitive', type: 'None'};
-            expect(parseValue(schema, undefined)).toBeUndefined();
+            const shape: ShapeNode = {kind: 'primitive', type: 'None'};
+            expect(parseValue(shape, undefined)).toBeUndefined();
         });
 
         it('should parse None type with non-null value', () => {
-            const schema: SchemaNode = {kind: 'primitive', type: 'None'};
-            const result = parseValue(schema, 'anything');
+            const shape: ShapeNode = {kind: 'primitive', type: 'None'};
+            const result = parseValue(shape, 'anything');
             expect(result).toBeInstanceOf(NoneValue);
         });
 
         it('should return undefined for null value', () => {
-            const schema: SchemaNode = {kind: 'primitive', type: 'Int4'};
-            expect(parseValue(schema, null)).toBeUndefined();
+            const shape: ShapeNode = {kind: 'primitive', type: 'Int4'};
+            expect(parseValue(shape, null)).toBeUndefined();
         });
 
         it('should return undefined for undefined value', () => {
-            const schema: SchemaNode = {kind: 'primitive', type: 'Int4'};
-            expect(parseValue(schema, undefined)).toBeUndefined();
+            const shape: ShapeNode = {kind: 'primitive', type: 'Int4'};
+            expect(parseValue(shape, undefined)).toBeUndefined();
         });
     });
 
@@ -95,101 +95,101 @@ describe('parseValue', () => {
 
         valueTests.forEach(({type, value, expectedClass}) => {
             it(`should parse value kind ${type} with actual value`, () => {
-                const schema: SchemaNode = {kind: 'value', type};
-                const result = parseValue(schema, value);
+                const shape: ShapeNode = {kind: 'value', type};
+                const result = parseValue(shape, value);
                 expect(result).toBeInstanceOf(expectedClass);
             });
         });
 
         it('should parse value kind None', () => {
-            const schema: SchemaNode = {kind: 'value', type: 'None'};
-            const result = parseValue(schema, undefined);
+            const shape: ShapeNode = {kind: 'value', type: 'None'};
+            const result = parseValue(shape, undefined);
             expect(result).toBeUndefined();
         });
 
         it('should return undefined for null value with value kind', () => {
-            const schema: SchemaNode = {kind: 'value', type: 'Int4'};
-            expect(parseValue(schema, null)).toBeUndefined();
+            const shape: ShapeNode = {kind: 'value', type: 'Int4'};
+            expect(parseValue(shape, null)).toBeUndefined();
         });
 
         it('should return undefined for undefined value with value kind', () => {
-            const schema: SchemaNode = {kind: 'value', type: 'Int4'};
-            expect(parseValue(schema, undefined)).toBeUndefined();
+            const shape: ShapeNode = {kind: 'value', type: 'Int4'};
+            expect(parseValue(shape, undefined)).toBeUndefined();
         });
     });
 
     describe('optional kind', () => {
         it('should return undefined for undefined value', () => {
-            const schema: SchemaNode = {kind: 'optional', schema: {kind: 'primitive', type: 'Int4'}};
-            expect(parseValue(schema, undefined)).toBeUndefined();
+            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'primitive', type: 'Int4'}};
+            expect(parseValue(shape, undefined)).toBeUndefined();
         });
 
-        it('should parse inner schema when value is present', () => {
-            const schema: SchemaNode = {kind: 'optional', schema: {kind: 'primitive', type: 'Int4'}};
-            const result = parseValue(schema, 42);
+        it('should parse inner shape when value is present', () => {
+            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'primitive', type: 'Int4'}};
+            const result = parseValue(shape, 42);
             expect(result).toBeInstanceOf(Int4Value);
         });
 
         it('should handle optional wrapping a value kind', () => {
-            const schema: SchemaNode = {kind: 'optional', schema: {kind: 'value', type: 'Utf8'}};
-            const result = parseValue(schema, 'hello');
+            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'value', type: 'Utf8'}};
+            const result = parseValue(shape, 'hello');
             expect(result).toBeInstanceOf(Utf8Value);
         });
 
         it('should return undefined for optional wrapping value kind with undefined', () => {
-            const schema: SchemaNode = {kind: 'optional', schema: {kind: 'value', type: 'Utf8'}};
-            expect(parseValue(schema, undefined)).toBeUndefined();
+            const shape: ShapeNode = {kind: 'optional', shape: {kind: 'value', type: 'Utf8'}};
+            expect(parseValue(shape, undefined)).toBeUndefined();
         });
     });
 
     describe('object kind', () => {
         it('should parse object with primitive fields', () => {
-            const schema: SchemaNode = {
+            const shape: ShapeNode = {
                 kind: 'object',
                 properties: {
                     name: {kind: 'primitive', type: 'Utf8'},
                     age: {kind: 'primitive', type: 'Int4'},
                 }
             };
-            const result = parseValue(schema, {name: 'Alice', age: 30});
+            const result = parseValue(shape, {name: 'Alice', age: 30});
             expect(result.name).toBeInstanceOf(Utf8Value);
             expect(result.age).toBeInstanceOf(Int4Value);
         });
 
         it('should parse object with optional fields', () => {
-            const schema: SchemaNode = {
+            const shape: ShapeNode = {
                 kind: 'object',
                 properties: {
                     name: {kind: 'primitive', type: 'Utf8'},
-                    nickname: {kind: 'optional', schema: {kind: 'primitive', type: 'Utf8'}},
+                    nickname: {kind: 'optional', shape: {kind: 'primitive', type: 'Utf8'}},
                 }
             };
-            const result = parseValue(schema, {name: 'Alice', nickname: undefined});
+            const result = parseValue(shape, {name: 'Alice', nickname: undefined});
             expect(result.name).toBeInstanceOf(Utf8Value);
             expect(result.nickname).toBeUndefined();
         });
 
         it('should return undefined for null object', () => {
-            const schema: SchemaNode = {
+            const shape: ShapeNode = {
                 kind: 'object',
                 properties: {name: {kind: 'primitive', type: 'Utf8'}}
             };
-            expect(parseValue(schema, null)).toBeUndefined();
+            expect(parseValue(shape, null)).toBeUndefined();
         });
 
         it('should return undefined for undefined object', () => {
-            const schema: SchemaNode = {
+            const shape: ShapeNode = {
                 kind: 'object',
                 properties: {name: {kind: 'primitive', type: 'Utf8'}}
             };
-            expect(parseValue(schema, undefined)).toBeUndefined();
+            expect(parseValue(shape, undefined)).toBeUndefined();
         });
     });
 
     describe('array kind', () => {
         it('should parse array of primitives', () => {
-            const schema: SchemaNode = {kind: 'array', items: {kind: 'primitive', type: 'Int4'}};
-            const result = parseValue(schema, [1, 2, 3]);
+            const shape: ShapeNode = {kind: 'array', items: {kind: 'primitive', type: 'Int4'}};
+            const result = parseValue(shape, [1, 2, 3]);
             expect(result).toHaveLength(3);
             expect(result[0]).toBeInstanceOf(Int4Value);
             expect(result[1]).toBeInstanceOf(Int4Value);
@@ -197,20 +197,20 @@ describe('parseValue', () => {
         });
 
         it('should return empty array for non-array input', () => {
-            const schema: SchemaNode = {kind: 'array', items: {kind: 'primitive', type: 'Int4'}};
-            expect(parseValue(schema, 'not an array')).toEqual([]);
+            const shape: ShapeNode = {kind: 'array', items: {kind: 'primitive', type: 'Int4'}};
+            expect(parseValue(shape, 'not an array')).toEqual([]);
         });
 
         it('should return empty array for null', () => {
-            const schema: SchemaNode = {kind: 'array', items: {kind: 'primitive', type: 'Int4'}};
-            expect(parseValue(schema, null)).toEqual([]);
+            const shape: ShapeNode = {kind: 'array', items: {kind: 'primitive', type: 'Int4'}};
+            expect(parseValue(shape, null)).toEqual([]);
         });
     });
 
     describe('unknown kind', () => {
-        it('should throw for unknown schema kind', () => {
-            const schema = {kind: 'unknown'} as any;
-            expect(() => parseValue(schema, 42)).toThrow('Unknown schema kind: unknown');
+        it('should throw for unknown shape kind', () => {
+            const shape = {kind: 'unknown'} as any;
+            expect(() => parseValue(shape, 42)).toThrow('Unknown shape kind: unknown');
         });
     });
 });

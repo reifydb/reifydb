@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import {useState, useCallback, useRef, useEffect} from 'react';
-import {Column, SchemaNode} from '@reifydb/core';
+import {Column, ShapeNode} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useConnection} from './use-connection';
 
@@ -44,14 +44,14 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
     }, []);
 
     const executionIdRef = useRef(0);
-    const pendingRef = useRef<{statements: string | string[], params?: any, schemas?: readonly SchemaNode[]} | null>(null);
+    const pendingRef = useRef<{statements: string | string[], params?: any, shapes?: readonly ShapeNode[]} | null>(null);
 
     const command = useCallback(
-        (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): Promise<void> => {
+        (statements: string | string[], params?: any, shapes?: readonly ShapeNode[]): Promise<void> => {
             const currentClient = clientRef.current;
 
             if (!currentClient) {
-                pendingRef.current = {statements, params, schemas};
+                pendingRef.current = {statements, params, shapes};
                 setState(prev => ({...prev, isExecuting: true, error: undefined}));
                 return Promise.resolve();
             }
@@ -65,7 +65,7 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
 
             return (async () => {
                 try {
-                    const frameResults = await currentClient.command(statements, params || null, schemas || []) || [];
+                    const frameResults = await currentClient.command(statements, params || null, shapes || []) || [];
 
                     if (executionIdRef.current !== thisExecution) return;
 
@@ -151,8 +151,8 @@ export function useCommandExecutor<T = any>(options?: CommandExecutorOptions) {
 
     useEffect(() => {
         if (client && pendingRef.current) {
-            const {statements, params, schemas} = pendingRef.current;
-            command(statements, params, schemas);
+            const {statements, params, shapes} = pendingRef.current;
+            command(statements, params, shapes);
         }
     }, [client, command]);
 

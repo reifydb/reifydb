@@ -11,8 +11,8 @@ import {
     BaseType
 } from '../value';
 import {
-    PrimitiveSchemaNode, ObjectSchemaNode, ArraySchemaNode,
-    OptionalSchemaNode, ValueSchemaNode, SchemaNode
+    PrimitiveShapeNode, ObjectShapeNode, ArrayShapeNode,
+    OptionalShapeNode, ValueShapeNode, ShapeNode
 } from '.';
 
 export type PrimitiveToTS<T extends BaseType> =
@@ -69,14 +69,14 @@ export type PrimitiveToValue<T extends BaseType> =
                                                                                                 T extends 'IdentityId' ? IdentityIdValue :
                                                                                                     never;
 
-export type InferSchema<S> =
-    S extends PrimitiveSchemaNode<infer T> ? T extends BaseType ? PrimitiveToTS<T> : never :
-        S extends ValueSchemaNode<infer T> ? T extends BaseType ? PrimitiveToValue<T> : never :
-            S extends ObjectSchemaNode<infer P> ? { [K in keyof P]: InferSchema<P[K]> } :
-                S extends ArraySchemaNode<infer T> ? InferSchema<T>[] :
-                    S extends OptionalSchemaNode<infer T> ? InferSchema<T> | undefined :
+export type InferShape<S> =
+    S extends PrimitiveShapeNode<infer T> ? T extends BaseType ? PrimitiveToTS<T> : never :
+        S extends ValueShapeNode<infer T> ? T extends BaseType ? PrimitiveToValue<T> : never :
+            S extends ObjectShapeNode<infer P> ? { [K in keyof P]: InferShape<P[K]> } :
+                S extends ArrayShapeNode<infer T> ? InferShape<T>[] :
+                    S extends OptionalShapeNode<infer T> ? InferShape<T> | undefined :
                         never;
 
-export type InferSchemas<S extends readonly SchemaNode[]> = {
-    [K in keyof S]: InferSchema<S[K]>[]
+export type InferShapes<S extends readonly ShapeNode[]> = {
+    [K in keyof S]: InferShape<S[K]>[]
 };

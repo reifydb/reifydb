@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeAll, beforeEach, afterEach } from 'vitest';
 import { Client, WsClient } from '../../../src';
-import { Schema } from '@reifydb/core';
+import { Shape } from '@reifydb/core';
 import { waitForDatabase } from '../setup';
 import {
     createTestTableName,
@@ -47,10 +47,10 @@ describe('WebSocket Subscriptions', () => {
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                Schema.object({
-                    id: Schema.number(),
-                    name: Schema.string(),
-                    value: Schema.number()
+                Shape.object({
+                    id: Shape.number(),
+                    name: Shape.string(),
+                    value: Shape.number()
                 }),
                 {
                     onInsert: tracker.callback
@@ -79,9 +79,9 @@ describe('WebSocket Subscriptions', () => {
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                Schema.object({
-                    id: Schema.number(),
-                    name: Schema.string()
+                Shape.object({
+                    id: Shape.number(),
+                    name: Shape.string()
                 }),
                 {
                     onInsert: tracker.callback
@@ -105,18 +105,18 @@ describe('WebSocket Subscriptions', () => {
                 'value Int4'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string(),
+                value: Shape.number()
             });
 
-            const { promise, callback } = waitForCallback(schema);
+            const { promise, callback } = waitForCallback(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: callback
                 }
@@ -151,19 +151,19 @@ describe('WebSocket Subscriptions', () => {
                 'name Utf8'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(schema);
-            const updateTracker = createCallbackTracker(schema);
-            const removeTracker = createCallbackTracker(schema);
+            const insertTracker = createCallbackTracker(shape);
+            const updateTracker = createCallbackTracker(shape);
+            const removeTracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
@@ -203,20 +203,20 @@ describe('WebSocket Subscriptions', () => {
                 'name Utf8'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(schema);
-            const updateTracker = createCallbackTracker(schema);
-            const removeTracker = createCallbackTracker(schema);
+            const insertTracker = createCallbackTracker(shape);
+            const updateTracker = createCallbackTracker(shape);
+            const removeTracker = createCallbackTracker(shape);
 
             // Subscribe to empty table FIRST
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
@@ -269,20 +269,20 @@ describe('WebSocket Subscriptions', () => {
                 'name Utf8'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(schema);
-            const updateTracker = createCallbackTracker(schema);
-            const removeTracker = createCallbackTracker(schema);
+            const insertTracker = createCallbackTracker(shape);
+            const updateTracker = createCallbackTracker(shape);
+            const removeTracker = createCallbackTracker(shape);
 
             // Subscribe to empty table FIRST
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
@@ -335,19 +335,19 @@ describe('WebSocket Subscriptions', () => {
                 'name Utf8'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(schema);
-            const updateTracker = createCallbackTracker(schema);
-            const removeTracker = createCallbackTracker(schema);
+            const insertTracker = createCallbackTracker(shape);
+            const updateTracker = createCallbackTracker(shape);
+            const removeTracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
@@ -414,17 +414,17 @@ describe('WebSocket Subscriptions', () => {
                 'name Utf8'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string()
             });
 
-            const insertTracker = createCallbackTracker(schema);
+            const insertTracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: insertTracker.callback
                 }
@@ -456,27 +456,27 @@ describe('WebSocket Subscriptions', () => {
         }, 10000);
     });
 
-    describe('Schema Transformation', () => {
-        it('should transform rows using provided schema', async () => {
-            const tableName = createTestTableName('sub_schema_prim');
+    describe('Shape Transformation', () => {
+        it('should transform rows using provided shape', async () => {
+            const tableName = createTestTableName('sub_shape_prim');
             await createTestTable(wsClient, tableName, [
                 'id Int4',
                 'name Utf8',
                 'value Int4'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string(),
+                value: Shape.number()
             });
 
-            const { promise, callback } = waitForCallback(schema);
+            const { promise, callback } = waitForCallback(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: callback
                 }
@@ -504,24 +504,24 @@ describe('WebSocket Subscriptions', () => {
             await wsClient.unsubscribe(subscriptionId);
         }, 10000);
 
-        it('should handle value schema types', async () => {
-            const tableName = createTestTableName('sub_schema_val');
+        it('should handle value shape types', async () => {
+            const tableName = createTestTableName('sub_shape_val');
             await createTestTable(wsClient, tableName, [
                 'id Int4',
                 'name Utf8'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.int4Value(),
-                name: Schema.utf8Value()
+            const shape = Shape.object({
+                id: Shape.int4Value(),
+                name: Shape.utf8Value()
             });
 
-            const { promise, callback } = waitForCallback(schema);
+            const { promise, callback } = waitForCallback(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: callback
                 }
@@ -551,24 +551,24 @@ describe('WebSocket Subscriptions', () => {
             await createTestTable(wsClient, table1, ['id Int4', 'name Utf8']);
             await createTestTable(wsClient, table2, ['id Int4', 'value Int4']);
 
-            const schema1 = Schema.object({
-                id: Schema.number(),
-                name: Schema.string()
+            const shape1 = Shape.object({
+                id: Shape.number(),
+                name: Shape.string()
             });
 
-            const schema2 = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape2 = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const tracker1 = createCallbackTracker(schema1);
-            const tracker2 = createCallbackTracker(schema2);
+            const tracker1 = createCallbackTracker(shape1);
+            const tracker2 = createCallbackTracker(shape2);
 
-            const sub1 = await wsClient.subscribe(`from test::${table1}`, null, schema1, {
+            const sub1 = await wsClient.subscribe(`from test::${table1}`, null, shape1, {
                 onInsert: tracker1.callback
             });
 
-            const sub2 = await wsClient.subscribe(`from test::${table2}`, null, schema2, {
+            const sub2 = await wsClient.subscribe(`from test::${table2}`, null, shape2, {
                 onInsert: tracker2.callback
             });
 
@@ -612,17 +612,17 @@ describe('WebSocket Subscriptions', () => {
                 )
             );
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const trackers = tables.map(() => createCallbackTracker(schema));
+            const trackers = tables.map(() => createCallbackTracker(shape));
 
             // Subscribe to all tables
             const subscriptions = await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test::${table}`, null, schema, {
+                    wsClient.subscribe(`from test::${table}`, null, shape, {
                         onInsert: trackers[i].callback
                     })
                 )
@@ -663,17 +663,17 @@ describe('WebSocket Subscriptions', () => {
                 'name Utf8'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                name: Schema.string()
+            const shape = Shape.object({
+                id: Shape.number(),
+                name: Shape.string()
             });
 
-            const tracker = createCallbackTracker(schema);
+            const tracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 {
                     onInsert: tracker.callback
                 }
@@ -713,17 +713,17 @@ describe('WebSocket Subscriptions', () => {
                 'value Int4'
             ]);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(schema);
+            const tracker = createCallbackTracker(shape);
 
             await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 { onInsert: tracker.callback }
             );
 
@@ -778,17 +778,17 @@ describe('WebSocket Subscriptions', () => {
                 )
             );
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const trackers = tables.map(() => createCallbackTracker(schema));
+            const trackers = tables.map(() => createCallbackTracker(shape));
 
             // Subscribe to all tables
             await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test::${table}`, null, schema, {
+                    wsClient.subscribe(`from test::${table}`, null, shape, {
                         onInsert: trackers[i].callback
                     })
                 )
@@ -876,16 +876,16 @@ describe('WebSocket Subscriptions', () => {
             const tableName = createTestTableName('sub_cleanup');
             await createTestTable(wsClient, tableName, ['id Int4']);
 
-            const schema = Schema.object({
-                id: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number()
             });
 
-            const tracker = createCallbackTracker(schema);
+            const tracker = createCallbackTracker(shape);
 
             await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 { onInsert: tracker.callback }
             );
 
@@ -902,17 +902,17 @@ describe('WebSocket Subscriptions', () => {
             const tableName = createTestTableName('sub_no_cb');
             await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(schema);
+            const tracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 { onInsert: tracker.callback }
             );
 
@@ -939,17 +939,17 @@ describe('WebSocket Subscriptions', () => {
             const tableName = createTestTableName('sub_empty');
             await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(schema);
+            const tracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName} filter { id > 1000 }`,
                 null,
-                schema,
+                shape,
                 { onInsert: tracker.callback }
             );
 
@@ -989,17 +989,17 @@ describe('WebSocket Subscriptions', () => {
             const tableName = createTestTableName('sub_large');
             await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(schema);
+            const tracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 { onInsert: tracker.callback }
             );
 
@@ -1044,17 +1044,17 @@ describe('WebSocket Subscriptions', () => {
             const tableName = createTestTableName('sub_rapid');
             await createTestTable(wsClient, tableName, ['id Int4', 'value Int4']);
 
-            const schema = Schema.object({
-                id: Schema.number(),
-                value: Schema.number()
+            const shape = Shape.object({
+                id: Shape.number(),
+                value: Shape.number()
             });
 
-            const tracker = createCallbackTracker(schema);
+            const tracker = createCallbackTracker(shape);
 
             const subscriptionId = await wsClient.subscribe(
                 `from test::${tableName}`,
                 null,
-                schema,
+                shape,
                 { onInsert: tracker.callback }
             );
 

@@ -30,9 +30,9 @@ export interface Executor {
   getTables?(): Promise<string[]>;
 
   /**
-   * Get schema for a table (optional, used by .schema command)
+   * Get shape for a table (optional, used by .shape command)
    */
-  getSchema?(tableName: string): Promise<string | null>;
+  getShape?(tableName: string): Promise<string | null>;
 }
 
 /**

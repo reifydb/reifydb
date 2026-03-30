@@ -3,7 +3,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from "vitest";
 import {Client, WsClient} from "../../../src";
 import {waitForDatabase} from "../setup";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 import {
     expectSingleResult,
     expectSingleDateResult,
@@ -47,7 +47,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: true },
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
 
             expectSingleResult(frames, true, 'boolean');
@@ -57,7 +57,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 42 },
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
 
             expectSingleResult(frames, 42, 'number');
@@ -67,7 +67,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 1234 },
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
 
             expectSingleResult(frames, 1234, 'number');
@@ -77,7 +77,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 12345678 },
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
 
             expectSingleResult(frames, 12345678, 'number');
@@ -87,7 +87,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: BigInt("9223372036854775807") },
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
 
             expectSingleResult(frames, BigInt("9223372036854775807"), 'bigint');
@@ -97,7 +97,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: BigInt("170141183460469231731687303715884105727") },
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
 
             expectSingleResult(frames, BigInt("170141183460469231731687303715884105727"), 'bigint');
@@ -107,7 +107,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 255 },
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
 
             expectSingleResult(frames, 255, 'number');
@@ -117,7 +117,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 65535 },
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
 
             expectSingleResult(frames, 65535, 'number');
@@ -127,7 +127,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 4294967295 },
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
 
             expectSingleResult(frames, BigInt(4294967295), 'bigint');
@@ -137,7 +137,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: BigInt("18446744073709551615") },
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
 
             expectSingleResult(frames, BigInt("18446744073709551615"), 'bigint');
@@ -147,7 +147,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: BigInt("340282366920938463463374607431768211455") },
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
 
             expectSingleResult(frames, BigInt("340282366920938463463374607431768211455"), 'bigint');
@@ -157,7 +157,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 3.14 },
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
 
             expectSingleResult(frames, 3.14, 'number');
@@ -167,7 +167,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: 3.141592653589793 },
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -181,7 +181,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: decimal },
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
 
             expectSingleResult(frames, decimal, 'string');
@@ -191,7 +191,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: "Hello, World!" },
-                [Schema.object({result: Schema.utf8()})]
+                [Shape.object({result: Shape.utf8()})]
             );
 
             expectSingleResult(frames, "Hello, World!", 'string');
@@ -202,7 +202,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: data },
-                [Schema.object({result: Schema.blob()})]
+                [Shape.object({result: Shape.blob()})]
             );
 
             expectSingleBlobResult(frames, data);
@@ -213,7 +213,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: date },
-                [Schema.object({result: Schema.date()})]
+                [Shape.object({result: Shape.date()})]
             );
 
             expectSingleDateResult(frames, date);
@@ -224,7 +224,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: time },
-                [Schema.object({result: Schema.time()})]
+                [Shape.object({result: Shape.time()})]
             );
 
             expectSingleDateResult(frames, time);
@@ -235,7 +235,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: datetime },
-                [Schema.object({result: Schema.datetime()})]
+                [Shape.object({result: Shape.datetime()})]
             );
 
             expectSingleDateResult(frames, datetime);
@@ -246,7 +246,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: duration },
-                [Schema.object({result: Schema.duration()})]
+                [Shape.object({result: Shape.duration()})]
             );
 
             expectSingleResult(frames, duration, 'string');
@@ -257,7 +257,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: uuid },
-                [Schema.object({result: Schema.uuid4()})]
+                [Shape.object({result: Shape.uuid4()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -268,7 +268,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: uuid },
-                [Schema.object({result: Schema.uuid7()})]
+                [Shape.object({result: Shape.uuid7()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -279,7 +279,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.admin(
                 'MAP {result: $value}',
                 { value: identityId },
-                [Schema.object({result: Schema.identityid()})]
+                [Shape.object({result: Shape.identityid()})]
             );
 
             expectSingleResult(frames, identityId, 'string');
@@ -293,7 +293,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: true },
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
 
             expectSingleResult(frames, true, 'boolean');
@@ -303,7 +303,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 42 },
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
 
             expectSingleResult(frames, 42, 'number');
@@ -313,7 +313,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 1234 },
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
 
             expectSingleResult(frames, 1234, 'number');
@@ -323,7 +323,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 12345678 },
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
 
             expectSingleResult(frames, 12345678, 'number');
@@ -333,7 +333,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: BigInt("9223372036854775807") },
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
 
             expectSingleResult(frames, BigInt("9223372036854775807"), 'bigint');
@@ -343,7 +343,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: BigInt("170141183460469231731687303715884105727") },
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
 
             expectSingleResult(frames, BigInt("170141183460469231731687303715884105727"), 'bigint');
@@ -353,7 +353,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 255 },
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
 
             expectSingleResult(frames, 255, 'number');
@@ -363,7 +363,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 65535 },
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
 
             expectSingleResult(frames, 65535, 'number');
@@ -373,7 +373,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 4294967295 },
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
 
             expectSingleResult(frames, BigInt(4294967295), 'bigint');
@@ -383,7 +383,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: BigInt("18446744073709551615") },
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
 
             expectSingleResult(frames, BigInt("18446744073709551615"), 'bigint');
@@ -393,7 +393,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: BigInt("340282366920938463463374607431768211455") },
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
 
             expectSingleResult(frames, BigInt("340282366920938463463374607431768211455"), 'bigint');
@@ -403,7 +403,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 3.14 },
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
 
             expectSingleResult(frames, 3.14, 'number');
@@ -413,7 +413,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: 3.141592653589793 },
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -427,7 +427,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: decimal },
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
 
             expectSingleResult(frames, decimal, 'string');
@@ -437,7 +437,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: "Hello, World!" },
-                [Schema.object({result: Schema.utf8()})]
+                [Shape.object({result: Shape.utf8()})]
             );
 
             expectSingleResult(frames, "Hello, World!", 'string');
@@ -448,7 +448,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: data },
-                [Schema.object({result: Schema.blob()})]
+                [Shape.object({result: Shape.blob()})]
             );
 
             expectSingleBlobResult(frames, data);
@@ -459,7 +459,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: date },
-                [Schema.object({result: Schema.date()})]
+                [Shape.object({result: Shape.date()})]
             );
 
             expectSingleDateResult(frames, date);
@@ -470,7 +470,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: time },
-                [Schema.object({result: Schema.time()})]
+                [Shape.object({result: Shape.time()})]
             );
 
             expectSingleDateResult(frames, time);
@@ -481,7 +481,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: datetime },
-                [Schema.object({result: Schema.datetime()})]
+                [Shape.object({result: Shape.datetime()})]
             );
 
             expectSingleDateResult(frames, datetime);
@@ -492,7 +492,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: duration },
-                [Schema.object({result: Schema.duration()})]
+                [Shape.object({result: Shape.duration()})]
             );
 
             expectSingleResult(frames, duration, 'string');
@@ -503,7 +503,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: uuid },
-                [Schema.object({result: Schema.uuid4()})]
+                [Shape.object({result: Shape.uuid4()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -514,7 +514,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: uuid },
-                [Schema.object({result: Schema.uuid7()})]
+                [Shape.object({result: Shape.uuid7()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -525,7 +525,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.command(
                 'MAP {result: $value}',
                 { value: identityId },
-                [Schema.object({result: Schema.identityid()})]
+                [Shape.object({result: Shape.identityid()})]
             );
 
             expectSingleResult(frames, identityId, 'string');
@@ -539,7 +539,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: true },
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
 
             expectSingleResult(frames, true, 'boolean');
@@ -549,7 +549,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 42 },
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
 
             expectSingleResult(frames, 42, 'number');
@@ -559,7 +559,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 1234 },
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
 
             expectSingleResult(frames, 1234, 'number');
@@ -569,7 +569,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 12345678 },
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
 
             expectSingleResult(frames, 12345678, 'number');
@@ -579,7 +579,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: BigInt("9223372036854775807") },
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
 
             expectSingleResult(frames, BigInt("9223372036854775807"), 'bigint');
@@ -589,7 +589,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: BigInt("170141183460469231731687303715884105727") },
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
 
             expectSingleResult(frames, BigInt("170141183460469231731687303715884105727"), 'bigint');
@@ -599,7 +599,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 255 },
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
 
             expectSingleResult(frames, 255, 'number');
@@ -609,7 +609,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 65535 },
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
 
             expectSingleResult(frames, 65535, 'number');
@@ -619,7 +619,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 4294967295 },
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
 
             expectSingleResult(frames, BigInt(4294967295), 'bigint');
@@ -629,7 +629,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: BigInt("18446744073709551615") },
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
 
             expectSingleResult(frames, BigInt("18446744073709551615"), 'bigint');
@@ -639,7 +639,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: BigInt("340282366920938463463374607431768211455") },
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
 
             expectSingleResult(frames, BigInt("340282366920938463463374607431768211455"), 'bigint');
@@ -649,7 +649,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 3.14 },
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
 
             expectSingleResult(frames, 3.14, 'number');
@@ -659,7 +659,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: 3.141592653589793 },
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -673,7 +673,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: decimal },
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
 
             expectSingleResult(frames, decimal, 'string');
@@ -683,7 +683,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: "Hello, World!" },
-                [Schema.object({result: Schema.utf8()})]
+                [Shape.object({result: Shape.utf8()})]
             );
 
             expectSingleResult(frames, "Hello, World!", 'string');
@@ -694,7 +694,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: data },
-                [Schema.object({result: Schema.blob()})]
+                [Shape.object({result: Shape.blob()})]
             );
 
             expectSingleBlobResult(frames, data);
@@ -705,7 +705,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: date },
-                [Schema.object({result: Schema.date()})]
+                [Shape.object({result: Shape.date()})]
             );
 
             expectSingleDateResult(frames, date);
@@ -716,7 +716,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: time },
-                [Schema.object({result: Schema.time()})]
+                [Shape.object({result: Shape.time()})]
             );
 
             expectSingleDateResult(frames, time);
@@ -727,7 +727,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: datetime },
-                [Schema.object({result: Schema.datetime()})]
+                [Shape.object({result: Shape.datetime()})]
             );
 
             expectSingleDateResult(frames, datetime);
@@ -738,7 +738,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: duration },
-                [Schema.object({result: Schema.duration()})]
+                [Shape.object({result: Shape.duration()})]
             );
 
             expectSingleResult(frames, duration, 'string');
@@ -749,7 +749,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: uuid },
-                [Schema.object({result: Schema.uuid4()})]
+                [Shape.object({result: Shape.uuid4()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -760,7 +760,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: uuid },
-                [Schema.object({result: Schema.uuid7()})]
+                [Shape.object({result: Shape.uuid7()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -771,7 +771,7 @@ describe('Named Parameters', () => {
             const frames = await wsClient.query(
                 'MAP {result: $value}',
                 { value: identityId },
-                [Schema.object({result: Schema.identityid()})]
+                [Shape.object({result: Shape.identityid()})]
             );
 
             expectSingleResult(frames, identityId, 'string');

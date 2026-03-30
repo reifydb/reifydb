@@ -3,7 +3,7 @@
 
 import {afterEach, beforeAll, beforeEach, describe, expect, it, vi} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
 describe('WebSocket Client Reconnection', () => {
@@ -39,7 +39,7 @@ describe('WebSocket Client Reconnection', () => {
             const firstResult = await wsClient.query(
                 'MAP {result: 42}',
                 {},
-                [Schema.object({result: Schema.number()})]
+                [Shape.object({result: Shape.number()})]
             );
 
             expect(firstResult[0][0].result).toBe(42);
@@ -52,7 +52,7 @@ describe('WebSocket Client Reconnection', () => {
             const secondResult = await wsClient.query(
                 'MAP {result: 84}',
                 {},
-                [Schema.object({result: Schema.number()})]
+                [Shape.object({result: Shape.number()})]
             );
 
             expect(secondResult[0][0].result).toBe(84);
@@ -128,7 +128,7 @@ describe('WebSocket Client Reconnection', () => {
             const queryPromise = wsClient.query(
                 'MAP {result: 42}',
                 {},
-                [Schema.object({result: Schema.number()})]
+                [Shape.object({result: Shape.number()})]
             );
 
             await expect(queryPromise).rejects.toThrow();
@@ -174,7 +174,7 @@ describe('WebSocket Client Reconnection', () => {
                 const result = await wsClient.query(
                     `MAP {result: ${i}}`,
                     {},
-                    [Schema.object({result: Schema.number()})]
+                    [Shape.object({result: Shape.number()})]
                 );
                 results.push(result[0][0].result);
             }
@@ -198,7 +198,7 @@ describe('WebSocket Client Reconnection', () => {
             await wsClient.query(
                 'MAP {result: 1}',
                 {},
-                [Schema.object({result: Schema.number()})]
+                [Shape.object({result: Shape.number()})]
             );
 
             expect((wsClient as any).reconnectAttempts).toBe(0);
@@ -211,7 +211,7 @@ describe('WebSocket Client Reconnection', () => {
             await wsClient.query(
                 'MAP {result: 2}',
                 {},
-                [Schema.object({result: Schema.number()})]
+                [Shape.object({result: Shape.number()})]
             );
 
             expect((wsClient as any).reconnectAttempts).toBe(0);

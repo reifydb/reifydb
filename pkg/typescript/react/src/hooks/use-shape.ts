@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import {useEffect, useState} from 'react';
-import {Schema, InferSchema} from '@reifydb/core';
+import {Shape, InferShape} from '@reifydb/core';
 import {useQueryExecutor} from './use-query-executor';
 
 export interface ColumnInfo {
@@ -15,62 +15,62 @@ export interface TableInfo {
     columns: ColumnInfo[];
 }
 
-const namespaceSchema = Schema.object({
-    id: Schema.number(),
-    name: Schema.string(),
+const namespaceShape = Shape.object({
+    id: Shape.number(),
+    name: Shape.string(),
 });
 
-const tableSchema = Schema.object({
-    id: Schema.number(),
-    namespace_id: Schema.number(),
-    name: Schema.string(),
-    primary_key_id: Schema.number(),
+const tableShape = Shape.object({
+    id: Shape.number(),
+    namespace_id: Shape.number(),
+    name: Shape.string(),
+    primary_key_id: Shape.number(),
 });
 
-const viewSchema = Schema.object({
-    id: Schema.number(),
-    namespace_id: Schema.number(),
-    name: Schema.string(),
+const viewShape = Shape.object({
+    id: Shape.number(),
+    namespace_id: Shape.number(),
+    name: Shape.string(),
 });
 
-const columnSchema = Schema.object({
-    id: Schema.number(),
-    source_id: Schema.number(),
-    source_type: Schema.number(),
-    name: Schema.string(),
-    type: Schema.number(),
-    position: Schema.number(),
-    auto_increment: Schema.boolean(),
+const columnShape = Shape.object({
+    id: Shape.number(),
+    shape_id: Shape.number(),
+    shape_type: Shape.number(),
+    name: Shape.string(),
+    type: Shape.number(),
+    position: Shape.number(),
+    auto_increment: Shape.boolean(),
 });
 
-type NamespaceRow = InferSchema<typeof namespaceSchema>;
-type TableRow = InferSchema<typeof tableSchema>;
-type ViewRow = InferSchema<typeof viewSchema>;
-type ColumnRow = InferSchema<typeof columnSchema>;
+type NamespaceRow = InferShape<typeof namespaceShape>;
+type TableRow = InferShape<typeof tableShape>;
+type ViewRow = InferShape<typeof viewShape>;
+type ColumnRow = InferShape<typeof columnShape>;
 
-export function useSchema(): [boolean, TableInfo[], string | undefined] {
+export function useShape(): [boolean, TableInfo[], string | undefined] {
     const {isExecuting, results, error, query} = useQueryExecutor();
-    const [schema, setSchema] = useState<TableInfo[]>([]);
+    const [shape, setShape] = useState<TableInfo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         if (!query) return;
 
-        const fetchSchema = async () => {
+        const fetchShape = async () => {
             setIsLoading(true);
 
             try {
                 await query(
-                    `OUTPUT FROM system::namespaces; OUTPUT FROM system::tables; OUTPUT FROM system::views; FROM system::columns;`,
+                    `OUTPUT FROM system::namespaces; OUTPUT FROM system::tables; OUTPUT FROM system::views; OUTPUT FROM system::columns;`,
                     undefined,
-                    [namespaceSchema, tableSchema, viewSchema, columnSchema]
+                    [namespaceShape, tableShape, viewShape, columnShape]
                 );
             } catch (err) {
-                console.error('Failed to fetch schema:', err);
+                console.error('Failed to fetch shape:', err);
             }
         };
 
-        fetchSchema();
+        fetchShape();
     }, [query]);
 
     useEffect(() => {
@@ -175,20 +175,20 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
         const tableColumnsMap = new Map<number, Array<{name: string; dataType: string; position: number}>>();
 
         columns.forEach((column) => {
-            const sourceId = column.source_id?.valueOf() as number;
-            const sourceType = column.source_type?.valueOf() as number;
+            const shapeId = column.shape_id?.valueOf() as number;
+            const shapeType = column.shape_type?.valueOf() as number;
             const columnName = column.name?.valueOf() as string;
             const typeId = column.type?.valueOf() as number;
             const position = column.position?.valueOf() as number;
 
-            if (sourceId === undefined || !columnName || typeId === undefined) return;
-            if (sourceType !== 0 && sourceType !== 1) return;
+            if (shapeId === undefined || !columnName || typeId === undefined) return;
+            if (shapeType !== 0 && shapeType !== 1) return;
 
-            if (!tableColumnsMap.has(sourceId)) {
-                tableColumnsMap.set(sourceId, []);
+            if (!tableColumnsMap.has(shapeId)) {
+                tableColumnsMap.set(shapeId, []);
             }
 
-            tableColumnsMap.get(sourceId)!.push({
+            tableColumnsMap.get(shapeId)!.push({
                 name: columnName,
                 dataType: typeMap[typeId] || `Unknown(${typeId})`,
                 position: position ?? 0,
@@ -196,21 +196,21 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
         });
 
         // Sort columns by position and add to table info
-        tableColumnsMap.forEach((cols, sourceId) => {
-            const tableInfo = tableInfoMap.get(sourceId);
+        tableColumnsMap.forEach((cols, shapeId) => {
+            const tableInfo = tableInfoMap.get(shapeId);
             if (tableInfo) {
                 cols.sort((a, b) => a.position - b.position);
                 tableInfo.columns = cols.map((c) => ({name: c.name, dataType: c.dataType}));
             }
         });
 
-        const schemaArray = Array.from(tableInfoMap.values())
+        const shapeArray = Array.from(tableInfoMap.values())
             .filter((table) => table.name !== 'reifydb::flows')
             .sort((a, b) => a.name.localeCompare(b.name));
 
-        setSchema(schemaArray);
+        setShape(shapeArray);
         setIsLoading(false);
     }, [results, isExecuting]);
 
-    return [isLoading, schema, error];
+    return [isLoading, shape, error];
 }

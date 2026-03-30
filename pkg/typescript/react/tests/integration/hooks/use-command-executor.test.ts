@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useCommandExecutor, getConnection, clearConnection, Schema} from '../../../src';
+import {useCommandExecutor, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useCommandExecutor Hook', () => {
@@ -24,12 +24,12 @@ describe('useCommandExecutor Hook', () => {
         expect(result.current.isExecuting).toBe(false);
         expect(result.current.results).toBeUndefined();
 
-        // Execute command with schema for primitive result
+        // Execute command with shape for primitive result
         act(() => {
             result.current.command(
                 `MAP {answer: 42}`,
                 undefined,
-                [Schema.object({ answer: Schema.number() })]
+                [Shape.object({ answer: Shape.number() })]
             );
         });
 
@@ -50,7 +50,7 @@ describe('useCommandExecutor Hook', () => {
     it('should execute multiple statements', async () => {
         const {result} = renderHook(() => useCommandExecutor());
 
-        // Execute multiple statements with schemas
+        // Execute multiple statements with shapes
         act(() => {
             result.current.command(
                 [
@@ -60,9 +60,9 @@ describe('useCommandExecutor Hook', () => {
                 ],
                 undefined,
                 [
-                    Schema.object({ first: Schema.number() }),
-                    Schema.object({ second: Schema.number() }),
-                    Schema.object({ third: Schema.number() })
+                    Shape.object({ first: Shape.number() }),
+                    Shape.object({ second: Shape.number() }),
+                    Shape.object({ third: Shape.number() })
                 ]
             );
         });
@@ -81,12 +81,12 @@ describe('useCommandExecutor Hook', () => {
     it('should handle command with parameters', async () => {
         const {result} = renderHook(() => useCommandExecutor());
 
-        // Execute with named parameters and schema
+        // Execute with named parameters and shape
         act(() => {
             result.current.command(
                 `MAP {result: $value}`,
                 {value: 'test_string'},
-                [Schema.object({ result: Schema.string() })]
+                [Shape.object({ result: Shape.string() })]
             );
         });
 
@@ -123,7 +123,7 @@ describe('useCommandExecutor Hook', () => {
             result.current.command(
                 `MAP {first: 1}`,
                 undefined,
-                [Schema.object({ first: Schema.number() })]
+                [Shape.object({ first: Shape.number() })]
             );
         });
 
@@ -132,7 +132,7 @@ describe('useCommandExecutor Hook', () => {
             result.current.command(
                 `MAP {second: 2}`,
                 undefined,
-                [Schema.object({ second: Schema.number() })]
+                [Shape.object({ second: Shape.number() })]
             );
         });
 
@@ -172,12 +172,12 @@ describe('useCommandExecutor Hook', () => {
             result1.current.command(
                 `MAP {value: 100}`,
                 undefined,
-                [Schema.object({ value: Schema.number() })]
+                [Shape.object({ value: Shape.number() })]
             );
             result2.current.command(
                 `MAP {value: 200}`,
                 undefined,
-                [Schema.object({ value: Schema.number() })]
+                [Shape.object({ value: Shape.number() })]
             );
         });
 
@@ -199,7 +199,7 @@ describe('useCommandExecutor Hook', () => {
             result.current.command(
                 `MAP {test: 1}`,
                 undefined,
-                [Schema.object({ test: Schema.number() })]
+                [Shape.object({ test: Shape.number() })]
             );
         });
 

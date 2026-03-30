@@ -2,10 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, getConnection, clearConnection, Schema} from '../../../src';
+import {useCommandOne, useCommandMany, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabase} from '../setup';
 
-describe('useCommand with Value Objects and Schemas', () => {
+describe('useCommand with Value Objects and Shapes', () => {
     beforeAll(async () => {
         await waitForDatabase();
         const conn = getConnection({token: process.env.REIFYDB_TOKEN});
@@ -19,15 +19,15 @@ describe('useCommand with Value Objects and Schemas', () => {
     describe('Value Objects', () => {
         describe('Integer Types', () => {
             it('should handle Int1 value objects', async () => {
-                const schema = Schema.object({
-                    value: Schema.int1Value()
+                const shape = Shape.object({
+                    value: Shape.int1Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {value: cast(127, int1)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -41,15 +41,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Int1 range error', async () => {
-                const schema = Schema.object({
-                    value: Schema.int1Value()
+                const shape = Shape.object({
+                    value: Shape.int1Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {value: cast(129, int1)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -62,15 +62,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Int4 value objects', async () => {
-                const schema = Schema.object({
-                    num: Schema.int4Value()
+                const shape = Shape.object({
+                    num: Shape.int4Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {num: cast(2147483647, int4)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -82,15 +82,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Int8 value objects', async () => {
-                const schema = Schema.object({
-                    bigNum: Schema.int8Value()
+                const shape = Shape.object({
+                    bigNum: Shape.int8Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {bigNum: cast(9223372036854775807, int8)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -104,15 +104,15 @@ describe('useCommand with Value Objects and Schemas', () => {
 
         describe('Unsigned Integer Types', () => {
             it('should handle Uint1 value objects', async () => {
-                const schema = Schema.object({
-                    value: Schema.uint1Value()
+                const shape = Shape.object({
+                    value: Shape.uint1Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {value: cast(255, uint1)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -124,15 +124,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Uint4 value objects', async () => {
-                const schema = Schema.object({
-                    value: Schema.uint4Value()
+                const shape = Shape.object({
+                    value: Shape.uint4Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {value: cast(4294967295, uint4)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -146,15 +146,15 @@ describe('useCommand with Value Objects and Schemas', () => {
 
         describe('Float Types', () => {
             it('should handle Float4 value objects', async () => {
-                const schema = Schema.object({
-                    value: Schema.float4Value()
+                const shape = Shape.object({
+                    value: Shape.float4Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {value: cast(3.14159, float4)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -166,15 +166,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Float8 value objects', async () => {
-                const schema = Schema.object({
-                    value: Schema.float8Value()
+                const shape = Shape.object({
+                    value: Shape.float8Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {value: cast(3.141592653589793, float8)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -186,15 +186,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Decimal value objects', async () => {
-                const schema = Schema.object({
-                    amount: Schema.decimalValue()
+                const shape = Shape.object({
+                    amount: Shape.decimalValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {amount: cast('123.456789', decimal)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -211,15 +211,15 @@ describe('useCommand with Value Objects and Schemas', () => {
 
         describe('String and Binary Types', () => {
             it('should handle Utf8 value objects', async () => {
-                const schema = Schema.object({
-                    text: Schema.utf8Value()
+                const shape = Shape.object({
+                    text: Shape.utf8Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {text: cast('Hello, World!', utf8)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -231,15 +231,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Blob value objects - unsupported cast from Utf8 to Blob', async () => {
-                const schema = Schema.object({
-                    data: Schema.blobValue()
+                const shape = Shape.object({
+                    data: Shape.blobValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {data: cast('binary data', blob)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -254,15 +254,15 @@ describe('useCommand with Value Objects and Schemas', () => {
 
         describe('Date and Time Types', () => {
             it('should handle Date value objects', async () => {
-                const schema = Schema.object({
-                    date: Schema.dateValue()
+                const shape = Shape.object({
+                    date: Shape.dateValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {date: cast('2025-01-09', date)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -274,15 +274,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle DateTime value objects', async () => {
-                const schema = Schema.object({
-                    timestamp: Schema.dateTimeValue()
+                const shape = Shape.object({
+                    timestamp: Shape.dateTimeValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {timestamp: cast('2025-01-09T12:00:00Z', datetime)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -294,15 +294,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Time value objects', async () => {
-                const schema = Schema.object({
-                    time: Schema.timeValue()
+                const shape = Shape.object({
+                    time: Shape.timeValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {time: cast('12:30:45', time)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -314,15 +314,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Duration value objects', async () => {
-                const schema = Schema.object({
-                    duration: Schema.durationValue()
+                const shape = Shape.object({
+                    duration: Shape.durationValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {duration: cast('PT1H30M', duration)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -336,15 +336,15 @@ describe('useCommand with Value Objects and Schemas', () => {
 
         describe('UUID Types', () => {
             it('should handle Uuid4 value objects', async () => {
-                const schema = Schema.object({
-                    id: Schema.uuid4Value()
+                const shape = Shape.object({
+                    id: Shape.uuid4Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {id: cast('550e8400-e29b-41d4-a716-446655440000', uuid4)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -356,15 +356,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle Uuid7 value objects', async () => {
-                const schema = Schema.object({
-                    id: Schema.uuid7Value()
+                const shape = Shape.object({
+                    id: Shape.uuid7Value()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {id: cast('018a4d65-4307-7834-8336-a5c62b3c1234', uuid7)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -378,15 +378,15 @@ describe('useCommand with Value Objects and Schemas', () => {
 
         describe('Special Types', () => {
             it('should handle Boolean value objects', async () => {
-                const schema = Schema.object({
-                    flag: Schema.booleanValue()
+                const shape = Shape.object({
+                    flag: Shape.booleanValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {flag: cast(true, boolean)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -398,15 +398,15 @@ describe('useCommand with Value Objects and Schemas', () => {
             });
 
             it('should handle None value objects', async () => {
-                const schema = Schema.object({
-                    nothing: Schema.noneValue()
+                const shape = Shape.object({
+                    nothing: Shape.noneValue()
                 });
 
                 const {result} = renderHook(() =>
                     useCommandOne(
                         `MAP {nothing: undefined}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -421,15 +421,15 @@ describe('useCommand with Value Objects and Schemas', () => {
 
     describe('Error Handling for Value Objects', () => {
         it('should handle type conversion errors ', async () => {
-            const schema = Schema.object({
-                value: Schema.int4Value()
+            const shape = Shape.object({
+                value: Shape.int4Value()
             });
 
             const {result} = renderHook(() =>
                 useCommandOne(
                     `MAP {value: cast('not a number', int4)}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -442,15 +442,15 @@ describe('useCommand with Value Objects and Schemas', () => {
         });
 
         it('should handle overflow errors for numeric types ', async () => {
-            const schema = Schema.object({
-                value: Schema.int2Value()
+            const shape = Shape.object({
+                value: Shape.int2Value()
             });
 
             const {result} = renderHook(() =>
                 useCommandOne(
                     `MAP {value: cast(32768, int2)}`, // Max int2 is 32767
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -463,15 +463,15 @@ describe('useCommand with Value Objects and Schemas', () => {
         });
 
         it('should handle invalid UUID format', async () => {
-            const schema = Schema.object({
-                id: Schema.uuid4Value()
+            const shape = Shape.object({
+                id: Shape.uuid4Value()
             });
 
             const {result} = renderHook(() =>
                 useCommandOne(
                     `MAP {id: cast('invalid-uuid', uuid4)}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -482,15 +482,15 @@ describe('useCommand with Value Objects and Schemas', () => {
         });
 
         it('should handle invalid date format ', async () => {
-            const schema = Schema.object({
-                date: Schema.dateValue()
+            const shape = Shape.object({
+                date: Shape.dateValue()
             });
 
             const {result} = renderHook(() =>
                 useCommandOne(
                     `MAP {date: cast('not-a-date', date)}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 

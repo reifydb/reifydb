@@ -10,7 +10,7 @@ export { WasmExecutor, type WasmDB } from './executor/wasm-executor';
 export { WsExecutor, type WsClient } from './executor/ws-executor';
 
 // Types
-export type { Executor, ExecutionResult, HistoryEntry } from './types';
+export type { Executor, ExecutionResult, HistoryEntry, TransactionType } from './types';
 
 // Monaco assets
 export { rqlLanguageDefinition, rqlLanguageConfiguration } from './monaco/rql-language';

@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useCommandExecutor, getConnection, clearConnection, Schema} from '../../../src';
+import {useCommandExecutor, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabaseHttp} from '../setup';
 
 describe('useCommandExecutor Hook (HTTP)', () => {
@@ -27,7 +27,7 @@ describe('useCommandExecutor Hook (HTTP)', () => {
             result.current.command(
                 `MAP {answer: 42}`,
                 undefined,
-                [Schema.object({ answer: Schema.number() })]
+                [Shape.object({ answer: Shape.number() })]
             );
         });
 
@@ -56,9 +56,9 @@ describe('useCommandExecutor Hook (HTTP)', () => {
                 ],
                 undefined,
                 [
-                    Schema.object({ first: Schema.number() }),
-                    Schema.object({ second: Schema.number() }),
-                    Schema.object({ third: Schema.number() })
+                    Shape.object({ first: Shape.number() }),
+                    Shape.object({ second: Shape.number() }),
+                    Shape.object({ third: Shape.number() })
                 ]
             );
         });
@@ -81,7 +81,7 @@ describe('useCommandExecutor Hook (HTTP)', () => {
             result.current.command(
                 `MAP {result: $value}`,
                 {value: 'test_string'},
-                [Schema.object({ result: Schema.string() })]
+                [Shape.object({ result: Shape.string() })]
             );
         });
 
@@ -116,7 +116,7 @@ describe('useCommandExecutor Hook (HTTP)', () => {
             result.current.command(
                 `MAP {first: 1}`,
                 undefined,
-                [Schema.object({ first: Schema.number() })]
+                [Shape.object({ first: Shape.number() })]
             );
         });
 
@@ -124,7 +124,7 @@ describe('useCommandExecutor Hook (HTTP)', () => {
             result.current.command(
                 `MAP {second: 2}`,
                 undefined,
-                [Schema.object({ second: Schema.number() })]
+                [Shape.object({ second: Shape.number() })]
             );
         });
 
@@ -161,12 +161,12 @@ describe('useCommandExecutor Hook (HTTP)', () => {
             result1.current.command(
                 `MAP {value: 100}`,
                 undefined,
-                [Schema.object({ value: Schema.number() })]
+                [Shape.object({ value: Shape.number() })]
             );
             result2.current.command(
                 `MAP {value: 200}`,
                 undefined,
-                [Schema.object({ value: Schema.number() })]
+                [Shape.object({ value: Shape.number() })]
             );
         });
 
@@ -186,7 +186,7 @@ describe('useCommandExecutor Hook (HTTP)', () => {
             result.current.command(
                 `MAP {test: 1}`,
                 undefined,
-                [Schema.object({ test: Schema.number() })]
+                [Shape.object({ test: Shape.number() })]
             );
         });
 

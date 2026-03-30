@@ -8,7 +8,7 @@ export interface ConsoleState {
   isExecuting: boolean;
   result: ExecutionResult | null;
   history: HistoryEntry[];
-  activeTab: 'results' | 'history' | 'schema';
+  activeTab: 'results' | 'history' | 'shape';
 }
 
 export type ConsoleAction =
@@ -17,7 +17,7 @@ export type ConsoleAction =
   | { type: 'EXECUTE_SUCCESS'; result: ExecutionResult; query: string }
   | { type: 'EXECUTE_ERROR'; result: ExecutionResult; query: string }
   | { type: 'CLEAR_RESULTS' }
-  | { type: 'SET_TAB'; tab: 'results' | 'history' | 'schema' }
+  | { type: 'SET_TAB'; tab: 'results' | 'history' | 'shape' }
   | { type: 'LOAD_HISTORY'; entries: HistoryEntry[] }
   | { type: 'CLEAR_HISTORY' }
   | { type: 'LOAD_QUERY'; code: string };

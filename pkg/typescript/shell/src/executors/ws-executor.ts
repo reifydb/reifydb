@@ -11,7 +11,7 @@ export interface WsClient {
   admin<const S extends readonly unknown[]>(
     statements: string | string[],
     params: unknown,
-    schemas: S
+    shapes: S
   ): Promise<unknown[][]>;
 }
 
@@ -44,7 +44,7 @@ export class WsExecutor implements Executor {
     const startTime = performance.now();
 
     try {
-      // Execute via admin endpoint with no schema transformation
+      // Execute via admin endpoint with no shape transformation
       const frames = await this.client.admin(query, null, []);
       const endTime = performance.now();
 
@@ -110,7 +110,7 @@ export class WsExecutor implements Executor {
     }
   }
 
-  async getSchema(tableName: string): Promise<string | null> {
+  async getShape(tableName: string): Promise<string | null> {
     try {
       const frames = await this.client.admin(
         `FROM system::columns FILTER table = "${tableName}" MAP { name, type }`,
