@@ -3,6 +3,8 @@
 
 //! Row validation and column mapping for bulk inserts with batch coercion.
 
+use std::iter;
+
 use reifydb_core::{
 	interface::catalog::{column::Column, ringbuffer::RingBuffer, table::Table},
 	value::column::data::ColumnData,
@@ -110,7 +112,7 @@ fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &st
 					.into());
 				}
 				for (col_data, val) in
-					column_data.iter_mut().zip(vals.iter().map(Some).chain(std::iter::repeat(None)))
+					column_data.iter_mut().zip(vals.iter().map(Some).chain(iter::repeat(None)))
 				{
 					col_data.push_value(val.cloned().unwrap_or(Value::none()));
 				}

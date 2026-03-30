@@ -11,7 +11,7 @@ use reifydb_runtime::context::{
 	clock::{Clock, Instant},
 	rng::Rng,
 };
-use reifydb_type::value::uuid::Uuid7;
+use uuid::Builder;
 
 /// A pending authentication challenge.
 struct ChallengeEntry {
@@ -55,7 +55,9 @@ impl ChallengeStore {
 		clock: &Clock,
 		rng: &Rng,
 	) -> String {
-		let challenge_id = Uuid7::generate(clock, rng).to_string();
+		let millis = clock.now_millis();
+		let random_bytes = rng.infra_bytes_10();
+		let challenge_id = Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid().to_string();
 		let entry = ChallengeEntry {
 			identifier,
 			method,

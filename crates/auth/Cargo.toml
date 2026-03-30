@@ -22,5 +22,6 @@ bs58 = { workspace = true }
 subtle = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]

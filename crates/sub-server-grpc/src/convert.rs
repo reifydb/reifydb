@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, iter, sync::Arc};
 
 use num_bigint::BigInt;
 use reifydb_type::{
@@ -465,7 +465,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 						}
 					} else {
 						// Write zero bytes for the width
-						buf.extend(std::iter::repeat_n(0u8, disc as usize));
+						buf.extend(iter::repeat_n(0u8, disc as usize));
 					}
 				}
 			}

@@ -146,8 +146,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 		// Process all pending ring buffer inserts
 		for pending in self.pending_ringbuffers {
-			let rb_result =
-				execute_ringbuffer_insert(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
+			let rb_result = execute_ringbuffer_insert(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
 			result.ringbuffers.push(rb_result);
 		}
 

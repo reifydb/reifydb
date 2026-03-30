@@ -111,7 +111,8 @@ impl TestStateStore {
 
 	/// Assert that a key has a specific value
 	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], shape: &RowShape) {
-		let actual = self.decode_value(key, shape).unwrap_or_else(|| panic!("Key {:?} not found in state", key));
+		let actual =
+			self.decode_value(key, shape).unwrap_or_else(|| panic!("Key {:?} not found in state", key));
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
 	}
 

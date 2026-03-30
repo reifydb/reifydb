@@ -71,21 +71,21 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-    /// Create a new HTTP client connected to the given URL.
-    ///
-    /// # Arguments
-    /// * `url` - Base URL of the ReifyDB server (e.g., "http://localhost:8080")
-    ///
-    /// # Example
-    /// ```no_run
-    /// use reifydb_client::HttpClient;
-    ///
-    /// #[tokio::main]
-    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let client = HttpClient::connect("http://localhost:8080").await?;
-    ///     Ok(())
-    /// }
-    /// ```
+	/// Create a new HTTP client connected to the given URL.
+	///
+	/// # Arguments
+	/// * `url` - Base URL of the ReifyDB server (e.g., "http://localhost:8080")
+	///
+	/// # Example
+	/// ```no_run
+	/// use reifydb_client::HttpClient;
+	///
+	/// #[tokio::main]
+	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// 	let client = HttpClient::connect("http://localhost:8080").await?;
+	/// 	Ok(())
+	/// }
+	/// ```
 	pub async fn connect(url: &str) -> Result<Self, Error> {
 		// let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().map_err(|e| {
 		// 	Error(diagnostic::internal::internal(format!("Failed to create HTTP client: {}", e)))
@@ -103,11 +103,11 @@ impl HttpClient {
 		})
 	}
 
-    /// Create a new HTTP client using an existing reqwest Client for connection pooling.
-    ///
-    /// # Arguments
-    /// * `client` - Shared reqwest Client instance
-    /// * `url` - Base URL of the ReifyDB server
+	/// Create a new HTTP client using an existing reqwest Client for connection pooling.
+	///
+	/// # Arguments
+	/// * `client` - Shared reqwest Client instance
+	/// * `url` - Base URL of the ReifyDB server
 	pub fn with_client(client: ReqwestClient, url: &str) -> Self {
 		let base_url = url.trim_end_matches('/').to_string();
 		Self {
@@ -117,10 +117,10 @@ impl HttpClient {
 		}
 	}
 
-    /// Set the authentication token for subsequent requests.
-    ///
-    /// # Arguments
-    /// * `token` - Bearer token for authentication
+	/// Set the authentication token for subsequent requests.
+	///
+	/// # Arguments
+	/// * `token` - Bearer token for authentication
 	pub fn authenticate(&mut self, token: &str) {
 		self.token = Some(token.to_string());
 	}
@@ -168,7 +168,7 @@ impl HttpClient {
 		}
 	}
 
-    /// Logout from the server, revoking the current session token.
+	/// Logout from the server, revoking the current session token.
 	pub async fn logout(&mut self) -> Result<(), Error> {
 		let token = match self.token.as_ref() {
 			Some(t) => t.clone(),
@@ -188,11 +188,11 @@ impl HttpClient {
 		}
 	}
 
-    /// Execute an admin (DDL + DML + Query) statement.
-    ///
-    /// # Arguments
-    /// * `rql` - RQL statement to execute
-    /// * `params` - Optional parameters for the statement
+	/// Execute an admin (DDL + DML + Query) statement.
+	///
+	/// # Arguments
+	/// * `rql` - RQL statement to execute
+	/// * `params` - Optional parameters for the statement
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: vec![rql.to_string()],
@@ -207,7 +207,7 @@ impl HttpClient {
 		parse_admin_response(ws_response)
 	}
 
-    /// Execute multiple admin statements in a batch.
+	/// Execute multiple admin statements in a batch.
 	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: statements.into_iter().map(String::from).collect(),
@@ -222,25 +222,25 @@ impl HttpClient {
 		parse_admin_response(ws_response)
 	}
 
-    /// Execute a command (write) statement.
-    ///
-    /// # Arguments
-    /// * `rql` - RQL statement to execute
-    /// * `params` - Optional parameters for the statement
-    ///
-    /// # Example
-    /// ```no_run
-    /// use reifydb_client::HttpClient;
-    ///
-    /// #[tokio::main]
-    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let mut client = HttpClient::connect("http://localhost:8080").await?;
-    ///     client.authenticate("mytoken");
-    ///
-    ///     let result = client.command("INSERT INTO users VALUES (1, 'Alice')", None).await?;
-    ///     Ok(())
-    /// }
-    /// ```
+	/// Execute a command (write) statement.
+	///
+	/// # Arguments
+	/// * `rql` - RQL statement to execute
+	/// * `params` - Optional parameters for the statement
+	///
+	/// # Example
+	/// ```no_run
+	/// use reifydb_client::HttpClient;
+	///
+	/// #[tokio::main]
+	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// 	let mut client = HttpClient::connect("http://localhost:8080").await?;
+	/// 	client.authenticate("mytoken");
+	///
+	/// 	let result = client.command("INSERT INTO users VALUES (1, 'Alice')", None).await?;
+	/// 	Ok(())
+	/// }
+	/// ```
 	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			statements: vec![rql.to_string()],
@@ -255,28 +255,28 @@ impl HttpClient {
 		parse_command_response(ws_response)
 	}
 
-    /// Execute a query (read) statement.
-    ///
-    /// # Arguments
-    /// * `rql` - RQL query to execute
-    /// * `params` - Optional parameters for the query
-    ///
-    /// # Example
-    /// ```no_run
-    /// use reifydb_client::HttpClient;
-    ///
-    /// #[tokio::main]
-    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let mut client = HttpClient::connect("http://localhost:8080").await?;
-    ///     client.authenticate("mytoken");
-    ///
-    ///     let result = client.query("SELECT * FROM users", None).await?;
-    ///     for frame in result.frames {
-    ///         println!("{}", frame);
-    ///     }
-    ///     Ok(())
-    /// }
-    /// ```
+	/// Execute a query (read) statement.
+	///
+	/// # Arguments
+	/// * `rql` - RQL query to execute
+	/// * `params` - Optional parameters for the query
+	///
+	/// # Example
+	/// ```no_run
+	/// use reifydb_client::HttpClient;
+	///
+	/// #[tokio::main]
+	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	/// 	let mut client = HttpClient::connect("http://localhost:8080").await?;
+	/// 	client.authenticate("mytoken");
+	///
+	/// 	let result = client.query("SELECT * FROM users", None).await?;
+	/// 	for frame in result.frames {
+	/// 		println!("{}", frame);
+	/// 	}
+	/// 	Ok(())
+	/// }
+	/// ```
 	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: vec![rql.to_string()],
@@ -291,7 +291,7 @@ impl HttpClient {
 		parse_query_response(ws_response)
 	}
 
-    /// Execute multiple command statements in a batch.
+	/// Execute multiple command statements in a batch.
 	pub async fn command_batch(
 		&self,
 		statements: Vec<&str>,
@@ -310,7 +310,7 @@ impl HttpClient {
 		parse_command_response(ws_response)
 	}
 
-    /// Execute multiple query statements in a batch.
+	/// Execute multiple query statements in a batch.
 	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: statements.into_iter().map(String::from).collect(),
@@ -325,7 +325,7 @@ impl HttpClient {
 		parse_query_response(ws_response)
 	}
 
-    /// Send an admin request to the server.
+	/// Send an admin request to the server.
 	async fn send_admin(&self, request: &AdminRequest) -> Result<AdminResponse, Error> {
 		let url = format!("{}/v1/admin", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
@@ -336,7 +336,7 @@ impl HttpClient {
 		}
 	}
 
-    /// Send a command request to the server.
+	/// Send a command request to the server.
 	async fn send_command(&self, request: &CommandRequest) -> Result<CommandResponse, Error> {
 		let url = format!("{}/v1/command", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
@@ -347,7 +347,7 @@ impl HttpClient {
 		}
 	}
 
-    /// Send a query request to the server.
+	/// Send a query request to the server.
 	async fn send_query(&self, request: &QueryRequest) -> Result<QueryResponse, Error> {
 		let url = format!("{}/v1/query", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
@@ -358,7 +358,7 @@ impl HttpClient {
 		}
 	}
 
-    /// Send an HTTP POST request and return the response body.
+	/// Send an HTTP POST request and return the response body.
 	async fn send_request<T: serde::Serialize>(&self, url: &str, body: &T) -> Result<String, Error> {
 		let mut request = self.inner.post(url).json(body);
 
@@ -371,7 +371,7 @@ impl HttpClient {
 		Ok(response.text().await.unwrap()) // FIXME better error handling
 	}
 
-    /// Parse an error response body into an Error.
+	/// Parse an error response body into an Error.
 	fn parse_error_response(&self, body: &str) -> Error {
 		// Try parsing as HTTP error response format
 		if let Ok(http_err) = serde_json::from_str::<HttpErrorResponse>(body) {

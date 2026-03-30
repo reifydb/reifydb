@@ -185,8 +185,11 @@ impl AuthService {
 	}
 }
 
-/// Generate a session token (64 hex characters) using the provided RNG.
+/// Generate a session token (64 hex characters) using the infrastructure RNG stream.
+///
+/// Uses `infra_bytes_32` so that session token generation does not consume
+/// from the primary RNG, ensuring deterministic test output across runners.
 pub(super) fn generate_session_token(rng: &SystemRng) -> String {
-	let bytes = rng.bytes_32();
+	let bytes = rng.infra_bytes_32();
 	bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }

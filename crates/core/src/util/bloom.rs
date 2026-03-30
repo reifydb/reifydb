@@ -3,6 +3,7 @@
 
 use std::{
 	collections::hash_map::DefaultHasher,
+	f64::consts::LN_2,
 	hash::{Hash, Hasher},
 };
 
@@ -145,13 +146,12 @@ impl BloomFilterBuilder {
 	pub fn build(self) -> BloomFilter {
 		// Calculate optimal bit array size
 		// m = -n * ln(p) / (ln(2)^2)
-		let ln2_squared = std::f64::consts::LN_2.powi(2);
+		let ln2_squared = LN_2.powi(2);
 		let size_bits = (-(self.expected_items as f64) * self.false_positive_rate.ln() / ln2_squared) as usize;
 
 		// Calculate optimal number of hash functions
 		// k = m/n * ln(2)
-		let hash_count =
-			((size_bits as f64 / self.expected_items as f64) * std::f64::consts::LN_2).round() as usize;
+		let hash_count = ((size_bits as f64 / self.expected_items as f64) * LN_2).round() as usize;
 
 		BloomFilter::with_params(size_bits, hash_count.max(1))
 	}

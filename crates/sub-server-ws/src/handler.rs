@@ -31,6 +31,7 @@ use tokio::{
 };
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
+use uuid::Builder;
 
 use crate::{
 	protocol::{Request, RequestPayload},
@@ -66,7 +67,11 @@ pub async fn handle_connection(
 	mut shutdown: watch::Receiver<bool>,
 ) {
 	let peer = stream.peer_addr().ok();
-	let connection_id = Uuid7::generate(state.clock(), state.rng());
+	let connection_id = {
+		let millis = state.clock().now_millis();
+		let random_bytes = state.rng().infra_bytes_10();
+		Uuid7::from(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid())
+	};
 
 	// Set TCP_NODELAY to disable Nagle's algorithm for lower latency
 	if let Err(e) = stream.set_nodelay(true) {

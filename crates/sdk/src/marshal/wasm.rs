@@ -7,7 +7,10 @@
 //! convert between `Columns` and a flat `Vec<u8>` using u32 offsets (no pointers),
 //! suitable for passing through WASM linear memory.
 
-use std::{mem::size_of, ptr, slice, str};
+use std::{
+	mem::{size_of, size_of_val},
+	ptr, slice, str,
+};
 
 use postcard::{from_bytes, to_allocvec};
 use reifydb_abi::data::{
@@ -399,7 +402,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 
 /// Marshal a numeric slice into buf. Returns (data_offset, data_len, 0, 0).
 fn marshal_numeric_to_buf<T: Copy>(buf: &mut Vec<u8>, slice: &[T]) -> (u32, u32, u32, u32) {
-	let byte_len = std::mem::size_of_val(slice);
+	let byte_len = size_of_val(slice);
 	if byte_len == 0 {
 		return (0, 0, 0, 0);
 	}
@@ -464,7 +467,7 @@ fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u
 	let data_len = data.len() as u32;
 
 	let offsets_offset = buf.len() as u32;
-	let offsets_byte_len = std::mem::size_of_val(offsets);
+	let offsets_byte_len = size_of_val(offsets);
 	let src = offsets.as_ptr() as *const u8;
 	buf.extend_from_slice(unsafe { slice::from_raw_parts(src, offsets_byte_len) });
 	let offsets_len = offsets_byte_len as u32;

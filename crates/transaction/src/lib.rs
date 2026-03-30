@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_type::{error::Error, value::uuid::Uuid7};
-use uuid::Uuid;
+use uuid::{Builder, Uuid};
 
 pub mod change;
 pub mod change_accumulator;
@@ -42,8 +42,16 @@ impl Deref for TransactionId {
 }
 
 impl TransactionId {
+	/// Generate a new transaction ID using the infrastructure RNG stream.
+	///
+	/// Uses `rng.infra_bytes_10()` instead of `rng.bytes_10()` so that
+	/// transaction ID generation does not consume from the primary RNG.
+	/// This ensures deterministic test output across runners that create
+	/// different numbers of internal transactions (e.g. gRPC vs embedded).
 	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
-		Self(Uuid7::generate(clock, rng))
+		let millis = clock.now_millis();
+		let random_bytes = rng.infra_bytes_10();
+		Self(Uuid7(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid()))
 	}
 }
 

@@ -3,6 +3,7 @@
 
 use std::{
 	fmt::{Display, Formatter},
+	mem,
 	ops::{Deref, DerefMut},
 };
 
@@ -79,7 +80,7 @@ impl Diagnostic {
 
 		// Recursively set statement for all nested diagnostics
 		if let Some(ref mut cause) = self.cause {
-			let mut updated_cause = std::mem::take(cause.as_mut());
+			let mut updated_cause = mem::take(cause.as_mut());
 			updated_cause.with_statement(statement);
 			**cause = updated_cause;
 		}

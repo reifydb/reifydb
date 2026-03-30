@@ -3,7 +3,10 @@
 
 //! Column marshalling and unmarshalling
 
-use std::{mem::size_of, ptr, slice, str};
+use std::{
+	mem::{size_of, size_of_val},
+	ptr, slice, str,
+};
 
 use postcard::to_allocvec;
 use reifydb_abi::data::{
@@ -523,7 +526,7 @@ impl Arena {
 
 	/// Marshal a numeric slice to raw bytes
 	pub(super) fn marshal_numeric_slice<T: Copy>(&mut self, slice: &[T]) -> (BufferFFI, BufferFFI) {
-		let byte_len = std::mem::size_of_val(slice);
+		let byte_len = size_of_val(slice);
 		if byte_len == 0 {
 			return (BufferFFI::empty(), BufferFFI::empty());
 		}
@@ -590,7 +593,7 @@ impl Arena {
 	/// Helper: marshal data and offsets to arena
 	pub(super) fn marshal_with_offsets(&mut self, data: &[u8], offsets: &[u64]) -> (BufferFFI, BufferFFI) {
 		let data_ptr = self.copy_bytes(data);
-		let offsets_byte_len = std::mem::size_of_val(offsets);
+		let offsets_byte_len = size_of_val(offsets);
 		let offsets_ptr = self.alloc(offsets_byte_len) as *mut u64;
 		if !offsets_ptr.is_null() {
 			unsafe {
