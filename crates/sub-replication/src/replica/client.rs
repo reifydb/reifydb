@@ -3,7 +3,7 @@
 
 use std::{error::Error, time::Duration};
 
-use tokio::{select, sync::watch, time::sleep};
+use tokio::{select, sync::watch, task::block_in_place, time::sleep};
 use tracing::{debug, error, info, warn};
 
 use super::applier::ReplicaApplier;
@@ -103,7 +103,7 @@ impl ReplicationClient {
 				match msg {
 				    Ok(Some(entry)) => {
 					let applier = &self.applier;
-					let result = tokio::task::block_in_place(|| applier.apply(&entry));
+					let result = block_in_place(|| applier.apply(&entry));
 					if let Err(e) = result {
 					    error!(version = entry.version, "Failed to apply CDC entry: {:?}", e);
 					    return Err(e.into());
