@@ -29,7 +29,7 @@ use crate::{
 /// # Returns
 /// * `Ok(Value)` - Successfully coerced value matching target type
 /// * `Err(Error)` - Coercion failed with descriptive error
-pub(crate) fn coerce_value_to_column_type<'a>(
+pub(crate) fn coerce_value_to_column_type(
 	value: Value,
 	target: Type,
 	column: ResolvedColumn,
@@ -40,10 +40,10 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 	}
 
 	// For Option targets, accept values matching the inner type
-	if let Type::Option(inner) = &target {
-		if value.get_type() == **inner {
-			return Ok(value);
-		}
+	if let Type::Option(inner) = &target
+		&& value.get_type() == **inner
+	{
+		return Ok(value);
 	}
 
 	if matches!(value, Value::None { .. }) {

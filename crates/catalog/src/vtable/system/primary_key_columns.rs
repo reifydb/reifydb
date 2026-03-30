@@ -22,6 +22,12 @@ pub struct SystemPrimaryKeyColumns {
 	exhausted: bool,
 }
 
+impl Default for SystemPrimaryKeyColumns {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemPrimaryKeyColumns {
 	pub fn new() -> Self {
 		Self {

@@ -23,7 +23,14 @@ use super::memory::host_alloc;
 ///
 /// Reconstructs the Transaction and Executor from the ContextFFI pointers,
 /// executes the RQL statement, and serializes the result frames into the output buffer.
-pub extern "C" fn host_rql(
+///
+/// # Safety
+///
+/// - `ctx` must be a valid pointer to a `ContextFFI` whose `txn_ptr` points to a live `Transaction`.
+/// - `rql_ptr` must be valid for reading `rql_len` bytes of valid UTF-8.
+/// - `params_ptr` must be valid for reading `params_len` bytes, or null if `params_len` is 0.
+/// - `result_out` must be a valid pointer to a `BufferFFI` for writing.
+pub unsafe extern "C" fn host_rql(
 	ctx: *mut ContextFFI,
 	rql_ptr: *const u8,
 	rql_len: usize,

@@ -111,17 +111,17 @@ impl PendingWrites {
 	/// Remove an entry by key - O(log n) BTreeMap + O(1) HashMap lookup + O(1) swap removal
 	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
 		if let Some((removed_key, removed_value)) = self.writes.remove_entry(key) {
-			if let Some(position) = self.position_index.remove(key) {
-				if position < self.insertion_order.len() {
-					let swapped_position = self.insertion_order.len() - 1;
-					if position != swapped_position {
-						self.insertion_order.swap(position, swapped_position);
-						if let Some(swapped_key) = self.insertion_order.get(position) {
-							self.position_index.insert(swapped_key.clone(), position);
-						}
+			if let Some(position) = self.position_index.remove(key)
+				&& position < self.insertion_order.len()
+			{
+				let swapped_position = self.insertion_order.len() - 1;
+				if position != swapped_position {
+					self.insertion_order.swap(position, swapped_position);
+					if let Some(swapped_key) = self.insertion_order.get(position) {
+						self.position_index.insert(swapped_key.clone(), position);
 					}
-					self.insertion_order.pop();
 				}
+				self.insertion_order.pop();
 			}
 			let size_estimate = self.estimate_size(&removed_value);
 			self.estimated_size = self.estimated_size.saturating_sub(size_estimate);

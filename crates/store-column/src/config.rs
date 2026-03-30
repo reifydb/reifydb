@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::backend::Backend;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct ColumnStoreConfig {
 	pub hot: Option<BackendConfig>,
 	pub warm: Option<BackendConfig>,
@@ -35,18 +35,6 @@ pub struct CompressionConfig {
 	pub enable_dictionary_compression: bool,
 	pub enable_delta_compression: bool,
 	pub enable_rle_compression: bool,
-}
-
-impl Default for ColumnStoreConfig {
-	fn default() -> Self {
-		Self {
-			hot: None,
-			warm: None,
-			cold: None,
-			retention: RetentionConfig::default(),
-			compression: CompressionConfig::default(),
-		}
-	}
 }
 
 impl Default for RetentionConfig {

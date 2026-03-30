@@ -25,6 +25,12 @@ pub struct SystemTables {
 	exhausted: bool,
 }
 
+impl Default for SystemTables {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemTables {
 	pub fn new() -> Self {
 		Self {

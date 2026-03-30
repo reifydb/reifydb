@@ -44,7 +44,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn update_ringbuffer<'a>(
+pub(crate) fn update_ringbuffer(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: UpdateRingBufferNode,
@@ -87,11 +87,7 @@ pub(crate) fn update_ringbuffer<'a>(
 	};
 
 	let mut updated_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
-		Vec::new()
-	} else {
-		Vec::new()
-	};
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 
 	// Process all input batches
 	{
@@ -105,7 +101,7 @@ pub(crate) fn update_ringbuffer<'a>(
 			// Enforce write policies before processing rows
 			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
-				&namespace.name(),
+				namespace.name(),
 				&ringbuffer.name,
 				"update",
 				&columns,

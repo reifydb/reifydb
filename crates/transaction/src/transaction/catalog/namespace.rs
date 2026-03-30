@@ -54,10 +54,10 @@ impl TransactionalNamespaceChanges for AdminTransaction {
 				if namespace.id() == id {
 					return Some(namespace);
 				}
-			} else if let Some(namespace) = &change.pre {
-				if namespace.id() == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(namespace) = &change.pre
+				&& namespace.id() == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

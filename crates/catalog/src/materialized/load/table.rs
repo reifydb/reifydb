@@ -28,7 +28,7 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalo
 	let mut stream = rx.range(range, 1024)?;
 
 	let mut tables = Vec::new();
-	while let Some(entry) = stream.next() {
+	for entry in stream.by_ref() {
 		let multi = entry?;
 		let version = multi.version;
 

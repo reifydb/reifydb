@@ -17,7 +17,7 @@ impl CatalogStore {
 		let policy_range = ColumnPropertyKey::full_scan(column_id);
 		let mut policy_stream = txn.range(policy_range, 1024)?;
 		let mut policy_keys = Vec::new();
-		while let Some(entry) = policy_stream.next() {
+		for entry in policy_stream.by_ref() {
 			policy_keys.push(entry?.key.clone());
 		}
 		drop(policy_stream);

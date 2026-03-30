@@ -38,9 +38,9 @@ pub trait WindowStateful: RawStatefulOperator {
 	/// Scan keys within a range without removing them (read-only)
 	fn scan_keys_in_range(&self, txn: &mut FlowTransaction, range: &EncodedKeyRange) -> Result<Vec<EncodedKey>> {
 		let prefixed_range = range.clone().with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
-		let mut stream = txn.range(prefixed_range, 1024);
+		let stream = txn.range(prefixed_range, 1024);
 		let mut keys = Vec::new();
-		while let Some(result) = stream.next() {
+		for result in stream {
 			let multi = result?;
 			keys.push(EncodedKey::new(multi.key.to_vec()));
 		}
@@ -53,9 +53,9 @@ pub trait WindowStateful: RawStatefulOperator {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
 
 		let keys_to_remove = {
-			let mut stream = txn.range(prefixed_range, 1024);
+			let stream = txn.range(prefixed_range, 1024);
 			let mut keys = Vec::new();
-			while let Some(result) = stream.next() {
+			for result in stream {
 				let multi = result?;
 				keys.push(multi.key);
 			}

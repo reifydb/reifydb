@@ -203,7 +203,7 @@ pub(crate) fn run_tests(
 				let (outcome, message) = run_single(
 					vm,
 					services,
-					&mut Transaction::Test(test_txn.reborrow()),
+					&mut Transaction::Test(Box::new(test_txn.reborrow())),
 					&test.body,
 					params,
 					None,
@@ -265,7 +265,7 @@ pub(crate) fn run_tests(
 					let (outcome, message) = run_single(
 						vm,
 						services,
-						&mut Transaction::Test(test_txn.reborrow()),
+						&mut Transaction::Test(Box::new(test_txn.reborrow())),
 						&test.body,
 						params,
 						Some(&named_vars),

@@ -24,7 +24,7 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	let mut stream = rx.range(range, 1024)?;
 
 	let mut views = Vec::new();
-	while let Some(entry) = stream.next() {
+	for entry in stream.by_ref() {
 		let multi = entry?;
 		let version = multi.version;
 

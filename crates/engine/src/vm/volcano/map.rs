@@ -66,7 +66,7 @@ impl QueryNode for MapNode {
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 
-		while let Some(columns) = self.input.next(rx, ctx)? {
+		if let Some(columns) = self.input.next(rx, ctx)? {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
 			let transform_ctx = TransformContext {
 				functions: &stored_ctx.services.functions,
@@ -75,9 +75,10 @@ impl QueryNode for MapNode {
 			};
 			let result = self.apply(&transform_ctx, columns)?;
 
-			return Ok(Some(result));
+			Ok(Some(result))
+		} else {
+			Ok(None)
 		}
-		Ok(None)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
@@ -109,19 +110,15 @@ impl Transform for MapNode {
 
 			let mut column = compiled_expr.execute(&exec_ctx)?;
 
-			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
-				if column.data.get_type() != target_type {
-					let data = cast_column_data(
-						&exec_ctx,
-						&column.data,
-						target_type,
-						&expr.lazy_fragment(),
-					)?;
-					column = Column {
-						name: column.name,
-						data,
-					};
-				}
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
+				&& column.data.get_type() != target_type
+			{
+				let data =
+					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
+				column = Column {
+					name: column.name,
+					data,
+				};
 			}
 
 			new_columns.push(column);

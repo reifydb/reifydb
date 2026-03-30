@@ -191,10 +191,10 @@ impl RowShapeRegistry {
 		for i in 0..field_count {
 			let field_key = RowShapeFieldKey::encoded(fingerprint, i as u16);
 			let field_entry = txn.get(&field_key)?.ok_or_else(|| {
-				Error(internal(format!(
+				Error(Box::new(internal(format!(
 					"RowShape field {} missing for fingerprint {:?}",
 					i, fingerprint
-				)))
+				))))
 			})?;
 
 			let name = shape_field::SHAPE.get_utf8(&field_entry.row, shape_field::NAME).to_string();

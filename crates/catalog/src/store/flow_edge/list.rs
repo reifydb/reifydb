@@ -21,8 +21,8 @@ impl CatalogStore {
 		// Collect edge IDs first to avoid holding stream borrow
 		let mut edge_ids = Vec::new();
 		{
-			let mut stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), 1024)?;
+			for entry in stream {
 				let multi = entry?;
 				edge_ids.push(FlowEdgeId(SHAPE.get_u64(&multi.row, flow_edge_by_flow::ID)));
 			}
@@ -45,9 +45,9 @@ impl CatalogStore {
 	pub(crate) fn list_flow_edges_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowEdge>> {
 		let mut result = Vec::new();
 
-		let mut stream = rx.range(FlowEdgeKey::full_scan(), 1024)?;
+		let stream = rx.range(FlowEdgeKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
 			if let Some(flow_edge_key) = FlowEdgeKey::decode(&entry.key) {
 				let edge_id = flow_edge_key.edge;

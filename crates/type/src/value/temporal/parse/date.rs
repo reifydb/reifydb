@@ -8,7 +8,6 @@ use crate::{
 };
 
 pub fn parse_date(fragment: Fragment) -> Result<Date, Error> {
-	let fragment = fragment;
 	let value = fragment.text();
 	let parts: Vec<&str> = value.split('-').collect();
 

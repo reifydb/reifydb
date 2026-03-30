@@ -35,7 +35,7 @@ pub fn load_flow_dag(catalog: &Catalog, txn: &mut Transaction<'_>, flow_id: Flow
 	// Deserialize and add all nodes
 	for node_def in node_defs {
 		let node_type: FlowNodeType = from_bytes(node_def.data.as_ref())
-			.map_err(|e| Error(internal!("Failed to deserialize FlowNodeType: {}", e)))?;
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize FlowNodeType: {}", e))))?;
 
 		let node = FlowNode::new(node_def.id, node_type);
 		builder.add_node(node);

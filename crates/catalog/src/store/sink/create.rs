@@ -56,7 +56,7 @@ impl CatalogStore {
 		Self::store_sink(txn, sink_id, namespace_id, &to_create)?;
 		Self::link_sink_to_namespace(txn, namespace_id, sink_id, to_create.name.text())?;
 
-		Ok(Self::get_sink(&mut Transaction::Admin(&mut *txn), sink_id)?)
+		Self::get_sink(&mut Transaction::Admin(&mut *txn), sink_id)
 	}
 
 	fn store_sink(

@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct Exp;
 
+impl Default for Exp {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Exp {
 	pub fn new() -> Self {
 		Self
@@ -65,7 +71,7 @@ impl ScalarFunction for Exp {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		if !column.data().get_type().is_number() {
 			return Err(ScalarFunctionError::InvalidArgumentType {

@@ -10,7 +10,6 @@ use crate::{
 
 impl Blob {
 	pub fn from_b64(fragment: Fragment) -> Result<Self, Error> {
-		let fragment = fragment;
 		let b64_str = fragment.text();
 		// Try transaction base64 first, then without padding if it fails
 		match general_purpose::STANDARD.decode(b64_str) {
@@ -31,7 +30,6 @@ impl Blob {
 	}
 
 	pub fn from_b64url(fragment: Fragment) -> Result<Self, Error> {
-		let fragment = fragment;
 		let b64url_str = fragment.text();
 		match general_purpose::URL_SAFE_NO_PAD.decode(b64url_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),

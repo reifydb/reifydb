@@ -22,6 +22,12 @@ pub struct SystemEvents {
 	exhausted: bool,
 }
 
+impl Default for SystemEvents {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemEvents {
 	pub fn new() -> Self {
 		Self {

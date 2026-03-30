@@ -447,7 +447,7 @@ impl PoolActor {
 		for pending in writes {
 			for (key, value) in pending.iter_sorted() {
 				// Validate no keyspace overlap between workers
-				if combined.contains_key(&key) {
+				if combined.contains_key(key) {
 					return Err(internal!(
 						"keyspace overlap detected during worker aggregation: {}",
 						encode(key.as_ref())

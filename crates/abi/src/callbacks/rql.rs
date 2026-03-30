@@ -21,7 +21,7 @@ pub struct RqlCallbacks {
 	///
 	/// # Returns
 	/// - FFI_OK on success, FFI_ERROR_* on failure
-	pub rql: extern "C" fn(
+	pub rql: unsafe extern "C" fn(
 		ctx: *mut ContextFFI,
 		rql_ptr: *const u8,
 		rql_len: usize,

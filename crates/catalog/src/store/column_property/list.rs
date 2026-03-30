@@ -17,10 +17,10 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		column: ColumnId,
 	) -> Result<Vec<ColumnProperty>> {
-		let mut stream = rx.range(ColumnPropertyKey::full_scan(column), 1024)?;
+		let stream = rx.range(ColumnPropertyKey::full_scan(column), 1024)?;
 		let mut result = Vec::new();
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let row = multi.row;
 			let id = ColumnPropertyId(column_property::SHAPE.get_u64(&row, column_property::ID));

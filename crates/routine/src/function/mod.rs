@@ -122,12 +122,12 @@ pub fn propagate_options(
 	// Short-circuit: when all combined values are None, skip the inner function
 	// call entirely to avoid type-validation errors on placeholder inner types
 	// (e.g. none typed as Option<Any> would fail numeric type checks).
-	if let Some(ref bv) = combined_bv {
-		if bv.count_ones() == 0 {
-			let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data().get_type()).collect();
-			let result_type = func.return_type(&input_types);
-			return Some(Ok(ColumnData::none_typed(result_type, ctx.row_count)));
-		}
+	if let Some(ref bv) = combined_bv
+		&& bv.count_ones() == 0
+	{
+		let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data().get_type()).collect();
+		let result_type = func.return_type(&input_types);
+		return Some(Ok(ColumnData::none_typed(result_type, ctx.row_count)));
 	}
 
 	let unwrapped_columns = Columns::new(unwrapped);

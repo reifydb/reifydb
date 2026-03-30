@@ -11,6 +11,12 @@ use crate::function::{
 
 pub struct GenerateSeries;
 
+impl Default for GenerateSeries {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl GenerateSeries {
 	pub fn new() -> Self {
 		Self {}
@@ -25,7 +31,7 @@ impl GeneratorFunction for GenerateSeries {
 		assert_eq!(params.len(), 2, "generate_series requires exactly 2 parameters: start and end");
 
 		// Get start value
-		let start_column = params.get(0).unwrap();
+		let start_column = params.first().unwrap();
 		let start_value = match start_column.data() {
 			ColumnData::Int4(container) => container.get(0).copied().unwrap_or(1),
 			_ => panic!("start parameter must be an integer"),
@@ -47,6 +53,12 @@ impl GeneratorFunction for GenerateSeries {
 }
 
 pub struct Series;
+
+impl Default for Series {
+	fn default() -> Self {
+		Self::new()
+	}
+}
 
 impl Series {
 	pub fn new() -> Self {
@@ -79,7 +91,7 @@ impl ScalarFunction for Series {
 			});
 		}
 
-		let start_column = columns.get(0).unwrap();
+		let start_column = columns.first().unwrap();
 		let start_value = extract_i32(start_column.data(), 0).unwrap_or(1);
 
 		let end_column = columns.get(1).unwrap();

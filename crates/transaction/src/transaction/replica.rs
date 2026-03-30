@@ -179,10 +179,10 @@ impl ReplicaTransaction {
 
 impl Drop for ReplicaTransaction {
 	fn drop(&mut self) {
-		if let Some(mut cmd) = self.rpl.take() {
-			if self.state == ReplicaTransactionState::Active {
-				let _ = cmd.rollback();
-			}
+		if let Some(mut cmd) = self.rpl.take()
+			&& self.state == ReplicaTransactionState::Active
+		{
+			let _ = cmd.rollback();
 		}
 	}
 }

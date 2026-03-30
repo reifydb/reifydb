@@ -46,10 +46,10 @@ impl MaterializedCatalog {
 
 	pub fn set_sink(&self, id: SinkId, version: CommitVersion, sink: Option<Sink>) {
 		// Look up the current sink to update the index
-		if let Some(entry) = self.sinks.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.sinks_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.sinks.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.sinks_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.sinks.get_or_insert_with(id, MultiVersionSink::new);

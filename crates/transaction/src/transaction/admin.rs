@@ -182,7 +182,7 @@ impl AdminTransaction {
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		let result = executor.rql(&mut Transaction::Admin(self), rql, params);
 		if let Err(ref e) = result {
-			self.poison(e.0.clone());
+			self.poison(*e.0.clone());
 		}
 		result
 	}
@@ -197,18 +197,12 @@ impl AdminTransaction {
 	pub(crate) fn check_active(&self) -> Result<()> {
 		match self.state {
 			TransactionState::Active => Ok(()),
-			TransactionState::Committed => {
-				return Err(TransactionError::AlreadyCommitted.into());
+			TransactionState::Committed => Err(TransactionError::AlreadyCommitted.into()),
+			TransactionState::RolledBack => Err(TransactionError::AlreadyRolledBack.into()),
+			TransactionState::Poisoned => Err(TransactionError::Poisoned {
+				cause: Box::new(self.poison_cause.clone().unwrap()),
 			}
-			TransactionState::RolledBack => {
-				return Err(TransactionError::AlreadyRolledBack.into());
-			}
-			TransactionState::Poisoned => {
-				return Err(TransactionError::Poisoned {
-					cause: self.poison_cause.clone().unwrap(),
-				}
-				.into());
-			}
+			.into()),
 		}
 	}
 

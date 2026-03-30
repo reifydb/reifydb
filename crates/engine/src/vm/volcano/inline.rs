@@ -353,7 +353,7 @@ impl QueryNode for InlineDataNode {
 	}
 }
 
-impl<'a> InlineDataNode {
+impl InlineDataNode {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
 	fn find_optimal_integer_type(column: &ColumnData) -> Type {
@@ -365,8 +365,8 @@ impl<'a> InlineDataNode {
 			match value {
 				Value::Int16(v) => {
 					has_values = true;
-					min_val = min_val.min(v as i128);
-					max_val = max_val.max(v as i128);
+					min_val = min_val.min(v);
+					max_val = max_val.max(v);
 				}
 				Value::None {
 					..
@@ -487,7 +487,7 @@ impl<'a> InlineDataNode {
 				for value in &all_values {
 					if matches!(value, Value::None { .. }) {
 						data.push_none();
-					} else if wide_type.as_ref().map_or(false, |wt| value.get_type() == *wt) {
+					} else if wide_type.as_ref().is_some_and(|wt| value.get_type() == *wt) {
 						data.push_value(value.clone());
 					} else {
 						// Cast to the wide type
@@ -498,7 +498,7 @@ impl<'a> InlineDataNode {
 							&eval_ctx,
 							&temp_data,
 							wide_type.clone().unwrap(),
-							|| Fragment::none(),
+							Fragment::none,
 						) {
 							Ok(casted) => {
 								if let Some(casted_value) = casted.iter().next() {
@@ -631,7 +631,7 @@ impl<'a> InlineDataNode {
 									&eval_ctx,
 									&temp,
 									Type::Int16,
-									|| Fragment::none(),
+									Fragment::none,
 								) {
 									Ok(casted) => {
 										if let Some(v) = casted.iter().next() {

@@ -57,7 +57,6 @@ impl<M: Send> ActorRefInner<M> {
 			Ok(()) => {
 				if let Some(f) = self.notify.get() {
 					f();
-				} else {
 				}
 				Ok(())
 			}

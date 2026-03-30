@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextPadLeft;
 
+impl Default for TextPadLeft {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextPadLeft {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextPadLeft {
 			});
 		}
 
-		let str_col = columns.get(0).unwrap();
+		let str_col = columns.first().unwrap();
 		let len_col = columns.get(1).unwrap();
 		let pad_col = columns.get(2).unwrap();
 

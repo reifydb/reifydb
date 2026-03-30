@@ -83,13 +83,13 @@ impl StandardSingleStore {
 impl SingleVersionGet for StandardSingleStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
 	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
-		if let Some(hot) = &self.hot {
-			if let Some(value) = hot.get(key.as_ref())? {
-				return Ok(Some(SingleVersionRow {
-					key: key.clone(),
-					row: EncodedRow(value),
-				}));
-			}
+		if let Some(hot) = &self.hot
+			&& let Some(value) = hot.get(key.as_ref())?
+		{
+			return Ok(Some(SingleVersionRow {
+				key: key.clone(),
+				row: EncodedRow(value),
+			}));
 		}
 
 		Ok(None)
@@ -99,10 +99,10 @@ impl SingleVersionGet for StandardSingleStore {
 impl SingleVersionContains for StandardSingleStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())), ret)]
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		if let Some(hot) = &self.hot {
-			if hot.contains(key.as_ref())? {
-				return Ok(true);
-			}
+		if let Some(hot) = &self.hot
+			&& hot.contains(key.as_ref())?
+		{
+			return Ok(true);
 		}
 
 		Ok(false)

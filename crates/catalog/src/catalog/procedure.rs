@@ -284,19 +284,14 @@ impl Catalog {
 
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &admin.changes.procedure {
-					if let Some(p) = &change.post {
-						if let ProcedureTrigger::Event {
+					if let Some(p) = &change.post
+						&& let ProcedureTrigger::Event {
 							variant: v,
-						} = &p.trigger
-						{
-							if *v == variant
-								&& !procedures
-									.iter()
-									.any(|existing| existing.id == p.id)
-							{
-								procedures.push(p.clone());
-							}
-						}
+						} = &p.trigger && *v == variant && !procedures
+						.iter()
+						.any(|existing| existing.id == p.id)
+					{
+						procedures.push(p.clone());
 					}
 				}
 
@@ -312,19 +307,14 @@ impl Catalog {
 
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &sub.as_admin_mut().changes.procedure {
-					if let Some(p) = &change.post {
-						if let ProcedureTrigger::Event {
+					if let Some(p) = &change.post
+						&& let ProcedureTrigger::Event {
 							variant: v,
-						} = &p.trigger
-						{
-							if *v == variant
-								&& !procedures
-									.iter()
-									.any(|existing| existing.id == p.id)
-							{
-								procedures.push(p.clone());
-							}
-						}
+						} = &p.trigger && *v == variant && !procedures
+						.iter()
+						.any(|existing| existing.id == p.id)
+					{
+						procedures.push(p.clone());
 					}
 				}
 
@@ -337,19 +327,14 @@ impl Catalog {
 
 				// Also check transactional changes for newly created procedures with event binding
 				for change in &t.inner.changes.procedure {
-					if let Some(p) = &change.post {
-						if let ProcedureTrigger::Event {
+					if let Some(p) = &change.post
+						&& let ProcedureTrigger::Event {
 							variant: v,
-						} = &p.trigger
-						{
-							if *v == variant
-								&& !procedures
-									.iter()
-									.any(|existing| existing.id == p.id)
-							{
-								procedures.push(p.clone());
-							}
-						}
+						} = &p.trigger && *v == variant && !procedures
+						.iter()
+						.any(|existing| existing.id == p.id)
+					{
+						procedures.push(p.clone());
 					}
 				}
 

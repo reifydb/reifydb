@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TimeDiff;
 
+impl Default for TimeDiff {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TimeDiff {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for TimeDiff {
 			});
 		}
 
-		let col1 = columns.get(0).unwrap();
+		let col1 = columns.first().unwrap();
 		let col2 = columns.get(1).unwrap();
 
 		match (col1.data(), col2.data()) {

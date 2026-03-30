@@ -43,7 +43,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn delete_ringbuffer<'a>(
+pub(crate) fn delete_ringbuffer(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: DeleteRingBufferNode,
@@ -78,11 +78,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 
 	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
 	let mut deleted_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
-		Vec::new()
-	} else {
-		Vec::new()
-	};
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 
 	if let Some(input_plan) = plan.input {
 		// Filtered delete: collect row numbers to delete from the filter
@@ -117,7 +113,7 @@ pub(crate) fn delete_ringbuffer<'a>(
 			while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 				PolicyEvaluator::new(services, symbols).enforce_write_policies(
 					txn,
-					&namespace.name(),
+					namespace.name(),
 					&ringbuffer.name,
 					"delete",
 					&columns,

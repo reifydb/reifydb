@@ -44,7 +44,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceTableKey::full_scan(namespace), 1024)?;
 
 		let mut found_table = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let table_name = table_namespace::SHAPE.get_utf8(row, table_namespace::NAME);

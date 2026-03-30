@@ -104,7 +104,7 @@ impl Parser {
 
 	fn parse_select(&mut self) -> Result<Statement, Error> {
 		let sel = self.parse_select_statement()?;
-		Ok(Statement::Select(sel))
+		Ok(Statement::Select(Box::new(sel)))
 	}
 
 	fn parse_select_statement(&mut self) -> Result<SelectStatement, Error> {
@@ -428,14 +428,7 @@ impl Parser {
 			self.advance()?;
 			self.expect_keyword(Keyword::Join)?;
 			JoinType::Inner
-		} else if self.at_keyword(&Keyword::Right) {
-			self.advance()?;
-			if self.at_keyword(&Keyword::Outer) {
-				self.advance()?;
-			}
-			self.expect_keyword(Keyword::Join)?;
-			JoinType::Inner // best-effort: treat as inner
-		} else if self.at_keyword(&Keyword::Full) {
+		} else if self.at_keyword(&Keyword::Right) || self.at_keyword(&Keyword::Full) {
 			self.advance()?;
 			if self.at_keyword(&Keyword::Outer) {
 				self.advance()?;
@@ -502,7 +495,7 @@ impl Parser {
 				table,
 				shape,
 				columns,
-				source: InsertSource::Select(sel),
+				source: InsertSource::Select(Box::new(sel)),
 			}));
 		}
 

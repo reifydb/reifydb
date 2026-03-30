@@ -144,12 +144,11 @@ pub async fn handle_connection(
 							&mut remote_tasks,
 							shutdown.clone(),
 						).await;
-						if let Some(resp) = response {
-							if sender.send(Message::Text(resp.into())).await.is_err() {
+						if let Some(resp) = response
+							&& sender.send(Message::Text(resp.into())).await.is_err() {
 								debug!("Failed to send response to {:?}", peer);
 								break;
 							}
-						}
 					}
 					Some(Ok(Message::Ping(data))) => {
 						if sender.send(Message::Pong(data)).await.is_err() {
@@ -268,7 +267,7 @@ async fn process_message(
 		}
 
 		RequestPayload::Admin(_) if !state.admin_enabled() => {
-			return Some(build_error(&request.id, "NOT_FOUND", "Unknown request type"));
+			Some(build_error(&request.id, "NOT_FOUND", "Unknown request type"))
 		}
 
 		RequestPayload::Admin(a) => {

@@ -16,6 +16,12 @@ use crate::function::{
 
 pub struct Clamp;
 
+impl Default for Clamp {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Clamp {
 	pub fn new() -> Self {
 		Self
@@ -440,7 +446,7 @@ impl ScalarFunction for Clamp {
 			});
 		}
 
-		let val_col = columns.get(0).unwrap();
+		let val_col = columns.first().unwrap();
 		let min_col = columns.get(1).unwrap();
 		let max_col = columns.get(2).unwrap();
 

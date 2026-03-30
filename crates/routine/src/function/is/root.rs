@@ -11,6 +11,12 @@ use crate::function::{
 
 pub struct IsRoot;
 
+impl Default for IsRoot {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl IsRoot {
 	pub fn new() -> Self {
 		Self
@@ -19,7 +25,7 @@ impl IsRoot {
 
 impl ScalarFunction for IsRoot {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if ctx.columns.len() != 0 {
+		if !ctx.columns.is_empty() {
 			return Err(ScalarFunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,

@@ -31,7 +31,7 @@ pub(crate) fn rem_columns(
 			&left.data(), &right.data();
 			fixed: rem_numeric, arb: rem_numeric_clone (ctx, target, fragment);
 
-			_ => return Err(TypeError::BinaryOperatorNotApplicable {
+			_ => Err(TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Rem,
 				left: left.get_type(),
 				right: right.get_type(),
@@ -41,7 +41,7 @@ pub(crate) fn rem_columns(
 	})
 }
 
-fn rem_numeric<'a, L, R>(
+fn rem_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -73,7 +73,7 @@ where
 	})
 }
 
-fn rem_numeric_clone<'a, L, R>(
+fn rem_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,

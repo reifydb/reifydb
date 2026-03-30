@@ -29,9 +29,9 @@ impl CatalogStore {
 			return Ok(Some(Namespace::default_namespace()));
 		}
 
-		let mut stream = rx.range(NamespaceKey::full_scan(), 1024)?;
+		let stream = rx.range(NamespaceKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let row: &EncodedRow = &multi.row;
 			let namespace_name = namespace::SHAPE.get_utf8(row, namespace::NAME);

@@ -38,12 +38,11 @@ pub struct StdPoolAllocator<C> {
 
 impl<C> StdPoolAllocator<C> {
 	pub(crate) fn new(max_pool_size: usize) -> Self {
-		let result = Self {
+		Self {
 			pools: Arc::new(Mutex::new(HashMap::new())),
 			stats: Arc::new(Mutex::new(PoolStats::default())),
 			max_pool_size,
-		};
-		result
+		}
 	}
 
 	/// Create a new container with the specified capacity
@@ -72,19 +71,18 @@ where
 		let bucket = Self::capacity_bucket(capacity);
 
 		// Try to get from pool first
-		if let Ok(mut pools) = self.pools.lock() {
-			if let Some(pool) = pools.get_mut(&bucket) {
-				if let Some(mut container) = pool.pop() {
-					container.clear();
+		if let Ok(mut pools) = self.pools.lock()
+			&& let Some(pool) = pools.get_mut(&bucket)
+			&& let Some(mut container) = pool.pop()
+		{
+			container.clear();
 
-					// Update stats
-					if let Ok(mut stats) = self.stats.lock() {
-						stats.total_acquired += 1;
-					}
-
-					return container;
-				}
+			// Update stats
+			if let Ok(mut stats) = self.stats.lock() {
+				stats.total_acquired += 1;
 			}
+
+			return container;
 		}
 
 		// Create new container if pool is empty

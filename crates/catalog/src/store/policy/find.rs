@@ -18,9 +18,9 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
-		let mut stream = rx.range(PolicyKey::full_scan(), 1024)?;
+		let stream = rx.range(PolicyKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let policy_name = policy::SHAPE.get_utf8(&multi.row, policy::NAME);
 			if !policy_name.is_empty() && name == policy_name {

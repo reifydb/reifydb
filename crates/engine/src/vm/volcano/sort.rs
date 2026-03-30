@@ -27,7 +27,7 @@ pub(crate) struct SortNode {
 	initialized: Option<()>,
 }
 
-impl<'a> SortNode {
+impl SortNode {
 	pub(crate) fn new(input: Box<dyn QueryNode>, by: Vec<SortKey>) -> Self {
 		Self {
 			input,

@@ -32,10 +32,10 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_identity(&self, id: IdentityId, version: CommitVersion, ident: Option<Identity>) {
-		if let Some(entry) = self.identities.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.identities_by_name.remove(&pre.name);
-			}
+		if let Some(entry) = self.identities.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.identities_by_name.remove(&pre.name);
 		}
 
 		let multi = self.identities.get_or_insert_with(id, MultiVersionIdentity::new);

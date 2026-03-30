@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextTrim;
 
+impl Default for TextTrim {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextTrim {
 	pub fn new() -> Self {
 		Self
@@ -36,7 +42,7 @@ impl ScalarFunction for TextTrim {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

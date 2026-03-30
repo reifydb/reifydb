@@ -78,7 +78,7 @@ impl CdcConsume for FlowConsumeRef {
 				..
 			} = send_err.into_inner()
 			{
-				reply(Err(Error(internal!("Coordinator actor stopped"))));
+				reply(Err(Error(Box::new(internal!("Coordinator actor stopped")))));
 			}
 		}
 	}
@@ -150,7 +150,7 @@ struct TickSchedule {
 
 /// Helper to create an error result for coordinator replies.
 fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
-	Err(Error(internal!("{}", msg)))
+	Err(Error(Box::new(internal!("{}", msg))))
 }
 
 /// Coordinator actor - processes CDC and coordinates flow workers.
@@ -576,12 +576,12 @@ impl CoordinatorActor {
 				.collect();
 
 			for (view_id, producer_flow_id) in &dependency_graph.sink_views {
-				if submitted_flow_ids.contains(producer_flow_id) {
-					if let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id) {
-						for fid in consumer_flow_ids {
-							if submitted_flow_ids.contains(fid) {
-								consume_ctx.downstream_flows.insert(*fid);
-							}
+				if submitted_flow_ids.contains(producer_flow_id)
+					&& let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id)
+				{
+					for fid in consumer_flow_ids {
+						if submitted_flow_ids.contains(fid) {
+							consume_ctx.downstream_flows.insert(*fid);
 						}
 					}
 				}
@@ -597,10 +597,10 @@ impl CoordinatorActor {
 				worker_batches.retain(|_, batch| !batch.instructions.is_empty());
 
 				for flow_id in &consume_ctx.downstream_flows {
-					if let Some(flow_state) = state.states.get_mut(flow_id) {
-						if flow_state.is_active() {
-							flow_state.deactivate();
-						}
+					if let Some(flow_state) = state.states.get_mut(flow_id)
+						&& flow_state.is_active()
+					{
+						flow_state.deactivate();
 					}
 				}
 			}
@@ -664,11 +664,11 @@ impl CoordinatorActor {
 		// so they should be skipped and will backfill in the next cycle.
 		let dependency_graph = state.analyzer.get_dependency_graph();
 		for (view_id, producer_flow_id) in &dependency_graph.sink_views {
-			if backfilling_flows.contains(producer_flow_id) {
-				if let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id) {
-					for fid in consumer_flow_ids {
-						consume_ctx.downstream_flows.insert(*fid);
-					}
+			if backfilling_flows.contains(producer_flow_id)
+				&& let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id)
+			{
+				for fid in consumer_flow_ids {
+					consume_ctx.downstream_flows.insert(*fid);
 				}
 			}
 		}
@@ -897,14 +897,13 @@ impl CoordinatorActor {
 		}
 
 		// Persist consumer checkpoint
-		if let Some(latest_version) = consume_ctx.latest_version {
-			if let Err(e) =
+		if let Some(latest_version) = consume_ctx.latest_version
+			&& let Err(e) =
 				CdcCheckpoint::persist(&mut transaction, &consume_ctx.consumer_key, latest_version)
-			{
-				let _ = transaction.rollback();
-				(consume_ctx.original_reply)(coordinator_error(e));
-				return;
-			}
+		{
+			let _ = transaction.rollback();
+			(consume_ctx.original_reply)(coordinator_error(e));
+			return;
 		}
 
 		// Commit the transaction
@@ -1156,18 +1155,13 @@ pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 
 	for cdc in cdcs {
 		for change in &cdc.system_changes {
-			if let Some(kind) = Key::kind(change.key()) {
-				if kind == KeyKind::Flow {
-					if let SystemChange::Insert {
-						key,
-						..
-					} = change
-					{
-						if let Some(Key::Flow(flow_key)) = Key::decode(key) {
-							flow_ids.push(flow_key.flow);
-						}
-					}
-				}
+			if let Some(kind) = Key::kind(change.key())
+				&& kind == KeyKind::Flow && let SystemChange::Insert {
+				key,
+				..
+			} = change && let Some(Key::Flow(flow_key)) = Key::decode(key)
+			{
+				flow_ids.push(flow_key.flow);
 			}
 		}
 	}

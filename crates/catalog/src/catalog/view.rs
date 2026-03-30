@@ -150,7 +150,9 @@ impl Catalog {
 				if TransactionalViewChanges::is_view_deleted(t.inner, id) {
 					return Ok(None);
 				}
-				if let Some(view) = CatalogStore::find_view(&mut Transaction::Test(t.reborrow()), id)? {
+				if let Some(view) =
+					CatalogStore::find_view(&mut Transaction::Test(Box::new(t.reborrow())), id)?
+				{
 					return Ok(Some(view));
 				}
 				Ok(None)
@@ -303,7 +305,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(view) = CatalogStore::find_view_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {

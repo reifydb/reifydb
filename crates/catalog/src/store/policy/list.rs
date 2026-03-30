@@ -15,9 +15,9 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn list_all_policies(rx: &mut Transaction<'_>) -> Result<Vec<Policy>> {
 		let mut result = Vec::new();
-		let mut stream = rx.range(PolicyKey::full_scan(), 1024)?;
+		let stream = rx.range(PolicyKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			result.push(convert_policy(multi));
 		}
@@ -32,9 +32,9 @@ impl CatalogStore {
 	) -> Result<Vec<PolicyOperation>> {
 		let mut result = Vec::new();
 		let range = PolicyOpKey::policy_scan(policy);
-		let mut stream = rx.range(range, 1024)?;
+		let stream = rx.range(range, 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			result.push(convert_policy_op(multi));
 		}
@@ -44,9 +44,9 @@ impl CatalogStore {
 
 	pub(crate) fn list_all_policy_operations(rx: &mut Transaction<'_>) -> Result<Vec<PolicyOperation>> {
 		let mut result = Vec::new();
-		let mut stream = rx.range(PolicyOpKey::full_scan(), 1024)?;
+		let stream = rx.range(PolicyOpKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			result.push(convert_policy_op(multi));
 		}

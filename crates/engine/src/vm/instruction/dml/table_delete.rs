@@ -46,7 +46,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn delete<'a>(
+pub(crate) fn delete(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: DeleteTableNode,
@@ -91,11 +91,7 @@ pub(crate) fn delete<'a>(
 	let resolved_source = Some(ResolvedShape::Table(resolved_table));
 
 	let mut deleted_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
-		Vec::new()
-	} else {
-		Vec::new()
-	};
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 
 	if let Some(input_plan) = plan.input {
 		// Delete specific rows based on input plan
@@ -132,7 +128,7 @@ pub(crate) fn delete<'a>(
 			// Enforce write policies before processing rows
 			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
-				&namespace.name(),
+				namespace.name(),
 				&table.name,
 				"delete",
 				&columns,

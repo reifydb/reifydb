@@ -13,10 +13,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn get_view(rx: &mut Transaction<'_>, view: ViewId) -> Result<View> {
 		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				view
-			))
+			)))
 		})
 	}
 }

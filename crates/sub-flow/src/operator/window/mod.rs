@@ -70,7 +70,7 @@ use reifydb_type::{
 
 use crate::operator::stateful::{raw::RawStatefulOperator, row::RowNumberProvider, window::WindowStateful};
 
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 /// RowShape layout shared across all events in a window (stored once, not per event)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,7 +128,7 @@ impl WindowEvent {
 }
 
 /// State for a single window
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WindowState {
 	/// All events in this window (stored in insertion order)
 	pub events: Vec<WindowEvent>,
@@ -146,18 +146,6 @@ impl WindowState {
 	/// Get the layout, panics if not set (should always be set after first event)
 	pub fn layout(&self) -> &WindowLayout {
 		self.window_layout.as_ref().expect("WindowState layout must be set before accessing")
-	}
-}
-
-impl Default for WindowState {
-	fn default() -> Self {
-		Self {
-			events: Vec::new(),
-			window_layout: None,
-			window_start: 0,
-			event_count: 0,
-			last_event_time: 0,
-		}
 	}
 }
 
@@ -246,7 +234,7 @@ impl WindowOperator {
 
 	/// Whether this is a count-based window
 	pub fn is_count_based(&self) -> bool {
-		self.kind.size().map_or(false, |m| m.is_count())
+		self.kind.size().is_some_and(|m| m.is_count())
 	}
 
 	/// Get the window size as duration (if time-based)
@@ -314,17 +302,19 @@ impl WindowOperator {
 		}
 		match &self.ts {
 			Some(ts_col) => {
-				let col = columns
-					.column(ts_col)
-					.ok_or_else(|| Error(flow_window_timestamp_column_not_found(ts_col)))?;
+				let col = columns.column(ts_col).ok_or_else(|| {
+					Error(Box::new(flow_window_timestamp_column_not_found(ts_col)))
+				})?;
 				let mut timestamps = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					match col.data().get_value(i) {
 						Value::DateTime(dt) => timestamps.push(dt.timestamp_millis() as u64),
 						other => {
-							return Err(Error(flow_window_timestamp_column_type_mismatch(
-								ts_col,
-								other.get_type(),
+							return Err(Error(Box::new(
+								flow_window_timestamp_column_type_mismatch(
+									ts_col,
+									other.get_type(),
+								),
 							)));
 						}
 					}
@@ -370,8 +360,8 @@ impl WindowOperator {
 		if !window_ids.contains(&window_id) {
 			window_ids.push(window_id);
 		}
-		let serialized =
-			to_stdvec(&window_ids).map_err(|e| Error(internal!("Failed to serialize row index: {}", e)))?;
+		let serialized = to_stdvec(&window_ids)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize row index: {}", e))))?;
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
@@ -395,7 +385,7 @@ impl WindowOperator {
 			return Ok(Vec::new());
 		}
 		let window_ids: Vec<u64> = from_bytes(blob.as_ref())
-			.map_err(|e| Error(internal!("Failed to deserialize row index: {}", e)))?;
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize row index: {}", e))))?;
 		Ok(window_ids)
 	}
 
@@ -554,10 +544,7 @@ impl WindowOperator {
 		let group_hashes = self.compute_group_keys(pre)?;
 		let mut result = Vec::new();
 
-		for row_idx in 0..row_count {
-			let row_number = pre.row_numbers[row_idx];
-			let group_hash = group_hashes[row_idx];
-
+		for (&row_number, &group_hash) in pre.row_numbers.iter().zip(group_hashes.iter()) {
 			let diffs = self.remove_event_from_windows(txn, group_hash, row_number)?;
 			result.extend(diffs);
 		}
@@ -619,7 +606,7 @@ impl WindowOperator {
 		let columns = window_layout
 			.names
 			.iter()
-			.zip(builders.into_iter())
+			.zip(builders)
 			.map(|(name, data)| Column {
 				name: Fragment::internal(name.clone()),
 				data,
@@ -723,19 +710,16 @@ impl WindowOperator {
 					let expired_keys = self.scan_keys_in_range(txn, &range)?;
 					for key in &expired_keys {
 						let window_state = self.load_window_state(txn, key)?;
-						if !window_state.events.is_empty() {
-							if let Some(layout) = &window_state.window_layout {
-								if let Some((row, _)) = self.apply_aggregations(
-									txn,
-									key,
-									layout,
-									&window_state.events,
-								)? {
-									result.push(Diff::Remove {
-										pre: Columns::from_row(&row),
-									});
-								}
-							}
+						if !window_state.events.is_empty()
+							&& let Some(layout) = &window_state.window_layout && let Some((
+							row,
+							_,
+						)) =
+							self.apply_aggregations(txn, key, layout, &window_state.events)?
+						{
+							result.push(Diff::Remove {
+								pre: Columns::from_row(&row),
+							});
 						}
 					}
 
@@ -768,7 +752,8 @@ impl WindowOperator {
 			return Ok(WindowState::default());
 		}
 
-		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize WindowState: {}", e)))
+		from_bytes(blob.as_ref())
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize WindowState: {}", e))))
 	}
 
 	/// Save window state to storage
@@ -778,8 +763,8 @@ impl WindowOperator {
 		window_key: &EncodedKey,
 		state: &WindowState,
 	) -> Result<()> {
-		let serialized =
-			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
+		let serialized = to_stdvec(state)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize WindowState: {}", e))))?;
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
@@ -806,8 +791,8 @@ impl WindowOperator {
 
 		let new_count = current_count + 1;
 
-		let serialized =
-			to_stdvec(&new_count).map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
+		let serialized = to_stdvec(&new_count)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize count: {}", e))))?;
 
 		let mut count_state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
@@ -850,8 +835,8 @@ impl WindowOperator {
 	fn save_group_registry(&self, txn: &mut FlowTransaction, groups: &[Hash128]) -> Result<()> {
 		let key = self.create_group_registry_key();
 		let raw: Vec<u128> = groups.iter().map(|h| (*h).into()).collect();
-		let serialized =
-			to_stdvec(&raw).map_err(|e| Error(internal!("Failed to serialize group registry: {}", e)))?;
+		let serialized = to_stdvec(&raw)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize group registry: {}", e))))?;
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
@@ -909,14 +894,13 @@ impl WindowOperator {
 			// Check if window is expired: newest event older than window size
 			let newest_event_time = window_state.events.iter().map(|e| e.timestamp).max().unwrap_or(0);
 			if current_timestamp.saturating_sub(newest_event_time) > window_size_ms {
-				if let Some(layout) = &window_state.window_layout {
-					if let Some((row, _)) =
+				if let Some(layout) = &window_state.window_layout
+					&& let Some((row, _)) =
 						self.apply_aggregations(txn, &window_key, layout, &window_state.events)?
-					{
-						result.push(Diff::Remove {
-							pre: Columns::from_row(&row),
-						});
-					}
+				{
+					result.push(Diff::Remove {
+						pre: Columns::from_row(&row),
+					});
 				}
 				keys_to_remove.push(window_key);
 			}
@@ -1046,7 +1030,7 @@ impl Operator for WindowOperator {
 	}
 
 	fn tick(&self, txn: &mut FlowTransaction, timestamp: DateTime) -> Result<Option<Change>> {
-		let current_timestamp = (timestamp.to_nanos() / 1_000_000) as u64;
+		let current_timestamp = timestamp.to_nanos() / 1_000_000;
 		let diffs = match &self.kind {
 			WindowKind::Tumbling {
 				..

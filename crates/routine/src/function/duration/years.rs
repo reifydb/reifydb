@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DurationYears;
 
+impl Default for DurationYears {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DurationYears {
 	pub fn new() -> Self {
 		Self
@@ -64,7 +70,7 @@ impl ScalarFunction for DurationYears {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		if !is_integer_type(col.data()) {
 			return Err(ScalarFunctionError::InvalidArgumentType {

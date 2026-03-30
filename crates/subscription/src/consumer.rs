@@ -60,7 +60,7 @@ impl SubscriptionConsumer {
 
 		let mut stream = cmd_txn.range(range, batch_size)?;
 		let mut entries = Vec::new();
-		while let Some(result) = stream.next() {
+		for result in stream.by_ref() {
 			entries.push(result?);
 		}
 		drop(stream); // Explicitly drop to release the borrow on cmd_txn
@@ -86,10 +86,10 @@ impl SubscriptionConsumer {
 				let shape = row_shape_registry
 					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
 					.ok_or_else(|| {
-						Error(internal(format!(
+						Error(Box::new(internal(format!(
 							"Shape not found for fingerprint: {:?}",
 							fingerprint
-						)))
+						))))
 					})?;
 
 				let mut seen_in_this_entry = HashSet::new();

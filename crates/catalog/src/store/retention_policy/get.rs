@@ -16,10 +16,10 @@ impl CatalogStore {
 	/// Returns an error if no retention policy is set
 	pub(crate) fn get_shape_retention_policy(rx: &mut Transaction<'_>, shape: ShapeId) -> Result<RetentionPolicy> {
 		Self::find_shape_retention_policy(rx, shape)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Retention policy for shape {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				shape
-			))
+			)))
 		})
 	}
 
@@ -30,10 +30,10 @@ impl CatalogStore {
 		operator: FlowNodeId,
 	) -> Result<RetentionPolicy> {
 		Self::find_operator_retention_policy(rx, operator)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Retention policy for operator {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				operator
-			))
+			)))
 		})
 	}
 }

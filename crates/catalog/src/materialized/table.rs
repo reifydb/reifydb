@@ -55,11 +55,11 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_table(&self, id: TableId, version: CommitVersion, table: Option<Table>) {
-		if let Some(entry) = self.tables.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				// Remove old name from index
-				self.tables_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.tables.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			// Remove old name from index
+			self.tables_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.tables.get_or_insert_with(id, MultiVersionTable::new);

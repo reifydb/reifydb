@@ -91,15 +91,16 @@ impl<'bump> Parser<'bump> {
 
 		// Simplified variant arm: VariantName [{ ... }] [IF ...] => result
 		// Detected when we have a subject and current is Identifier followed by =>, {, or IF
-		if has_subject && !self.is_eof() && self.current()?.is_identifier() {
-			if self.position + 1 < self.tokens.len() {
-				let next = self.tokens[self.position + 1];
-				if next.is_operator(Operator::Arrow)
-					|| next.is_operator(Operator::OpenCurly)
-					|| next.is_keyword(Keyword::If)
-				{
-					return self.parse_match_variant_arm();
-				}
+		if has_subject
+			&& !self.is_eof() && self.current()?.is_identifier()
+			&& self.position + 1 < self.tokens.len()
+		{
+			let next = self.tokens[self.position + 1];
+			if next.is_operator(Operator::Arrow)
+				|| next.is_operator(Operator::OpenCurly)
+				|| next.is_keyword(Keyword::If)
+			{
+				return self.parse_match_variant_arm();
 			}
 		}
 

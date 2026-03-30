@@ -177,7 +177,7 @@ impl<S: Storage> RowNumberContainer<S> {
 		let count = (end - start).min(self.len().saturating_sub(start));
 		let mut new_data = DataVec::spawn(&self.data, count);
 		for i in start..(start + count) {
-			DataVec::push(&mut new_data, self.data[i].clone());
+			DataVec::push(&mut new_data, self.data[i]);
 		}
 		Self {
 			data: new_data,
@@ -189,7 +189,7 @@ impl<S: Storage> RowNumberContainer<S> {
 
 		for (i, keep) in DataBitVec::iter(mask).enumerate() {
 			if keep && i < self.len() {
-				DataVec::push(&mut new_data, self.data[i].clone());
+				DataVec::push(&mut new_data, self.data[i]);
 			}
 		}
 
@@ -201,7 +201,7 @@ impl<S: Storage> RowNumberContainer<S> {
 
 		for &idx in indices {
 			if idx < self.len() {
-				DataVec::push(&mut new_data, self.data[idx].clone());
+				DataVec::push(&mut new_data, self.data[idx]);
 			} else {
 				DataVec::push(&mut new_data, RowNumber::default());
 			}

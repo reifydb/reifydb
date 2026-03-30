@@ -102,7 +102,7 @@ impl QueryNode for ViewScanNode {
 						new_last_key = Some(multi.key);
 					}
 				}
-				Some(Err(e)) => return Err(e.into()),
+				Some(Err(e)) => return Err(e),
 				None => {
 					self.exhausted = true;
 					break;

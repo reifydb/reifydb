@@ -375,21 +375,21 @@ where
 		let row = pending.row();
 		let version = pending.version;
 
-		if let Some((old_key, old_value)) = pending_writes.remove_entry(key) {
-			if old_value.version != version {
-				self.duplicates.push(Pending {
-					delta: match row {
-						Some(row) => Delta::Set {
-							key: old_key,
-							row: row.clone(),
-						},
-						None => Delta::Remove {
-							key: old_key,
-						},
+		if let Some((old_key, old_value)) = pending_writes.remove_entry(key)
+			&& old_value.version != version
+		{
+			self.duplicates.push(Pending {
+				delta: match row {
+					Some(row) => Delta::Set {
+						key: old_key,
+						row: row.clone(),
 					},
-					version,
-				})
-			}
+					None => Delta::Remove {
+						key: old_key,
+					},
+				},
+				version,
+			})
 		}
 		pending_writes.insert(key.clone(), pending);
 
@@ -420,11 +420,9 @@ where
 				// Instead, we should return the conflict error
 				// to the user.
 				self.conflicts = conflicts;
-				return Err(TransactionError::Conflict.into());
+				Err(TransactionError::Conflict.into())
 			}
-			CreateCommitResult::TooOld => {
-				return Err(TransactionError::TooOld.into());
-			}
+			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
 			CreateCommitResult::Success(version) => {
 				let pending_writes = mem::take(&mut self.pending_writes);
 				let duplicate_writes = mem::take(&mut self.duplicates);

@@ -13,10 +13,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn get_series(rx: &mut Transaction<'_>, series: SeriesId) -> Result<Series> {
 		Self::find_series(rx, series)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Series with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				series
-			))
+			)))
 		})
 	}
 }

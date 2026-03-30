@@ -631,11 +631,9 @@ impl Catalog {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
 							admin, identity, ir.role_id,
-						) {
-						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
-						{
-							names.push(role.name);
-						}
+						) && let Some(role) = self.materialized.find_role_at(ir.role_id, version)
+					{
+						names.push(role.name);
 					}
 				}
 
@@ -669,11 +667,9 @@ impl Catalog {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
 							sub, identity, ir.role_id,
-						) {
-						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
-						{
-							names.push(role.name);
-						}
+						) && let Some(role) = self.materialized.find_role_at(ir.role_id, version)
+					{
+						names.push(role.name);
 					}
 				}
 
@@ -708,11 +704,9 @@ impl Catalog {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
 							t.inner, identity, ir.role_id,
-						) {
-						if let Some(role) = self.materialized.find_role_at(ir.role_id, version)
-						{
-							names.push(role.name);
-						}
+						) && let Some(role) = self.materialized.find_role_at(ir.role_id, version)
+					{
+						names.push(role.name);
 					}
 				}
 

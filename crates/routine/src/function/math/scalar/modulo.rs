@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct Modulo;
 
+impl Default for Modulo {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Modulo {
 	pub fn new() -> Self {
 		Self
@@ -65,7 +71,7 @@ impl ScalarFunction for Modulo {
 			});
 		}
 
-		let a_col = columns.get(0).unwrap();
+		let a_col = columns.first().unwrap();
 		let b_col = columns.get(1).unwrap();
 
 		if !a_col.data().get_type().is_number() {

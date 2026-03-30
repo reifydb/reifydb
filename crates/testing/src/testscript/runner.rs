@@ -152,7 +152,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 	})?;
 
 	// Call the start_script() hook.
-	runner.start_script().map_err(|e| io::Error::new(ErrorKind::Other, format!("start_script failed: {e}")))?;
+	runner.start_script().map_err(|e| io::Error::other(format!("start_script failed: {e}")))?;
 
 	for (i, block) in blocks.iter().enumerate() {
 		// There may be a trailing block with no commands if the script
@@ -169,10 +169,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 		// Call the start_block() hook.
 		block_output.push_str(&ensure_eol(
 			runner.start_block().map_err(|e| {
-				io::Error::new(
-					ErrorKind::Other,
-					format!("start_block failed at line {}: {e}", block.line_number),
-				)
+				io::Error::other(format!("start_block failed at line {}: {e}", block.line_number))
 			})?,
 			eol,
 		));
@@ -183,10 +180,10 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 			// Call the start_command() hook.
 			command_output.push_str(&ensure_eol(
 				runner.start_command(command).map_err(|e| {
-					io::Error::new(
-						ErrorKind::Other,
-						format!("start_command failed at line {}: {e}", command.line_number),
-					)
+					io::Error::other(format!(
+						"start_command failed at line {}: {e}",
+						command.line_number
+					))
 				})?,
 				eol,
 			));
@@ -199,13 +196,10 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 			command_output.push_str(&match panic::catch_unwind(run) {
 				// Unexpected success, error out.
 				Ok(Ok(output)) if command.fail => {
-					return Err(io::Error::new(
-						ErrorKind::Other,
-						format!(
-							"expected command '{}' to fail at line {}, succeeded with: {output}",
-							command.name, command.line_number
-						),
-					));
+					return Err(io::Error::other(format!(
+						"expected command '{}' to fail at line {}, succeeded with: {output}",
+						command.name, command.line_number
+					)));
 				}
 
 				// Expected success, output the result.
@@ -218,13 +212,10 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 
 				// Unexpected error, return it.
 				Ok(Err(e)) => {
-					return Err(io::Error::new(
-						ErrorKind::Other,
-						format!(
-							"command '{}' failed at line {}: {e}",
-							command.name, command.line_number
-						),
-					));
+					return Err(io::Error::other(format!(
+						"command '{}' failed at line {}: {e}",
+						command.name, command.line_number
+					)));
 				}
 
 				// Expected panic, output it.
@@ -248,10 +239,10 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 			// Call the end_command() hook.
 			command_output.push_str(&ensure_eol(
 				runner.end_command(command).map_err(|e| {
-					io::Error::new(
-						ErrorKind::Other,
-						format!("end_command failed at line {}: {e}", command.line_number),
-					)
+					io::Error::other(format!(
+						"end_command failed at line {}: {e}",
+						command.line_number
+					))
 				})?,
 				eol,
 			));
@@ -262,16 +253,16 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 			}
 
 			// Prefix output lines if requested.
-			if let Some(prefix) = &command.prefix {
-				if !command_output.is_empty() {
-					command_output = format!(
-						"{prefix}: {}{eol}",
-						command_output
-							.strip_suffix(eol)
-							.unwrap_or(command_output.as_str())
-							.replace('\n', &format!("\n{prefix}: "))
-					);
-				}
+			if let Some(prefix) = &command.prefix
+				&& !command_output.is_empty()
+			{
+				command_output = format!(
+					"{prefix}: {}{eol}",
+					command_output
+						.strip_suffix(eol)
+						.unwrap_or(command_output.as_str())
+						.replace('\n', &format!("\n{prefix}: "))
+				);
 			}
 
 			block_output.push_str(&command_output);
@@ -280,10 +271,7 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 		// Call the end_block() hook.
 		block_output.push_str(&ensure_eol(
 			runner.end_block().map_err(|e| {
-				io::Error::new(
-					ErrorKind::Other,
-					format!("end_block failed at line {}: {e}", block.line_number),
-				)
+				io::Error::other(format!("end_block failed at line {}: {e}", block.line_number))
 			})?,
 			eol,
 		));
@@ -322,17 +310,17 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> io::Result<String> {
 	}
 
 	// Call the end_script() hook.
-	runner.end_script().map_err(|e| io::Error::new(ErrorKind::Other, format!("end_script failed: {e}")))?;
+	runner.end_script().map_err(|e| io::Error::other(format!("end_script failed: {e}")))?;
 
 	Ok(output)
 }
 
 /// Appends a newline if the string is not empty and doesn't already have one.
 fn ensure_eol(mut s: String, eol: &str) -> String {
-	if let Some(c) = s.chars().next_back() {
-		if c != '\n' {
-			s.push_str(eol)
-		}
+	if let Some(c) = s.chars().next_back()
+		&& c != '\n'
+	{
+		s.push_str(eol)
 	}
 	s
 }

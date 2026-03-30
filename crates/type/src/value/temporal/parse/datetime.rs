@@ -9,7 +9,6 @@ use crate::{
 };
 
 pub fn parse_datetime(fragment: Fragment) -> Result<DateTime, Error> {
-	let fragment = fragment;
 	let parts: Vec<&str> = fragment.text().split('T').collect();
 	if parts.len() != 2 {
 		return Err(TypeError::Temporal {

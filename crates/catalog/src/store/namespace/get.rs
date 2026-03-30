@@ -13,10 +13,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn get_namespace(rx: &mut Transaction<'_>, namespace: NamespaceId) -> Result<Namespace> {
 		CatalogStore::find_namespace(rx, namespace)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Namespace with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				namespace
-			))
+			)))
 		})
 	}
 }

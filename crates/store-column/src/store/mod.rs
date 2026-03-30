@@ -61,24 +61,24 @@ impl StandardColumnStore {
 		F: FnMut(&Backend) -> Option<T>,
 	{
 		// Search hot tier first
-		if let Some(hot) = &self.hot {
-			if let Some(result) = search_fn(hot) {
-				return Some(result);
-			}
+		if let Some(hot) = &self.hot
+			&& let Some(result) = search_fn(hot)
+		{
+			return Some(result);
 		}
 
 		// Search warm tier
-		if let Some(warm) = &self.warm {
-			if let Some(result) = search_fn(warm) {
-				return Some(result);
-			}
+		if let Some(warm) = &self.warm
+			&& let Some(result) = search_fn(warm)
+		{
+			return Some(result);
 		}
 
 		// Search cold tier
-		if let Some(cold) = &self.cold {
-			if let Some(result) = search_fn(cold) {
-				return Some(result);
-			}
+		if let Some(cold) = &self.cold
+			&& let Some(result) = search_fn(cold)
+		{
+			return Some(result);
 		}
 
 		None
@@ -88,22 +88,22 @@ impl StandardColumnStore {
 	fn collect_statistics(&self, column_index: usize) -> Option<ColumnStatistics> {
 		let mut all_stats = Vec::new();
 
-		if let Some(hot) = &self.hot {
-			if let Some(stats) = hot.statistics(column_index) {
-				all_stats.push(stats);
-			}
+		if let Some(hot) = &self.hot
+			&& let Some(stats) = hot.statistics(column_index)
+		{
+			all_stats.push(stats);
 		}
 
-		if let Some(warm) = &self.warm {
-			if let Some(stats) = warm.statistics(column_index) {
-				all_stats.push(stats);
-			}
+		if let Some(warm) = &self.warm
+			&& let Some(stats) = warm.statistics(column_index)
+		{
+			all_stats.push(stats);
 		}
 
-		if let Some(cold) = &self.cold {
-			if let Some(stats) = cold.statistics(column_index) {
-				all_stats.push(stats);
-			}
+		if let Some(cold) = &self.cold
+			&& let Some(stats) = cold.statistics(column_index)
+		{
+			all_stats.push(stats);
 		}
 
 		merge(&all_stats)
@@ -141,7 +141,7 @@ impl ColumnStore for StandardColumnStore {
 	}
 
 	fn scan(&self, version: CommitVersion, column_indices: &[usize]) -> Result<Vec<ColumnData>> {
-		Ok(self.search_tiers(|backend| backend.scan(version, column_indices).ok()).unwrap_or_else(|| vec![]))
+		Ok(self.search_tiers(|backend| backend.scan(version, column_indices).ok()).unwrap_or_default())
 	}
 
 	fn statistics(&self, column_index: usize) -> Option<ColumnStatistics> {

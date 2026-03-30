@@ -50,9 +50,10 @@ impl PartialEq<i32> for StatementLine {
 }
 
 /// Fragment - owns all its data
-#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize, Default)]
 pub enum Fragment {
 	/// No fragment information available
+	#[default]
 	None,
 
 	/// Fragment from a RQL statement with position information
@@ -222,12 +223,6 @@ impl Fragment {
 	/// Compatibility: expose fragment field for Fragment compatibility
 	pub fn fragment(&self) -> &str {
 		self.text()
-	}
-}
-
-impl Default for Fragment {
-	fn default() -> Self {
-		Fragment::None
 	}
 }
 

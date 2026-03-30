@@ -12,12 +12,12 @@
 #[macro_export]
 macro_rules! error {
 	($diagnostic:expr) => {
-		$crate::error::Error($diagnostic)
+		$crate::error::Error(Box::new($diagnostic))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		$crate::error::Error(diag)
+		$crate::error::Error(Box::new(diag))
 	}};
 }
 
@@ -36,12 +36,12 @@ macro_rules! error {
 #[macro_export]
 macro_rules! return_error {
 	($diagnostic:expr) => {
-		return Err($crate::error::Error($diagnostic))
+		return Err($crate::error::Error(Box::new($diagnostic)))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		return Err($crate::error::Error(diag));
+		return Err($crate::error::Error(Box::new(diag)));
 	}};
 }
 
@@ -60,12 +60,12 @@ macro_rules! return_error {
 #[macro_export]
 macro_rules! err {
 	($diagnostic:expr) => {
-		Err($crate::error::Error($diagnostic))
+		Err($crate::error::Error(Box::new($diagnostic)))
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
 		diag.with_fragment($fragment.into());
-		Err($crate::error::Error(diag))
+		Err($crate::error::Error(Box::new(diag)))
 	}};
 }
 

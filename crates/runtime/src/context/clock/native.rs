@@ -20,9 +20,10 @@ fn platform_now_nanos() -> u128 {
 }
 
 /// A clock that provides time - either real system time or mock time for testing.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum Clock {
 	/// Real system clock - delegates to platform time
+	#[default]
 	Real,
 	/// Mock clock with controllable time
 	Mock(MockClock),
@@ -65,12 +66,6 @@ impl Clock {
 				},
 			},
 		}
-	}
-}
-
-impl Default for Clock {
-	fn default() -> Self {
-		Clock::Real
 	}
 }
 

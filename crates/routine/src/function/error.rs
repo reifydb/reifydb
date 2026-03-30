@@ -51,6 +51,12 @@ impl From<TypeError> for FunctionError {
 	}
 }
 
+impl From<Box<TypeError>> for FunctionError {
+	fn from(err: Box<TypeError>) -> Self {
+		FunctionError::Wrapped(Box::new(Error::from(err)))
+	}
+}
+
 impl FunctionError {
 	/// Attach function name context to Wrapped errors.
 	/// Named variants already carry the function name and convert normally.
@@ -59,9 +65,9 @@ impl FunctionError {
 		match self {
 			FunctionError::Wrapped(inner) => {
 				let name = function.text().to_string();
-				let mut cause = inner.0;
+				let mut cause = *inner.0;
 				cause.with_fragment(function.clone());
-				Error(Diagnostic {
+				Error(Box::new(Diagnostic {
 					code: "FUNCTION_007".to_string(),
 					statement: None,
 					message: format!("Function {} execution failed", name),
@@ -72,16 +78,16 @@ impl FunctionError {
 					notes: vec![],
 					cause: Some(Box::new(cause)),
 					operator_chain: None,
-				})
+				}))
 			}
-			other => Error(other.into_diagnostic()),
+			other => Error(Box::new(other.into_diagnostic())),
 		}
 	}
 }
 
 impl From<FunctionError> for Error {
 	fn from(err: FunctionError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -177,7 +183,7 @@ impl IntoDiagnostic for FunctionError {
 					operator_chain: None,
 				}
 			}
-			FunctionError::Wrapped(err) => err.0,
+			FunctionError::Wrapped(err) => *err.0,
 		}
 	}
 }

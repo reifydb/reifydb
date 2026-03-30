@@ -89,7 +89,7 @@ pub(crate) async fn handle_subscribe(
 					return Some(Response::internal_error(
 						request_id,
 						"REMOTE_SUBSCRIBE_FAILED",
-						&e.to_string(),
+						e.to_string(),
 					)
 					.to_json());
 				}

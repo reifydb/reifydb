@@ -36,7 +36,7 @@ extern "C" fn test_alloc(size: usize) -> *mut u8 {
 
 /// Free memory allocated by test_alloc
 #[unsafe(no_mangle)]
-extern "C" fn test_free(ptr: *mut u8, size: usize) {
+unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
 	if ptr.is_null() || size == 0 {
 		return;
 	}
@@ -51,13 +51,13 @@ extern "C" fn test_free(ptr: *mut u8, size: usize) {
 
 /// Reallocate memory
 #[unsafe(no_mangle)]
-extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
+unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
 	if ptr.is_null() {
 		return test_alloc(new_size);
 	}
 
 	if new_size == 0 {
-		test_free(ptr, old_size);
+		unsafe { test_free(ptr, old_size) };
 		return ptr::null_mut();
 	}
 
@@ -403,7 +403,7 @@ extern "C" fn test_state_range(
 
 /// Capture log message to TestContext
 #[unsafe(no_mangle)]
-extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const u8, _message_len: usize) {
+unsafe extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const u8, _message_len: usize) {
 	unimplemented!()
 }
 
@@ -532,7 +532,7 @@ extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {
 	// No-op in test callbacks
 }
 
-extern "C" fn test_rql(
+unsafe extern "C" fn test_rql(
 	_ctx: *mut ContextFFI,
 	_rql_ptr: *const u8,
 	_rql_len: usize,

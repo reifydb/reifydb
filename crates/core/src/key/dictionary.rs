@@ -122,7 +122,7 @@ impl EncodableKey for DictionaryEntryKey {
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
 			.extend_u64(self.dictionary)
-			.extend_bytes(&self.hash);
+			.extend_bytes(self.hash);
 		serializer.to_encoded_key()
 	}
 

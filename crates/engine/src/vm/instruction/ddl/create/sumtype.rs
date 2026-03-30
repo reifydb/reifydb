@@ -21,15 +21,14 @@ pub(crate) fn create_sumtype(
 		&mut Transaction::Admin(&mut *txn),
 		plan.namespace.id(),
 		plan.name.text(),
-	)? {
-		if plan.if_not_exists {
-			return Ok(Columns::single_row([
-				("id", Value::Uint8(existing.id.0)),
-				("namespace", Value::Utf8(plan.namespace.name().to_string())),
-				("sumtype", Value::Utf8(plan.name.text().to_string())),
-				("created", Value::Boolean(false)),
-			]));
-		}
+	)? && plan.if_not_exists
+	{
+		return Ok(Columns::single_row([
+			("id", Value::Uint8(existing.id.0)),
+			("namespace", Value::Utf8(plan.namespace.name().to_string())),
+			("sumtype", Value::Utf8(plan.name.text().to_string())),
+			("created", Value::Boolean(false)),
+		]));
 	}
 
 	let mut variants = Vec::with_capacity(plan.variants.len());

@@ -12,5 +12,5 @@ pub struct LogCallbacks {
 	/// - `level`: Log level (0=trace, 1=debug, 2=info, 3=warn, 4=error)
 	/// - `message`: Message bytes
 	/// - `message_len`: Length of message in bytes
-	pub message: extern "C" fn(operator_id: u64, level: u32, message: *const u8, message_len: usize),
+	pub message: unsafe extern "C" fn(operator_id: u64, level: u32, message: *const u8, message_len: usize),
 }

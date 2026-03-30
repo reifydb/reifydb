@@ -395,63 +395,7 @@ impl hash::Hash for Value {
 
 impl PartialOrd for Value {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		match (self, other) {
-			(Value::Boolean(l), Value::Boolean(r)) => l.partial_cmp(r),
-			(Value::Float4(l), Value::Float4(r)) => l.partial_cmp(r),
-			(Value::Float8(l), Value::Float8(r)) => l.partial_cmp(r),
-			(Value::Int1(l), Value::Int1(r)) => l.partial_cmp(r),
-			(Value::Int2(l), Value::Int2(r)) => l.partial_cmp(r),
-			(Value::Int4(l), Value::Int4(r)) => l.partial_cmp(r),
-			(Value::Int8(l), Value::Int8(r)) => l.partial_cmp(r),
-			(Value::Int16(l), Value::Int16(r)) => l.partial_cmp(r),
-			(Value::Utf8(l), Value::Utf8(r)) => l.partial_cmp(r),
-			(Value::Uint1(l), Value::Uint1(r)) => l.partial_cmp(r),
-			(Value::Uint2(l), Value::Uint2(r)) => l.partial_cmp(r),
-			(Value::Uint4(l), Value::Uint4(r)) => l.partial_cmp(r),
-			(Value::Uint8(l), Value::Uint8(r)) => l.partial_cmp(r),
-			(Value::Uint16(l), Value::Uint16(r)) => l.partial_cmp(r),
-			(Value::Date(l), Value::Date(r)) => l.partial_cmp(r),
-			(Value::DateTime(l), Value::DateTime(r)) => l.partial_cmp(r),
-			(Value::Time(l), Value::Time(r)) => l.partial_cmp(r),
-			(Value::Duration(l), Value::Duration(r)) => l.partial_cmp(r),
-			(Value::IdentityId(l), Value::IdentityId(r)) => l.partial_cmp(r),
-			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
-			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
-			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
-			(Value::Int(l), Value::Int(r)) => l.partial_cmp(r),
-			(Value::Uint(l), Value::Uint(r)) => l.partial_cmp(r),
-			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
-			(Value::DictionaryId(l), Value::DictionaryId(r)) => l.to_u128().partial_cmp(&r.to_u128()),
-			(Value::Type(l), Value::Type(r)) => l.partial_cmp(r),
-			(Value::List(_), Value::List(_)) => None,     // Lists are not orderable
-			(Value::Record(_), Value::Record(_)) => None, // Records are not orderable
-			(Value::Tuple(_), Value::Tuple(_)) => None,   // Tuples are not orderable
-			(Value::Any(_), Value::Any(_)) => None,       // Any values are not comparable
-			(
-				Value::None {
-					..
-				},
-				Value::None {
-					..
-				},
-			) => Some(Ordering::Equal),
-			// None sorts after all other values (similar to NULL in SQL)
-			(
-				Value::None {
-					..
-				},
-				_,
-			) => Some(Ordering::Greater),
-			(
-				_,
-				Value::None {
-					..
-				},
-			) => Some(Ordering::Less),
-			(left, right) => {
-				unimplemented!("partial cmp {left:?} {right:?}")
-			}
-		}
+		Some(self.cmp(other))
 	}
 }
 

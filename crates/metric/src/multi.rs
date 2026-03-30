@@ -366,10 +366,10 @@ impl<S: SingleVersionStore> StorageStatsReader<S> {
 
 		let mut results = Vec::new();
 		for item in batch.items {
-			if let Some((tier, id)) = decode_storage_stats_key(item.key.as_slice()) {
-				if let Some(stats) = decode_storage_stats(item.row.as_slice()) {
-					results.push(((tier, id), stats));
-				}
+			if let Some((tier, id)) = decode_storage_stats_key(item.key.as_slice())
+				&& let Some(stats) = decode_storage_stats(item.row.as_slice())
+			{
+				results.push(((tier, id), stats));
 			}
 		}
 

@@ -357,7 +357,7 @@ impl MultiTransaction {
 
 pub enum TransactionType {
 	Query(MultiReadTransaction),
-	Command(MultiWriteTransaction),
+	Command(Box<MultiWriteTransaction>),
 }
 
 impl MultiTransaction {

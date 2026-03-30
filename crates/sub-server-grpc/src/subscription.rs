@@ -18,6 +18,12 @@ pub struct GrpcSubscriptionRegistry {
 	subscriptions: DashMap<SubscriptionId, mpsc::Sender<Result<SubscriptionEvent, Status>>>,
 }
 
+impl Default for GrpcSubscriptionRegistry {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl GrpcSubscriptionRegistry {
 	pub fn new() -> Self {
 		Self {

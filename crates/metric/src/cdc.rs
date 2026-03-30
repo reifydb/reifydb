@@ -163,10 +163,10 @@ impl<S: SingleVersionStore> CdcStatsReader<S> {
 
 		let mut results = Vec::new();
 		for item in batch.items {
-			if let Some(id) = decode_cdc_stats_key(item.key.as_slice()) {
-				if let Some(stats) = decode_cdc_stats(item.row.as_slice()) {
-					results.push((id, stats));
-				}
+			if let Some(id) = decode_cdc_stats_key(item.key.as_slice())
+				&& let Some(stats) = decode_cdc_stats(item.row.as_slice())
+			{
+				results.push((id, stats));
 			}
 		}
 

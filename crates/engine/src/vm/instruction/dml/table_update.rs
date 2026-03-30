@@ -46,7 +46,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn update_table<'a>(
+pub(crate) fn update_table(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: UpdateTableNode,
@@ -92,11 +92,7 @@ pub(crate) fn update_table<'a>(
 	};
 
 	let mut updated_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
-		Vec::new()
-	} else {
-		Vec::new()
-	};
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 
 	{
 		let mut input_node = compile(*plan.input, txn, Arc::new(context.clone()));
@@ -108,7 +104,7 @@ pub(crate) fn update_table<'a>(
 			// Enforce write policies before processing rows
 			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
-				&namespace.name(),
+				namespace.name(),
 				&table.name,
 				"update",
 				&columns,

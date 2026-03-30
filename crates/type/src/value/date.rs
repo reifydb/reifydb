@@ -17,19 +17,11 @@ use crate::{
 /// information. Always interpreted in SVTC.
 ///
 /// Internally stored as days since Unix epoch (1970-01-01).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Date {
 	// Days since Unix epoch (1970-01-01)
 	// Negative values represent dates before 1970
 	days_since_epoch: i32,
-}
-
-impl Default for Date {
-	fn default() -> Self {
-		Self {
-			days_since_epoch: 0,
-		} // 1970-01-01
-	}
 }
 
 // Calendar utilities
@@ -60,7 +52,7 @@ impl Date {
 	/// Convert year/month/day to days since Unix epoch
 	fn ymd_to_days_since_epoch(year: i32, month: u32, day: u32) -> Option<i32> {
 		// Validate input
-		if month < 1 || month > 12 || day < 1 || day > Self::days_in_month(year, month) {
+		if !(1..=12).contains(&month) || day < 1 || day > Self::days_in_month(year, month) {
 			return None;
 		}
 
@@ -112,7 +104,7 @@ impl Date {
 			y
 		};
 
-		(year as i32, m as u32, d as u32)
+		(year, m as u32, d as u32)
 	}
 }
 
@@ -133,9 +125,10 @@ impl Date {
 		})
 	}
 
-	pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, TypeError> {
-		Self::new(year, month, day)
-			.ok_or_else(|| Self::overflow_err(format!("invalid date: {}-{:02}-{:02}", year, month, day)))
+	pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, Box<TypeError>> {
+		Self::new(year, month, day).ok_or_else(|| {
+			Box::new(Self::overflow_err(format!("invalid date: {}-{:02}-{:02}", year, month, day)))
+		})
 	}
 
 	pub fn year(&self) -> i32 {
@@ -159,7 +152,7 @@ impl Date {
 	pub fn from_days_since_epoch(days: i32) -> Option<Self> {
 		// Validate the range (approximately -1 million to +1 million
 		// years from 1970)
-		if days < -365_250_000 || days > 365_250_000 {
+		if !(-365_250_000..=365_250_000).contains(&days) {
 			return None;
 		}
 		Some(Self {
@@ -410,9 +403,9 @@ pub mod tests {
 		assert_eq!(date, recovered);
 	}
 
-	fn assert_date_overflow<T: Debug>(result: Result<T, TypeError>) {
+	fn assert_date_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {
 		let err = result.expect_err("expected DateOverflow error");
-		match err {
+		match *err {
 			TypeError::Temporal {
 				kind: TemporalKind::DateOverflow {
 					..

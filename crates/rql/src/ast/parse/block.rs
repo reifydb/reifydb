@@ -84,21 +84,21 @@ impl<'bump> Parser<'bump> {
 			let node = self.parse_node(Precedence::None)?;
 			nodes.push(node);
 
-			if !self.is_eof() {
-				if let Ok(current) = self.current() {
-					if current.is_operator(Operator::CloseCurly) {
-						break;
-					}
-					if current.is_separator(Separator::Semicolon) {
-						self.advance()?; // consume semicolon
-						break;
-					}
-					if current.is_operator(Operator::Pipe) {
-						self.advance()?; // consume pipe
-						has_pipes = true;
-					} else {
-						self.consume_if(TokenKind::Separator(Separator::NewLine))?;
-					}
+			if !self.is_eof()
+				&& let Ok(current) = self.current()
+			{
+				if current.is_operator(Operator::CloseCurly) {
+					break;
+				}
+				if current.is_separator(Separator::Semicolon) {
+					self.advance()?; // consume semicolon
+					break;
+				}
+				if current.is_operator(Operator::Pipe) {
+					self.advance()?; // consume pipe
+					has_pipes = true;
+				} else {
+					self.consume_if(TokenKind::Separator(Separator::NewLine))?;
 				}
 			}
 		}

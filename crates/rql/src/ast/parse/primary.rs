@@ -80,12 +80,10 @@ impl<'bump> Parser<'bump> {
 					}
 				}
 				Operator::OpenCurly => Ok(Ast::Inline(self.parse_inline()?)),
-				_ => {
-					return Err(AstError::UnsupportedToken {
-						fragment: self.advance()?.fragment.to_owned(),
-					}
-					.into());
+				_ => Err(AstError::UnsupportedToken {
+					fragment: self.advance()?.fragment.to_owned(),
 				}
+				.into()),
 			},
 			TokenKind::Keyword(keyword) => {
 				// Keywords that can start statements at the top
@@ -191,10 +189,10 @@ impl<'bump> Parser<'bump> {
 									.map(|s| s.into_fragment())
 									.collect(),
 							);
-							return Ok(Ast::RunTests(AstRunTests::Namespace {
+							Ok(Ast::RunTests(AstRunTests::Namespace {
 								token,
 								namespace,
-							}));
+							}))
 						} else if (self.consume_if(TokenKind::Keyword(Keyword::Test))?)
 							.is_some()
 						{
@@ -208,13 +206,13 @@ impl<'bump> Parser<'bump> {
 								.collect();
 							let test_ident = MaybeQualifiedTestIdentifier::new(name)
 								.with_namespace(namespace);
-							return Ok(Ast::RunTests(AstRunTests::Single {
+							Ok(Ast::RunTests(AstRunTests::Single {
 								token,
 								test: test_ident,
-							}));
+							}))
 						} else {
 							let fragment = self.current()?.fragment.to_owned();
-							return Err(Error::from(TypeError::Ast {
+							Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
 									expected: "TESTS or TEST after RUN".to_string(),
 								},
@@ -223,7 +221,7 @@ impl<'bump> Parser<'bump> {
 									fragment.text()
 								),
 								fragment,
-							}));
+							}))
 						}
 					}
 					Keyword::Loop => Ok(Ast::Loop(self.parse_loop()?)),
@@ -303,10 +301,10 @@ impl<'bump> Parser<'bump> {
 							}))
 						}
 					} else {
-						return Err(AstError::UnsupportedToken {
+						Err(AstError::UnsupportedToken {
 							fragment: self.advance()?.fragment.to_owned(),
 						}
-						.into());
+						.into())
 					}
 				}
 			},

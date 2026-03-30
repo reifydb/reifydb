@@ -97,12 +97,13 @@ impl SinkRingBufferViewOperator {
 			return Ok(RingBufferState::default());
 		}
 
-		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize RingBufferState: {}", e)))
+		from_bytes(blob.as_ref())
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize RingBufferState: {}", e))))
 	}
 
 	fn save(&self, txn: &mut FlowTransaction, state: &RingBufferState) -> Result<()> {
-		let serialized =
-			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize RingBufferState: {}", e)))?;
+		let serialized = to_stdvec(state)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize RingBufferState: {}", e))))?;
 		let blob = Blob::from(serialized);
 
 		self.update_state(txn, |shape, row| {

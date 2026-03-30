@@ -416,23 +416,23 @@ impl DatabaseBuilder {
 		self.ioc.register_service::<Arc<reifydb_runtime::actor::system::ActorHandle<reifydb_cdc::produce::producer::CdcProduceMsg>>>(Arc::new(cdc_handle));
 
 		// Collect all versions
-		let mut all_versions = Vec::new();
-		all_versions.push(SystemVersion {
-			name: "reifydb".to_string(),
-			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "ReifyDB Database System".to_string(),
-			r#type: ComponentType::Package,
-		});
-
-		all_versions.push(CoreVersion.version());
-		all_versions.push(EngineVersion.version());
-		all_versions.push(CatalogVersion.version());
-		all_versions.push(MultiStoreVersion.version());
-		all_versions.push(SingleStoreVersion.version());
-		all_versions.push(TransactionVersion.version());
-		all_versions.push(AuthVersion.version());
-		all_versions.push(RqlVersion.version());
-		all_versions.push(CdcVersion.version());
+		let mut all_versions = vec![
+			SystemVersion {
+				name: "reifydb".to_string(),
+				version: env!("CARGO_PKG_VERSION").to_string(),
+				description: "ReifyDB Database System".to_string(),
+				r#type: ComponentType::Package,
+			},
+			CoreVersion.version(),
+			EngineVersion.version(),
+			CatalogVersion.version(),
+			MultiStoreVersion.version(),
+			SingleStoreVersion.version(),
+			TransactionVersion.version(),
+			AuthVersion.version(),
+			RqlVersion.version(),
+			CdcVersion.version(),
+		];
 
 		// Create subsystems from factories and collect their versions
 		// IMPORTANT: Order matters for shutdown! Subsystems are stopped in REVERSE order.

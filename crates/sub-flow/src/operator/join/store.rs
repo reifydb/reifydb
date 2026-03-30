@@ -56,8 +56,9 @@ impl Store {
 				if blob.is_empty() {
 					return Ok(None);
 				}
-				let entry: JoinSideEntry = from_bytes(blob.as_ref())
-					.map_err(|e| Error(internal!("Failed to deserialize JoinSideEntry: {}", e)))?;
+				let entry: JoinSideEntry = from_bytes(blob.as_ref()).map_err(|e| {
+					Error(Box::new(internal!("Failed to deserialize JoinSideEntry: {}", e)))
+				})?;
 				Ok(Some(entry))
 			}
 			None => Ok(None),
@@ -67,8 +68,8 @@ impl Store {
 	pub(crate) fn set(&self, txn: &mut FlowTransaction, hash: &Hash128, entry: &JoinSideEntry) -> Result<()> {
 		let key = self.make_key(hash);
 
-		let serialized =
-			to_stdvec(entry).map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
+		let serialized = to_stdvec(entry)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize JoinSideEntry: {}", e))))?;
 
 		let shape = RowShape::testing(&[Type::Blob]);
 		let mut row = state_get(self.node_id, txn, &key)?.unwrap_or_else(|| shape.allocate());

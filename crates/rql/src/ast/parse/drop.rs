@@ -137,9 +137,9 @@ impl<'bump> Parser<'bump> {
 	fn parse_cascade(&mut self) -> Result<bool> {
 		if (self.consume_if(TokenKind::Keyword(Keyword::Cascade))?).is_some() {
 			Ok(true)
-		} else if (self.consume_if(TokenKind::Keyword(Keyword::Restrict))?).is_some() {
-			Ok(false)
 		} else {
+			// Consume optional RESTRICT keyword (it's the default behavior)
+			let _ = self.consume_if(TokenKind::Keyword(Keyword::Restrict))?;
 			Ok(false)
 		}
 	}

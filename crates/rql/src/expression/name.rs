@@ -9,7 +9,7 @@ use reifydb_type::fragment::Fragment;
 use crate::expression::{ConstantExpression, Expression};
 
 /// Get the column name for an expression
-pub fn column_name_from_expression<'a>(expr: &Expression) -> Fragment {
+pub fn column_name_from_expression(expr: &Expression) -> Fragment {
 	match expr {
 		Expression::Alias(alias_expr) => alias_expr.alias.0.clone(),
 		Expression::Column(col_expr) => col_expr.0.name.clone(),
@@ -18,7 +18,7 @@ pub fn column_name_from_expression<'a>(expr: &Expression) -> Fragment {
 	}
 }
 
-fn simplified_name<'a>(expr: &Expression) -> Fragment {
+fn simplified_name(expr: &Expression) -> Fragment {
 	match expr {
 		Expression::Add(expr) => Fragment::internal(format!(
 			"{}+{}",

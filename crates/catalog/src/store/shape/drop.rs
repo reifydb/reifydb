@@ -29,7 +29,7 @@ pub(crate) fn drop_shape_metadata(
 	let range = ColumnKey::full_scan(shape);
 	let mut stream = txn.range(range, 1024)?;
 	let mut col_entries = Vec::new();
-	while let Some(entry) = stream.next() {
+	for entry in stream.by_ref() {
 		let entry = entry?;
 		let col_id = primitive_column::SHAPE.get_u64(&entry.row, primitive_column::ID);
 		col_entries.push((entry.key.clone(), ColumnId(col_id)));
@@ -42,7 +42,7 @@ pub(crate) fn drop_shape_metadata(
 		let policy_range = ColumnPropertyKey::full_scan(*col_id);
 		let mut policy_stream = txn.range(policy_range, 1024)?;
 		let mut policy_keys = Vec::new();
-		while let Some(entry) = policy_stream.next() {
+		for entry in policy_stream.by_ref() {
 			policy_keys.push(entry?.key.clone());
 		}
 		drop(policy_stream);

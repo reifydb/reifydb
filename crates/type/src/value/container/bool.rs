@@ -177,12 +177,12 @@ impl<S: Storage> BoolContainer<S> {
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<bool>> + '_ {
-		DataBitVec::iter(&self.data).map(|v| Some(v))
+		DataBitVec::iter(&self.data).map(Some)
 	}
 
 	pub fn into_iter(self) -> impl Iterator<Item = Option<bool>> {
 		let data: Vec<bool> = DataBitVec::iter(&self.data).collect();
-		data.into_iter().map(|v| Some(v))
+		data.into_iter().map(Some)
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {

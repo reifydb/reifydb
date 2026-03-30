@@ -11,18 +11,13 @@ use getrandom::fill as getrandom_fill;
 use rand::{Rng as RandRng, SeedableRng, rngs::StdRng};
 
 /// A random number generator that can be either OS-backed or seeded/deterministic.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum Rng {
 	/// Uses OS entropy via `getrandom` (non-deterministic).
+	#[default]
 	Os,
 	/// Uses a seeded PRNG for deterministic output (e.g. testing).
 	Seeded(SeededRng),
-}
-
-impl Default for Rng {
-	fn default() -> Self {
-		Rng::Os
-	}
 }
 
 impl Rng {

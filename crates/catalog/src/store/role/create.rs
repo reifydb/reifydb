@@ -16,7 +16,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn create_role(txn: &mut AdminTransaction, name: &str) -> Result<Role> {
-		if let Some(_) = Self::find_role_by_name(&mut Transaction::Admin(&mut *txn), name)? {
+		if (Self::find_role_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some() {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Role,
 				namespace: "system".to_string(),

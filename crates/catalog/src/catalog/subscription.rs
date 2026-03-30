@@ -134,9 +134,10 @@ impl Catalog {
 				Ok(None)
 			}
 			Transaction::Test(mut t) => {
-				if let Some(subscription) =
-					CatalogStore::find_subscription(&mut Transaction::Test(t.reborrow()), id)?
-				{
+				if let Some(subscription) = CatalogStore::find_subscription(
+					&mut Transaction::Test(Box::new(t.reborrow())),
+					id,
+				)? {
 					return Ok(Some(subscription));
 				}
 

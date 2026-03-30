@@ -31,7 +31,7 @@ use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 // Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub struct MapOperator {
 	parent: Arc<Operators>,

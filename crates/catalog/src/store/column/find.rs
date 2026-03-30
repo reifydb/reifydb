@@ -18,7 +18,7 @@ impl CatalogStore {
 		let mut stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
 
 		let mut found_id = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = multi.row;
 			let column = ColumnId(primitive_column::SHAPE.get_u64(&row, primitive_column::ID));

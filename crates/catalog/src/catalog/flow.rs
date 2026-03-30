@@ -130,7 +130,9 @@ impl Catalog {
 				if TransactionalFlowChanges::is_flow_deleted(t.inner, id) {
 					return Ok(None);
 				}
-				if let Some(flow) = CatalogStore::find_flow(&mut Transaction::Test(t.reborrow()), id)? {
+				if let Some(flow) =
+					CatalogStore::find_flow(&mut Transaction::Test(Box::new(t.reborrow())), id)?
+				{
 					return Ok(Some(flow));
 				}
 				Ok(None)
@@ -283,7 +285,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(flow) = CatalogStore::find_flow_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {

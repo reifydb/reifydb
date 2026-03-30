@@ -79,7 +79,7 @@ macro_rules! impl_to_uuid {
 						Error::from(CastError::InvalidUuid {
 							fragment: proper_fragment,
 							target: $target_type,
-							cause: e.0,
+							cause: *e.0,
 						})
 					})?;
 

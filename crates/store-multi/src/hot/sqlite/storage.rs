@@ -431,10 +431,10 @@ impl TierStorage for SqlitePrimitiveStorage {
 					delete_one_stmt.execute(params![key.as_slice(), version_bytes.as_slice()])
 				};
 
-				if let Err(e) = result {
-					if !e.to_string().contains("no such table") {
-						return Err(error!(internal(format!("Failed to delete entry: {}", e))));
-					}
+				if let Err(e) = result
+					&& !e.to_string().contains("no such table")
+				{
+					return Err(error!(internal(format!("Failed to delete entry: {}", e))));
 				}
 			}
 		}

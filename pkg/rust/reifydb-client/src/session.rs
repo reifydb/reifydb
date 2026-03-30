@@ -20,10 +20,7 @@ use reifydb_type::{
 		temporal::parse::datetime::parse_datetime,
 		time::Time,
 		r#type::Type,
-		uuid::{
-			Uuid7,
-			parse::{parse_uuid4, parse_uuid7},
-		},
+		uuid::parse::{parse_uuid4, parse_uuid7},
 	},
 };
 
@@ -436,17 +433,17 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 				.into_iter()
 				.map(|s| {
 					if s == "⟪none⟫" {
-						IdentityId::from(Uuid7::from(
+						IdentityId::from(
 							parse_uuid7("00000000-0000-7000-8000-000000000000".into())
 								.unwrap(),
-						))
+						)
 					} else if let Ok(uuid) = parse_uuid7(s.into()) {
-						IdentityId::from(Uuid7::from(uuid))
+						IdentityId::from(uuid)
 					} else {
-						IdentityId::from(Uuid7::from(
+						IdentityId::from(
 							parse_uuid7("00000000-0000-7000-8000-000000000000".into())
 								.unwrap(),
-						))
+						)
 					}
 				})
 				.collect();
@@ -458,8 +455,8 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 				.map(|s| {
 					if s == "⟪none⟫" {
 						Blob::new(vec![])
-					} else if s.starts_with("0x") {
-						if let Ok(bytes) = hex::decode(&s[2..]) {
+					} else if let Some(hex_str) = s.strip_prefix("0x") {
+						if let Ok(bytes) = hex::decode(hex_str) {
 							Blob::new(bytes)
 						} else {
 							Blob::new(vec![])
@@ -473,9 +470,7 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 		}
 		Type::Int
 		| Type::Uint
-		| Type::Decimal {
-			..
-		}
+		| Type::Decimal
 		| Type::Any
 		| Type::DictionaryId
 		| Type::List(_)

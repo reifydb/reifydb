@@ -136,7 +136,7 @@ impl IntoDiagnostic for CastError {
 
 impl From<CastError> for Error {
 	fn from(err: CastError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -360,6 +360,6 @@ impl IntoDiagnostic for EngineError {
 
 impl From<EngineError> for Error {
 	fn from(err: EngineError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }

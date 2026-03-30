@@ -128,36 +128,31 @@ impl FlowEngine {
 							.list_flow_nodes_by_flow(&mut txn.reborrow(), view_flow.id)?;
 						for flow_node in &flow_nodes {
 							// SourceTable = 1, SourceRingBuffer = 17, SourceSeries = 18
-							if flow_node.node_type == 1
-								|| flow_node.node_type == 17 || flow_node.node_type == 18
-							{
-								if let Ok(nt) =
+							if (flow_node.node_type == 1
+								|| flow_node.node_type == 17 || flow_node.node_type == 18)
+								&& let Ok(nt) =
 									from_bytes::<FlowNodeType>(&flow_node.data)
-								{
-									match nt {
-										SourceTable {
-											table: t,
-										} => {
-											additional_sources.push(
-												ShapeId::table(t),
-											);
-										}
-										SourceRingBuffer {
-											ringbuffer: rb,
-										} => {
-											additional_sources.push(
-												ShapeId::ringbuffer(rb),
-											);
-										}
-										SourceSeries {
-											series: s,
-										} => {
-											additional_sources.push(
-												ShapeId::series(s),
-											);
-										}
-										_ => {}
+							{
+								match nt {
+									SourceTable {
+										table: t,
+									} => {
+										additional_sources
+											.push(ShapeId::table(t));
 									}
+									SourceRingBuffer {
+										ringbuffer: rb,
+									} => {
+										additional_sources
+											.push(ShapeId::ringbuffer(rb));
+									}
+									SourceSeries {
+										series: s,
+									} => {
+										additional_sources
+											.push(ShapeId::series(s));
+									}
+									_ => {}
 								}
 							}
 						}
@@ -213,7 +208,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 
 				self.add_sink(flow.id, node.id, ShapeId::view(*view));
@@ -234,7 +229,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
@@ -258,7 +253,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.add_sink(flow.id, node.id, ShapeId::view(*view));
 				let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
@@ -278,14 +273,14 @@ impl FlowEngine {
 			} => {
 				// Guard against race condition: flow may have been deleted during loading
 				if node.inputs.is_empty() {
-					return Err(Error(internal!(
+					return Err(Error(Box::new(internal!(
 						"SinkSubscription node has no inputs - flow may have been deleted during loading"
-					)));
+					))));
 				}
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 
 				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
@@ -304,7 +299,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.operators.insert(
 					node.id,
@@ -323,7 +318,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.operators.insert(
 					node.id,
@@ -342,7 +337,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.operators.insert(
 					node.id,
@@ -361,7 +356,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.operators.insert(
 					node.id,
@@ -374,7 +369,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.operators.insert(
 					node.id,
@@ -387,7 +382,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.operators.insert(
 					node.id,
@@ -402,7 +397,7 @@ impl FlowEngine {
 			} => {
 				// The join node should have exactly 2 inputs
 				if node.inputs.len() != 2 {
-					return Err(Error(internal!("Join node must have exactly 2 inputs")));
+					return Err(Error(Box::new(internal!("Join node must have exactly 2 inputs"))));
 				}
 
 				let left_node = node.inputs[0];
@@ -411,13 +406,13 @@ impl FlowEngine {
 				let left_parent = self
 					.operators
 					.get(&left_node)
-					.ok_or_else(|| Error(internal!("Left parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Left parent operator not found"))))?
 					.clone();
 
 				let right_parent = self
 					.operators
 					.get(&right_node)
-					.ok_or_else(|| Error(internal!("Right parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Right parent operator not found"))))?
 					.clone();
 
 				self.operators.insert(
@@ -442,7 +437,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				self.operators.insert(
 					node.id,
@@ -455,10 +450,12 @@ impl FlowEngine {
 					))),
 				);
 			}
-			Append {} => {
+			Append => {
 				// Append requires at least 2 inputs
 				if node.inputs.len() < 2 {
-					return Err(Error(internal!("Append node must have at least 2 inputs")));
+					return Err(Error(Box::new(internal!(
+						"Append node must have at least 2 inputs"
+					))));
 				}
 
 				let mut parents = Vec::with_capacity(node.inputs.len());
@@ -468,10 +465,10 @@ impl FlowEngine {
 						.operators
 						.get(input_node_id)
 						.ok_or_else(|| {
-							Error(internal!(
+							Error(Box::new(internal!(
 								"Parent operator not found for input {:?}",
 								input_node_id
-							))
+							)))
 						})?
 						.clone();
 					parents.push(parent);
@@ -505,11 +502,16 @@ impl FlowEngine {
 						let parent = self
 							.operators
 							.get(&node.inputs[0])
-							.ok_or_else(|| Error(internal!("Parent operator not found")))?
+							.ok_or_else(|| {
+								Error(Box::new(internal!("Parent operator not found")))
+							})?
 							.clone();
 
 						if !self.is_ffi_operator(operator.as_str()) {
-							return Err(Error(internal!("Unknown operator: {}", operator)));
+							return Err(Error(Box::new(internal!(
+								"Unknown operator: {}",
+								operator
+							))));
 						}
 
 						let ffi_op =
@@ -525,9 +527,9 @@ impl FlowEngine {
 					#[cfg(not(reifydb_target = "native"))]
 					{
 						let _ = operator;
-						return Err(Error(internal!(
+						return Err(Error(Box::new(internal!(
 							"FFI operators are not supported in WASM"
-						)));
+						))));
 					}
 				}
 			}
@@ -543,7 +545,7 @@ impl FlowEngine {
 				let parent = self
 					.operators
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal!("Parent operator not found")))?
+					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
 					.clone();
 				let operator = WindowOperator::new(
 					parent,
@@ -563,7 +565,7 @@ impl FlowEngine {
 	}
 
 	fn add_source(&mut self, flow: FlowId, node: FlowNodeId, shape: ShapeId) {
-		let nodes = self.sources.entry(shape).or_insert_with(Vec::new);
+		let nodes = self.sources.entry(shape).or_default();
 
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {
@@ -572,7 +574,7 @@ impl FlowEngine {
 	}
 
 	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ShapeId) {
-		let nodes = self.sinks.entry(sink).or_insert_with(Vec::new);
+		let nodes = self.sinks.entry(sink).or_default();
 
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {

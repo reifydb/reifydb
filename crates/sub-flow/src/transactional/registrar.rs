@@ -84,14 +84,12 @@ impl TransactionalFlowRegistrar {
 					} => Some(view),
 					_ => None,
 				};
-				if let Some(view) = view {
-					if let Ok(Some(def)) =
+				if let Some(view) = view
+					&& let Ok(Some(def)) =
 						self.catalog.find_view(&mut Transaction::Query(&mut query), *view)
-					{
-						if def.kind() == ViewKind::Transactional {
-							return true;
-						}
-					}
+					&& def.kind() == ViewKind::Transactional
+				{
+					return true;
 				}
 			}
 		}

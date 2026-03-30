@@ -34,10 +34,10 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_role(&self, id: RoleId, version: CommitVersion, role: Option<Role>) {
-		if let Some(entry) = self.roles.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.roles_by_name.remove(&pre.name);
-			}
+		if let Some(entry) = self.roles.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.roles_by_name.remove(&pre.name);
 		}
 
 		let multi = self.roles.get_or_insert_with(id, MultiVersionRole::new);

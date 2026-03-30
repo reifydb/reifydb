@@ -137,7 +137,7 @@ impl QueryNode for TableScanNode {
 						new_last_key = Some(multi.key);
 					}
 				}
-				Some(Err(e)) => return Err(e.into()),
+				Some(Err(e)) => return Err(e),
 				None => {
 					self.exhausted = true;
 					break;
@@ -226,7 +226,7 @@ impl QueryNode for TableScanNode {
 						self.last_key = Some(multi.key);
 					}
 				}
-				Some(Err(e)) => return Err(e.into()),
+				Some(Err(e)) => return Err(e),
 				None => {
 					self.exhausted = true;
 					break;

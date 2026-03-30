@@ -57,10 +57,10 @@ pub fn resolve_column_names(
 	// Add right columns with ALWAYS-prefix behavior
 	for (idx, col) in right_columns.iter().enumerate() {
 		// Skip excluded columns (used in natural join)
-		if let Some(excluded) = excluded_right_indices {
-			if excluded.contains(&idx) {
-				continue;
-			}
+		if let Some(excluded) = excluded_right_indices
+			&& excluded.contains(&idx)
+		{
+			continue;
 		}
 
 		let col_name = col.name().text();

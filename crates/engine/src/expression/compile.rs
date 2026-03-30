@@ -180,18 +180,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					| Some(Variable::ForIterator {
 						..
 					})
-					| Some(Variable::Closure(_)) => {
-						return Err(TypeError::Runtime {
-							kind: RuntimeErrorKind::VariableIsDataframe {
-								name: variable_name.to_string(),
-							},
-							message: format!(
-								"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-								variable_name
-							),
-						}
-						.into());
+					| Some(Variable::Closure(_)) => Err(TypeError::Runtime {
+						kind: RuntimeErrorKind::VariableIsDataframe {
+							name: variable_name.to_string(),
+						},
+						message: format!(
+							"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+							variable_name
+						),
 					}
+					.into()),
 					None => {
 						// Fallback: check named params (for remote pushdown)
 						if let Some(value) = ctx.params.get_named(variable_name) {
@@ -207,13 +205,13 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 								data,
 							});
 						}
-						return Err(TypeError::Runtime {
+						Err(TypeError::Runtime {
 							kind: RuntimeErrorKind::VariableNotFound {
 								name: variable_name.to_string(),
 							},
 							message: format!("Variable '{}' is not defined", variable_name),
 						}
-						.into());
+						.into())
 					}
 				}
 			})
@@ -588,17 +586,16 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 				CompiledExpr::new(move |ctx| {
 					let column = inner.execute(ctx)?;
 					let frag = inner_fragment.clone();
-					let casted =
-						cast_column_data(ctx, &column.data(), target_type.clone(), &|| {
-							inner_fragment.clone()
+					let casted = cast_column_data(ctx, column.data(), target_type.clone(), &|| {
+						inner_fragment.clone()
+					})
+					.map_err(|e| {
+						Error::from(CastError::InvalidNumber {
+							fragment: frag,
+							target: target_type.clone(),
+							cause: e.diagnostic(),
 						})
-						.map_err(|e| {
-							Error::from(CastError::InvalidNumber {
-								fragment: frag,
-								target: target_type.clone(),
-								cause: e.diagnostic(),
-							})
-						})?;
+					})?;
 					Ok(Column {
 						name: column.name_owned(),
 						data: casted,
@@ -737,7 +734,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 										.iter()
 										.map(|c| c.name.text().to_string())
 										.collect();
-									return Err(TypeError::Runtime {
+									Err(TypeError::Runtime {
 										kind: RuntimeErrorKind::FieldNotFound {
 											variable: variable_name
 												.to_string(),
@@ -749,12 +746,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 											field_name, variable_name
 										),
 									}
-									.into());
+									.into())
 								}
 							}
 						}
 						Some(Variable::Scalar(_)) | Some(Variable::Closure(_)) => {
-							return Err(TypeError::Runtime {
+							Err(TypeError::Runtime {
 								kind: RuntimeErrorKind::FieldNotFound {
 									variable: variable_name.to_string(),
 									field: field_name.to_string(),
@@ -765,39 +762,32 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 									field_name, variable_name
 								),
 							}
-							.into());
+							.into())
 						}
 						Some(Variable::ForIterator {
 							..
-						}) => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::VariableIsDataframe {
-									name: variable_name.to_string(),
-								},
-								message: format!(
-									"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
-									variable_name
-								),
-							}
-							.into());
+						}) => Err(TypeError::Runtime {
+							kind: RuntimeErrorKind::VariableIsDataframe {
+								name: variable_name.to_string(),
+							},
+							message: format!(
+								"Variable '{}' contains a dataframe and cannot be used directly in scalar expressions",
+								variable_name
+							),
 						}
-						None => {
-							return Err(TypeError::Runtime {
-								kind: RuntimeErrorKind::VariableNotFound {
-									name: variable_name.to_string(),
-								},
-								message: format!(
-									"Variable '{}' is not defined",
-									variable_name
-								),
-							}
-							.into());
+						.into()),
+						None => Err(TypeError::Runtime {
+							kind: RuntimeErrorKind::VariableNotFound {
+								name: variable_name.to_string(),
+							},
+							message: format!("Variable '{}' is not defined", variable_name),
 						}
+						.into()),
 					}
 				} else {
 					// For non-variable objects, evaluate the object and try to interpret result
 					let _obj_col = object.execute(ctx)?;
-					return Err(TypeError::Runtime {
+					Err(TypeError::Runtime {
 						kind: RuntimeErrorKind::FieldNotFound {
 							variable: "<expression>".to_string(),
 							field: field_name.to_string(),
@@ -808,7 +798,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 							field_name
 						),
 					}
-					.into());
+					.into())
 				}
 			})
 		}

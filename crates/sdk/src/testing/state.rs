@@ -64,7 +64,7 @@ impl TestStateStore {
 
 	/// Get all key-value pairs
 	pub fn entries(&self) -> Vec<(&EncodedKey, &EncodedRow)> {
-		self.data.iter().map(|(k, v)| (k, v)).collect()
+		self.data.iter().collect()
 	}
 
 	/// Decode a value using a shape

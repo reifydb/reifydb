@@ -114,11 +114,11 @@ impl SystemSequence {
 	}
 
 	pub(crate) fn next_role_id(txn: &mut AdminTransaction) -> Result<RoleId> {
-		GeneratorU64::next(txn, &ROLE_KEY, Some(1025)).map(|v| v)
+		GeneratorU64::next(txn, &ROLE_KEY, Some(1025))
 	}
 
 	pub(crate) fn next_policy_id(txn: &mut AdminTransaction) -> Result<PolicyId> {
-		GeneratorU64::next(txn, &POLICY_KEY, Some(1025)).map(|v| v)
+		GeneratorU64::next(txn, &POLICY_KEY, Some(1025))
 	}
 
 	pub(crate) fn next_migration_id(txn: &mut AdminTransaction) -> Result<MigrationId> {
@@ -130,7 +130,7 @@ impl SystemSequence {
 	}
 
 	pub(crate) fn next_authentication_id(txn: &mut AdminTransaction) -> Result<AuthenticationId> {
-		GeneratorU64::next(txn, &AUTHENTICATION_KEY, None).map(|v| v)
+		GeneratorU64::next(txn, &AUTHENTICATION_KEY, None)
 	}
 
 	pub(crate) fn next_test_id(txn: &mut AdminTransaction) -> Result<TestId> {
@@ -138,6 +138,6 @@ impl SystemSequence {
 	}
 
 	pub(crate) fn next_token_id(txn: &mut AdminTransaction) -> Result<TokenId> {
-		GeneratorU64::next(txn, &TOKEN_KEY, None).map(|v| v)
+		GeneratorU64::next(txn, &TOKEN_KEY, None)
 	}
 }

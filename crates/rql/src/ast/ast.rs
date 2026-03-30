@@ -65,7 +65,7 @@ impl<'bump> IntoIterator for AstStatement<'bump> {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum Ast<'bump> {
 	Aggregate(AstAggregate<'bump>),
 	Append(AstAppend<'bump>),
@@ -100,6 +100,7 @@ pub enum Ast<'bump> {
 	Take(AstTake<'bump>),
 	List(AstList<'bump>),
 	Literal(AstLiteral<'bump>),
+	#[default]
 	Nop,
 	Variable(AstVariable<'bump>),
 	Environment(AstEnvironment<'bump>),
@@ -130,12 +131,6 @@ pub enum Ast<'bump> {
 	Migrate(AstMigrate<'bump>),
 	RollbackMigration(AstRollbackMigration<'bump>),
 	RunTests(AstRunTests<'bump>),
-}
-
-impl<'bump> Default for Ast<'bump> {
-	fn default() -> Self {
-		Self::Nop
-	}
 }
 
 impl<'bump> Ast<'bump> {
@@ -1620,11 +1615,7 @@ impl<'bump> AstVariable<'bump> {
 	pub fn name(&self) -> &str {
 		// Extract name from token value (skip the '$')
 		let text = self.token.value();
-		if text.starts_with('$') {
-			&text[1..]
-		} else {
-			text
-		}
+		text.strip_prefix('$').unwrap_or(text)
 	}
 }
 

@@ -76,7 +76,7 @@ impl CatalogStore {
 
 		Self::insert_columns(txn, table_id, to_create)?;
 
-		Ok(Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)?)
+		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
 	}
 
 	fn store_table(

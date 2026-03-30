@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DurationFormat;
 
+impl Default for DurationFormat {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DurationFormat {
 	pub fn new() -> Self {
 		Self
@@ -70,7 +76,7 @@ impl ScalarFunction for DurationFormat {
 			});
 		}
 
-		let dur_col = columns.get(0).unwrap();
+		let dur_col = columns.first().unwrap();
 		let fmt_col = columns.get(1).unwrap();
 
 		match (dur_col.data(), fmt_col.data()) {

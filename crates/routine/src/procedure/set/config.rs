@@ -16,6 +16,12 @@ use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureErr
 /// Accepts 2 positional arguments: key (Utf8) and value (any).
 pub struct SetConfigProcedure;
 
+impl Default for SetConfigProcedure {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SetConfigProcedure {
 	pub fn new() -> Self {
 		Self

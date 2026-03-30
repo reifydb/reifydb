@@ -44,10 +44,10 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_sumtype(&self, id: SumTypeId, version: CommitVersion, def: Option<SumType>) {
-		if let Some(entry) = self.sumtypes.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.sumtypes_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.sumtypes.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.sumtypes_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.sumtypes.get_or_insert_with(id, MultiVersionSumType::new);

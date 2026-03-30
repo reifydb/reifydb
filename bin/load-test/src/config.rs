@@ -109,14 +109,14 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
 	}
 
 	// Find where the number ends and unit begins
-	let (num_str, unit) = if s.ends_with("ms") {
-		(&s[..s.len() - 2], "ms")
-	} else if s.ends_with('s') {
-		(&s[..s.len() - 1], "s")
-	} else if s.ends_with('m') {
-		(&s[..s.len() - 1], "m")
-	} else if s.ends_with('h') {
-		(&s[..s.len() - 1], "h")
+	let (num_str, unit) = if let Some(n) = s.strip_suffix("ms") {
+		(n, "ms")
+	} else if let Some(n) = s.strip_suffix('s') {
+		(n, "s")
+	} else if let Some(n) = s.strip_suffix('m') {
+		(n, "m")
+	} else if let Some(n) = s.strip_suffix('h') {
+		(n, "h")
 	} else {
 		// Default to seconds if no unit
 		(s, "s")

@@ -107,7 +107,7 @@ impl CatalogStore {
 				return Err(CatalogError::AutoIncrementInvalidType {
 					column: column_to_create.column.clone(),
 					ty: base_type,
-					fragment: column_to_create.fragment.unwrap_or_else(|| Fragment::None),
+					fragment: column_to_create.fragment.unwrap_or(Fragment::None),
 				}
 				.into());
 			}
@@ -129,7 +129,7 @@ impl CatalogStore {
 		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
 
 		// Store dictionary_id (0 means no dictionary)
-		let dict_id_value = column_to_create.dictionary_id.map(|id| u64::from(id)).unwrap_or(0);
+		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
 		txn.set(&ColumnsKey::encoded(id), row)?;

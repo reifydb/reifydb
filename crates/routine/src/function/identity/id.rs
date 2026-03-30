@@ -11,6 +11,12 @@ use crate::function::{
 
 pub struct Id;
 
+impl Default for Id {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Id {
 	pub fn new() -> Self {
 		Self {}
@@ -19,7 +25,7 @@ impl Id {
 
 impl ScalarFunction for Id {
 	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if ctx.columns.len() != 0 {
+		if !ctx.columns.is_empty() {
 			return Err(ScalarFunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,

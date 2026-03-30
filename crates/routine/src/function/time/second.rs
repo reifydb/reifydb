@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TimeSecond;
 
+impl Default for TimeSecond {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TimeSecond {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for TimeSecond {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Time(container) => {

@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DurationTrunc;
 
+impl Default for DurationTrunc {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DurationTrunc {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DurationTrunc {
 			});
 		}
 
-		let dur_col = columns.get(0).unwrap();
+		let dur_col = columns.first().unwrap();
 		let prec_col = columns.get(1).unwrap();
 
 		match (dur_col.data(), prec_col.data()) {

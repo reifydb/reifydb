@@ -18,8 +18,8 @@ impl CatalogStore {
 	pub(crate) fn drop_tokens_by_identity(txn: &mut AdminTransaction, identity: IdentityId) -> Result<()> {
 		let mut to_remove = Vec::new();
 		{
-			let mut stream = txn.range(TokenKey::full_scan(), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = txn.range(TokenKey::full_scan(), 1024)?;
+			for entry in stream {
 				let multi = entry?;
 				let token_identity = token::SHAPE.get_identity_id(&multi.row, token::IDENTITY);
 				if token_identity == identity {
@@ -40,14 +40,14 @@ impl CatalogStore {
 	pub(crate) fn drop_expired_tokens(txn: &mut AdminTransaction, now: DateTime) -> Result<()> {
 		let mut to_remove = Vec::new();
 		{
-			let mut stream = txn.range(TokenKey::full_scan(), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = txn.range(TokenKey::full_scan(), 1024)?;
+			for entry in stream {
 				let multi = entry?;
-				if let Some(expires_at) = token::SHAPE.try_get_datetime(&multi.row, token::EXPIRES_AT) {
-					if expires_at < now {
-						let id = token::SHAPE.get_u64(&multi.row, token::ID);
-						to_remove.push(id);
-					}
+				if let Some(expires_at) = token::SHAPE.try_get_datetime(&multi.row, token::EXPIRES_AT)
+					&& expires_at < now
+				{
+					let id = token::SHAPE.get_u64(&multi.row, token::ID);
+					to_remove.push(id);
 				}
 			}
 		}

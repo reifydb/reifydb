@@ -72,11 +72,11 @@ impl MaterializedCatalog {
 
 	pub fn set_namespace(&self, id: NamespaceId, version: CommitVersion, namespace: Option<Namespace>) {
 		// Look up the current namespace to update the index
-		if let Some(entry) = self.namespaces.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				// Remove old name from index
-				self.namespaces_by_name.remove(pre.name());
-			}
+		if let Some(entry) = self.namespaces.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			// Remove old name from index
+			self.namespaces_by_name.remove(pre.name());
 		}
 
 		let multi = self.namespaces.get_or_insert_with(id, MultiVersionNamespace::new);

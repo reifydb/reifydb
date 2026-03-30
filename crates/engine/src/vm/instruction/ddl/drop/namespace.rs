@@ -62,15 +62,15 @@ pub(crate) fn drop_namespace(
 			if descendant_ids.contains(&info.namespace) {
 				return None;
 			}
-			if let Some(dict_id) = info.column.dictionary_id {
-				if dictionary_ids.contains(&dict_id) {
-					let name = dictionaries
-						.iter()
-						.find(|d| d.id == dict_id)
-						.map(|d| d.name.as_str())
-						.unwrap_or("?");
-					return Some(format!(" references dictionary `{}`", name));
-				}
+			if let Some(dict_id) = info.column.dictionary_id
+				&& dictionary_ids.contains(&dict_id)
+			{
+				let name = dictionaries
+					.iter()
+					.find(|d| d.id == dict_id)
+					.map(|d| d.name.as_str())
+					.unwrap_or("?");
+				return Some(format!(" references dictionary `{}`", name));
 			}
 			None
 		})?);
@@ -79,15 +79,12 @@ pub(crate) fn drop_namespace(
 			if descendant_ids.contains(&info.namespace) {
 				return None;
 			}
-			if let Some(Constraint::SumType(id)) = info.column.constraint.constraint() {
-				if sumtype_ids.contains(id) {
-					let name = sumtypes
-						.iter()
-						.find(|s| s.id == *id)
-						.map(|s| s.name.as_str())
-						.unwrap_or("?");
-					return Some(format!(" references enum `{}`", name));
-				}
+			if let Some(Constraint::SumType(id)) = info.column.constraint.constraint()
+				&& sumtype_ids.contains(id)
+			{
+				let name =
+					sumtypes.iter().find(|s| s.id == *id).map(|s| s.name.as_str()).unwrap_or("?");
+				return Some(format!(" references enum `{}`", name));
 			}
 			None
 		})?);

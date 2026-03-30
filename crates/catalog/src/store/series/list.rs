@@ -15,14 +15,14 @@ impl CatalogStore {
 
 		let mut series_data: Vec<SeriesId> = Vec::new();
 		{
-			let mut stream = rx.range(SeriesKey::full_scan(), 1024)?;
+			let stream = rx.range(SeriesKey::full_scan(), 1024)?;
 
-			while let Some(entry) = stream.next() {
+			for entry in stream {
 				let entry = entry?;
-				if let Some(key) = Key::decode(&entry.key) {
-					if let Key::Series(series_key) = key {
-						series_data.push(series_key.series);
-					}
+				if let Some(key) = Key::decode(&entry.key)
+					&& let Key::Series(series_key) = key
+				{
+					series_data.push(series_key.series);
 				}
 			}
 		}

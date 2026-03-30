@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct Gcd;
 
+impl Default for Gcd {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Gcd {
 	pub fn new() -> Self {
 		Self
@@ -60,7 +66,7 @@ impl ScalarFunction for Gcd {
 			});
 		}
 
-		let a_col = columns.get(0).unwrap();
+		let a_col = columns.first().unwrap();
 		let b_col = columns.get(1).unwrap();
 
 		if !a_col.data().get_type().is_number() {

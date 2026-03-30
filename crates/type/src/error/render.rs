@@ -20,7 +20,7 @@ impl DiagnosticRenderer for DefaultRenderer {
 	fn render(&self, diagnostic: &Diagnostic) -> String {
 		let mut output = String::new();
 
-		if !diagnostic.cause.is_some() {
+		if diagnostic.cause.is_none() {
 			self.render_flat(&mut output, diagnostic);
 		} else {
 			self.render_nested(&mut output, diagnostic, 0);
@@ -46,7 +46,7 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
+			let statement = diagnostic.statement.as_deref().unwrap_or("");
 
 			let _ = writeln!(output, "LOCATION");
 			let _ = writeln!(output, "  line {}, column {}", line, col);
@@ -73,21 +73,21 @@ impl DefaultRenderer {
 		}
 
 		// Render operator chain if present
-		if let Some(chain) = &diagnostic.operator_chain {
-			if !chain.is_empty() {
-				let _ = writeln!(output, "OPERATOR CHAIN");
-				for (i, entry) in chain.iter().enumerate() {
-					let _ = writeln!(
-						output,
-						"  {}. {} (node_id={}, version={})",
-						i + 1,
-						entry.operator_name,
-						entry.node_id,
-						entry.operator_version
-					);
-				}
-				let _ = writeln!(output);
+		if let Some(chain) = &diagnostic.operator_chain
+			&& !chain.is_empty()
+		{
+			let _ = writeln!(output, "OPERATOR CHAIN");
+			for (i, entry) in chain.iter().enumerate() {
+				let _ = writeln!(
+					output,
+					"  {}. {} (node_id={}, version={})",
+					i + 1,
+					entry.operator_name,
+					entry.node_id,
+					entry.operator_version
+				);
 			}
+			let _ = writeln!(output);
 		}
 
 		if let Some(help) = &diagnostic.help {
@@ -136,7 +136,7 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
+			let statement = diagnostic.statement.as_deref().unwrap_or("");
 
 			let _ = writeln!(
 				output,

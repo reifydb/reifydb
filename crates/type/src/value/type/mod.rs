@@ -209,9 +209,7 @@ impl Type {
 			Type::Uuid7 => 21,
 			Type::Blob => 22,
 			Type::Int => 23,
-			Type::Decimal {
-				..
-			} => 24,
+			Type::Decimal => 24,
 			Type::Uint => 25,
 			Type::Any => 26,
 			Type::DictionaryId => 27,
@@ -292,9 +290,7 @@ impl Type {
 			// storage with offset + length
 			Type::Uint => 16, // u128 inline or dynamic
 			// storage with offset + length
-			Type::Decimal {
-				..
-			} => 16, // i128 inline or dynamic
+			Type::Decimal => 16, // i128 inline or dynamic
 			// storage with offset + length
 			Type::Option(inner) => inner.size(), // size determined by inner type
 			Type::Any => 8,                      // pointer size on 64-bit systems
@@ -334,9 +330,7 @@ impl Type {
 			// inline storage
 			Type::Uint => 16, // u128 alignment for
 			// inline storage
-			Type::Decimal {
-				..
-			} => 16, // i128 alignment for
+			Type::Decimal => 16, // i128 alignment for
 			// inline storage
 			Type::Option(inner) => inner.alignment(),
 			Type::Any => 8, // pointer alignment
@@ -439,7 +433,7 @@ impl From<&Value> for Type {
 			Value::DictionaryId(_) => Type::DictionaryId,
 			Value::Type(t) => t.clone(),
 			Value::List(items) => {
-				let element_type = items.first().map(|v| Type::from(v)).unwrap_or(Type::Any);
+				let element_type = items.first().map(Type::from).unwrap_or(Type::Any);
 				Type::list_of(element_type)
 			}
 			Value::Record(fields) => {

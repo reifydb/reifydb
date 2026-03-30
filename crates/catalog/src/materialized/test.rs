@@ -43,11 +43,11 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_test(&self, id: TestId, version: CommitVersion, test: Option<Test>) {
-		if let Some(entry) = self.tests.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				// Remove old name from index
-				self.tests_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.tests.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			// Remove old name from index
+			self.tests_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.tests.get_or_insert_with(id, MultiVersionTest::new);

@@ -759,7 +759,7 @@ impl<S: Storage> ColumnData<S> {
 				| Type::Int4 | Type::Int8 | Type::Int16
 				| Type::Uint1 | Type::Uint2 | Type::Uint4
 				| Type::Uint8 | Type::Uint16 | Type::Int
-				| Type::Uint | Type::Decimal { .. }
+				| Type::Uint | Type::Decimal
 		)
 	}
 

@@ -22,6 +22,12 @@ pub struct SystemFlowEdges {
 	exhausted: bool,
 }
 
+impl Default for SystemFlowEdges {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemFlowEdges {
 	pub fn new() -> Self {
 		Self {

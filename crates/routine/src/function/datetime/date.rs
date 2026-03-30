@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeDate;
 
+impl Default for DateTimeDate {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeDate {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DateTimeDate {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::DateTime(container) => {

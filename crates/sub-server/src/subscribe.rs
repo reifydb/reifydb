@@ -168,5 +168,5 @@ pub async fn cleanup_subscription(state: &AppState, subscription_id: Subscriptio
 
 	system.compute(move || cleanup_subscription_sync(&engine, subscription_id))
 		.await
-		.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?
+		.map_err(|e| Error(Box::new(internal(format!("Compute pool error: {:?}", e)))))?
 }

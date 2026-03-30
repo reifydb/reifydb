@@ -40,7 +40,7 @@ impl<'bump> Compiler<'bump> {
 
 		// 1. Create FROM scan from target
 		let from_ast = AstFrom::Source {
-			token: ast.token.clone(),
+			token: ast.token,
 			source: ast.target.clone(),
 			index_name: None,
 		};
@@ -58,7 +58,7 @@ impl<'bump> Compiler<'bump> {
 
 		// 3. Create PATCH node from assignments (merges with original row)
 		let patch_ast = AstPatch {
-			token: ast.token.clone(),
+			token: ast.token,
 			assignments: ast.assignments,
 			rql: "",
 		};

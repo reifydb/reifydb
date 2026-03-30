@@ -99,7 +99,7 @@ pub(crate) fn update_row_in_entry(
 
 /// Check if a right side has any rows for a given key
 pub(crate) fn has_right_rows(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
-	Ok(right_store.contains_key(txn, key_hash)?)
+	right_store.contains_key(txn, key_hash)
 }
 
 /// Check if it's the first right row being added for a key

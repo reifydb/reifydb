@@ -240,10 +240,10 @@ impl QueryNode for RingBufferScan {
 			}
 
 			// If we've exhausted this partition, move to next
-			if self.rows_returned_in_partition >= partition_count || self.current_position >= max_row_num {
-				if !self.advance_to_next_partition() {
-					break;
-				}
+			if (self.rows_returned_in_partition >= partition_count || self.current_position >= max_row_num)
+				&& !self.advance_to_next_partition()
+			{
+				break;
 			}
 
 			// If we've filled a batch, stop

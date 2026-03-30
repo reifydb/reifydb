@@ -178,7 +178,8 @@ impl Catalog {
 				if TransactionalTableChanges::is_table_deleted(t.inner, id) {
 					return Ok(None);
 				}
-				if let Some(table) = CatalogStore::find_table(&mut Transaction::Test(t.reborrow()), id)?
+				if let Some(table) =
+					CatalogStore::find_table(&mut Transaction::Test(Box::new(t.reborrow())), id)?
 				{
 					return Ok(Some(table));
 				}
@@ -335,7 +336,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(table) = CatalogStore::find_table_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {
@@ -440,7 +441,7 @@ impl Catalog {
 
 			// txn.track_primary_key_created(pk_id, ShapeId::Table(table.id))?;
 
-			return Ok(CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id)?);
+			return CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id);
 		}
 
 		Ok(table)

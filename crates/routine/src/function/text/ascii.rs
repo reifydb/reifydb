@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextAscii;
 
+impl Default for TextAscii {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextAscii {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextAscii {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

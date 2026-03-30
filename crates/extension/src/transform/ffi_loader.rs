@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#![cfg(reifydb_target = "native")]
-
 //! FFI transform dynamic library loader
 
 use std::{

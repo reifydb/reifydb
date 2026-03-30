@@ -30,14 +30,8 @@ pub mod transaction;
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct TransactionId(pub(crate) Uuid7);
-
-impl Default for TransactionId {
-	fn default() -> Self {
-		Self(Uuid7::default())
-	}
-}
 
 impl Deref for TransactionId {
 	type Target = Uuid7;

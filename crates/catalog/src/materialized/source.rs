@@ -51,10 +51,10 @@ impl MaterializedCatalog {
 
 	pub fn set_source(&self, id: SourceId, version: CommitVersion, source: Option<Source>) {
 		// Look up the current source to update the index
-		if let Some(entry) = self.sources.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.sources_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.sources.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.sources_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.sources.get_or_insert_with(id, MultiVersionSource::new);

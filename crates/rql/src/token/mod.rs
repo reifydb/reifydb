@@ -35,7 +35,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 	let mut cursor = Cursor::new(input);
 	// Estimate token count: rough heuristic of 1 token per 6 characters
 	// with minimum of 8 and maximum reasonable limit
-	let estimated_tokens = (input.len() / 6).max(8).min(2048);
+	let estimated_tokens = (input.len() / 6).clamp(8, 2048);
 	let mut tokens = BumpVec::with_capacity_in(estimated_tokens, bump);
 
 	while !cursor.is_eof() {
@@ -65,7 +65,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 						Some(tok) => {
 							// If the number is immediately followed by an alpha char,
 							// it's likely a digit-starting identifier like "10min"
-							if cursor.peek().map_or(false, |c| c.is_ascii_alphabetic()) {
+							if cursor.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
 								let num_state = cursor.save_state();
 								cursor.restore_state(state);
 								scan_digit_starting_identifier(&mut cursor).or_else(
@@ -92,7 +92,7 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 				'.' => {
 					// Check if followed by digit - if so,
 					// try literal first
-					if cursor.peek_ahead(1).map_or(false, |ch| ch.is_ascii_digit()) {
+					if cursor.peek_ahead(1).is_some_and(|ch| ch.is_ascii_digit()) {
 						scan_literal(&mut cursor).or_else(|| scan_operator(&mut cursor))
 					} else {
 						scan_operator(&mut cursor).or_else(|| scan_literal(&mut cursor))

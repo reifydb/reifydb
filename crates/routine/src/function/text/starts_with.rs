@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextStartsWith;
 
+impl Default for TextStartsWith {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextStartsWith {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextStartsWith {
 			});
 		}
 
-		let str_col = columns.get(0).unwrap();
+		let str_col = columns.first().unwrap();
 		let prefix_col = columns.get(1).unwrap();
 
 		match (str_col.data(), prefix_col.data()) {

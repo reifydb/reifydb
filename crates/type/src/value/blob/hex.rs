@@ -10,7 +10,6 @@ use crate::{
 
 impl Blob {
 	pub fn from_hex(fragment: Fragment) -> Result<Self, Error> {
-		let fragment = fragment;
 		let hex_str = fragment.text();
 		let clean_hex = if hex_str.starts_with("0x") || hex_str.starts_with("0X") {
 			&hex_str[2..]

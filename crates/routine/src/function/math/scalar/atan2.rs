@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct Atan2;
 
+impl Default for Atan2 {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Atan2 {
 	pub fn new() -> Self {
 		Self
@@ -65,7 +71,7 @@ impl ScalarFunction for Atan2 {
 			});
 		}
 
-		let y_col = columns.get(0).unwrap();
+		let y_col = columns.first().unwrap();
 		let x_col = columns.get(1).unwrap();
 
 		if !y_col.data().get_type().is_number() {

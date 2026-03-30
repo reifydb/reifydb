@@ -72,67 +72,67 @@ impl<'a> KeyDeserializer<'a> {
 
 	pub fn read_bool(&mut self) -> Result<bool> {
 		let bytes = self.read_exact(1)?;
-		Ok(deserialize::<bool>(bytes)?)
+		deserialize::<bool>(bytes)
 	}
 
 	pub fn read_f32(&mut self) -> Result<f32> {
 		let bytes = self.read_exact(4)?;
-		Ok(deserialize::<f32>(bytes)?)
+		deserialize::<f32>(bytes)
 	}
 
 	pub fn read_f64(&mut self) -> Result<f64> {
 		let bytes = self.read_exact(8)?;
-		Ok(deserialize::<f64>(bytes)?)
+		deserialize::<f64>(bytes)
 	}
 
 	pub fn read_i8(&mut self) -> Result<i8> {
 		let bytes = self.read_exact(1)?;
-		Ok(deserialize::<i8>(bytes)?)
+		deserialize::<i8>(bytes)
 	}
 
 	pub fn read_i16(&mut self) -> Result<i16> {
 		let bytes = self.read_exact(2)?;
-		Ok(deserialize::<i16>(bytes)?)
+		deserialize::<i16>(bytes)
 	}
 
 	pub fn read_i32(&mut self) -> Result<i32> {
 		let bytes = self.read_exact(4)?;
-		Ok(deserialize::<i32>(bytes)?)
+		deserialize::<i32>(bytes)
 	}
 
 	pub fn read_i64(&mut self) -> Result<i64> {
 		let bytes = self.read_exact(8)?;
-		Ok(deserialize::<i64>(bytes)?)
+		deserialize::<i64>(bytes)
 	}
 
 	pub fn read_i128(&mut self) -> Result<i128> {
 		let bytes = self.read_exact(16)?;
-		Ok(deserialize::<i128>(bytes)?)
+		deserialize::<i128>(bytes)
 	}
 
 	pub fn read_u8(&mut self) -> Result<u8> {
 		let bytes = self.read_exact(1)?;
-		Ok(deserialize::<u8>(bytes)?)
+		deserialize::<u8>(bytes)
 	}
 
 	pub fn read_u16(&mut self) -> Result<u16> {
 		let bytes = self.read_exact(2)?;
-		Ok(deserialize::<u16>(bytes)?)
+		deserialize::<u16>(bytes)
 	}
 
 	pub fn read_u32(&mut self) -> Result<u32> {
 		let bytes = self.read_exact(4)?;
-		Ok(deserialize::<u32>(bytes)?)
+		deserialize::<u32>(bytes)
 	}
 
 	pub fn read_u64(&mut self) -> Result<u64> {
 		let bytes = self.read_exact(8)?;
-		Ok(deserialize::<u64>(bytes)?)
+		deserialize::<u64>(bytes)
 	}
 
 	pub fn read_u128(&mut self) -> Result<u128> {
 		let bytes = self.read_exact(16)?;
-		Ok(deserialize::<u128>(bytes)?)
+		deserialize::<u128>(bytes)
 	}
 
 	pub fn read_bytes(&mut self) -> Result<Vec<u8>> {

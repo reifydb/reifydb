@@ -153,19 +153,17 @@ impl LeftHashJoin {
 				add_to_state_entry_batch(txn, &mut state.right, key_hash, post, indices)?;
 
 				// If first right row(s), remove previously emitted unmatched left rows
-				if is_first {
-					if let Some(left_entry) = state.left.get(txn, key_hash)? {
-						let left_columns = operator.left_parent.pull(txn, &left_entry.rows)?;
-						let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
-						let unmatched = operator.unmatched_left_columns_batch(
-							txn,
-							&left_columns,
-							&left_indices,
-						)?;
-						result.push(Diff::Remove {
-							pre: unmatched,
-						});
-					}
+				if is_first && let Some(left_entry) = state.left.get(txn, key_hash)? {
+					let left_columns = operator.left_parent.pull(txn, &left_entry.rows)?;
+					let left_indices: Vec<usize> = (0..left_columns.row_count()).collect();
+					let unmatched = operator.unmatched_left_columns_batch(
+						txn,
+						&left_columns,
+						&left_indices,
+					)?;
+					result.push(Diff::Remove {
+						pre: unmatched,
+					});
 				}
 
 				// Emit all joined rows in one batch

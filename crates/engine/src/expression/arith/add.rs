@@ -76,7 +76,7 @@ pub(crate) fn add_columns(
 				},
 			) if can_promote_to_string(l) => concat_string_with_other(r, l, false, target, fragment.fragment()),
 
-			_ => return Err(TypeError::BinaryOperatorNotApplicable {
+			_ => Err(TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Add,
 				left: left.get_type(),
 				right: right.get_type(),

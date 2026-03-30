@@ -60,9 +60,9 @@ impl FlowTransaction {
 	))]
 	pub fn state_scan(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
 		let range = FlowNodeStateKey::node_range(id);
-		let mut iter = self.range(range, 1024);
+		let iter = self.range(range, 1024);
 		let mut items = Vec::new();
-		while let Some(result) = iter.next() {
+		for result in iter {
 			items.push(result?);
 		}
 		Span::current().record("result_count", items.len());
@@ -78,9 +78,9 @@ impl FlowTransaction {
 	))]
 	pub fn state_range(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-		let mut iter = self.range(prefixed_range, 1024);
+		let iter = self.range(prefixed_range, 1024);
 		let mut items = Vec::new();
-		while let Some(result) = iter.next() {
+		for result in iter {
 			items.push(result?);
 		}
 		Ok(MultiVersionBatch {
@@ -111,9 +111,9 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
 	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> Result<Vec<EncodedKey>> {
 		let range = FlowNodeStateKey::node_range(id);
-		let mut iter = self.range(range, 1024);
+		let iter = self.range(range, 1024);
 		let mut keys = Vec::new();
-		while let Some(result) = iter.next() {
+		for result in iter {
 			let multi = result?;
 			keys.push(multi.key);
 		}

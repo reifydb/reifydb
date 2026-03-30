@@ -129,7 +129,7 @@ impl Procedure for CompleteJobRunProcedure {
 			Params::None,
 		)?;
 
-		let all_terminal = non_terminal.first().map_or(true, |f| f.rows().next().is_none());
+		let all_terminal = non_terminal.first().is_none_or(|f| f.rows().next().is_none());
 
 		if all_terminal {
 			// Check if any job_run failed
@@ -216,7 +216,7 @@ fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> TypeResult<()> 
 						Params::None,
 					)?;
 
-					if dep_job_run.first().map_or(true, |f| f.rows().next().is_none()) {
+					if dep_job_run.first().is_none_or(|f| f.rows().next().is_none()) {
 						all_deps_satisfied = false;
 						break;
 					}

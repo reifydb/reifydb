@@ -3,7 +3,7 @@
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-	Select(SelectStatement),
+	Select(Box<SelectStatement>),
 	Insert(InsertStatement),
 	Update(UpdateStatement),
 	Delete(DeleteStatement),
@@ -99,7 +99,7 @@ pub struct InsertStatement {
 #[derive(Debug, Clone)]
 pub enum InsertSource {
 	Values(Vec<Vec<Expr>>),
-	Select(SelectStatement),
+	Select(Box<SelectStatement>),
 }
 
 #[derive(Debug, Clone)]

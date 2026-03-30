@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateFormat;
 
+impl Default for DateFormat {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateFormat {
 	pub fn new() -> Self {
 		Self
@@ -67,7 +73,7 @@ impl ScalarFunction for DateFormat {
 			});
 		}
 
-		let date_col = columns.get(0).unwrap();
+		let date_col = columns.first().unwrap();
 		let fmt_col = columns.get(1).unwrap();
 
 		match (date_col.data(), fmt_col.data()) {

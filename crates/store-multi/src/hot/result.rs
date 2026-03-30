@@ -34,9 +34,9 @@ impl MultiVersionGetResult {
 	}
 }
 
-impl Into<Option<MultiVersionRow>> for MultiVersionGetResult {
-	fn into(self) -> Option<MultiVersionRow> {
-		self.into_option()
+impl From<MultiVersionGetResult> for Option<MultiVersionRow> {
+	fn from(val: MultiVersionGetResult) -> Self {
+		val.into_option()
 	}
 }
 
@@ -66,9 +66,9 @@ impl SingleVersionGetResult {
 	}
 }
 
-impl Into<Option<SingleVersionRow>> for SingleVersionGetResult {
-	fn into(self) -> Option<SingleVersionRow> {
-		self.into_option()
+impl From<SingleVersionGetResult> for Option<SingleVersionRow> {
+	fn from(val: SingleVersionGetResult) -> Self {
+		val.into_option()
 	}
 }
 

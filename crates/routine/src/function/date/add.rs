@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateAdd;
 
+impl Default for DateAdd {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateAdd {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for DateAdd {
 			});
 		}
 
-		let date_col = columns.get(0).unwrap();
+		let date_col = columns.first().unwrap();
 		let dur_col = columns.get(1).unwrap();
 
 		match (date_col.data(), dur_col.data()) {

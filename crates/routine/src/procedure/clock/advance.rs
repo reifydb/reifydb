@@ -18,6 +18,12 @@ use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureErr
 /// Accepts 1 positional argument: a Duration or integer milliseconds.
 pub struct ClockAdvanceProcedure;
 
+impl Default for ClockAdvanceProcedure {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl ClockAdvanceProcedure {
 	pub fn new() -> Self {
 		Self

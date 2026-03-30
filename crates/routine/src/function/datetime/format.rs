@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeFormat;
 
+impl Default for DateTimeFormat {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeFormat {
 	pub fn new() -> Self {
 		Self
@@ -132,7 +138,7 @@ impl ScalarFunction for DateTimeFormat {
 			});
 		}
 
-		let dt_col = columns.get(0).unwrap();
+		let dt_col = columns.first().unwrap();
 		let fmt_col = columns.get(1).unwrap();
 
 		match (dt_col.data(), fmt_col.data()) {

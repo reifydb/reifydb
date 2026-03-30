@@ -22,6 +22,12 @@ pub struct SystemMigrations {
 	exhausted: bool,
 }
 
+impl Default for SystemMigrations {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemMigrations {
 	pub fn new() -> Self {
 		Self {
@@ -51,7 +57,7 @@ impl BaseVTable for SystemMigrations {
 		let mut rollback_bodies = ColumnData::utf8_with_capacity(defs.len());
 
 		for def in &defs {
-			let latest = events.iter().filter(|e| e.migration_id == def.id).last();
+			let latest = events.iter().rfind(|e| e.migration_id == def.id);
 
 			let action_str = match latest {
 				Some(e) => match e.action {

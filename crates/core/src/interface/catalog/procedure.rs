@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::interface::catalog::id::{NamespaceId, ProcedureId};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum ProcedureTrigger {
 	/// Invoked explicitly via CALL
+	#[default]
 	Call,
 	/// Triggered by DISPATCH on an event variant
 	Event {
@@ -18,12 +19,6 @@ pub enum ProcedureTrigger {
 	NativeCall {
 		native_name: String,
 	},
-}
-
-impl Default for ProcedureTrigger {
-	fn default() -> Self {
-		ProcedureTrigger::Call
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

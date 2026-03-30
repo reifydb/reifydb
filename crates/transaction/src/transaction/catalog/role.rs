@@ -60,10 +60,10 @@ impl TransactionalRoleChanges for AdminTransaction {
 				if role.id == id {
 					return Some(role);
 				}
-			} else if let Some(role) = &change.pre {
-				if role.id == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(role) = &change.pre
+				&& role.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

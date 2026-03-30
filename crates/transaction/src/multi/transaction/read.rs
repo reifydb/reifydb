@@ -54,7 +54,7 @@ impl MultiReadTransaction {
 
 	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
 		let version = self.tm.version();
-		Ok(self.engine.contains_key(key, version)?)
+		self.engine.contains_key(key, version)
 	}
 
 	pub fn scan(&self) -> Result<MultiVersionBatch> {

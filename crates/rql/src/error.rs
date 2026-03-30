@@ -874,7 +874,7 @@ impl IntoDiagnostic for RqlError {
 
 impl From<RqlError> for Error {
 	fn from(err: RqlError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -979,7 +979,7 @@ impl From<IdentifierError> for Error {
 				if let Some(ref t) = token {
 					notes.push(format!("Remote token: {}", t));
 				}
-				Error(Diagnostic {
+				Error(Box::new(Diagnostic {
 					code: "REMOTE_001".to_string(),
 					statement: None,
 					message: format!(
@@ -996,7 +996,7 @@ impl From<IdentifierError> for Error {
 					notes,
 					cause: None,
 					operator_chain: None,
-				})
+				}))
 			}
 			_ => {
 				internal_error!("{}", err)

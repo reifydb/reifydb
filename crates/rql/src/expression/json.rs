@@ -679,7 +679,10 @@ impl TryFrom<JsonExpression> for Expression {
 					"+" => PrefixOperator::Plus(Fragment::None),
 					"not" => PrefixOperator::Not(Fragment::None),
 					_ => {
-						return Err(Error(internal!("Unknown prefix operator: {}", operator)));
+						return Err(Error(Box::new(internal!(
+							"Unknown prefix operator: {}",
+							operator
+						))));
 					}
 				};
 				Expression::Prefix(PrefixExpression {
@@ -819,7 +822,7 @@ fn parse_type(s: &str) -> Result<Type> {
 		"uint" => Type::Uint,
 		"decimal" => Type::Decimal,
 		_ => {
-			return Err(Error(internal!("Unknown type: {}", s)));
+			return Err(Error(Box::new(internal!("Unknown type: {}", s))));
 		}
 	};
 

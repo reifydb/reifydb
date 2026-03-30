@@ -46,7 +46,7 @@ use crate::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 /// Layout information shared across all rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,12 +270,13 @@ impl DistinctOperator {
 			return Ok(DistinctState::default());
 		}
 
-		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
+		from_bytes(blob.as_ref())
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize DistinctState: {}", e))))
 	}
 
 	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> Result<()> {
-		let serialized =
-			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
+		let serialized = to_stdvec(state)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize DistinctState: {}", e))))?;
 		let blob = Blob::from(serialized);
 
 		self.update_state(txn, |shape, row| {
@@ -298,9 +299,7 @@ impl DistinctOperator {
 
 		let mut new_distinct_indices: Vec<usize> = Vec::new();
 
-		for row_idx in 0..row_count {
-			let hash = hashes[row_idx];
-
+		for (row_idx, &hash) in hashes.iter().enumerate() {
 			match state.entries.get_mut(&hash) {
 				Some(entry) => {
 					entry.count += 1;
@@ -436,9 +435,7 @@ impl DistinctOperator {
 
 		let mut removed_hashes: Vec<Hash128> = Vec::new();
 
-		for row_idx in 0..row_count {
-			let hash = hashes[row_idx];
-
+		for &hash in &hashes {
 			if let Some(entry) = state.entries.get_mut(&hash) {
 				if entry.count > 1 {
 					entry.count -= 1;

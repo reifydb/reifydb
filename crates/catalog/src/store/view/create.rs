@@ -103,7 +103,7 @@ impl CatalogStore {
 
 		Self::insert_columns_for_view(txn, view_id, to_create)?;
 
-		Ok(Self::get_view(&mut Transaction::Admin(&mut *txn), view_id)?)
+		Self::get_view(&mut Transaction::Admin(&mut *txn), view_id)
 	}
 
 	fn store_view(

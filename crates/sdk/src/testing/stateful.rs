@@ -331,7 +331,7 @@ pub mod scenarios {
 				let change = TestChangeBuilder::new()
 					.insert_row(
 						RowNumber(timestamp as u64),
-						vec![Value::Int8(1i64), Value::Int8(timestamp as i64)],
+						vec![Value::Int8(1i64), Value::Int8(timestamp)],
 					)
 					.build();
 				result.push((timestamp, change));

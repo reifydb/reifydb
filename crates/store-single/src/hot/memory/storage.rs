@@ -26,6 +26,12 @@ struct MemoryPrimitiveStorageInner {
 	data: Arc<RwLock<BTreeMap<CowVec<u8>, Option<CowVec<u8>>>>>,
 }
 
+impl Default for MemoryPrimitiveStorage {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl MemoryPrimitiveStorage {
 	#[instrument(name = "store::single::memory::new", level = "debug")]
 	pub fn new() -> Self {

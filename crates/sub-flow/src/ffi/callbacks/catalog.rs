@@ -283,7 +283,7 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 		let ptr = host_alloc(size) as *mut ColumnFFI;
 		if ptr.is_null() {
 			// Clean up name before returning error
-			host_free(name_ptr, name_bytes.len());
+			unsafe { host_free(name_ptr, name_bytes.len()) };
 			return Err("Failed to allocate columns array");
 		}
 
@@ -304,9 +304,11 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 		let pk_ptr = host_alloc(mem::size_of::<PrimaryKeyFFI>()) as *mut PrimaryKeyFFI;
 		if pk_ptr.is_null() {
 			// Clean up before returning error
-			host_free(name_ptr, name_bytes.len());
+			unsafe { host_free(name_ptr, name_bytes.len()) };
 			if !columns_ptr.is_null() {
-				host_free(columns_ptr as *mut u8, columns_count * mem::size_of::<ColumnFFI>());
+				unsafe {
+					host_free(columns_ptr as *mut u8, columns_count * mem::size_of::<ColumnFFI>())
+				};
 			}
 			return Err("Failed to allocate primary key");
 		}

@@ -150,9 +150,10 @@ impl Catalog {
 				if TransactionalNamespaceChanges::is_namespace_deleted(t.inner, id) {
 					return Ok(None);
 				}
-				if let Some(ns) =
-					CatalogStore::find_namespace(&mut Transaction::Test(t.reborrow()), id)?
-				{
+				if let Some(ns) = CatalogStore::find_namespace(
+					&mut Transaction::Test(Box::new(t.reborrow())),
+					id,
+				)? {
 					return Ok(Some(ns));
 				}
 				Ok(None)
@@ -285,7 +286,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(ns) = CatalogStore::find_namespace_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					name,
 				)? {
 					return Ok(Some(ns));

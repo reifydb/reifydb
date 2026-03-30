@@ -91,7 +91,7 @@ impl Operator for AppendOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
-			Error(internal!("Append received change from unknown node: {:?}", change.origin))
+			Error(Box::new(internal!("Append received change from unknown node: {:?}", change.origin)))
 		})?;
 
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());

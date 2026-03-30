@@ -43,15 +43,13 @@ impl RemoteRegistry {
 			let _ = tx.send(result);
 		});
 
-		rx.recv()
-			.map_err(|_| {
-				Error(Diagnostic {
-					code: "REMOTE_002".to_string(),
-					message: "remote query channel closed".to_string(),
-					..Default::default()
-				})
-			})?
-			.map_err(Into::into)
+		rx.recv().map_err(|_| {
+			Error(Box::new(Diagnostic {
+				code: "REMOTE_002".to_string(),
+				message: "remote query channel closed".to_string(),
+				..Default::default()
+			}))
+		})?
 	}
 
 	fn connect(&self, address: &str, token: Option<&str>) -> Result<GrpcClient, Error> {
@@ -64,11 +62,11 @@ impl RemoteRegistry {
 		});
 
 		let mut client = rx.recv().map_err(|_| {
-			Error(Diagnostic {
+			Error(Box::new(Diagnostic {
 				code: "REMOTE_002".to_string(),
 				message: "remote connect channel closed".to_string(),
 				..Default::default()
-			})
+			}))
 		})??;
 		if let Some(token) = token {
 			client.authenticate(token);
@@ -99,7 +97,7 @@ mod tests {
 	use super::*;
 
 	fn make_remote_error(address: &str) -> Error {
-		Error(Diagnostic {
+		Error(Box::new(Diagnostic {
 			code: "REMOTE_001".to_string(),
 			message: format!(
 				"Remote namespace 'remote_ns': source 'users' is on remote instance at {}",
@@ -111,7 +109,7 @@ mod tests {
 			],
 			fragment: Fragment::None,
 			..Default::default()
-		})
+		}))
 	}
 
 	#[test]
@@ -122,12 +120,12 @@ mod tests {
 
 	#[test]
 	fn test_is_remote_query_false() {
-		let err = Error(Diagnostic {
+		let err = Error(Box::new(Diagnostic {
 			code: "CATALOG_001".to_string(),
 			message: "Table not found".to_string(),
 			fragment: Fragment::None,
 			..Default::default()
-		});
+		}));
 		assert!(!is_remote_query(&err));
 	}
 
@@ -139,19 +137,19 @@ mod tests {
 
 	#[test]
 	fn test_extract_remote_address_missing() {
-		let err = Error(Diagnostic {
+		let err = Error(Box::new(Diagnostic {
 			code: "REMOTE_001".to_string(),
 			message: "Some error".to_string(),
 			notes: vec![],
 			fragment: Fragment::None,
 			..Default::default()
-		});
+		}));
 		assert_eq!(extract_remote_address(&err), None);
 	}
 
 	#[test]
 	fn test_extract_remote_token() {
-		let err = Error(Diagnostic {
+		let err = Error(Box::new(Diagnostic {
 			code: "REMOTE_001".to_string(),
 			message: "Remote namespace".to_string(),
 			notes: vec![
@@ -161,7 +159,7 @@ mod tests {
 			],
 			fragment: Fragment::None,
 			..Default::default()
-		});
+		}));
 		assert_eq!(extract_remote_token(&err), Some("my-secret".to_string()));
 	}
 

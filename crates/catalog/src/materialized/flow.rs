@@ -46,10 +46,10 @@ impl MaterializedCatalog {
 
 	pub fn set_flow(&self, id: FlowId, version: CommitVersion, flow: Option<Flow>) {
 		// Look up the current flow to update the index
-		if let Some(entry) = self.flows.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.flows_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.flows.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.flows_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.flows.get_or_insert_with(id, MultiVersionFlow::new);

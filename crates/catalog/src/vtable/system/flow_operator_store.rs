@@ -36,6 +36,12 @@ pub struct SystemFlowOperatorStore {
 	operators: Arc<RwLock<HashMap<String, SystemFlowOperatorInfo>>>,
 }
 
+impl Default for SystemFlowOperatorStore {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemFlowOperatorStore {
 	pub fn new() -> Self {
 		Self {

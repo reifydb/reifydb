@@ -44,7 +44,7 @@ use crate::{
 };
 
 #[instrument(name = "mutate::ringbuffer::insert", level = "trace", skip_all)]
-pub(crate) fn insert_ringbuffer<'a>(
+pub(crate) fn insert_ringbuffer(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertRingBufferNode,
@@ -85,11 +85,7 @@ pub(crate) fn insert_ringbuffer<'a>(
 	let mut input_node = compile(*plan.input, txn, execution_context.clone());
 
 	let mut inserted_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
-		Vec::new()
-	} else {
-		Vec::new()
-	};
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 
 	// Resolve partition column indices once (empty vec for global)
 	let partition_col_indices: Vec<usize> = ringbuffer
@@ -198,17 +194,16 @@ pub(crate) fn insert_ringbuffer<'a>(
 				let mut evict_pos = current_metadata.head;
 				loop {
 					let key = RowKey::encoded(ringbuffer.id, RowNumber(evict_pos));
-					if let Some(row_data) = txn.get(&key)? {
-						if partition_col_indices.is_empty()
+					if let Some(row_data) = txn.get(&key)?
+						&& (partition_col_indices.is_empty()
 							|| row_matches_partition(
 								&shape,
 								&row_data.row,
 								&partition_col_indices,
 								&partition_key,
-							) {
-							txn.remove_from_ringbuffer(&ringbuffer, RowNumber(evict_pos))?;
-							break;
-						}
+							)) {
+						txn.remove_from_ringbuffer(&ringbuffer, RowNumber(evict_pos))?;
+						break;
 					}
 					evict_pos += 1;
 					if evict_pos >= current_metadata.tail {
@@ -219,16 +214,15 @@ pub(crate) fn insert_ringbuffer<'a>(
 				current_metadata.head = evict_pos + 1;
 				while current_metadata.head < current_metadata.tail {
 					let key = RowKey::encoded(ringbuffer.id, RowNumber(current_metadata.head));
-					if let Some(row_data) = txn.get(&key)? {
-						if partition_col_indices.is_empty()
+					if let Some(row_data) = txn.get(&key)?
+						&& (partition_col_indices.is_empty()
 							|| row_matches_partition(
 								&shape,
 								&row_data.row,
 								&partition_col_indices,
 								&partition_key,
-							) {
-							break;
-						}
+							)) {
+						break;
 					}
 					current_metadata.head += 1;
 				}

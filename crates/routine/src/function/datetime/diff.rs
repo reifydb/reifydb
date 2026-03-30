@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeDiff;
 
+impl Default for DateTimeDiff {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeDiff {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DateTimeDiff {
 			});
 		}
 
-		let col1 = columns.get(0).unwrap();
+		let col1 = columns.first().unwrap();
 		let col2 = columns.get(1).unwrap();
 
 		match (col1.data(), col2.data()) {

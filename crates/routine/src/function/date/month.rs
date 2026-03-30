@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateMonth;
 
+impl Default for DateMonth {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateMonth {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for DateMonth {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Date(container) => {

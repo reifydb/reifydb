@@ -83,10 +83,10 @@ impl QueryNode for DictionaryScanNode {
 			let entry = entry?;
 
 			// Skip entries we've already seen
-			if let Some(ref last) = self.last_key {
-				if &entry.key <= last {
-					continue;
-				}
+			if let Some(ref last) = self.last_key
+				&& &entry.key <= last
+			{
+				continue;
 			}
 
 			// Decode the key to get the entry ID
@@ -168,7 +168,7 @@ fn build_id_column(ids: &[DictionaryEntryId], id_type: Type) -> Result<Column> {
 			let vals: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
 			ColumnData::uint16(vals)
 		}
-		_ => return Err(internal_error!("Invalid dictionary id_type: {:?}", id_type).into()),
+		_ => return Err(internal_error!("Invalid dictionary id_type: {:?}", id_type)),
 	};
 
 	Ok(Column {

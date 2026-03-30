@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#![cfg(reifydb_target = "native")]
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
-
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
 use std::{
@@ -90,7 +86,7 @@ impl Drop for FFIOperator {
 	fn drop(&mut self) {
 		// Call the destroy function from the vtable to clean up the FFI operator instance
 		if !self.instance.is_null() {
-			(self.vtable.destroy)(self.instance);
+			unsafe { (self.vtable.destroy)(self.instance) };
 		}
 	}
 }
@@ -113,7 +109,9 @@ fn call_vtable(
 	ffi_output: &mut ChangeFFI,
 	operator_id: FlowNodeId,
 ) -> i32 {
-	let result = catch_unwind(AssertUnwindSafe(|| (vtable.apply)(instance, ffi_ctx_ptr, ffi_input, ffi_output)));
+	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+		(vtable.apply)(instance, ffi_ctx_ptr, ffi_input, ffi_output)
+	}));
 
 	match result {
 		Ok(code) => code,
@@ -173,7 +171,7 @@ impl Operator for FFIOperator {
 			);
 		}
 
-		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(|e| FFIError::Other(e))?;
+		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(FFIError::Other)?;
 
 		// Clear the arena after operation
 		arena.clear();
@@ -194,7 +192,7 @@ impl Operator for FFIOperator {
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
 		// Call FFI pull function
-		let result = catch_unwind(AssertUnwindSafe(|| {
+		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 			(self.vtable.pull)(
 				self.instance,
 				ffi_ctx_ptr,
@@ -247,7 +245,7 @@ impl Operator for FFIOperator {
 		let ffi_ctx = new_ffi_context(txn, &self.executor, self.operator_id, create_host_callbacks());
 		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 
-		let result = catch_unwind(AssertUnwindSafe(|| {
+		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 			(self.vtable.tick)(self.instance, ffi_ctx_ptr, timestamp_nanos, &mut ffi_output)
 		}));
 
@@ -278,7 +276,7 @@ impl Operator for FFIOperator {
 			return Ok(None);
 		}
 
-		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(|e| FFIError::Other(e))?;
+		let output_change = unmarshal_output(&mut arena, &ffi_output).map_err(FFIError::Other)?;
 
 		arena.clear();
 

@@ -86,11 +86,7 @@ impl_safe_convert_decimal_to_float!(f32, f64);
 
 impl SafeConvert<Int> for Decimal {
 	fn checked_convert(self) -> Option<Int> {
-		if let Some(big_int) = self.inner().to_bigint() {
-			Some(Int(big_int))
-		} else {
-			None
-		}
+		self.inner().to_bigint().map(Int)
 	}
 
 	fn saturating_convert(self) -> Int {

@@ -9,7 +9,6 @@ use crate::{
 
 pub fn parse_time(fragment: Fragment) -> Result<Time, Error> {
 	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
-	let fragment = fragment;
 	let fragment_value = fragment.text();
 	let mut time_str = fragment_value;
 

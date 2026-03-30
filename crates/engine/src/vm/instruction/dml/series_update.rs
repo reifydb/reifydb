@@ -42,7 +42,7 @@ use crate::{
 };
 
 #[instrument(name = "mutate::series::update", level = "trace", skip_all)]
-pub(crate) fn update_series<'a>(
+pub(crate) fn update_series(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: UpdateSeriesNode,
@@ -113,13 +113,12 @@ pub(crate) fn update_series<'a>(
 				.unwrap_or(0);
 
 			let variant_tag = if has_tag {
-				columns.iter()
-					.find(|c| c.name().text() == "tag")
-					.map(|c| match c.data().get_value(row_idx) {
+				columns.iter().find(|c| c.name().text() == "tag").and_then(|c| {
+					match c.data().get_value(row_idx) {
 						Value::Uint1(v) => Some(v),
 						_ => None,
-					})
-					.flatten()
+					}
+				})
 			} else {
 				None
 			};
@@ -229,7 +228,7 @@ pub(crate) fn update_series<'a>(
 				Some(existing) => {
 					let mut cols = Vec::new();
 					for (i, col) in columns.iter().enumerate() {
-						if let Some(existing_col) = existing.iter().nth(i) {
+						if let Some(existing_col) = existing.get(i) {
 							let mut data = ColumnData::with_capacity(
 								col.data().get_type(),
 								existing_col.data().len() + col.data().len(),

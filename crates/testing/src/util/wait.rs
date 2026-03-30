@@ -42,7 +42,7 @@ where
 			panic!("Timeout after {:?}: {}", timeout, timeout_message);
 		}
 		poll_count += 1;
-		if poll_count % 1000 == 0 {
+		if poll_count.is_multiple_of(1000) {
 			println!(
 				"[DEBUG:await] poll #{poll_count} elapsed={:.1}s msg={timeout_message}",
 				start.elapsed().as_secs_f64()

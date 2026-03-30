@@ -88,12 +88,12 @@ impl FlowCompiler {
 
 	/// Gets the next available operator ID
 	fn next_node_id(&mut self, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
-		self.catalog.next_flow_node_id(txn).map_err(Into::into)
+		self.catalog.next_flow_node_id(txn)
 	}
 
 	/// Gets the next available edge ID
 	fn next_edge_id(&mut self, txn: &mut AdminTransaction) -> Result<FlowEdgeId> {
-		self.catalog.next_flow_edge_id(txn).map_err(Into::into)
+		self.catalog.next_flow_edge_id(txn)
 	}
 
 	/// Adds an edge between two nodes
@@ -129,7 +129,7 @@ impl FlowCompiler {
 
 		// Serialize the node type to blob
 		let data = to_stdvec(&node_type)
-			.map_err(|e| Error(internal!("Failed to serialize FlowNodeType: {}", e)))?;
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize FlowNodeType: {}", e))))?;
 
 		// Create the catalog entry
 		let node_def = FlowNode {
@@ -183,7 +183,7 @@ impl FlowCompiler {
 		let flow = self.builder.build();
 
 		if !has_real_source(&flow) {
-			return Err(Error(flow_source_required()));
+			return Err(Error(Box::new(flow_source_required())));
 		}
 
 		Ok(flow)
@@ -211,7 +211,7 @@ impl FlowCompiler {
 		let flow = self.builder.build();
 
 		if !has_real_source(&flow) {
-			return Err(Error(flow_source_required()));
+			return Err(Error(Box::new(flow_source_required())));
 		}
 
 		Ok(flow)
@@ -284,9 +284,7 @@ impl FlowCompiler {
 				unimplemented!("Assert compilation not yet implemented for flow")
 			}
 			QueryPlan::SeriesScan(series_scan) => SeriesScanCompiler::from(series_scan).compile(self, txn),
-			QueryPlan::RemoteScan(_) => {
-				return Err(Error(flow_remote_source_unsupported()));
-			}
+			QueryPlan::RemoteScan(_) => Err(Error(Box::new(flow_remote_source_unsupported()))),
 			QueryPlan::RunTests(_) => {
 				panic!("RunTests is not supported in flow graphs");
 			}

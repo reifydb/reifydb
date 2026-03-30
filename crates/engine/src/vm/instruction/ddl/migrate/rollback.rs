@@ -44,7 +44,7 @@ pub(crate) fn execute_rollback_migration(
 	let applied: Vec<Migration> = migrations
 		.into_iter()
 		.filter(|m| {
-			let latest = events.iter().filter(|e| e.migration_id == m.id).last();
+			let latest = events.iter().filter(|e| e.migration_id == m.id).next_back();
 			matches!(latest, Some(e) if e.action == MigrationAction::Applied)
 		})
 		.collect();

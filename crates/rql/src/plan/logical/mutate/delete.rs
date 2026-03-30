@@ -40,7 +40,7 @@ impl<'bump> Compiler<'bump> {
 
 		// 1. Create FROM scan from target
 		let from_ast = AstFrom::Source {
-			token: ast.token.clone(),
+			token: ast.token,
 			source: ast.target.clone(),
 			index_name: None,
 		};

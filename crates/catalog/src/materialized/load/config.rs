@@ -14,9 +14,9 @@ use crate::{Result, store::config};
 pub(crate) fn load_configs(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let version = rx.version();
 	let range = ConfigKey::full_scan();
-	let mut stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, 1024)?;
 
-	while let Some(entry) = stream.next() {
+	for entry in stream {
 		let multi = entry?;
 		let (key, value) = config::convert_config(multi);
 		if !key.is_empty() {

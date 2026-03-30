@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#![cfg(reifydb_target = "native")]
-
 //! FFI procedure implementation that bridges native shared-library procedures with ReifyDB
 
 use std::{
@@ -65,7 +63,7 @@ unsafe impl Sync for NativeProcedureFFI {}
 impl Drop for NativeProcedureFFI {
 	fn drop(&mut self) {
 		if !self.instance.is_null() {
-			(self.vtable.destroy)(self.instance);
+			unsafe { (self.vtable.destroy)(self.instance) };
 		}
 	}
 }
@@ -119,7 +117,7 @@ impl Procedure for NativeProcedureFFI {
 
 		let mut ffi_output = ColumnsFFI::empty();
 
-		let result = catch_unwind(AssertUnwindSafe(|| {
+		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 			(self.vtable.call)(
 				self.instance,
 				&mut ctx_ffi,

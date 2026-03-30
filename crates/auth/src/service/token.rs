@@ -22,10 +22,10 @@ impl AuthService {
 
 		if let Ok(Some(def)) = find_token_by_value(&mut Transaction::Query(&mut txn), token) {
 			// Check expiry
-			if let Some(expires_at) = def.expires_at {
-				if expires_at < self.now().ok()? {
-					return None;
-				}
+			if let Some(expires_at) = def.expires_at
+				&& expires_at < self.now().ok()?
+			{
+				return None;
 			}
 			return Some(def);
 		}
@@ -48,16 +48,16 @@ impl AuthService {
 		for auth in auths {
 			if let Ok(AuthStep::Authenticated) = provider.authenticate(&auth.properties, &creds) {
 				// Look up the identity via materialized catalog (no transaction needed)
-				if let Some(ident) = catalog.materialized.find_identity(auth.identity) {
-					if ident.enabled {
-						return Some(Token {
-							id: 0,
-							token: token.to_string(),
-							identity: ident.id,
-							expires_at: None,
-							created_at: DateTime::default(),
-						});
-					}
+				if let Some(ident) = catalog.materialized.find_identity(auth.identity)
+					&& ident.enabled
+				{
+					return Some(Token {
+						id: 0,
+						token: token.to_string(),
+						identity: ident.id,
+						expires_at: None,
+						created_at: DateTime::default(),
+					});
 				}
 			}
 		}
@@ -92,19 +92,19 @@ impl AuthService {
 
 	/// Revoke all session tokens for a given identity.
 	pub fn revoke_all(&self, identity: IdentityId) {
-		if let Ok(mut admin) = self.engine.begin_admin() {
-			if drop_tokens_by_identity(&mut admin, identity).is_ok() {
-				let _ = admin.commit();
-			}
+		if let Ok(mut admin) = self.engine.begin_admin()
+			&& drop_tokens_by_identity(&mut admin, identity).is_ok()
+		{
+			let _ = admin.commit();
 		}
 	}
 
 	/// Clean up expired sessions and challenges.
 	pub fn cleanup_expired(&self) {
-		if let (Ok(mut admin), Ok(now)) = (self.engine.begin_admin(), self.now()) {
-			if drop_expired_tokens(&mut admin, now).is_ok() {
-				let _ = admin.commit();
-			}
+		if let (Ok(mut admin), Ok(now)) = (self.engine.begin_admin(), self.now())
+			&& drop_expired_tokens(&mut admin, now).is_ok()
+		{
+			let _ = admin.commit();
 		}
 		self.challenges.cleanup_expired();
 	}

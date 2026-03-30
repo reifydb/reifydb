@@ -31,6 +31,12 @@ struct MemoryPrimitiveStorageInner {
 	entries: Entries,
 }
 
+impl Default for MemoryPrimitiveStorage {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl MemoryPrimitiveStorage {
 	#[instrument(name = "store::multi::memory::new", level = "debug")]
 	pub fn new() -> Self {
@@ -103,10 +109,10 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		// Check current first (fast path)
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(&key) {
-			if *cur_version <= version {
-				return Ok(value.clone());
-			}
+		if let Some((cur_version, value)) = current.get(&key)
+			&& *cur_version <= version
+		{
+			return Ok(value.clone());
 		}
 		drop(current);
 
@@ -137,11 +143,11 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		// Check current first
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(&key) {
-			if *cur_version <= version {
-				// Key exists if not a tombstone
-				return Ok(value.is_some());
-			}
+		if let Some((cur_version, value)) = current.get(&key)
+			&& *cur_version <= version
+		{
+			// Key exists if not a tombstone
+			return Ok(value.is_some());
 		}
 		drop(current);
 
@@ -494,14 +500,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 			for (key, version) in entries {
 				// Check if the version to drop is in current
-				if let Some((cur_version, _)) = current.get(&key) {
-					if *cur_version == version {
-						// Dropping current version - remove from current and all historical
-						// versions
-						current.remove(&key);
-						historical.remove(&key);
-						continue;
-					}
+				if let Some((cur_version, _)) = current.get(&key)
+					&& *cur_version == version
+				{
+					// Dropping current version - remove from current and all historical
+					// versions
+					current.remove(&key);
+					historical.remove(&key);
+					continue;
 				}
 
 				// Otherwise check historical - removing one version from historical

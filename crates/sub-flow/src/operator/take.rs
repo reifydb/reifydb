@@ -28,19 +28,10 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct TakeState {
 	active: BTreeMap<RowNumber, usize>,
 	candidates: BTreeMap<RowNumber, usize>,
-}
-
-impl Default for TakeState {
-	fn default() -> Self {
-		Self {
-			active: BTreeMap::new(),
-			candidates: BTreeMap::new(),
-		}
-	}
 }
 
 pub struct TakeOperator {
@@ -72,12 +63,13 @@ impl TakeOperator {
 			return Ok(TakeState::default());
 		}
 
-		from_bytes(blob.as_ref()).map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
+		from_bytes(blob.as_ref())
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize TakeState: {}", e))))
 	}
 
 	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> Result<()> {
-		let serialized =
-			to_stdvec(state).map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
+		let serialized = to_stdvec(state)
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize TakeState: {}", e))))?;
 		let blob = Blob::from(serialized);
 
 		self.update_state(txn, |shape, row| {

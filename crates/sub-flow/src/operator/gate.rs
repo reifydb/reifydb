@@ -34,7 +34,7 @@ use crate::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 /// A sentinel value stored to mark a row as "visible" (latch open).
 static VISIBLE_MARKER: LazyLock<EncodedRow> = LazyLock::new(|| EncodedRow(CowVec::new(vec![1])));
@@ -97,12 +97,12 @@ impl GateOperator {
 		for compiled_condition in &self.compiled_conditions {
 			let result_col = compiled_condition.execute(&exec_ctx)?;
 
-			for row_idx in 0..row_count {
-				if mask[row_idx] {
+			for (row_idx, mask_val) in mask.iter_mut().enumerate() {
+				if *mask_val {
 					match result_col.data().get_value(row_idx) {
 						Value::Boolean(true) => {}
-						Value::Boolean(false) => mask[row_idx] = false,
-						_ => mask[row_idx] = false,
+						Value::Boolean(false) => *mask_val = false,
+						_ => *mask_val = false,
 					}
 				}
 			}
@@ -192,8 +192,9 @@ impl Operator for GateOperator {
 						let mut update_indices = Vec::new();
 						let mut insert_indices = Vec::new();
 
-						for i in 0..post.row_numbers.len() {
-							let rn = post.row_numbers[i];
+						for (i, (&rn, &mask_val)) in
+							post.row_numbers.iter().zip(mask.iter()).enumerate()
+						{
 							let visible = self.is_visible(txn, rn)?;
 
 							if visible {
@@ -201,7 +202,7 @@ impl Operator for GateOperator {
 								update_indices.push(i);
 							} else {
 								// Not yet open — check condition on post
-								if mask[i] {
+								if mask_val {
 									// Open the latch, emit as Insert
 									self.mark_visible(txn, rn)?;
 									insert_indices.push(i);

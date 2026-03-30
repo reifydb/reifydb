@@ -239,18 +239,16 @@ impl<'a> Parser<'a> {
 			}
 
 			// Check for separator
-			if self.peek_str(3) == "---" {
-				if !commands.is_empty() {
-					break;
-				}
+			if self.peek_str(3) == "---" && !commands.is_empty() {
+				break;
 			}
 
 			// Check for leading whitespace (not allowed for
 			// commands)
-			if let Some(ch) = self.peek_char() {
-				if ch.is_whitespace() && ch != '\n' {
-					return Err(self.error("Command cannot start with whitespace"));
-				}
+			if let Some(ch) = self.peek_char()
+				&& ch.is_whitespace() && ch != '\n'
+			{
+				return Err(self.error("Command cannot start with whitespace"));
 			}
 
 			// Parse command
@@ -455,7 +453,7 @@ impl<'a> Parser<'a> {
 							// Try to parse what
 							// comes next as a
 							// potential key
-							if let Ok(_) = self.parse_string() {
+							if self.parse_string().is_ok() {
 								if self.peek_char() == Some('=') {
 									// This looks like another key=value, so current
 									// value is empty

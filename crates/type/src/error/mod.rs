@@ -13,7 +13,7 @@ pub mod r#macro;
 pub mod render;
 pub mod util;
 
-use std::{array::TryFromSliceError, error, fmt, mem, num, string};
+use std::{array::TryFromSliceError, error, fmt, num, string};
 
 use render::DefaultRenderer;
 
@@ -79,9 +79,9 @@ impl Diagnostic {
 
 		// Recursively set statement for all nested diagnostics
 		if let Some(ref mut cause) = self.cause {
-			let mut updated_cause = mem::replace(cause.as_mut(), Diagnostic::default());
+			let mut updated_cause = std::mem::take(cause.as_mut());
 			updated_cause.with_statement(statement);
-			*cause = Box::new(updated_cause);
+			**cause = updated_cause;
 		}
 	}
 
@@ -669,7 +669,7 @@ impl NumberOutOfRangeDescriptor {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Error(pub Diagnostic);
+pub struct Error(pub Box<Diagnostic>);
 
 impl Deref for Error {
 	type Target = Diagnostic;
@@ -694,7 +694,7 @@ impl Display for Error {
 
 impl Error {
 	pub fn diagnostic(self) -> Diagnostic {
-		self.0
+		*self.0
 	}
 }
 
@@ -747,7 +747,13 @@ impl From<string::FromUtf8Error> for Error {
 
 impl From<TypeError> for Error {
 	fn from(err: TypeError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
+	}
+}
+
+impl From<Box<TypeError>> for Error {
+	fn from(err: Box<TypeError>) -> Self {
+		Error(Box::new(err.into_diagnostic()))
 	}
 }
 

@@ -33,7 +33,7 @@ use crate::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub struct FilterOperator {
 	parent: Arc<Operators>,
@@ -94,11 +94,11 @@ impl FilterOperator {
 		for compiled_condition in &self.compiled_conditions {
 			let result_col = compiled_condition.execute(&exec_ctx)?;
 
-			for row_idx in 0..row_count {
-				if mask[row_idx] {
+			for (row_idx, mask_val) in mask.iter_mut().enumerate() {
+				if *mask_val {
 					match result_col.data().get_value(row_idx) {
 						Value::Boolean(true) => {}
-						Value::Boolean(false) => mask[row_idx] = false,
+						Value::Boolean(false) => *mask_val = false,
 						result => {
 							return internal_err!(
 								"Filter condition did not evaluate to boolean, got: {:?}",

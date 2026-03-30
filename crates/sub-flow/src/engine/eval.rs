@@ -21,7 +21,7 @@ use reifydb_type::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 /// Evaluate a list of expressions into operator configuration
 ///
@@ -66,21 +66,18 @@ pub fn evaluate_operator_config(
 	let exec_ctx = session.eval(empty_columns, 1);
 
 	for expr in expressions {
-		match expr {
-			Expression::Alias(alias_expr) => {
-				let key = alias_expr.alias.name().to_string();
+		if let Expression::Alias(alias_expr) = expr {
+			let key = alias_expr.alias.name().to_string();
 
-				let expr = compile_expression(&compile_ctx, &alias_expr.expression)?;
-				let column = expr.execute(&exec_ctx)?;
+			let expr = compile_expression(&compile_ctx, &alias_expr.expression)?;
+			let column = expr.execute(&exec_ctx)?;
 
-				let value = if column.data().len() > 0 {
-					column.data().get_value(0)
-				} else {
-					Value::none()
-				};
-				result.insert(key, value);
-			}
-			_ => {}
+			let value = if column.data().len() > 0 {
+				column.data().get_value(0)
+			} else {
+				Value::none()
+			};
+			result.insert(key, value);
 		}
 	}
 

@@ -24,7 +24,7 @@ impl CatalogStore {
 			let state_range = FlowNodeStateKey::node_range(node_id);
 			let mut state_stream = txn.range(state_range, 1024)?;
 			let mut state_keys = Vec::new();
-			while let Some(entry) = state_stream.next() {
+			for entry in state_stream.by_ref() {
 				state_keys.push(entry?.key.clone());
 			}
 			drop(state_stream);
@@ -36,7 +36,7 @@ impl CatalogStore {
 			let internal_range = FlowNodeInternalStateKey::node_range(node_id);
 			let mut internal_stream = txn.range(internal_range, 1024)?;
 			let mut internal_keys = Vec::new();
-			while let Some(entry) = internal_stream.next() {
+			for entry in internal_stream.by_ref() {
 				internal_keys.push(entry?.key.clone());
 			}
 			drop(internal_stream);

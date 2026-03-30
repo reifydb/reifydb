@@ -97,29 +97,19 @@ impl<'de> Deserialize<'de> for CommitVersion {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum JoinType {
 	Inner,
+	#[default]
 	Left,
 }
 
-impl Default for JoinType {
-	fn default() -> Self {
-		JoinType::Left
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum IndexType {
+	#[default]
 	Index,
 	Unique,
 	Primary,
-}
-
-impl Default for IndexType {
-	fn default() -> Self {
-		IndexType::Index
-	}
 }
 
 /// How a window is measured — either by time duration or by event count.

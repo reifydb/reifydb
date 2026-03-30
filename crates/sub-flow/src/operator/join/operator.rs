@@ -52,7 +52,7 @@ use crate::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 pub struct JoinOperator {
 	pub(crate) left_parent: Arc<Operators>,
@@ -188,8 +188,9 @@ impl JoinOperator {
 					break;
 				}
 
-				let bytes = to_stdvec(&value)
-					.map_err(|e| Error(internal!("Failed to encode value for hash: {}", e)))?;
+				let bytes = to_stdvec(&value).map_err(|e| {
+					Error(Box::new(internal!("Failed to encode value for hash: {}", e)))
+				})?;
 				hasher.extend_from_slice(&bytes);
 			}
 
@@ -470,10 +471,10 @@ impl Operator for JoinOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// Check for self-referential calls (should never happen)
-		if let ChangeOrigin::Flow(from_node) = &change.origin {
-			if *from_node == self.node {
-				return Ok(Change::from_flow(self.node, change.version, Vec::new()));
-			}
+		if let ChangeOrigin::Flow(from_node) = &change.origin
+			&& *from_node == self.node
+		{
+			return Ok(Change::from_flow(self.node, change.version, Vec::new()));
 		}
 
 		// Create the state
@@ -485,7 +486,7 @@ impl Operator for JoinOperator {
 		// Determine which side this change is from
 		let side = self
 			.determine_side(&change)
-			.ok_or_else(|| Error(internal!("Join operator received change from unknown node")))?;
+			.ok_or_else(|| Error(Box::new(internal!("Join operator received change from unknown node"))))?;
 
 		let compiled_exprs = match side {
 			JoinSide::Left => &self.compiled_left_exprs,
@@ -500,15 +501,14 @@ impl Operator for JoinOperator {
 				} => {
 					// Compute keys for all rows in this Columns batch
 					let keys = self.compute_join_keys(&post, compiled_exprs)?;
-					let row_count = post.row_count();
 
 					// Group indices by key hash
 					let mut inserts_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
 					let mut inserts_undefined: Vec<usize> = Vec::new();
 
-					for row_idx in 0..row_count {
-						if let Some(key_hash) = keys[row_idx] {
-							inserts_by_key.entry(key_hash).or_default().push(row_idx);
+					for (row_idx, key) in keys.iter().enumerate() {
+						if let Some(key_hash) = key {
+							inserts_by_key.entry(*key_hash).or_default().push(row_idx);
 						} else {
 							inserts_undefined.push(row_idx);
 						}
@@ -535,15 +535,14 @@ impl Operator for JoinOperator {
 				} => {
 					// Compute keys for all rows
 					let keys = self.compute_join_keys(&pre, compiled_exprs)?;
-					let row_count = pre.row_count();
 
 					// Group indices by key hash
 					let mut removes_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
 					let mut removes_undefined: Vec<usize> = Vec::new();
 
-					for row_idx in 0..row_count {
-						if let Some(key_hash) = keys[row_idx] {
-							removes_by_key.entry(key_hash).or_default().push(row_idx);
+					for (row_idx, key) in keys.iter().enumerate() {
+						if let Some(key_hash) = key {
+							removes_by_key.entry(*key_hash).or_default().push(row_idx);
 						} else {
 							removes_undefined.push(row_idx);
 						}

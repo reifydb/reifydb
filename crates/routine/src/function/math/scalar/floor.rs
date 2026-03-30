@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct Floor;
 
+impl Default for Floor {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Floor {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for Floor {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match column.data() {
 			ColumnData::Float4(container) => {

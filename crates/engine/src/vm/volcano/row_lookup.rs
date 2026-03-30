@@ -39,7 +39,7 @@ pub(crate) struct RowPointLookupNode {
 	exhausted: bool,
 }
 
-impl<'a> RowPointLookupNode {
+impl RowPointLookupNode {
 	pub fn new(source: ResolvedShape, row_number: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
@@ -116,7 +116,7 @@ pub(crate) struct RowListLookupNode {
 	current_index: usize,
 }
 
-impl<'a> RowListLookupNode {
+impl RowListLookupNode {
 	pub fn new(source: ResolvedShape, row_numbers: Vec<u64>, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
@@ -156,6 +156,7 @@ impl QueryNode for RowListLookupNode {
 	}
 
 	#[instrument(name = "volcano::lookup::list::next", level = "trace", skip_all)]
+	#[allow(clippy::only_used_in_recursion)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
@@ -217,7 +218,7 @@ pub(crate) struct RowRangeScanNode {
 	exhausted: bool,
 }
 
-impl<'a> RowRangeScanNode {
+impl RowRangeScanNode {
 	pub fn new(source: ResolvedShape, start: u64, end: u64, context: Arc<QueryContext>) -> Result<Self> {
 		let (headers, _) = build_headers_and_storage_types(&source)?;
 
@@ -259,6 +260,7 @@ impl QueryNode for RowRangeScanNode {
 	}
 
 	#[instrument(name = "volcano::scan::range::next", level = "trace", skip_all)]
+	#[allow(clippy::only_used_in_recursion)]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
@@ -311,7 +313,7 @@ impl QueryNode for RowRangeScanNode {
 
 // Helper functions
 
-fn build_headers_and_storage_types<'a>(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<Type>)> {
+fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHeaders, Vec<Type>)> {
 	let columns = match source {
 		ResolvedShape::Table(table) => table.columns(),
 		ResolvedShape::View(view) => view.columns(),
@@ -339,7 +341,7 @@ fn get_object_id(source: &ResolvedShape) -> Result<ShapeId> {
 	}
 }
 
-fn columns_from_shape<'a>(source: &ResolvedShape) -> Columns {
+fn columns_from_shape(source: &ResolvedShape) -> Columns {
 	match source {
 		ResolvedShape::Table(table) => Columns::from_resolved_table(table),
 		ResolvedShape::View(view) => Columns::from_resolved_view(view),

@@ -22,6 +22,12 @@ pub struct SystemNamespaces {
 	exhausted: bool,
 }
 
+impl Default for SystemNamespaces {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemNamespaces {
 	pub fn new() -> Self {
 		Self {

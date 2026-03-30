@@ -65,7 +65,7 @@ impl WindowOperator {
 	) -> Result<()> {
 		let tracker_key = self.create_session_tracker_key(group_hash);
 		let serialized = to_stdvec(&(session_id, last_event_time))
-			.map_err(|e| Error(internal!("Failed to serialize session tracker: {}", e)))?;
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize session tracker: {}", e))))?;
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
@@ -104,14 +104,13 @@ impl WindowOperator {
 			}
 
 			if current_timestamp.saturating_sub(state.last_event_time) > gap_ms {
-				if let Some(layout) = &state.window_layout {
-					if let Some((row, _)) =
+				if let Some(layout) = &state.window_layout
+					&& let Some((row, _)) =
 						self.apply_aggregations(txn, &window_key, layout, &state.events)?
-					{
-						result.push(Diff::Remove {
-							pre: Columns::from_row(&row),
-						});
-					}
+				{
+					result.push(Diff::Remove {
+						pre: Columns::from_row(&row),
+					});
 				}
 				keys_to_clear.push(window_key);
 			}
@@ -144,9 +143,7 @@ fn process_session_group_insert(
 
 	let (mut session_id, mut last_event_time) = operator.load_session_tracker(txn, group_hash)?;
 
-	for row_idx in 0..row_count {
-		let event_timestamp = timestamps[row_idx];
-
+	for (row_idx, &event_timestamp) in timestamps.iter().enumerate() {
 		// Check if the gap has been exceeded → close old session, open new
 		let gap_exceeded = last_event_time > 0 && (event_timestamp - last_event_time) > gap_ms;
 
@@ -154,19 +151,14 @@ fn process_session_group_insert(
 			// Emit Remove for the old session before starting a new one
 			let pre_window_key = operator.create_window_key(group_hash, session_id);
 			let pre_state = operator.load_window_state(txn, &pre_window_key)?;
-			if !pre_state.events.is_empty() {
-				if let Some(layout) = &pre_state.window_layout {
-					if let Some((pre_row, _)) = operator.apply_aggregations(
-						txn,
-						&pre_window_key,
-						layout,
-						&pre_state.events,
-					)? {
-						result.push(Diff::Remove {
-							pre: Columns::from_row(&pre_row),
-						});
-					}
-				}
+			if !pre_state.events.is_empty()
+				&& let Some(layout) = &pre_state.window_layout
+				&& let Some((pre_row, _)) =
+					operator.apply_aggregations(txn, &pre_window_key, layout, &pre_state.events)?
+			{
+				result.push(Diff::Remove {
+					pre: Columns::from_row(&pre_row),
+				});
 			}
 			session_id += 1;
 		}

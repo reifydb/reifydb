@@ -76,7 +76,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 }
 
 /// Stub: RQL execution is not supported from sub-flow FFI operators.
-extern "C" fn host_rql_unsupported(
+unsafe extern "C" fn host_rql_unsupported(
 	_ctx: *mut ContextFFI,
 	_rql_ptr: *const u8,
 	_rql_len: usize,

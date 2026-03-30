@@ -22,7 +22,7 @@ use crate::{
 	vm::{services::Services, stack::SymbolTable},
 };
 
-pub(crate) fn alter_table_sequence<'a>(
+pub(crate) fn alter_table_sequence(
 	services: &Services,
 	txn: &mut AdminTransaction,
 	plan: AlterSequenceNode,
@@ -52,7 +52,7 @@ pub(crate) fn alter_table_sequence<'a>(
 	// ExecutionContext is available
 
 	static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
-	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+	static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 
 	let session = EvalSession {
 		params: &EMPTY_PARAMS,

@@ -42,7 +42,7 @@ pub fn decode(hex: &str) -> Result<Vec<u8>, DecodeError> {
 		return Ok(Vec::new());
 	}
 
-	if hex.len() % 2 != 0 {
+	if !hex.len().is_multiple_of(2) {
 		return Err(DecodeError::OddLength);
 	}
 

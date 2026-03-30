@@ -273,7 +273,7 @@ pub enum Transaction<'a> {
 	Admin(&'a mut AdminTransaction),
 	Query(&'a mut QueryTransaction),
 	Subscription(&'a mut SubscriptionTransaction),
-	Test(TestTransaction<'a>),
+	Test(Box<TestTransaction<'a>>),
 	Replica(&'a mut ReplicaTransaction),
 }
 
@@ -472,7 +472,7 @@ impl<'a> Transaction<'a> {
 		let mut tx = self.reborrow();
 		let result = executor.rql(&mut tx, rql, params);
 		if let Err(ref e) = result {
-			self.poison(e.0.clone());
+			self.poison(*e.0.clone());
 		}
 		result
 	}
@@ -498,7 +498,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(admin) => Transaction::Admin(admin),
 			Transaction::Query(qry) => Transaction::Query(qry),
 			Transaction::Subscription(sub) => Transaction::Subscription(sub),
-			Transaction::Test(t) => Transaction::Test(TestTransaction {
+			Transaction::Test(t) => Transaction::Test(Box::new(TestTransaction {
 				inner: t.inner,
 				baseline: t.baseline,
 				events: t.events,
@@ -508,7 +508,7 @@ impl<'a> Transaction<'a> {
 				savepoint: None,
 				session_type: t.session_type.clone(),
 				session_default_deny: t.session_default_deny,
-			}),
+			})),
 			Transaction::Replica(rep) => Transaction::Replica(rep),
 		}
 	}

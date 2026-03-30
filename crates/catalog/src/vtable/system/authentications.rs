@@ -22,6 +22,12 @@ pub struct SystemAuthentications {
 	exhausted: bool,
 }
 
+impl Default for SystemAuthentications {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemAuthentications {
 	pub fn new() -> Self {
 		Self {

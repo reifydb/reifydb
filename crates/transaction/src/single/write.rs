@@ -76,7 +76,7 @@ impl<'a> SingleWriteTransaction<'a> {
 			Ok(())
 		} else {
 			Err(TransactionError::KeyOutOfScope {
-				key: hex::encode(&key),
+				key: hex::encode(key),
 			}
 			.into())
 		}

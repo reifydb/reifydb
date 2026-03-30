@@ -64,13 +64,13 @@ impl BaseVTable for SystemFlowStorageStats {
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
-				if let MetricId::FlowNode(flow_node_id) = obj_id {
-					if let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id)? {
-						let key = (node_def.flow, tier);
-						let entry = aggregated.entry(key).or_default();
-						entry.storage += stats.storage;
-						entry.cdc += stats.cdc;
-					}
+				if let MetricId::FlowNode(flow_node_id) = obj_id
+					&& let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id)?
+				{
+					let key = (node_def.flow, tier);
+					let entry = aggregated.entry(key).or_default();
+					entry.storage += stats.storage;
+					entry.cdc += stats.cdc;
 				}
 			}
 		}

@@ -23,8 +23,8 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog
 	// Collect entries first to avoid borrow issues with nested async calls
 	let mut entries = Vec::new();
 	{
-		let mut stream = rx.range(range, 1024)?;
-		while let Some(entry) = stream.next() {
+		let stream = rx.range(range, 1024)?;
+		for entry in stream {
 			entries.push(entry?);
 		}
 	}

@@ -19,9 +19,9 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
-		let mut stream = rx.range(RoleKey::full_scan(), 1024)?;
+		let stream = rx.range(RoleKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let role_name = role::SHAPE.get_utf8(&multi.row, role::NAME);
 			if name == role_name {

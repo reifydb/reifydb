@@ -84,10 +84,10 @@ impl Vm {
 		}
 
 		// 2. Closure variable
-		if let Some(closure_val) = self.symbols.get(&strip_dollar_prefix(func_name)).cloned() {
-			if let Variable::Closure(closure) = closure_val {
-				return self.call_closure(services, tx, params, closure, args);
-			}
+		if let Some(closure_val) = self.symbols.get(strip_dollar_prefix(func_name)).cloned()
+			&& let Variable::Closure(closure) = closure_val
+		{
+			return self.call_closure(services, tx, params, closure, args);
 		}
 
 		// 3. Catalog procedure
@@ -402,12 +402,11 @@ impl Vm {
 			let columns = proc_impl.call(&ctx, tx).map_err(|e| e.with_context(name.clone()))?;
 
 			// Special handling: identity::inject updates the transaction's identity
-			if func_name == "identity::inject" {
-				if let Some(col) = columns.get(0) {
-					if let Value::IdentityId(id) = col.data().get_value(0) {
-						tx.set_identity(id);
-					}
-				}
+			if func_name == "identity::inject"
+				&& let Some(col) = columns.first()
+				&& let Value::IdentityId(id) = col.data().get_value(0)
+			{
+				tx.set_identity(id);
 			}
 
 			self.stack.push(Variable::Columns(columns));

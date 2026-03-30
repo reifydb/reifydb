@@ -20,8 +20,8 @@ impl CatalogStore {
 		// First collect all node IDs to avoid holding stream borrow
 		let mut node_ids = Vec::new();
 		{
-			let mut stream = rx.range(FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = rx.range(FlowNodeByFlowKey::full_scan(flow_id), 1024)?;
+			for entry in stream {
 				let multi = entry?;
 				node_ids.push(FlowNodeId(
 					flow_node_by_flow::SHAPE.get_u64(&multi.row, flow_node_by_flow::ID),
@@ -43,9 +43,9 @@ impl CatalogStore {
 	pub(crate) fn list_flow_nodes_all(rx: &mut Transaction<'_>) -> Result<Vec<FlowNode>> {
 		let mut result = Vec::new();
 
-		let mut stream = rx.range(FlowNodeKey::full_scan(), 1024)?;
+		let stream = rx.range(FlowNodeKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
 			if let Some(flow_node_key) = FlowNodeKey::decode(&entry.key) {
 				let node_id = flow_node_key.node;

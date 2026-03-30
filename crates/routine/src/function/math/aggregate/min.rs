@@ -23,6 +23,12 @@ pub struct Min {
 	input_type: Option<Type>,
 }
 
+impl Default for Min {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Min {
 	pub fn new() -> Self {
 		Self {
@@ -114,13 +120,13 @@ impl AggregateFunction for Min {
 				for (group, indices) in groups.iter() {
 					let mut min: Option<f32> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(&val) = container.get(i) {
-								min = Some(match min {
-									Some(current) => f32::min(current, val),
-									None => val,
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(&val) = container.get(i)
+						{
+							min = Some(match min {
+								Some(current) => f32::min(current, val),
+								None => val,
+							});
 						}
 					}
 					match min {
@@ -138,13 +144,13 @@ impl AggregateFunction for Min {
 				for (group, indices) in groups.iter() {
 					let mut min: Option<f64> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(&val) = container.get(i) {
-								min = Some(match min {
-									Some(current) => f64::min(current, val),
-									None => val,
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(&val) = container.get(i)
+						{
+							min = Some(match min {
+								Some(current) => f64::min(current, val),
+								None => val,
+							});
 						}
 					}
 					match min {
@@ -165,14 +171,14 @@ impl AggregateFunction for Min {
 				for (group, indices) in groups.iter() {
 					let mut min: Option<Int> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								min = Some(match min {
-									Some(current) if *val < current => val.clone(),
-									Some(current) => current,
-									None => val.clone(),
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							min = Some(match min {
+								Some(current) if *val < current => val.clone(),
+								Some(current) => current,
+								None => val.clone(),
+							});
 						}
 					}
 					match min {
@@ -193,14 +199,14 @@ impl AggregateFunction for Min {
 				for (group, indices) in groups.iter() {
 					let mut min: Option<Uint> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								min = Some(match min {
-									Some(current) if *val < current => val.clone(),
-									Some(current) => current,
-									None => val.clone(),
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							min = Some(match min {
+								Some(current) if *val < current => val.clone(),
+								Some(current) => current,
+								None => val.clone(),
+							});
 						}
 					}
 					match min {
@@ -221,14 +227,14 @@ impl AggregateFunction for Min {
 				for (group, indices) in groups.iter() {
 					let mut min: Option<Decimal> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								min = Some(match min {
-									Some(current) if *val < current => val.clone(),
-									Some(current) => current,
-									None => val.clone(),
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							min = Some(match min {
+								Some(current) if *val < current => val.clone(),
+								Some(current) => current,
+								None => val.clone(),
+							});
 						}
 					}
 					match min {

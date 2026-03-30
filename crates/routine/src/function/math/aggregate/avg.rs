@@ -21,6 +21,12 @@ pub struct Avg {
 	pub counts: IndexMap<Vec<Value>, u64>,
 }
 
+impl Default for Avg {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Avg {
 	pub fn new() -> Self {
 		Self {
@@ -117,11 +123,11 @@ impl AggregateFunction for Avg {
 					let mut sum = 0.0f64;
 					let mut count = 0u64;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								sum += val.0.to_f64().unwrap_or(0.0);
-								count += 1;
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							sum += val.0.to_f64().unwrap_or(0.0);
+							count += 1;
 						}
 					}
 					if count > 0 {
@@ -145,11 +151,11 @@ impl AggregateFunction for Avg {
 					let mut sum = 0.0f64;
 					let mut count = 0u64;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								sum += val.0.to_f64().unwrap_or(0.0);
-								count += 1;
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							sum += val.0.to_f64().unwrap_or(0.0);
+							count += 1;
 						}
 					}
 					if count > 0 {
@@ -173,11 +179,11 @@ impl AggregateFunction for Avg {
 					let mut sum = 0.0f64;
 					let mut count = 0u64;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								sum += val.0.to_f64().unwrap_or(0.0);
-								count += 1;
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							sum += val.0.to_f64().unwrap_or(0.0);
+							count += 1;
 						}
 					}
 					if count > 0 {

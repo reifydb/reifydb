@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateEndOfMonth;
 
+impl Default for DateEndOfMonth {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateEndOfMonth {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for DateEndOfMonth {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Date(container) => {

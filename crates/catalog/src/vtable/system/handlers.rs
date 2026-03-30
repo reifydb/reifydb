@@ -57,15 +57,13 @@ impl BaseVTable for SystemHandlers {
 		let mut collect = |proc_def: &Procedure| {
 			if let ProcedureTrigger::Event {
 				variant,
-			} = &proc_def.trigger
+			} = &proc_def.trigger && !ids.contains(&proc_def.id.0)
 			{
-				if !ids.contains(&proc_def.id.0) {
-					ids.push(proc_def.id.0);
-					namespace_ids.push(proc_def.namespace.0);
-					names.push(proc_def.name.clone());
-					sumtype_ids.push(variant.sumtype_id.0);
-					variant_tags.push(variant.variant_tag);
-				}
+				ids.push(proc_def.id.0);
+				namespace_ids.push(proc_def.namespace.0);
+				names.push(proc_def.name.clone());
+				sumtype_ids.push(variant.sumtype_id.0);
+				variant_tags.push(variant.variant_tag);
 			}
 		};
 

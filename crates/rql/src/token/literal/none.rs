@@ -15,7 +15,7 @@ pub fn scan_none<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 	if cursor.peek_str(4).eq_ignore_ascii_case("none") {
 		let next = cursor.peek_ahead(4);
-		if next.map_or(true, |c| !is_identifier_char(c)) {
+		if next.is_none_or(|c| !is_identifier_char(c)) {
 			cursor.consume_str_ignore_case("none");
 			return Some(Token {
 				kind: TokenKind::Literal(None),

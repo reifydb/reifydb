@@ -43,7 +43,14 @@ impl<T: FFIProcedure> ProcedureWrapper<T> {
 }
 
 /// FFI procedure call function
-pub extern "C" fn ffi_procedure_call<T: FFIProcedure>(
+///
+/// # Safety
+///
+/// - `instance` must be a valid pointer to a `ProcedureWrapper<T>` created by `Box::new`.
+/// - `ctx` must be a valid pointer to a `ContextFFI`.
+/// - `params_ptr` must be valid for reading `params_len` bytes, or null if `params_len` is 0.
+/// - `output` must be a valid pointer to a `ColumnsFFI` for writing.
+pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	params_ptr: *const u8,
@@ -102,7 +109,12 @@ pub extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 }
 
 /// FFI destroy function - drop the procedure wrapper
-pub extern "C" fn ffi_procedure_destroy<T: FFIProcedure>(instance: *mut c_void) {
+///
+/// # Safety
+///
+/// - `instance` must be a valid pointer to a `ProcedureWrapper<T>` originally created by `Box::new`, or null (in which
+///   case this is a no-op).
+pub unsafe extern "C" fn ffi_procedure_destroy<T: FFIProcedure>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;
 	}

@@ -32,7 +32,7 @@ pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()> {
 			continue;
 		}
 
-		let is_shared_lib = path.extension().map_or(false, |ext| ext == "so" || ext == "dylib");
+		let is_shared_lib = path.extension().is_some_and(|ext| ext == "so" || ext == "dylib");
 		if !is_shared_lib {
 			continue;
 		}

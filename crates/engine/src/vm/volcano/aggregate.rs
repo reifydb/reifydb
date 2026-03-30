@@ -220,7 +220,7 @@ fn parse_keys_and_aggregates<'a>(
 		match actual_expr {
 			Expression::Call(call) => {
 				let func = call.func.0.text();
-				match call.args.first().map(|arg| arg) {
+				match call.args.first() {
 					Some(Expression::Column(c)) => {
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {

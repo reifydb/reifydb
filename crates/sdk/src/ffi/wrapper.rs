@@ -94,12 +94,18 @@ fn marshal_output(arena: &mut Arena, output_change: &Change, output: *mut Change
 	}
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
+/// - `ctx` must be a valid pointer to a `ContextFFI`.
+/// - `input` must be a valid pointer to a `ChangeFFI` for reading.
+/// - `output` must be a valid pointer to a `ChangeFFI` for writing.
 #[instrument(name = "flow::operator::ffi::apply", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 	input_diffs,
 	output_diffs
 ))]
-pub extern "C" fn ffi_apply<O: FFIOperator>(
+pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	input: *const ChangeFFI,
@@ -146,12 +152,18 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 	code
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
+/// - `ctx` must be a valid pointer to a `ContextFFI`.
+/// - `row_numbers` must be valid for reading `count` elements, or null if `count` is 0.
+/// - `output` must be a valid pointer to a `ColumnsFFI` for writing.
 #[instrument(name = "flow::operator::ffi::pull", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 	row_count = count,
 	rows_returned
 ))]
-pub extern "C" fn ffi_pull<O: FFIOperator>(
+pub unsafe extern "C" fn ffi_pull<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	row_numbers: *const u64,
@@ -204,11 +216,16 @@ pub extern "C" fn ffi_pull<O: FFIOperator>(
 	code
 }
 
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` created by `Box::new`.
+/// - `ctx` must be a valid pointer to a `ContextFFI`.
+/// - `output` must be a valid pointer to a `ChangeFFI` for writing.
 #[instrument(name = "flow::operator::ffi::tick", level = "debug", skip_all, fields(
 	operator_type = any::type_name::<O>(),
 	output_diffs
 ))]
-pub extern "C" fn ffi_tick<O: FFIOperator>(
+pub unsafe extern "C" fn ffi_tick<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut ContextFFI,
 	timestamp_nanos: u64,
@@ -250,7 +267,11 @@ pub extern "C" fn ffi_tick<O: FFIOperator>(
 	code
 }
 
-pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
+/// # Safety
+///
+/// - `instance` must be a valid pointer to an `OperatorWrapper<O>` originally created by `Box::new`, or null (in which
+///   case this is a no-op).
+pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;
 	}

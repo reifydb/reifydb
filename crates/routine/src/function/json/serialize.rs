@@ -40,11 +40,11 @@ fn to_json(value: &Value) -> String {
 		Value::Type(t) => format!("\"{}\"", t),
 		Value::Any(v) => to_json(v),
 		Value::List(items) => {
-			let inner: Vec<String> = items.iter().map(|v| to_json(v)).collect();
+			let inner: Vec<String> = items.iter().map(to_json).collect();
 			format!("[{}]", inner.join(", "))
 		}
 		Value::Tuple(items) => {
-			let inner: Vec<String> = items.iter().map(|v| to_json(v)).collect();
+			let inner: Vec<String> = items.iter().map(to_json).collect();
 			format!("[{}]", inner.join(", "))
 		}
 		Value::Record(fields) => {
@@ -61,6 +61,12 @@ fn to_json(value: &Value) -> String {
 
 pub struct JsonSerialize;
 
+impl Default for JsonSerialize {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl JsonSerialize {
 	pub fn new() -> Self {
 		Self
@@ -76,7 +82,7 @@ impl ScalarFunction for JsonSerialize {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 		let results: Vec<String> = (0..row_count).map(|row| to_json(&col.data().get_value(row))).collect();
 
 		Ok(ColumnData::utf8(results))

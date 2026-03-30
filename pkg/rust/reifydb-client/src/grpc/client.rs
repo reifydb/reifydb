@@ -49,11 +49,11 @@ pub struct GrpcClient {
 impl GrpcClient {
 	pub async fn connect(url: &str) -> Result<Self, Error> {
 		let channel = Channel::from_shared(url.to_string()).unwrap().connect().await.map_err(|e| {
-			Error(Diagnostic {
+			Error(Box::new(Diagnostic {
 				code: "GRPC_CONNECT".to_string(),
 				message: format!("Failed to connect: {}", e),
 				..Default::default()
-			})
+			}))
 		})?;
 
 		Ok(Self {
@@ -102,11 +102,11 @@ impl GrpcClient {
 				identity: inner.identity,
 			})
 		} else {
-			Err(Error(Diagnostic {
+			Err(Error(Box::new(Diagnostic {
 				code: "AUTH_FAILED".to_string(),
 				message: inner.reason,
 				..Default::default()
-			}))
+			})))
 		}
 	}
 
@@ -246,21 +246,21 @@ impl GrpcClient {
 
 		// Consume the initial SubscribedEvent to extract subscription_id
 		let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
-			Error(Diagnostic {
+			Error(Box::new(Diagnostic {
 				code: "GRPC_SUBSCRIBE".to_string(),
 				message: "Stream closed before receiving subscription ID".to_string(),
 				..Default::default()
-			})
+			}))
 		})?;
 
 		let subscription_id = match first.event {
 			Some(subscription_event::Event::Subscribed(s)) => s.subscription_id,
 			_ => {
-				return Err(Error(Diagnostic {
+				return Err(Error(Box::new(Diagnostic {
 					code: "GRPC_SUBSCRIBE".to_string(),
 					message: "Expected SubscribedEvent as first message".to_string(),
 					..Default::default()
-				}));
+				})));
 			}
 		};
 
@@ -667,7 +667,7 @@ fn decode_bitvec(data: &[u8]) -> BitVec {
 		return BitVec::default();
 	}
 	let num_bits = u32::from_le_bytes(data[..4].try_into().unwrap()) as usize;
-	let byte_count = (num_bits + 7) / 8;
+	let byte_count = num_bits.div_ceil(8);
 	let bits = data[4..4 + byte_count].to_vec();
 	BitVec::from_raw(bits, num_bits)
 }
@@ -837,11 +837,11 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 
 fn status_to_error(status: tonic::Status) -> Error {
 	if let Ok(diag) = serde_json::from_str::<Diagnostic>(status.message()) {
-		return Error(diag);
+		return Error(Box::new(diag));
 	}
-	Error(Diagnostic {
+	Error(Box::new(Diagnostic {
 		code: format!("GRPC_{:?}", status.code()),
 		message: status.message().to_string(),
 		..Default::default()
-	})
+	}))
 }

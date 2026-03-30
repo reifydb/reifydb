@@ -682,7 +682,7 @@ fn expr_has_aggregate(expr: &Expr) -> bool {
 			..
 		} => {
 			when_clauses.iter().any(|(c, r)| expr_has_aggregate(c) || expr_has_aggregate(r))
-				|| else_clause.as_ref().map_or(false, |e| expr_has_aggregate(e))
+				|| else_clause.as_ref().is_some_and(|e| expr_has_aggregate(e))
 		}
 		_ => false,
 	}
@@ -694,15 +694,13 @@ fn collect_aggregate_columns(cols: &[SelectColumn]) -> Result<String, Error> {
 		if let SelectColumn::Expr {
 			expr,
 			alias,
-		} = col
+		} = col && expr_has_aggregate(expr)
 		{
-			if expr_has_aggregate(expr) {
-				let e = emit_expr(expr)?;
-				if let Some(alias) = alias {
-					agg_exprs.push(format!("{alias}: {e}"));
-				} else {
-					agg_exprs.push(e);
-				}
+			let e = emit_expr(expr)?;
+			if let Some(alias) = alias {
+				agg_exprs.push(format!("{alias}: {e}"));
+			} else {
+				agg_exprs.push(e);
 			}
 		}
 	}
@@ -715,18 +713,16 @@ fn collect_non_aggregate_map_columns(sel: &SelectStatement) -> Result<String, Er
 		if let SelectColumn::Expr {
 			expr,
 			alias,
-		} = col
+		} = col && !expr_has_aggregate(expr)
 		{
-			if !expr_has_aggregate(expr) {
-				// Check if this column is already in GROUP BY
-				let is_in_group_by = sel.group_by.iter().any(|gb| expr_eq(gb, expr));
-				if !is_in_group_by {
-					let e = emit_expr(expr)?;
-					if let Some(alias) = alias {
-						map_exprs.push(format!("{alias}: {e}"));
-					} else {
-						map_exprs.push(e);
-					}
+			// Check if this column is already in GROUP BY
+			let is_in_group_by = sel.group_by.iter().any(|gb| expr_eq(gb, expr));
+			if !is_in_group_by {
+				let e = emit_expr(expr)?;
+				if let Some(alias) = alias {
+					map_exprs.push(format!("{alias}: {e}"));
+				} else {
+					map_exprs.push(e);
 				}
 			}
 		}

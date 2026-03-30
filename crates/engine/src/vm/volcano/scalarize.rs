@@ -19,7 +19,7 @@ pub(crate) struct ScalarizeNode {
 	frame_consumed: bool,
 }
 
-impl<'a> ScalarizeNode {
+impl ScalarizeNode {
 	pub(crate) fn new(input: Box<dyn QueryNode>) -> Self {
 		Self {
 			input,
@@ -76,11 +76,11 @@ impl QueryNode for ScalarizeNode {
 			}
 			(rows, cols) => {
 				// Error for non-1x1 frames
-				Err(Error(internal!(
+				Err(Error(Box::new(internal!(
 					"Cannot scalarize frame with {} rows and {} columns - expected 1x1 frame",
 					rows,
 					cols
-				)))
+				))))
 			}
 		}
 	}

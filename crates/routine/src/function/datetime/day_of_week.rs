@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeDayOfWeek;
 
+impl Default for DateTimeDayOfWeek {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeDayOfWeek {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DateTimeDayOfWeek {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::DateTime(container) => {

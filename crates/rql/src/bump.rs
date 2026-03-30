@@ -13,8 +13,9 @@ pub type BumpBox<'b, T> = bumpalo::boxed::Box<'b, T>;
 /// Unlike `Fragment` (which uses `Arc<String>`), `BumpFragment` stores `&'bump str`
 /// slices — either zero-copy references into the original input string, or bump-allocated
 /// strings for constructed text. Converts to owned `Fragment` at materialization boundaries.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BumpFragment<'bump> {
+	#[default]
 	None,
 	Statement {
 		text: &'bump str,
@@ -108,12 +109,6 @@ impl<'bump> BumpFragment<'bump> {
 				text: Arc::from(*text),
 			},
 		}
-	}
-}
-
-impl Default for BumpFragment<'_> {
-	fn default() -> Self {
-		BumpFragment::None
 	}
 }
 

@@ -44,18 +44,18 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_handler(&self, id: HandlerId, version: CommitVersion, handler: Option<Handler>) {
-		if let Some(entry) = self.handlers.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				// Remove old name from index
-				self.handlers_by_name.remove(&(pre.namespace, pre.name.clone()));
+		if let Some(entry) = self.handlers.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			// Remove old name from index
+			self.handlers_by_name.remove(&(pre.namespace, pre.name.clone()));
 
-				// Remove from variant index
-				if let Some(ids_entry) = self.handlers_by_variant.get(&pre.variant) {
-					let mut ids = ids_entry.value().clone();
-					ids.retain(|existing| *existing != id);
-					drop(ids_entry);
-					self.handlers_by_variant.insert(pre.variant, ids);
-				}
+			// Remove from variant index
+			if let Some(ids_entry) = self.handlers_by_variant.get(&pre.variant) {
+				let mut ids = ids_entry.value().clone();
+				ids.retain(|existing| *existing != id);
+				drop(ids_entry);
+				self.handlers_by_variant.insert(pre.variant, ids);
 			}
 		}
 

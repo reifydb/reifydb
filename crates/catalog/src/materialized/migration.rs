@@ -40,10 +40,10 @@ impl MaterializedCatalog {
 
 	/// Set a migration definition at a specific version
 	pub fn set_migration(&self, id: MigrationId, version: CommitVersion, migration: Option<Migration>) {
-		if let Some(entry) = self.migrations.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.migrations_by_name.remove(&pre.name);
-			}
+		if let Some(entry) = self.migrations.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.migrations_by_name.remove(&pre.name);
 		}
 
 		let multi = self.migrations.get_or_insert_with(id, MultiVersionMigration::new);

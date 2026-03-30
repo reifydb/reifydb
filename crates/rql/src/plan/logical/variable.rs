@@ -349,10 +349,10 @@ impl<'bump> Compiler<'bump> {
 	/// Compile a block as a single logical plan node.
 	/// Takes the first expression from the first statement.
 	fn compile_block_single(&self, block: AstBlock<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
-		if let Some(first_stmt) = block.statements.into_iter().next() {
-			if let Some(first_node) = first_stmt.nodes.into_iter().next() {
-				return self.compile_single(first_node, tx);
-			}
+		if let Some(first_stmt) = block.statements.into_iter().next()
+			&& let Some(first_node) = first_stmt.nodes.into_iter().next()
+		{
+			return self.compile_single(first_node, tx);
 		}
 		// Empty block → none wrapped in MAP
 		self.none_as_map()
@@ -395,11 +395,7 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_for(&self, ast: AstFor<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		let variable_name = {
 			let text = ast.variable.token.fragment.text();
-			let clean = if text.starts_with('$') {
-				&text[1..]
-			} else {
-				text
-			};
+			let clean = text.strip_prefix('$').unwrap_or(text);
 			BumpFragment::internal(self.bump, clean)
 		};
 		let iterable_ast = BumpBox::into_inner(ast.iterable);

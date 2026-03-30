@@ -45,13 +45,13 @@ pub(crate) fn create_remote_namespace(
 	}
 
 	// Create the final (leaf) namespace with grpc
-	if let Some(_) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)? {
-		if plan.if_not_exists {
-			return Ok(Columns::single_row([
-				("namespace", Value::Utf8(full_name)),
-				("created", Value::Boolean(false)),
-			]));
-		}
+	if services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)?.is_some()
+		&& plan.if_not_exists
+	{
+		return Ok(Columns::single_row([
+			("namespace", Value::Utf8(full_name)),
+			("created", Value::Boolean(false)),
+		]));
 	}
 
 	let grpc_text = plan.grpc.text().to_string();

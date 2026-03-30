@@ -22,6 +22,12 @@ pub struct SystemCdcConsumers {
 	exhausted: bool,
 }
 
+impl Default for SystemCdcConsumers {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemCdcConsumers {
 	pub fn new() -> Self {
 		Self {

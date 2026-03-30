@@ -16,10 +16,10 @@ pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, Error> {
 	// Fragment is already owned, no conversion needed
 	let value = fragment.text().trim();
 
-	if let Ok(uuid) = Uuid::parse_str(value) {
-		if uuid.get_version_num() == 4 {
-			return Ok(Uuid4(uuid));
-		}
+	if let Ok(uuid) = Uuid::parse_str(value)
+		&& uuid.get_version_num() == 4
+	{
+		return Ok(Uuid4(uuid));
 	}
 	Err(TypeError::InvalidUuid4Format {
 		fragment,
@@ -30,10 +30,10 @@ pub fn parse_uuid4(fragment: Fragment) -> Result<Uuid4, Error> {
 pub fn parse_uuid7(fragment: Fragment) -> Result<Uuid7, Error> {
 	// Fragment is already owned, no conversion needed
 	let value = fragment.text().trim();
-	if let Ok(uuid) = Uuid::parse_str(value) {
-		if uuid.get_version_num() == 7 {
-			return Ok(Uuid7(uuid));
-		}
+	if let Ok(uuid) = Uuid::parse_str(value)
+		&& uuid.get_version_num() == 7
+	{
+		return Ok(Uuid7(uuid));
 	}
 
 	Err(TypeError::InvalidUuid7Format {

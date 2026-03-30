@@ -125,12 +125,10 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 		AstType::Qualified {
 			name,
 			..
-		} => {
-			return Err(AstError::UnrecognizedType {
-				fragment: name.to_owned(),
-			}
-			.into());
+		} => Err(AstError::UnrecognizedType {
+			fragment: name.to_owned(),
 		}
+		.into()),
 	}
 }
 

@@ -273,7 +273,7 @@ impl StandardEngine {
 		// Look up namespace by name (use max u64 to get latest version)
 		let ns_def = catalog
 			.find_namespace_by_name(namespace)
-			.ok_or_else(|| Error(namespace_not_found(Fragment::None, namespace)))?;
+			.ok_or_else(|| Error(Box::new(namespace_not_found(Fragment::None, namespace))))?;
 
 		// Allocate a new table ID
 		let table_id = self.executor.virtual_table_registry.allocate_id();
@@ -537,7 +537,7 @@ impl StandardEngine {
 
 	pub(crate) fn reject_if_read_only(&self) -> Result<()> {
 		if self.is_read_only() {
-			return Err(Error(read_only_rejection(Fragment::None)));
+			return Err(Error(Box::new(read_only_rejection(Fragment::None))));
 		}
 		Ok(())
 	}

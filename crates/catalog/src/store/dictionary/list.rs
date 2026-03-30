@@ -19,8 +19,8 @@ impl CatalogStore {
 		// Collect dictionary IDs first to avoid borrow conflict
 		let mut dictionary_ids = Vec::new();
 		{
-			let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
+			for entry in stream {
 				let multi = entry?;
 				let row = &multi.row;
 				dictionary_ids.push(DictionaryId(
@@ -43,15 +43,15 @@ impl CatalogStore {
 	pub(crate) fn list_all_dictionaries(rx: &mut Transaction<'_>) -> Result<Vec<Dictionary>> {
 		let mut dictionaries = Vec::new();
 
-		let mut stream = rx.range(DictionaryKey::full_scan(), 1024)?;
-		while let Some(entry) = stream.next() {
+		let stream = rx.range(DictionaryKey::full_scan(), 1024)?;
+		for entry in stream {
 			let multi = entry?;
 			let row = &multi.row;
-			let id = DictionaryId(dictionary::SHAPE.get_u64(&row, dictionary::ID));
-			let namespace = NamespaceId(dictionary::SHAPE.get_u64(&row, dictionary::NAMESPACE));
-			let name = dictionary::SHAPE.get_utf8(&row, dictionary::NAME).to_string();
-			let value_type_ordinal = dictionary::SHAPE.get_u8(&row, dictionary::VALUE_TYPE);
-			let id_type_ordinal = dictionary::SHAPE.get_u8(&row, dictionary::ID_TYPE);
+			let id = DictionaryId(dictionary::SHAPE.get_u64(row, dictionary::ID));
+			let namespace = NamespaceId(dictionary::SHAPE.get_u64(row, dictionary::NAMESPACE));
+			let name = dictionary::SHAPE.get_utf8(row, dictionary::NAME).to_string();
+			let value_type_ordinal = dictionary::SHAPE.get_u8(row, dictionary::VALUE_TYPE);
+			let id_type_ordinal = dictionary::SHAPE.get_u8(row, dictionary::ID_TYPE);
 
 			dictionaries.push(Dictionary {
 				id,

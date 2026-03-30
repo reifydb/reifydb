@@ -206,12 +206,12 @@ impl Catalog {
 
 				// Also check transactional changes for newly created handlers
 				for change in &admin.changes.handler {
-					if let Some(h) = &change.post {
-						if h.variant == variant
-							&& !handlers.iter().any(|existing| existing.id == h.id)
-						{
-							handlers.push(h.clone());
-						}
+					if let Some(h) = &change.post
+						&& h.variant == variant && !handlers
+						.iter()
+						.any(|existing| existing.id == h.id)
+					{
+						handlers.push(h.clone());
 					}
 				}
 
@@ -227,12 +227,12 @@ impl Catalog {
 
 				// Also check transactional changes for newly created handlers
 				for change in &sub.as_admin_mut().changes.handler {
-					if let Some(h) = &change.post {
-						if h.variant == variant
-							&& !handlers.iter().any(|existing| existing.id == h.id)
-						{
-							handlers.push(h.clone());
-						}
+					if let Some(h) = &change.post
+						&& h.variant == variant && !handlers
+						.iter()
+						.any(|existing| existing.id == h.id)
+					{
+						handlers.push(h.clone());
 					}
 				}
 
@@ -245,12 +245,12 @@ impl Catalog {
 
 				// Also check transactional changes for newly created handlers
 				for change in &t.inner.changes.handler {
-					if let Some(h) = &change.post {
-						if h.variant == variant
-							&& !handlers.iter().any(|existing| existing.id == h.id)
-						{
-							handlers.push(h.clone());
-						}
+					if let Some(h) = &change.post
+						&& h.variant == variant && !handlers
+						.iter()
+						.any(|existing| existing.id == h.id)
+					{
+						handlers.push(h.clone());
 					}
 				}
 

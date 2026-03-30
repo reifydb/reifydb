@@ -11,6 +11,12 @@ use crate::function::{
 
 pub struct IsType;
 
+impl Default for IsType {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl IsType {
 	pub fn new() -> Self {
 		Self
@@ -30,7 +36,7 @@ impl ScalarFunction for IsType {
 			});
 		}
 
-		let value_column = columns.get(0).unwrap();
+		let value_column = columns.first().unwrap();
 		let type_column = columns.get(1).unwrap();
 
 		// Extract target Type from second arg

@@ -22,6 +22,12 @@ pub struct SystemColumnsTable {
 	exhausted: bool,
 }
 
+impl Default for SystemColumnsTable {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemColumnsTable {
 	pub fn new() -> Self {
 		Self {

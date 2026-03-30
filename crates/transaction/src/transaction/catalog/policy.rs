@@ -55,10 +55,10 @@ impl TransactionalPolicyChanges for AdminTransaction {
 				if policy.id == id {
 					return Some(policy);
 				}
-			} else if let Some(policy) = &change.pre {
-				if policy.id == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(policy) = &change.pre
+				&& policy.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

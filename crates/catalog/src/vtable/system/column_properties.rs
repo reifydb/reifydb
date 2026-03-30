@@ -22,6 +22,12 @@ pub struct SystemColumnProperties {
 	exhausted: bool,
 }
 
+impl Default for SystemColumnProperties {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemColumnProperties {
 	pub fn new() -> Self {
 		Self {

@@ -269,44 +269,40 @@ impl Key {
 
 		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
 		match kind {
-			KeyKind::CdcConsumer => CdcConsumerKey::decode(&key).map(Self::CdcConsumer),
-			KeyKind::Columns => ColumnsKey::decode(&key).map(Self::Columns),
-			KeyKind::ColumnProperty => ColumnPropertyKey::decode(&key).map(Self::TableColumnProperty),
-			KeyKind::Namespace => NamespaceKey::decode(&key).map(Self::Namespace),
-			KeyKind::NamespaceTable => NamespaceTableKey::decode(&key).map(Self::NamespaceTable),
-			KeyKind::NamespaceView => NamespaceViewKey::decode(&key).map(Self::NamespaceView),
-			KeyKind::NamespaceFlow => NamespaceFlowKey::decode(&key).map(Self::NamespaceFlow),
-			KeyKind::Table => TableKey::decode(&key).map(Self::Table),
-			KeyKind::Flow => FlowKey::decode(&key).map(Self::Flow),
-			KeyKind::Column => ColumnKey::decode(&key).map(Self::Column),
-			KeyKind::Index => IndexKey::decode(&key).map(Self::Index),
-			KeyKind::IndexEntry => IndexEntryKey::decode(&key).map(Self::IndexEntry),
-			KeyKind::FlowNodeState => FlowNodeStateKey::decode(&key).map(Self::FlowNodeState),
+			KeyKind::CdcConsumer => CdcConsumerKey::decode(key).map(Self::CdcConsumer),
+			KeyKind::Columns => ColumnsKey::decode(key).map(Self::Columns),
+			KeyKind::ColumnProperty => ColumnPropertyKey::decode(key).map(Self::TableColumnProperty),
+			KeyKind::Namespace => NamespaceKey::decode(key).map(Self::Namespace),
+			KeyKind::NamespaceTable => NamespaceTableKey::decode(key).map(Self::NamespaceTable),
+			KeyKind::NamespaceView => NamespaceViewKey::decode(key).map(Self::NamespaceView),
+			KeyKind::NamespaceFlow => NamespaceFlowKey::decode(key).map(Self::NamespaceFlow),
+			KeyKind::Table => TableKey::decode(key).map(Self::Table),
+			KeyKind::Flow => FlowKey::decode(key).map(Self::Flow),
+			KeyKind::Column => ColumnKey::decode(key).map(Self::Column),
+			KeyKind::Index => IndexKey::decode(key).map(Self::Index),
+			KeyKind::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
+			KeyKind::FlowNodeState => FlowNodeStateKey::decode(key).map(Self::FlowNodeState),
 			KeyKind::FlowNodeInternalState => {
-				FlowNodeInternalStateKey::decode(&key).map(Self::FlowNodeInternalState)
+				FlowNodeInternalStateKey::decode(key).map(Self::FlowNodeInternalState)
 			}
-			KeyKind::Row => RowKey::decode(&key).map(Self::Row),
-			KeyKind::RowSequence => RowSequenceKey::decode(&key).map(Self::RowSequence),
-			KeyKind::ColumnSequence => ColumnSequenceKey::decode(&key).map(Self::TableColumnSequence),
-			KeyKind::SystemSequence => SystemSequenceKey::decode(&key).map(Self::SystemSequence),
-			KeyKind::SystemVersion => SystemVersionKey::decode(&key).map(Self::SystemVersion),
-			KeyKind::TransactionVersion => {
-				TransactionVersionKey::decode(&key).map(Self::TransactionVersion)
-			}
-			KeyKind::View => ViewKey::decode(&key).map(Self::View),
-			KeyKind::PrimaryKey => PrimaryKeyKey::decode(&key).map(Self::PrimaryKey),
-			KeyKind::RingBuffer => RingBufferKey::decode(&key).map(Self::RingBuffer),
-			KeyKind::RingBufferMetadata => {
-				RingBufferMetadataKey::decode(&key).map(Self::RingBufferMetadata)
-			}
+			KeyKind::Row => RowKey::decode(key).map(Self::Row),
+			KeyKind::RowSequence => RowSequenceKey::decode(key).map(Self::RowSequence),
+			KeyKind::ColumnSequence => ColumnSequenceKey::decode(key).map(Self::TableColumnSequence),
+			KeyKind::SystemSequence => SystemSequenceKey::decode(key).map(Self::SystemSequence),
+			KeyKind::SystemVersion => SystemVersionKey::decode(key).map(Self::SystemVersion),
+			KeyKind::TransactionVersion => TransactionVersionKey::decode(key).map(Self::TransactionVersion),
+			KeyKind::View => ViewKey::decode(key).map(Self::View),
+			KeyKind::PrimaryKey => PrimaryKeyKey::decode(key).map(Self::PrimaryKey),
+			KeyKind::RingBuffer => RingBufferKey::decode(key).map(Self::RingBuffer),
+			KeyKind::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),
 			KeyKind::NamespaceRingBuffer => {
-				NamespaceRingBufferKey::decode(&key).map(Self::NamespaceRingBuffer)
+				NamespaceRingBufferKey::decode(key).map(Self::NamespaceRingBuffer)
 			}
 			KeyKind::ShapeRetentionPolicy => {
-				ShapeRetentionPolicyKey::decode(&key).map(Self::ShapeRetentionPolicy)
+				ShapeRetentionPolicyKey::decode(key).map(Self::ShapeRetentionPolicy)
 			}
 			KeyKind::OperatorRetentionPolicy => {
-				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
+				OperatorRetentionPolicyKey::decode(key).map(Self::OperatorRetentionPolicy)
 			}
 			KeyKind::FlowNode
 			| KeyKind::FlowNodeByFlow
@@ -316,21 +312,19 @@ impl Key {
 				// These keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
-			KeyKind::Dictionary => DictionaryKey::decode(&key).map(Self::Dictionary),
-			KeyKind::DictionaryEntry => DictionaryEntryKey::decode(&key).map(Self::DictionaryEntry),
+			KeyKind::Dictionary => DictionaryKey::decode(key).map(Self::Dictionary),
+			KeyKind::DictionaryEntry => DictionaryEntryKey::decode(key).map(Self::DictionaryEntry),
 			KeyKind::DictionaryEntryIndex => {
-				DictionaryEntryIndexKey::decode(&key).map(Self::DictionaryEntryIndex)
+				DictionaryEntryIndexKey::decode(key).map(Self::DictionaryEntryIndex)
 			}
-			KeyKind::DictionarySequence => {
-				DictionarySequenceKey::decode(&key).map(Self::DictionarySequence)
-			}
+			KeyKind::DictionarySequence => DictionarySequenceKey::decode(key).map(Self::DictionarySequence),
 			KeyKind::NamespaceDictionary => {
-				NamespaceDictionaryKey::decode(&key).map(Self::NamespaceDictionary)
+				NamespaceDictionaryKey::decode(key).map(Self::NamespaceDictionary)
 			}
-			KeyKind::SumType => SumTypeKey::decode(&key).map(Self::SumType),
-			KeyKind::NamespaceSumType => NamespaceSumTypeKey::decode(&key).map(Self::NamespaceSumType),
-			KeyKind::Handler => HandlerKey::decode(&key).map(Self::Handler),
-			KeyKind::NamespaceHandler => NamespaceHandlerKey::decode(&key).map(Self::NamespaceHandler),
+			KeyKind::SumType => SumTypeKey::decode(key).map(Self::SumType),
+			KeyKind::NamespaceSumType => NamespaceSumTypeKey::decode(key).map(Self::NamespaceSumType),
+			KeyKind::Handler => HandlerKey::decode(key).map(Self::Handler),
+			KeyKind::NamespaceHandler => NamespaceHandlerKey::decode(key).map(Self::NamespaceHandler),
 			KeyKind::VariantHandler => {
 				// VariantHandler keys used directly via EncodableKey trait
 				None
@@ -339,29 +333,27 @@ impl Key {
 				// Storage tracker keys are used for internal persistence, not through Key enum
 				None
 			}
-			KeyKind::Subscription => SubscriptionKey::decode(&key).map(Self::Subscription),
-			KeyKind::SubscriptionColumn => {
-				SubscriptionColumnKey::decode(&key).map(Self::SubscriptionColumn)
-			}
-			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(&key).map(Self::SubscriptionRow),
+			KeyKind::Subscription => SubscriptionKey::decode(key).map(Self::Subscription),
+			KeyKind::SubscriptionColumn => SubscriptionColumnKey::decode(key).map(Self::SubscriptionColumn),
+			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(key).map(Self::SubscriptionRow),
 			KeyKind::Shape | KeyKind::RowShapeField => {
 				// Shape keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
-			KeyKind::Series => SeriesKey::decode(&key).map(Self::Series),
-			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(&key).map(Self::NamespaceSeries),
-			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(&key).map(Self::SeriesMetadata),
-			KeyKind::Identity => IdentityKey::decode(&key).map(Self::Identity),
-			KeyKind::Authentication => AuthenticationKey::decode(&key).map(Self::Authentication),
-			KeyKind::Role => RoleKey::decode(&key).map(Self::Role),
-			KeyKind::GrantedRole => GrantedRoleKey::decode(&key).map(Self::GrantedRole),
-			KeyKind::Policy => PolicyKey::decode(&key).map(Self::Policy),
-			KeyKind::PolicyOp => PolicyOpKey::decode(&key).map(Self::PolicyOp),
+			KeyKind::Series => SeriesKey::decode(key).map(Self::Series),
+			KeyKind::NamespaceSeries => NamespaceSeriesKey::decode(key).map(Self::NamespaceSeries),
+			KeyKind::SeriesMetadata => SeriesMetadataKey::decode(key).map(Self::SeriesMetadata),
+			KeyKind::Identity => IdentityKey::decode(key).map(Self::Identity),
+			KeyKind::Authentication => AuthenticationKey::decode(key).map(Self::Authentication),
+			KeyKind::Role => RoleKey::decode(key).map(Self::Role),
+			KeyKind::GrantedRole => GrantedRoleKey::decode(key).map(Self::GrantedRole),
+			KeyKind::Policy => PolicyKey::decode(key).map(Self::Policy),
+			KeyKind::PolicyOp => PolicyOpKey::decode(key).map(Self::PolicyOp),
 			KeyKind::Migration | KeyKind::MigrationEvent => {
 				// Migration keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
-			KeyKind::Token => TokenKey::decode(&key).map(Self::Token),
+			KeyKind::Token => TokenKey::decode(key).map(Self::Token),
 			KeyKind::Config => {
 				// Config keys are used directly via EncodableKey trait, not through Key enum
 				None

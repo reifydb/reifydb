@@ -45,36 +45,34 @@ impl GeneratorFunction for TestingChanged {
 
 		// Read individual mutations from the accumulator
 		let entries: Vec<_> =
-			t.accumulator_entries_from().iter().map(|(id, diff)| (id.clone(), diff.clone())).collect();
+			t.accumulator_entries_from().iter().map(|(id, diff)| (*id, diff.clone())).collect();
 
 		let mut mutations: Vec<MutationEntry> = Vec::new();
 
 		for (object_id, diff) in &entries {
-			let type_matches = match (&object_id, self.shape_type) {
-				(ShapeId::Table(_), "tables") => true,
-				(ShapeId::View(_), "views") => true,
-				(ShapeId::RingBuffer(_), "ringbuffers") => true,
-				(ShapeId::Series(_), "series") => true,
-				(ShapeId::Dictionary(_), "dictionaries") => true,
-				_ => false,
-			};
+			let type_matches = matches!(
+				(&object_id, self.shape_type),
+				(ShapeId::Table(_), "tables")
+					| (ShapeId::View(_), "views") | (ShapeId::RingBuffer(_), "ringbuffers")
+					| (ShapeId::Series(_), "series") | (ShapeId::Dictionary(_), "dictionaries")
+			);
 			if !type_matches {
 				continue;
 			}
 
 			let name = match resolve_shape_name(
 				ctx.catalog,
-				&mut Transaction::Test(t.reborrow()),
+				&mut Transaction::Test(Box::new(t.reborrow())),
 				object_id,
 			) {
 				Ok(n) => n,
 				Err(_) => continue,
 			};
 
-			if let Some(filter) = filter_arg.as_deref() {
-				if name != filter {
-					continue;
-				}
+			if let Some(filter) = filter_arg.as_deref()
+				&& name != filter
+			{
+				continue;
 			}
 
 			mutations.push(MutationEntry {

@@ -201,10 +201,8 @@ impl MultiVersionCommit for StandardMultiStore {
 			});
 		}
 
-		if !drop_batch.is_empty() {
-			if self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
-				warn!("Failed to send drop batch");
-			}
+		if !drop_batch.is_empty() && self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
+			warn!("Failed to send drop batch");
 		}
 
 		// Pass version explicitly to storage
@@ -278,54 +276,54 @@ impl StandardMultiStore {
 			let mut any_progress = false;
 
 			// Scan chunk from hot tier
-			if let Some(hot) = &self.hot {
-				if !cursor.hot.exhausted {
-					let progress = Self::scan_tier_chunk(
-						hot,
-						table,
-						&mut cursor.hot,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(hot) = &self.hot
+				&& !cursor.hot.exhausted
+			{
+				let progress = Self::scan_tier_chunk(
+					hot,
+					table,
+					&mut cursor.hot,
+					&start,
+					&end,
+					version,
+					&range,
+					&mut collected,
+				)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from warm tier
-			if let Some(warm) = &self.warm {
-				if !cursor.warm.exhausted {
-					let progress = Self::scan_tier_chunk(
-						warm,
-						table,
-						&mut cursor.warm,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(warm) = &self.warm
+				&& !cursor.warm.exhausted
+			{
+				let progress = Self::scan_tier_chunk(
+					warm,
+					table,
+					&mut cursor.warm,
+					&start,
+					&end,
+					version,
+					&range,
+					&mut collected,
+				)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from cold tier
-			if let Some(cold) = &self.cold {
-				if !cursor.cold.exhausted {
-					let progress = Self::scan_tier_chunk(
-						cold,
-						table,
-						&mut cursor.cold,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(cold) = &self.cold
+				&& !cursor.cold.exhausted
+			{
+				let progress = Self::scan_tier_chunk(
+					cold,
+					table,
+					&mut cursor.cold,
+					&start,
+					&end,
+					version,
+					&range,
+					&mut collected,
+				)?;
+				any_progress |= progress;
 			}
 
 			if !any_progress {
@@ -480,54 +478,54 @@ impl StandardMultiStore {
 			let mut any_progress = false;
 
 			// Scan chunk from hot tier (reverse)
-			if let Some(hot) = &self.hot {
-				if !cursor.hot.exhausted {
-					let progress = Self::scan_tier_chunk_rev(
-						hot,
-						table,
-						&mut cursor.hot,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(hot) = &self.hot
+				&& !cursor.hot.exhausted
+			{
+				let progress = Self::scan_tier_chunk_rev(
+					hot,
+					table,
+					&mut cursor.hot,
+					&start,
+					&end,
+					version,
+					&range,
+					&mut collected,
+				)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from warm tier (reverse)
-			if let Some(warm) = &self.warm {
-				if !cursor.warm.exhausted {
-					let progress = Self::scan_tier_chunk_rev(
-						warm,
-						table,
-						&mut cursor.warm,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(warm) = &self.warm
+				&& !cursor.warm.exhausted
+			{
+				let progress = Self::scan_tier_chunk_rev(
+					warm,
+					table,
+					&mut cursor.warm,
+					&start,
+					&end,
+					version,
+					&range,
+					&mut collected,
+				)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from cold tier (reverse)
-			if let Some(cold) = &self.cold {
-				if !cursor.cold.exhausted {
-					let progress = Self::scan_tier_chunk_rev(
-						cold,
-						table,
-						&mut cursor.cold,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(cold) = &self.cold
+				&& !cursor.cold.exhausted
+			{
+				let progress = Self::scan_tier_chunk_rev(
+					cold,
+					table,
+					&mut cursor.cold,
+					&start,
+					&end,
+					version,
+					&range,
+					&mut collected,
+				)?;
+				any_progress |= progress;
 			}
 
 			if !any_progress {

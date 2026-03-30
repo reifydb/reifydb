@@ -22,6 +22,12 @@ pub struct SystemEnumVariants {
 	exhausted: bool,
 }
 
+impl Default for SystemEnumVariants {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemEnumVariants {
 	pub fn new() -> Self {
 		Self {

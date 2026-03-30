@@ -317,17 +317,17 @@ where
 						continue;
 					}
 
-					if let Some(old_conflicts) = &committed_txn.conflict_manager {
-						if conflicts.has_conflict(old_conflicts) {
-							Span::current().record(
-								"conflict_check_us",
-								conflict_start.elapsed().as_micros() as u64,
-							);
-							Span::current().record("windows_checked", windows_checked);
-							Span::current().record("txns_checked", txns_checked);
-							Span::current().record("has_conflict", true);
-							return Ok(CreateCommitResult::Conflict(conflicts));
-						}
+					if let Some(old_conflicts) = &committed_txn.conflict_manager
+						&& conflicts.has_conflict(old_conflicts)
+					{
+						Span::current().record(
+							"conflict_check_us",
+							conflict_start.elapsed().as_micros() as u64,
+						);
+						Span::current().record("windows_checked", windows_checked);
+						Span::current().record("txns_checked", txns_checked);
+						Span::current().record("has_conflict", true);
+						return Ok(CreateCommitResult::Conflict(conflicts));
 					}
 				}
 			}
@@ -449,7 +449,7 @@ where
 		// Update key index for all conflict keys
 		let write_keys = conflicts.get_write_keys();
 		for key in write_keys {
-			self.key_to_windows.entry(key.clone()).or_insert_with(BTreeSet::new).insert(window_start);
+			self.key_to_windows.entry(key.clone()).or_default().insert(window_start);
 		}
 
 		// Add transaction to window
@@ -468,7 +468,7 @@ where
 	L: VersionProvider,
 {
 	fn drop(&mut self) {
-		let _ = self.stop();
+		self.stop();
 	}
 }
 

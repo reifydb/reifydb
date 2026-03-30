@@ -60,23 +60,21 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_procedure(&self, id: ProcedureId, version: CommitVersion, procedure: Option<Procedure>) {
-		if let Some(entry) = self.procedures.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				// Remove old name from index
-				self.procedures_by_name.remove(&(pre.namespace, pre.name.clone()));
+		if let Some(entry) = self.procedures.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			// Remove old name from index
+			self.procedures_by_name.remove(&(pre.namespace, pre.name.clone()));
 
-				// Remove from variant index if it had an event binding
-				if let ProcedureTrigger::Event {
-					variant,
-				} = &pre.trigger
-				{
-					if let Some(ids_entry) = self.procedures_by_variant.get(variant) {
-						let mut ids = ids_entry.value().clone();
-						ids.retain(|existing| *existing != id);
-						drop(ids_entry);
-						self.procedures_by_variant.insert(*variant, ids);
-					}
-				}
+			// Remove from variant index if it had an event binding
+			if let ProcedureTrigger::Event {
+				variant,
+			} = &pre.trigger && let Some(ids_entry) = self.procedures_by_variant.get(variant)
+			{
+				let mut ids = ids_entry.value().clone();
+				ids.retain(|existing| *existing != id);
+				drop(ids_entry);
+				self.procedures_by_variant.insert(*variant, ids);
 			}
 		}
 

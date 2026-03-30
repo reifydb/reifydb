@@ -22,7 +22,7 @@ impl CatalogStore {
 		let entry_range = DictionaryEntryKey::full_scan(dictionary);
 		let mut entry_stream = txn.range(entry_range, 1024)?;
 		let mut entry_keys = Vec::new();
-		while let Some(entry) = entry_stream.next() {
+		for entry in entry_stream.by_ref() {
 			entry_keys.push(entry?.key.clone());
 		}
 		drop(entry_stream);
@@ -34,7 +34,7 @@ impl CatalogStore {
 		let index_range = DictionaryEntryIndexKey::full_scan(dictionary);
 		let mut index_stream = txn.range(index_range, 1024)?;
 		let mut index_keys = Vec::new();
-		while let Some(entry) = index_stream.next() {
+		for entry in index_stream.by_ref() {
 			index_keys.push(entry?.key.clone());
 		}
 		drop(index_stream);

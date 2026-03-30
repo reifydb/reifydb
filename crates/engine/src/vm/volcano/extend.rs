@@ -63,7 +63,7 @@ impl QueryNode for ExtendNode {
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
 
-		while let Some(columns) = self.input.next(rx, ctx)? {
+		if let Some(columns) = self.input.next(rx, ctx)? {
 			let stored_ctx = &self.context.as_ref().unwrap().0;
 			let transform_ctx = TransformContext {
 				functions: &stored_ctx.services.functions,
@@ -91,32 +91,32 @@ impl QueryNode for ExtendNode {
 
 			return Ok(Some(result));
 		}
-		if self.headers.is_none() {
-			if let Some(input_headers) = self.input.headers() {
-				let mut all_headers = input_headers.columns.clone();
-				let new_names: Vec<Fragment> =
-					self.expressions.iter().map(column_name_from_expression).collect();
+		if self.headers.is_none()
+			&& let Some(input_headers) = self.input.headers()
+		{
+			let mut all_headers = input_headers.columns.clone();
+			let new_names: Vec<Fragment> =
+				self.expressions.iter().map(column_name_from_expression).collect();
 
-				for new_name in &new_names {
-					for existing_name in &all_headers {
-						if new_name.text() == existing_name.text() {
-							return_error!(extend_duplicate_column(new_name.text()));
-						}
+			for new_name in &new_names {
+				for existing_name in &all_headers {
+					if new_name.text() == existing_name.text() {
+						return_error!(extend_duplicate_column(new_name.text()));
 					}
 				}
-				for i in 0..new_names.len() {
-					for j in (i + 1)..new_names.len() {
-						if new_names[i].text() == new_names[j].text() {
-							return_error!(extend_duplicate_column(new_names[i].text()));
-						}
-					}
-				}
-
-				all_headers.extend(new_names);
-				self.headers = Some(ColumnHeaders {
-					columns: all_headers,
-				});
 			}
+			for i in 0..new_names.len() {
+				for j in (i + 1)..new_names.len() {
+					if new_names[i].text() == new_names[j].text() {
+						return_error!(extend_duplicate_column(new_names[i].text()));
+					}
+				}
+			}
+
+			all_headers.extend(new_names);
+			self.headers = Some(ColumnHeaders {
+				columns: all_headers,
+			});
 		}
 		Ok(None)
 	}
@@ -156,19 +156,15 @@ impl Transform for ExtendNode {
 
 			let mut column = compiled_expr.execute(&exec_ctx)?;
 
-			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
-				if column.data.get_type() != target_type {
-					let data = cast_column_data(
-						&exec_ctx,
-						&column.data,
-						target_type,
-						&expr.lazy_fragment(),
-					)?;
-					column = Column {
-						name: column.name,
-						data,
-					};
-				}
+			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
+				&& column.data.get_type() != target_type
+			{
+				let data =
+					cast_column_data(&exec_ctx, &column.data, target_type, &expr.lazy_fragment())?;
+				column = Column {
+					name: column.name,
+					data,
+				};
 			}
 
 			new_columns.push(column);
