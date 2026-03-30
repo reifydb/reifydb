@@ -259,9 +259,12 @@ where
 					}
 				}
 				Delta::Remove {
-					..
-				}
-				| Delta::Drop {
+					key,
+				} => SystemChange::Delete {
+					key,
+					pre: None,
+				},
+				Delta::Drop {
 					..
 				} => {
 					continue;
