@@ -8,14 +8,16 @@ use fs::create_dir_all;
 fn main() {
 	// Only rebuild if webapp source changes
 	println!("cargo:rerun-if-changed=webapp/src");
-	println!("cargo:rerun-if-changed=webapp/dist");
 	println!("cargo:rerun-if-changed=webapp/package.json");
 
 	let out_dir = env::var("OUT_DIR").unwrap();
 	let webapp_dist = Path::new("webapp/dist");
 	let dest_path = Path::new(&out_dir).join("webapp");
 
+	// Only watch webapp/dist when it exists — watching a non-existent path
+	// causes Cargo to re-run the build script on every build.
 	if webapp_dist.exists() {
+		println!("cargo:rerun-if-changed=webapp/dist");
 		println!("cargo:warning=Found webapp/dist directory, copying to build output");
 
 		create_dir_all(&dest_path).expect("Failed to create webapp directory in OUT_DIR");

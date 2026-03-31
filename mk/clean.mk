@@ -11,10 +11,12 @@
 clean: clean-workspace clean-pkg-typescript
 	@echo "✅ All packages cleaned!"
 
-# Clean entire workspace (includes crates/, bin/, and pkg/rust/)
+# Clean only reifydb workspace member crates (preserves vendored dependency builds)
 clean-workspace:
 	@echo "📦 Cleaning workspace packages..."
-	cargo clean
+	@cargo metadata --no-deps --format-version 1 --offline 2>/dev/null \
+		| python3 -c "import json,sys; [print(p['name']) for p in json.load(sys.stdin)['packages']]" \
+		| while read -r pkg; do cargo clean -p "$$pkg" --release 2>/dev/null || true; done
 
 # Clean pkg/typescript packages
 clean-pkg-typescript:
