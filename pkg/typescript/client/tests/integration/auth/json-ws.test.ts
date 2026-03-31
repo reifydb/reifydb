@@ -5,7 +5,7 @@ import {waitForDatabase} from "../setup";
 import {Client, JsonWebsocketClient} from "../../../src";
 
 describe('Auth Login Tests — JSON WebSocket', () => {
-    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
 
     beforeAll(async () => {
         await waitForDatabase();

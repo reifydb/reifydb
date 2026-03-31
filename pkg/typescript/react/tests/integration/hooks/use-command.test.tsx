@@ -11,7 +11,7 @@ import React from "react";
 describe('useCommand Hooks', () => {
     // Wrapper to provide ConnectionProvider to all hooks
     const wrapper = ({children}: { children: React.ReactNode }) => (
-        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
+        <ConnectionProvider config={{url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN}} children={children}/>
     );
 
     beforeAll(async () => {
@@ -353,7 +353,7 @@ describe('useCommand Hooks', () => {
         it('should work with ConnectionProvider', async () => {
             // @ts-ignore
             const wrapper = ({children}: { children: React.ReactNode }) => (
-                <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children}/>
+                <ConnectionProvider config={{url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN}} children={children}/>
             );
 
             const shape = Shape.object({value: Shape.number()});
@@ -371,7 +371,7 @@ describe('useCommand Hooks', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const overrideConfig = {url: 'ws://127.0.0.1:8090', options: {timeoutMs: 2000}};
+            const overrideConfig = {url: process.env.REIFYDB_WS_URL!, options: {timeoutMs: 2000}};
 
             // Use override config (different timeout to ensure it's treated as a separate connection)
             const {result, unmount} = renderHook(() =>

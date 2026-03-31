@@ -10,7 +10,7 @@ import React from "react";
 
 describe('useAdmin Hooks (JSON WS)', () => {
     const wrapper = ({children}: { children: React.ReactNode }) => (
-        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
+        <ConnectionProvider config={{url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
     );
 
     beforeAll(async () => {
@@ -347,7 +347,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
         it('should work with ConnectionProvider', async () => {
             // @ts-ignore
             const wrapper = ({children}: { children: React.ReactNode }) => (
-                <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
+                <ConnectionProvider config={{url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
             );
 
             const shape = Shape.object({value: Shape.number()});
@@ -365,7 +365,7 @@ describe('useAdmin Hooks (JSON WS)', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const overrideConfig = {url: 'ws://127.0.0.1:8090', options: {timeoutMs: 2000}};
+            const overrideConfig = {url: process.env.REIFYDB_WS_URL!, options: {timeoutMs: 2000}};
 
             const {result, unmount} = renderHook(() =>
                 useAdminOne(

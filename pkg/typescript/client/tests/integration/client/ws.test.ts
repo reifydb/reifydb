@@ -6,7 +6,7 @@ import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
 describe('ReifyDB Client Integration Tests', () => {
-    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
     const AUTH_TOKEN = process.env.REIFYDB_TOKEN;
 
     beforeAll(async () => {

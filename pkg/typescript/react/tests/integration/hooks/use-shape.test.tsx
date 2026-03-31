@@ -14,14 +14,14 @@ describe('useShape Hook', () => {
     let setupClient: Awaited<ReturnType<typeof Client.connect_ws>> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
-        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090', token: process.env.REIFYDB_TOKEN}} children={children} />
+        <ConnectionProvider config={{url: process.env.REIFYDB_WS_URL!, token: process.env.REIFYDB_TOKEN}} children={children} />
     );
 
     beforeAll(async () => {
         await waitForDatabase();
 
         // Create test namespace and tables
-        const url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+        const url = process.env.REIFYDB_WS_URL || process.env.REIFYDB_WS_URL!;
         setupClient = await Client.connect_ws(url, {timeoutMs: 10000, token: process.env.REIFYDB_TOKEN});
 
         // Create namespace

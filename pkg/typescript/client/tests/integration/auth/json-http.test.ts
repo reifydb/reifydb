@@ -5,7 +5,7 @@ import {waitForDatabase} from "../setup";
 import {Client, JsonHttpClient} from "../../../src";
 
 describe('Auth Login Tests — JSON HTTP', () => {
-    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
 
     beforeAll(async () => {
         await waitForDatabase();

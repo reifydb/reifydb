@@ -6,7 +6,7 @@ import {Shape} from "@reifydb/core";
 import {Client, HttpClient} from "../../../src";
 
 describe('Auth Login Tests — HTTP', () => {
-    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
 
     beforeAll(async () => {
         await waitForDatabase();

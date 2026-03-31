@@ -349,7 +349,7 @@ describe('useQuery Hooks (HTTP)', () => {
         it('should work with ConnectionProvider', async () => {
             // @ts-ignore
             const wrapper = ({children}: { children: React.ReactNode }) => (
-                <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN}} children={children}/>
+                <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', token: process.env.REIFYDB_TOKEN}} children={children}/>
             );
 
             const shape = Shape.object({value: Shape.number()});
@@ -367,7 +367,7 @@ describe('useQuery Hooks (HTTP)', () => {
 
         it('should support config override in hooks', async () => {
             const shape = Shape.object({test: Shape.string()});
-            const overrideConfig = {url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', options: {timeoutMs: 2000}};
+            const overrideConfig = {url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', options: {timeoutMs: 2000}};
 
             const {result, unmount} = renderHook(() =>
                 useQueryOne(

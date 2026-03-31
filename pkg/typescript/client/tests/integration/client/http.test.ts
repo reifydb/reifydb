@@ -5,7 +5,7 @@ import {Shape} from "@reifydb/core";
 import {Client, HttpClient} from "../../../src";
 
 describe('ReifyDB Client Integration Tests', () => {
-    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
     const AUTH_TOKEN = process.env.REIFYDB_TOKEN;
 
     describe('HTTP Client', () => {

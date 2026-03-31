@@ -14,14 +14,14 @@ describe('useShape Hook (JSON HTTP)', () => {
     let setupClient: ReturnType<typeof Client.connect_http> | null = null;
 
     const wrapper = ({children}: {children: React.ReactNode}) => (
-        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children} />
+        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children} />
     );
 
     beforeAll(async () => {
         await waitForDatabaseHttp();
 
         // Create test namespace and tables
-        const url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+        const url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
         setupClient = Client.connect_http(url, {timeoutMs: 10000, token: process.env.REIFYDB_TOKEN});
 
         // Create namespace

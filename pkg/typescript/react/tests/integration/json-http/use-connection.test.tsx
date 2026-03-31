@@ -44,7 +44,7 @@ describe.sequential('useConnection Hook (JSON HTTP)', () => {
 
     it.sequential('should auto-connect with ConnectionProvider', async () => {
         const wrapper = ({children}: { children: React.ReactNode }) => (
-            <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
+            <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
         );
 
         const {result} = renderHook(() => useConnection(), {wrapper});
@@ -134,7 +134,7 @@ describe.sequential('useConnection Hook (JSON HTTP)', () => {
 
     it.sequential('should share state within ConnectionProvider', async () => {
         const wrapper = ({children}: { children: React.ReactNode }) => (
-            <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
+            <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
         );
 
         const {result: result1} = renderHook(() => useConnection(), {wrapper});

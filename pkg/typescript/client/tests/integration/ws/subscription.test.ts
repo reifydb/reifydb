@@ -14,7 +14,7 @@ import {
 
 describe('WebSocket Subscriptions', () => {
     let wsClient: WsClient;
-    const testUrl = process.env.REIFYDB_WS_URL || 'ws://localhost:8090';
+    const testUrl = process.env.REIFYDB_WS_URL || 'ws://localhost:18090';
 
     beforeAll(async () => {
         await waitForDatabase();
