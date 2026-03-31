@@ -8,7 +8,7 @@ repository.workspace = true
 description = "Transaction management and concurrency control for ReifyDB"
 
 [features]
-default = []
+default = ["test-stress"]
 test-stress = []
 worker_pool = []
 
