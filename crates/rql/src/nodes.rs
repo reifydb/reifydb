@@ -4,8 +4,8 @@
 use std::{collections, fmt};
 
 use reifydb_catalog::catalog::{
-	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, subscription::SubscriptionColumnToCreate,
-	table::TableColumnToCreate, view::ViewColumnToCreate,
+	ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{JoinType, WindowKind},
@@ -253,6 +253,12 @@ pub struct CreateSumTypeVariant {
 pub struct CreateSumTypeColumn {
 	pub name: String,
 	pub column_type: TypeConstraint,
+}
+
+#[derive(Debug, Clone)]
+pub struct SubscriptionColumnToCreate {
+	pub name: String,
+	pub ty: Type,
 }
 
 #[derive(Debug, Clone)]

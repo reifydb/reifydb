@@ -82,33 +82,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(ident) = TransactionalIdentityChanges::find_identity_by_name(sub, name) {
-					return Ok(Some(ident.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalIdentityChanges::is_identity_deleted_by_name(sub, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(ident) = self.materialized.find_identity_by_name_at(name, sub.version()) {
-					return Ok(Some(ident));
-				}
-
-				// 4. Fall back to storage
-				if let Some(ident) = CatalogStore::find_identity_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					name,
-				)? {
-					warn!("Identity '{}' found in storage but not in MaterializedCatalog", name);
-					return Ok(Some(ident));
-				}
-
-				Ok(None)
-			}
 			Transaction::Test(t) => {
 				// 1. Check transactional changes first
 				if let Some(ident) = TransactionalIdentityChanges::find_identity_by_name(t.inner, name)
@@ -212,36 +185,6 @@ impl Catalog {
 				if let Some(ident) =
 					CatalogStore::find_identity(&mut Transaction::Query(&mut *qry), identity)?
 				{
-					warn!(
-						"Identity '{}' found in storage but not in MaterializedCatalog",
-						identity
-					);
-					return Ok(Some(ident));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(ident) = TransactionalIdentityChanges::find_identity(sub, identity) {
-					return Ok(Some(ident.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalIdentityChanges::is_identity_deleted(sub, identity) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(ident) = self.materialized.find_identity_at(identity, sub.version()) {
-					return Ok(Some(ident));
-				}
-
-				// 4. Fall back to storage
-				if let Some(ident) = CatalogStore::find_identity(
-					&mut Transaction::Subscription(&mut *sub),
-					identity,
-				)? {
 					warn!(
 						"Identity '{}' found in storage but not in MaterializedCatalog",
 						identity
@@ -366,29 +309,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Subscription(sub) => {
-				if let Some(role) = TransactionalRoleChanges::find_role_by_name(sub, name) {
-					return Ok(Some(role.clone()));
-				}
-
-				if TransactionalRoleChanges::is_role_deleted_by_name(sub, name) {
-					return Ok(None);
-				}
-
-				if let Some(role) = self.materialized.find_role_by_name_at(name, sub.version()) {
-					return Ok(Some(role));
-				}
-
-				if let Some(role) = CatalogStore::find_role_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					name,
-				)? {
-					warn!("Role '{}' found in storage but not in MaterializedCatalog", name);
-					return Ok(Some(role));
-				}
-
-				Ok(None)
-			}
 			Transaction::Test(t) => {
 				if let Some(role) = TransactionalRoleChanges::find_role_by_name(t.inner, name) {
 					return Ok(Some(role.clone()));
@@ -478,32 +398,6 @@ impl Catalog {
 
 				if let Some(role) =
 					CatalogStore::find_role(&mut Transaction::Query(&mut *qry), role_id)?
-				{
-					warn!("Role '{}' found in storage but not in MaterializedCatalog", role_id);
-					return Ok(Some(role));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(role) = TransactionalRoleChanges::find_role(sub, role_id) {
-					return Ok(Some(role.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalRoleChanges::is_role_deleted(sub, role_id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(role) = self.materialized.find_role_at(role_id, sub.version()) {
-					return Ok(Some(role));
-				}
-
-				// 4. Fall back to storage
-				if let Some(role) =
-					CatalogStore::find_role(&mut Transaction::Subscription(&mut *sub), role_id)?
 				{
 					warn!("Role '{}' found in storage but not in MaterializedCatalog", role_id);
 					return Ok(Some(role));
@@ -631,42 +525,6 @@ impl Catalog {
 					if !seen_roles.contains(&ir.role_id)
 						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
 							admin, identity, ir.role_id,
-						) && let Some(role) = self.materialized.find_role_at(ir.role_id, version)
-					{
-						names.push(role.name);
-					}
-				}
-
-				Ok(names)
-			}
-			Transaction::Subscription(sub) => {
-				let version = sub.version();
-				let mut names = Vec::new();
-				let mut seen_roles = HashSet::new();
-
-				// 1. Check transactional granted-role changes first
-				for ir in
-					TransactionalGrantedRoleChanges::find_granted_roles_for_identity(sub, identity)
-				{
-					if !TransactionalRoleChanges::is_role_deleted(sub, ir.role_id) {
-						if let Some(role) = TransactionalRoleChanges::find_role(sub, ir.role_id)
-						{
-							seen_roles.insert(ir.role_id);
-							names.push(role.name.clone());
-						} else if let Some(role) =
-							self.materialized.find_role_at(ir.role_id, version)
-						{
-							seen_roles.insert(ir.role_id);
-							names.push(role.name);
-						}
-					}
-				}
-
-				// 2. Check materialized granted-roles
-				for ir in self.materialized.find_granted_roles_at(identity, version) {
-					if !seen_roles.contains(&ir.role_id)
-						&& !TransactionalGrantedRoleChanges::is_granted_role_deleted(
-							sub, identity, ir.role_id,
 						) && let Some(role) = self.materialized.find_role_at(ir.role_id, version)
 					{
 						names.push(role.name);

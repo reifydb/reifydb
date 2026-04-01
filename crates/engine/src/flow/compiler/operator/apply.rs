@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Apply, nodes::ApplyNode, query::QueryPlan};
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, fragment::Fragment};
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -25,7 +25,7 @@ impl From<ApplyNode> for ApplyCompiler {
 }
 
 impl CompileOperator for ApplyCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
 		} else {

@@ -48,6 +48,7 @@ pub mod storage_stats_index;
 pub mod storage_stats_ringbuffer;
 pub mod storage_stats_table;
 pub mod storage_stats_view;
+pub mod subscriptions;
 pub mod tables;
 pub mod tables_virtual;
 pub mod tag_variants;
@@ -99,6 +100,7 @@ use storage_stats_index::index_storage_stats;
 use storage_stats_ringbuffer::ringbuffer_storage_stats;
 use storage_stats_table::table_storage_stats;
 use storage_stats_view::view_storage_stats;
+use subscriptions::subscriptions;
 use tables::tables;
 use tables_virtual::virtual_tables;
 use tag_variants::tag_variants;
@@ -509,6 +511,15 @@ pub mod ids {
 			pub const ALL: [ColumnId; 3] = [FLOW_ID, PRIMITIVE_ID, LAG];
 		}
 
+		pub mod subscriptions {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const COLUMN_COUNT: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [ID, COLUMN_COUNT];
+		}
+
 		pub mod shapes {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -723,8 +734,9 @@ pub mod ids {
 		pub const ENUM_VARIANTS: VTableId = VTableId(49);
 		pub const EVENT_VARIANTS: VTableId = VTableId(50);
 		pub const TAG_VARIANTS: VTableId = VTableId(51);
+		pub const SUBSCRIPTIONS: VTableId = VTableId(52);
 
-		pub const ALL: [VTableId; 51] = [
+		pub const ALL: [VTableId; 52] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -776,6 +788,7 @@ pub mod ids {
 			ENUM_VARIANTS,
 			EVENT_VARIANTS,
 			TAG_VARIANTS,
+			SUBSCRIPTIONS,
 		];
 	}
 }
@@ -830,6 +843,11 @@ impl SystemCatalog {
 	/// Get the flow_lags virtual table definition
 	pub fn get_system_flow_lags_table() -> Arc<VTable> {
 		flow_lags()
+	}
+
+	/// Get the subscriptions virtual table definition
+	pub fn get_system_subscriptions_table() -> Arc<VTable> {
+		subscriptions()
 	}
 
 	/// Get the columns virtual table definition

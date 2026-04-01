@@ -7,7 +7,7 @@ use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::frame::frame::Frame;
 use tokio::sync::mpsc;
 use tonic::Status;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::{
 	convert::frames_to_proto,
@@ -15,7 +15,7 @@ use crate::{
 };
 
 pub struct GrpcSubscriptionRegistry {
-	subscriptions: DashMap<SubscriptionId, mpsc::Sender<Result<SubscriptionEvent, Status>>>,
+	subscriptions: DashMap<SubscriptionId, mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>>,
 }
 
 impl Default for GrpcSubscriptionRegistry {
@@ -31,7 +31,11 @@ impl GrpcSubscriptionRegistry {
 		}
 	}
 
-	pub fn register(&self, subscription_id: SubscriptionId, tx: mpsc::Sender<Result<SubscriptionEvent, Status>>) {
+	pub fn register(
+		&self,
+		subscription_id: SubscriptionId,
+		tx: mpsc::UnboundedSender<Result<SubscriptionEvent, Status>>,
+	) {
 		self.subscriptions.insert(subscription_id, tx);
 		debug!("Registered gRPC subscription {}", subscription_id);
 	}
@@ -62,13 +66,9 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 			})),
 		};
 
-		match tx.try_send(Ok(event)) {
+		match tx.send(Ok(event)) {
 			Ok(_) => DeliveryResult::Delivered,
-			Err(mpsc::error::TrySendError::Full(_)) => {
-				warn!("Back pressure for gRPC subscription {}", subscription_id);
-				DeliveryResult::BackPressure
-			}
-			Err(mpsc::error::TrySendError::Closed(_)) => DeliveryResult::Disconnected,
+			Err(_) => DeliveryResult::Disconnected,
 		}
 	}
 

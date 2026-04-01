@@ -45,11 +45,11 @@ use crate::{builder::OperatorFactory, operator::Operators};
 pub struct FlowEngine {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
-	pub(crate) operators: BTreeMap<FlowNodeId, Arc<Operators>>,
-	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
-	pub(crate) sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) analyzer: FlowGraphAnalyzer,
+	pub operators: BTreeMap<FlowNodeId, Arc<Operators>>,
+	pub flows: BTreeMap<FlowId, FlowDag>,
+	pub sources: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
+	pub sinks: BTreeMap<ShapeId, Vec<(FlowId, FlowNodeId)>>,
+	pub analyzer: FlowGraphAnalyzer,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
@@ -136,6 +136,36 @@ impl FlowEngine {
 		self.sinks.clear();
 		self.analyzer.clear();
 		self.flow_creation_versions.clear();
+	}
+
+	/// Remove a single flow by ID, cleaning up all associated operators, sources, sinks, and analyzer state
+	pub fn remove_flow(&mut self, flow_id: FlowId) {
+		// Collect node IDs for this flow before removing it
+		let node_ids: Vec<FlowNodeId> =
+			self.flows.get(&flow_id).map(|flow| flow.get_node_ids().collect()).unwrap_or_default();
+
+		// Remove operators for all nodes in this flow
+		for node_id in node_ids {
+			self.operators.remove(&node_id);
+		}
+
+		// Clean up source mappings
+		for entries in self.sources.values_mut() {
+			entries.retain(|(fid, _)| *fid != flow_id);
+		}
+		self.sources.retain(|_, v| !v.is_empty());
+
+		// Clean up sink mappings
+		for entries in self.sinks.values_mut() {
+			entries.retain(|(fid, _)| *fid != flow_id);
+		}
+		self.sinks.retain(|_, v| !v.is_empty());
+
+		// Remove flow DAG
+		self.flows.remove(&flow_id);
+
+		// Remove from analyzer (rebuilds dependency_graph)
+		self.analyzer.remove(flow_id);
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {

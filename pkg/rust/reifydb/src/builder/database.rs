@@ -462,6 +462,14 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
+		#[cfg(feature = "sub_flow")]
+		{
+			let factory = Box::new(reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory);
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
 		#[cfg(feature = "sub_replication")]
 		if let Some(factory) = self.replication_factory {
 			let subsystem = factory.create(&self.ioc)?;

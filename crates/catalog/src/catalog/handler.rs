@@ -53,19 +53,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(handler) = TransactionalHandlerChanges::find_handler_by_id(sub, id) {
-					return Ok(Some(handler.clone()));
-				}
-
-				// 2. Check MaterializedCatalog
-				if let Some(handler) = self.materialized.find_handler_at(id, sub.version()) {
-					return Ok(Some(handler));
-				}
-
-				Ok(None)
-			}
 			Transaction::Test(t) => {
 				// 1. Check transactional changes first
 				if let Some(handler) = TransactionalHandlerChanges::find_handler_by_id(t.inner, id) {
@@ -134,28 +121,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(handler) =
-					TransactionalHandlerChanges::find_handler_by_name(sub, namespace, name)
-				{
-					return Ok(Some(handler.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalHandlerChanges::is_handler_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(handler) =
-					self.materialized.find_handler_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(handler));
-				}
-
-				Ok(None)
-			}
 			Transaction::Test(t) => {
 				// 1. Check transactional changes first
 				if let Some(handler) =
@@ -219,24 +184,6 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				Ok(self.materialized.list_handlers_for_variant_at(variant, qry.version()))
-			}
-			Transaction::Subscription(sub) => {
-				// Check materialized catalog + transactional additions
-				let mut handlers =
-					self.materialized.list_handlers_for_variant_at(variant, sub.version());
-
-				// Also check transactional changes for newly created handlers
-				for change in &sub.as_admin_mut().changes.handler {
-					if let Some(h) = &change.post
-						&& h.variant == variant && !handlers
-						.iter()
-						.any(|existing| existing.id == h.id)
-					{
-						handlers.push(h.clone());
-					}
-				}
-
-				Ok(handlers)
 			}
 			Transaction::Test(t) => {
 				// Check materialized catalog + transactional additions

@@ -15,7 +15,7 @@ use reifydb_rql::{
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
-	query::QueryTransaction, subscription::SubscriptionTransaction,
+	query::QueryTransaction,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_type::error::Diagnostic;
@@ -339,7 +339,7 @@ impl Executor {
 	}
 
 	#[instrument(name = "executor::subscription", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn subscription(&self, txn: &mut SubscriptionTransaction, cmd: Subscription<'_>) -> Result<Vec<Frame>> {
+	pub fn subscription(&self, txn: &mut QueryTransaction, cmd: Subscription<'_>) -> Result<Vec<Frame>> {
 		// Pre-compilation validation: parse and check statement constraints
 		let bump = Bump::new();
 		let statements = parse_str(&bump, cmd.rql)?;
@@ -357,16 +357,16 @@ impl Executor {
 			))));
 		}
 
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Subscription(&mut *txn))?;
+		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Query(&mut *txn))?;
 
 		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
-			&mut Transaction::Subscription(&mut *txn),
+			&mut Transaction::Query(&mut *txn),
 			"subscription",
 			true,
 		)?;
 
 		let compiled = match self.compiler.compile_with_policy(
-			&mut Transaction::Subscription(txn),
+			&mut Transaction::Query(txn),
 			cmd.rql,
 			inject_read_policies,
 		) {
@@ -377,13 +377,8 @@ impl Executor {
 			Err(err) => return Err(err),
 		};
 
-		let (output, remaining, _) = execute_compiled_units(
-			&self.0,
-			&mut Transaction::Subscription(txn),
-			&compiled,
-			&cmd.params,
-			symbols,
-		)?;
+		let (output, remaining, _) =
+			execute_compiled_units(&self.0, &mut Transaction::Query(txn), &compiled, &cmd.params, symbols)?;
 		Ok(merge_results(output, remaining))
 	}
 

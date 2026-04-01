@@ -7,8 +7,7 @@
 
 use reifydb_core::interface::{
 	catalog::{
-		id::{NamespaceId, SubscriptionId},
-		subscription::Subscription,
+		id::NamespaceId,
 		token::{Token, TokenId},
 	},
 	version::{ComponentType, HasVersion, SystemVersion},
@@ -29,22 +28,6 @@ pub mod vtable;
 pub type Result<T> = reifydb_type::Result<T>;
 
 pub(crate) struct CatalogStore;
-
-/// Find a subscription by ID directly from storage.
-///
-/// This is a low-level function that bypasses the MaterializedCatalog cache.
-/// For most use cases, prefer using `Catalog::find_subscription` instead.
-pub fn find_subscription(txn: &mut Transaction<'_>, id: SubscriptionId) -> Result<Option<Subscription>> {
-	CatalogStore::find_subscription(txn, id)
-}
-
-/// Drop a subscription and all its associated data (columns, rows, metadata).
-///
-/// This is a low-level function that performs complete cleanup of a subscription.
-/// Use this when cleaning up subscriptions after a WebSocket connection closes.
-pub fn drop_subscription(txn: &mut AdminTransaction, id: SubscriptionId) -> Result<()> {
-	CatalogStore::drop_subscription(txn, id)
-}
 
 /// Drop a flow by its name within a namespace.
 ///

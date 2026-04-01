@@ -43,6 +43,7 @@ pub mod series;
 pub mod shape_fields;
 pub mod shape_retention_policies;
 pub mod shapes;
+pub mod subscriptions;
 pub mod table_storage_stats;
 pub mod tables;
 pub mod tables_virtual;

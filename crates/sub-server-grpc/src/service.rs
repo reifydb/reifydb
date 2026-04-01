@@ -13,13 +13,12 @@ use reifydb_sub_server::{
 	state::AppState,
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
 };
-use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{params::Params, value::identity::IdentityId};
 use tokio::{
 	select, spawn,
 	sync::{mpsc, watch},
 };
-use tokio_stream::wrappers::ReceiverStream;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{Request, Response, Status, metadata::KeyAndValueRef};
 use tracing::{debug, info, warn};
 
@@ -39,7 +38,6 @@ pub struct ReifyDbService {
 	state: AppState,
 	admin_enabled: bool,
 	registry: Arc<GrpcSubscriptionRegistry>,
-	poller: Arc<SubscriptionPoller>,
 	shutdown_rx: watch::Receiver<bool>,
 }
 
@@ -48,14 +46,12 @@ impl ReifyDbService {
 		state: AppState,
 		admin_enabled: bool,
 		registry: Arc<GrpcSubscriptionRegistry>,
-		poller: Arc<SubscriptionPoller>,
 		shutdown_rx: watch::Receiver<bool>,
 	) -> Self {
 		Self {
 			state,
 			admin_enabled,
 			registry,
-			poller,
 			shutdown_rx,
 		}
 	}
@@ -94,8 +90,8 @@ impl ReifyDbService {
 	async fn subscribe_local(
 		&self,
 		subscription_id: SubscriptionId,
-	) -> Result<Response<ReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
-		let (tx, rx) = mpsc::channel(256);
+	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
+		let (tx, rx) = mpsc::unbounded_channel();
 
 		// Send initial subscribed event
 		let subscribed_event = SubscriptionEvent {
@@ -103,19 +99,17 @@ impl ReifyDbService {
 				subscription_id: subscription_id.0.to_string(),
 			})),
 		};
-		if tx.send(Ok(subscribed_event)).await.is_err() {
+		if tx.send(Ok(subscribed_event)).is_err() {
 			return Err(Status::internal("Failed to send subscribed event"));
 		}
 
-		// Register with registry and poller
+		// Register with registry
 		self.registry.register(subscription_id, tx.clone());
-		self.poller.register(subscription_id);
 
 		info!("gRPC subscription created: {}", subscription_id);
 
 		// Spawn cleanup task that monitors when the receiver is dropped or shutdown is signaled
 		let registry = self.registry.clone();
-		let poller = self.poller.clone();
 		let engine = self.state.engine_clone();
 		let system = self.state.actor_system();
 		let mut shutdown_rx = self.shutdown_rx.clone();
@@ -130,7 +124,6 @@ impl ReifyDbService {
 				subscription_id, client_disconnected
 			);
 
-			poller.unregister(&subscription_id);
 			registry.unregister(&subscription_id);
 
 			// Only run database cleanup on client disconnect, not server shutdown
@@ -153,7 +146,7 @@ impl ReifyDbService {
 			}
 		});
 
-		Ok(Response::new(ReceiverStream::new(rx)))
+		Ok(Response::new(UnboundedReceiverStream::new(rx)))
 	}
 
 	async fn subscribe_remote(
@@ -161,12 +154,12 @@ impl ReifyDbService {
 		address: String,
 		query: &str,
 		token: Option<String>,
-	) -> Result<Response<ReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
+	) -> Result<Response<UnboundedReceiverStream<Result<SubscriptionEvent, Status>>>, Status> {
 		let remote_sub = connect_remote(&address, query, token.as_deref())
 			.await
 			.map_err(|e| Status::unavailable(e.to_string()))?;
 
-		let (tx, rx) = mpsc::channel(256);
+		let (tx, rx) = mpsc::unbounded_channel();
 
 		// Forward initial SubscribedEvent
 		let subscribed_event = SubscriptionEvent {
@@ -174,7 +167,7 @@ impl ReifyDbService {
 				subscription_id: remote_sub.subscription_id().to_string(),
 			})),
 		};
-		tx.send(Ok(subscribed_event)).await.map_err(|_| Status::internal("channel closed"))?;
+		tx.send(Ok(subscribed_event)).map_err(|_| Status::internal("channel closed"))?;
 
 		// Spawn proxy: remote stream → local channel
 		let shutdown_rx = self.shutdown_rx.clone();
@@ -186,7 +179,7 @@ impl ReifyDbService {
 			})
 		}));
 
-		Ok(Response::new(ReceiverStream::new(rx)))
+		Ok(Response::new(UnboundedReceiverStream::new(rx)))
 	}
 }
 
@@ -285,7 +278,7 @@ impl ReifyDb for ReifyDbService {
 		}))
 	}
 
-	type SubscribeStream = ReceiverStream<Result<SubscriptionEvent, Status>>;
+	type SubscribeStream = UnboundedReceiverStream<Result<SubscriptionEvent, Status>>;
 
 	async fn subscribe(
 		&self,
@@ -324,9 +317,6 @@ impl ReifyDb for ReifyDbService {
 				.parse::<u64>()
 				.map_err(|_| Status::invalid_argument("Invalid subscription ID"))?,
 		);
-
-		// Unregister from poller
-		self.poller.unregister(&subscription_id);
 
 		// Unregister from registry
 		self.registry.unregister(&subscription_id);

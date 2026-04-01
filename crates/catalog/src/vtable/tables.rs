@@ -32,7 +32,7 @@ use super::{
 		ringbuffer_storage_stats::SystemRingBufferStorageStats, ringbuffers::SystemRingBuffers,
 		roles::SystemRoles, sequences::SystemSequences, series::SystemSeries, shape_fields::SystemShapeFields,
 		shape_retention_policies::SystemShapeRetentionPolicies, shapes::SystemShapes,
-		table_storage_stats::SystemTableStorageStats, tables::SystemTables,
+		subscriptions::SystemSubscriptions, table_storage_stats::SystemTableStorageStats, tables::SystemTables,
 		tables_virtual::SystemTablesVirtual, tag_variants::SystemTagVariants, tags::SystemTags,
 		types::SystemTypes, versions::SystemVersions, view_storage_stats::SystemViewStorageStats,
 		views::SystemViews, virtual_table_columns::SystemVirtualTableColumns,
@@ -100,6 +100,7 @@ pub enum VTables {
 	Migrations(SystemMigrations),
 
 	Configs(SystemConfigs),
+	Subscriptions(SystemSubscriptions),
 	VirtualTableColumns(SystemVirtualTableColumns),
 
 	/// User-defined virtual table (callback-based)
@@ -165,6 +166,7 @@ impl VTables {
 			Self::PolicyOperations(t) => &t.definition,
 			Self::Migrations(t) => &t.definition,
 			Self::Configs(t) => &t.definition,
+			Self::Subscriptions(t) => &t.definition,
 			Self::VirtualTableColumns(t) => &t.definition,
 			Self::UserDefined {
 				def,
@@ -225,6 +227,7 @@ impl VTables {
 			Self::PolicyOperations(t) => t.initialize(txn, ctx),
 			Self::Migrations(t) => t.initialize(txn, ctx),
 			Self::Configs(t) => t.initialize(txn, ctx),
+			Self::Subscriptions(t) => t.initialize(txn, ctx),
 			Self::VirtualTableColumns(t) => t.initialize(txn, ctx),
 			Self::UserDefined {
 				params: stored_params,
@@ -299,6 +302,7 @@ impl VTables {
 			Self::PolicyOperations(t) => t.next(txn),
 			Self::Migrations(t) => t.next(txn),
 			Self::Configs(t) => t.next(txn),
+			Self::Subscriptions(t) => t.next(txn),
 			Self::VirtualTableColumns(t) => t.next(txn),
 			Self::UserDefined {
 				data_fn,

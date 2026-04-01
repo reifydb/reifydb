@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::mem;
+use std::{collections::HashMap, mem};
 
 use pending::{Pending, PendingWrite};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::shape::RowShape,
+	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
 		catalog::shape::ShapeId,
 		change::{Change, ChangeOrigin, Diff},
@@ -94,7 +94,7 @@ pub struct FlowTransactionInner {
 	pub pending: Pending,
 	pub pending_shapes: Vec<RowShape>,
 	pub primitive_query: MultiReadTransaction,
-	pub state_query: MultiReadTransaction,
+	pub state_query: Option<MultiReadTransaction>,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
@@ -164,6 +164,17 @@ pub enum FlowTransaction {
 		/// Read-only snapshot of the committing transaction's KV writes.
 		base_pending: Pending,
 	},
+
+	/// Ephemeral subscription flow processing.
+	///
+	/// Operator state lives in an in-memory HashMap instead of the multi-version
+	/// store; source reads go through primitive_query at the CDC version.
+	/// No writes are committed to persistent storage.
+	Ephemeral {
+		inner: FlowTransactionInner,
+		/// In-memory operator state, replacing state_query for FlowNodeState keys.
+		state: HashMap<EncodedKey, EncodedRow>,
+	},
 }
 
 impl FlowTransaction {
@@ -174,6 +185,10 @@ impl FlowTransaction {
 				..
 			}
 			| Self::Transactional {
+				inner,
+				..
+			}
+			| Self::Ephemeral {
 				inner,
 				..
 			} => inner,
@@ -187,6 +202,10 @@ impl FlowTransaction {
 				..
 			}
 			| Self::Transactional {
+				inner,
+				..
+			}
+			| Self::Ephemeral {
 				inner,
 				..
 			} => inner,
@@ -214,7 +233,7 @@ impl FlowTransaction {
 				pending: Pending::new(),
 				pending_shapes: Vec::new(),
 				primitive_query,
-				state_query,
+				state_query: Some(state_query),
 				catalog,
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
@@ -239,7 +258,7 @@ impl FlowTransaction {
 				pending,
 				pending_shapes: Vec::new(),
 				primitive_query,
-				state_query,
+				state_query: Some(state_query),
 				catalog,
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
@@ -267,12 +286,87 @@ impl FlowTransaction {
 				pending,
 				pending_shapes: Vec::new(),
 				primitive_query,
-				state_query,
+				state_query: Some(state_query),
 				catalog,
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
 			},
 			base_pending,
+		}
+	}
+
+	/// Create an ephemeral (subscription) FlowTransaction.
+	///
+	/// Operator state is backed by an in-memory HashMap. Source data reads
+	/// go through `primitive_query` at the specified version. State reads
+	/// go to `state` instead of the multi-version store.
+	pub fn ephemeral(
+		version: CommitVersion,
+		primitive_query: MultiReadTransaction,
+		catalog: Catalog,
+		state: HashMap<EncodedKey, EncodedRow>,
+	) -> Self {
+		let mut pq = primitive_query;
+		pq.read_as_of_version_inclusive(version);
+
+		Self::Ephemeral {
+			inner: FlowTransactionInner {
+				version,
+				pending: Pending::new(),
+				pending_shapes: Vec::new(),
+				primitive_query: pq,
+				state_query: None,
+				catalog,
+				interceptors: Interceptors::new(),
+				accumulator: ChangeAccumulator::new(),
+			},
+			state,
+		}
+	}
+
+	/// Merge pending state writes back into the ephemeral state HashMap.
+	///
+	/// After flow processing, pending writes contain both state mutations and
+	/// subscription output writes. This method merges state mutations (keys
+	/// matching FlowNodeState/FlowNodeInternalState) back into state
+	/// and clears pending.
+	///
+	/// Only applicable to the Ephemeral variant; no-op for others.
+	pub fn merge_state(&mut self) {
+		if let Self::Ephemeral {
+			inner,
+			state,
+		} = self
+		{
+			for (key, write) in inner.pending.iter_sorted() {
+				if Self::is_flow_state_key(key) {
+					match write {
+						PendingWrite::Set(row) => {
+							state.insert(key.clone(), row.clone());
+						}
+						PendingWrite::Remove => {
+							state.remove(key);
+						}
+					}
+				}
+			}
+			inner.pending = Pending::new();
+		}
+	}
+
+	/// Extract the ephemeral state HashMap, consuming the state from this transaction.
+	///
+	/// Used to persist ephemeral state across CDC batches.
+	/// Only applicable to the Ephemeral variant; returns empty HashMap for others.
+	pub fn take_state(&mut self) -> HashMap<EncodedKey, EncodedRow> {
+		if let Self::Ephemeral {
+			state,
+			..
+		} = self
+		{
+			mem::take(state)
+		} else {
+			HashMap::new()
 		}
 	}
 

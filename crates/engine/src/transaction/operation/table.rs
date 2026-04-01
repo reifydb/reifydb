@@ -231,9 +231,6 @@ impl TableOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.insert_table(table, shape, row, row_number),
 			Transaction::Admin(txn) => txn.insert_table(table, shape, row, row_number),
-			Transaction::Subscription(txn) => {
-				txn.as_admin_mut().insert_table(table, shape, row, row_number)
-			}
 			Transaction::Test(t) => t.inner.insert_table(table, shape, row, row_number),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
@@ -244,7 +241,6 @@ impl TableOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.update_table(table, id, row),
 			Transaction::Admin(txn) => txn.update_table(table, id, row),
-			Transaction::Subscription(txn) => txn.as_admin_mut().update_table(table, id, row),
 			Transaction::Test(t) => t.inner.update_table(table, id, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
@@ -255,7 +251,6 @@ impl TableOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_table(table, id),
 			Transaction::Admin(txn) => txn.remove_from_table(table, id),
-			Transaction::Subscription(txn) => txn.as_admin_mut().remove_from_table(table, id),
 			Transaction::Test(t) => t.inner.remove_from_table(table, id),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),

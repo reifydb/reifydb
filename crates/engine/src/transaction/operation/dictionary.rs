@@ -209,7 +209,6 @@ impl DictionaryOperations for Transaction<'_> {
 		match self {
 			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
 			Transaction::Admin(admin) => admin.insert_into_dictionary(dictionary, value),
-			Transaction::Subscription(sub) => sub.as_admin_mut().insert_into_dictionary(dictionary, value),
 			Transaction::Test(t) => t.inner.insert_into_dictionary(dictionary, value),
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction"))

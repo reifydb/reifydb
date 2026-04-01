@@ -16,7 +16,6 @@ use reifydb_sub_server::{
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
-use reifydb_subscription::poller::SubscriptionPoller;
 use reifydb_type::{
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
@@ -63,7 +62,6 @@ pub async fn handle_connection(
 	stream: TcpStream,
 	state: AppState,
 	registry: Arc<SubscriptionRegistry>,
-	poller: Arc<SubscriptionPoller>,
 	mut shutdown: watch::Receiver<bool>,
 ) {
 	let peer = stream.peer_addr().ok();
@@ -93,7 +91,7 @@ pub async fn handle_connection(
 	let (mut sender, mut receiver) = ws_stream.split();
 
 	// Channel for receiving push messages from the registry
-	let (push_tx, mut push_rx) = mpsc::channel::<PushMessage>(100);
+	let (push_tx, mut push_rx) = mpsc::unbounded_channel::<PushMessage>();
 
 	// Connection starts with anonymous identity; Auth message upgrades it
 	let mut identity: Option<IdentityId> = Some(IdentityId::anonymous());
@@ -145,7 +143,6 @@ pub async fn handle_connection(
 								auth_token: &mut auth_token,
 								connection_id,
 								registry: &registry,
-								poller: &poller,
 								push_tx: push_tx.clone(),
 								remote_tasks: &mut remote_tasks,
 								shutdown: shutdown.clone(),
@@ -199,9 +196,6 @@ pub async fn handle_connection(
 
 	// Cleanup database subscriptions for each subscription
 	for subscription_id in subscription_ids {
-		// Unregister from poller first
-		poller.unregister(&subscription_id);
-
 		// Delete the subscription and its associated flow from database
 		if let Err(e) = cleanup_subscription(&state, subscription_id).await {
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
@@ -221,8 +215,7 @@ pub(crate) struct ConnectionContext<'a> {
 	pub auth_token: &'a mut Option<String>,
 	pub connection_id: ConnectionId,
 	pub registry: &'a SubscriptionRegistry,
-	pub poller: &'a SubscriptionPoller,
-	pub push_tx: mpsc::Sender<PushMessage>,
+	pub push_tx: mpsc::UnboundedSender<PushMessage>,
 	pub remote_tasks: &'a mut HashMap<String, JoinHandle<()>>,
 	pub shutdown: watch::Receiver<bool>,
 }
@@ -470,9 +463,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					));
 				}
 			};
-
-			// Unregister from poller
-			conn.poller.unregister(&subscription_id);
 
 			// Unsubscribe from registry
 			let removed = conn.registry.unsubscribe(subscription_id);

@@ -2566,6 +2566,7 @@ dependencies = [
  "reifydb-sub-server-http",
  "reifydb-sub-server-otel",
  "reifydb-sub-server-ws",
+ "reifydb-sub-subscription",
  "reifydb-sub-task",
  "reifydb-sub-tracing",
  "reifydb-subscription",
@@ -3051,6 +3052,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
+ "reifydb-sub-subscription",
  "reifydb-subscription",
  "reifydb-type",
  "serde_json",
@@ -3113,6 +3115,7 @@ dependencies = [
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
+ "reifydb-sub-subscription",
  "reifydb-subscription",
  "reifydb-type",
  "serde",
@@ -3121,6 +3124,27 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "reifydb-sub-subscription"
+version = "0.4.7"
+dependencies = [
+ "dashmap",
+ "reifydb-abi",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-cdc",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-sub-api",
+ "reifydb-sub-flow",
+ "reifydb-subscription",
+ "reifydb-transaction",
+ "reifydb-type",
+ "tokio",
 ]
 
 [[package]]

@@ -22,8 +22,8 @@ use std::{
 
 use query::window::WindowNode;
 use reifydb_catalog::catalog::{
-	Catalog, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate,
-	subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
+	Catalog, ringbuffer::RingBufferColumnToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	common::{IndexType, JoinType},
@@ -58,7 +58,7 @@ use crate::{
 	bump::{Bump, BumpBox, BumpFragment, BumpVec},
 	diagnostic::AstError,
 	expression::{AliasExpression, Expression, ExpressionCompiler, IdentExpression},
-	nodes::TakeLimit,
+	nodes::{SubscriptionColumnToCreate, TakeLimit},
 	plan::logical::alter::table::AlterTableNode,
 };
 

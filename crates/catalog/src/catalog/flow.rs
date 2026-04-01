@@ -97,32 +97,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(flow) = TransactionalFlowChanges::find_flow(sub, id) {
-					return Ok(Some(flow.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalFlowChanges::is_flow_deleted(sub, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(flow) = self.materialized.find_flow_at(id, sub.version()) {
-					return Ok(Some(flow));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(flow) =
-					CatalogStore::find_flow(&mut Transaction::Subscription(&mut *sub), id)?
-				{
-					warn!("Flow with ID {:?} found in storage but not in MaterializedCatalog", id);
-					return Ok(Some(flow));
-				}
-
-				Ok(None)
-			}
 			Transaction::Test(mut t) => {
 				if let Some(flow) = TransactionalFlowChanges::find_flow(t.inner, id) {
 					return Ok(Some(flow.clone()));
@@ -230,39 +204,6 @@ impl Catalog {
 				// 2. Fall back to storage as defensive measure
 				if let Some(flow) = CatalogStore::find_flow_by_name(
 					&mut Transaction::Query(&mut *qry),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Flow '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
-					return Ok(Some(flow));
-				}
-
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(flow) = TransactionalFlowChanges::find_flow_by_name(sub, namespace, name) {
-					return Ok(Some(flow.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalFlowChanges::is_flow_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(flow) =
-					self.materialized.find_flow_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(flow));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(flow) = CatalogStore::find_flow_by_name(
-					&mut Transaction::Subscription(&mut *sub),
 					namespace,
 					name,
 				)? {

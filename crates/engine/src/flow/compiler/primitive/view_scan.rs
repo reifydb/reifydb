@@ -5,7 +5,7 @@
 
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{flow::node::FlowNodeType::SourceView, nodes::ViewScanNode};
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -23,7 +23,7 @@ impl From<ViewScanNode> for ViewScanCompiler {
 }
 
 impl CompileOperator for ViewScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
 		compiler.add_node(
 			txn,
 			SourceView {

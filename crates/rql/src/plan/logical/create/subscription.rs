@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::subscription::SubscriptionColumnToCreate;
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{
@@ -9,6 +8,7 @@ use crate::{
 	ast::ast::AstCreateSubscription,
 	bump::BumpVec,
 	convert_data_type_with_constraints,
+	nodes::SubscriptionColumnToCreate,
 	plan::logical::{Compiler, CreateSubscriptionNode, LogicalPlan},
 };
 

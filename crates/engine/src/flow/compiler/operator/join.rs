@@ -11,7 +11,7 @@ use reifydb_rql::{
 	nodes::{JoinInnerNode, JoinLeftNode},
 	query::QueryPlan,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -104,7 +104,7 @@ fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Express
 }
 
 impl CompileOperator for JoinCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
 		// Extract source name from right plan for fallback alias
 		let source_name = extract_source_name(&self.right);
 

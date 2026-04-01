@@ -240,6 +240,7 @@ impl Vm {
 						catalog: &ctx.services.catalog,
 						functions: &ctx.services.functions,
 						runtime_context: &ctx.services.runtime_context,
+						ioc: &ctx.services.ioc,
 					};
 					let columns = proc_impl
 						.call(&proc_ctx, ctx.tx)
@@ -395,6 +396,7 @@ impl Vm {
 				catalog: &ctx.services.catalog,
 				functions: &ctx.services.functions,
 				runtime_context: &ctx.services.runtime_context,
+				ioc: &ctx.services.ioc,
 			};
 			let columns = proc_impl.call(&proc_ctx, ctx.tx).map_err(|e| e.with_context(name.clone()))?;
 

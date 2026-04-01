@@ -23,7 +23,7 @@ use reifydb_core::{
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
-use reifydb_subscription::poller::SubscriptionPoller;
+use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
 use reifydb_type::{Result, error::Error};
 use tokio::{
 	net::TcpListener,
@@ -90,6 +90,8 @@ pub struct WsSubsystem {
 	poll_interval: Duration,
 	/// Maximum rows to read per subscription per poll.
 	poll_batch_size: usize,
+	/// In-memory subscription store (from IoC, if subscription subsystem is active).
+	subscription_store: Option<Arc<SubscriptionStore>>,
 }
 
 impl WsSubsystem {
@@ -109,6 +111,7 @@ impl WsSubsystem {
 		runtime: SharedRuntime,
 		poll_interval: Duration,
 		poll_batch_size: usize,
+		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Self {
 		let max_connections = state.max_connections();
 		Self {
@@ -127,6 +130,7 @@ impl WsSubsystem {
 			registry: Arc::new(SubscriptionRegistry::new()),
 			poll_interval,
 			poll_batch_size,
+			subscription_store,
 		}
 	}
 
@@ -196,25 +200,16 @@ impl Subsystem for WsSubsystem {
 		// Create subscription poller with configured values
 		let poll_interval = self.poll_interval;
 		let batch_size = self.poll_batch_size;
-		let poller = Arc::new(SubscriptionPoller::new(batch_size));
-		let admin_poller = poller.clone();
 
-		// Spawn the subscription poller thread
-		let poller_clone = poller.clone();
-		let poller_state = state.clone();
-		let poller_registry = registry.clone();
-		let poller_shutdown_rx = rx.clone();
-		runtime.spawn(async move {
-			poller_clone
-				.run_loop(
-					poller_state.engine_clone(),
-					poller_state.actor_system(),
-					poller_registry,
-					poll_interval,
-					poller_shutdown_rx,
-				)
-				.await;
-		});
+		// Spawn store-backed subscription poller if store is available
+		if let Some(ref store) = self.subscription_store {
+			let poller = Arc::new(StoreBackedPoller::new(store.clone(), batch_size));
+			let poller_registry = registry.clone();
+			let poller_shutdown_rx = rx.clone();
+			runtime.spawn(async move {
+				poller.run_loop(poller_registry, poll_interval, poller_shutdown_rx).await;
+			});
+		}
 
 		// Bind main listener if configured
 		if let Some(addr) = &self.bind_addr {
@@ -276,8 +271,7 @@ impl Subsystem for WsSubsystem {
 
 									let conn_state = state.clone();
 									let conn_registry = registry.clone();
-									let conn_poller = poller.clone();
-									let shutdown_rx = shutdown_rx.clone();
+										let shutdown_rx = shutdown_rx.clone();
 									let active = active_connections.clone();
 									let runtime_handle = runtime_inner.clone();
 
@@ -285,7 +279,7 @@ impl Subsystem for WsSubsystem {
 									debug!("Accepted connection from {}", peer);
 
 									runtime_handle.spawn(async move {
-										handle_connection(stream, conn_state, conn_registry, conn_poller, shutdown_rx).await;
+										handle_connection(stream, conn_state, conn_registry, shutdown_rx).await;
 										active.fetch_sub(1, Ordering::SeqCst);
 										drop(permit); // Release connection slot
 									});
@@ -372,7 +366,6 @@ impl Subsystem for WsSubsystem {
 
 									let conn_state = admin_state.clone();
 									let conn_registry = admin_registry.clone();
-									let conn_poller = admin_poller.clone();
 									let shutdown_rx = admin_shutdown_rx.clone();
 									let active = admin_active.clone();
 									let runtime_handle = runtime_inner.clone();
@@ -381,7 +374,7 @@ impl Subsystem for WsSubsystem {
 									debug!("Accepted admin connection from {}", peer);
 
 									runtime_handle.spawn(async move {
-										handle_connection(stream, conn_state, conn_registry, conn_poller, shutdown_rx).await;
+										handle_connection(stream, conn_state, conn_registry, shutdown_rx).await;
 										active.fetch_sub(1, Ordering::SeqCst);
 										drop(permit);
 									});

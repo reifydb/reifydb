@@ -4,7 +4,10 @@
 use std::{
 	cmp::Ordering,
 	collections, iter,
-	ops::Bound::{Excluded, Included, Unbounded},
+	ops::{
+		Bound::{Excluded, Included, Unbounded},
+		RangeBounds,
+	},
 	vec,
 };
 
@@ -51,10 +54,25 @@ impl FlowTransaction {
 			}
 		}
 
-		// 3. Fall through to committed storage
+		// 3. Ephemeral: state keys from HashMap, source keys from primitive_query
+		if let Self::Ephemeral {
+			inner,
+			state,
+		} = self
+		{
+			if Self::is_flow_state_key(key) {
+				return Ok(state.get(key).cloned());
+			}
+			return match inner.primitive_query.get(key)? {
+				Some(multi) => Ok(Some(multi.row().clone())),
+				None => Ok(None),
+			};
+		}
+
+		// 4. Fall through to committed storage
 		let inner = self.inner_mut();
 		let query = if Self::is_flow_state_key(key) {
-			&inner.state_query
+			inner.state_query.as_ref().unwrap()
 		} else {
 			&inner.primitive_query
 		};
@@ -87,9 +105,21 @@ impl FlowTransaction {
 			}
 		}
 
+		// Ephemeral: state keys from HashMap, source keys from primitive_query
+		if let Self::Ephemeral {
+			inner,
+			state,
+		} = self
+		{
+			if Self::is_flow_state_key(key) {
+				return Ok(state.contains_key(key));
+			}
+			return inner.primitive_query.contains_key(key);
+		}
+
 		let inner = self.inner_mut();
 		let query = if Self::is_flow_state_key(key) {
-			&inner.state_query
+			inner.state_query.as_ref().unwrap()
 		} else {
 			&inner.primitive_query
 		};
@@ -106,7 +136,7 @@ impl FlowTransaction {
 		})
 	}
 
-	fn is_flow_state_key(key: &EncodedKey) -> bool {
+	pub(crate) fn is_flow_state_key(key: &EncodedKey) -> bool {
 		match Key::kind(key) {
 			None => false,
 			Some(kind) => matches!(kind, KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState),
@@ -139,7 +169,7 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&inner.state_query
+							inner.state_query.as_ref().unwrap()
 						} else {
 							&inner.primitive_query
 						}
@@ -169,7 +199,7 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&inner.state_query
+							inner.state_query.as_ref().unwrap()
 						} else {
 							&inner.primitive_query
 						}
@@ -180,6 +210,51 @@ impl FlowTransaction {
 				let storage_iter = query.range(range, batch_size);
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
+			}
+			Self::Ephemeral {
+				inner,
+				state,
+			} => {
+				// Merge pending writes with ephemeral state or primitive_query
+				let is_state_range = match range.start.as_ref() {
+					Included(start) | Excluded(start) => Self::is_flow_state_key(start),
+					Unbounded => false,
+				};
+
+				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
+					.pending
+					.range((range.start.as_ref(), range.end.as_ref()))
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect();
+				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
+
+				if is_state_range {
+					// State keys: build iterator from state HashMap
+					let state_items: Vec<Result<MultiVersionRow>> = state
+						.iter()
+						.filter(|(k, _)| range.contains(k))
+						.map(|(k, v)| {
+							Ok(MultiVersionRow {
+								key: k.clone(),
+								row: v.clone(),
+								version: inner.version,
+							})
+						})
+						.collect();
+					let v = inner.version;
+					// Sort state items by key for merge iterator
+					let mut sorted_items = state_items;
+					sorted_items.sort_by(|a, b| match (a, b) {
+						(Ok(a), Ok(b)) => a.key.cmp(&b.key),
+						_ => Ordering::Equal,
+					});
+					Box::new(flow_merge_pending_iterator(pending_vec, sorted_items.into_iter(), v))
+				} else {
+					// Source data: delegate to primitive_query
+					let storage_iter = inner.primitive_query.range(range, batch_size);
+					let v = inner.version;
+					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
+				}
 			}
 		}
 	}
@@ -209,7 +284,7 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&inner.state_query
+							inner.state_query.as_ref().unwrap()
 						} else {
 							&inner.primitive_query
 						}
@@ -238,7 +313,7 @@ impl FlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						if Self::is_flow_state_key(start) {
-							&inner.state_query
+							inner.state_query.as_ref().unwrap()
 						} else {
 							&inner.primitive_query
 						}
@@ -249,6 +324,53 @@ impl FlowTransaction {
 				let storage_iter = query.range_rev(range, batch_size);
 				let v = inner.version;
 				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
+			}
+			Self::Ephemeral {
+				inner,
+				state,
+			} => {
+				let is_state_range = match range.start.as_ref() {
+					Included(start) | Excluded(start) => Self::is_flow_state_key(start),
+					Unbounded => false,
+				};
+
+				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
+					.pending
+					.range((range.start.as_ref(), range.end.as_ref()))
+					.map(|(k, v)| (k.clone(), v.clone()))
+					.collect();
+				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
+
+				if is_state_range {
+					// State keys: build reverse iterator from state HashMap
+					let mut state_items: Vec<Result<MultiVersionRow>> = state
+						.iter()
+						.filter(|(k, _)| range.contains(k))
+						.map(|(k, v)| {
+							Ok(MultiVersionRow {
+								key: k.clone(),
+								row: v.clone(),
+								version: inner.version,
+							})
+						})
+						.collect();
+					let v = inner.version;
+					// Sort in reverse order for reverse merge iterator
+					state_items.sort_by(|a, b| match (a, b) {
+						(Ok(a), Ok(b)) => b.key.cmp(&a.key),
+						_ => Ordering::Equal,
+					});
+					Box::new(flow_merge_pending_iterator_rev(
+						pending_vec,
+						state_items.into_iter(),
+						v,
+					))
+				} else {
+					// Source data: delegate to primitive_query
+					let storage_iter = inner.primitive_query.range_rev(range, batch_size);
+					let v = inner.version;
+					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
+				}
 			}
 		}
 	}

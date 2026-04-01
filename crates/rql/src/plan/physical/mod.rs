@@ -8,9 +8,7 @@ pub mod mutate;
 
 use std::{collections, fmt, iter::once, marker, time::Duration};
 
-use reifydb_catalog::catalog::{
-	Catalog, subscription::SubscriptionColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
-};
+use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	error::diagnostic::catalog::{
@@ -50,7 +48,8 @@ use crate::{
 		self, AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
 		InlineDataNode, RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
-		SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		SeriesScanNode, SubscriptionColumnToCreate, TableScanNode, TableVirtualScanNode, VariableNode,
+		ViewScanNode,
 	},
 	plan::{
 		logical,

@@ -3,14 +3,7 @@
 
 use std::fmt;
 
-use reifydb_catalog::{drop_flow_by_name, drop_subscription};
-use reifydb_core::{
-	error::diagnostic::internal::internal,
-	interface::catalog::{
-		id::SubscriptionId,
-		subscription::{subscription_flow_name, subscription_flow_namespace},
-	},
-};
+use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::id::SubscriptionId};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_type::{
 	Result as TypeResult,
@@ -150,14 +143,10 @@ pub async fn create_subscription(
 		.ok_or(CreateSubscriptionError::ExtractionFailed)
 }
 
-/// Synchronous cleanup: begin subscription txn, drop flow, drop subscription, commit.
+/// Synchronous cleanup: drop subscription via DDL.
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
-	let mut txn = engine.begin_subscription(IdentityId::system())?;
-	let flow_name = subscription_flow_name(subscription_id);
-	let namespace_id = subscription_flow_namespace();
-	drop_flow_by_name(txn.as_admin_mut(), namespace_id, &flow_name)?;
-	drop_subscription(txn.as_admin_mut(), subscription_id)?;
-	txn.commit()?;
+	let rql = format!("drop subscription if exists subscription_{};", subscription_id.0);
+	engine.admin_as(IdentityId::system(), &rql, Params::None)?;
 	Ok(())
 }
 

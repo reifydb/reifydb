@@ -40,8 +40,7 @@ use scan::{
 	table::PrimitiveTableOperator, view::PrimitiveViewOperator,
 };
 use sink::{
-	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
-	subscription::SinkSubscriptionOperator, view::SinkTableViewOperator,
+	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator, view::SinkTableViewOperator,
 };
 use sort::SortOperator;
 use take::TakeOperator;
@@ -82,7 +81,6 @@ pub enum Operators {
 	SinkTableView(SinkTableViewOperator),
 	SinkRingBufferView(SinkRingBufferViewOperator),
 	SinkSeriesView(SinkSeriesViewOperator),
-	SinkSubscription(SinkSubscriptionOperator),
 	Window(WindowOperator),
 	Custom(BoxedOperator),
 }
@@ -103,7 +101,6 @@ impl Operators {
 			Operators::SinkTableView(op) => op.apply(txn, change),
 			Operators::SinkRingBufferView(op) => op.apply(txn, change),
 			Operators::SinkSeriesView(op) => op.apply(txn, change),
-			Operators::SinkSubscription(op) => op.apply(txn, change),
 			Operators::Window(op) => op.apply(txn, change),
 			Operators::SourceTable(op) => op.apply(txn, change),
 			Operators::SourceView(op) => op.apply(txn, change),
@@ -138,7 +135,6 @@ impl Operators {
 			Operators::SinkTableView(op) => op.pull(txn, rows),
 			Operators::SinkRingBufferView(op) => op.pull(txn, rows),
 			Operators::SinkSeriesView(op) => op.pull(txn, rows),
-			Operators::SinkSubscription(op) => op.pull(txn, rows),
 			Operators::Window(op) => op.pull(txn, rows),
 			Operators::SourceTable(op) => op.pull(txn, rows),
 			Operators::SourceView(op) => op.pull(txn, rows),

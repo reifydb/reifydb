@@ -93,7 +93,7 @@ use crate::{
 	single::{read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{
 		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-		replica::ReplicaTransaction, subscription::SubscriptionTransaction,
+		replica::ReplicaTransaction,
 	},
 };
 
@@ -111,7 +111,6 @@ pub mod catalog;
 pub mod command;
 pub mod query;
 pub mod replica;
-pub mod subscription;
 
 /// Opaque savepoint for per-test transaction isolation.
 pub struct Savepoint {
@@ -273,7 +272,6 @@ pub enum Transaction<'a> {
 	Command(&'a mut CommandTransaction),
 	Admin(&'a mut AdminTransaction),
 	Query(&'a mut QueryTransaction),
-	Subscription(&'a mut SubscriptionTransaction),
 	Test(Box<TestTransaction<'a>>),
 	Replica(&'a mut ReplicaTransaction),
 }
@@ -285,7 +283,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.version(),
 			Self::Admin(txn) => txn.version(),
 			Self::Query(txn) => txn.version(),
-			Self::Subscription(txn) => txn.version(),
 			Self::Test(t) => t.inner.version(),
 			Self::Replica(txn) => txn.version(),
 		}
@@ -297,7 +294,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.id(),
 			Self::Admin(txn) => txn.id(),
 			Self::Query(txn) => txn.id(),
-			Self::Subscription(txn) => txn.id(),
 			Self::Test(t) => t.inner.id(),
 			Self::Replica(txn) => txn.id(),
 		}
@@ -309,7 +305,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.get(key),
 			Self::Admin(txn) => txn.get(key),
 			Self::Query(txn) => txn.get(key),
-			Self::Subscription(txn) => txn.get(key),
 			Self::Test(t) => t.inner.get(key),
 			Self::Replica(txn) => txn.get(key),
 		}
@@ -321,7 +316,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.contains_key(key),
 			Self::Admin(txn) => txn.contains_key(key),
 			Self::Query(txn) => txn.contains_key(key),
-			Self::Subscription(txn) => txn.contains_key(key),
 			Self::Test(t) => t.inner.contains_key(key),
 			Self::Replica(txn) => txn.contains_key(key),
 		}
@@ -333,7 +327,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.prefix(prefix),
 			Self::Admin(txn) => txn.prefix(prefix),
 			Self::Query(txn) => txn.prefix(prefix),
-			Self::Subscription(txn) => txn.prefix(prefix),
 			Self::Test(t) => t.inner.prefix(prefix),
 			Self::Replica(txn) => txn.prefix(prefix),
 		}
@@ -345,7 +338,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.prefix_rev(prefix),
 			Self::Admin(txn) => txn.prefix_rev(prefix),
 			Self::Query(txn) => txn.prefix_rev(prefix),
-			Self::Subscription(txn) => txn.prefix_rev(prefix),
 			Self::Test(t) => t.inner.prefix_rev(prefix),
 			Self::Replica(txn) => txn.prefix_rev(prefix),
 		}
@@ -357,7 +349,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Admin(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Query(txn) => txn.read_as_of_version_exclusive(version),
-			Transaction::Subscription(txn) => txn.read_as_of_version_exclusive(version),
 			Transaction::Test(t) => t.inner.read_as_of_version_exclusive(version),
 			Transaction::Replica(_) => {
 				panic!("read_as_of_version_exclusive not supported on Replica transaction")
@@ -375,7 +366,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.range(range, batch_size),
 			Transaction::Admin(txn) => txn.range(range, batch_size),
 			Transaction::Query(txn) => Ok(txn.range(range, batch_size)),
-			Transaction::Subscription(txn) => txn.range(range, batch_size),
 			Transaction::Test(t) => t.inner.range(range, batch_size),
 			Transaction::Replica(txn) => txn.range(range, batch_size),
 		}
@@ -391,7 +381,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.range_rev(range, batch_size),
 			Transaction::Admin(txn) => txn.range_rev(range, batch_size),
 			Transaction::Query(txn) => Ok(txn.range_rev(range, batch_size)),
-			Transaction::Subscription(txn) => txn.range_rev(range, batch_size),
 			Transaction::Test(t) => t.inner.range_rev(range, batch_size),
 			Transaction::Replica(txn) => txn.range_rev(range, batch_size),
 		}
@@ -416,12 +405,6 @@ impl<'a> From<&'a mut QueryTransaction> for Transaction<'a> {
 	}
 }
 
-impl<'a> From<&'a mut SubscriptionTransaction> for Transaction<'a> {
-	fn from(txn: &'a mut SubscriptionTransaction) -> Self {
-		Self::Subscription(txn)
-	}
-}
-
 impl<'a> From<&'a mut ReplicaTransaction> for Transaction<'a> {
 	fn from(txn: &'a mut ReplicaTransaction) -> Self {
 		Self::Replica(txn)
@@ -435,7 +418,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.identity,
 			Self::Admin(txn) => txn.identity,
 			Self::Query(txn) => txn.identity,
-			Self::Subscription(txn) => txn.identity,
 			Self::Test(t) => t.inner.identity,
 			Self::Replica(_) => IdentityId::system(),
 		}
@@ -447,7 +429,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.identity = identity,
 			Self::Admin(txn) => txn.identity = identity,
 			Self::Query(txn) => txn.identity = identity,
-			Self::Subscription(txn) => txn.identity = identity,
 			Self::Test(t) => t.inner.identity = identity,
 			Self::Replica(_) => {}
 		}
@@ -459,7 +440,6 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.executor.clone(),
 			Self::Admin(txn) => txn.executor.clone(),
 			Self::Query(txn) => txn.executor.clone(),
-			Self::Subscription(txn) => txn.executor.clone(),
 			Self::Test(t) => t.inner.executor.clone(),
 			Self::Replica(_) => None,
 		}
@@ -485,7 +465,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.poison(cause),
 			Transaction::Admin(txn) => txn.poison(cause),
 			Transaction::Query(_) => {}
-			Transaction::Subscription(txn) => txn.inner.poison(cause),
 			Transaction::Test(t) => t.inner.poison(cause),
 			Transaction::Replica(_) => {}
 		}
@@ -498,7 +477,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(cmd) => Transaction::Command(cmd),
 			Transaction::Admin(admin) => Transaction::Admin(admin),
 			Transaction::Query(qry) => Transaction::Query(qry),
-			Transaction::Subscription(sub) => Transaction::Subscription(sub),
 			Transaction::Test(t) => Transaction::Test(Box::new(TestTransaction {
 				inner: t.inner,
 				baseline: t.baseline,
@@ -542,15 +520,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Extract the underlying SubscriptionTransaction, panics if this is
-	/// not a Subscription transaction
-	pub fn subscription(self) -> &'a mut SubscriptionTransaction {
-		match self {
-			Self::Subscription(txn) => txn,
-			_ => panic!("Expected Subscription transaction"),
-		}
-	}
-
 	/// Extract the underlying ReplicaTransaction, panics if this is
 	/// not a Replica transaction
 	pub fn replica(self) -> &'a mut ReplicaTransaction {
@@ -588,15 +557,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// Get a mutable reference to the underlying SubscriptionTransaction,
-	/// panics if this is not a Subscription transaction
-	pub fn subscription_mut(&mut self) -> &mut SubscriptionTransaction {
-		match self {
-			Self::Subscription(txn) => txn,
-			_ => panic!("Expected Subscription transaction"),
-		}
-	}
-
 	/// Get a mutable reference to the underlying ReplicaTransaction,
 	/// panics if this is not a Replica transaction
 	pub fn replica_mut(&mut self) -> &mut ReplicaTransaction {
@@ -615,7 +575,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.begin_single_query(keys),
 			Transaction::Admin(txn) => txn.begin_single_query(keys),
 			Transaction::Query(txn) => txn.begin_single_query(keys),
-			Transaction::Subscription(txn) => txn.begin_single_query(keys),
 			Transaction::Test(t) => t.inner.begin_single_query(keys),
 			Transaction::Replica(_) => panic!("Single queries not supported on Replica transaction"),
 		}
@@ -631,7 +590,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.begin_single_command(keys),
 			Transaction::Admin(txn) => txn.begin_single_command(keys),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Subscription(txn) => txn.begin_single_command(keys),
 			Transaction::Test(t) => t.inner.begin_single_command(keys),
 			Transaction::Replica(_) => panic!("Single commands not supported on Replica transaction"),
 		}
@@ -643,7 +601,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.set(key, row),
 			Transaction::Admin(txn) => txn.set(key, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Subscription(txn) => txn.set(key, row),
 			Transaction::Test(t) => t.inner.set(key, row),
 			Transaction::Replica(txn) => txn.set(key, row),
 		}
@@ -655,7 +612,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.unset(key, row),
 			Transaction::Admin(txn) => txn.unset(key, row),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Subscription(txn) => txn.unset(key, row),
 			Transaction::Test(t) => t.inner.unset(key, row),
 			Transaction::Replica(txn) => txn.unset(key, row),
 		}
@@ -667,7 +623,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.remove(key),
 			Transaction::Admin(txn) => txn.remove(key),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Subscription(txn) => txn.remove(key),
 			Transaction::Test(t) => t.inner.remove(key),
 			Transaction::Replica(txn) => txn.remove(key),
 		}
@@ -680,7 +635,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.track_row_change(change),
 			Transaction::Admin(txn) => txn.track_row_change(change),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Subscription(txn) => txn.track_row_change(change),
 			Transaction::Test(t) => t.inner.track_row_change(change),
 			Transaction::Replica(_) => {}
 		}
@@ -693,7 +647,6 @@ impl<'a> Transaction<'a> {
 			Transaction::Command(txn) => txn.track_flow_change(change),
 			Transaction::Admin(txn) => txn.track_flow_change(change),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
-			Transaction::Subscription(txn) => txn.track_flow_change(change),
 			Transaction::Test(t) => t.inner.track_flow_change(change),
 			Transaction::Replica(_) => {}
 		}
@@ -740,7 +693,6 @@ macro_rules! delegate_interceptor {
 				Transaction::Command(txn) => txn.$method(),
 				Transaction::Admin(txn) => txn.$method(),
 				Transaction::Query(_) => panic!("Interceptors not supported on Query transaction"),
-				Transaction::Subscription(txn) => txn.$method(),
 				Transaction::Test(t) => t.inner.$method(),
 				Transaction::Replica(_) => panic!("Interceptors not supported on Replica transaction"),
 			}

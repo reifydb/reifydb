@@ -29,6 +29,7 @@ tracing = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
+reifydb-sub-subscription = { workspace = true, optional = true }
 reifydb-sub-task = { workspace = true }
 reifydb-sub-tracing = { workspace = true, optional = true }
 reifydb-sub-server = { workspace = true, optional = true }
@@ -56,7 +57,7 @@ reifydb-build = { workspace = true }
 default = []
 
 # Subsystem features
-sub_flow = ["dep:reifydb-sub-flow"]
+sub_flow = ["dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_server = ["dep:reifydb-sub-server"]
 sub_server_admin = ["dep:reifydb-sub-server-admin", "sub_server"]

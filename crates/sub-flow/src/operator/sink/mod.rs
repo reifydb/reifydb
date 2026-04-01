@@ -3,7 +3,6 @@
 
 pub mod ringbuffer_view;
 pub mod series_view;
-pub mod subscription;
 pub mod view;
 
 use std::sync::LazyLock;
@@ -16,7 +15,6 @@ use reifydb_core::{
 			column::Column as CatalogColumn,
 			dictionary::Dictionary,
 			property::{ColumnPropertyKind, ColumnSaturationPolicy},
-			subscription::SubscriptionColumn,
 		},
 		evaluate::TargetColumn,
 	},
@@ -38,7 +36,6 @@ use reifydb_type::{
 
 use crate::transaction::FlowTransaction;
 // All types are accessed directly from their submodules:
-// - crate::operator::sink::subscription::SinkSubscriptionOperator
 // - crate::operator::sink::view::SinkTableViewOperator
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -66,68 +63,6 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		// Create context with Undefined saturation policy for this column
 		// This ensures overflow during cast produces undefined instead of errors
 		// FIXME how to handle failing views ?!
-		let session = EvalSession {
-			params: &EMPTY_PARAMS,
-			symbols: &EMPTY_SYMBOL_TABLE,
-			functions: &EMPTY_FUNCTIONS,
-			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
-			arena: None,
-			identity: IdentityId::root(),
-			is_aggregate_context: false,
-		};
-		let mut ctx = session.eval(columns.clone(), row_count);
-		ctx.target = Some(TargetColumn::Partial {
-			source_name: None,
-			column_name: Some(target_col.name.clone()),
-			column_type: target_type.clone(),
-			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
-		});
-
-		if let Some(source_col) = columns.column(&target_col.name) {
-			// Cast to target type
-			let casted = cast_column_data(
-				&ctx,
-				source_col.data(),
-				target_type.clone(),
-				Fragment::internal(&target_col.name),
-			)?;
-			result_columns.push(Column {
-				name: Fragment::internal(&target_col.name),
-				data: casted,
-			});
-		} else {
-			result_columns.push(Column::undefined_typed(
-				Fragment::internal(&target_col.name),
-				target_type,
-				row_count,
-			))
-		}
-	}
-
-	// Preserve row numbers
-	let row_numbers = columns.row_numbers.iter().cloned().collect();
-	Ok(Columns::with_row_numbers(result_columns, row_numbers))
-}
-
-/// Coerce columns to match subscription shape types (simpler than Column)
-pub(crate) fn coerce_subscription_columns(columns: &Columns, target_columns: &[SubscriptionColumn]) -> Result<Columns> {
-	let row_count = columns.row_count();
-	if row_count == 0 {
-		return Ok(Columns::empty());
-	}
-
-	// If target columns are empty (shape-less subscription),
-	// use the input columns as-is (inferred from query)
-	if target_columns.is_empty() {
-		return Ok(columns.clone());
-	}
-
-	let mut result_columns = Vec::with_capacity(target_columns.len());
-
-	for target_col in target_columns {
-		let target_type = target_col.ty.clone();
-
-		// Create context with Undefined saturation policy for this column
 		let session = EvalSession {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,

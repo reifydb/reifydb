@@ -11,7 +11,7 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId,
-			SinkId, SourceId, SubscriptionId, TableId, TestId, ViewId,
+			SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		migration::{Migration, MigrationEvent},
@@ -22,7 +22,6 @@ use reifydb_core::{
 		series::Series,
 		sink::Sink,
 		source::Source,
-		subscription::Subscription,
 		sumtype::SumType,
 		table::Table,
 		test::Test,
@@ -48,7 +47,6 @@ pub trait TransactionalChanges:
 	+ TransactionalSeriesChanges
 	+ TransactionalSinkChanges
 	+ TransactionalSourceChanges
-	+ TransactionalSubscriptionChanges
 	+ TransactionalSumTypeChanges
 	+ TransactionalTableChanges
 	+ TransactionalTestChanges
@@ -149,8 +147,6 @@ pub trait TransactionalViewChanges {
 	fn is_view_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
-/// Trait for querying subscription changes within a transaction.
-/// Note: Subscriptions do NOT have names - they are identified only by ID.
 pub trait TransactionalSumTypeChanges {
 	fn find_sumtype(&self, id: SumTypeId) -> Option<&SumType>;
 
@@ -159,12 +155,6 @@ pub trait TransactionalSumTypeChanges {
 	fn is_sumtype_deleted(&self, id: SumTypeId) -> bool;
 
 	fn is_sumtype_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
-}
-
-pub trait TransactionalSubscriptionChanges {
-	fn find_subscription(&self, id: SubscriptionId) -> Option<&Subscription>;
-
-	fn is_subscription_deleted(&self, id: SubscriptionId) -> bool;
 }
 
 pub trait TransactionalHandlerChanges {
@@ -283,9 +273,7 @@ pub struct TransactionalCatalogChanges {
 	pub sink: Vec<Change<Sink>>,
 	/// All source definition changes in order (no coalescing)
 	pub source: Vec<Change<Source>>,
-	/// All subscription definition changes in order (no coalescing)
 	pub sumtype: Vec<Change<SumType>>,
-	pub subscription: Vec<Change<Subscription>>,
 	/// All test definition changes in order (no coalescing)
 	pub test: Vec<Change<Test>>,
 	/// All table definition changes in order (no coalescing)
@@ -320,7 +308,6 @@ pub struct CatalogChangesSavepoint {
 	sink_len: usize,
 	source_len: usize,
 	sumtype_len: usize,
-	subscription_len: usize,
 	test_len: usize,
 	table_len: usize,
 	identity_len: usize,
@@ -348,7 +335,6 @@ impl TransactionalCatalogChanges {
 			sink_len: self.sink.len(),
 			source_len: self.source.len(),
 			sumtype_len: self.sumtype.len(),
-			subscription_len: self.subscription.len(),
 			test_len: self.test.len(),
 			table_len: self.table.len(),
 			identity_len: self.identity.len(),
@@ -375,7 +361,6 @@ impl TransactionalCatalogChanges {
 		self.sink.truncate(sp.sink_len);
 		self.source.truncate(sp.source_len);
 		self.sumtype.truncate(sp.sumtype_len);
-		self.subscription.truncate(sp.subscription_len);
 		self.test.truncate(sp.test_len);
 		self.table.truncate(sp.table_len);
 		self.identity.truncate(sp.identity_len);
@@ -616,21 +601,6 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_subscription_change(&mut self, change: Change<Subscription>) {
-		let id = change
-			.post
-			.as_ref()
-			.or(change.pre.as_ref())
-			.map(|s| s.id)
-			.expect("Change must have either pre or post state");
-		let op = change.op;
-		self.subscription.push(change);
-		self.log.push(Operation::Subscription {
-			id,
-			op,
-		});
-	}
-
 	pub fn add_identity_change(&mut self, change: Change<Identity>) {
 		let id = change
 			.post
@@ -785,10 +755,6 @@ pub enum Operation {
 		id: SumTypeId,
 		op: OperationType,
 	},
-	Subscription {
-		id: SubscriptionId,
-		op: OperationType,
-	},
 	Test {
 		id: TestId,
 		op: OperationType,
@@ -841,7 +807,6 @@ impl TransactionalCatalogChanges {
 			sink: Vec::new(),
 			source: Vec::new(),
 			sumtype: Vec::new(),
-			subscription: Vec::new(),
 			test: Vec::new(),
 			table: Vec::new(),
 			identity: Vec::new(),
@@ -940,7 +905,6 @@ impl TransactionalCatalogChanges {
 		self.sink.clear();
 		self.source.clear();
 		self.sumtype.clear();
-		self.subscription.clear();
 		self.test.clear();
 		self.table.clear();
 		self.identity.clear();

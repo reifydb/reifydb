@@ -47,7 +47,7 @@ use crate::{
 		},
 		sink::{
 			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
-			subscription::SinkSubscriptionOperator, view::SinkTableViewOperator,
+			view::SinkTableViewOperator,
 		},
 		sort::SortOperator,
 		take::TakeOperator,
@@ -77,7 +77,7 @@ impl FlowEngine {
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
-	fn add(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag, node: &FlowNode) -> Result<()> {
+	pub fn add(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag, node: &FlowNode) -> Result<()> {
 		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 
@@ -269,29 +269,13 @@ impl FlowEngine {
 				);
 			}
 			SinkSubscription {
-				subscription,
+				..
 			} => {
-				// Guard against race condition: flow may have been deleted during loading
-				if node.inputs.is_empty() {
-					return Err(Error(Box::new(internal!(
-						"SinkSubscription node has no inputs - flow may have been deleted during loading"
-					))));
-				}
-				let parent = self
-					.operators
-					.get(&node.inputs[0])
-					.ok_or_else(|| Error(Box::new(internal!("Parent operator not found"))))?
-					.clone();
-
-				// Note: Subscriptions use UUID-based IDs and are not added to the sinks map
-				// which uses ShapeId (u64-based). Subscriptions are ephemeral 1:1 mapped.
-				let resolved = self.catalog.resolve_subscription(&mut txn.reborrow(), subscription)?;
-				self.operators.insert(
-					node.id,
-					Arc::new(Operators::SinkSubscription(SinkSubscriptionOperator::new(
-						parent, node.id, resolved,
-					))),
-				);
+				// Subscriptions are now ephemeral and handled by reifydb-sub-subscription.
+				// Persistent subscription flows are no longer created.
+				return Err(Error(Box::new(internal!(
+					"SinkSubscription nodes are no longer supported in persistent flows"
+				))));
 			}
 			Filter {
 				conditions,
@@ -568,7 +552,7 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	fn add_source(&mut self, flow: FlowId, node: FlowNodeId, shape: ShapeId) {
+	pub fn add_source(&mut self, flow: FlowId, node: FlowNodeId, shape: ShapeId) {
 		let nodes = self.sources.entry(shape).or_default();
 
 		let entry = (flow, node);
@@ -577,7 +561,7 @@ impl FlowEngine {
 		}
 	}
 
-	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ShapeId) {
+	pub fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: ShapeId) {
 		let nodes = self.sinks.entry(sink).or_default();
 
 		let entry = (flow, node);

@@ -14,7 +14,7 @@ use crate::{
 		IdentityPostCreateContext, IdentityPostUpdateContext, IdentityPreDeleteContext,
 		IdentityPreUpdateContext,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackIdentityChangeOperations for AdminTransaction {
@@ -85,37 +85,5 @@ impl TransactionalIdentityChanges for AdminTransaction {
 		self.changes.identity.iter().rev().any(|change| {
 			change.op == Delete && change.pre.as_ref().map(|u| u.name == name).unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackIdentityChangeOperations for SubscriptionTransaction {
-	fn track_identity_created(&mut self, identity: Identity) -> Result<()> {
-		self.inner.track_identity_created(identity)
-	}
-
-	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<()> {
-		self.inner.track_identity_updated(pre, post)
-	}
-
-	fn track_identity_deleted(&mut self, identity: Identity) -> Result<()> {
-		self.inner.track_identity_deleted(identity)
-	}
-}
-
-impl TransactionalIdentityChanges for SubscriptionTransaction {
-	fn find_identity(&self, id: IdentityId) -> Option<&Identity> {
-		self.inner.find_identity(id)
-	}
-
-	fn find_identity_by_name(&self, name: &str) -> Option<&Identity> {
-		self.inner.find_identity_by_name(name)
-	}
-
-	fn is_identity_deleted(&self, id: IdentityId) -> bool {
-		self.inner.is_identity_deleted(id)
-	}
-
-	fn is_identity_deleted_by_name(&self, name: &str) -> bool {
-		self.inner.is_identity_deleted_by_name(name)
 	}
 }

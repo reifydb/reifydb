@@ -34,3 +34,18 @@ pub fn invalid_statement(message: &str) -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+pub fn subscription_missing_as_clause(fragment: Fragment) -> Diagnostic {
+	Diagnostic {
+		code: "SUBS_003".to_string(),
+		statement: None,
+		message: "CREATE SUBSCRIPTION requires an AS clause".to_string(),
+		fragment,
+		label: Some("missing AS clause".to_string()),
+		help: Some("provide a query with AS { SELECT ... }".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

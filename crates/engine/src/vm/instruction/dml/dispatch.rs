@@ -177,6 +177,7 @@ pub(crate) fn dispatch(
 				catalog: &services.catalog,
 				functions: &services.functions,
 				runtime_context: &services.runtime_context,
+				ioc: &services.ioc,
 			};
 			let handler_fragment =
 				Fragment::internal(format!("handler for {}::{}", sumtype.name, plan.variant_name));

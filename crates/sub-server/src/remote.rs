@@ -72,7 +72,7 @@ pub async fn connect_remote(
 /// - A shutdown signal is received
 pub async fn proxy_remote<T, F>(
 	mut remote_sub: RemoteSubscription,
-	sender: mpsc::Sender<T>,
+	sender: mpsc::UnboundedSender<T>,
 	mut shutdown: watch::Receiver<bool>,
 	convert: F,
 ) where
@@ -84,7 +84,7 @@ pub async fn proxy_remote<T, F>(
 			frames = remote_sub.inner.recv() => {
 				match frames {
 					Some(frames) => {
-						if sender.send(convert(frames)).await.is_err() {
+						if sender.send(convert(frames)).is_err() {
 							break;
 						}
 					}

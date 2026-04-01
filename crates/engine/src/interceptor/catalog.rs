@@ -171,16 +171,6 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_sumtype(id, version, change.post.clone());
 		}
 
-		for change in &ctx.changes.subscription {
-			let id = change
-				.post
-				.as_ref()
-				.or(change.pre.as_ref())
-				.map(|s| s.id)
-				.expect("Change must have either pre or post state");
-			self.catalog.set_subscription(id, version, change.post.clone());
-		}
-
 		for change in &ctx.changes.flow {
 			let id = change
 				.post

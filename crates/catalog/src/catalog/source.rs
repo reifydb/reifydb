@@ -124,41 +124,6 @@ impl Catalog {
 
 				Ok(None)
 			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(source) =
-					TransactionalSourceChanges::find_source_by_name(sub, namespace, name)
-				{
-					return Ok(Some(source.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalSourceChanges::is_source_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(source) =
-					self.materialized.find_source_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(source));
-				}
-
-				// 4. Fall back to storage as defensive measure
-				if let Some(source) = CatalogStore::find_source_by_name(
-					&mut Transaction::Subscription(&mut *sub),
-					namespace,
-					name,
-				)? {
-					warn!(
-						"Source '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
-						name, namespace
-					);
-					return Ok(Some(source));
-				}
-
-				Ok(None)
-			}
 			Transaction::Test(mut t) => {
 				if let Some(source) =
 					TransactionalSourceChanges::find_source_by_name(t.inner, namespace, name)

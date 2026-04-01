@@ -5,7 +5,7 @@ use reifydb_type::value::constraint::{Constraint, TypeConstraint};
 
 use crate::{
 	encoded::shape::{RowShape, RowShapeField},
-	interface::catalog::{column::Column, subscription::SubscriptionColumn},
+	interface::catalog::column::Column,
 };
 
 impl From<&Vec<Column>> for RowShape {
@@ -29,21 +29,6 @@ impl From<&[Column]> for RowShape {
 				};
 				RowShapeField::new(col.name.clone(), constraint)
 			})
-			.collect();
-		RowShape::new(fields)
-	}
-}
-
-impl From<&Vec<SubscriptionColumn>> for RowShape {
-	fn from(value: &Vec<SubscriptionColumn>) -> Self {
-		RowShape::from(value.as_slice())
-	}
-}
-impl From<&[SubscriptionColumn]> for RowShape {
-	fn from(value: &[SubscriptionColumn]) -> Self {
-		let fields = value
-			.iter()
-			.map(|col| RowShapeField::new(col.name.clone(), TypeConstraint::unconstrained(col.ty.clone())))
 			.collect();
 		RowShape::new(fields)
 	}

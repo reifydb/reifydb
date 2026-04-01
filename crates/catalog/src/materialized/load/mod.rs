@@ -16,7 +16,6 @@ pub mod row_shape;
 pub mod shape_retention_policy;
 pub mod sink;
 pub mod source;
-pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod view;
@@ -37,7 +36,6 @@ use row_shape::load_row_shapes;
 use shape_retention_policy::load_shape_retention_policies;
 use sink::load_sinks;
 use source::load_sources;
-use subscription::load_subscriptions;
 use sumtype::load_sumtypes;
 use table::load_tables;
 use view::load_views;
@@ -83,8 +81,6 @@ impl MaterializedCatalogLoader {
 
 		load_dictionaries(rx, catalog)?;
 		load_sumtypes(rx, catalog)?;
-
-		load_subscriptions(rx, catalog)?;
 
 		load_sources(rx, catalog)?;
 		load_sinks(rx, catalog)?;

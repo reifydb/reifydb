@@ -102,6 +102,7 @@ impl QueryNode for GeneratorNode {
 					catalog: &stored_ctx.services.catalog,
 					functions: &stored_ctx.services.functions,
 					runtime_context: &stored_ctx.services.runtime_context,
+					ioc: &stored_ctx.services.ioc,
 				};
 				procedure.call(&proc_ctx, txn)?
 			}

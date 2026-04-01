@@ -12,7 +12,7 @@ use crate::{
 		OperationType::{Create, Delete, Update},
 		TransactionalDictionaryChanges,
 	},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackDictionaryChangeOperations for AdminTransaction {
@@ -88,37 +88,5 @@ impl TransactionalDictionaryChanges for AdminTransaction {
 					.map(|d| d.namespace == namespace && d.name == name)
 					.unwrap_or(false)
 		})
-	}
-}
-
-impl CatalogTrackDictionaryChangeOperations for SubscriptionTransaction {
-	fn track_dictionary_created(&mut self, dictionary: Dictionary) -> Result<()> {
-		self.inner.track_dictionary_created(dictionary)
-	}
-
-	fn track_dictionary_updated(&mut self, pre: Dictionary, post: Dictionary) -> Result<()> {
-		self.inner.track_dictionary_updated(pre, post)
-	}
-
-	fn track_dictionary_deleted(&mut self, dictionary: Dictionary) -> Result<()> {
-		self.inner.track_dictionary_deleted(dictionary)
-	}
-}
-
-impl TransactionalDictionaryChanges for SubscriptionTransaction {
-	fn find_dictionary(&self, id: DictionaryId) -> Option<&Dictionary> {
-		self.inner.find_dictionary(id)
-	}
-
-	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Dictionary> {
-		self.inner.find_dictionary_by_name(namespace, name)
-	}
-
-	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool {
-		self.inner.is_dictionary_deleted(id)
-	}
-
-	fn is_dictionary_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
-		self.inner.is_dictionary_deleted_by_name(namespace, name)
 	}
 }

@@ -48,7 +48,6 @@ pub(crate) async fn handle_subscribe(
 	match create_subscription(conn.state, id, &user_query, metadata).await {
 		Ok(Local(subscription_id)) => {
 			conn.registry.subscribe(subscription_id, conn.connection_id, user_query, conn.push_tx.clone());
-			conn.poller.register(subscription_id);
 
 			info!("Connection {} subscribed: subscription_id={}", conn.connection_id, subscription_id);
 
@@ -96,11 +95,9 @@ pub(crate) async fn handle_subscribe(
 					}
 				})
 				.await;
-				let _ = push_tx_close
-					.send(PushMessage::Closed {
-						subscription_id,
-					})
-					.await;
+				let _ = push_tx_close.send(PushMessage::Closed {
+					subscription_id,
+				});
 			});
 			conn.remote_tasks.insert(remote_id.clone(), handle);
 

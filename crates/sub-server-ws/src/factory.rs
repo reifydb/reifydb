@@ -17,6 +17,7 @@ use reifydb_sub_server::{
 	interceptor::RequestInterceptorChain,
 	state::{AppState, StateConfig},
 };
+use reifydb_sub_subscription::store::SubscriptionStore;
 use reifydb_type::Result;
 
 use crate::subsystem::WsSubsystem;
@@ -204,6 +205,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 			runtime.clock().clone(),
 			runtime.rng().clone(),
 		);
+		let subscription_store = ioc.resolve::<Arc<SubscriptionStore>>().ok();
 		let subsystem = WsSubsystem::new(
 			config.bind_addr.clone(),
 			config.admin_bind_addr.clone(),
@@ -211,6 +213,7 @@ impl SubsystemFactory for WsSubsystemFactory {
 			runtime,
 			config.poll_interval,
 			config.poll_batch_size,
+			subscription_store,
 		);
 
 		Ok(Box::new(subsystem))

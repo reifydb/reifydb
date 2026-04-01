@@ -32,7 +32,6 @@ pub mod series;
 pub mod shape;
 pub mod sink;
 pub mod source;
-pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod test;

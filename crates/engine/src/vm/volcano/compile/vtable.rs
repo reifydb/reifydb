@@ -23,7 +23,7 @@ use reifydb_catalog::vtable::{
 		ringbuffer_storage_stats::SystemRingBufferStorageStats, ringbuffers::SystemRingBuffers,
 		roles::SystemRoles, sequences::SystemSequences, series::SystemSeries, shape_fields::SystemShapeFields,
 		shape_retention_policies::SystemShapeRetentionPolicies, shapes::SystemShapes,
-		table_storage_stats::SystemTableStorageStats, tables::SystemTables,
+		subscriptions::SystemSubscriptions, table_storage_stats::SystemTableStorageStats, tables::SystemTables,
 		tables_virtual::SystemTablesVirtual, tag_variants::SystemTagVariants, tags::SystemTags,
 		types::SystemTypes, versions::SystemVersions, view_storage_stats::SystemViewStorageStats,
 		views::SystemViews, virtual_table_columns::SystemVirtualTableColumns,
@@ -141,6 +141,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"policy_operations" => VTables::PolicyOperations(SystemPolicyOperations::new()),
 		"migrations" => VTables::Migrations(SystemMigrations::new()),
 		"configs" => VTables::Configs(SystemConfigs::new(context.services.ioc.clone())),
+		"subscriptions" => VTables::Subscriptions(SystemSubscriptions::new(context.services.ioc.clone())),
 		"virtual_table_columns" => {
 			VTables::VirtualTableColumns(SystemVirtualTableColumns::new(context.services.catalog.clone()))
 		}

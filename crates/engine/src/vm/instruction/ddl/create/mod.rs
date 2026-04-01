@@ -2,19 +2,12 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate};
-use reifydb_core::interface::catalog::{
-	flow::{FlowId, FlowStatus},
-	subscription::{Subscription, subscription_flow_name, subscription_flow_namespace},
-	view::View,
-};
+use reifydb_core::interface::catalog::{flow::FlowStatus, view::View};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::{fragment::Fragment, value::duration::Duration};
 
-use crate::{
-	Result,
-	flow::compiler::{compile_flow, compile_subscription_flow},
-};
+use crate::{Result, flow::compiler::compile_flow};
 
 pub mod authentication;
 pub mod deferred;
@@ -63,32 +56,5 @@ pub(crate) fn create_deferred_view_flow(
 	)?;
 
 	let _flow = compile_flow(catalog, txn, plan, Some(view), flow.id)?;
-	Ok(())
-}
-
-/// Creates a flow for a subscription.
-///
-/// Since SubscriptionId == FlowId for subscription flows, we use the subscription ID
-/// directly as the flow ID, avoiding the O(n) find_flow_by_name check.
-pub(crate) fn create_subscription_flow(
-	catalog: &Catalog,
-	txn: &mut AdminTransaction,
-	subscription: &Subscription,
-	plan: QueryPlan,
-) -> Result<()> {
-	// FlowId == SubscriptionId for subscription flows
-	let flow_id = FlowId(subscription.id.0);
-	let flow = catalog.create_flow_with_id(
-		txn,
-		flow_id,
-		FlowToCreate {
-			name: Fragment::internal(subscription_flow_name(subscription.id)),
-			namespace: subscription_flow_namespace(),
-			status: FlowStatus::Active,
-			tick: None,
-		},
-	)?;
-
-	let _flow = compile_subscription_flow(catalog, txn, plan, subscription, flow.id)?;
 	Ok(())
 }

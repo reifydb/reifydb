@@ -20,7 +20,6 @@ pub mod row_shape;
 pub mod shape_retention_policy;
 pub mod sink;
 pub mod source;
-pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod test;
@@ -40,7 +39,7 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
-			SinkId, SourceId, SubscriptionId, TableId, TestId, ViewId,
+			SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		key::PrimaryKey,
@@ -52,7 +51,6 @@ use reifydb_core::{
 		shape::ShapeId,
 		sink::Sink,
 		source::Source,
-		subscription::Subscription,
 		sumtype::SumType,
 		table::Table,
 		test::Test,
@@ -91,7 +89,6 @@ pub type MultiVersionProcedure = MultiVersionContainer<Procedure>;
 pub type MultiVersionRingBuffer = MultiVersionContainer<RingBuffer>;
 pub type MultiVersionTest = MultiVersionContainer<Test>;
 pub type MultiVersionSumType = MultiVersionContainer<SumType>;
-pub type MultiVersionSubscription = MultiVersionContainer<Subscription>;
 pub type MultiVersionIdentity = MultiVersionContainer<Identity>;
 pub type MultiVersionRole = MultiVersionContainer<Role>;
 pub type MultiVersionGrantedRole = MultiVersionContainer<GrantedRole>;
@@ -153,9 +150,6 @@ pub struct MaterializedCatalogInner {
 	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBuffer>,
 	/// Index from (namespace_id, ringbuffer_name) to ringbuffer ID for fast name lookups
 	pub(crate) ringbuffers_by_name: SkipMap<(NamespaceId, String), RingBufferId>,
-	/// MultiVersion subscription definitions indexed by subscription ID
-	/// Note: Subscriptions do NOT have names - they are identified only by ID
-	pub(crate) subscriptions: SkipMap<SubscriptionId, MultiVersionSubscription>,
 	/// MultiVersion handler definitions indexed by handler ID
 	pub(crate) handlers: SkipMap<HandlerId, MultiVersionHandler>,
 	/// Index from (namespace_id, handler_name) to handler ID for fast name lookups
@@ -252,7 +246,6 @@ impl MaterializedCatalog {
 			sumtypes_by_name: SkipMap::new(),
 			ringbuffers: SkipMap::new(),
 			ringbuffers_by_name: SkipMap::new(),
-			subscriptions: SkipMap::new(),
 			handlers: SkipMap::new(),
 			handlers_by_name: SkipMap::new(),
 			handlers_by_variant: SkipMap::new(),

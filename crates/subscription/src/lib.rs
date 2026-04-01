@@ -5,13 +5,9 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-//! Protocol-agnostic subscription consumption for ReifyDB.
+//! Protocol-agnostic subscription delivery for ReifyDB.
 //!
-//! This crate provides the core subscription polling and consumption logic,
+//! This crate provides the delivery trait used by subscription consumers,
 //! decoupled from any specific transport protocol (WebSocket, HTTP, etc.).
 
-pub mod consumer;
-pub mod cursor;
 pub mod delivery;
-pub mod poller;
-pub mod state;

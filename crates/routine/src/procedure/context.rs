@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
+use reifydb_core::util::ioc::IocContainer;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_type::params::Params;
 
@@ -12,4 +13,5 @@ pub struct ProcedureContext<'a> {
 	pub catalog: &'a Catalog,
 	pub functions: &'a Functions,
 	pub runtime_context: &'a RuntimeContext,
+	pub ioc: &'a IocContainer,
 }

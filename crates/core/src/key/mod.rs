@@ -39,9 +39,6 @@ use row_sequence::RowSequenceKey;
 use series::{SeriesKey, SeriesMetadataKey};
 use sink::SinkKey;
 use source::SourceKey;
-use subscription::SubscriptionKey;
-use subscription_column::SubscriptionColumnKey;
-use subscription_row::SubscriptionRowKey;
 use sumtype::SumTypeKey;
 use system_sequence::SystemSequenceKey;
 use system_version::SystemVersionKey;
@@ -102,9 +99,6 @@ pub mod series_row;
 pub mod shape;
 pub mod sink;
 pub mod source;
-pub mod subscription;
-pub mod subscription_column;
-pub mod subscription_row;
 pub mod sumtype;
 pub mod system_sequence;
 pub mod system_version;
@@ -151,9 +145,6 @@ pub enum Key {
 	NamespaceSumType(NamespaceSumTypeKey),
 	Handler(HandlerKey),
 	NamespaceHandler(NamespaceHandlerKey),
-	Subscription(SubscriptionKey),
-	SubscriptionColumn(SubscriptionColumnKey),
-	SubscriptionRow(SubscriptionRowKey),
 	Series(SeriesKey),
 	SeriesMetadata(SeriesMetadataKey),
 	NamespaceSeries(NamespaceSeriesKey),
@@ -209,9 +200,6 @@ impl Key {
 			Key::NamespaceSumType(key) => key.encode(),
 			Key::Handler(key) => key.encode(),
 			Key::NamespaceHandler(key) => key.encode(),
-			Key::Subscription(key) => key.encode(),
-			Key::SubscriptionColumn(key) => key.encode(),
-			Key::SubscriptionRow(key) => key.encode(),
 			Key::Series(key) => key.encode(),
 			Key::SeriesMetadata(key) => key.encode(),
 			Key::NamespaceSeries(key) => key.encode(),
@@ -333,9 +321,10 @@ impl Key {
 				// Storage tracker keys are used for internal persistence, not through Key enum
 				None
 			}
-			KeyKind::Subscription => SubscriptionKey::decode(key).map(Self::Subscription),
-			KeyKind::SubscriptionColumn => SubscriptionColumnKey::decode(key).map(Self::SubscriptionColumn),
-			KeyKind::SubscriptionRow => SubscriptionRowKey::decode(key).map(Self::SubscriptionRow),
+			KeyKind::Subscription | KeyKind::SubscriptionColumn | KeyKind::SubscriptionRow => {
+				// Subscription storage keys have been removed (ephemeral subscriptions only)
+				None
+			}
 			KeyKind::Shape | KeyKind::RowShapeField => {
 				// Shape keys are used directly via EncodableKey trait, not through Key enum
 				None

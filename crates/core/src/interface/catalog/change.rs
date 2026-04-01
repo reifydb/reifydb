@@ -22,7 +22,6 @@ use crate::interface::catalog::{
 	series::Series,
 	sink::Sink,
 	source::Source,
-	subscription::Subscription,
 	sumtype::SumType,
 	table::Table,
 	test::Test,
@@ -90,15 +89,6 @@ pub trait CatalogTrackRingBufferChangeOperations {
 	fn track_ringbuffer_updated(&mut self, pre: RingBuffer, post: RingBuffer) -> Result<()>;
 
 	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()>;
-}
-
-/// Trait for tracking subscription definition changes during a transaction.
-pub trait CatalogTrackSubscriptionChangeOperations {
-	fn track_subscription_created(&mut self, subscription: Subscription) -> Result<()>;
-
-	fn track_subscription_updated(&mut self, pre: Subscription, post: Subscription) -> Result<()>;
-
-	fn track_subscription_deleted(&mut self, subscription: Subscription) -> Result<()>;
 }
 
 /// Trait for tracking sum type definition changes during a transaction.
@@ -215,7 +205,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackSeriesChangeOperations
 	+ CatalogTrackSinkChangeOperations
 	+ CatalogTrackSourceChangeOperations
-	+ CatalogTrackSubscriptionChangeOperations
 	+ CatalogTrackSumTypeChangeOperations
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackTestChangeOperations

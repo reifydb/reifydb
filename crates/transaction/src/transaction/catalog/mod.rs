@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::change::CatalogTrackChangeOperations;
 
-use crate::transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction};
+use crate::transaction::admin::AdminTransaction;
 
 pub mod authentication;
 pub mod dictionary;
@@ -20,7 +20,6 @@ pub mod role;
 pub mod series;
 pub mod sink;
 pub mod source;
-pub mod subscription;
 pub mod sumtype;
 pub mod table;
 pub mod test;
@@ -28,6 +27,3 @@ pub mod view;
 
 // Implement the umbrella trait for AdminTransaction
 impl CatalogTrackChangeOperations for AdminTransaction {}
-
-// Implement the umbrella trait for SubscriptionTransaction
-impl CatalogTrackChangeOperations for SubscriptionTransaction {}

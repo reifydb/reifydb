@@ -27,7 +27,6 @@ pub(crate) mod series;
 pub(crate) mod shape;
 pub(crate) mod sink;
 pub(crate) mod source;
-pub(crate) mod subscription;
 pub(crate) mod sumtype;
 pub(crate) mod table;
 pub(crate) mod token;

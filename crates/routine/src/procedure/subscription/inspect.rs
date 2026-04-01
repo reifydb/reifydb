@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::find_subscription;
 use reifydb_core::{
-	error::diagnostic::internal::internal,
-	interface::catalog::id::SubscriptionId,
-	key::{Key, subscription_row::SubscriptionRowKey},
-	value::column::{Column, columns::Columns, data::ColumnData},
+	interface::catalog::{id::SubscriptionId, subscription::SubscriptionInspectorRef},
+	value::column::columns::Columns,
 };
-use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, fragment::Fragment, params::Params, value::Value};
+use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 
@@ -28,7 +24,7 @@ impl InspectSubscription {
 }
 
 impl Procedure for InspectSubscription {
-	fn call(&self, ctx: &ProcedureContext, tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
+	fn call(&self, ctx: &ProcedureContext, _tx: &mut reifydb_transaction::transaction::Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let subscription_id_value = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::Uint8(id) => *id,
@@ -57,63 +53,14 @@ impl Procedure for InspectSubscription {
 
 		let subscription_id = SubscriptionId(subscription_id_value);
 
-		// Use catalog function to get subscription definition
-		let subscription =
-			find_subscription(tx, subscription_id)?.ok_or_else(|| ProcedureError::ExecutionFailed {
-				procedure: Fragment::internal("inspect_subscription"),
-				reason: format!("Subscription {} not found", subscription_id),
-			})?;
+		// Resolve SubscriptionInspector from IoC (registered by sub-subscription factory)
+		let inspector =
+			ctx.ioc.resolve::<SubscriptionInspectorRef>()
+				.expect("SubscriptionInspector not registered in IoC");
 
-		// Scan subscription rows
-		let range = SubscriptionRowKey::full_scan(subscription_id);
-		let mut stream = tx.range(range, 1024)?;
-
-		// Build columns structure
-		let all_columns = subscription.all_columns();
-		let mut column_data_builders: Vec<_> = all_columns
-			.iter()
-			.map(|col| (col.name.clone(), ColumnData::with_capacity(col.ty.clone(), 0)))
-			.collect();
-
-		let mut row_numbers = Vec::new();
-
-		// Collect all entries first to avoid borrow checker issues
-		let mut entries = Vec::new();
-		for result in stream.by_ref() {
-			entries.push(result?);
+		match inspector.inspect(subscription_id) {
+			Some(columns) => Ok(columns),
+			None => Ok(Columns::empty()),
 		}
-		drop(stream); // Explicitly drop to release the borrow on tx
-
-		let catalog = ctx.catalog;
-
-		// Process collected entries
-		for entry in entries {
-			if let Some(Key::SubscriptionRow(sub_row_key)) = Key::decode(&entry.key) {
-				row_numbers.push(sub_row_key.row);
-
-				let fingerprint = entry.row.fingerprint();
-				let shape = catalog.get_or_load_row_shape(fingerprint, tx)?.ok_or_else(|| {
-					Error(Box::new(internal(format!(
-						"Shape not found for fingerprint: {:?}",
-						fingerprint
-					))))
-				})?;
-
-				for (idx, (_, data)) in column_data_builders.iter_mut().enumerate() {
-					let value = shape.get_value(&entry.row, idx);
-					data.push_value(value);
-				}
-			}
-		}
-
-		let columns: Vec<Column> = column_data_builders
-			.into_iter()
-			.map(|(name, data)| Column {
-				name: Fragment::internal(&name),
-				data,
-			})
-			.collect();
-
-		Ok(Columns::with_row_numbers(columns, row_numbers))
 	}
 }

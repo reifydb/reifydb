@@ -82,9 +82,6 @@ impl Catalog {
 				CatalogStore::find_series(&mut Transaction::Admin(&mut *admin), id)
 			}
 			Transaction::Query(qry) => CatalogStore::find_series(&mut Transaction::Query(&mut *qry), id),
-			Transaction::Subscription(sub) => {
-				CatalogStore::find_series(&mut Transaction::Subscription(&mut *sub), id)
-			}
 			Transaction::Test(t) => CatalogStore::find_series(&mut Transaction::Admin(&mut *t.inner), id),
 			Transaction::Replica(rep) => {
 				CatalogStore::find_series(&mut Transaction::Replica(&mut *rep), id)
@@ -109,11 +106,6 @@ impl Catalog {
 			Transaction::Query(qry) => {
 				CatalogStore::find_series_by_name(&mut Transaction::Query(&mut *qry), namespace, name)
 			}
-			Transaction::Subscription(sub) => CatalogStore::find_series_by_name(
-				&mut Transaction::Subscription(&mut *sub),
-				namespace,
-				name,
-			),
 			Transaction::Test(t) => CatalogStore::find_series_by_name(
 				&mut Transaction::Admin(&mut *t.inner),
 				namespace,

@@ -41,10 +41,7 @@ use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	transaction::{
-		admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction,
-		subscription::SubscriptionTransaction,
-	},
+	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_type::{
 	error::Error,
@@ -120,21 +117,7 @@ impl StandardEngine {
 		Ok(txn)
 	}
 
-	#[instrument(name = "engine::transaction::begin_subscription", level = "debug", skip(self))]
-	pub fn begin_subscription(&self, identity: IdentityId) -> Result<SubscriptionTransaction> {
-		let interceptors = self.interceptors.create();
-		let mut txn = SubscriptionTransaction::new(
-			self.multi.clone(),
-			self.single.clone(),
-			self.event_bus.clone(),
-			interceptors,
-			identity,
-		)?;
-		txn.set_executor(Arc::new(self.executor.clone()));
-		Ok(txn)
-	}
-
-	#[instrument(name = "engine::admin", level = "debug", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		self.reject_if_read_only()?;
 		(|| {
@@ -155,7 +138,7 @@ impl StandardEngine {
 		})
 	}
 
-	#[instrument(name = "engine::command", level = "debug", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "engine::command_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		self.reject_if_read_only()?;
 		(|| {
@@ -176,7 +159,7 @@ impl StandardEngine {
 		})
 	}
 
-	#[instrument(name = "engine::query", level = "debug", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "engine::query_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
 			let mut txn = self.begin_query(identity)?;
@@ -194,11 +177,10 @@ impl StandardEngine {
 		})
 	}
 
-	#[instrument(name = "engine::subscription", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn subscription_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
-		self.reject_if_read_only()?;
+	#[instrument(name = "engine::subscribe_as", level = "debug", skip(self, params), fields(rql = %rql))]
+	pub fn subscribe_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		(|| {
-			let mut txn = self.begin_subscription(identity)?;
+			let mut txn = self.begin_query(identity)?;
 			let frames = self.executor.subscription(
 				&mut txn,
 				Subscription {
@@ -206,7 +188,6 @@ impl StandardEngine {
 					params,
 				},
 			)?;
-			txn.commit()?;
 			Ok(frames)
 		})()
 		.map_err(|mut err: Error| {
@@ -216,7 +197,7 @@ impl StandardEngine {
 	}
 
 	/// Call a procedure by fully-qualified name.
-	#[instrument(name = "engine::procedure", level = "debug", skip(self, params), fields(name = %name))]
+	#[instrument(name = "engine::procedure_as", level = "debug", skip(self, params), fields(name = %name))]
 	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>> {
 		self.reject_if_read_only()?;
 		let mut txn = self.begin_command(identity)?;

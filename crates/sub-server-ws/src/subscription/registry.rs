@@ -41,7 +41,7 @@ pub enum PushMessage {
 /// Internal state for a subscription.
 struct SubscriptionState {
 	connection_id: ConnectionId,
-	push_tx: mpsc::Sender<PushMessage>,
+	push_tx: mpsc::UnboundedSender<PushMessage>,
 	#[allow(dead_code)]
 	query: String,
 }
@@ -74,7 +74,7 @@ impl SubscriptionRegistry {
 		subscription_id: SubscriptionId,
 		connection_id: ConnectionId,
 		query: String,
-		push_tx: mpsc::Sender<PushMessage>,
+		push_tx: mpsc::UnboundedSender<PushMessage>,
 	) {
 		// Store subscription state
 		self.subscriptions.insert(
@@ -95,7 +95,7 @@ impl SubscriptionRegistry {
 	/// Get the push channel for a subscription.
 	///
 	/// Returns None if the subscription doesn't exist.
-	pub fn get_push_channel(&self, subscription_id: &SubscriptionId) -> Option<mpsc::Sender<PushMessage>> {
+	pub fn get_push_channel(&self, subscription_id: &SubscriptionId) -> Option<mpsc::UnboundedSender<PushMessage>> {
 		self.subscriptions.get(subscription_id).map(|state| state.push_tx.clone())
 	}
 
@@ -158,8 +158,8 @@ impl SubscriptionRegistry {
 				body: body.clone(),
 			};
 
-			// Try to send, ignore if channel is full or closed
-			if let Err(e) = state.push_tx.try_send(msg) {
+			// Try to send, ignore if channel is closed
+			if let Err(e) = state.push_tx.send(msg) {
 				warn!("Failed to push to subscription {}: {}", subscription_id, e);
 			}
 		}
@@ -237,10 +237,9 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 			body,
 		};
 
-		match push_tx.try_send(msg) {
+		match push_tx.send(msg) {
 			Ok(_) => DeliveryResult::Delivered,
-			Err(mpsc::error::TrySendError::Full(_)) => DeliveryResult::BackPressure,
-			Err(mpsc::error::TrySendError::Closed(_)) => DeliveryResult::Disconnected,
+			Err(_) => DeliveryResult::Disconnected,
 		}
 	}
 
@@ -270,7 +269,7 @@ pub mod tests {
 		let (_, clock, rng) = test_clock_and_rng();
 		let registry = SubscriptionRegistry::new();
 		let connection_id = Uuid7::generate(&clock, &rng);
-		let (tx, mut rx) = mpsc::channel(10);
+		let (tx, mut rx) = mpsc::unbounded_channel();
 
 		let sub_id = SubscriptionId(12345);
 		registry.subscribe(sub_id, connection_id, "FROM test".to_string(), tx);
@@ -320,8 +319,8 @@ pub mod tests {
 		let (_, clock, rng) = test_clock_and_rng();
 		let registry = SubscriptionRegistry::new();
 		let connection_id = Uuid7::generate(&clock, &rng);
-		let (tx1, _rx1) = mpsc::channel(10);
-		let (tx2, _rx2) = mpsc::channel(10);
+		let (tx1, _rx1) = mpsc::unbounded_channel();
+		let (tx2, _rx2) = mpsc::unbounded_channel();
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);
@@ -339,8 +338,8 @@ pub mod tests {
 		let (_, clock, rng) = test_clock_and_rng();
 		let registry = SubscriptionRegistry::new();
 		let connection_id = Uuid7::generate(&clock, &rng);
-		let (tx1, _rx1) = mpsc::channel(10);
-		let (tx2, _rx2) = mpsc::channel(10);
+		let (tx1, _rx1) = mpsc::unbounded_channel();
+		let (tx2, _rx2) = mpsc::unbounded_channel();
 
 		let sub1 = SubscriptionId(12345);
 		let sub2 = SubscriptionId(12346);

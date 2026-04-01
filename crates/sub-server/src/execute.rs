@@ -171,7 +171,7 @@ async fn raw_subscription(
 ) -> ExecuteResult<(Vec<Frame>, Duration)> {
 	let task = system.execute(move || {
 		let t = clock.instant();
-		let r = retry_on_conflict(|| engine.subscription_as(identity, &statement, params.clone()));
+		let r = retry_on_conflict(|| engine.subscribe_as(identity, &statement, params.clone()));
 		(r, t.elapsed())
 	});
 	match time::timeout(timeout, task).await {

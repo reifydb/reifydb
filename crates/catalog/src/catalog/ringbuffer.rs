@@ -85,9 +85,6 @@ impl Catalog {
 			Transaction::Query(qry) => {
 				CatalogStore::find_ringbuffer(&mut Transaction::Query(&mut *qry), id)
 			}
-			Transaction::Subscription(sub) => {
-				CatalogStore::find_ringbuffer(&mut Transaction::Subscription(&mut *sub), id)
-			}
 			Transaction::Test(t) => {
 				CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut *t.inner), id)
 			}
@@ -117,11 +114,6 @@ impl Catalog {
 			),
 			Transaction::Query(qry) => CatalogStore::find_ringbuffer_by_name(
 				&mut Transaction::Query(&mut *qry),
-				namespace,
-				name,
-			),
-			Transaction::Subscription(sub) => CatalogStore::find_ringbuffer_by_name(
-				&mut Transaction::Subscription(&mut *sub),
 				namespace,
 				name,
 			),

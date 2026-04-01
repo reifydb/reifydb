@@ -77,24 +77,6 @@ impl Catalog {
 				}
 				Ok(None)
 			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(sub, id) {
-					return Ok(Some(procedure.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalProcedureChanges::is_procedure_deleted(sub, id) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(procedure) = self.materialized.find_procedure_at(id, sub.version()) {
-					return Ok(Some(procedure));
-				}
-
-				Ok(None)
-			}
 			Transaction::Test(t) => {
 				// 1. Check transactional changes first
 				if let Some(procedure) = TransactionalProcedureChanges::find_procedure(t.inner, id) {
@@ -166,28 +148,6 @@ impl Catalog {
 				{
 					return Ok(Some(procedure));
 				}
-				Ok(None)
-			}
-			Transaction::Subscription(sub) => {
-				// 1. Check transactional changes first
-				if let Some(procedure) =
-					TransactionalProcedureChanges::find_procedure_by_name(sub, namespace, name)
-				{
-					return Ok(Some(procedure.clone()));
-				}
-
-				// 2. Check if deleted
-				if TransactionalProcedureChanges::is_procedure_deleted_by_name(sub, namespace, name) {
-					return Ok(None);
-				}
-
-				// 3. Check MaterializedCatalog
-				if let Some(procedure) =
-					self.materialized.find_procedure_by_name_at(namespace, name, sub.version())
-				{
-					return Ok(Some(procedure));
-				}
-
 				Ok(None)
 			}
 			Transaction::Test(t) => {
@@ -299,26 +259,6 @@ impl Catalog {
 			}
 			Transaction::Query(qry) => {
 				Ok(self.materialized.list_procedures_for_variant_at(variant, qry.version()))
-			}
-			Transaction::Subscription(sub) => {
-				// Check materialized catalog + transactional additions
-				let mut procedures =
-					self.materialized.list_procedures_for_variant_at(variant, sub.version());
-
-				// Also check transactional changes for newly created procedures with event binding
-				for change in &sub.as_admin_mut().changes.procedure {
-					if let Some(p) = &change.post
-						&& let ProcedureTrigger::Event {
-							variant: v,
-						} = &p.trigger && *v == variant && !procedures
-						.iter()
-						.any(|existing| existing.id == p.id)
-					{
-						procedures.push(p.clone());
-					}
-				}
-
-				Ok(procedures)
 			}
 			Transaction::Test(t) => {
 				// Check materialized catalog + transactional additions

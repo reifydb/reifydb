@@ -88,6 +88,12 @@ impl FlowGraphAnalyzer {
 		result
 	}
 
+	/// Remove a flow from the analyzer by ID
+	pub fn remove(&mut self, flow_id: FlowId) {
+		self.flows.retain(|f| f.id() != flow_id);
+		self.dependency_graph = self.calculate();
+	}
+
 	/// Analyze a flow without adding it to the analyzer
 	fn analyze_flow(flow: &FlowDag) -> FlowSummary {
 		let sources = Self::get_sources(flow);

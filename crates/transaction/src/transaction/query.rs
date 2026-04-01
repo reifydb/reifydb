@@ -14,7 +14,7 @@ use reifydb_core::{
 			handler::Handler,
 			id::{
 				HandlerId, MigrationId, NamespaceId, ProcedureId, RingBufferId, SeriesId, SinkId,
-				SourceId, SubscriptionId, TableId, TestId, ViewId,
+				SourceId, TableId, TestId, ViewId,
 			},
 			identity::{GrantedRole, Identity, Role, RoleId},
 			migration::Migration,
@@ -25,7 +25,6 @@ use reifydb_core::{
 			series::Series,
 			sink::Sink,
 			source::Source,
-			subscription::Subscription,
 			sumtype::SumType,
 			table::Table,
 			test::Test,
@@ -49,8 +48,8 @@ use crate::{
 		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
 		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
-		TransactionalSourceChanges, TransactionalSubscriptionChanges, TransactionalSumTypeChanges,
-		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -368,16 +367,6 @@ impl TransactionalSumTypeChanges for QueryTransaction {
 	}
 
 	fn is_sumtype_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
-		false
-	}
-}
-
-impl TransactionalSubscriptionChanges for QueryTransaction {
-	fn find_subscription(&self, _id: SubscriptionId) -> Option<&Subscription> {
-		None
-	}
-
-	fn is_subscription_deleted(&self, _id: SubscriptionId) -> bool {
 		false
 	}
 }

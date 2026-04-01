@@ -191,3 +191,21 @@ pub fn flow_source_required() -> Diagnostic {
 		operator_chain: None,
 	}
 }
+
+/// Ephemeral flow exceeded ID capacity
+pub fn flow_ephemeral_id_capacity_exceeded(flow_id: u64) -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_011".to_string(),
+		statement: None,
+		message: format!("Ephemeral flow {} exceeded maximum ID capacity of 99", flow_id),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("An ephemeral flow is limited to 99 nodes and 99 edges. \
+			Simplify the subscription query to reduce operator count."
+			.to_string()),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}

@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
-use reifydb_subscription::poller::SubscriptionPoller;
+use reifydb_sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore};
 use reifydb_type::{Result, error::Error};
 use tokio::{
 	net::TcpListener,
@@ -49,6 +49,7 @@ pub struct GrpcSubsystem {
 	registry: Option<Arc<GrpcSubscriptionRegistry>>,
 	subscription_shutdown_tx: Option<watch::Sender<bool>>,
 	poller_stop_tx: Option<watch::Sender<bool>>,
+	subscription_store: Option<Arc<SubscriptionStore>>,
 }
 
 impl GrpcSubsystem {
@@ -59,6 +60,7 @@ impl GrpcSubsystem {
 		runtime: SharedRuntime,
 		poll_interval: Duration,
 		poll_batch_size: usize,
+		subscription_store: Option<Arc<SubscriptionStore>>,
 	) -> Self {
 		Self {
 			bind_addr,
@@ -77,6 +79,7 @@ impl GrpcSubsystem {
 			registry: None,
 			subscription_shutdown_tx: None,
 			poller_stop_tx: None,
+			subscription_store,
 		}
 	}
 
@@ -132,33 +135,22 @@ impl Subsystem for GrpcSubsystem {
 
 		// Create subscription infrastructure
 		let registry = Arc::new(GrpcSubscriptionRegistry::new());
-		let poller = Arc::new(SubscriptionPoller::new(self.poll_batch_size));
 
 		// Create shutdown signal for subscription tasks
 		let (sub_shutdown_tx, sub_shutdown_rx) = watch::channel(false);
 		self.subscription_shutdown_tx = Some(sub_shutdown_tx);
 		self.registry = Some(registry.clone());
 
-		// Spawn the subscription poller task
-		let poller_clone = poller.clone();
-		let poller_state = state.clone();
-		let poller_registry = registry.clone();
+		// Spawn store-backed subscription poller if store is available
 		let poll_interval = self.poll_interval;
 		let (poller_stop_tx, poller_stop_rx) = watch::channel(false);
-		runtime.spawn(async move {
-			poller_clone
-				.run_loop(
-					poller_state.engine_clone(),
-					poller_state.actor_system(),
-					poller_registry,
-					poll_interval,
-					poller_stop_rx,
-				)
-				.await;
-		});
-
-		// Clone poller for admin service (shares the same instance)
-		let admin_poller = poller.clone();
+		if let Some(ref store) = self.subscription_store {
+			let poller = Arc::new(StoreBackedPoller::new(store.clone(), self.poll_batch_size));
+			let poller_registry = registry.clone();
+			runtime.spawn(async move {
+				poller.run_loop(poller_registry, poll_interval, poller_stop_rx).await;
+			});
+		}
 
 		// Bind main listener if configured
 		if let Some(addr) = &self.bind_addr {
@@ -190,7 +182,7 @@ impl Subsystem for GrpcSubsystem {
 			runtime.spawn(async move {
 				running.store(true, Ordering::SeqCst);
 
-				let service = ReifyDbService::new(state, false, registry, poller, sub_shutdown_rx);
+				let service = ReifyDbService::new(state, false, registry, sub_shutdown_rx);
 				let incoming = TcpListenerStream::new(listener);
 
 				let result = Server::builder()
@@ -252,13 +244,8 @@ impl Subsystem for GrpcSubsystem {
 			let admin_sub_shutdown_rx = self.subscription_shutdown_tx.as_ref().unwrap().subscribe();
 
 			runtime.spawn(async move {
-				let admin_service = ReifyDbService::new(
-					admin_state,
-					true,
-					admin_registry,
-					admin_poller,
-					admin_sub_shutdown_rx,
-				);
+				let admin_service =
+					ReifyDbService::new(admin_state, true, admin_registry, admin_sub_shutdown_rx);
 				let incoming = TcpListenerStream::new(admin_listener);
 
 				let result = Server::builder()

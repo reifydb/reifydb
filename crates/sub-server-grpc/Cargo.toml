@@ -15,6 +15,7 @@ reifydb-auth = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-sub-api = { workspace = true }

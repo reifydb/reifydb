@@ -21,16 +21,6 @@ pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a m
 	}
 }
 
-/// Variant that also accepts Subscription transactions (for CreateSubscription/DropSubscription).
-pub(crate) fn require_admin_or_subscription_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a mut AdminTransaction> {
-	match tx {
-		Transaction::Admin(txn) => Ok(txn),
-		Transaction::Subscription(txn) => Ok(txn.as_admin_mut()),
-		Transaction::Test(t) => Ok(&mut *t.inner),
-		_ => Err(internal_error!("DDL operations require an admin transaction")),
-	}
-}
-
 impl Vm {
 	/// Execute a DDL operation that requires an AdminTransaction.
 	/// Extracts the transaction, calls the handler, and pushes the result onto the stack.
@@ -49,7 +39,7 @@ impl Vm {
 		Ok(())
 	}
 
-	/// Execute a DDL operation that also accepts Subscription transactions.
+	/// Execute a DDL operation for subscriptions (CREATE/DROP SUBSCRIPTION).
 	pub(crate) fn exec_ddl_sub<F>(
 		&mut self,
 		services: &Arc<Services>,
@@ -57,10 +47,9 @@ impl Vm {
 		handler: F,
 	) -> Result<()>
 	where
-		F: FnOnce(&Services, &mut AdminTransaction) -> Result<Columns>,
+		F: FnOnce(&Services, &mut Transaction<'_>) -> Result<Columns>,
 	{
-		let txn = require_admin_or_subscription_txn(tx)?;
-		let columns = handler(services, txn)?;
+		let columns = handler(services, tx)?;
 		self.stack.push(Variable::Columns(columns));
 		Ok(())
 	}

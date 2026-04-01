@@ -8,8 +8,6 @@ use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::column
 pub enum DeliveryResult {
 	/// Frame was successfully delivered.
 	Delivered,
-	/// Consumer is not ready (e.g., channel full). Retry later.
-	BackPressure,
 	/// Consumer has disconnected. Subscription should be cleaned up.
 	Disconnected,
 }

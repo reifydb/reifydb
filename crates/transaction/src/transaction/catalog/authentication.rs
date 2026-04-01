@@ -14,7 +14,7 @@ use crate::{
 		TransactionalAuthenticationChanges,
 	},
 	interceptor::authentication::{AuthenticationPostCreateContext, AuthenticationPreDeleteContext},
-	transaction::{admin::AdminTransaction, subscription::SubscriptionTransaction},
+	transaction::admin::AdminTransaction,
 };
 
 impl CatalogTrackAuthenticationChangeOperations for AdminTransaction {
@@ -73,33 +73,5 @@ impl TransactionalAuthenticationChanges for AdminTransaction {
 			.iter()
 			.rev()
 			.any(|change| change.op == Delete && change.pre.as_ref().map(|a| a.id) == Some(id))
-	}
-}
-
-impl CatalogTrackAuthenticationChangeOperations for SubscriptionTransaction {
-	fn track_authentication_created(&mut self, auth: Authentication) -> Result<()> {
-		self.inner.track_authentication_created(auth)
-	}
-
-	fn track_authentication_deleted(&mut self, auth: Authentication) -> Result<()> {
-		self.inner.track_authentication_deleted(auth)
-	}
-}
-
-impl TransactionalAuthenticationChanges for SubscriptionTransaction {
-	fn find_authentication(&self, id: AuthenticationId) -> Option<&Authentication> {
-		self.inner.find_authentication(id)
-	}
-
-	fn find_authentication_by_identity_and_method(
-		&self,
-		identity: IdentityId,
-		method: &str,
-	) -> Option<&Authentication> {
-		self.inner.find_authentication_by_identity_and_method(identity, method)
-	}
-
-	fn is_authentication_deleted(&self, id: AuthenticationId) -> bool {
-		self.inner.is_authentication_deleted(id)
 	}
 }

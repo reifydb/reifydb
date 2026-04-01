@@ -5,7 +5,7 @@ use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_rql::{
 	expression::Expression, flow::node::FlowNodeType::Aggregate, nodes::AggregateNode, query::QueryPlan,
 };
-use reifydb_transaction::transaction::admin::AdminTransaction;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::Result;
 
 use crate::flow::compiler::{CompileOperator, FlowCompiler};
@@ -27,7 +27,7 @@ impl From<AggregateNode> for AggregateCompiler {
 }
 
 impl CompileOperator for AggregateCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let node_id = compiler.add_node(
