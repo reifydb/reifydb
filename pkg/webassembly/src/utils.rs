@@ -45,7 +45,7 @@ pub fn parse_params(params_js: JsValue) -> Result<Params, JsValue> {
 
 	// Try to parse as JSON
 	let json_str =
-		js_sys::JSON::stringify(&params_js).map_err(|_| JsError::from_str("Failed to stringify params"))?;
+		js_sys::JSON::stringify(&params_js).map_err(|_| JsError::from_message("Failed to stringify params"))?;
 
 	let json_str: String = json_str.into();
 

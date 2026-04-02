@@ -276,23 +276,24 @@ impl WasmDB {
 		console_log("[WASM] FlowSubsystem started successfully!");
 
 		// Collect all versions and register SystemCatalog
-		let mut all_versions = Vec::new();
-		all_versions.push(SystemVersion {
-			name: "reifydb-webassembly".to_string(),
-			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "ReifyDB WebAssembly Engine".to_string(),
-			r#type: ComponentType::Package,
-		});
-		all_versions.push(CoreVersion.version());
-		all_versions.push(EngineVersion.version());
-		all_versions.push(CatalogVersion.version());
-		all_versions.push(MultiStoreVersion.version());
-		all_versions.push(SingleStoreVersion.version());
-		all_versions.push(TransactionVersion.version());
-		all_versions.push(AuthVersion.version());
-		all_versions.push(RqlVersion.version());
-		all_versions.push(CdcVersion.version());
-		all_versions.push(flow_subsystem.version());
+		let all_versions = vec![
+			SystemVersion {
+				name: "reifydb-webassembly".to_string(),
+				version: env!("CARGO_PKG_VERSION").to_string(),
+				description: "ReifyDB WebAssembly Engine".to_string(),
+				r#type: ComponentType::Package,
+			},
+			CoreVersion.version(),
+			EngineVersion.version(),
+			CatalogVersion.version(),
+			MultiStoreVersion.version(),
+			SingleStoreVersion.version(),
+			TransactionVersion.version(),
+			AuthVersion.version(),
+			RqlVersion.version(),
+			CdcVersion.version(),
+			flow_subsystem.version(),
+		];
 
 		ioc_ref.register_service(SystemCatalog::new(all_versions));
 
@@ -429,7 +430,7 @@ impl WasmDB {
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
 		for frame in &frames {
-			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
 	}
@@ -443,7 +444,7 @@ impl WasmDB {
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
 		for frame in &frames {
-			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
 	}
@@ -457,7 +458,7 @@ impl WasmDB {
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
 		for frame in &frames {
-			writeln!(output, "{}", frame).map_err(|e| JsError::from_str(&e.to_string()))?;
+			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
 	}
@@ -498,7 +499,7 @@ impl WasmDB {
 				if revoked {
 					Ok(())
 				} else {
-					Err(JsError::from_str("Failed to revoke session token"))
+					Err(JsError::from_message("Failed to revoke session token"))
 				}
 			}
 			None => Ok(()),
@@ -521,10 +522,12 @@ impl WasmDB {
 			}
 			AuthResponse::Failed {
 				reason,
-			} => Err(JsError::from_str(&format!("Authentication failed: {}", reason))),
+			} => Err(JsError::from_message(&format!("Authentication failed: {}", reason))),
 			AuthResponse::Challenge {
 				..
-			} => Err(JsError::from_str("Challenge-response authentication is not supported in WASM mode")),
+			} => Err(JsError::from_message(
+				"Challenge-response authentication is not supported in WASM mode",
+			)),
 		}
 	}
 }

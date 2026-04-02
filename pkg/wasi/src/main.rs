@@ -164,23 +164,24 @@ impl Bridge {
 		flow_subsystem.start()?;
 		eprintln!("[WASI] FlowSubsystem started successfully!");
 
-		let mut all_versions = Vec::new();
-		all_versions.push(SystemVersion {
-			name: "reifydb-wasi-bridge".to_string(),
-			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "ReifyDB WASI Bridge".to_string(),
-			r#type: ComponentType::Package,
-		});
-		all_versions.push(CoreVersion.version());
-		all_versions.push(EngineVersion.version());
-		all_versions.push(CatalogVersion.version());
-		all_versions.push(MultiStoreVersion.version());
-		all_versions.push(SingleStoreVersion.version());
-		all_versions.push(TransactionVersion.version());
-		all_versions.push(AuthVersion.version());
-		all_versions.push(RqlVersion.version());
-		all_versions.push(CdcVersion.version());
-		all_versions.push(flow_subsystem.version());
+		let all_versions = vec![
+			SystemVersion {
+				name: "reifydb-wasi-bridge".to_string(),
+				version: env!("CARGO_PKG_VERSION").to_string(),
+				description: "ReifyDB WASI Bridge".to_string(),
+				r#type: ComponentType::Package,
+			},
+			CoreVersion.version(),
+			EngineVersion.version(),
+			CatalogVersion.version(),
+			MultiStoreVersion.version(),
+			SingleStoreVersion.version(),
+			TransactionVersion.version(),
+			AuthVersion.version(),
+			RqlVersion.version(),
+			CdcVersion.version(),
+			flow_subsystem.version(),
+		];
 
 		ioc_ref.register_service(SystemCatalog::new(all_versions));
 

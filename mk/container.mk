@@ -10,7 +10,7 @@
 # Build the test container
 build-testcontainer:
 	@echo "🐳 Building test container..."
-	docker build --no-cache -f bin/testcontainer/Dockerfile -t reifydb/testcontainer .
+	docker build -f bin/testcontainer/Dockerfile -t reifydb/testcontainer .
 
 # Push the test container to registry
 push-testcontainer: check

@@ -21,7 +21,7 @@ impl JsError {
 	}
 
 	/// Create a JsError from a string message
-	pub fn from_str(message: &str) -> JsValue {
+	pub fn from_message(message: &str) -> JsValue {
 		JsValue::from_str(message)
 	}
 }

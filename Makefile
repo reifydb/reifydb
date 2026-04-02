@@ -12,9 +12,9 @@ TEST_PKG_DIR := ./pkg
 
 # Check if vendor directory exists and set offline flag
 ifneq (,$(wildcard ./vendor))
-    CARGO_OFFLINE := --offline
+    export CARGO_OFFLINE := --offline
 else
-    CARGO_OFFLINE :=
+    export CARGO_OFFLINE :=
 endif
 
 # Load .env file if it exists
@@ -25,6 +25,9 @@ endif
 
 # Default target when just running 'make'
 .DEFAULT_GOAL := help
+
+# Export target directory for sharing artifacts between workspace and external test suites
+export CARGO_TARGET_DIR := $(CURDIR)/target
 
 # =============================================================================
 # Help & Documentation
@@ -111,7 +114,7 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: format-check check-code-quality check clean build build-testcontainer test-full push-testcontainer push
+all: clean format-check check-code-quality check build build-testcontainer test-full push-testcontainer push
 
 .PHONY: check-code-quality
 check-code-quality:
@@ -121,7 +124,7 @@ check-code-quality:
 	@./scripts/check-inline-qualifications.sh
 	@./scripts/check-license-headers.sh
 	@./scripts/check-section-comments.sh
-	@cargo clippy --release -- -D warnings
+	@cargo clippy --release --workspace -- -D warnings
 
 .PHONY: check
 check:
