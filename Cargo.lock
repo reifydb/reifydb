@@ -2908,16 +2908,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-store-column"
-version = "0.4.7"
-dependencies = [
- "crossbeam-skiplist",
- "reifydb-core",
- "reifydb-runtime",
- "reifydb-type",
-]
-
-[[package]]
 name = "reifydb-store-multi"
 version = "0.4.7"
 dependencies = [

@@ -66,7 +66,6 @@ RUST_CRATES=(
     "reifydb-runtime"
     "reifydb-sdk"
     "reifydb-sql"
-    "reifydb-store-column"
     "reifydb-store-multi"
     "reifydb-store-single"
     "reifydb-sub-api"

@@ -21,7 +21,6 @@ members = [
     "crates/sdk",
     "crates/rql",
     "crates/sql",
-    "crates/store-column",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
@@ -80,7 +79,6 @@ default-members = [
     "crates/sdk",
     "crates/rql",
     "crates/sql",
-    "crates/store-column",
     "crates/store-multi",
     "crates/store-single",
     "crates/testing",
@@ -173,7 +171,6 @@ reifydb-runtime = { version = "0.4.7", path = "crates/runtime" }
 reifydb-sdk = { version = "0.4.7", path = "crates/sdk" }
 reifydb-rql = { version = "0.4.7", path = "crates/rql" }
 reifydb-sql = { version = "0.4.7", path = "crates/sql" }
-reifydb-store-column = { version = "0.4.7", path = "crates/store-column" }
 reifydb-store-multi = { version = "0.4.7", path = "crates/store-multi" }
 reifydb-store-single = { version = "0.4.7", path = "crates/store-single" }
 reifydb-testing = { version = "0.4.7", path = "crates/testing" }
