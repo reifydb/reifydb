@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData, view::group_by::GroupByView};
-use reifydb_routine::function::{AggregateFunctionContext, ScalarFunctionContext, registry::Functions};
+use reifydb_routine::function::{FunctionCapability, FunctionContext, error::FunctionError, registry::Functions};
 use reifydb_rql::{
 	expression::CallExpression,
 	instruction::{CompiledFunction, Instruction, ScopeType},
@@ -53,11 +53,30 @@ pub(crate) fn call_eval_with_args(
 	functions: &Functions,
 ) -> Result<Column> {
 	let function_name = call.func.0.text();
+	let fn_fragment = call.func.0.clone();
+
+	// Try user-defined function from symbol table first
+	if let Some(func_def) = ctx.symbols.get_function(function_name) {
+		return call_user_defined_function(ctx, call, func_def.clone(), &arguments, functions);
+	}
+
+	let function = functions.get(function_name).ok_or_else(|| -> Error {
+		EngineError::UnknownFunction {
+			name: function_name.to_string(),
+			fragment: fn_fragment.clone(),
+		}
+		.into()
+	})?;
+
+	let fn_ctx = FunctionContext::new(fn_fragment.clone(), ctx.runtime_context, ctx.identity, ctx.row_count);
 
 	// Check if we're in aggregation context and if function exists as aggregate
-	if ctx.is_aggregate_context
-		&& let Some(mut aggregate_fn) = functions.get_aggregate(function_name)
-	{
+	if ctx.is_aggregate_context && function.capabilities().contains(&FunctionCapability::Aggregate) {
+		let mut accumulator = function.accumulator(&fn_ctx).ok_or_else(|| FunctionError::ExecutionFailed {
+			function: fn_fragment.clone(),
+			reason: format!("Function {} is not an aggregate", function_name),
+		})?;
+
 		let column = if call.args.is_empty() {
 			Column {
 				name: Fragment::internal("dummy"),
@@ -71,16 +90,11 @@ pub(crate) fn call_eval_with_args(
 		let all_indices: Vec<usize> = (0..ctx.row_count).collect();
 		group_view.insert(Vec::<Value>::new(), all_indices);
 
-		let agg_fragment = call.func.0.clone();
-		aggregate_fn
-			.aggregate(AggregateFunctionContext {
-				fragment: agg_fragment.clone(),
-				column: &column,
-				groups: &group_view,
-			})
-			.map_err(|e| e.with_context(agg_fragment.clone()))?;
+		accumulator
+			.update(&Columns::new(vec![column]), &group_view)
+			.map_err(|e| e.with_context(fn_fragment.clone()))?;
 
-		let (_keys, result_data) = aggregate_fn.finalize().map_err(|e| e.with_context(agg_fragment))?;
+		let (_keys, result_data) = accumulator.finalize().map_err(|e| e.with_context(fn_fragment))?;
 
 		return Ok(Column {
 			name: call.full_fragment_owned(),
@@ -88,36 +102,17 @@ pub(crate) fn call_eval_with_args(
 		});
 	}
 
-	// Try user-defined function from symbol table first
-	if let Some(func_def) = ctx.symbols.get_function(function_name) {
-		return call_user_defined_function(ctx, call, func_def.clone(), &arguments, functions);
-	}
+	let result_columns = function.call(&fn_ctx, &arguments).map_err(|e| e.with_context(fn_fragment))?;
 
-	// Fall back to built-in scalar function handling
-	let functor = functions.get_scalar(function_name).ok_or_else(|| -> Error {
-		EngineError::UnknownFunction {
-			name: call.func.0.text().to_string(),
-			fragment: call.func.0.clone(),
-		}
-		.into()
+	// For scalar, we expect 1 column. For generator in scalar context, we take the first column.
+	let result_column = result_columns.into_iter().next().ok_or_else(|| FunctionError::ExecutionFailed {
+		function: call.func.0.clone(),
+		reason: "Function returned no columns".to_string(),
 	})?;
-
-	let row_count = ctx.row_count;
-
-	let fn_fragment = call.func.0.clone();
-	let final_data = functor
-		.scalar(ScalarFunctionContext {
-			fragment: fn_fragment.clone(),
-			columns: &arguments,
-			row_count,
-			runtime_context: ctx.runtime_context,
-			identity: ctx.identity,
-		})
-		.map_err(|e| e.with_context(fn_fragment))?;
 
 	Ok(Column {
 		name: call.full_fragment_owned(),
-		data: final_data,
+		data: result_column.data,
 	})
 }
 
@@ -176,12 +171,12 @@ fn call_user_defined_function(
 
 /// Execute function body instructions and return a scalar result.
 /// Uses a simple stack-based interpreter matching the new bytecode ISA.
-fn execute_function_body_for_scalar(
+fn execute_function_body_for_scalar<'a>(
 	instructions: &[Instruction],
 	symbols: &mut SymbolTable,
-	params: &Params,
-	functions: &Functions,
-	runtime_context: &RuntimeContext,
+	params: &'a Params,
+	functions: &'a Functions,
+	runtime_context: &'a RuntimeContext,
 	identity: IdentityId,
 ) -> Result<Value> {
 	let mut ip = 0;
@@ -444,7 +439,7 @@ fn execute_function_body_for_scalar(
 						let _ = symbols.exit_scope();
 					}
 					stack.push(result);
-				} else if let Some(functor) = functions.get_scalar(name.text()) {
+				} else if let Some(function) = functions.get(name.text()) {
 					let mut arg_cols = Vec::with_capacity(args.len());
 					for arg in &args {
 						let mut data = ColumnData::none_typed(Type::Boolean, 0);
@@ -453,17 +448,15 @@ fn execute_function_body_for_scalar(
 					}
 					let columns = Columns::new(arg_cols);
 					let fn_fragment = name.clone();
-					let result_data = functor
-						.scalar(ScalarFunctionContext {
-							fragment: fn_fragment.clone(),
-							columns: &columns,
-							row_count: 1,
-							runtime_context,
-							identity,
-						})
+					let fn_ctx =
+						FunctionContext::new(fn_fragment.clone(), runtime_context, identity, 1);
+
+					let result_columns = function
+						.call(&fn_ctx, &columns)
 						.map_err(|e| e.with_context(fn_fragment))?;
-					if !result_data.is_empty() {
-						stack.push(result_data.get_value(0));
+
+					if let Some(col) = result_columns.into_iter().next() {
+						stack.push(col.data().get_value(0));
 					} else {
 						stack.push(Value::none());
 					}

@@ -187,11 +187,3 @@ impl IntoDiagnostic for FunctionError {
 		}
 	}
 }
-
-pub type ScalarFunctionError = FunctionError;
-pub type AggregateFunctionError = FunctionError;
-pub type GeneratorFunctionError = FunctionError;
-
-pub type ScalarFunctionResult<T> = Result<T, FunctionError>;
-pub type AggregateFunctionResult<T> = Result<T, FunctionError>;
-pub type GeneratorFunctionResult<T> = Result<T, FunctionError>;

@@ -10,9 +10,7 @@ use reifydb_core::{
 	error::CoreError,
 	value::column::{Column, columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
-use reifydb_routine::function::{
-	AggregateFunction, AggregateFunctionContext, error::FunctionError, registry::Functions,
-};
+use reifydb_routine::function::{Accumulator, FunctionContext, error::FunctionError, registry::Functions};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
@@ -28,10 +26,9 @@ use crate::{
 
 enum Projection {
 	Aggregate {
-		fragment: Fragment,
 		column: String,
 		alias: Fragment,
-		function: Box<dyn AggregateFunction>,
+		accumulator: Box<dyn Accumulator>,
 	},
 	Group {
 		column: String,
@@ -82,7 +79,7 @@ impl QueryNode for AggregateNode {
 		}
 
 		let (keys, mut projections) =
-			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.functions)?;
+			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.functions, stored_ctx)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
 		let mut group_key_order: Vec<Vec<Value>> = Vec::new();
@@ -98,19 +95,13 @@ impl QueryNode for AggregateNode {
 
 			for projection in &mut projections {
 				if let Projection::Aggregate {
-					fragment,
-					function,
+					accumulator,
 					column,
 					..
 				} = projection
 				{
 					let column = columns.column(column).unwrap();
-					function.aggregate(AggregateFunctionContext {
-						fragment: fragment.clone(),
-						column,
-						groups: &groups,
-					})
-					.unwrap();
+					accumulator.update(&Columns::new(vec![column.clone()]), &groups).unwrap();
 				}
 			}
 		}
@@ -145,10 +136,10 @@ impl QueryNode for AggregateNode {
 				}
 				Projection::Aggregate {
 					alias,
-					mut function,
+					mut accumulator,
 					..
 				} => {
-					let (keys_out, mut data) = function.finalize().unwrap();
+					let (keys_out, mut data) = accumulator.finalize().unwrap();
 					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
 					result_columns.push(Column {
 						name: Fragment::internal(alias.fragment()),
@@ -173,6 +164,7 @@ fn parse_keys_and_aggregates<'a>(
 	by: &'a [Expression],
 	project: &'a [Expression],
 	functions: &'a Functions,
+	ctx: &QueryContext,
 ) -> Result<(Vec<&'a str>, Vec<Projection>)> {
 	let mut keys = Vec::new();
 	let mut projections = Vec::new();
@@ -219,27 +211,42 @@ fn parse_keys_and_aggregates<'a>(
 
 		match actual_expr {
 			Expression::Call(call) => {
-				let func = call.func.0.text();
+				let func_name = call.func.0.text();
+				let function =
+					functions.get_aggregate(func_name).ok_or_else(|| FunctionError::NotFound {
+						function: call.func.0.clone(),
+					})?;
+
+				let fn_ctx = FunctionContext::new(
+					call.func.0.clone(),
+					&ctx.services.runtime_context,
+					ctx.identity,
+					0,
+				);
+
+				let accumulator = function.accumulator(&fn_ctx).ok_or_else(|| {
+					FunctionError::ExecutionFailed {
+						function: call.func.0.clone(),
+						reason: format!("Function {} is not an aggregate", func_name),
+					}
+				})?;
+
 				match call.args.first() {
 					Some(Expression::Column(c)) => {
-						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
-							fragment: call.func.0.clone(),
 							column: c.0.name.text().to_string(),
 							alias,
-							function,
+							accumulator,
 						});
 					}
 					Some(Expression::AccessSource(access)) => {
 						// Handle qualified column
 						// references in aggregate
 						// functions
-						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
-							fragment: call.func.0.clone(),
 							column: access.column.name.text().to_string(),
 							alias,
-							function,
+							accumulator,
 						});
 					}
 					None => {
@@ -257,10 +264,7 @@ fn parse_keys_and_aggregates<'a>(
 								reason: "aggregate function arguments must be column references".to_string(),
 							}
 						})?;
-						let expected = functions
-							.get_aggregate(func)
-							.map(|f| f.accepted_types().expected_at(0).to_vec())
-							.unwrap_or_default();
+						let expected = function.accepted_types().expected_at(0).to_vec();
 						return Err(FunctionError::InvalidArgumentType {
 							function: call.func.0.clone(),
 							argument_index: 0,

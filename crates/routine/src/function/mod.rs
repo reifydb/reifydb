@@ -17,25 +17,20 @@ pub mod math;
 pub mod meta;
 pub mod rql;
 pub mod series;
-pub mod subscription;
-pub mod testing;
 pub mod text;
 pub mod time;
 pub mod uuid;
 
-use error::{AggregateFunctionResult, GeneratorFunctionResult, ScalarFunctionResult};
-use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	util::ioc::IocContainer,
-	value::column::{
-		Column,
-		columns::Columns,
-		data::ColumnData,
-		view::group_by::{GroupByView, GroupKey},
-	},
+use std::sync::Arc;
+
+use error::FunctionError;
+use reifydb_core::value::column::{
+	Column,
+	columns::Columns,
+	data::ColumnData,
+	view::group_by::{GroupByView, GroupKey},
 };
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
 	util::bitvec::BitVec,
@@ -45,273 +40,294 @@ use reifydb_type::{
 	},
 };
 
-use self::uuid::{v4::UuidV4, v7::UuidV7};
+use crate::function::uuid::{v4::UuidV4, v7::UuidV7};
 
-pub struct GeneratorContext<'a> {
-	pub fragment: Fragment,
-	pub params: Columns,
-	pub txn: &'a mut Transaction<'a>,
-	pub catalog: &'a Catalog,
-	pub identity: IdentityId,
-	pub ioc: &'a IocContainer,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum FunctionCapability {
+	Scalar,
+	Aggregate,
+	Generator,
 }
 
-pub trait GeneratorFunction: Send + Sync {
-	fn generate<'a>(&self, ctx: GeneratorContext<'a>) -> GeneratorFunctionResult<Columns>;
+#[derive(Debug, Clone)]
+pub struct FunctionInfo {
+	pub name: String,
+	pub description: Option<String>,
 }
 
-pub struct ScalarFunctionContext<'a> {
+impl FunctionInfo {
+	pub fn new(name: &str) -> Self {
+		Self {
+			name: name.to_string(),
+			description: None,
+		}
+	}
+}
+
+pub struct FunctionContext<'a> {
 	pub fragment: Fragment,
-	pub columns: &'a Columns,
-	pub row_count: usize,
 	pub runtime_context: &'a RuntimeContext,
 	pub identity: IdentityId,
+	pub row_count: usize,
 }
 
-pub trait ScalarFunction: Send + Sync {
-	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> ScalarFunctionResult<ColumnData>;
-	fn return_type(&self, input_types: &[Type]) -> Type;
-}
-
-pub struct AggregateFunctionContext<'a> {
-	pub fragment: Fragment,
-	pub column: &'a Column,
-	pub groups: &'a GroupByView,
-}
-
-pub trait AggregateFunction: Send + Sync {
-	fn aggregate<'a>(&'a mut self, ctx: AggregateFunctionContext<'a>) -> AggregateFunctionResult<()>;
-	fn finalize(&mut self) -> AggregateFunctionResult<(Vec<GroupKey>, ColumnData)>;
-	fn return_type(&self, input_type: &Type) -> Type;
-	fn accepted_types(&self) -> InputTypes;
-}
-
-/// Helper for scalar functions to opt into Option propagation.
-///
-/// If any argument column is `ColumnData::Option`,
-/// this unwraps the Option wrappers, calls `func.scalar()` recursively on the
-/// inner data, and re-wraps the result with the combined bitvec.
-///
-/// Returns `None` when no Option columns are present (the caller should
-/// proceed with its normal typed logic).
-///
-/// Functions that need raw access to Options (e.g. `is::some`, `is::none`)
-/// simply don't call this helper.
-pub fn propagate_options(
-	func: &dyn ScalarFunction,
-	ctx: &ScalarFunctionContext,
-) -> Option<ScalarFunctionResult<ColumnData>> {
-	let has_option = ctx.columns.iter().any(|c| matches!(c.data(), ColumnData::Option { .. }));
-	if !has_option {
-		return None;
-	}
-
-	let mut combined_bv: Option<BitVec> = None;
-	let mut unwrapped = Vec::with_capacity(ctx.columns.len());
-	for col in ctx.columns.iter() {
-		let (inner, bv) = col.data().unwrap_option();
-		if let Some(bv) = bv {
-			combined_bv = Some(match combined_bv {
-				Some(existing) => existing.and(bv),
-				None => bv.clone(),
-			});
+impl<'a> FunctionContext<'a> {
+	pub fn new(
+		fragment: Fragment,
+		runtime_context: &'a RuntimeContext,
+		identity: IdentityId,
+		row_count: usize,
+	) -> Self {
+		Self {
+			fragment,
+			runtime_context,
+			identity,
+			row_count,
 		}
-		unwrapped.push(Column::new(col.name().clone(), inner.clone()));
+	}
+}
+
+pub trait Function: Send + Sync {
+	fn info(&self) -> &FunctionInfo;
+	fn capabilities(&self) -> &[FunctionCapability];
+
+	fn return_type(&self, input_types: &[Type]) -> Type;
+	fn accepted_types(&self) -> InputTypes {
+		InputTypes::any()
 	}
 
-	// Short-circuit: when all combined values are None, skip the inner function
-	// call entirely to avoid type-validation errors on placeholder inner types
-	// (e.g. none typed as Option<Any> would fail numeric type checks).
-	if let Some(ref bv) = combined_bv
-		&& bv.count_ones() == 0
-	{
-		let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data().get_type()).collect();
-		let result_type = func.return_type(&input_types);
-		return Some(Ok(ColumnData::none_typed(result_type, ctx.row_count)));
+	fn propagates_options(&self) -> bool {
+		true
 	}
 
-	let unwrapped_columns = Columns::new(unwrapped);
-	let result = func.scalar(ScalarFunctionContext {
-		fragment: ctx.fragment.clone(),
-		columns: &unwrapped_columns,
-		row_count: ctx.row_count,
-		runtime_context: ctx.runtime_context,
-		identity: ctx.identity,
-	});
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError>;
 
-	Some(result.map(|data| match combined_bv {
-		Some(bv) => ColumnData::Option {
-			inner: Box::new(data),
-			bitvec: bv,
-		},
-		None => data,
-	}))
+	/// Calls the function, automatically propagating Option columns if
+	/// `propagates_options()` returns true.
+	fn call(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if !self.propagates_options() {
+			return self.execute(ctx, args);
+		}
+
+		let has_option = args.iter().any(|c| matches!(c.data(), ColumnData::Option { .. }));
+		if !has_option {
+			return self.execute(ctx, args);
+		}
+
+		let mut combined_bv: Option<BitVec> = None;
+		let mut unwrapped = Vec::with_capacity(args.len());
+		for col in args.iter() {
+			let (inner, bv) = col.data().unwrap_option();
+			if let Some(bv) = bv {
+				combined_bv = Some(match combined_bv {
+					Some(existing) => existing.and(bv),
+					None => bv.clone(),
+				});
+			}
+			unwrapped.push(Column::new(col.name().clone(), inner.clone()));
+		}
+
+		// Short-circuit: when all combined values are None, skip the inner function
+		// call entirely to avoid type-validation errors on placeholder inner types.
+		if let Some(ref bv) = combined_bv
+			&& bv.count_ones() == 0
+		{
+			let row_count = args.row_count();
+			let input_types: Vec<Type> = unwrapped.iter().map(|c| c.data.get_type()).collect();
+			let result_type = self.return_type(&input_types);
+			let result_data = ColumnData::none_typed(result_type, row_count);
+			return Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]));
+		}
+
+		let unwrapped_args = Columns::new(unwrapped);
+		let result = self.execute(ctx, &unwrapped_args)?;
+
+		match combined_bv {
+			Some(bv) => {
+				let wrapped_cols: Vec<Column> = result
+					.into_iter()
+					.map(|col| {
+						Column::new(
+							col.name,
+							ColumnData::Option {
+								inner: Box::new(col.data),
+								bitvec: bv.clone(),
+							},
+						)
+					})
+					.collect();
+				Ok(Columns::new(wrapped_cols))
+			}
+			None => Ok(result),
+		}
+	}
+
+	fn accumulator(&self, _ctx: &FunctionContext) -> Option<Box<dyn Accumulator>> {
+		None
+	}
+}
+
+pub trait Accumulator: Send + Sync {
+	fn update(&mut self, args: &Columns, groups: &GroupByView) -> Result<(), FunctionError>;
+	fn finalize(&mut self) -> Result<(Vec<GroupKey>, ColumnData), FunctionError>;
 }
 
 pub fn default_functions() -> registry::FunctionsConfigurator {
-	let builder = registry::Functions::builder()
-		.register_aggregate("math::sum", math::aggregate::sum::Sum::new)
-		.register_aggregate("math::min", math::aggregate::min::Min::new)
-		.register_aggregate("math::max", math::aggregate::max::Max::new)
-		.register_aggregate("math::avg", math::aggregate::avg::Avg::new)
-		.register_aggregate("math::count", math::aggregate::count::Count::new)
-		.register_scalar("flow_node::to_json", flow::to_json::FlowNodeToJson::new)
-		.register_scalar("clock::now", clock::now::Now::new)
-		.register_scalar("blob::b58", blob::b58::BlobB58::new)
-		.register_scalar("blob::b64", blob::b64::BlobB64::new)
-		.register_scalar("blob::b64url", blob::b64url::BlobB64url::new)
-		.register_scalar("blob::hex", blob::hex::BlobHex::new)
-		.register_scalar("blob::utf8", blob::utf8::BlobUtf8::new)
-		.register_scalar("math::abs", math::scalar::abs::Abs::new)
-		.register_scalar("math::acos", math::scalar::acos::Acos::new)
-		.register_scalar("math::asin", math::scalar::asin::Asin::new)
-		.register_scalar("math::atan", math::scalar::atan::Atan::new)
-		.register_scalar("math::atan2", math::scalar::atan2::Atan2::new)
-		.register_scalar("math::avg", math::scalar::avg::Avg::new)
-		.register_scalar("math::ceil", math::scalar::ceil::Ceil::new)
-		.register_scalar("math::clamp", math::scalar::clamp::Clamp::new)
-		.register_scalar("math::cos", math::scalar::cos::Cos::new)
-		.register_scalar("math::e", math::scalar::euler::Euler::new)
-		.register_scalar("math::exp", math::scalar::exp::Exp::new)
-		.register_scalar("math::floor", math::scalar::floor::Floor::new)
-		.register_scalar("math::gcd", math::scalar::gcd::Gcd::new)
-		.register_scalar("math::lcm", math::scalar::lcm::Lcm::new)
-		.register_scalar("math::log", math::scalar::log::Log::new)
-		.register_scalar("math::log10", math::scalar::log10::Log10::new)
-		.register_scalar("math::log2", math::scalar::log2::Log2::new)
-		.register_scalar("math::max", math::scalar::max::Max::new)
-		.register_scalar("math::min", math::scalar::min::Min::new)
-		.register_scalar("math::mod", math::scalar::modulo::Modulo::new)
-		.register_scalar("math::pi", math::scalar::pi::Pi::new)
-		.register_scalar("math::power", math::scalar::power::Power::new)
-		.register_scalar("math::round", math::scalar::round::Round::new)
-		.register_scalar("math::sign", math::scalar::sign::Sign::new)
-		.register_scalar("math::sin", math::scalar::sin::Sin::new)
-		.register_scalar("math::sqrt", math::scalar::sqrt::Sqrt::new)
-		.register_scalar("math::tan", math::scalar::tan::Tan::new)
-		.register_scalar("math::truncate", math::scalar::truncate::Truncate::new)
-		.register_scalar("date::year", date::year::DateYear::new)
-		.register_scalar("date::month", date::month::DateMonth::new)
-		.register_scalar("date::day", date::day::DateDay::new)
-		.register_scalar("date::day_of_year", date::day_of_year::DateDayOfYear::new)
-		.register_scalar("date::day_of_week", date::day_of_week::DateDayOfWeek::new)
-		.register_scalar("date::quarter", date::quarter::DateQuarter::new)
-		.register_scalar("date::week", date::week::DateWeek::new)
-		.register_scalar("date::is_leap_year", date::is_leap_year::DateIsLeapYear::new)
-		.register_scalar("date::days_in_month", date::days_in_month::DateDaysInMonth::new)
-		.register_scalar("date::end_of_month", date::end_of_month::DateEndOfMonth::new)
-		.register_scalar("date::start_of_month", date::start_of_month::DateStartOfMonth::new)
-		.register_scalar("date::start_of_year", date::start_of_year::DateStartOfYear::new)
-		.register_scalar("date::new", date::new::DateNew::new)
-		.register_scalar("date::now", date::now::DateNow::new)
-		.register_scalar("date::add", date::add::DateAdd::new)
-		.register_scalar("date::subtract", date::subtract::DateSubtract::new)
-		.register_scalar("date::diff", date::diff::DateDiff::new)
-		.register_scalar("date::trunc", date::trunc::DateTrunc::new)
-		.register_scalar("date::age", date::age::DateAge::new)
-		.register_scalar("date::format", date::format::DateFormat::new)
-		.register_scalar("time::hour", time::hour::TimeHour::new)
-		.register_scalar("time::minute", time::minute::TimeMinute::new)
-		.register_scalar("time::second", time::second::TimeSecond::new)
-		.register_scalar("time::nanosecond", time::nanosecond::TimeNanosecond::new)
-		.register_scalar("time::new", time::new::TimeNew::new)
-		.register_scalar("time::now", time::now::TimeNow::new)
-		.register_scalar("time::add", time::add::TimeAdd::new)
-		.register_scalar("time::subtract", time::subtract::TimeSubtract::new)
-		.register_scalar("time::diff", time::diff::TimeDiff::new)
-		.register_scalar("time::trunc", time::trunc::TimeTrunc::new)
-		.register_scalar("time::age", time::age::TimeAge::new)
-		.register_scalar("time::format", time::format::TimeFormat::new)
-		.register_scalar("datetime::year", datetime::year::DateTimeYear::new)
-		.register_scalar("datetime::month", datetime::month::DateTimeMonth::new)
-		.register_scalar("datetime::day", datetime::day::DateTimeDay::new)
-		.register_scalar("datetime::hour", datetime::hour::DateTimeHour::new)
-		.register_scalar("datetime::minute", datetime::minute::DateTimeMinute::new)
-		.register_scalar("datetime::second", datetime::second::DateTimeSecond::new)
-		.register_scalar("datetime::nanosecond", datetime::nanosecond::DateTimeNanosecond::new)
-		.register_scalar("datetime::day_of_year", datetime::day_of_year::DateTimeDayOfYear::new)
-		.register_scalar("datetime::day_of_week", datetime::day_of_week::DateTimeDayOfWeek::new)
-		.register_scalar("datetime::quarter", datetime::quarter::DateTimeQuarter::new)
-		.register_scalar("datetime::week", datetime::week::DateTimeWeek::new)
-		.register_scalar("datetime::date", datetime::date::DateTimeDate::new)
-		.register_scalar("datetime::time", datetime::time::DateTimeTime::new)
-		.register_scalar("datetime::epoch", datetime::epoch::DateTimeEpoch::new)
-		.register_scalar("datetime::epoch_millis", datetime::epoch_millis::DateTimeEpochMillis::new)
-		.register_scalar("datetime::new", datetime::new::DateTimeNew::new)
-		.register_scalar("datetime::now", datetime::now::DateTimeNow::new)
-		.register_scalar("datetime::from_epoch", datetime::from_epoch::DateTimeFromEpoch::new)
-		.register_scalar(
-			"datetime::from_epoch_millis",
-			datetime::from_epoch_millis::DateTimeFromEpochMillis::new,
-		)
-		.register_scalar("datetime::add", datetime::add::DateTimeAdd::new)
-		.register_scalar("datetime::subtract", datetime::subtract::DateTimeSubtract::new)
-		.register_scalar("datetime::diff", datetime::diff::DateTimeDiff::new)
-		.register_scalar("datetime::trunc", datetime::trunc::DateTimeTrunc::new)
-		.register_scalar("datetime::age", datetime::age::DateTimeAge::new)
-		.register_scalar("datetime::format", datetime::format::DateTimeFormat::new)
-		.register_scalar("duration::years", duration::years::DurationYears::new)
-		.register_scalar("duration::months", duration::months::DurationMonths::new)
-		.register_scalar("duration::weeks", duration::weeks::DurationWeeks::new)
-		.register_scalar("duration::days", duration::days::DurationDays::new)
-		.register_scalar("duration::hours", duration::hours::DurationHours::new)
-		.register_scalar("duration::minutes", duration::minutes::DurationMinutes::new)
-		.register_scalar("duration::seconds", duration::seconds::DurationSeconds::new)
-		.register_scalar("duration::millis", duration::millis::DurationMillis::new)
-		.register_scalar("duration::year", duration::years::DurationYears::new)
-		.register_scalar("duration::month", duration::months::DurationMonths::new)
-		.register_scalar("duration::week", duration::weeks::DurationWeeks::new)
-		.register_scalar("duration::day", duration::days::DurationDays::new)
-		.register_scalar("duration::hour", duration::hours::DurationHours::new)
-		.register_scalar("duration::minute", duration::minutes::DurationMinutes::new)
-		.register_scalar("duration::second", duration::seconds::DurationSeconds::new)
-		.register_scalar("duration::get_months", duration::get_months::DurationGetMonths::new)
-		.register_scalar("duration::get_days", duration::get_days::DurationGetDays::new)
-		.register_scalar("duration::get_nanos", duration::get_nanos::DurationGetNanos::new)
-		.register_scalar("duration::add", duration::add::DurationAdd::new)
-		.register_scalar("duration::subtract", duration::subtract::DurationSubtract::new)
-		.register_scalar("duration::negate", duration::negate::DurationNegate::new)
-		.register_scalar("duration::scale", duration::scale::DurationScale::new)
-		.register_scalar("duration::trunc", duration::trunc::DurationTrunc::new)
-		.register_scalar("duration::format", duration::format::DurationFormat::new)
-		.register_scalar("text::ascii", text::ascii::TextAscii::new)
-		.register_scalar("text::char", text::char::TextChar::new)
-		.register_scalar("text::concat", text::concat::TextConcat::new)
-		.register_scalar("text::contains", text::contains::TextContains::new)
-		.register_scalar("text::count", text::count::TextCount::new)
-		.register_scalar("text::ends_with", text::ends_with::TextEndsWith::new)
-		.register_scalar("text::index_of", text::index_of::TextIndexOf::new)
-		.register_scalar("text::pad_left", text::pad_left::TextPadLeft::new)
-		.register_scalar("text::pad_right", text::pad_right::TextPadRight::new)
-		.register_scalar("text::repeat", text::repeat::TextRepeat::new)
-		.register_scalar("text::replace", text::replace::TextReplace::new)
-		.register_scalar("text::reverse", text::reverse::TextReverse::new)
-		.register_scalar("text::starts_with", text::starts_with::TextStartsWith::new)
-		.register_scalar("text::length", text::length::TextLength::new)
-		.register_scalar("text::trim", text::trim::TextTrim::new)
-		.register_scalar("text::trim_end", text::trim_end::TextTrimEnd::new)
-		.register_scalar("text::trim_start", text::trim_start::TextTrimStart::new)
-		.register_scalar("text::upper", text::upper::TextUpper::new)
-		.register_scalar("text::lower", text::lower::TextLower::new)
-		.register_scalar("text::substring", text::substring::TextSubstring::new)
-		.register_scalar("text::format_bytes", text::format_bytes::FormatBytes::new)
-		.register_scalar("text::format_bytes_si", text::format_bytes_si::FormatBytesSi::new)
-		.register_scalar("meta::type", meta::r#type::Type::new)
-		.register_scalar("identity::id", identity::id::Id::new)
-		.register_scalar("is::some", is::some::IsSome::new)
-		.register_scalar("is::none", is::none::IsNone::new)
-		.register_scalar("is::type", is::r#type::IsType::new)
-		.register_scalar("is::root", is::root::IsRoot::new)
-		.register_scalar("is::anonymous", is::anonymous::IsAnonymous::new)
-		.register_scalar("json::object", json::object::JsonObject::new)
-		.register_scalar("json::array", json::array::JsonArray::new)
-		.register_scalar("json::pretty", json::pretty::JsonPretty::new)
-		.register_scalar("json::serialize", json::serialize::JsonSerialize::new)
-		.register_scalar("uuid::v4", UuidV4::new)
-		.register_scalar("uuid::v7", UuidV7::new)
-		.register_scalar("gen::series", series::Series::new)
-		.register_generator("generate_series", series::GenerateSeries::new)
-		.register_generator("inspect_subscription", subscription::inspect::InspectSubscription::new)
-		.register_scalar("rql::fingerprint", rql::fingerprint::RqlFingerprint::new);
-	testing::register_testing_functions(builder)
+	registry::Functions::builder()
+		.register_function(Arc::new(math::sum::Sum::new()))
+		.register_function(Arc::new(math::avg::Avg::new()))
+		.register_function(Arc::new(math::count::Count::new()))
+		.register_function(Arc::new(math::min::Min::new()))
+		.register_function(Arc::new(math::max::Max::new()))
+		.register_function(Arc::new(math::abs::Abs::new()))
+		.register_function(Arc::new(flow::to_json::FlowNodeToJson::new()))
+		.register_function(Arc::new(clock::now::Now::new()))
+		.register_function(Arc::new(blob::b58::BlobB58::new()))
+		.register_function(Arc::new(blob::b64::BlobB64::new()))
+		.register_function(Arc::new(blob::b64url::BlobB64url::new()))
+		.register_function(Arc::new(blob::hex::BlobHex::new()))
+		.register_function(Arc::new(blob::utf8::BlobUtf8::new()))
+		.register_function(Arc::new(math::acos::Acos::new()))
+		.register_function(Arc::new(math::asin::Asin::new()))
+		.register_function(Arc::new(math::atan::Atan::new()))
+		.register_function(Arc::new(math::atan2::Atan2::new()))
+		.register_function(Arc::new(math::ceil::Ceil::new()))
+		.register_function(Arc::new(math::clamp::Clamp::new()))
+		.register_function(Arc::new(math::cos::Cos::new()))
+		.register_function(Arc::new(math::euler::Euler::new()))
+		.register_function(Arc::new(math::exp::Exp::new()))
+		.register_function(Arc::new(math::floor::Floor::new()))
+		.register_function(Arc::new(math::gcd::Gcd::new()))
+		.register_function(Arc::new(math::lcm::Lcm::new()))
+		.register_function(Arc::new(math::log::Log::new()))
+		.register_function(Arc::new(math::log10::Log10::new()))
+		.register_function(Arc::new(math::log2::Log2::new()))
+		.register_function(Arc::new(math::modulo::Modulo::new()))
+		.register_function(Arc::new(math::pi::Pi::new()))
+		.register_function(Arc::new(math::power::Power::new()))
+		.register_function(Arc::new(math::round::Round::new()))
+		.register_function(Arc::new(math::sign::Sign::new()))
+		.register_function(Arc::new(math::sin::Sin::new()))
+		.register_function(Arc::new(math::sqrt::Sqrt::new()))
+		.register_function(Arc::new(math::tan::Tan::new()))
+		.register_function(Arc::new(math::truncate::Truncate::new()))
+		.register_function(Arc::new(date::year::DateYear::new()))
+		.register_function(Arc::new(date::month::DateMonth::new()))
+		.register_function(Arc::new(date::day::DateDay::new()))
+		.register_function(Arc::new(date::day_of_year::DateDayOfYear::new()))
+		.register_function(Arc::new(date::day_of_week::DateDayOfWeek::new()))
+		.register_function(Arc::new(date::quarter::DateQuarter::new()))
+		.register_function(Arc::new(date::week::DateWeek::new()))
+		.register_function(Arc::new(date::is_leap_year::DateIsLeapYear::new()))
+		.register_function(Arc::new(date::days_in_month::DateDaysInMonth::new()))
+		.register_function(Arc::new(date::end_of_month::DateEndOfMonth::new()))
+		.register_function(Arc::new(date::start_of_month::DateStartOfMonth::new()))
+		.register_function(Arc::new(date::start_of_year::DateStartOfYear::new()))
+		.register_function(Arc::new(date::new::DateNew::new()))
+		.register_function(Arc::new(date::now::DateNow::new()))
+		.register_function(Arc::new(date::add::DateAdd::new()))
+		.register_function(Arc::new(date::subtract::DateSubtract::new()))
+		.register_function(Arc::new(date::diff::DateDiff::new()))
+		.register_function(Arc::new(date::trunc::DateTrunc::new()))
+		.register_function(Arc::new(date::age::DateAge::new()))
+		.register_function(Arc::new(date::format::DateFormat::new()))
+		.register_function(Arc::new(time::hour::TimeHour::new()))
+		.register_function(Arc::new(time::minute::TimeMinute::new()))
+		.register_function(Arc::new(time::second::TimeSecond::new()))
+		.register_function(Arc::new(time::nanosecond::TimeNanosecond::new()))
+		.register_function(Arc::new(time::new::TimeNew::new()))
+		.register_function(Arc::new(time::now::TimeNow::new()))
+		.register_function(Arc::new(time::add::TimeAdd::new()))
+		.register_function(Arc::new(time::subtract::TimeSubtract::new()))
+		.register_function(Arc::new(time::diff::TimeDiff::new()))
+		.register_function(Arc::new(time::trunc::TimeTrunc::new()))
+		.register_function(Arc::new(time::age::TimeAge::new()))
+		.register_function(Arc::new(time::format::TimeFormat::new()))
+		.register_function(Arc::new(datetime::year::DateTimeYear::new()))
+		.register_function(Arc::new(datetime::month::DateTimeMonth::new()))
+		.register_function(Arc::new(datetime::day::DateTimeDay::new()))
+		.register_function(Arc::new(datetime::hour::DateTimeHour::new()))
+		.register_function(Arc::new(datetime::minute::DateTimeMinute::new()))
+		.register_function(Arc::new(datetime::second::DateTimeSecond::new()))
+		.register_function(Arc::new(datetime::nanosecond::DateTimeNanosecond::new()))
+		.register_function(Arc::new(datetime::day_of_year::DateTimeDayOfYear::new()))
+		.register_function(Arc::new(datetime::day_of_week::DateTimeDayOfWeek::new()))
+		.register_function(Arc::new(datetime::quarter::DateTimeQuarter::new()))
+		.register_function(Arc::new(datetime::week::DateTimeWeek::new()))
+		.register_function(Arc::new(datetime::date::DateTimeDate::new()))
+		.register_function(Arc::new(datetime::time::DateTimeTime::new()))
+		.register_function(Arc::new(datetime::epoch::DateTimeEpoch::new()))
+		.register_function(Arc::new(datetime::epoch_millis::DateTimeEpochMillis::new()))
+		.register_function(Arc::new(datetime::new::DateTimeNew::new()))
+		.register_function(Arc::new(datetime::now::DateTimeNow::new()))
+		.register_function(Arc::new(datetime::from_epoch::DateTimeFromEpoch::new()))
+		.register_function(Arc::new(datetime::from_epoch_millis::DateTimeFromEpochMillis::new()))
+		.register_function(Arc::new(datetime::add::DateTimeAdd::new()))
+		.register_function(Arc::new(datetime::subtract::DateTimeSubtract::new()))
+		.register_function(Arc::new(datetime::diff::DateTimeDiff::new()))
+		.register_function(Arc::new(datetime::trunc::DateTimeTrunc::new()))
+		.register_function(Arc::new(datetime::age::DateTimeAge::new()))
+		.register_function(Arc::new(datetime::format::DateTimeFormat::new()))
+		.register_function(Arc::new(duration::years::DurationYears::new()))
+		.register_function(Arc::new(duration::months::DurationMonths::new()))
+		.register_function(Arc::new(duration::weeks::DurationWeeks::new()))
+		.register_function(Arc::new(duration::days::DurationDays::new()))
+		.register_function(Arc::new(duration::hours::DurationHours::new()))
+		.register_function(Arc::new(duration::minutes::DurationMinutes::new()))
+		.register_function(Arc::new(duration::seconds::DurationSeconds::new()))
+		.register_function(Arc::new(duration::millis::DurationMillis::new()))
+		.register_function(Arc::new(duration::get_months::DurationGetMonths::new()))
+		.register_function(Arc::new(duration::get_days::DurationGetDays::new()))
+		.register_function(Arc::new(duration::get_nanos::DurationGetNanos::new()))
+		.register_function(Arc::new(duration::add::DurationAdd::new()))
+		.register_function(Arc::new(duration::subtract::DurationSubtract::new()))
+		.register_function(Arc::new(duration::negate::DurationNegate::new()))
+		.register_function(Arc::new(duration::scale::DurationScale::new()))
+		.register_function(Arc::new(duration::trunc::DurationTrunc::new()))
+		.register_function(Arc::new(duration::format::DurationFormat::new()))
+		.register_alias("duration::year", "duration::years")
+		.register_alias("duration::month", "duration::months")
+		.register_alias("duration::week", "duration::weeks")
+		.register_alias("duration::day", "duration::days")
+		.register_alias("duration::hour", "duration::hours")
+		.register_alias("duration::minute", "duration::minutes")
+		.register_alias("duration::second", "duration::seconds")
+		.register_function(Arc::new(text::ascii::TextAscii::new()))
+		.register_function(Arc::new(text::char::TextChar::new()))
+		.register_function(Arc::new(text::concat::TextConcat::new()))
+		.register_function(Arc::new(text::contains::TextContains::new()))
+		.register_function(Arc::new(text::count::TextCount::new()))
+		.register_function(Arc::new(text::ends_with::TextEndsWith::new()))
+		.register_function(Arc::new(text::index_of::TextIndexOf::new()))
+		.register_function(Arc::new(text::pad_left::TextPadLeft::new()))
+		.register_function(Arc::new(text::pad_right::TextPadRight::new()))
+		.register_function(Arc::new(text::repeat::TextRepeat::new()))
+		.register_function(Arc::new(text::replace::TextReplace::new()))
+		.register_function(Arc::new(text::reverse::TextReverse::new()))
+		.register_function(Arc::new(text::starts_with::TextStartsWith::new()))
+		.register_function(Arc::new(text::length::TextLength::new()))
+		.register_function(Arc::new(text::trim::TextTrim::new()))
+		.register_function(Arc::new(text::trim_end::TextTrimEnd::new()))
+		.register_function(Arc::new(text::trim_start::TextTrimStart::new()))
+		.register_function(Arc::new(text::upper::TextUpper::new()))
+		.register_function(Arc::new(text::lower::TextLower::new()))
+		.register_function(Arc::new(text::substring::TextSubstring::new()))
+		.register_function(Arc::new(text::format_bytes::FormatBytes::new()))
+		.register_function(Arc::new(text::format_bytes_si::FormatBytesSi::new()))
+		.register_function(Arc::new(meta::r#type::Type::new()))
+		.register_function(Arc::new(identity::id::Id::new()))
+		.register_function(Arc::new(is::some::IsSome::new()))
+		.register_function(Arc::new(is::none::IsNone::new()))
+		.register_function(Arc::new(is::r#type::IsType::new()))
+		.register_function(Arc::new(is::root::IsRoot::new()))
+		.register_function(Arc::new(is::anonymous::IsAnonymous::new()))
+		.register_function(Arc::new(json::object::JsonObject::new()))
+		.register_function(Arc::new(json::array::JsonArray::new()))
+		.register_function(Arc::new(json::pretty::JsonPretty::new()))
+		.register_function(Arc::new(json::serialize::JsonSerialize::new()))
+		.register_function(Arc::new(UuidV4::new()))
+		.register_function(Arc::new(UuidV7::new()))
+		.register_function(Arc::new(series::Series::new()))
+		.register_function(Arc::new(series::GenerateSeries::new()))
+		.register_function(Arc::new(rql::fingerprint::RqlFingerprint::new()))
 }

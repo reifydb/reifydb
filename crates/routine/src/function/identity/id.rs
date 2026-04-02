@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct Id;
+pub struct Id {
+	info: FunctionInfo,
+}
 
 impl Default for Id {
 	fn default() -> Self {
@@ -19,29 +18,46 @@ impl Default for Id {
 
 impl Id {
 	pub fn new() -> Self {
-		Self {}
+		Self {
+			info: FunctionInfo::new("identity::id"),
+		}
 	}
 }
 
-impl ScalarFunction for Id {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if !ctx.columns.is_empty() {
-			return Err(ScalarFunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 0,
-				actual: ctx.columns.len(),
-			});
-		}
+impl Function for Id {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let identity = ctx.identity;
-		if identity.is_anonymous() {
-			return Ok(ColumnData::none_typed(Type::IdentityId, ctx.row_count));
-		}
-
-		Ok(ColumnData::identity_id(vec![identity; ctx.row_count]))
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::IdentityId
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if !args.is_empty() {
+			return Err(FunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 0,
+				actual: args.len(),
+			});
+		}
+
+		let identity = ctx.identity;
+		let row_count = ctx.row_count.max(1);
+		if identity.is_anonymous() {
+			return Ok(Columns::new(vec![Column::new(
+				ctx.fragment.clone(),
+				ColumnData::none_typed(Type::IdentityId, row_count),
+			)]));
+		}
+
+		Ok(Columns::new(vec![Column::new(
+			ctx.fragment.clone(),
+			ColumnData::identity_id(vec![identity; row_count]),
+		)]))
 	}
 }

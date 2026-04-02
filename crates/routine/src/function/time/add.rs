@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, time::Time, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct TimeAdd;
+pub struct TimeAdd {
+	info: FunctionInfo,
+}
 
 impl Default for TimeAdd {
 	fn default() -> Self {
@@ -20,33 +18,45 @@ impl Default for TimeAdd {
 
 impl TimeAdd {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("time::add"),
+		}
 	}
 }
 
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
 
-impl ScalarFunction for TimeAdd {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl Function for TimeAdd {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Time
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 2 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let time_col = columns.first().unwrap();
-		let dur_col = columns.get(1).unwrap();
+		let time_col = &args[0];
+		let dur_col = &args[1];
 
-		match (time_col.data(), dur_col.data()) {
+		let (time_data, time_bv) = time_col.data().unwrap_option();
+		let (dur_data, dur_bv) = dur_col.data().unwrap_option();
+
+		match (time_data, dur_data) {
 			(ColumnData::Time(time_container), ColumnData::Duration(dur_container)) => {
+				let row_count = time_data.len();
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
@@ -67,24 +77,32 @@ impl ScalarFunction for TimeAdd {
 					}
 				}
 
-				Ok(ColumnData::Time(container))
+				let mut result_data = ColumnData::Time(container);
+				if let Some(bv) = time_bv {
+					result_data = ColumnData::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				} else if let Some(bv) = dur_bv {
+					result_data = ColumnData::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				}
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
 			}
-			(ColumnData::Time(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
+			(ColumnData::Time(_), other) => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![Type::Duration],
 				actual: other.get_type(),
 			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
+			(other, _) => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Time],
 				actual: other.get_type(),
 			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Time
 	}
 }

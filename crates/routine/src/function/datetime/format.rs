@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DateTimeFormat;
+pub struct DateTimeFormat {
+	info: FunctionInfo,
+}
 
 impl Default for DateTimeFormat {
 	fn default() -> Self {
@@ -20,7 +18,9 @@ impl Default for DateTimeFormat {
 
 impl DateTimeFormat {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("datetime::format"),
+		}
 	}
 }
 
@@ -123,26 +123,35 @@ fn format_datetime(
 	Ok(result)
 }
 
-impl ScalarFunction for DateTimeFormat {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl Function for DateTimeFormat {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 2 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let dt_col = columns.first().unwrap();
-		let fmt_col = columns.get(1).unwrap();
+		let dt_col = &args[0];
+		let fmt_col = &args[1];
+		let (dt_data, dt_bitvec) = dt_col.data().unwrap_option();
+		let (fmt_data, fmt_bitvec) = fmt_col.data().unwrap_option();
+		let row_count = dt_data.len();
 
-		match (dt_col.data(), fmt_col.data()) {
+		let result_data = match (dt_data, fmt_data) {
 			(
 				ColumnData::DateTime(dt_container),
 				ColumnData::Utf8 {
@@ -150,7 +159,7 @@ impl ScalarFunction for DateTimeFormat {
 					..
 				},
 			) => {
-				let mut result_data = Vec::with_capacity(row_count);
+				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					match (dt_container.get(i), fmt_container.is_defined(i)) {
@@ -167,45 +176,53 @@ impl ScalarFunction for DateTimeFormat {
 								fmt_str,
 							) {
 								Ok(formatted) => {
-									result_data.push(formatted);
+									result.push(formatted);
 								}
 								Err(reason) => {
-									return Err(
-										ScalarFunctionError::ExecutionFailed {
-											function: ctx.fragment.clone(),
-											reason,
-										},
-									);
+									return Err(FunctionError::ExecutionFailed {
+										function: ctx.fragment.clone(),
+										reason,
+									});
 								}
 							}
 						}
 						_ => {
-							result_data.push(String::new());
+							result.push(String::new());
 						}
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
-					container: Utf8Container::new(result_data),
+				ColumnData::Utf8 {
+					container: Utf8Container::new(result),
 					max_bytes: MaxBytes::MAX,
-				})
+				}
 			}
-			(ColumnData::DateTime(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Utf8],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::DateTime],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnData::DateTime(_), other) => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Utf8],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::DateTime],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+		let final_data = match (dt_bitvec, fmt_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnData::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }

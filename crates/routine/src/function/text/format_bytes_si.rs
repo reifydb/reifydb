@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use super::format_bytes::{format_bytes_internal, process_decimal_column, process_float_column, process_int_column};
 use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
+	Function, FunctionCapability, FunctionContext, FunctionInfo,
+	error::FunctionError,
+	text::format_bytes::{format_bytes_internal, process_decimal_column, process_float_column, process_int_column},
 };
 
 const SI_UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
 
 /// Formats bytes using SI/decimal units (1000-based: B, KB, MB, GB, TB, PB)
-pub struct FormatBytesSi;
+pub struct FormatBytesSi {
+	info: FunctionInfo,
+}
 
 impl Default for FormatBytesSi {
 	fn default() -> Self {
@@ -24,30 +25,39 @@ impl Default for FormatBytesSi {
 
 impl FormatBytesSi {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("text::format_bytes_si"),
+		}
 	}
 }
 
-impl ScalarFunction for FormatBytesSi {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for FormatBytesSi {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
+		let result_data = match data {
 			ColumnData::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
 			ColumnData::Int2(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
 			ColumnData::Int4(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),
@@ -64,28 +74,35 @@ impl ScalarFunction for FormatBytesSi {
 			} => {
 				process_decimal_column!(container, row_count, 1000.0, &SI_UNITS)
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![
-					Type::Int1,
-					Type::Int2,
-					Type::Int4,
-					Type::Int8,
-					Type::Uint1,
-					Type::Uint2,
-					Type::Uint4,
-					Type::Uint8,
-					Type::Float4,
-					Type::Float8,
-					Type::Decimal,
-				],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			other => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![
+						Type::Int1,
+						Type::Int2,
+						Type::Int4,
+						Type::Int8,
+						Type::Uint1,
+						Type::Uint2,
+						Type::Uint4,
+						Type::Uint8,
+						Type::Float4,
+						Type::Float8,
+						Type::Decimal,
+					],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+		let final_data = match bitvec {
+			Some(bv) => ColumnData::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			None => result_data,
+		};
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }

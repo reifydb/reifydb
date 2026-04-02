@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DateTimeNew;
+pub struct DateTimeNew {
+	info: FunctionInfo,
+}
 
 impl Default for DateTimeNew {
 	fn default() -> Self {
@@ -20,30 +18,41 @@ impl Default for DateTimeNew {
 
 impl DateTimeNew {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("datetime::new"),
+		}
 	}
 }
 
-impl ScalarFunction for DateTimeNew {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl Function for DateTimeNew {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 2 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let date_col = columns.first().unwrap();
-		let time_col = columns.get(1).unwrap();
+		let date_col = &args[0];
+		let time_col = &args[1];
+		let (date_data, date_bitvec) = date_col.data().unwrap_option();
+		let (time_data, time_bitvec) = time_col.data().unwrap_option();
+		let row_count = date_data.len();
 
-		match (date_col.data(), time_col.data()) {
+		let result_data = match (date_data, time_data) {
 			(ColumnData::Date(date_container), ColumnData::Time(time_container)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
@@ -67,24 +76,34 @@ impl ScalarFunction for DateTimeNew {
 					}
 				}
 
-				Ok(ColumnData::DateTime(container))
+				ColumnData::DateTime(container)
 			}
-			(ColumnData::Date(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Time],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnData::Date(_), other) => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Time],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+		let final_data = match (date_bitvec, time_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnData::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }

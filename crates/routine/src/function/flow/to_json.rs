@@ -6,14 +6,14 @@ use reifydb_core::{
 	common::{JoinType, WindowKind},
 	internal,
 	sort::SortKey,
-	value::column::data::ColumnData,
+	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
 use reifydb_type::{error::Error, value::r#type::Type};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
 
-use crate::function::{ScalarFunction, ScalarFunctionContext, error::ScalarFunctionResult, propagate_options};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
 /// JSON-serializable version of FlowNodeType that uses JsonExpression
 /// for clean expression serialization without Fragment metadata.
@@ -210,7 +210,9 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 	}
 }
 
-pub struct FlowNodeToJson;
+pub struct FlowNodeToJson {
+	info: FunctionInfo,
+}
 
 impl Default for FlowNodeToJson {
 	fn default() -> Self {
@@ -220,26 +222,46 @@ impl Default for FlowNodeToJson {
 
 impl FlowNodeToJson {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("flow_node::to_json"),
+		}
 	}
 }
 
-impl ScalarFunction for FlowNodeToJson {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
+impl Function for FlowNodeToJson {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
+
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.is_empty() {
+			return Ok(Columns::new(vec![Column::new(
+				ctx.fragment.clone(),
+				ColumnData::utf8(Vec::<String>::new()),
+			)]));
 		}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
-
-		if columns.is_empty() {
-			return Ok(ColumnData::utf8(Vec::<String>::new()));
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 1,
+				actual: args.len(),
+			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
+		match data {
 			ColumnData::Blob {
 				container,
 				..
@@ -298,13 +320,20 @@ impl ScalarFunction for FlowNodeToJson {
 					}
 				}
 
-				Ok(ColumnData::utf8(result_data))
+				let result_col_data = ColumnData::utf8(result_data);
+				let final_data = match bitvec {
+					Some(bv) => ColumnData::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv.clone(),
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 			}
-			_ => Err(Error(Box::new(internal!("flow_node::to_json only supports Blob input"))).into()),
+			_ => Err(FunctionError::ExecutionFailed {
+				function: ctx.fragment.clone(),
+				reason: "flow_node::to_json only supports Blob input".to_string(),
+			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
 	}
 }

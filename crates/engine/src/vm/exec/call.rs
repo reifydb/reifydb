@@ -12,7 +12,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_routine::{function::GeneratorContext, procedure::context::ProcedureContext};
+use reifydb_routine::{function::FunctionContext, procedure::context::ProcedureContext};
 use reifydb_rql::{
 	compiler::{CompilationResult, Compiled},
 	expression::{CallExpression, ConstantExpression, Expression, IdentExpression},
@@ -421,18 +421,15 @@ impl Vm {
 					Column::new(format!("arg{}", i), data)
 				})
 				.collect();
+			let columns_args = Columns::new(arg_columns);
 			let identity = ctx.tx.identity();
-			// SAFETY: GeneratorContext requires &'a mut Transaction<'a> but we only have
-			// &mut Transaction<'_>. The generator does not hold the reference beyond this call.
-			// This matches the pattern in GeneratorNode.
-			let columns = generator.generate(GeneratorContext {
-				fragment: name.clone(),
-				params: Columns::new(arg_columns),
-				txn: unsafe { mem::transmute::<&mut Transaction, &mut Transaction>(ctx.tx) },
-				catalog: &ctx.services.catalog,
+			let fn_ctx = FunctionContext::new(
+				name.clone(),
+				&ctx.services.runtime_context,
 				identity,
-				ioc: &ctx.services.ioc,
-			})?;
+				columns_args.row_count(),
+			);
+			let columns = generator.call(&fn_ctx, &columns_args)?;
 			self.stack.push(Variable::Columns(columns));
 			return Ok(());
 		}

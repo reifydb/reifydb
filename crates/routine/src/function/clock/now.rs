@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct Now;
+pub struct Now {
+	info: FunctionInfo,
+}
 
 impl Default for Now {
 	fn default() -> Self {
@@ -20,34 +18,40 @@ impl Default for Now {
 
 impl Now {
 	pub fn new() -> Self {
-		Self {}
+		Self {
+			info: FunctionInfo::new("clock::now"),
+		}
 	}
 }
 
-impl ScalarFunction for Now {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for Now {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let row_count = ctx.row_count;
-
-		if !ctx.columns.is_empty() {
-			return Err(ScalarFunctionError::ArityMismatch {
-				function: ctx.fragment.clone(),
-				expected: 0,
-				actual: ctx.columns.len(),
-			});
-		}
-
-		let millis = ctx.runtime_context.clock.now_millis() as i64;
-		let data = vec![millis; row_count];
-		let bitvec = vec![true; row_count];
-
-		Ok(ColumnData::int8_with_bitvec(data, bitvec))
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
 	}
 
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Int8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if !args.is_empty() {
+			return Err(FunctionError::ArityMismatch {
+				function: ctx.fragment.clone(),
+				expected: 0,
+				actual: args.len(),
+			});
+		}
+
+		let millis = ctx.runtime_context.clock.now_millis() as i64;
+		let row_count = ctx.row_count.max(1);
+		let data = vec![millis; row_count];
+		let bitvec = vec![true; row_count];
+
+		let result_data = ColumnData::int8_with_bitvec(data, bitvec);
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
 	}
 }

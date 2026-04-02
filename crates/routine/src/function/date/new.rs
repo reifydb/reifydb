@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DateNew;
+pub struct DateNew {
+	info: FunctionInfo,
+}
 
 impl Default for DateNew {
 	fn default() -> Self {
@@ -20,7 +18,9 @@ impl Default for DateNew {
 
 impl DateNew {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("date::new"),
+		}
 	}
 }
 
@@ -54,29 +54,38 @@ fn is_integer_type(data: &ColumnData) -> bool {
 	)
 }
 
-impl ScalarFunction for DateNew {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for DateNew {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if columns.len() != 3 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 3 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 3,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let year_col = columns.first().unwrap();
-		let month_col = columns.get(1).unwrap();
-		let day_col = columns.get(2).unwrap();
+		let year_col = &args[0];
+		let month_col = &args[1];
+		let day_col = &args[2];
+		let (year_data, _) = year_col.data().unwrap_option();
+		let (month_data, _) = month_col.data().unwrap_option();
+		let (day_data, _) = day_col.data().unwrap_option();
+		let row_count = year_data.len();
 
-		if !is_integer_type(year_col.data()) {
-			return Err(ScalarFunctionError::InvalidArgumentType {
+		if !is_integer_type(year_data) {
+			return Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![
@@ -91,11 +100,11 @@ impl ScalarFunction for DateNew {
 					Type::Uint8,
 					Type::Uint16,
 				],
-				actual: year_col.data().get_type(),
+				actual: year_data.get_type(),
 			});
 		}
-		if !is_integer_type(month_col.data()) {
-			return Err(ScalarFunctionError::InvalidArgumentType {
+		if !is_integer_type(month_data) {
+			return Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 1,
 				expected: vec![
@@ -110,11 +119,11 @@ impl ScalarFunction for DateNew {
 					Type::Uint8,
 					Type::Uint16,
 				],
-				actual: month_col.data().get_type(),
+				actual: month_data.get_type(),
 			});
 		}
-		if !is_integer_type(day_col.data()) {
-			return Err(ScalarFunctionError::InvalidArgumentType {
+		if !is_integer_type(day_data) {
+			return Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 2,
 				expected: vec![
@@ -129,16 +138,16 @@ impl ScalarFunction for DateNew {
 					Type::Uint8,
 					Type::Uint16,
 				],
-				actual: day_col.data().get_type(),
+				actual: day_data.get_type(),
 			});
 		}
 
 		let mut container = TemporalContainer::with_capacity(row_count);
 
 		for i in 0..row_count {
-			let year = extract_i32(year_col.data(), i);
-			let month = extract_i32(month_col.data(), i);
-			let day = extract_i32(day_col.data(), i);
+			let year = extract_i32(year_data, i);
+			let month = extract_i32(month_data, i);
+			let day = extract_i32(day_data, i);
 
 			match (year, month, day) {
 				(Some(y), Some(m), Some(d)) => {
@@ -155,10 +164,6 @@ impl ScalarFunction for DateNew {
 			}
 		}
 
-		Ok(ColumnData::Date(container))
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Date
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::Date(container))]))
 	}
 }

@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
-
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_type::{
+	util::bitvec::BitVec,
+	value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type},
 };
 
-pub struct TextConcat;
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+
+pub struct TextConcat {
+	info: FunctionInfo,
+}
 
 impl Default for TextConcat {
 	fn default() -> Self {
@@ -20,35 +21,50 @@ impl Default for TextConcat {
 
 impl TextConcat {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("text::concat"),
+		}
 	}
 }
 
-impl ScalarFunction for TextConcat {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for TextConcat {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if columns.len() < 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() < 2 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
+		// Unwrap options for each column individually
+		let mut unwrapped: Vec<(&ColumnData, Option<&BitVec>)> = Vec::with_capacity(args.len());
+		for col in args.iter() {
+			unwrapped.push(col.data().unwrap_option());
+		}
+
+		let row_count = unwrapped[0].0.len();
+
 		// Validate all arguments are Utf8
-		for (idx, col) in columns.iter().enumerate() {
-			match col.data() {
+		for (idx, (data, _)) in unwrapped.iter().enumerate() {
+			match data {
 				ColumnData::Utf8 {
 					..
 				} => {}
 				other => {
-					return Err(ScalarFunctionError::InvalidArgumentType {
+					return Err(FunctionError::InvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: idx,
 						expected: vec![Type::Utf8],
@@ -64,11 +80,11 @@ impl ScalarFunction for TextConcat {
 			let mut all_defined = true;
 			let mut concatenated = String::new();
 
-			for col in columns.iter() {
+			for (data, _) in unwrapped.iter() {
 				if let ColumnData::Utf8 {
 					container,
 					..
-				} = col.data()
+				} = data
 				{
 					if container.is_defined(i) {
 						concatenated.push_str(&container[i]);
@@ -86,13 +102,29 @@ impl ScalarFunction for TextConcat {
 			}
 		}
 
-		Ok(ColumnData::Utf8 {
+		let result_col_data = ColumnData::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
-		})
-	}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+		// Combine all bitvecs
+		let mut combined_bv: Option<BitVec> = None;
+		for (_, bv) in unwrapped.iter() {
+			if let Some(bv) = bv {
+				combined_bv = Some(match combined_bv {
+					Some(existing) => existing.and(bv),
+					None => (*bv).clone(),
+				});
+			}
+		}
+
+		let final_data = match combined_bv {
+			Some(bv) => ColumnData::Option {
+				inner: Box::new(result_col_data),
+				bitvec: bv,
+			},
+			None => result_col_data,
+		};
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }

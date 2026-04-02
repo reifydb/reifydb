@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{Value, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct IsType;
+pub struct IsType {
+	info: FunctionInfo,
+}
 
 impl Default for IsType {
 	fn default() -> Self {
@@ -19,34 +18,50 @@ impl Default for IsType {
 
 impl IsType {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("is::type"),
+		}
 	}
 }
 
-impl ScalarFunction for IsType {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl Function for IsType {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Boolean
+	}
+
+	fn propagates_options(&self) -> bool {
+		false
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 2 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let value_column = columns.first().unwrap();
-		let type_column = columns.get(1).unwrap();
+		let value_column = &args[0];
+		let type_column = &args[1];
+		let row_count = value_column.data().len();
 
 		// Extract target Type from second arg
-		// - ColumnData::Any containing Value::Type → use that type
-		// - Value::None → check for Option type
+		// - ColumnData::Any containing Value::Type -> use that type
+		// - Value::None -> check for Option type
 		let target_type = match type_column.data().get_value(0) {
 			Value::Any(boxed) => match boxed.as_ref() {
 				Value::Type(t) => t.clone(),
 				_ => {
-					return Err(ScalarFunctionError::InvalidArgumentType {
+					return Err(FunctionError::InvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 1,
 						expected: vec![Type::Any],
@@ -58,7 +73,7 @@ impl ScalarFunction for IsType {
 				..
 			} => Type::Option(Box::new(Type::Any)),
 			other => {
-				return Err(ScalarFunctionError::InvalidArgumentType {
+				return Err(FunctionError::InvalidArgumentType {
 					function: ctx.fragment.clone(),
 					argument_index: 1,
 					expected: vec![Type::Any],
@@ -79,10 +94,6 @@ impl ScalarFunction for IsType {
 			})
 			.collect();
 
-		Ok(ColumnData::bool(data))
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Boolean
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::bool(data))]))
 	}
 }

@@ -3,11 +3,8 @@
 
 //! WASM scalar function implementation that executes WebAssembly modules as scalar functions
 
-use reifydb_core::value::column::data::ColumnData;
-use reifydb_routine::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-};
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_routine::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 use reifydb_sdk::marshal::wasm::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_type::{fragment::Fragment, value::r#type::Type};
 
@@ -25,25 +22,26 @@ use crate::loader::wasm::invoke_wasm_module;
 /// Output: flat binary representing a single-column `Columns`, from which
 ///   the first column's `ColumnData` is extracted.
 pub struct WasmScalarFunction {
-	name: String,
+	info: FunctionInfo,
 	wasm_bytes: Vec<u8>,
 }
 
 impl WasmScalarFunction {
 	pub fn new(name: impl Into<String>, wasm_bytes: Vec<u8>) -> Self {
+		let name = name.into();
 		Self {
-			name: name.into(),
+			info: FunctionInfo::new(&name),
 			wasm_bytes,
 		}
 	}
 
 	pub fn name(&self) -> &str {
-		&self.name
+		&self.info.name
 	}
 
-	fn err(&self, reason: impl Into<String>) -> ScalarFunctionError {
-		ScalarFunctionError::ExecutionFailed {
-			function: Fragment::internal(&self.name),
+	fn err(&self, reason: impl Into<String>) -> FunctionError {
+		FunctionError::ExecutionFailed {
+			function: Fragment::internal(&self.info.name),
 			reason: reason.into(),
 		}
 	}
@@ -54,14 +52,22 @@ impl WasmScalarFunction {
 unsafe impl Send for WasmScalarFunction {}
 unsafe impl Sync for WasmScalarFunction {}
 
-impl ScalarFunction for WasmScalarFunction {
+impl Function for WasmScalarFunction {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
+
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
 	fn return_type(&self, _input_types: &[Type]) -> Type {
 		Type::Any
 	}
 
-	fn scalar<'a>(&'a self, ctx: ScalarFunctionContext<'a>) -> ScalarFunctionResult<ColumnData> {
-		let input_bytes = marshal_columns_to_bytes(ctx.columns);
-		let label = format!("WASM scalar function '{}'", self.name);
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		let input_bytes = marshal_columns_to_bytes(args);
+		let label = format!("WASM scalar function '{}'", self.info.name);
 
 		let output_bytes = invoke_wasm_module(&self.wasm_bytes, "scalar", &input_bytes, &label)
 			.map_err(|e| self.err(e.to_string()))?;
@@ -70,8 +76,14 @@ impl ScalarFunction for WasmScalarFunction {
 		let output_columns = unmarshal_columns_from_bytes(&output_bytes);
 
 		match output_columns.first() {
-			Some(col) => Ok(col.data().clone()),
-			None => Ok(ColumnData::none_typed(Type::Any, ctx.row_count)),
+			Some(col) => {
+				let data = col.data().clone();
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), data)]))
+			}
+			None => {
+				let data = ColumnData::none_typed(Type::Any, args.row_count());
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), data)]))
+			}
 		}
 	}
 }

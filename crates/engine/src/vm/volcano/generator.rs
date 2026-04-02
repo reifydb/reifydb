@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::sync::Arc;
 
-use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	util::ioc::IocContainer,
-	value::column::{columns::Columns, headers::ColumnHeaders},
+use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_routine::{
+	function::{Function, FunctionContext},
+	procedure::{Procedure, context::ProcedureContext},
 };
-use reifydb_routine::function::{GeneratorContext, GeneratorFunction};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error::Error, fragment::Fragment};
+use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use crate::{
 	Result,
@@ -20,12 +19,17 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
+enum GeneratorImpl {
+	Function(Arc<dyn Function>),
+	Procedure(Box<dyn Procedure>),
+}
+
 pub(crate) struct GeneratorNode {
 	function_name: Fragment,
 	expressions: Vec<Expression>,
 	context: Option<Arc<QueryContext>>,
 	exhausted: bool,
-	generator: Option<Box<dyn GeneratorFunction>>,
+	generator: Option<GeneratorImpl>,
 }
 
 impl GeneratorNode {
@@ -44,17 +48,20 @@ impl QueryNode for GeneratorNode {
 	fn initialize<'a>(&mut self, _txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 
-		let generator =
-			ctx.services.functions.get_generator(self.function_name.text()).ok_or_else(|| -> Error {
-				EngineError::GeneratorNotFound {
-					name: self.function_name.text().to_string(),
-					fragment: self.function_name.clone(),
-				}
-				.into()
-			})?;
+		let name = self.function_name.text();
+		if let Some(func) = ctx.services.functions.get_generator(name) {
+			self.generator = Some(GeneratorImpl::Function(func));
+		} else if let Some(proc) = ctx.services.procedures.get_procedure(name) {
+			self.generator = Some(GeneratorImpl::Procedure(proc));
+		} else {
+			return Err(EngineError::GeneratorNotFound {
+				name: name.to_string(),
+				fragment: self.function_name.clone(),
+			}
+			.into());
+		}
 
 		self.exhausted = false;
-		self.generator = Some(generator);
 		Ok(())
 	}
 
@@ -63,10 +70,8 @@ impl QueryNode for GeneratorNode {
 			return Ok(None);
 		}
 
-		// Use the passed context parameter directly
-		let generator = self.generator.as_ref().unwrap();
-
 		let stored_ctx = self.context.as_ref().unwrap();
+
 		let session = EvalSession::from_query(stored_ctx);
 		let evaluation_ctx = session.eval_empty();
 
@@ -76,16 +81,31 @@ impl QueryNode for GeneratorNode {
 			let column = evaluate(&evaluation_ctx, expr)?;
 			evaluated_columns.push(column);
 		}
-		let evaluated_params = Columns::new(evaluated_columns);
 
-		let columns = generator.generate(GeneratorContext {
-			fragment: self.function_name.clone(),
-			params: evaluated_params,
-			txn: unsafe { mem::transmute::<&mut Transaction, &'a mut Transaction<'a>>(txn) },
-			catalog: unsafe { mem::transmute::<&Catalog, &'a Catalog>(&stored_ctx.services.catalog) },
-			identity: stored_ctx.identity,
-			ioc: unsafe { mem::transmute::<&IocContainer, &'a IocContainer>(&stored_ctx.services.ioc) },
-		})?;
+		let columns = match self.generator.as_ref().unwrap() {
+			GeneratorImpl::Function(generator) => {
+				let evaluated_params = Columns::new(evaluated_columns);
+				let fn_ctx = FunctionContext::new(
+					self.function_name.clone(),
+					&stored_ctx.services.runtime_context,
+					stored_ctx.identity,
+					evaluated_params.row_count(),
+				);
+				generator.call(&fn_ctx, &evaluated_params)?
+			}
+			GeneratorImpl::Procedure(procedure) => {
+				let values: Vec<Value> =
+					evaluated_columns.iter().map(|col| col.data().get_value(0)).collect();
+				let params = Params::Positional(Arc::new(values));
+				let proc_ctx = ProcedureContext {
+					params: &params,
+					catalog: &stored_ctx.services.catalog,
+					functions: &stored_ctx.services.functions,
+					runtime_context: &stored_ctx.services.runtime_context,
+				};
+				procedure.call(&proc_ctx, txn)?
+			}
+		};
 
 		self.exhausted = true;
 

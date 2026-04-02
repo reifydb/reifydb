@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
-use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
-
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
+use reifydb_type::{
+	util::bitvec::BitVec,
+	value::{container::utf8::Utf8Container, r#type::Type},
 };
 
-pub struct TextSubstring;
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
+
+pub struct TextSubstring {
+	info: FunctionInfo,
+}
 
 impl Default for TextSubstring {
 	fn default() -> Self {
@@ -20,33 +21,45 @@ impl Default for TextSubstring {
 
 impl TextSubstring {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("text::substring"),
+		}
 	}
 }
 
-impl ScalarFunction for TextSubstring {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for TextSubstring {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
 		// Validate exactly 3 arguments
-		if columns.len() != 3 {
-			return Err(ScalarFunctionError::ArityMismatch {
+		if args.len() != 3 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 3,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let text_column = columns.first().unwrap();
-		let start_column = columns.get(1).unwrap();
-		let length_column = columns.get(2).unwrap();
+		let text_col = &args[0];
+		let start_col = &args[1];
+		let length_col = &args[2];
 
-		match (text_column.data(), start_column.data(), length_column.data()) {
+		let (text_data, text_bv) = text_col.data().unwrap_option();
+		let (start_data, start_bv) = start_col.data().unwrap_option();
+		let (length_data, length_bv) = length_col.data().unwrap_option();
+		let row_count = text_data.len();
+
+		match (text_data, start_data, length_data) {
 			(
 				ColumnData::Utf8 {
 					container: text_container,
@@ -95,10 +108,28 @@ impl ScalarFunction for TextSubstring {
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
+				let result_col_data = ColumnData::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
-				})
+				};
+
+				// Combine all three bitvecs
+				let mut combined_bv: Option<BitVec> = None;
+				for bv in [text_bv, start_bv, length_bv].into_iter().flatten() {
+					combined_bv = Some(match combined_bv {
+						Some(existing) => existing.and(bv),
+						None => bv.clone(),
+					});
+				}
+
+				let final_data = match combined_bv {
+					Some(bv) => ColumnData::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv,
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 			}
 			// Handle cases where start/length are different integer types
 			(
@@ -106,8 +137,8 @@ impl ScalarFunction for TextSubstring {
 					container: text_container,
 					max_bytes,
 				},
-				start_data,
-				length_data,
+				start_d,
+				length_d,
 			) => {
 				let mut result_data = Vec::with_capacity(text_container.data().len());
 
@@ -116,7 +147,7 @@ impl ScalarFunction for TextSubstring {
 						let original_str = &text_container[i];
 
 						// Extract start position from various integer types
-						let start_pos = match start_data {
+						let start_pos = match start_d {
 							ColumnData::Int1(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
@@ -133,7 +164,7 @@ impl ScalarFunction for TextSubstring {
 						};
 
 						// Extract length from various integer types
-						let length = match length_data {
+						let length = match length_d {
 							ColumnData::Int1(container) => {
 								container.get(i).map(|&v| v as i32).unwrap_or(0)
 							}
@@ -179,21 +210,35 @@ impl ScalarFunction for TextSubstring {
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
+				let result_col_data = ColumnData::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
-				})
+				};
+
+				// Combine all three bitvecs
+				let mut combined_bv: Option<BitVec> = None;
+				for bv in [text_bv, start_bv, length_bv].into_iter().flatten() {
+					combined_bv = Some(match combined_bv {
+						Some(existing) => existing.and(bv),
+						None => bv.clone(),
+					});
+				}
+
+				let final_data = match combined_bv {
+					Some(bv) => ColumnData::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv,
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 			}
-			(other, _, _) => Err(ScalarFunctionError::InvalidArgumentType {
+			(other, _, _) => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
 	}
 }

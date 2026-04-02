@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::r#type::Type;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DateDayOfWeek;
+pub struct DateDayOfWeek {
+	info: FunctionInfo,
+}
 
 impl Default for DateDayOfWeek {
 	fn default() -> Self {
@@ -20,33 +18,42 @@ impl Default for DateDayOfWeek {
 
 impl DateDayOfWeek {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("date::day_of_week"),
+		}
 	}
 }
 
-impl ScalarFunction for DateDayOfWeek {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for DateDayOfWeek {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Int4
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let col = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match col.data() {
+		let result_data = match data {
 			ColumnData::Date(container) => {
-				let mut data = Vec::with_capacity(row_count);
-				let mut bitvec = Vec::with_capacity(row_count);
+				let mut result = Vec::with_capacity(row_count);
+				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					if let Some(date) = container.get(i) {
@@ -56,26 +63,35 @@ impl ScalarFunction for DateDayOfWeek {
 						// +7) % 7 handles negative days, +1 converts to 1-based
 						let days = date.to_days_since_epoch();
 						let dow = ((days % 7 + 3) % 7 + 7) % 7 + 1;
-						data.push(dow);
-						bitvec.push(true);
+						result.push(dow);
+						res_bitvec.push(true);
 					} else {
-						data.push(0);
-						bitvec.push(false);
+						result.push(0);
+						res_bitvec.push(false);
 					}
 				}
 
-				Ok(ColumnData::int4_with_bitvec(data, bitvec))
+				ColumnData::int4_with_bitvec(result, res_bitvec)
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			other => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Int4
+		let final_data = if let Some(bv) = bitvec {
+			ColumnData::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			}
+		} else {
+			result_data
+		};
+
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }

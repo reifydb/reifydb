@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{r#type::Type, uuid::Uuid7};
 use uuid::Uuid;
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct UuidV7;
+pub struct UuidV7 {
+	info: FunctionInfo,
+}
 
 impl Default for UuidV7 {
 	fn default() -> Self {
@@ -21,52 +19,59 @@ impl Default for UuidV7 {
 
 impl UuidV7 {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("uuid::v7"),
+		}
 	}
 }
 
-impl ScalarFunction for UuidV7 {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for UuidV7 {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if ctx.columns.len() > 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Uuid7
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() > 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,
-				actual: ctx.columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		if ctx.columns.is_empty() {
-			let mut data = Vec::with_capacity(row_count);
-			for _ in 0..row_count {
-				let uuid = Uuid7::generate(&ctx.runtime_context.clock, &ctx.runtime_context.rng);
-				data.push(uuid);
-			}
-			return Ok(ColumnData::uuid7(data));
+		if args.is_empty() {
+			let uuid = Uuid7::generate(&ctx.runtime_context.clock, &ctx.runtime_context.rng);
+			let result_data = ColumnData::uuid7(vec![uuid]);
+			return Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]));
 		}
 
-		let column = ctx.columns.first().unwrap();
-		match &column.data() {
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
+
+		match data {
 			ColumnData::Utf8 {
 				container,
 				..
 			} => {
-				let mut data = Vec::with_capacity(row_count);
+				let mut result = Vec::with_capacity(row_count);
 				for i in 0..row_count {
 					let s = &container[i];
-					let parsed = Uuid::parse_str(s).map_err(|e| {
-						ScalarFunctionError::ExecutionFailed {
+					let parsed =
+						Uuid::parse_str(s).map_err(|e| FunctionError::ExecutionFailed {
 							function: ctx.fragment.clone(),
 							reason: format!("invalid UUID string '{}': {}", s, e),
-						}
-					})?;
+						})?;
 					if parsed.get_version_num() != 7 {
-						return Err(ScalarFunctionError::ExecutionFailed {
+						return Err(FunctionError::ExecutionFailed {
 							function: ctx.fragment.clone(),
 							reason: format!(
 								"expected UUID v7, got v{}",
@@ -74,20 +79,24 @@ impl ScalarFunction for UuidV7 {
 							),
 						});
 					}
-					data.push(Uuid7::from(parsed));
+					result.push(Uuid7::from(parsed));
 				}
-				Ok(ColumnData::uuid7(data))
+				let result_data = ColumnData::uuid7(result);
+				let final_data = match bitvec {
+					Some(bv) => ColumnData::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					},
+					None => result_data,
+				};
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Uuid7
 	}
 }

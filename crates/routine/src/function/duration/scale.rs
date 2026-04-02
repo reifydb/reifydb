@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DurationScale;
+pub struct DurationScale {
+	info: FunctionInfo,
+}
 
 impl Default for DurationScale {
 	fn default() -> Self {
@@ -20,7 +18,9 @@ impl Default for DurationScale {
 
 impl DurationScale {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("duration::scale"),
+		}
 	}
 }
 
@@ -54,29 +54,38 @@ fn is_integer_type(data: &ColumnData) -> bool {
 	)
 }
 
-impl ScalarFunction for DurationScale {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl Function for DurationScale {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 2 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let dur_col = columns.first().unwrap();
-		let scalar_col = columns.get(1).unwrap();
+		let dur_col = &args[0];
+		let scalar_col = &args[1];
 
-		match dur_col.data() {
+		let (dur_data, dur_bv) = dur_col.data().unwrap_option();
+		let (scalar_data, scalar_bv) = scalar_col.data().unwrap_option();
+
+		match dur_data {
 			ColumnData::Duration(dur_container) => {
-				if !is_integer_type(scalar_col.data()) {
-					return Err(ScalarFunctionError::InvalidArgumentType {
+				if !is_integer_type(scalar_data) {
+					return Err(FunctionError::InvalidArgumentType {
 						function: ctx.fragment.clone(),
 						argument_index: 1,
 						expected: vec![
@@ -91,14 +100,15 @@ impl ScalarFunction for DurationScale {
 							Type::Uint8,
 							Type::Uint16,
 						],
-						actual: scalar_col.data().get_type(),
+						actual: scalar_data.get_type(),
 					});
 				}
 
+				let row_count = dur_data.len();
 				let mut container = TemporalContainer::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dur_container.get(i), extract_i64(scalar_col.data(), i)) {
+					match (dur_container.get(i), extract_i64(scalar_data, i)) {
 						(Some(dur), Some(scalar)) => {
 							container.push(*dur * scalar);
 						}
@@ -106,18 +116,26 @@ impl ScalarFunction for DurationScale {
 					}
 				}
 
-				Ok(ColumnData::Duration(container))
+				let mut result_data = ColumnData::Duration(container);
+				if let Some(bv) = dur_bv {
+					result_data = ColumnData::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				} else if let Some(bv) = scalar_bv {
+					result_data = ColumnData::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				}
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Duration],
 				actual: other.get_type(),
 			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Duration
 	}
 }

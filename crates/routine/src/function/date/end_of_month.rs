@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, date::Date, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DateEndOfMonth;
+pub struct DateEndOfMonth {
+	info: FunctionInfo,
+}
 
 impl Default for DateEndOfMonth {
 	fn default() -> Self {
@@ -20,30 +18,39 @@ impl Default for DateEndOfMonth {
 
 impl DateEndOfMonth {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("date::end_of_month"),
+		}
 	}
 }
 
-impl ScalarFunction for DateEndOfMonth {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for DateEndOfMonth {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Date
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let col = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match col.data() {
+		let result_data = match data {
 			ColumnData::Date(container) => {
 				let mut result = TemporalContainer::with_capacity(row_count);
 
@@ -61,18 +68,27 @@ impl ScalarFunction for DateEndOfMonth {
 					}
 				}
 
-				Ok(ColumnData::Date(result))
+				ColumnData::Date(result)
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::Date],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			other => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::Date],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Date
+		let final_data = if let Some(bv) = bitvec {
+			ColumnData::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			}
+		} else {
+			result_data
+		};
+
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }

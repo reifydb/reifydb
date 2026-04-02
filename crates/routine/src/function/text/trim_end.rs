@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct TextTrimEnd;
+pub struct TextTrimEnd {
+	info: FunctionInfo,
+}
 
 impl Default for TextTrimEnd {
 	fn default() -> Self {
@@ -20,30 +18,39 @@ impl Default for TextTrimEnd {
 
 impl TextTrimEnd {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("text::trim_end"),
+		}
 	}
 }
 
-impl ScalarFunction for TextTrimEnd {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for TextTrimEnd {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
+		match data {
 			ColumnData::Utf8 {
 				container,
 				max_bytes,
@@ -60,21 +67,25 @@ impl ScalarFunction for TextTrimEnd {
 					}
 				}
 
-				Ok(ColumnData::Utf8 {
+				let result_col_data = ColumnData::Utf8 {
 					container: Utf8Container::new(result_data),
 					max_bytes: *max_bytes,
-				})
+				};
+				let final_data = match bitvec {
+					Some(bv) => ColumnData::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv.clone(),
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
 	}
 }

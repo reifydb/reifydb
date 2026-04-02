@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{constraint::bytes::MaxBytes, container::utf8::Utf8Container, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
 const IEC_UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
 
@@ -56,10 +52,10 @@ macro_rules! process_int_column {
 			}
 		}
 
-		Ok(ColumnData::Utf8 {
+		ColumnData::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
-		})
+		}
 	}};
 }
 
@@ -76,10 +72,10 @@ macro_rules! process_float_column {
 			}
 		}
 
-		Ok(ColumnData::Utf8 {
+		ColumnData::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
-		})
+		}
 	}};
 }
 
@@ -100,15 +96,17 @@ macro_rules! process_decimal_column {
 			}
 		}
 
-		Ok(ColumnData::Utf8 {
+		ColumnData::Utf8 {
 			container: Utf8Container::new(result_data),
 			max_bytes: MaxBytes::MAX,
-		})
+		}
 	}};
 }
 
 /// Formats bytes using binary units (1024-based: B, KiB, MiB, GiB, TiB, PiB)
-pub struct FormatBytes;
+pub struct FormatBytes {
+	info: FunctionInfo,
+}
 
 impl Default for FormatBytes {
 	fn default() -> Self {
@@ -118,30 +116,39 @@ impl Default for FormatBytes {
 
 impl FormatBytes {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("text::format_bytes"),
+		}
 	}
 }
 
-impl ScalarFunction for FormatBytes {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for FormatBytes {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Utf8
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
+		let result_data = match data {
 			ColumnData::Int1(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
 			ColumnData::Int2(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
 			ColumnData::Int4(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),
@@ -162,29 +169,36 @@ impl ScalarFunction for FormatBytes {
 			} => {
 				process_decimal_column!(container, row_count, 1024.0, &IEC_UNITS)
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![
-					Type::Int1,
-					Type::Int2,
-					Type::Int4,
-					Type::Int8,
-					Type::Uint1,
-					Type::Uint2,
-					Type::Uint4,
-					Type::Uint8,
-					Type::Float4,
-					Type::Float8,
-					Type::Decimal,
-				],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			other => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![
+						Type::Int1,
+						Type::Int2,
+						Type::Int4,
+						Type::Int8,
+						Type::Uint1,
+						Type::Uint2,
+						Type::Uint4,
+						Type::Uint8,
+						Type::Float4,
+						Type::Float8,
+						Type::Decimal,
+					],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Utf8
+		let final_data = match bitvec {
+			Some(bv) => ColumnData::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			None => result_data,
+		};
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }
 

@@ -20,7 +20,7 @@ use crate::{
 	vm::{stack::SymbolTable, volcano::query::QueryContext},
 };
 
-/// Session-scoped evaluation context — holds the 7 fields that are invariant
+/// Session-scoped evaluation context — holds the invariant fields
 /// within a given operator. Provides factory methods to produce `EvalContext`
 /// values that vary only in `columns` and `row_count`.
 #[derive(Clone, Copy)]
@@ -35,7 +35,6 @@ pub struct EvalSession<'a> {
 }
 
 impl<'a> EvalSession<'a> {
-	/// Main constructor — produces an `EvalContext` with `target=None` and `take=None`.
 	pub fn eval(&self, columns: Columns, row_count: usize) -> EvalContext<'a> {
 		EvalContext {
 			target: None,
@@ -52,19 +51,16 @@ impl<'a> EvalSession<'a> {
 		}
 	}
 
-	/// Shorthand for `eval(Columns::empty(), 1)`.
 	pub fn eval_empty(&self) -> EvalContext<'a> {
 		self.eval(Columns::empty(), 1)
 	}
 
-	/// Shorthand for `eval(columns, 1)` with `take=Some(1)`.
 	pub fn eval_join(&self, columns: Columns) -> EvalContext<'a> {
 		let mut ctx = self.eval(columns, 1);
 		ctx.take = Some(1);
 		ctx
 	}
 
-	/// Build from a `TransformContext` + stored `QueryContext` (volcano nodes with input).
 	pub fn from_transform(ctx: &'a TransformContext, stored: &'a QueryContext) -> Self {
 		Self {
 			params: ctx.params,
@@ -77,7 +73,6 @@ impl<'a> EvalSession<'a> {
 		}
 	}
 
-	/// Build from a `QueryContext` (without-input nodes, joins, inline).
 	pub fn from_query(ctx: &'a QueryContext) -> Self {
 		Self {
 			params: &ctx.params,
@@ -90,12 +85,12 @@ impl<'a> EvalSession<'a> {
 		}
 	}
 
-	/// Build a testing session with static empty values.
 	pub fn testing() -> EvalSession<'static> {
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
 		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(RuntimeContext::default);
+
 		EvalSession {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
@@ -115,8 +110,6 @@ pub struct EvalContext<'a> {
 	pub take: Option<usize>,
 	pub params: &'a Params,
 	pub symbols: &'a SymbolTable,
-	// TODO: This is a temporary hack to support aggregate functions in StandardColumnEvaluator
-	// Should be replaced with proper function detection or separate aggregation methods
 	pub is_aggregate_context: bool,
 	pub functions: &'a Functions,
 	pub runtime_context: &'a RuntimeContext,

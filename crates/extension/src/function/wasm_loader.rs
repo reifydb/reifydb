@@ -3,7 +3,7 @@
 
 //! WASM function loader — scans a directory for `.wasm` files and registers scalar functions
 
-use std::{fs, path::Path};
+use std::{fs, path::Path, sync::Arc};
 
 use reifydb_routine::function::registry::{Functions, FunctionsConfigurator};
 use reifydb_sdk::error::FFIError;
@@ -37,10 +37,7 @@ pub fn register_wasm_scalar_functions_from_dir(
 		let wasm_bytes = fs::read(&path)
 			.map_err(|e| FFIError::Other(format!("Failed to read WASM file {}: {}", path.display(), e)))?;
 
-		let name_for_closure = name.clone();
-		builder = builder.register_scalar(&name, move || {
-			WasmScalarFunction::new(name_for_closure.clone(), wasm_bytes.clone())
-		});
+		builder = builder.register_function(Arc::new(WasmScalarFunction::new(name, wasm_bytes)));
 	}
 
 	Ok(builder)

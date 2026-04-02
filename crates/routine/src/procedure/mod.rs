@@ -5,6 +5,8 @@ pub mod context;
 pub mod error;
 pub mod identity;
 pub mod registry;
+pub mod subscription;
+pub mod testing;
 
 pub mod clock;
 pub mod set;
@@ -20,9 +22,11 @@ pub trait Procedure: Send + Sync {
 }
 
 pub fn default_procedures() -> ProceduresConfigurator {
-	Procedures::builder()
+	let builder = Procedures::builder()
 		.with_procedure("system::config::set", set::config::SetConfigProcedure::new)
 		.with_procedure("clock::set", clock::set::ClockSetProcedure::new)
 		.with_procedure("clock::advance", clock::advance::ClockAdvanceProcedure::new)
 		.with_procedure("identity::inject", identity::inject::IdentityInject::new)
+		.with_procedure("inspect_subscription", subscription::inspect::InspectSubscription::new);
+	testing::register_testing_procedures(builder)
 }

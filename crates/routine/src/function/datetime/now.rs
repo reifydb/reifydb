@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, datetime::DateTime, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DateTimeNow;
+pub struct DateTimeNow {
+	info: FunctionInfo,
+}
 
 impl Default for DateTimeNow {
 	fn default() -> Self {
@@ -20,24 +18,35 @@ impl Default for DateTimeNow {
 
 impl DateTimeNow {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("datetime::now"),
+		}
 	}
 }
 
-impl ScalarFunction for DateTimeNow {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let row_count = ctx.row_count;
+impl Function for DateTimeNow {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if !ctx.columns.is_empty() {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if !args.is_empty() {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,
-				actual: ctx.columns.len(),
+				actual: args.len(),
 			});
 		}
+
+		let row_count = args.row_count().max(1);
 
 		let millis = ctx.runtime_context.clock.now_millis();
 		let dt = DateTime::from_timestamp_millis(millis)?;
@@ -47,10 +56,6 @@ impl ScalarFunction for DateTimeNow {
 			container.push(dt);
 		}
 
-		Ok(ColumnData::DateTime(container))
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), ColumnData::DateTime(container))]))
 	}
 }

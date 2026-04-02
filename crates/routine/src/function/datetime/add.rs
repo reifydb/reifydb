@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DateTimeAdd;
+pub struct DateTimeAdd {
+	info: FunctionInfo,
+}
 
 impl Default for DateTimeAdd {
 	fn default() -> Self {
@@ -20,30 +18,41 @@ impl Default for DateTimeAdd {
 
 impl DateTimeAdd {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("datetime::add"),
+		}
 	}
 }
 
-impl ScalarFunction for DateTimeAdd {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl Function for DateTimeAdd {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if columns.len() != 2 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::DateTime
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 2 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 2,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let dt_col = columns.first().unwrap();
-		let dur_col = columns.get(1).unwrap();
+		let dt_col = &args[0];
+		let dur_col = &args[1];
+		let (dt_data, dt_bitvec) = dt_col.data().unwrap_option();
+		let (dur_data, dur_bitvec) = dur_col.data().unwrap_option();
+		let row_count = dt_data.len();
 
-		match (dt_col.data(), dur_col.data()) {
+		let result_data = match (dt_data, dur_data) {
 			(ColumnData::DateTime(dt_container), ColumnData::Duration(dur_container)) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
@@ -52,7 +61,7 @@ impl ScalarFunction for DateTimeAdd {
 						(Some(dt), Some(dur)) => match dt.add_duration(dur) {
 							Ok(result) => container.push(result),
 							Err(err) => {
-								return Err(ScalarFunctionError::ExecutionFailed {
+								return Err(FunctionError::ExecutionFailed {
 									function: ctx.fragment.clone(),
 									reason: format!("{}", err),
 								});
@@ -62,24 +71,34 @@ impl ScalarFunction for DateTimeAdd {
 					}
 				}
 
-				Ok(ColumnData::DateTime(container))
+				ColumnData::DateTime(container)
 			}
-			(ColumnData::DateTime(_), other) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 1,
-				expected: vec![Type::Duration],
-				actual: other.get_type(),
-			}),
-			(other, _) => Err(ScalarFunctionError::InvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: vec![Type::DateTime],
-				actual: other.get_type(),
-			}),
-		}
-	}
+			(ColumnData::DateTime(_), other) => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 1,
+					expected: vec![Type::Duration],
+					actual: other.get_type(),
+				});
+			}
+			(other, _) => {
+				return Err(FunctionError::InvalidArgumentType {
+					function: ctx.fragment.clone(),
+					argument_index: 0,
+					expected: vec![Type::DateTime],
+					actual: other.get_type(),
+				});
+			}
+		};
 
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::DateTime
+		let final_data = match (dt_bitvec, dur_bitvec) {
+			(Some(bv), _) | (_, Some(bv)) => ColumnData::Option {
+				inner: Box::new(result_data),
+				bitvec: bv.clone(),
+			},
+			_ => result_data,
+		};
+
+		Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 	}
 }

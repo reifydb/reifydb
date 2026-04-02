@@ -1,19 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	fragment::Fragment,
 	value::{blob::Blob, r#type::Type},
 };
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct BlobB58;
+pub struct BlobB58 {
+	info: FunctionInfo,
+}
 
 impl Default for BlobB58 {
 	fn default() -> Self {
@@ -23,31 +21,39 @@ impl Default for BlobB58 {
 
 impl BlobB58 {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("blob::b58"),
+		}
 	}
 }
 
-impl ScalarFunction for BlobB58 {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
+impl Function for BlobB58 {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
 
-		// Validate exactly 1 argument
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Blob
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let column = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match &column.data() {
+		match data {
 			ColumnData::Utf8 {
 				container,
 				..
@@ -67,18 +73,22 @@ impl ScalarFunction for BlobB58 {
 					}
 				}
 
-				Ok(ColumnData::blob_with_bitvec(result_data, result_bitvec))
+				let result_col_data = ColumnData::blob_with_bitvec(result_data, result_bitvec);
+				let final_data = match bitvec {
+					Some(bv) => ColumnData::Option {
+						inner: Box::new(result_col_data),
+						bitvec: bv.clone(),
+					},
+					None => result_col_data,
+				};
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), final_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Utf8],
 				actual: other.get_type(),
 			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Blob
 	}
 }

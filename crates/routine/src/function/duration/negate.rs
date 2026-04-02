@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::data::ColumnData;
+use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::value::{container::temporal::TemporalContainer, r#type::Type};
 
-use crate::function::{
-	ScalarFunction, ScalarFunctionContext,
-	error::{ScalarFunctionError, ScalarFunctionResult},
-	propagate_options,
-};
+use crate::function::{Function, FunctionCapability, FunctionContext, FunctionInfo, error::FunctionError};
 
-pub struct DurationNegate;
+pub struct DurationNegate {
+	info: FunctionInfo,
+}
 
 impl Default for DurationNegate {
 	fn default() -> Self {
@@ -20,29 +18,39 @@ impl Default for DurationNegate {
 
 impl DurationNegate {
 	pub fn new() -> Self {
-		Self
+		Self {
+			info: FunctionInfo::new("duration::negate"),
+		}
 	}
 }
 
-impl ScalarFunction for DurationNegate {
-	fn scalar(&self, ctx: ScalarFunctionContext) -> ScalarFunctionResult<ColumnData> {
-		if let Some(result) = propagate_options(self, &ctx) {
-			return result;
-		}
-		let columns = ctx.columns;
-		let row_count = ctx.row_count;
+impl Function for DurationNegate {
+	fn info(&self) -> &FunctionInfo {
+		&self.info
+	}
 
-		if columns.len() != 1 {
-			return Err(ScalarFunctionError::ArityMismatch {
+	fn capabilities(&self) -> &[FunctionCapability] {
+		&[FunctionCapability::Scalar]
+	}
+
+	fn return_type(&self, _input_types: &[Type]) -> Type {
+		Type::Duration
+	}
+
+	fn execute(&self, ctx: &FunctionContext, args: &Columns) -> Result<Columns, FunctionError> {
+		if args.len() != 1 {
+			return Err(FunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 1,
-				actual: columns.len(),
+				actual: args.len(),
 			});
 		}
 
-		let col = columns.first().unwrap();
+		let column = &args[0];
+		let (data, bitvec) = column.data().unwrap_option();
+		let row_count = data.len();
 
-		match col.data() {
+		match data {
 			ColumnData::Duration(container_in) => {
 				let mut container = TemporalContainer::with_capacity(row_count);
 
@@ -54,18 +62,21 @@ impl ScalarFunction for DurationNegate {
 					}
 				}
 
-				Ok(ColumnData::Duration(container))
+				let mut result_data = ColumnData::Duration(container);
+				if let Some(bv) = bitvec {
+					result_data = ColumnData::Option {
+						inner: Box::new(result_data),
+						bitvec: bv.clone(),
+					};
+				}
+				Ok(Columns::new(vec![Column::new(ctx.fragment.clone(), result_data)]))
 			}
-			other => Err(ScalarFunctionError::InvalidArgumentType {
+			other => Err(FunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,
 				expected: vec![Type::Duration],
 				actual: other.get_type(),
 			}),
 		}
-	}
-
-	fn return_type(&self, _input_types: &[Type]) -> Type {
-		Type::Duration
 	}
 }

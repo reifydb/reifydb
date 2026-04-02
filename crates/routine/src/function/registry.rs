@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use super::{AggregateFunction, GeneratorFunction, ScalarFunction};
+use super::{Function, FunctionCapability};
 
 #[derive(Clone)]
 pub struct Functions(Arc<FunctionsInner>);
@@ -15,9 +15,7 @@ impl Functions {
 
 	pub fn builder() -> FunctionsConfigurator {
 		FunctionsConfigurator(FunctionsInner {
-			scalars: HashMap::new(),
-			aggregates: HashMap::new(),
-			generators: HashMap::new(),
+			functions: HashMap::new(),
 		})
 	}
 }
@@ -32,80 +30,63 @@ impl Deref for Functions {
 
 #[derive(Clone)]
 pub struct FunctionsInner {
-	scalars: HashMap<String, Arc<dyn Fn() -> Box<dyn ScalarFunction> + Send + Sync>>,
-	aggregates: HashMap<String, Arc<dyn Fn() -> Box<dyn AggregateFunction> + Send + Sync>>,
-	generators: HashMap<String, Arc<dyn Fn() -> Box<dyn GeneratorFunction> + Send + Sync>>,
+	pub(crate) functions: HashMap<String, Arc<dyn Function>>,
 }
 
 impl FunctionsInner {
-	pub fn get_aggregate(&self, name: &str) -> Option<Box<dyn AggregateFunction>> {
-		self.aggregates.get(name).map(|func| func())
+	pub fn get(&self, name: &str) -> Option<Arc<dyn Function>> {
+		self.functions.get(name).cloned()
 	}
 
-	pub fn get_scalar(&self, name: &str) -> Option<Box<dyn ScalarFunction>> {
-		self.scalars.get(name).map(|func| func())
+	pub fn get_scalar(&self, name: &str) -> Option<Arc<dyn Function>> {
+		self.functions.get(name).cloned().filter(|f| f.capabilities().contains(&FunctionCapability::Scalar))
 	}
 
-	pub fn get_generator(&self, name: &str) -> Option<Box<dyn GeneratorFunction>> {
-		self.generators.get(name).map(|func| func())
+	pub fn get_aggregate(&self, name: &str) -> Option<Arc<dyn Function>> {
+		self.functions.get(name).cloned().filter(|f| f.capabilities().contains(&FunctionCapability::Aggregate))
+	}
+
+	pub fn get_generator(&self, name: &str) -> Option<Arc<dyn Function>> {
+		self.functions.get(name).cloned().filter(|f| f.capabilities().contains(&FunctionCapability::Generator))
 	}
 
 	pub fn scalar_names(&self) -> Vec<&str> {
-		self.scalars.keys().map(|s| s.as_str()).collect()
+		self.functions
+			.iter()
+			.filter(|(_, f)| f.capabilities().contains(&FunctionCapability::Scalar))
+			.map(|(s, _)| s.as_str())
+			.collect()
 	}
 
 	pub fn aggregate_names(&self) -> Vec<&str> {
-		self.aggregates.keys().map(|s| s.as_str()).collect()
+		self.functions
+			.iter()
+			.filter(|(_, f)| f.capabilities().contains(&FunctionCapability::Aggregate))
+			.map(|(s, _)| s.as_str())
+			.collect()
 	}
 
 	pub fn generator_names(&self) -> Vec<&str> {
-		self.generators.keys().map(|s| s.as_str()).collect()
-	}
-
-	pub fn get_scalar_factory(&self, name: &str) -> Option<Arc<dyn Fn() -> Box<dyn ScalarFunction> + Send + Sync>> {
-		self.scalars.get(name).cloned()
-	}
-
-	pub fn get_aggregate_factory(
-		&self,
-		name: &str,
-	) -> Option<Arc<dyn Fn() -> Box<dyn AggregateFunction> + Send + Sync>> {
-		self.aggregates.get(name).cloned()
+		self.functions
+			.iter()
+			.filter(|(_, f)| f.capabilities().contains(&FunctionCapability::Generator))
+			.map(|(s, _)| s.as_str())
+			.collect()
 	}
 }
 
 pub struct FunctionsConfigurator(FunctionsInner);
 
 impl FunctionsConfigurator {
-	pub fn register_scalar<F, A>(mut self, name: &str, init: F) -> Self
-	where
-		F: Fn() -> A + Send + Sync + 'static,
-		A: ScalarFunction + 'static,
-	{
-		self.0.scalars.insert(name.to_string(), Arc::new(move || Box::new(init()) as Box<dyn ScalarFunction>));
-
+	pub fn register_function(mut self, func: Arc<dyn Function>) -> Self {
+		self.0.functions.insert(func.info().name.clone(), func);
 		self
 	}
 
-	pub fn register_aggregate<F, A>(mut self, name: &str, init: F) -> Self
-	where
-		F: Fn() -> A + Send + Sync + 'static,
-		A: AggregateFunction + 'static,
-	{
-		self.0.aggregates
-			.insert(name.to_string(), Arc::new(move || Box::new(init()) as Box<dyn AggregateFunction>));
-
-		self
-	}
-
-	pub fn register_generator<F, G>(mut self, name: &str, init: F) -> Self
-	where
-		F: Fn() -> G + Send + Sync + 'static,
-		G: GeneratorFunction + 'static,
-	{
-		self.0.generators
-			.insert(name.to_string(), Arc::new(move || Box::new(init()) as Box<dyn GeneratorFunction>));
-
+	pub fn register_alias(mut self, alias: &str, canonical: &str) -> Self {
+		if let Some(func) = self.0.functions.get(canonical).cloned() {
+			self.0.functions.insert(alias.to_string(), func);
+		}
 		self
 	}
 
