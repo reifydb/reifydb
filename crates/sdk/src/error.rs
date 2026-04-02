@@ -56,7 +56,7 @@ impl error::Error for FFIError {}
 /// Convert FFIError to Error
 impl From<FFIError> for Error {
 	fn from(err: FFIError) -> Self {
-		Error(internal!(format!("{}", err)))
+		Error(Box::new(internal!(format!("{}", err))))
 	}
 }
 

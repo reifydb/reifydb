@@ -14,6 +14,12 @@ use crate::function::{
 
 pub struct Euler;
 
+impl Default for Euler {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Euler {
 	pub fn new() -> Self {
 		Self

@@ -11,6 +11,12 @@ use crate::function::{
 
 pub struct Type;
 
+impl Default for Type {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Type {
 	pub fn new() -> Self {
 		Self
@@ -30,7 +36,7 @@ impl ScalarFunction for Type {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 		let col_type = column.data().get_type();
 		let type_name = col_type.to_string();
 

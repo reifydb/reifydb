@@ -203,7 +203,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					// Create an Identifier AST node for the source name
 					let source_token = Token {
 						kind: TokenKind::Identifier,
-						fragment: source.name.clone(),
+						fragment: source.name,
 					};
 					owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(source_token)));
 
@@ -211,7 +211,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					if let Some(index) = index_name {
 						let index_token = Token {
 							kind: TokenKind::Identifier,
-							fragment: index.clone(),
+							fragment: *index,
 						};
 						owned_children
 							.push(Ast::Identifier(UnqualifiedIdentifier::new(index_token)));
@@ -237,7 +237,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 					// Create an Identifier AST for the variable
 					let variable_token = Token {
 						kind: TokenKind::Variable,
-						fragment: variable.token.fragment.clone(),
+						fragment: variable.token.fragment,
 					};
 					owned_children
 						.push(Ast::Identifier(UnqualifiedIdentifier::new(variable_token)));
@@ -321,7 +321,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 			// key: value pairs
 			for field in &r.keyed_values {
 				// Create an infix operator to represent "key: value"
-				owned_children.push(Ast::Identifier(field.key.clone()));
+				owned_children.push(Ast::Identifier(field.key));
 				ref_children.push(&field.value);
 			}
 		}

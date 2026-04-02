@@ -48,7 +48,7 @@ use crate::{
 };
 
 #[instrument(name = "mutate::table::insert", level = "trace", skip_all)]
-pub(crate) fn insert_table<'a>(
+pub(crate) fn insert_table(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertTableNode,

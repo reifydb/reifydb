@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTrunc;
 
+impl Default for DateTrunc {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTrunc {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for DateTrunc {
 			});
 		}
 
-		let date_col = columns.get(0).unwrap();
+		let date_col = columns.first().unwrap();
 		let prec_col = columns.get(1).unwrap();
 
 		match (date_col.data(), prec_col.data()) {

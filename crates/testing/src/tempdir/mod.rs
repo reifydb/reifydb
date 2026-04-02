@@ -10,7 +10,7 @@ where
 	F: FnOnce(&Path) -> io::Result<()>,
 {
 	let mut path = env::temp_dir();
-	path.push(format!("reifydb-{}", Uuid::new_v4().to_string()));
+	path.push(format!("reifydb-{}", Uuid::new_v4()));
 
 	fs::create_dir(&path)?;
 	let result = f(&path);

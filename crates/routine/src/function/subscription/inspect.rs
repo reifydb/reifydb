@@ -14,6 +14,12 @@ use crate::function::{GeneratorContext, GeneratorFunction, error::GeneratorFunct
 
 pub struct InspectSubscription;
 
+impl Default for InspectSubscription {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl InspectSubscription {
 	pub fn new() -> Self {
 		Self {}
@@ -29,7 +35,7 @@ impl GeneratorFunction for InspectSubscription {
 			panic!("inspect_subscription requires exactly 1 parameter: subscription_id (u64)");
 		}
 
-		let id_column = params.get(0).unwrap();
+		let id_column = params.first().unwrap();
 		let subscription_id_value = match id_column.data() {
 			ColumnData::Uint8(container) => {
 				container.get(0).copied().expect("subscription_id parameter is empty")
@@ -65,13 +71,12 @@ impl GeneratorFunction for InspectSubscription {
 
 		// Collect all entries first to avoid borrow checker issues
 		let mut entries = Vec::new();
-		while let Some(result) = stream.next() {
+		for result in stream.by_ref() {
 			entries.push(result?);
 		}
 		drop(stream); // Explicitly drop to release the borrow on txn
 
 		let catalog = ctx.catalog;
-		let row_shape_registry = &catalog.shape;
 
 		// Process collected entries
 		for entry in entries {
@@ -79,8 +84,11 @@ impl GeneratorFunction for InspectSubscription {
 				row_numbers.push(sub_row_key.row);
 
 				let fingerprint = entry.row.fingerprint();
-				let shape = row_shape_registry.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-					Error(internal(format!("Shape not found for fingerprint: {:?}", fingerprint)))
+				let shape = catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+					Error(Box::new(internal(format!(
+						"Shape not found for fingerprint: {:?}",
+						fingerprint
+					))))
 				})?;
 
 				for (idx, (_, data)) in column_data_builders.iter_mut().enumerate() {

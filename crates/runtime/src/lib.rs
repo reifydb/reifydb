@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 //! Runtime management for ReifyDB.
 //!
@@ -190,6 +193,11 @@ struct SharedRuntimeInner {
 #[cfg(not(target_arch = "wasm32"))]
 impl Drop for SharedRuntimeInner {
 	fn drop(&mut self) {
+		// Shut down the actor system FIRST — actors may hold tokio
+		// JoinHandles or spawn tasks, so the runtime must still be alive.
+		self.system.shutdown();
+		let _ = self.system.join();
+
 		// SAFETY: drop is called exactly once; taking the Runtime here
 		// prevents its default Drop (which calls shutdown_background and
 		// does NOT wait). We call shutdown_timeout instead so that worker

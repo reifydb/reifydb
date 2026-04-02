@@ -97,7 +97,7 @@ pub async fn create_subscription(
 
 	// Check if result indicates a remote source
 	if let Some(addr_col) = frame.columns.iter().find(|c| c.name == "remote_address") {
-		let address = if addr_col.data.len() > 0 {
+		let address = if !addr_col.data.is_empty() {
 			match addr_col.data.get_value(0) {
 				Value::Utf8(s) => s,
 				_ => return Err(CreateSubscriptionError::ExtractionFailed),
@@ -111,7 +111,7 @@ pub async fn create_subscription(
 			.iter()
 			.find(|c| c.name == "remote_rql")
 			.and_then(|col| {
-				if col.data.len() > 0 {
+				if !col.data.is_empty() {
 					match col.data.get_value(0) {
 						Value::Utf8(s) => Some(s),
 						_ => None,
@@ -133,7 +133,7 @@ pub async fn create_subscription(
 		.iter()
 		.find(|c| c.name == "subscription_id")
 		.and_then(|col| {
-			if col.data.len() > 0 {
+			if !col.data.is_empty() {
 				Some(col.data.get_value(0))
 			} else {
 				None
@@ -168,5 +168,5 @@ pub async fn cleanup_subscription(state: &AppState, subscription_id: Subscriptio
 
 	system.compute(move || cleanup_subscription_sync(&engine, subscription_id))
 		.await
-		.map_err(|e| Error(internal(format!("Compute pool error: {:?}", e))))?
+		.map_err(|e| Error(Box::new(internal(format!("Compute pool error: {:?}", e)))))?
 }

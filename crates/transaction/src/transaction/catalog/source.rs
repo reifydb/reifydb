@@ -42,15 +42,15 @@ impl CatalogTrackSourceChangeOperations for AdminTransaction {
 impl TransactionalSourceChanges for AdminTransaction {
 	fn find_source(&self, id: SourceId) -> Option<&Source> {
 		for change in self.changes.source.iter().rev() {
-			if let Some(source) = &change.post {
-				if source.id == id {
-					return Some(source);
-				}
+			if let Some(source) = &change.post
+				&& source.id == id
+			{
+				return Some(source);
 			}
-			if let Some(source) = &change.pre {
-				if source.id == id && change.op == Delete {
-					return None;
-				}
+			if let Some(source) = &change.pre
+				&& source.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None
@@ -58,15 +58,17 @@ impl TransactionalSourceChanges for AdminTransaction {
 
 	fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Source> {
 		for change in self.changes.source.iter().rev() {
-			if let Some(source) = &change.post {
-				if source.namespace == namespace && source.name == name {
-					return Some(source);
-				}
+			if let Some(source) = &change.post
+				&& source.namespace == namespace
+				&& source.name == name
+			{
+				return Some(source);
 			}
-			if let Some(source) = &change.pre {
-				if source.namespace == namespace && source.name == name && change.op == Delete {
-					return None;
-				}
+			if let Some(source) = &change.pre
+				&& source.namespace == namespace
+				&& source.name == name && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

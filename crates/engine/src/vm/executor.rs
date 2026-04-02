@@ -5,16 +5,13 @@ use std::{ops::Deref, sync::Arc};
 
 use bumpalo::Bump;
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
-use reifydb_core::{error::diagnostic::subscription, util::ioc::IocContainer, value::column::columns::Columns};
-use reifydb_extension::transform::registry::Transforms;
+use reifydb_core::{error::diagnostic::subscription, value::column::columns::Columns};
 use reifydb_metric::metric::MetricReader;
 use reifydb_policy::inject_read_policies;
-use reifydb_routine::{function::registry::Functions, procedure::registry::Procedures};
 use reifydb_rql::{
 	ast::parse_str,
 	compiler::{CompilationResult, Compiled, constrain_policy},
 };
-use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::{
 	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
@@ -30,13 +27,13 @@ use reifydb_type::{
 use tracing::instrument;
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::remote::{self, RemoteRegistry};
+use crate::remote;
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
 	vm::{
 		Admin, Command, Query, Subscription, Test,
-		services::Services,
+		services::{EngineConfig, Services},
 		stack::{SymbolTable, Variable},
 		vm::Vm,
 	},
@@ -62,27 +59,11 @@ impl Deref for Executor {
 impl Executor {
 	pub fn new(
 		catalog: Catalog,
-		runtime_context: RuntimeContext,
-		functions: Functions,
-		procedures: Procedures,
-		transforms: Transforms,
+		config: EngineConfig,
 		flow_operator_store: SystemFlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
-		ioc: IocContainer,
-		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
-		Self(Arc::new(Services::new(
-			catalog,
-			runtime_context,
-			functions,
-			procedures,
-			transforms,
-			flow_operator_store,
-			stats_reader,
-			ioc,
-			#[cfg(not(target_arch = "wasm32"))]
-			remote_registry,
-		)))
+		Self(Arc::new(Services::new(catalog, config, flow_operator_store, stats_reader)))
 	}
 
 	/// Get a reference to the underlying Services
@@ -104,15 +85,12 @@ impl Executor {
 	/// Returns `Ok(Some(frames))` if forwarded, `Ok(None)` if not a remote query.
 	#[cfg(not(target_arch = "wasm32"))]
 	fn try_forward_remote_query(&self, err: &Error, rql: &str, params: Params) -> Result<Option<Vec<Frame>>> {
-		if let Some(ref registry) = self.0.remote_registry {
-			if remote::is_remote_query(err) {
-				if let Some(address) = remote::extract_remote_address(err) {
-					let token = remote::extract_remote_token(err);
-					return registry
-						.forward_query(&address, rql, params, token.as_deref())
-						.map(Some);
-				}
-			}
+		if let Some(ref registry) = self.0.remote_registry
+			&& remote::is_remote_query(err)
+			&& let Some(address) = remote::extract_remote_address(err)
+		{
+			let token = remote::extract_remote_token(err);
+			return registry.forward_query(&address, rql, params, token.as_deref()).map(Some);
 		}
 		Ok(None)
 	}
@@ -221,10 +199,7 @@ impl Executor {
 	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>> {
 		let mut symbols = self.setup_symbols(&params, tx)?;
 
-		let compiled = match self
-			.compiler
-			.compile_with_policy(tx, rql, |plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx))
-		{
+		let compiled = match self.compiler.compile_with_policy(tx, rql, inject_read_policies) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("incremental compilation not supported in rql()")
@@ -259,11 +234,7 @@ impl Executor {
 			true,
 		)?;
 
-		match self.compiler.compile_with_policy(
-			&mut Transaction::Admin(txn),
-			cmd.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
-		) {
+		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_read_policies) {
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
 				if let Some(frames) = self.try_forward_remote_query(&err, cmd.rql, cmd.params)? {
@@ -309,20 +280,20 @@ impl Executor {
 
 	#[instrument(name = "executor::test", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> Result<Vec<Frame>> {
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Test(txn.reborrow()))?;
+		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Test(Box::new(txn.reborrow())))?;
 
 		let session_type = txn.session_type.clone();
 		let session_default_deny = txn.session_default_deny;
 		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
-			&mut Transaction::Test(txn.reborrow()),
+			&mut Transaction::Test(Box::new(txn.reborrow())),
 			&session_type,
 			session_default_deny,
 		)?;
 
 		match self.compiler.compile_with_policy(
-			&mut Transaction::Test(txn.reborrow()),
+			&mut Transaction::Test(Box::new(txn.reborrow())),
 			cmd.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
+			inject_read_policies,
 		) {
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
@@ -334,7 +305,7 @@ impl Executor {
 			Ok(CompilationResult::Ready(compiled)) => {
 				let (output, remaining, _) = execute_compiled_units(
 					&self.0,
-					&mut Transaction::Test(txn.reborrow()),
+					&mut Transaction::Test(Box::new(txn.reborrow())),
 					&compiled,
 					&cmd.params,
 					symbols,
@@ -349,12 +320,12 @@ impl Executor {
 				let mut output_results: Vec<Frame> = Vec::new();
 				let mut symbols = symbols;
 				while let Some(compiled) = self.compiler.compile_next_with_policy(
-					&mut Transaction::Test(txn.reborrow()),
+					&mut Transaction::Test(Box::new(txn.reborrow())),
 					&mut state,
 					&policy,
 				)? {
 					result.clear();
-					let mut tx = Transaction::Test(txn.reborrow());
+					let mut tx = Transaction::Test(Box::new(txn.reborrow()));
 					let mut vm = Vm::new(symbols);
 					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
 					symbols = vm.symbols;
@@ -374,16 +345,16 @@ impl Executor {
 		let statements = parse_str(&bump, cmd.rql)?;
 
 		if statements.len() != 1 {
-			return Err(Error(subscription::single_statement_required(
+			return Err(Error(Box::new(subscription::single_statement_required(
 				"Subscription endpoint requires exactly one statement",
-			)));
+			))));
 		}
 
 		let statement = &statements[0];
 		if statement.nodes.len() != 1 || !statement.nodes[0].is_subscription_ddl() {
-			return Err(Error(subscription::invalid_statement(
+			return Err(Error(Box::new(subscription::invalid_statement(
 				"Subscription endpoint only supports CREATE SUBSCRIPTION or DROP SUBSCRIPTION",
-			)));
+			))));
 		}
 
 		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Subscription(&mut *txn))?;
@@ -397,7 +368,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Subscription(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
+			inject_read_policies,
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
@@ -429,7 +400,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
+			inject_read_policies,
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
@@ -438,14 +409,14 @@ impl Executor {
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
 				if self.0.remote_registry.is_some() && remote::is_remote_query(&err) {
-					return Err(Error(Diagnostic {
+					return Err(Error(Box::new(Diagnostic {
 						code: "REMOTE_002".to_string(),
 						message: "Write operations on remote namespaces are not supported"
 							.to_string(),
 						help: Some("Use the remote instance directly for write operations"
 							.to_string()),
 						..Default::default()
-					}));
+					})));
 				}
 				return Err(err);
 			}
@@ -500,7 +471,7 @@ impl Executor {
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,
-			|plans, bump, cat, tx| inject_read_policies(plans, bump, cat, tx),
+			inject_read_policies,
 		) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {

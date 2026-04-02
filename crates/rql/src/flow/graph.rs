@@ -31,17 +31,17 @@ impl<NodeData> DirectedGraph<NodeData> {
 	}
 
 	pub fn add_node(&mut self, node_id: FlowNodeId, data: NodeData) -> FlowNodeId {
-		self.nodes.insert(node_id.clone(), data);
-		self.outgoing.entry(node_id.clone()).or_insert_with(Vec::new);
-		self.incoming.entry(node_id.clone()).or_insert_with(Vec::new);
+		self.nodes.insert(node_id, data);
+		self.outgoing.entry(node_id).or_default();
+		self.incoming.entry(node_id).or_default();
 		node_id
 	}
 
 	pub fn add_edge(&mut self, edge: FlowEdge) -> FlowEdgeId {
-		let source = edge.source.clone();
-		let target = edge.target.clone();
+		let source = edge.source;
+		let target = edge.target;
 
-		let result = edge.id.clone();
+		let result = edge.id;
 
 		if !self.nodes.contains_key(&source) {
 			panic!("Source operator {:?} does not exist", source);
@@ -57,9 +57,9 @@ impl<NodeData> DirectedGraph<NodeData> {
 
 		self.edges.push(edge);
 
-		self.outgoing.entry(source.clone()).or_insert_with(Vec::new).push(target.clone());
+		self.outgoing.entry(source).or_default().push(target);
 
-		self.incoming.entry(target).or_insert_with(Vec::new).push(source);
+		self.incoming.entry(target).or_default().push(source);
 
 		result
 	}
@@ -96,7 +96,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 
 		// Calculate in-degrees
 		for node_id in self.nodes.keys() {
-			in_degree.insert(node_id.clone(), 0);
+			in_degree.insert(*node_id, 0);
 		}
 
 		for edge in &self.edges {
@@ -106,13 +106,13 @@ impl<NodeData> DirectedGraph<NodeData> {
 		// Add nodes with no incoming edges to heap (sorted by node ID)
 		for (node_id, &degree) in &in_degree {
 			if degree == 0 {
-				heap.push(Reverse(node_id.clone()));
+				heap.push(Reverse(*node_id));
 			}
 		}
 
 		// Process nodes in deterministic order (smallest node ID first)
 		while let Some(Reverse(node_id)) = heap.pop() {
-			result.push(node_id.clone());
+			result.push(node_id);
 
 			// Update in-degrees of neighbors
 			if let Some(neighbors) = self.outgoing.get(&node_id) {
@@ -120,7 +120,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 					let degree = in_degree.get_mut(neighbor).unwrap();
 					*degree -= 1;
 					if *degree == 0 {
-						heap.push(Reverse(neighbor.clone()));
+						heap.push(Reverse(*neighbor));
 					}
 				}
 			}
@@ -136,16 +136,16 @@ impl<NodeData> DirectedGraph<NodeData> {
 	pub fn dfs_from(&self, start: &FlowNodeId) -> Vec<FlowNodeId> {
 		let mut visited = HashSet::new();
 		let mut result = Vec::new();
-		let mut stack = vec![start.clone()];
+		let mut stack = vec![*start];
 
 		while let Some(node_id) = stack.pop() {
-			if visited.insert(node_id.clone()) {
-				result.push(node_id.clone());
+			if visited.insert(node_id) {
+				result.push(node_id);
 
 				if let Some(neighbors) = self.outgoing.get(&node_id) {
 					for neighbor in neighbors.iter().rev() {
 						if !visited.contains(neighbor) {
-							stack.push(neighbor.clone());
+							stack.push(*neighbor);
 						}
 					}
 				}
@@ -160,16 +160,16 @@ impl<NodeData> DirectedGraph<NodeData> {
 		let mut result = Vec::new();
 		let mut queue = VecDeque::new();
 
-		queue.push_back(start.clone());
-		visited.insert(start.clone());
+		queue.push_back(*start);
+		visited.insert(*start);
 
 		while let Some(node_id) = queue.pop_front() {
-			result.push(node_id.clone());
+			result.push(node_id);
 
 			if let Some(neighbors) = self.outgoing.get(&node_id) {
 				for neighbor in neighbors {
-					if visited.insert(neighbor.clone()) {
-						queue.push_back(neighbor.clone());
+					if visited.insert(*neighbor) {
+						queue.push_back(*neighbor);
 					}
 				}
 			}

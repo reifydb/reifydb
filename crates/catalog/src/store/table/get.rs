@@ -13,10 +13,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn get_table(rx: &mut Transaction<'_>, table: TableId) -> Result<Table> {
 		CatalogStore::find_table(rx, table)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				table
-			))
+			)))
 		})
 	}
 }

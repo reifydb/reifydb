@@ -19,7 +19,7 @@ pub struct MemoryCallbacks {
 	/// # Parameters
 	/// - `ptr`: Pointer to memory to free
 	/// - `size`: Size of allocation (must match original alloc size)
-	pub free: extern "C" fn(ptr: *mut u8, size: usize),
+	pub free: unsafe extern "C" fn(ptr: *mut u8, size: usize),
 
 	/// Reallocate memory
 	///
@@ -30,5 +30,5 @@ pub struct MemoryCallbacks {
 	///
 	/// # Returns
 	/// - Pointer to reallocated memory, or null on failure
-	pub realloc: extern "C" fn(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8,
+	pub realloc: unsafe extern "C" fn(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8,
 }

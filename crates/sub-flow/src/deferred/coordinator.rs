@@ -5,7 +5,7 @@
 //!
 //! This module provides:
 //! - [`CoordinatorActor`]: Processes CDC events and coordinates flow workers
-//! - [`CoordinatorMsg`]: Messages (Consume, PoolReply)
+//! - [`CoordinatorMsg`] -- Messages (Consume, PoolReply)
 //! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
 
 use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc, time::Duration};
@@ -16,7 +16,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	encoded::key::EncodedKey,
+	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
 		cdc::{Cdc, CdcBatch, SystemChange},
@@ -78,7 +78,7 @@ impl CdcConsume for FlowConsumeRef {
 				..
 			} = send_err.into_inner()
 			{
-				reply(Err(Error(internal!("Coordinator actor stopped"))));
+				reply(Err(Error(Box::new(internal!("Coordinator actor stopped")))));
 			}
 		}
 	}
@@ -106,6 +106,7 @@ struct ConsumeContext {
 	state_version: CommitVersion,
 	current_version: CommitVersion,
 	combined: Pending,
+	pending_shapes: Vec<RowShape>,
 	checkpoints: Vec<(FlowId, CommitVersion)>,
 	consumer_key: EncodedKey,
 	original_reply: Box<dyn FnOnce(Result<()>) + Send>,
@@ -150,7 +151,7 @@ struct TickSchedule {
 
 /// Helper to create an error result for coordinator replies.
 fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
-	Err(Error(internal!("{}", msg)))
+	Err(Error(Box::new(internal!("{}", msg))))
 }
 
 /// Coordinator actor - processes CDC and coordinates flow workers.
@@ -300,6 +301,7 @@ impl CoordinatorActor {
 			state_version,
 			current_version,
 			combined: Pending::new(),
+			pending_shapes: Vec::new(),
 			checkpoints: Vec::new(),
 			consumer_key,
 			original_reply: reply,
@@ -406,14 +408,17 @@ impl CoordinatorActor {
 		match phase {
 			Phase::RegisteringFlows {
 				flows: mut remaining_flows,
-				ctx: consume_ctx,
+				ctx: mut consume_ctx,
 			} => {
 				// Check if registration succeeded
 				match response {
-					PoolResponse::RegisterSuccess
-					| PoolResponse::Success {
+					PoolResponse::RegisterSuccess => {}
+					PoolResponse::Success {
+						pending_shapes,
 						..
-					} => {}
+					} => {
+						consume_ctx.pending_shapes.extend(pending_shapes);
+					}
 					PoolResponse::Error(e) => {
 						(consume_ctx.original_reply)(coordinator_error(e));
 						return;
@@ -472,9 +477,11 @@ impl CoordinatorActor {
 				match response {
 					PoolResponse::Success {
 						pending,
+						pending_shapes,
 						view_changes,
 					} => {
 						consume_ctx.combined = pending;
+						consume_ctx.pending_shapes.extend(pending_shapes);
 						consume_ctx.view_changes.extend(view_changes);
 					}
 					PoolResponse::RegisterSuccess => {
@@ -507,8 +514,10 @@ impl CoordinatorActor {
 				match response {
 					PoolResponse::Success {
 						pending,
+						pending_shapes,
 						view_changes,
 					} => {
+						consume_ctx.pending_shapes.extend(pending_shapes);
 						consume_ctx.view_changes.extend(view_changes);
 						for (key, value) in pending.iter_sorted() {
 							match value {
@@ -535,9 +544,10 @@ impl CoordinatorActor {
 			Phase::Ticking => match response {
 				PoolResponse::Success {
 					pending,
+					pending_shapes,
 					..
 				} => {
-					self.commit_tick_writes(pending);
+					self.commit_tick_writes(pending, pending_shapes);
 				}
 				PoolResponse::Error(e) => {
 					warn!(error = %e, "tick processing failed");
@@ -576,12 +586,12 @@ impl CoordinatorActor {
 				.collect();
 
 			for (view_id, producer_flow_id) in &dependency_graph.sink_views {
-				if submitted_flow_ids.contains(producer_flow_id) {
-					if let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id) {
-						for fid in consumer_flow_ids {
-							if submitted_flow_ids.contains(fid) {
-								consume_ctx.downstream_flows.insert(*fid);
-							}
+				if submitted_flow_ids.contains(producer_flow_id)
+					&& let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id)
+				{
+					for fid in consumer_flow_ids {
+						if submitted_flow_ids.contains(fid) {
+							consume_ctx.downstream_flows.insert(*fid);
 						}
 					}
 				}
@@ -597,10 +607,10 @@ impl CoordinatorActor {
 				worker_batches.retain(|_, batch| !batch.instructions.is_empty());
 
 				for flow_id in &consume_ctx.downstream_flows {
-					if let Some(flow_state) = state.states.get_mut(flow_id) {
-						if flow_state.is_active() {
-							flow_state.deactivate();
-						}
+					if let Some(flow_state) = state.states.get_mut(flow_id)
+						&& flow_state.is_active()
+					{
+						flow_state.deactivate();
 					}
 				}
 			}
@@ -664,11 +674,11 @@ impl CoordinatorActor {
 		// so they should be skipped and will backfill in the next cycle.
 		let dependency_graph = state.analyzer.get_dependency_graph();
 		for (view_id, producer_flow_id) in &dependency_graph.sink_views {
-			if backfilling_flows.contains(producer_flow_id) {
-				if let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id) {
-					for fid in consumer_flow_ids {
-						consume_ctx.downstream_flows.insert(*fid);
-					}
+			if backfilling_flows.contains(producer_flow_id)
+				&& let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id)
+			{
+				for fid in consumer_flow_ids {
+					consume_ctx.downstream_flows.insert(*fid);
 				}
 			}
 		}
@@ -896,15 +906,24 @@ impl CoordinatorActor {
 			}
 		}
 
+		// Persist pending shapes
+		if let Err(e) = self
+			.catalog
+			.persist_pending_shapes(&mut Transaction::Command(&mut transaction), consume_ctx.pending_shapes)
+		{
+			let _ = transaction.rollback();
+			(consume_ctx.original_reply)(coordinator_error(e));
+			return;
+		}
+
 		// Persist consumer checkpoint
-		if let Some(latest_version) = consume_ctx.latest_version {
-			if let Err(e) =
+		if let Some(latest_version) = consume_ctx.latest_version
+			&& let Err(e) =
 				CdcCheckpoint::persist(&mut transaction, &consume_ctx.consumer_key, latest_version)
-			{
-				let _ = transaction.rollback();
-				(consume_ctx.original_reply)(coordinator_error(e));
-				return;
-			}
+		{
+			let _ = transaction.rollback();
+			(consume_ctx.original_reply)(coordinator_error(e));
+			return;
 		}
 
 		// Commit the transaction
@@ -1080,7 +1099,7 @@ impl CoordinatorActor {
 
 		for (flow_id, schedule) in &mut state.tick_schedules {
 			let tick_std = Duration::from_nanos(schedule.tick.as_nanos() as u64);
-			if now.duration_since(schedule.last_tick.clone()) >= tick_std {
+			if now.duration_since(&schedule.last_tick) >= tick_std {
 				let worker_id = (flow_id.0 as usize) % self.num_workers;
 				due_flows.entry(worker_id).or_default().push(*flow_id);
 				schedule.last_tick = now.clone();
@@ -1120,7 +1139,7 @@ impl CoordinatorActor {
 		state.phase = Phase::Ticking;
 	}
 
-	fn commit_tick_writes(&self, pending: Pending) {
+	fn commit_tick_writes(&self, pending: Pending, pending_shapes: Vec<RowShape>) {
 		let mut transaction = match self.engine.begin_command(IdentityId::system()) {
 			Ok(t) => t,
 			Err(e) => {
@@ -1141,6 +1160,15 @@ impl CoordinatorActor {
 			}
 		}
 
+		// Persist pending shapes
+		if let Err(e) =
+			self.catalog.persist_pending_shapes(&mut Transaction::Command(&mut transaction), pending_shapes)
+		{
+			let _ = transaction.rollback();
+			warn!(error = %e, "failed to persist tick pending shapes");
+			return;
+		}
+
 		if let Err(e) = transaction.commit() {
 			warn!(error = %e, "failed to commit tick writes");
 		}
@@ -1156,18 +1184,13 @@ pub fn extract_new_flow_ids(cdcs: &[Cdc]) -> Vec<FlowId> {
 
 	for cdc in cdcs {
 		for change in &cdc.system_changes {
-			if let Some(kind) = Key::kind(change.key()) {
-				if kind == KeyKind::Flow {
-					if let SystemChange::Insert {
-						key,
-						..
-					} = change
-					{
-						if let Some(Key::Flow(flow_key)) = Key::decode(key) {
-							flow_ids.push(flow_key.flow);
-						}
-					}
-				}
+			if let Some(kind) = Key::kind(change.key())
+				&& kind == KeyKind::Flow && let SystemChange::Insert {
+				key,
+				..
+			} = change && let Some(Key::Flow(flow_key)) = Key::decode(key)
+			{
+				flow_ids.push(flow_key.flow);
 			}
 		}
 	}

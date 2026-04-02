@@ -17,6 +17,12 @@ use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureErr
 /// Accepts 1 positional argument: a DateTime, Duration (since epoch), or integer milliseconds.
 pub struct ClockSetProcedure;
 
+impl Default for ClockSetProcedure {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl ClockSetProcedure {
 	pub fn new() -> Self {
 		Self

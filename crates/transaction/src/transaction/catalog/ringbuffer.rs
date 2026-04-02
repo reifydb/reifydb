@@ -52,15 +52,15 @@ impl CatalogTrackRingBufferChangeOperations for AdminTransaction {
 impl TransactionalRingBufferChanges for AdminTransaction {
 	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBuffer> {
 		for change in self.changes.ringbuffer.iter().rev() {
-			if let Some(ringbuffer) = &change.post {
-				if ringbuffer.id == id {
-					return Some(ringbuffer);
-				}
+			if let Some(ringbuffer) = &change.post
+				&& ringbuffer.id == id
+			{
+				return Some(ringbuffer);
 			}
-			if let Some(ringbuffer) = &change.pre {
-				if ringbuffer.id == id && change.op == Delete {
-					return None;
-				}
+			if let Some(ringbuffer) = &change.pre
+				&& ringbuffer.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None
@@ -68,15 +68,17 @@ impl TransactionalRingBufferChanges for AdminTransaction {
 
 	fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&RingBuffer> {
 		for change in self.changes.ringbuffer.iter().rev() {
-			if let Some(ringbuffer) = &change.post {
-				if ringbuffer.namespace == namespace && ringbuffer.name == name {
-					return Some(ringbuffer);
-				}
+			if let Some(ringbuffer) = &change.post
+				&& ringbuffer.namespace == namespace
+				&& ringbuffer.name == name
+			{
+				return Some(ringbuffer);
 			}
-			if let Some(ringbuffer) = &change.pre {
-				if ringbuffer.namespace == namespace && ringbuffer.name == name && change.op == Delete {
-					return None;
-				}
+			if let Some(ringbuffer) = &change.pre
+				&& ringbuffer.namespace == namespace
+				&& ringbuffer.name == name && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

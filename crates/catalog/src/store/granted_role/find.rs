@@ -15,9 +15,9 @@ impl CatalogStore {
 	) -> Result<Vec<GrantedRole>> {
 		let mut result = Vec::new();
 		let range = GrantedRoleKey::identity_scan(identity);
-		let mut stream = rx.range(range, 1024)?;
+		let stream = rx.range(range, 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			result.push(convert_granted_role(multi));
 		}

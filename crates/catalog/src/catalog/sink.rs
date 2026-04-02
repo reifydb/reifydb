@@ -142,7 +142,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(sink) = CatalogStore::find_sink_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {

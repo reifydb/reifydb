@@ -3,7 +3,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {Client, WsClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 
 describe('Concurrent requests', () => {
     let wsClient: WsClient;
@@ -43,17 +43,17 @@ describe('Concurrent requests', () => {
                 wsClient.admin(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 wsClient.admin(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 wsClient.admin(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -70,17 +70,17 @@ describe('Concurrent requests', () => {
                 wsClient.command(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 wsClient.command(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 wsClient.command(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -98,17 +98,17 @@ describe('Concurrent requests', () => {
                 wsClient.query(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 wsClient.query(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 wsClient.query(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -125,17 +125,17 @@ describe('Concurrent requests', () => {
                 wsClient.admin(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 wsClient.query(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 wsClient.admin(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 
@@ -152,17 +152,17 @@ describe('Concurrent requests', () => {
                 wsClient.command(
                     'MAP {result: 1};',
                     {},
-                    [Schema.object({result: Schema.int4Value()})]
+                    [Shape.object({result: Shape.int4Value()})]
                 ),
                 wsClient.query(
                     'MAP { a: 2, b: 3 };',
                     {},
-                    [Schema.object({a: Schema.int4Value(), b: Schema.int4Value()})]
+                    [Shape.object({a: Shape.int4Value(), b: Shape.int4Value()})]
                 ),
                 wsClient.command(
                     "MAP {result: 'ReifyDB'};",
                     {},
-                    [Schema.object({result: Schema.utf8Value()})]
+                    [Shape.object({result: Shape.utf8Value()})]
                 )
             ]);
 

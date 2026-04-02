@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeSecond;
 
+impl Default for DateTimeSecond {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeSecond {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DateTimeSecond {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::DateTime(container) => {

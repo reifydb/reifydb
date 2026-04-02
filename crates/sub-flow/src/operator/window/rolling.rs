@@ -121,9 +121,7 @@ fn process_rolling_group_insert(
 	let window_key = operator.create_window_key(group_hash, window_id);
 	let mut window_state = operator.load_window_state(txn, &window_key)?;
 
-	for row_idx in 0..row_count {
-		let event_timestamp = timestamps[row_idx];
-
+	for (row_idx, &event_timestamp) in timestamps.iter().enumerate() {
 		let single_row_columns = columns.extract_row(row_idx);
 		let projected = operator.project_columns(&single_row_columns);
 		let row = projected.to_single_row();
@@ -158,16 +156,15 @@ fn process_rolling_group_insert(
 		};
 		operator.evict_old_events(&mut window_state, eviction_ts);
 
-		if !window_state.events.is_empty() {
-			if let Some((aggregated_row, is_new)) =
+		if !window_state.events.is_empty()
+			&& let Some((aggregated_row, is_new)) =
 				operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
-			{
-				result.push(WindowOperator::emit_aggregation_diff(
-					&aggregated_row,
-					is_new,
-					previous_aggregation,
-				));
-			}
+		{
+			result.push(WindowOperator::emit_aggregation_diff(
+				&aggregated_row,
+				is_new,
+				previous_aggregation,
+			));
 		}
 	}
 

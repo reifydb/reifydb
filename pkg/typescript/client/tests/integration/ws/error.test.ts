@@ -3,7 +3,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {Client, WsClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 
 
 describe('Error', () => {
@@ -43,7 +43,7 @@ describe('Error', () => {
                 wsClient.admin(
                     "MAP {result: cast(129, int1)};",
                     {},
-                    [Schema.object({result: Schema.int1Value()})]
+                    [Shape.object({result: Shape.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
@@ -72,7 +72,7 @@ describe('Error', () => {
                 wsClient.command(
                     "MAP {result: cast(129, int1)};",
                     {},
-                    [Schema.object({result: Schema.int1Value()})]
+                    [Shape.object({result: Shape.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',
@@ -102,7 +102,7 @@ describe('Error', () => {
                 wsClient.query(
                     "MAP {result: cast(129, int1)};",
                     {},
-                    [Schema.object({result: Schema.int1Value()})]
+                    [Shape.object({result: Shape.int1Value()})]
                 )
             ).rejects.toMatchObject({
                 name: 'ReifyError',

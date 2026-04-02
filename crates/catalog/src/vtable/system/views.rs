@@ -25,6 +25,12 @@ pub struct SystemViews {
 	exhausted: bool,
 }
 
+impl Default for SystemViews {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemViews {
 	pub fn new() -> Self {
 		Self {

@@ -18,11 +18,7 @@ fn validate_component_order(
 	position: usize,
 ) -> Result<(), Error> {
 	let key = if component == 'M' {
-		if *last_order > 0 {
-			'M'
-		} else {
-			'M'
-		}
+		'M'
 	} else {
 		component
 	};
@@ -197,7 +193,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 		.into());
 	}
 
-	let mut chars = fragment_value.chars().skip(1); // Skip 'P'
+	let chars = fragment_value.chars().skip(1); // Skip 'P'
 	let mut months = 0i32;
 	let mut days = 0i32;
 	let mut nanos = 0i64;
@@ -210,7 +206,7 @@ fn parse_iso_duration(fragment: Fragment) -> Result<Duration, Error> {
 	let mut last_date_component_order = 0u8;
 	let mut last_time_component_order = 0u8;
 
-	while let Some(c) = chars.next() {
+	for c in chars {
 		match c {
 			'T' => {
 				in_time_part = true;

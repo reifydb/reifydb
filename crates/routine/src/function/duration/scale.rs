@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DurationScale;
 
+impl Default for DurationScale {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DurationScale {
 	pub fn new() -> Self {
 		Self
@@ -64,7 +70,7 @@ impl ScalarFunction for DurationScale {
 			});
 		}
 
-		let dur_col = columns.get(0).unwrap();
+		let dur_col = columns.first().unwrap();
 		let scalar_col = columns.get(1).unwrap();
 
 		match dur_col.data() {

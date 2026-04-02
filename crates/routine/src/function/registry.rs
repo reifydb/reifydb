@@ -10,11 +10,11 @@ pub struct Functions(Arc<FunctionsInner>);
 
 impl Functions {
 	pub fn empty() -> Functions {
-		Functions::builder().build()
+		Functions::builder().configure()
 	}
 
-	pub fn builder() -> FunctionsBuilder {
-		FunctionsBuilder(FunctionsInner {
+	pub fn builder() -> FunctionsConfigurator {
+		FunctionsConfigurator(FunctionsInner {
 			scalars: HashMap::new(),
 			aggregates: HashMap::new(),
 			generators: HashMap::new(),
@@ -74,9 +74,9 @@ impl FunctionsInner {
 	}
 }
 
-pub struct FunctionsBuilder(FunctionsInner);
+pub struct FunctionsConfigurator(FunctionsInner);
 
-impl FunctionsBuilder {
+impl FunctionsConfigurator {
 	pub fn register_scalar<F, A>(mut self, name: &str, init: F) -> Self
 	where
 		F: Fn() -> A + Send + Sync + 'static,
@@ -109,7 +109,7 @@ impl FunctionsBuilder {
 		self
 	}
 
-	pub fn build(self) -> Functions {
+	pub fn configure(self) -> Functions {
 		Functions(Arc::new(self.0))
 	}
 }

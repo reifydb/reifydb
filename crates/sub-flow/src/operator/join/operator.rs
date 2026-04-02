@@ -41,7 +41,7 @@ use reifydb_type::{
 use super::{
 	column::JoinedColumnsBuilder,
 	state::{JoinSide, JoinState},
-	strategy::JoinStrategy,
+	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
 	operator::{
@@ -52,7 +52,14 @@ use crate::{
 };
 
 static EMPTY_PARAMS: Params = Params::None;
-static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
+static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
+
+/// Configuration for one side (left or right) of a join operator.
+pub struct JoinSideConfig {
+	pub parent: Arc<Operators>,
+	pub node: FlowNodeId,
+	pub exprs: Vec<Expression>,
+}
 
 pub struct JoinOperator {
 	pub(crate) left_parent: Arc<Operators>,
@@ -75,17 +82,19 @@ pub struct JoinOperator {
 
 impl JoinOperator {
 	pub fn new(
-		left_parent: Arc<Operators>,
-		right_parent: Arc<Operators>,
+		left: JoinSideConfig,
+		right: JoinSideConfig,
 		node: FlowNodeId,
 		join_type: JoinType,
-		left_node: FlowNodeId,
-		right_node: FlowNodeId,
-		left_exprs: Vec<Expression>,
-		right_exprs: Vec<Expression>,
 		alias: Option<String>,
 		executor: Executor,
 	) -> Self {
+		let left_parent = left.parent;
+		let right_parent = right.parent;
+		let left_node = left.node;
+		let right_node = right.node;
+		let left_exprs = left.exprs;
+		let right_exprs = right.exprs;
 		let strategy = JoinStrategy::from(join_type);
 		let shape = Self::state_shape();
 		let row_number_provider = RowNumberProvider::new(node);
@@ -188,8 +197,9 @@ impl JoinOperator {
 					break;
 				}
 
-				let bytes = to_stdvec(&value)
-					.map_err(|e| Error(internal!("Failed to encode value for hash: {}", e)))?;
+				let bytes = to_stdvec(&value).map_err(|e| {
+					Error(Box::new(internal!("Failed to encode value for hash: {}", e)))
+				})?;
 				hasher.extend_from_slice(&bytes);
 			}
 
@@ -470,10 +480,10 @@ impl Operator for JoinOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// Check for self-referential calls (should never happen)
-		if let ChangeOrigin::Flow(from_node) = &change.origin {
-			if *from_node == self.node {
-				return Ok(Change::from_flow(self.node, change.version, Vec::new()));
-			}
+		if let ChangeOrigin::Flow(from_node) = &change.origin
+			&& *from_node == self.node
+		{
+			return Ok(Change::from_flow(self.node, change.version, Vec::new()));
 		}
 
 		// Create the state
@@ -485,7 +495,7 @@ impl Operator for JoinOperator {
 		// Determine which side this change is from
 		let side = self
 			.determine_side(&change)
-			.ok_or_else(|| Error(internal!("Join operator received change from unknown node")))?;
+			.ok_or_else(|| Error(Box::new(internal!("Join operator received change from unknown node"))))?;
 
 		let compiled_exprs = match side {
 			JoinSide::Left => &self.compiled_left_exprs,
@@ -500,15 +510,14 @@ impl Operator for JoinOperator {
 				} => {
 					// Compute keys for all rows in this Columns batch
 					let keys = self.compute_join_keys(&post, compiled_exprs)?;
-					let row_count = post.row_count();
 
 					// Group indices by key hash
 					let mut inserts_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
 					let mut inserts_undefined: Vec<usize> = Vec::new();
 
-					for row_idx in 0..row_count {
-						if let Some(key_hash) = keys[row_idx] {
-							inserts_by_key.entry(key_hash).or_default().push(row_idx);
+					for (row_idx, key) in keys.iter().enumerate() {
+						if let Some(key_hash) = key {
+							inserts_by_key.entry(*key_hash).or_default().push(row_idx);
 						} else {
 							inserts_undefined.push(row_idx);
 						}
@@ -516,17 +525,29 @@ impl Operator for JoinOperator {
 
 					// Process inserts with defined keys (batched by key)
 					for (key_hash, indices) in inserts_by_key {
-						let diffs = self.strategy.handle_insert(
-							txn, &post, &indices, side, &key_hash, &mut state, self,
-						)?;
+						let mut ctx = JoinContext {
+							side,
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_insert(txn, &post, &indices, &key_hash, &mut ctx)?;
 						result.extend(diffs);
 					}
 
 					// Process inserts with undefined keys individually
 					for idx in inserts_undefined {
-						let diffs = self.strategy.handle_insert_undefined(
-							txn, &post, idx, side, &mut state, self,
-						)?;
+						let mut ctx = JoinContext {
+							side,
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_insert_undefined(txn, &post, idx, &mut ctx)?;
 						result.extend(diffs);
 					}
 				}
@@ -535,15 +556,14 @@ impl Operator for JoinOperator {
 				} => {
 					// Compute keys for all rows
 					let keys = self.compute_join_keys(&pre, compiled_exprs)?;
-					let row_count = pre.row_count();
 
 					// Group indices by key hash
 					let mut removes_by_key: IndexMap<Hash128, Vec<usize>> = IndexMap::new();
 					let mut removes_undefined: Vec<usize> = Vec::new();
 
-					for row_idx in 0..row_count {
-						if let Some(key_hash) = keys[row_idx] {
-							removes_by_key.entry(key_hash).or_default().push(row_idx);
+					for (row_idx, key) in keys.iter().enumerate() {
+						if let Some(key_hash) = key {
+							removes_by_key.entry(*key_hash).or_default().push(row_idx);
 						} else {
 							removes_undefined.push(row_idx);
 						}
@@ -551,30 +571,29 @@ impl Operator for JoinOperator {
 
 					// Process removes with defined keys (batched by key)
 					for (key_hash, indices) in removes_by_key {
-						let diffs = self.strategy.handle_remove(
-							txn,
-							&pre,
-							&indices,
+						let mut ctx = JoinContext {
 							side,
-							&key_hash,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_remove(txn, &pre, &indices, &key_hash, &mut ctx)?;
 						result.extend(diffs);
 					}
 
 					// Process removes with undefined keys individually
 					for idx in removes_undefined {
-						let diffs = self.strategy.handle_remove_undefined(
-							txn,
-							&pre,
-							idx,
+						let mut ctx = JoinContext {
 							side,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_remove_undefined(txn, &pre, idx, &mut ctx)?;
 						result.extend(diffs);
 					}
 				}
@@ -611,33 +630,33 @@ impl Operator for JoinOperator {
 
 					// Process updates with defined keys (batched by key pair)
 					for ((pre_key, post_key), indices) in updates_by_key {
-						let diffs = self.strategy.handle_update(
-							txn,
-							&pre,
-							&post,
-							&indices,
+						let mut ctx = JoinContext {
 							side,
-							&pre_key,
-							&post_key,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let keys = UpdateKeys {
+							pre: &pre_key,
+							post: &post_key,
+						};
+						let diffs = self
+							.strategy
+							.handle_update(txn, &pre, &post, &indices, keys, &mut ctx)?;
 						result.extend(diffs);
 					}
 
 					// Process updates with undefined keys individually
 					for row_idx in updates_undefined {
-						let diffs = self.strategy.handle_update_undefined(
-							txn,
-							&pre,
-							&post,
-							row_idx,
+						let mut ctx = JoinContext {
 							side,
-							&mut state,
-							self,
-							change.version,
-						)?;
+							state: &mut state,
+							operator: self,
+							version: change.version,
+						};
+						let diffs = self
+							.strategy
+							.handle_update_undefined(txn, &pre, &post, row_idx, &mut ctx)?;
 						result.extend(diffs);
 					}
 				}

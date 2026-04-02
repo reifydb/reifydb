@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_type::value::{
-	Value,
-	ordered_f32::OrderedF32,
-	ordered_f64::OrderedF64,
-	r#type::Type,
-	uuid::{Uuid4, Uuid7},
-};
+use reifydb_type::value::{Value, ordered_f32::OrderedF32, ordered_f64::OrderedF64, r#type::Type};
 
 use super::shape::RowShape;
 use crate::encoded::row::EncodedRow;
@@ -142,7 +136,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(Type::Date, Value::Date(v)) => self.set_date(row, index, v.clone()),
+			(Type::Date, Value::Date(v)) => self.set_date(row, index, *v),
 			(
 				Type::Date,
 				Value::None {
@@ -150,7 +144,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(Type::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, v.clone()),
+			(Type::DateTime, Value::DateTime(v)) => self.set_datetime(row, index, *v),
 			(
 				Type::DateTime,
 				Value::None {
@@ -158,7 +152,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(Type::Time, Value::Time(v)) => self.set_time(row, index, v.clone()),
+			(Type::Time, Value::Time(v)) => self.set_time(row, index, *v),
 			(
 				Type::Time,
 				Value::None {
@@ -166,7 +160,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(Type::Duration, Value::Duration(v)) => self.set_duration(row, index, v.clone()),
+			(Type::Duration, Value::Duration(v)) => self.set_duration(row, index, *v),
 			(
 				Type::Duration,
 				Value::None {
@@ -174,7 +168,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, v.clone()),
+			(Type::Uuid4, Value::Uuid4(v)) => self.set_uuid4(row, index, *v),
 			(
 				Type::Uuid4,
 				Value::None {
@@ -182,7 +176,7 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
-			(Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, v.clone()),
+			(Type::Uuid7, Value::Uuid7(v)) => self.set_uuid7(row, index, *v),
 			(
 				Type::Uuid7,
 				Value::None {
@@ -213,16 +207,9 @@ impl RowShape {
 				},
 			) => self.set_none(row, index),
 
+			(Type::Decimal, Value::Decimal(v)) => self.set_decimal(row, index, v),
 			(
-				Type::Decimal {
-					..
-				},
-				Value::Decimal(v),
-			) => self.set_decimal(row, index, v),
-			(
-				Type::Decimal {
-					..
-				},
+				Type::Decimal,
 				Value::None {
 					..
 				},
@@ -289,14 +276,12 @@ impl RowShape {
 			Type::Time => Value::Time(self.get_time(row, index)),
 			Type::Duration => Value::Duration(self.get_duration(row, index)),
 			Type::IdentityId => Value::IdentityId(self.get_identity_id(row, index)),
-			Type::Uuid4 => Value::Uuid4(Uuid4::from(self.get_uuid4(row, index))),
-			Type::Uuid7 => Value::Uuid7(Uuid7::from(self.get_uuid7(row, index))),
+			Type::Uuid4 => Value::Uuid4(self.get_uuid4(row, index)),
+			Type::Uuid7 => Value::Uuid7(self.get_uuid7(row, index)),
 			Type::Blob => Value::Blob(self.get_blob(row, index)),
 			Type::Int => Value::Int(self.get_int(row, index)),
 			Type::Uint => Value::Uint(self.get_uint(row, index)),
-			Type::Decimal {
-				..
-			} => Value::Decimal(self.get_decimal(row, index)),
+			Type::Decimal => Value::Decimal(self.get_decimal(row, index)),
 			Type::DictionaryId => Value::DictionaryId(self.get_dictionary_id(row, index)),
 			Type::Option(_) => unreachable!("Option type already unwrapped"),
 			Type::Any => Value::Any(Box::new(self.get_any(row, index))),

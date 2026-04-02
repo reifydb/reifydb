@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, HttpClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 
 
 describe('Statement', () => {
@@ -50,8 +50,8 @@ describe('Statement', () => {
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 {},
                 [
-                    Schema.object({one: Schema.int4Value()}),
-                    Schema.object({two: Schema.int4Value()})
+                    Shape.object({one: Shape.int4Value()}),
+                    Shape.object({two: Shape.int4Value()})
                 ]
             );
             expect(frames).toHaveLength(2);
@@ -68,7 +68,7 @@ describe('Statement', () => {
             const frames = await httpClient.admin(
                 'MAP {result: 1};',
                 {},
-                [Schema.object({result: Schema.int4Value()})]
+                [Shape.object({result: Shape.int4Value()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -83,9 +83,9 @@ describe('Statement', () => {
                 'MAP {result: 3};',
                 {},
                 [
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({result: Schema.int4Value()})
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({result: Shape.int4Value()})
                 ]
             );
 
@@ -107,9 +107,9 @@ describe('Statement', () => {
                 "MAP {result: 'ReifyDB'};",
                 {},
                 [
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({a: Schema.int4Value(), b: Schema.int4Value()}),
-                    Schema.object({result: Schema.utf8Value()})
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({a: Shape.int4Value(), b: Shape.int4Value()}),
+                    Shape.object({result: Shape.utf8Value()})
                 ]
             );
 
@@ -163,8 +163,8 @@ describe('Statement', () => {
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 {},
                 [
-                    Schema.object({one: Schema.int4Value()}),
-                    Schema.object({two: Schema.int4Value()})
+                    Shape.object({one: Shape.int4Value()}),
+                    Shape.object({two: Shape.int4Value()})
                 ]
             );
             expect(frames).toHaveLength(2);
@@ -181,7 +181,7 @@ describe('Statement', () => {
             const frames = await httpClient.command(
                 'MAP {result: 1};',
                 {},
-                [Schema.object({result: Schema.int4Value()})]
+                [Shape.object({result: Shape.int4Value()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -196,9 +196,9 @@ describe('Statement', () => {
                 'MAP {result: 3};',
                 {},
                 [
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({result: Schema.int4Value()})
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({result: Shape.int4Value()})
                 ]
             );
 
@@ -220,9 +220,9 @@ describe('Statement', () => {
                 "MAP {result: 'ReifyDB'};",
                 {},
                 [
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({a: Schema.int4Value(), b: Schema.int4Value()}),
-                    Schema.object({result: Schema.utf8Value()})
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({a: Shape.int4Value(), b: Shape.int4Value()}),
+                    Shape.object({result: Shape.utf8Value()})
                 ]
             );
 
@@ -277,8 +277,8 @@ describe('Statement', () => {
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 {},
                 [
-                    Schema.object({one: Schema.int4Value()}),
-                    Schema.object({two: Schema.int4Value()})
+                    Shape.object({one: Shape.int4Value()}),
+                    Shape.object({two: Shape.int4Value()})
                 ]
             );
             expect(frames).toHaveLength(2);
@@ -295,7 +295,7 @@ describe('Statement', () => {
             const frames = await httpClient.query(
                 'MAP {result: 1};',
                 {},
-                [Schema.object({result: Schema.int4Value()})]
+                [Shape.object({result: Shape.int4Value()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -310,9 +310,9 @@ describe('Statement', () => {
                 'MAP {result: 3};',
                 {},
                 [
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({result: Schema.int4Value()})
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({result: Shape.int4Value()})
                 ]
             );
 
@@ -334,9 +334,9 @@ describe('Statement', () => {
                 "MAP {result: 'ReifyDB'};",
                 {},
                 [
-                    Schema.object({result: Schema.int4Value()}),
-                    Schema.object({a: Schema.int4Value(), b: Schema.int4Value()}),
-                    Schema.object({result: Schema.utf8Value()})
+                    Shape.object({result: Shape.int4Value()}),
+                    Shape.object({a: Shape.int4Value(), b: Shape.int4Value()}),
+                    Shape.object({result: Shape.utf8Value()})
                 ]
             );
 

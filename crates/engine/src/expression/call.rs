@@ -29,11 +29,7 @@ use crate::{
 
 /// Strip the leading `$` from a variable name if present
 fn strip_dollar_prefix(name: &str) -> String {
-	if name.starts_with('$') {
-		name[1..].to_string()
-	} else {
-		name.to_string()
-	}
+	name.strip_prefix('$').unwrap_or(name).to_string()
 }
 
 /// Convert a slice of Values into ColumnData
@@ -59,37 +55,37 @@ pub(crate) fn call_eval_with_args(
 	let function_name = call.func.0.text();
 
 	// Check if we're in aggregation context and if function exists as aggregate
-	if ctx.is_aggregate_context {
-		if let Some(mut aggregate_fn) = functions.get_aggregate(function_name) {
-			let column = if call.args.is_empty() {
-				Column {
-					name: Fragment::internal("dummy"),
-					data: ColumnData::with_capacity(Type::Int4, ctx.row_count),
-				}
-			} else {
-				arguments[0].clone()
-			};
+	if ctx.is_aggregate_context
+		&& let Some(mut aggregate_fn) = functions.get_aggregate(function_name)
+	{
+		let column = if call.args.is_empty() {
+			Column {
+				name: Fragment::internal("dummy"),
+				data: ColumnData::with_capacity(Type::Int4, ctx.row_count),
+			}
+		} else {
+			arguments[0].clone()
+		};
 
-			let mut group_view = GroupByView::new();
-			let all_indices: Vec<usize> = (0..ctx.row_count).collect();
-			group_view.insert(Vec::<Value>::new(), all_indices);
+		let mut group_view = GroupByView::new();
+		let all_indices: Vec<usize> = (0..ctx.row_count).collect();
+		group_view.insert(Vec::<Value>::new(), all_indices);
 
-			let agg_fragment = call.func.0.clone();
-			aggregate_fn
-				.aggregate(AggregateFunctionContext {
-					fragment: agg_fragment.clone(),
-					column: &column,
-					groups: &group_view,
-				})
-				.map_err(|e| e.with_context(agg_fragment.clone()))?;
+		let agg_fragment = call.func.0.clone();
+		aggregate_fn
+			.aggregate(AggregateFunctionContext {
+				fragment: agg_fragment.clone(),
+				column: &column,
+				groups: &group_view,
+			})
+			.map_err(|e| e.with_context(agg_fragment.clone()))?;
 
-			let (_keys, result_data) = aggregate_fn.finalize().map_err(|e| e.with_context(agg_fragment))?;
+		let (_keys, result_data) = aggregate_fn.finalize().map_err(|e| e.with_context(agg_fragment))?;
 
-			return Ok(Column {
-				name: call.full_fragment_owned(),
-				data: result_data,
-			});
-		}
+		return Ok(Column {
+			name: call.full_fragment_owned(),
+			data: result_data,
+		});
 	}
 
 	// Try user-defined function from symbol table first
@@ -155,7 +151,7 @@ fn call_user_defined_function(
 
 		// Execute function body instructions and get result
 		let result = execute_function_body_for_scalar(
-			&body_instructions,
+			body_instructions,
 			&mut func_symbols,
 			ctx.params,
 			functions,
@@ -389,29 +385,27 @@ fn execute_function_body_for_scalar(
 				return Ok(Value::none());
 			}
 
-			Instruction::Query(plan) => match plan {
-				QueryPlan::Map(map_node) => {
-					if map_node.input.is_none() && !map_node.map.is_empty() {
-						let call_session = EvalSession {
-							params,
-							symbols,
-							functions,
-							runtime_context,
-							arena: None,
-							identity,
-							is_aggregate_context: false,
-						};
-						let evaluation_context = call_session.eval_empty();
-						let result_column = evaluate(&evaluation_context, &map_node.map[0])?;
-						if result_column.data.len() > 0 {
-							stack.push(result_column.data.get_value(0));
-						}
+			Instruction::Query(QueryPlan::Map(map_node)) => {
+				if map_node.input.is_none() && !map_node.map.is_empty() {
+					let call_session = EvalSession {
+						params,
+						symbols,
+						functions,
+						runtime_context,
+						arena: None,
+						identity,
+						is_aggregate_context: false,
+					};
+					let evaluation_context = call_session.eval_empty();
+					let result_column = evaluate(&evaluation_context, &map_node.map[0])?;
+					if !result_column.data.is_empty() {
+						stack.push(result_column.data.get_value(0));
 					}
 				}
-				_ => {
-					// Other plan types would need full VM execution
-				}
-			},
+			}
+			Instruction::Query(_) => {
+				// Other plan types would need full VM execution
+			}
 
 			Instruction::Emit => {
 				// Emit in function body context - the stack top is the result
@@ -468,7 +462,7 @@ fn execute_function_body_for_scalar(
 							identity,
 						})
 						.map_err(|e| e.with_context(fn_fragment))?;
-					if result_data.len() > 0 {
+					if !result_data.is_empty() {
 						stack.push(result_data.get_value(0));
 					} else {
 						stack.push(Value::none());

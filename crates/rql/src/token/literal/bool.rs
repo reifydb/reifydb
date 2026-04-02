@@ -15,7 +15,7 @@ pub fn scan_boolean<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 	if cursor.peek_str(4).eq_ignore_ascii_case("true") {
 		let next = cursor.peek_ahead(4);
-		if next.map_or(true, |c| !is_identifier_char(c)) {
+		if next.is_none_or(|c| !is_identifier_char(c)) {
 			cursor.consume_str_ignore_case("true");
 			return Some(Token {
 				kind: TokenKind::Literal(Literal::True),
@@ -26,7 +26,7 @@ pub fn scan_boolean<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 	if cursor.peek_str(5).eq_ignore_ascii_case("false") {
 		let next = cursor.peek_ahead(5);
-		if next.map_or(true, |c| !is_identifier_char(c)) {
+		if next.is_none_or(|c| !is_identifier_char(c)) {
 			cursor.consume_str_ignore_case("false");
 			return Some(Token {
 				kind: TokenKind::Literal(Literal::False),

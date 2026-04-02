@@ -867,11 +867,11 @@ impl TransactionalCatalogChanges {
 				if table.id == id {
 					return Some(table);
 				}
-			} else if let Some(table) = &change.pre {
-				if table.id == id && change.op == Delete {
-					// Table was deleted
-					return None;
-				}
+			} else if let Some(table) = &change.pre
+				&& table.id == id && change.op == Delete
+			{
+				// Table was deleted
+				return None;
 			}
 		}
 		None
@@ -890,11 +890,11 @@ impl TransactionalCatalogChanges {
 				if view.id() == id {
 					return Some(view);
 				}
-			} else if let Some(view) = &change.pre {
-				if view.id() == id && change.op == Delete {
-					// View was deleted
-					return None;
-				}
+			} else if let Some(view) = &change.pre
+				&& view.id() == id && change.op == Delete
+			{
+				// View was deleted
+				return None;
 			}
 		}
 		None

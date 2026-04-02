@@ -34,12 +34,10 @@ pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessShapeExpression) -> 
 
 		// For non-aliased columns, just match on the column name
 		// (but only if this isn't an aliased access)
-		if matches!(&expr.column.shape, ColumnShape::Qualified { .. }) {
-			if col.name().text() == column {
-				// Make sure this column doesn't belong to a different source
-				// by checking if it has a dot in the name (qualified)
-				return !col.name().text().contains('.');
-			}
+		if matches!(&expr.column.shape, ColumnShape::Qualified { .. }) && col.name().text() == column {
+			// Make sure this column doesn't belong to a different source
+			// by checking if it has a dot in the name (qualified)
+			return !col.name().text().contains('.');
 		}
 
 		false

@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TimeNew;
 
+impl Default for TimeNew {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TimeNew {
 	pub fn new() -> Self {
 		Self
@@ -64,7 +70,7 @@ impl ScalarFunction for TimeNew {
 			});
 		}
 
-		let hour_col = columns.get(0).unwrap();
+		let hour_col = columns.first().unwrap();
 		let min_col = columns.get(1).unwrap();
 		let sec_col = columns.get(2).unwrap();
 		let nano_col = if columns.len() == 4 {
@@ -130,23 +136,23 @@ impl ScalarFunction for TimeNew {
 				actual: sec_col.data().get_type(),
 			});
 		}
-		if let Some(nc) = &nano_col {
-			if !is_integer_type(nc.data()) {
-				return Err(ScalarFunctionError::InvalidArgumentType {
-					function: ctx.fragment.clone(),
-					argument_index: 3,
-					expected: vec![
-						Type::Int1,
-						Type::Int2,
-						Type::Int4,
-						Type::Int8,
-						Type::Uint1,
-						Type::Uint2,
-						Type::Uint4,
-					],
-					actual: nc.data().get_type(),
-				});
-			}
+		if let Some(nc) = &nano_col
+			&& !is_integer_type(nc.data())
+		{
+			return Err(ScalarFunctionError::InvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 3,
+				expected: vec![
+					Type::Int1,
+					Type::Int2,
+					Type::Int4,
+					Type::Int8,
+					Type::Uint1,
+					Type::Uint2,
+					Type::Uint4,
+				],
+				actual: nc.data().get_type(),
+			});
 		}
 
 		let mut container = TemporalContainer::with_capacity(row_count);

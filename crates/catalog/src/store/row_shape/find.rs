@@ -55,7 +55,10 @@ pub(crate) fn find_row_shape_by_fingerprint(
 	for i in 0..field_count {
 		let field_key = RowShapeFieldKey::encoded(fingerprint, i as u16);
 		let field_entry = txn.get(&field_key)?.ok_or_else(|| {
-			Error(internal(format!("RowShape field {} missing for fingerprint {:?}", i, fingerprint)))
+			Error(Box::new(internal(format!(
+				"RowShape field {} missing for fingerprint {:?}",
+				i, fingerprint
+			))))
 		})?;
 
 		let name = shape_field::SHAPE.get_utf8(&field_entry.row, shape_field::NAME).to_string();
@@ -105,14 +108,14 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 
 	{
 		let range = RowShapeKey::full_scan();
-		let mut stream = rx.range(range, 1024)?;
+		let stream = rx.range(range, 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
 
 			// Decode the fingerprint from the key
 			let shape_key = RowShapeKey::decode(&entry.key)
-				.ok_or_else(|| Error(internal("Failed to decode shape key")))?;
+				.ok_or_else(|| Error(Box::new(internal("Failed to decode shape key"))))?;
 
 			let field_count = shape_header::SHAPE.get_u16(&entry.row, shape_header::FIELD_COUNT) as usize;
 
@@ -129,10 +132,10 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 		for i in 0..field_count {
 			let field_key = RowShapeFieldKey::encoded(fingerprint, i as u16);
 			let field_entry = rx.get(&field_key)?.ok_or_else(|| {
-				Error(internal(format!(
+				Error(Box::new(internal(format!(
 					"RowShape field {} missing for fingerprint {:?}",
 					i, fingerprint
-				)))
+				))))
 			})?;
 
 			let name = shape_field::SHAPE.get_utf8(&field_entry.row, shape_field::NAME).to_string();

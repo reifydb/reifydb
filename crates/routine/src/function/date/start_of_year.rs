@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateStartOfYear;
 
+impl Default for DateStartOfYear {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateStartOfYear {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for DateStartOfYear {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Date(container) => {

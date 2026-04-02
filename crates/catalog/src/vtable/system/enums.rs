@@ -22,6 +22,12 @@ pub struct SystemEnums {
 	exhausted: bool,
 }
 
+impl Default for SystemEnums {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemEnums {
 	pub fn new() -> Self {
 		Self {

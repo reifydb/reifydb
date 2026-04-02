@@ -196,7 +196,7 @@ impl HttpClient {
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: vec![rql.to_string()],
-			params: params.map(params_to_wire).flatten(),
+			params: params.and_then(params_to_wire),
 		};
 
 		let response = self.send_admin(&request).await?;
@@ -211,7 +211,7 @@ impl HttpClient {
 	pub async fn admin_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: statements.into_iter().map(String::from).collect(),
-			params: params.map(params_to_wire).flatten(),
+			params: params.and_then(params_to_wire),
 		};
 
 		let response = self.send_admin(&request).await?;
@@ -244,7 +244,7 @@ impl HttpClient {
 	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			statements: vec![rql.to_string()],
-			params: params.map(params_to_wire).flatten(),
+			params: params.and_then(params_to_wire),
 		};
 
 		let response = self.send_command(&request).await?;
@@ -280,7 +280,7 @@ impl HttpClient {
 	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: vec![rql.to_string()],
-			params: params.map(params_to_wire).flatten(),
+			params: params.and_then(params_to_wire),
 		};
 
 		let response = self.send_query(&request).await?;
@@ -299,7 +299,7 @@ impl HttpClient {
 	) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			statements: statements.into_iter().map(String::from).collect(),
-			params: params.map(params_to_wire).flatten(),
+			params: params.and_then(params_to_wire),
 		};
 
 		let response = self.send_command(&request).await?;
@@ -314,7 +314,7 @@ impl HttpClient {
 	pub async fn query_batch(&self, statements: Vec<&str>, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: statements.into_iter().map(String::from).collect(),
-			params: params.map(params_to_wire).flatten(),
+			params: params.and_then(params_to_wire),
 		};
 
 		let response = self.send_query(&request).await?;
@@ -380,12 +380,12 @@ impl HttpClient {
 				message: http_err.error,
 				..Default::default()
 			});
-			return Error(diag);
+			return Error(Box::new(diag));
 		}
 
 		// Try parsing as diagnostic error response
 		if let Ok(err_response) = serde_json::from_str::<ErrResponse>(body) {
-			return Error(err_response.diagnostic);
+			return Error(Box::new(err_response.diagnostic));
 		}
 
 		// Fallback: return raw response as error

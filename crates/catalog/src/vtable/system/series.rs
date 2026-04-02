@@ -28,6 +28,12 @@ pub struct SystemSeries {
 	exhausted: bool,
 }
 
+impl Default for SystemSeries {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemSeries {
 	pub fn new() -> Self {
 		Self {

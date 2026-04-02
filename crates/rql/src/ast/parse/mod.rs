@@ -236,10 +236,10 @@ impl<'bump> Parser<'bump> {
 			}
 
 			// Check if we hit a semicolon - if so, stop but don't consume it
-			if let Ok(current) = self.current() {
-				if current.is_separator(Separator::Semicolon) {
-					break;
-				}
+			if let Ok(current) = self.current()
+				&& current.is_separator(Separator::Semicolon)
+			{
+				break;
 			}
 
 			nodes.push(self.parse_node(Precedence::None)?);
@@ -356,22 +356,15 @@ impl<'bump> Parser<'bump> {
 							left = self.parse_sumtype_constructor(infix)?;
 							continue;
 						}
-						if infix.right.is_identifier() {
-							if let Ast::Infix(inner) = infix.left.as_ref() {
-								if matches!(
-									inner.operator,
-									InfixOperator::AccessTable(_)
-										| InfixOperator::AccessNamespace(_)
-								) && inner.left.is_identifier() && inner
-									.right
-									.is_identifier()
-								{
-									left = self.parse_sumtype_unit_constructor(
-										infix,
-									)?;
-									continue;
-								}
-							}
+						if infix.right.is_identifier()
+							&& let Ast::Infix(inner) = infix.left.as_ref() && matches!(
+							inner.operator,
+							InfixOperator::AccessTable(_)
+								| InfixOperator::AccessNamespace(_)
+						) && inner.left.is_identifier() && inner.right.is_identifier()
+						{
+							left = self.parse_sumtype_unit_constructor(infix)?;
+							continue;
 						}
 					}
 					left = Ast::Infix(infix);
@@ -514,16 +507,16 @@ impl<'bump> Parser<'bump> {
 			// Use specific error for identifier expectations to
 			// match test format
 			if let TokenKind::Identifier = expected {
-				return Err(AstError::ExpectedIdentifier {
+				Err(AstError::ExpectedIdentifier {
 					fragment: got.fragment.to_owned(),
 				}
-				.into());
+				.into())
 			} else {
-				return Err(AstError::UnexpectedToken {
+				Err(AstError::UnexpectedToken {
 					expected: format!("{:?}", expected),
 					fragment: got.fragment.to_owned(),
 				}
-				.into());
+				.into())
 			}
 		}
 	}
@@ -717,10 +710,10 @@ impl<'bump> Parser<'bump> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			// Break on keyword before parsing next expression
-			if let Some(kw) = break_on {
-				if !self.is_eof() && self.current()?.is_keyword(kw) {
-					break;
-				}
+			if let Some(kw) = break_on
+				&& !self.is_eof() && self.current()?.is_keyword(kw)
+			{
+				break;
 			}
 
 			if allow_colon_alias {
@@ -839,19 +832,19 @@ impl<'bump> Parser<'bump> {
 		let mut expression = self.parse_node(Precedence::None)?;
 
 		// Detect simplified struct variant syntax: `Identifier { ... }`
-		if let Ast::Identifier(ref ident) = expression {
-			if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
-				let token = ident.token;
-				let variant_name = ident.token.fragment;
-				let columns = self.parse_inline()?;
-				expression = Ast::SumTypeConstructor(AstSumTypeConstructor {
-					token,
-					namespace: variant_name,
-					sumtype_name: variant_name,
-					variant_name,
-					columns,
-				});
-			}
+		if let Ast::Identifier(ref ident) = expression
+			&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
+		{
+			let token = ident.token;
+			let variant_name = ident.token.fragment;
+			let columns = self.parse_inline()?;
+			expression = Ast::SumTypeConstructor(AstSumTypeConstructor {
+				token,
+				namespace: variant_name,
+				sumtype_name: variant_name,
+				variant_name,
+				columns,
+			});
 		}
 
 		// Return as "expression AS key"

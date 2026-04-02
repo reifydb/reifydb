@@ -16,17 +16,17 @@ impl CatalogStore {
 		// Collect table IDs first, then fetch details (to avoid holding stream borrow)
 		let mut table_ids = Vec::new();
 		{
-			let mut stream = rx.range(TableKey::full_scan(), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = rx.range(TableKey::full_scan(), 1024)?;
+			for entry in stream {
 				let entry = entry?;
-				if let Some(key) = Key::decode(&entry.key) {
-					if let Key::Table(table_key) = key {
-						let table_id = table_key.table;
-						let namespace_id =
-							NamespaceId(table::SHAPE.get_u64(&entry.row, table::NAMESPACE));
-						let name = table::SHAPE.get_utf8(&entry.row, table::NAME).to_string();
-						table_ids.push((table_id, namespace_id, name));
-					}
+				if let Some(key) = Key::decode(&entry.key)
+					&& let Key::Table(table_key) = key
+				{
+					let table_id = table_key.table;
+					let namespace_id =
+						NamespaceId(table::SHAPE.get_u64(&entry.row, table::NAMESPACE));
+					let name = table::SHAPE.get_utf8(&entry.row, table::NAME).to_string();
+					table_ids.push((table_id, namespace_id, name));
 				}
 			}
 		}

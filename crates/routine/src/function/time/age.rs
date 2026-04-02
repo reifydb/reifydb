@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TimeAge;
 
+impl Default for TimeAge {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TimeAge {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for TimeAge {
 			});
 		}
 
-		let col1 = columns.get(0).unwrap();
+		let col1 = columns.first().unwrap();
 		let col2 = columns.get(1).unwrap();
 
 		match (col1.data(), col2.data()) {

@@ -134,13 +134,8 @@ impl RingBufferOperations for CommandTransaction {
 
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
 
-		if pre.is_some() {
-			self.track_flow_change(build_ringbuffer_update_change(
-				ringbuffer,
-				row_number,
-				pre.as_ref().unwrap(),
-				&row,
-			));
+		if let Some(pre_row) = pre.as_ref() {
+			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &row));
 		} else {
 			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &row));
 		}
@@ -218,13 +213,8 @@ impl RingBufferOperations for AdminTransaction {
 
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, row_number, &row)?;
 
-		if pre.is_some() {
-			self.track_flow_change(build_ringbuffer_update_change(
-				ringbuffer,
-				row_number,
-				pre.as_ref().unwrap(),
-				&row,
-			));
+		if let Some(pre_row) = pre.as_ref() {
+			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &row));
 		} else {
 			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &row));
 		}

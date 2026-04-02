@@ -9,9 +9,9 @@ use crate::{CatalogStore, Result, store::identity::convert_identity};
 impl CatalogStore {
 	pub(crate) fn list_all_identities(rx: &mut Transaction<'_>) -> Result<Vec<Identity>> {
 		let mut result = Vec::new();
-		let mut stream = rx.range(IdentityKey::full_scan(), 1024)?;
+		let stream = rx.range(IdentityKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			result.push(convert_identity(multi));
 		}

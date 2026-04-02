@@ -26,6 +26,7 @@ pub mod primary_key;
 pub mod procedure;
 pub mod resolve;
 pub mod ringbuffer;
+pub mod row_shape;
 pub mod sequence;
 pub mod series;
 pub mod shape;
@@ -40,23 +41,21 @@ pub mod vtable;
 
 use reifydb_core::config::SystemConfig;
 
-use crate::{materialized::MaterializedCatalog, shape::RowShapeRegistry};
+use crate::materialized::MaterializedCatalog;
 
 #[derive(Debug, Clone)]
 pub struct Catalog {
 	pub materialized: MaterializedCatalog,
-	pub shape: RowShapeRegistry,
 }
 
 impl Catalog {
-	pub fn new(materialized: MaterializedCatalog, shape: RowShapeRegistry) -> Self {
+	pub fn new(materialized: MaterializedCatalog) -> Self {
 		Self {
 			materialized,
-			shape,
 		}
 	}
 
 	pub fn testing() -> Self {
-		Self::new(MaterializedCatalog::new(SystemConfig::new()), RowShapeRegistry::testing())
+		Self::new(MaterializedCatalog::new(SystemConfig::new()))
 	}
 }

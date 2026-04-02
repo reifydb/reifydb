@@ -54,10 +54,10 @@ impl TransactionalSubscriptionChanges for AdminTransaction {
 				if subscription.id == id {
 					return Some(subscription);
 				}
-			} else if let Some(subscription) = &change.pre {
-				if subscription.id == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(subscription) = &change.pre
+				&& subscription.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

@@ -14,18 +14,13 @@ use crate::{
 };
 
 /// Direction for counter increment/decrement
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CounterDirection {
 	/// Count upwards: 1, 2, 3, ...
+	#[default]
 	Ascending,
 	/// Count downwards: MAX, MAX-1, MAX-2, ...
 	Descending,
-}
-
-impl Default for CounterDirection {
-	fn default() -> Self {
-		CounterDirection::Ascending
-	}
 }
 
 pub struct Counter {

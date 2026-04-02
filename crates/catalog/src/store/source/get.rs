@@ -13,10 +13,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn get_source(rx: &mut Transaction<'_>, source: SourceId) -> Result<Source> {
 		CatalogStore::find_source(rx, source)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Source with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				source
-			))
+			)))
 		})
 	}
 }

@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DurationGetNanos;
 
+impl Default for DurationGetNanos {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DurationGetNanos {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DurationGetNanos {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Duration(container) => {

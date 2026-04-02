@@ -83,7 +83,7 @@ impl CatalogStore {
 			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
 		}
 
-		Ok(Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)?)
+		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
 	}
 
 	fn store_ringbuffer(
@@ -99,7 +99,7 @@ impl CatalogStore {
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::CAPACITY, to_create.capacity);
 		// Initialize with no primary key
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
-		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, &to_create.partition_by.join(","));
+		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, to_create.partition_by.join(","));
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 

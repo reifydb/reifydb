@@ -23,6 +23,12 @@ pub struct Sum {
 	input_type: Option<Type>,
 }
 
+impl Default for Sum {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Sum {
 	pub fn new() -> Self {
 		Self {
@@ -121,11 +127,11 @@ impl AggregateFunction for Sum {
 					let mut sum = Int::zero();
 					let mut has_value = false;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								sum = Int(sum.0 + &val.0);
-								has_value = true;
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							sum = Int(sum.0 + &val.0);
+							has_value = true;
 						}
 					}
 					if has_value {
@@ -144,11 +150,11 @@ impl AggregateFunction for Sum {
 					let mut sum = Uint::zero();
 					let mut has_value = false;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								sum = Uint(sum.0 + &val.0);
-								has_value = true;
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							sum = Uint(sum.0 + &val.0);
+							has_value = true;
 						}
 					}
 					if has_value {
@@ -167,11 +173,11 @@ impl AggregateFunction for Sum {
 					let mut sum = Decimal::zero();
 					let mut has_value = false;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								sum = Decimal(sum.0 + &val.0);
-								has_value = true;
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							sum = Decimal(sum.0 + &val.0);
+							has_value = true;
 						}
 					}
 					if has_value {

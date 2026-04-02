@@ -1688,16 +1688,13 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: both sides target same remote
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right)
+						(&left, &right) && l.address == r.address
 					{
-						if l.address == r.address {
-							let mut pushed = l.clone();
-							pushed.remote_rql =
-								format!("{} | {}", pushed.remote_rql, join.rql);
-							pushed.variables.extend(r.variables.iter().cloned());
-							stack.push(PhysicalPlan::RemoteScan(pushed));
-							continue;
-						}
+						let mut pushed = l.clone();
+						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
+						pushed.variables.extend(r.variables.iter().cloned());
+						stack.push(PhysicalPlan::RemoteScan(pushed));
+						continue;
 					}
 
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
@@ -1715,16 +1712,13 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: both sides target same remote
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right)
+						(&left, &right) && l.address == r.address
 					{
-						if l.address == r.address {
-							let mut pushed = l.clone();
-							pushed.remote_rql =
-								format!("{} | {}", pushed.remote_rql, join.rql);
-							pushed.variables.extend(r.variables.iter().cloned());
-							stack.push(PhysicalPlan::RemoteScan(pushed));
-							continue;
-						}
+						let mut pushed = l.clone();
+						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
+						pushed.variables.extend(r.variables.iter().cloned());
+						stack.push(PhysicalPlan::RemoteScan(pushed));
+						continue;
 					}
 
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
@@ -1742,16 +1736,13 @@ impl<'bump> Compiler<'bump> {
 
 					// Push-down: both sides target same remote
 					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right)
+						(&left, &right) && l.address == r.address
 					{
-						if l.address == r.address {
-							let mut pushed = l.clone();
-							pushed.remote_rql =
-								format!("{} | {}", pushed.remote_rql, join.rql);
-							pushed.variables.extend(r.variables.iter().cloned());
-							stack.push(PhysicalPlan::RemoteScan(pushed));
-							continue;
-						}
+						let mut pushed = l.clone();
+						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
+						pushed.variables.extend(r.variables.iter().cloned());
+						stack.push(PhysicalPlan::RemoteScan(pushed));
+						continue;
 					}
 
 					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
@@ -2441,17 +2432,17 @@ fn try_remote_push_down_with_vars<'a>(
 	rql_suffix: impl FnOnce() -> Option<String>,
 	variables: Vec<String>,
 ) -> Option<PhysicalPlan<'a>> {
-	if let PhysicalPlan::RemoteScan(remote) = input {
-		if let Some(suffix) = rql_suffix() {
-			let mut pushed = remote.clone();
-			pushed.remote_rql = format!("{} | {}", pushed.remote_rql, suffix);
-			for var in variables {
-				if !pushed.variables.contains(&var) {
-					pushed.variables.push(var);
-				}
+	if let PhysicalPlan::RemoteScan(remote) = input
+		&& let Some(suffix) = rql_suffix()
+	{
+		let mut pushed = remote.clone();
+		pushed.remote_rql = format!("{} | {}", pushed.remote_rql, suffix);
+		for var in variables {
+			if !pushed.variables.contains(&var) {
+				pushed.variables.push(var);
 			}
-			return Some(PhysicalPlan::RemoteScan(pushed));
 		}
+		return Some(PhysicalPlan::RemoteScan(pushed));
 	}
 	None
 }

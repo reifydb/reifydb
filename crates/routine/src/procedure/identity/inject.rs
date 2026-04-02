@@ -18,6 +18,12 @@ use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureErr
 /// the VM intercepts this result and updates its identity accordingly.
 pub struct IdentityInject;
 
+impl Default for IdentityInject {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl IdentityInject {
 	pub fn new() -> Self {
 		Self

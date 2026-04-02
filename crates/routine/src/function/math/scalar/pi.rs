@@ -14,6 +14,12 @@ use crate::function::{
 
 pub struct Pi;
 
+impl Default for Pi {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Pi {
 	pub fn new() -> Self {
 		Self

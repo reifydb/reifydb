@@ -53,9 +53,8 @@ impl<'bump> Compiler<'bump> {
 				let mut auto_increment = false;
 				let dictionary_id = None;
 				for property in &column.properties {
-					match property {
-						AstColumnProperty::AutoIncrement => auto_increment = true,
-						_ => {}
+					if let AstColumnProperty::AutoIncrement = property {
+						auto_increment = true
 					}
 				}
 

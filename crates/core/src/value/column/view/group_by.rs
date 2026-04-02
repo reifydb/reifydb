@@ -26,7 +26,7 @@ impl Columns {
 				.into();
 				err
 			})?;
-			key_columns.push(&column.data());
+			key_columns.push(column.data());
 		}
 
 		let mut result = GroupByView::new();

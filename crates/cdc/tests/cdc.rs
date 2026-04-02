@@ -691,7 +691,7 @@ impl Clone for TestConsumer {
 impl CdcConsume for TestConsumer {
 	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_type::Result<()>) + Send>) {
 		if self.should_fail.load(Ordering::SeqCst) {
-			(reply)(Err(Error(Diagnostic {
+			(reply)(Err(Error(Box::new(Diagnostic {
 				code: "TEST_ERROR".to_string(),
 				statement: None,
 				message: "Test failure".to_string(),
@@ -702,7 +702,7 @@ impl CdcConsume for TestConsumer {
 				notes: vec![],
 				cause: None,
 				operator_chain: None,
-			})));
+			}))));
 			return;
 		}
 

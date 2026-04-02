@@ -121,6 +121,7 @@ check-code-quality:
 	@./scripts/check-inline-qualifications.sh
 	@./scripts/check-license-headers.sh
 	@./scripts/check-section-comments.sh
+	@cargo clippy --release -- -D warnings
 
 .PHONY: check
 check:

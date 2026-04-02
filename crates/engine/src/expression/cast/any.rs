@@ -259,7 +259,7 @@ pub fn from_any(
 					}
 					ColumnData::DictionaryId(c) => {
 						if c.is_defined(0) {
-							result.push(c.get(0).unwrap().clone());
+							result.push(c.get(0).unwrap());
 						} else {
 							result.push_none();
 						}

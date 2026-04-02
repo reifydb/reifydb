@@ -57,19 +57,15 @@ impl<'bump> Parser<'bump> {
 				Operator::And => Ok(InfixOperator::And(token)),
 				Operator::Or => Ok(InfixOperator::Or(token)),
 				Operator::Xor => Ok(InfixOperator::Xor(token)),
-				_ => {
-					return Err(AstError::UnsupportedToken {
-						fragment: token.fragment.to_owned(),
-					}
-					.into());
-				}
-			},
-			_ => {
-				return Err(AstError::UnsupportedToken {
+				_ => Err(AstError::UnsupportedToken {
 					fragment: token.fragment.to_owned(),
 				}
-				.into());
+				.into()),
+			},
+			_ => Err(AstError::UnsupportedToken {
+				fragment: token.fragment.to_owned(),
 			}
+			.into()),
 		}
 	}
 }

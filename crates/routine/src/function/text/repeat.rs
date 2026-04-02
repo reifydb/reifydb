@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextRepeat;
 
+impl Default for TextRepeat {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextRepeat {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextRepeat {
 			});
 		}
 
-		let str_col = columns.get(0).unwrap();
+		let str_col = columns.first().unwrap();
 		let count_col = columns.get(1).unwrap();
 
 		match str_col.data() {

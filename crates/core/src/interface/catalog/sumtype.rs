@@ -8,16 +8,12 @@ use crate::interface::catalog::id::NamespaceId;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SumTypeKind {
+	#[default]
 	Enum = 0,
 	Event = 1,
 	Tag = 2,
-}
-
-impl Default for SumTypeKind {
-	fn default() -> Self {
-		SumTypeKind::Enum
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -173,7 +173,7 @@ impl<S: Storage> BlobContainer<S> {
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<&Blob>> + '_ {
-		self.data.iter().map(|v| Some(v))
+		self.data.iter().map(Some)
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {

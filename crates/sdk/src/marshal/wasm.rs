@@ -7,7 +7,7 @@
 //! convert between `Columns` and a flat `Vec<u8>` using u32 offsets (no pointers),
 //! suitable for passing through WASM linear memory.
 
-use std::{mem::size_of, ptr, slice, str};
+use std::{mem, mem::size_of, ptr, slice, str};
 
 use postcard::{from_bytes, to_allocvec};
 use reifydb_abi::data::{
@@ -234,7 +234,7 @@ fn marshal_bitvec_to_buf(buf: &mut Vec<u8>, bitvec: &BitVec) -> (u32, u32) {
 		return (0, 0);
 	}
 
-	let byte_count = (len + 7) / 8;
+	let byte_count = len.div_ceil(8);
 	let offset = buf.len() as u32;
 
 	// Zero-initialize
@@ -273,65 +273,65 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 			if len == 0 {
 				return (0, 0, 0, 0);
 			}
-			let byte_count = (len + 7) / 8;
+			let byte_count = len.div_ceil(8);
 			let offset = buf.len() as u32;
 			buf.resize(buf.len() + byte_count, 0);
 			let start = offset as usize;
 			for i in 0..len {
-				if let Some(val) = container.get(i) {
-					if val {
-						buf[start + i / 8] |= 1 << (i % 8);
-					}
+				if let Some(val) = container.get(i)
+					&& val
+				{
+					buf[start + i / 8] |= 1 << (i % 8);
 				}
 			}
 			(offset, byte_count as u32, 0, 0)
 		}
 
-		ColumnData::Float4(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Float8(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Int1(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Int2(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Int4(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Int8(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Int16(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Uint1(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Uint2(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Uint4(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Uint8(container) => marshal_numeric_to_buf(buf, &**container),
-		ColumnData::Uint16(container) => marshal_numeric_to_buf(buf, &**container),
+		ColumnData::Float4(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Float8(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Int1(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Int2(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Int4(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Int8(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Int16(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Uint1(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Uint2(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Uint4(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Uint8(container) => marshal_numeric_to_buf(buf, container),
+		ColumnData::Uint16(container) => marshal_numeric_to_buf(buf, container),
 
 		ColumnData::Date(container) => {
-			let dates: &[Date] = &**container;
+			let dates: &[Date] = container;
 			let encoded: Vec<i32> = dates.iter().map(|d| d.to_days_since_epoch()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnData::DateTime(container) => {
-			let datetimes: &[DateTime] = &**container;
+			let datetimes: &[DateTime] = container;
 			let encoded: Vec<i64> = datetimes.iter().map(|dt| dt.timestamp()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnData::Time(container) => {
-			let times: &[Time] = &**container;
+			let times: &[Time] = container;
 			let encoded: Vec<u64> = times.iter().map(|t| t.to_nanos_since_midnight()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnData::Duration(container) => {
-			let durations: &[Duration] = &**container;
+			let durations: &[Duration] = container;
 			marshal_serialized_to_buf(buf, durations)
 		}
 
 		ColumnData::IdentityId(container) => {
-			let ids: &[IdentityId] = &**container;
+			let ids: &[IdentityId] = container;
 			let bytes: Vec<u8> = ids.iter().flat_map(|id| id.0.as_bytes().iter().copied()).collect();
 			marshal_raw_bytes_to_buf(buf, &bytes)
 		}
 		ColumnData::Uuid4(container) => {
-			let uuids: &[Uuid4] = &**container;
+			let uuids: &[Uuid4] = container;
 			let bytes: Vec<u8> = uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
 			marshal_raw_bytes_to_buf(buf, &bytes)
 		}
 		ColumnData::Uuid7(container) => {
-			let uuids: &[Uuid7] = &**container;
+			let uuids: &[Uuid7] = container;
 			let bytes: Vec<u8> = uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
 			marshal_raw_bytes_to_buf(buf, &bytes)
 		}
@@ -340,14 +340,14 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 			container,
 			..
 		} => {
-			let strings: &[String] = &**container;
+			let strings: &[String] = container;
 			marshal_strings_to_buf(buf, strings)
 		}
 		ColumnData::Blob {
 			container,
 			..
 		} => {
-			let blobs: &[Blob] = &**container;
+			let blobs: &[Blob] = container;
 			marshal_blobs_to_buf(buf, blobs)
 		}
 
@@ -355,21 +355,21 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 			container,
 			..
 		} => {
-			let values: &[Int] = &**container;
+			let values: &[Int] = container;
 			marshal_serialized_to_buf(buf, values)
 		}
 		ColumnData::Uint {
 			container,
 			..
 		} => {
-			let values: &[Uint] = &**container;
+			let values: &[Uint] = container;
 			marshal_serialized_to_buf(buf, values)
 		}
 		ColumnData::Decimal {
 			container,
 			..
 		} => {
-			let values: &[Decimal] = &**container;
+			let values: &[Decimal] = container;
 			marshal_serialized_to_buf(buf, values)
 		}
 		ColumnData::Any(container) => {
@@ -399,7 +399,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnData) -> (u3
 
 /// Marshal a numeric slice into buf. Returns (data_offset, data_len, 0, 0).
 fn marshal_numeric_to_buf<T: Copy>(buf: &mut Vec<u8>, slice: &[T]) -> (u32, u32, u32, u32) {
-	let byte_len = slice.len() * size_of::<T>();
+	let byte_len = mem::size_of_val(slice);
 	if byte_len == 0 {
 		return (0, 0, 0, 0);
 	}
@@ -464,7 +464,7 @@ fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u
 	let data_len = data.len() as u32;
 
 	let offsets_offset = buf.len() as u32;
-	let offsets_byte_len = offsets.len() * size_of::<u64>();
+	let offsets_byte_len = mem::size_of_val(offsets);
 	let src = offsets.as_ptr() as *const u8;
 	buf.extend_from_slice(unsafe { slice::from_raw_parts(src, offsets_byte_len) });
 	let offsets_len = offsets_byte_len as u32;

@@ -75,7 +75,7 @@ impl CatalogStore {
 		Self::insert_series_columns(txn, series_id, &to_create)?;
 		Self::initialize_series_metadata(txn, series_id)?;
 
-		Ok(Self::get_series(&mut Transaction::Admin(&mut *txn), series_id)?)
+		Self::get_series(&mut Transaction::Admin(&mut *txn), series_id)
 	}
 
 	fn store_series(

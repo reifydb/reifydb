@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct Max;
 
+impl Default for Max {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Max {
 	pub fn new() -> Self {
 		Self
@@ -36,7 +42,7 @@ impl ScalarFunction for Max {
 		}
 
 		// For max function, we need to find the maximum value across all columns for each row
-		let first_column = columns.get(0).unwrap();
+		let first_column = columns.first().unwrap();
 
 		match first_column.data() {
 			ColumnData::Int1(_) => {
@@ -48,13 +54,13 @@ impl ScalarFunction for Max {
 
 					// Check all columns for this row
 					for column in columns.iter() {
-						if let ColumnData::Int1(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Int1(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -80,13 +86,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<i16> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Int2(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Int2(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -112,13 +118,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<i32> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Int4(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Int4(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -144,13 +150,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<i64> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Int8(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Int8(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -176,13 +182,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<i128> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Int16(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Int16(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -208,13 +214,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<u8> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Uint1(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Uint1(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -240,13 +246,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<u16> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Uint2(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Uint2(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -272,13 +278,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<u32> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Uint4(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Uint4(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -304,13 +310,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<u64> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Uint8(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Uint8(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -336,13 +342,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<u128> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Uint16(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Uint16(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -368,13 +374,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<f32> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Float4(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Float4(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -400,13 +406,13 @@ impl ScalarFunction for Max {
 					let mut max_value: Option<f64> = None;
 
 					for column in columns.iter() {
-						if let ColumnData::Float8(container) = column.data() {
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => *value,
-									Some(current_max) => current_max.max(*value),
-								});
-							}
+						if let ColumnData::Float8(container) = column.data()
+							&& let Some(value) = container.get(row_idx)
+						{
+							max_value = Some(match max_value {
+								None => *value,
+								Some(current_max) => current_max.max(*value),
+							});
 						}
 					}
 
@@ -438,20 +444,18 @@ impl ScalarFunction for Max {
 						if let ColumnData::Int {
 							container,
 							..
-						} = column.data()
+						} = column.data() && let Some(value) = container.get(row_idx)
 						{
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => value.clone(),
-									Some(current_max) => {
-										if value > &current_max {
-											value.clone()
-										} else {
-											current_max
-										}
+							max_value = Some(match max_value {
+								None => value.clone(),
+								Some(current_max) => {
+									if value > &current_max {
+										value.clone()
+									} else {
+										current_max
 									}
-								});
-							}
+								}
+							});
 						}
 					}
 
@@ -486,20 +490,18 @@ impl ScalarFunction for Max {
 						if let ColumnData::Uint {
 							container,
 							..
-						} = column.data()
+						} = column.data() && let Some(value) = container.get(row_idx)
 						{
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => value.clone(),
-									Some(current_max) => {
-										if value > &current_max {
-											value.clone()
-										} else {
-											current_max
-										}
+							max_value = Some(match max_value {
+								None => value.clone(),
+								Some(current_max) => {
+									if value > &current_max {
+										value.clone()
+									} else {
+										current_max
 									}
-								});
-							}
+								}
+							});
 						}
 					}
 
@@ -535,20 +537,18 @@ impl ScalarFunction for Max {
 						if let ColumnData::Decimal {
 							container,
 							..
-						} = column.data()
+						} = column.data() && let Some(value) = container.get(row_idx)
 						{
-							if let Some(value) = container.get(row_idx) {
-								max_value = Some(match max_value {
-									None => value.clone(),
-									Some(current_max) => {
-										if value > &current_max {
-											value.clone()
-										} else {
-											current_max
-										}
+							max_value = Some(match max_value {
+								None => value.clone(),
+								Some(current_max) => {
+									if value > &current_max {
+										value.clone()
+									} else {
+										current_max
 									}
-								});
-							}
+								}
+							});
 						}
 					}
 

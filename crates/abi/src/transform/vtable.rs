@@ -21,7 +21,8 @@ pub struct TransformVTableFFI {
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
-	pub transform: extern "C" fn(instance: *mut c_void, input: *const ColumnsFFI, output: *mut ColumnsFFI) -> i32,
+	pub transform:
+		unsafe extern "C" fn(instance: *mut c_void, input: *const ColumnsFFI, output: *mut ColumnsFFI) -> i32,
 
 	/// Destroy a transform instance and free its resources
 	///
@@ -32,5 +33,5 @@ pub struct TransformVTableFFI {
 	/// - The instance pointer must have been created by this transform's create function
 	/// - The instance must not be used after calling destroy
 	/// - This function must be called exactly once per instance
-	pub destroy: extern "C" fn(instance: *mut c_void),
+	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 }

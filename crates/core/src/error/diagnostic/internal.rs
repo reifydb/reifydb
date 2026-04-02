@@ -146,10 +146,10 @@ macro_rules! internal {
 #[macro_export]
 macro_rules! internal_error {
     ($reason:expr) => {
-        reifydb_type::error::Error($crate::internal!($reason))
+        reifydb_type::error::Error(Box::new($crate::internal!($reason)))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        reifydb_type::error::Error($crate::internal!($fmt, $($arg)*))
+        reifydb_type::error::Error(Box::new($crate::internal!($fmt, $($arg)*)))
     };
 }
 

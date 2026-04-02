@@ -46,6 +46,12 @@ impl From<TypeError> for ProcedureError {
 	}
 }
 
+impl From<Box<TypeError>> for ProcedureError {
+	fn from(err: Box<TypeError>) -> Self {
+		ProcedureError::Wrapped(Box::new(Error::from(err)))
+	}
+}
+
 impl ProcedureError {
 	/// Attach procedure name context to Wrapped errors.
 	/// Named variants already carry the procedure name and convert normally.
@@ -54,9 +60,9 @@ impl ProcedureError {
 		match self {
 			ProcedureError::Wrapped(inner) => {
 				let name = procedure.text().to_string();
-				let mut cause = inner.0;
+				let mut cause = *inner.0;
 				cause.with_fragment(procedure.clone());
-				Error(Diagnostic {
+				Error(Box::new(Diagnostic {
 					code: "PROCEDURE_003".to_string(),
 					statement: None,
 					message: format!("Procedure {} execution failed", name),
@@ -67,16 +73,16 @@ impl ProcedureError {
 					notes: vec![],
 					cause: Some(Box::new(cause)),
 					operator_chain: None,
-				})
+				}))
 			}
-			other => Error(other.into_diagnostic()),
+			other => Error(Box::new(other.into_diagnostic())),
 		}
 	}
 }
 
 impl From<ProcedureError> for Error {
 	fn from(err: ProcedureError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -154,7 +160,7 @@ impl IntoDiagnostic for ProcedureError {
 					operator_chain: None,
 				}
 			}
-			ProcedureError::Wrapped(err) => err.0,
+			ProcedureError::Wrapped(err) => *err.0,
 		}
 	}
 }

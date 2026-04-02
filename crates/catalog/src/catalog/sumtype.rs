@@ -132,7 +132,8 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(def) = CatalogStore::find_sumtype(&mut Transaction::Test(t.reborrow()), id)?
+				if let Some(def) =
+					CatalogStore::find_sumtype(&mut Transaction::Test(Box::new(t.reborrow())), id)?
 				{
 					return Ok(Some(def));
 				}
@@ -282,7 +283,7 @@ impl Catalog {
 				}
 
 				if let Some(def) = CatalogStore::find_sumtype_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {

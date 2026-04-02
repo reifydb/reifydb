@@ -134,6 +134,6 @@ pub enum CoreError {
 
 impl From<CoreError> for Error {
 	fn from(err: CoreError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }

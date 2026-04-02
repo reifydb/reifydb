@@ -37,8 +37,8 @@ export default defineConfig({
 
         env: {
             NODE_ENV: 'test',
-            REIFYDB_WS_URL: process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090',
-            REIFYDB_HTTP_URL: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091',
+            REIFYDB_WS_URL: process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090',
+            REIFYDB_HTTP_URL: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091',
             REIFYDB_TOKEN: 'mysecrettoken',
         },
 

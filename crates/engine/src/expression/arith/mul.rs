@@ -31,7 +31,7 @@ pub(crate) fn mul_columns(
 			&left.data(), &right.data();
 			fixed: mul_numeric, arb: mul_numeric_clone (ctx, target, fragment);
 
-			_ => return Err(TypeError::BinaryOperatorNotApplicable {
+			_ => Err(TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Mul,
 				left: left.get_type(),
 				right: right.get_type(),
@@ -41,7 +41,7 @@ pub(crate) fn mul_columns(
 	})
 }
 
-fn mul_numeric<'a, L, R>(
+fn mul_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -73,7 +73,7 @@ where
 	})
 }
 
-fn mul_numeric_clone<'a, L, R>(
+fn mul_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,

@@ -15,52 +15,49 @@ impl CatalogStore {
 
 		let namespace_range = NamespaceKey::full_scan();
 
-		let mut stream = rx.range(namespace_range, 1024)?;
+		let stream = rx.range(namespace_range, 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
-			if let Some(key) = Key::decode(&entry.key) {
-				if let Key::Namespace(namespace_key) = key {
-					let namespace_id = namespace_key.namespace;
+			if let Some(key) = Key::decode(&entry.key)
+				&& let Key::Namespace(namespace_key) = key
+			{
+				let namespace_id = namespace_key.namespace;
 
-					let name = namespace::SHAPE.get_utf8(&entry.row, namespace::NAME).to_string();
-					let parent_id =
-						NamespaceId(namespace::SHAPE.get_u64(&entry.row, namespace::PARENT_ID));
-					let grpc = namespace::SHAPE
-						.try_get_utf8(&entry.row, namespace::GRPC)
+				let name = namespace::SHAPE.get_utf8(&entry.row, namespace::NAME).to_string();
+				let parent_id = NamespaceId(namespace::SHAPE.get_u64(&entry.row, namespace::PARENT_ID));
+				let grpc = namespace::SHAPE
+					.try_get_utf8(&entry.row, namespace::GRPC)
+					.map(|s| s.to_string())
+					.filter(|s| !s.is_empty());
+				let local_name = namespace::SHAPE
+					.try_get_utf8(&entry.row, namespace::LOCAL_NAME)
+					.filter(|s| !s.is_empty())
+					.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
+					.to_string();
+				let namespace = if let Some(address) = grpc {
+					let token = namespace::SHAPE
+						.try_get_utf8(&entry.row, namespace::TOKEN)
 						.map(|s| s.to_string())
 						.filter(|s| !s.is_empty());
-					let local_name = namespace::SHAPE
-						.try_get_utf8(&entry.row, namespace::LOCAL_NAME)
-						.filter(|s| !s.is_empty())
-						.unwrap_or_else(|| {
-							name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name)
-						})
-						.to_string();
-					let namespace = if let Some(address) = grpc {
-						let token = namespace::SHAPE
-							.try_get_utf8(&entry.row, namespace::TOKEN)
-							.map(|s| s.to_string())
-							.filter(|s| !s.is_empty());
-						Namespace::Remote {
-							id: namespace_id,
-							name,
-							local_name,
-							parent_id,
-							address,
-							token,
-						}
-					} else {
-						Namespace::Local {
-							id: namespace_id,
-							name,
-							local_name,
-							parent_id,
-						}
-					};
+					Namespace::Remote {
+						id: namespace_id,
+						name,
+						local_name,
+						parent_id,
+						address,
+						token,
+					}
+				} else {
+					Namespace::Local {
+						id: namespace_id,
+						name,
+						local_name,
+						parent_id,
+					}
+				};
 
-					result.push(namespace);
-				}
+				result.push(namespace);
 			}
 		}
 

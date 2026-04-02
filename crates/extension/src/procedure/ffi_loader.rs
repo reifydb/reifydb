@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#![cfg(reifydb_target = "native")]
-
 //! FFI procedure dynamic library loader
 
 use std::{
@@ -17,7 +15,7 @@ use reifydb_abi::procedure::{
 	descriptor::ProcedureDescriptorFFI,
 	types::{PROCEDURE_MAGIC, ProcedureCreateFnFFI},
 };
-use reifydb_routine::procedure::registry::{Procedures, ProceduresBuilder};
+use reifydb_routine::procedure::registry::{Procedures, ProceduresConfigurator};
 use reifydb_sdk::error::{FFIError, Result as FFIResult};
 
 use super::ffi::NativeProcedureFFI;
@@ -173,8 +171,11 @@ impl Default for ProcedureLoader {
 }
 
 /// Scan a directory for FFI procedure shared libraries and register them
-/// onto an existing `ProceduresBuilder`.
-pub fn register_procedures_from_dir(dir: &Path, mut builder: ProceduresBuilder) -> FFIResult<ProceduresBuilder> {
+/// onto an existing `ProceduresConfigurator`.
+pub fn register_procedures_from_dir(
+	dir: &Path,
+	mut builder: ProceduresConfigurator,
+) -> FFIResult<ProceduresConfigurator> {
 	let loader = ffi_procedure_loader();
 	let mut loader_guard = loader.write().unwrap();
 
@@ -224,5 +225,5 @@ pub fn register_procedures_from_dir(dir: &Path, mut builder: ProceduresBuilder) 
 /// Scan a directory for FFI procedure shared libraries, register them,
 /// and return a `Procedures` registry with factory functions for each.
 pub fn load_procedures_from_dir(dir: &Path) -> FFIResult<Procedures> {
-	Ok(register_procedures_from_dir(dir, Procedures::builder())?.build())
+	Ok(register_procedures_from_dir(dir, Procedures::builder())?.configure())
 }

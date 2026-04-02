@@ -27,37 +27,39 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &MaterializedCatalo
 	let range = TableKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 
-	let mut table_rows = Vec::new();
-	while let Some(entry) = stream.next() {
-		table_rows.push(entry?);
+	let mut tables = Vec::new();
+	for entry in stream.by_ref() {
+		let multi = entry?;
+		let version = multi.version;
+
+		let pk_id = get_table_primary_key_id(&multi);
+		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
+		let table = convert_table(multi, primary_key);
+		tables.push((table, version));
 	}
 	drop(stream);
 
-	for multi in table_rows {
-		let version = multi.version;
-		let pk_id = get_table_primary_key_id(&multi);
-		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let table = convert_table(rx, multi, primary_key)?;
+	for (mut table, version) in tables {
+		table.columns = CatalogStore::list_columns(rx, table.id)?;
 		catalog.set_table(table.id, version, Some(table));
 	}
 
 	Ok(())
 }
 
-fn convert_table(rx: &mut Transaction<'_>, multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<Table> {
+fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Table {
 	let row = multi.row;
 	let id = TableId(table::SHAPE.get_u64(&row, ID));
 	let namespace = NamespaceId(table::SHAPE.get_u64(&row, NAMESPACE));
 	let name = table::SHAPE.get_utf8(&row, NAME).to_string();
-	let columns = CatalogStore::list_columns(rx, id)?;
 
-	Ok(Table {
+	Table {
 		id,
 		name,
 		namespace,
-		columns,
+		columns: vec![],
 		primary_key,
-	})
+	}
 }
 
 fn get_table_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {

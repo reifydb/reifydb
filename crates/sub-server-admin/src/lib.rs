@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 
 //! Admin server subsystem for ReifyDB.
 //!
@@ -49,6 +51,7 @@
 //! ```
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 pub mod assets;
 pub mod config;

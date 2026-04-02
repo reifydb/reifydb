@@ -40,7 +40,7 @@ pub(crate) fn create_transactional_view(
 			]));
 		}
 
-		return_error!(view_already_exists(plan.view.clone(), &plan.namespace.name(), view.name(),));
+		return_error!(view_already_exists(plan.view.clone(), plan.namespace.name(), view.name(),));
 	}
 
 	let storage = create_underlying_primitive(services, txn, &plan)?;

@@ -212,6 +212,12 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 
 pub struct FlowNodeToJson;
 
+impl Default for FlowNodeToJson {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl FlowNodeToJson {
 	pub fn new() -> Self {
 		Self
@@ -231,7 +237,7 @@ impl ScalarFunction for FlowNodeToJson {
 			return Ok(ColumnData::utf8(Vec::<String>::new()));
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Blob {
@@ -247,7 +253,10 @@ impl ScalarFunction for FlowNodeToJson {
 
 						// Deserialize from postcard
 						let node_type: FlowNodeType = from_bytes(bytes).map_err(|e| {
-							Error(internal!("Failed to deserialize FlowNodeType: {}", e))
+							Error(Box::new(internal!(
+								"Failed to deserialize FlowNodeType: {}",
+								e
+							)))
 						})?;
 
 						// Convert to JsonFlowNodeType for clean serialization
@@ -255,10 +264,10 @@ impl ScalarFunction for FlowNodeToJson {
 
 						// Serialize to JSON (untagged - extract inner value only)
 						let json_value = to_value(&json_node_type).map_err(|e| {
-							Error(internal!(
+							Error(Box::new(internal!(
 								"Failed to serialize FlowNodeType to JSON: {}",
 								e
-							))
+							)))
 						})?;
 
 						// Extract the inner object from the tagged enum {"variant_name": {...}}
@@ -277,10 +286,10 @@ impl ScalarFunction for FlowNodeToJson {
 						};
 
 						let json = to_string(&inner_value).map_err(|e| {
-							Error(internal!(
+							Error(Box::new(internal!(
 								"Failed to serialize FlowNodeType to JSON: {}",
 								e
-							))
+							)))
 						})?;
 
 						result_data.push(json);
@@ -291,7 +300,7 @@ impl ScalarFunction for FlowNodeToJson {
 
 				Ok(ColumnData::utf8(result_data))
 			}
-			_ => Err(Error(internal!("flow_node::to_json only supports Blob input")).into()),
+			_ => Err(Error(Box::new(internal!("flow_node::to_json only supports Blob input"))).into()),
 		}
 	}
 

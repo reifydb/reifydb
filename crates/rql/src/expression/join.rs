@@ -102,17 +102,17 @@ impl JoinConditionCompiler {
 		};
 
 		// Check if this is referencing the join alias
-		if let Some(ref alias) = self.alias {
-			if left.token.fragment.text() == alias.text() {
-				// This is a reference to the right side via alias
-				let column = ColumnIdentifier {
-					shape: ColumnShape::Alias(alias.clone()),
-					name: right.token.fragment.to_owned(),
-				};
-				return Ok(Expression::AccessSource(AccessShapeExpression {
-					column,
-				}));
-			}
+		if let Some(ref alias) = self.alias
+			&& left.token.fragment.text() == alias.text()
+		{
+			// This is a reference to the right side via alias
+			let column = ColumnIdentifier {
+				shape: ColumnShape::Alias(alias.clone()),
+				name: right.token.fragment.to_owned(),
+			};
+			return Ok(Expression::AccessSource(AccessShapeExpression {
+				column,
+			}));
 		}
 
 		// Otherwise, this is an error - we don't support table qualification in the new design

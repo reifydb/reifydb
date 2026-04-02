@@ -971,7 +971,7 @@ impl IntoDiagnostic for CatalogError {
 
 impl From<CatalogError> for Error {
 	fn from(err: CatalogError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }
 
@@ -1008,6 +1008,6 @@ impl IntoDiagnostic for CatalogChangeError {
 
 impl From<CatalogChangeError> for Error {
 	fn from(err: CatalogChangeError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }

@@ -57,18 +57,18 @@ impl Duration {
 		}
 	}
 
-	fn normalized(months: i32, days: i32, nanos: i64) -> Result<Self, TypeError> {
+	fn normalized(months: i32, days: i32, nanos: i64) -> Result<Self, Box<TypeError>> {
 		let extra_days = i32::try_from(nanos / NANOS_PER_DAY)
-			.map_err(|_| Self::overflow_err("days overflow during normalization"))?;
+			.map_err(|_| Box::new(Self::overflow_err("days overflow during normalization")))?;
 		let nanos = nanos % NANOS_PER_DAY;
 		let days = days
 			.checked_add(extra_days)
-			.ok_or_else(|| Self::overflow_err("days overflow during normalization"))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("days overflow during normalization")))?;
 
 		// Days and nanos must share the same sign (they are commensurable).
 		// Months may differ in sign from days/nanos (months are variable-length).
 		if (days > 0 && nanos < 0) || (days < 0 && nanos > 0) {
-			return Err(Self::mixed_sign_err(days, nanos));
+			return Err(Box::new(Self::mixed_sign_err(days, nanos)));
 		}
 
 		Ok(Self {
@@ -78,53 +78,57 @@ impl Duration {
 		})
 	}
 
-	pub fn new(months: i32, days: i32, nanos: i64) -> Result<Self, TypeError> {
+	pub fn new(months: i32, days: i32, nanos: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(months, days, nanos)
 	}
 
-	pub fn from_seconds(seconds: i64) -> Result<Self, TypeError> {
+	pub fn from_seconds(seconds: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(0, 0, seconds * 1_000_000_000)
 	}
 
-	pub fn from_milliseconds(milliseconds: i64) -> Result<Self, TypeError> {
+	pub fn from_milliseconds(milliseconds: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(0, 0, milliseconds * 1_000_000)
 	}
 
-	pub fn from_microseconds(microseconds: i64) -> Result<Self, TypeError> {
+	pub fn from_microseconds(microseconds: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(0, 0, microseconds * 1_000)
 	}
 
-	pub fn from_nanoseconds(nanoseconds: i64) -> Result<Self, TypeError> {
+	pub fn from_nanoseconds(nanoseconds: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(0, 0, nanoseconds)
 	}
 
-	pub fn from_minutes(minutes: i64) -> Result<Self, TypeError> {
+	pub fn from_minutes(minutes: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(0, 0, minutes * 60 * 1_000_000_000)
 	}
 
-	pub fn from_hours(hours: i64) -> Result<Self, TypeError> {
+	pub fn from_hours(hours: i64) -> Result<Self, Box<TypeError>> {
 		Self::normalized(0, 0, hours * 60 * 60 * 1_000_000_000)
 	}
 
-	pub fn from_days(days: i64) -> Result<Self, TypeError> {
-		let days = i32::try_from(days).map_err(|_| Self::overflow_err("days value out of i32 range"))?;
+	pub fn from_days(days: i64) -> Result<Self, Box<TypeError>> {
+		let days =
+			i32::try_from(days).map_err(|_| Box::new(Self::overflow_err("days value out of i32 range")))?;
 		Self::normalized(0, days, 0)
 	}
 
-	pub fn from_weeks(weeks: i64) -> Result<Self, TypeError> {
-		let days = weeks.checked_mul(7).ok_or_else(|| Self::overflow_err("weeks overflow"))?;
-		let days = i32::try_from(days).map_err(|_| Self::overflow_err("days value out of i32 range"))?;
+	pub fn from_weeks(weeks: i64) -> Result<Self, Box<TypeError>> {
+		let days = weeks.checked_mul(7).ok_or_else(|| Box::new(Self::overflow_err("weeks overflow")))?;
+		let days =
+			i32::try_from(days).map_err(|_| Box::new(Self::overflow_err("days value out of i32 range")))?;
 		Self::normalized(0, days, 0)
 	}
 
-	pub fn from_months(months: i64) -> Result<Self, TypeError> {
-		let months = i32::try_from(months).map_err(|_| Self::overflow_err("months value out of i32 range"))?;
+	pub fn from_months(months: i64) -> Result<Self, Box<TypeError>> {
+		let months = i32::try_from(months)
+			.map_err(|_| Box::new(Self::overflow_err("months value out of i32 range")))?;
 		Self::normalized(months, 0, 0)
 	}
 
-	pub fn from_years(years: i64) -> Result<Self, TypeError> {
-		let months = years.checked_mul(12).ok_or_else(|| Self::overflow_err("years overflow"))?;
-		let months = i32::try_from(months).map_err(|_| Self::overflow_err("months value out of i32 range"))?;
+	pub fn from_years(years: i64) -> Result<Self, Box<TypeError>> {
+		let months = years.checked_mul(12).ok_or_else(|| Box::new(Self::overflow_err("years overflow")))?;
+		let months = i32::try_from(months)
+			.map_err(|_| Box::new(Self::overflow_err("months value out of i32 range")))?;
 		Self::normalized(months, 0, 0)
 	}
 
@@ -281,35 +285,53 @@ impl Ord for Duration {
 }
 
 impl Duration {
-	pub fn try_add(self, rhs: Self) -> Result<Self, TypeError> {
+	pub fn try_add(self, rhs: Self) -> Result<Self, Box<TypeError>> {
 		let months = self
 			.months
 			.checked_add(rhs.months)
-			.ok_or_else(|| Self::overflow_err("months overflow in add"))?;
-		let days = self.days.checked_add(rhs.days).ok_or_else(|| Self::overflow_err("days overflow in add"))?;
-		let nanos =
-			self.nanos.checked_add(rhs.nanos).ok_or_else(|| Self::overflow_err("nanos overflow in add"))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("months overflow in add")))?;
+		let days = self
+			.days
+			.checked_add(rhs.days)
+			.ok_or_else(|| Box::new(Self::overflow_err("days overflow in add")))?;
+		let nanos = self
+			.nanos
+			.checked_add(rhs.nanos)
+			.ok_or_else(|| Box::new(Self::overflow_err("nanos overflow in add")))?;
 		Self::normalized(months, days, nanos)
 	}
 
-	pub fn try_sub(self, rhs: Self) -> Result<Self, TypeError> {
+	pub fn try_sub(self, rhs: Self) -> Result<Self, Box<TypeError>> {
 		let months = self
 			.months
 			.checked_sub(rhs.months)
-			.ok_or_else(|| Self::overflow_err("months overflow in sub"))?;
-		let days = self.days.checked_sub(rhs.days).ok_or_else(|| Self::overflow_err("days overflow in sub"))?;
-		let nanos =
-			self.nanos.checked_sub(rhs.nanos).ok_or_else(|| Self::overflow_err("nanos overflow in sub"))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("months overflow in sub")))?;
+		let days = self
+			.days
+			.checked_sub(rhs.days)
+			.ok_or_else(|| Box::new(Self::overflow_err("days overflow in sub")))?;
+		let nanos = self
+			.nanos
+			.checked_sub(rhs.nanos)
+			.ok_or_else(|| Box::new(Self::overflow_err("nanos overflow in sub")))?;
 		Self::normalized(months, days, nanos)
 	}
 
-	pub fn try_mul(self, rhs: i64) -> Result<Self, TypeError> {
+	pub fn try_mul(self, rhs: i64) -> Result<Self, Box<TypeError>> {
 		let rhs_i32 = i32::try_from(rhs)
-			.map_err(|_| Self::overflow_err("multiplier out of i32 range for months/days"))?;
-		let months =
-			self.months.checked_mul(rhs_i32).ok_or_else(|| Self::overflow_err("months overflow in mul"))?;
-		let days = self.days.checked_mul(rhs_i32).ok_or_else(|| Self::overflow_err("days overflow in mul"))?;
-		let nanos = self.nanos.checked_mul(rhs).ok_or_else(|| Self::overflow_err("nanos overflow in mul"))?;
+			.map_err(|_| Box::new(Self::overflow_err("multiplier out of i32 range for months/days")))?;
+		let months = self
+			.months
+			.checked_mul(rhs_i32)
+			.ok_or_else(|| Box::new(Self::overflow_err("months overflow in mul")))?;
+		let days = self
+			.days
+			.checked_mul(rhs_i32)
+			.ok_or_else(|| Box::new(Self::overflow_err("days overflow in mul")))?;
+		let nanos = self
+			.nanos
+			.checked_mul(rhs)
+			.ok_or_else(|| Box::new(Self::overflow_err("nanos overflow in mul")))?;
 		Self::normalized(months, days, nanos)
 	}
 }
@@ -407,9 +429,9 @@ pub mod tests {
 	use super::*;
 	use crate::error::TemporalKind;
 
-	fn assert_overflow(result: Result<Duration, TypeError>) {
+	fn assert_overflow(result: Result<Duration, Box<TypeError>>) {
 		let err = result.expect_err("expected DurationOverflow error");
-		match err {
+		match *err {
 			TypeError::Temporal {
 				kind: TemporalKind::DurationOverflow {
 					..
@@ -420,9 +442,9 @@ pub mod tests {
 		}
 	}
 
-	fn assert_mixed_sign(result: Result<Duration, TypeError>, expected_days: i32, expected_nanos: i64) {
+	fn assert_mixed_sign(result: Result<Duration, Box<TypeError>>, expected_days: i32, expected_nanos: i64) {
 		let err = result.expect_err("expected DurationMixedSign error");
-		match err {
+		match *err {
 			TypeError::Temporal {
 				kind: TemporalKind::DurationMixedSign {
 					days,

@@ -110,6 +110,12 @@ macro_rules! process_decimal_column {
 /// Formats bytes using binary units (1024-based: B, KiB, MiB, GiB, TiB, PiB)
 pub struct FormatBytes;
 
+impl Default for FormatBytes {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl FormatBytes {
 	pub fn new() -> Self {
 		Self
@@ -133,7 +139,7 @@ impl ScalarFunction for FormatBytes {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Int1(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),

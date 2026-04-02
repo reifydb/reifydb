@@ -35,19 +35,19 @@ impl<'bump> Parser<'bump> {
 			let mut value_ast = self.parse_node(Precedence::None)?;
 
 			// Detect simplified struct variant syntax: `Identifier { ... }`
-			if let Ast::Identifier(ref ident) = value_ast {
-				if !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly) {
-					let token = ident.token;
-					let variant_name = ident.token.fragment;
-					let columns = self.parse_inline()?;
-					value_ast = Ast::SumTypeConstructor(AstSumTypeConstructor {
-						token,
-						namespace: variant_name,
-						sumtype_name: variant_name,
-						variant_name,
-						columns,
-					});
-				}
+			if let Ast::Identifier(ref ident) = value_ast
+				&& !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly)
+			{
+				let token = ident.token;
+				let variant_name = ident.token.fragment;
+				let columns = self.parse_inline()?;
+				value_ast = Ast::SumTypeConstructor(AstSumTypeConstructor {
+					token,
+					namespace: variant_name,
+					sumtype_name: variant_name,
+					variant_name,
+					columns,
+				});
 			}
 
 			let value = BumpBox::new_in(value_ast, self.bump());

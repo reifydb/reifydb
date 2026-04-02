@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
 describe('Auth Login Tests — WebSocket', () => {
-    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
 
     beforeAll(async () => {
         await waitForDatabase();
@@ -31,7 +31,7 @@ describe('Auth Login Tests — WebSocket', () => {
             expect(result.identity).toBeDefined();
             expect(result.identity.length).toBeGreaterThan(0);
 
-            const frames = await client.query('MAP {v: 42}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await client.query('MAP {v: 42}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(42);
         }, 10000);
 
@@ -65,7 +65,7 @@ describe('Auth Login Tests — WebSocket', () => {
             expect(result.identity).toBeDefined();
             expect(result.identity.length).toBeGreaterThan(0);
 
-            const frames = await client.query('MAP {v: 42}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await client.query('MAP {v: 42}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(42);
         }, 10000);
 
@@ -98,7 +98,7 @@ describe('Auth Login Tests — WebSocket', () => {
             expect(resultA.token).toBeDefined();
 
             // Verify query works as alice
-            const framesA = await client.query('MAP {v: 1}', {}, [Schema.object({v: Schema.number()})]);
+            const framesA = await client.query('MAP {v: 1}', {}, [Shape.object({v: Shape.number()})]);
             expect(framesA[0][0].v).toBe(1);
 
             // Login as bob (replaces alice session)
@@ -107,7 +107,7 @@ describe('Auth Login Tests — WebSocket', () => {
             expect(resultB.token).not.toBe(resultA.token);
 
             // Verify query works as bob
-            const framesB = await client.query('MAP {v: 2}', {}, [Schema.object({v: Schema.number()})]);
+            const framesB = await client.query('MAP {v: 2}', {}, [Shape.object({v: Shape.number()})]);
             expect(framesB[0][0].v).toBe(2);
         }, 10000);
     });
@@ -127,14 +127,14 @@ describe('Auth Login Tests — WebSocket', () => {
             const result = await client.loginWithPassword('alice', 'alice-pass');
             const oldToken = result.token;
 
-            const frames = await client.query('MAP {v: 1}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await client.query('MAP {v: 1}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(1);
 
             await client.logout();
 
             // Verify the old token is revoked server-side
             const client2 = await Client.connect_ws(WS_URL, {timeoutMs: 10000, token: oldToken});
-            await expect(client2.query('MAP {v: 2}', {}, [Schema.object({v: Schema.number()})])).rejects.toThrow();
+            await expect(client2.query('MAP {v: 2}', {}, [Shape.object({v: Shape.number()})])).rejects.toThrow();
             client2.disconnect();
         }, 10000);
 
@@ -164,7 +164,7 @@ describe('Auth Login Tests — WebSocket', () => {
             clientA.disconnect();
 
             // clientB should still work
-            const frames = await clientB.query('MAP {v: 42}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await clientB.query('MAP {v: 42}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(42);
 
             clientB.disconnect();

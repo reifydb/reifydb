@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub type PolicyId = u64;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum PolicyTargetType {
 	Table,
 	Column,

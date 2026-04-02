@@ -47,7 +47,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), 1024)?;
 
 		let mut found_dictionary_id = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let dictionary_name = dictionary_namespace::SHAPE.get_utf8(row, dictionary_namespace::NAME);

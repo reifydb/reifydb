@@ -22,6 +22,12 @@ pub struct SystemTypes {
 	exhausted: bool,
 }
 
+impl Default for SystemTypes {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemTypes {
 	pub fn new() -> Self {
 		Self {

@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct Now;
 
+impl Default for Now {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Now {
 	pub fn new() -> Self {
 		Self {}
@@ -26,7 +32,7 @@ impl ScalarFunction for Now {
 
 		let row_count = ctx.row_count;
 
-		if ctx.columns.len() != 0 {
+		if !ctx.columns.is_empty() {
 			return Err(ScalarFunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,

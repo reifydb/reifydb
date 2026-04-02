@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct Avg {}
 
+impl Default for Avg {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Avg {
 	pub fn new() -> Self {
 		Self {}

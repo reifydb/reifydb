@@ -13,7 +13,7 @@ use super::Pools;
 
 thread_local! {
     /// Thread-local storage for pools instance
-    static THREAD_POOLS: RefCell<Option<Pools>> = RefCell::new(None);
+    static THREAD_POOLS: RefCell<Option<Pools>> = const { RefCell::new(None) };
 }
 
 /// Set the thread-local pools instance for the current thread

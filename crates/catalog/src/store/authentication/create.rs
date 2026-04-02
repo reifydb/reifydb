@@ -31,7 +31,7 @@ impl CatalogStore {
 
 		// Serialize properties as JSON
 		let properties_json = to_string(&properties).map_err(|e| {
-			Error(Diagnostic {
+			Error(Box::new(Diagnostic {
 				code: "CT_020".to_string(),
 				statement: None,
 				message: format!("failed to serialize authentication properties: {}", e),
@@ -42,7 +42,7 @@ impl CatalogStore {
 				notes: vec![],
 				cause: None,
 				operator_chain: None,
-			})
+			}))
 		})?;
 
 		let mut row = SHAPE.allocate();

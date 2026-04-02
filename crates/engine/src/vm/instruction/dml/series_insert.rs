@@ -48,7 +48,7 @@ use crate::{
 };
 
 #[instrument(name = "mutate::series::insert", level = "trace", skip_all)]
-pub(crate) fn insert_series<'a>(
+pub(crate) fn insert_series(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertSeriesNode,
@@ -206,12 +206,12 @@ pub(crate) fn insert_series<'a>(
 			SeriesRowInterceptor::post_insert(txn, &series, &row)?;
 
 			if plan.returning.is_some() {
-				returned_rows.push((RowNumber::from(sequence as u64), row.clone()));
+				returned_rows.push((RowNumber::from(sequence), row.clone()));
 			}
 
 			// Track flow change for transactional/deferred view processing
 			{
-				let row_number = RowNumber::from(sequence as u64);
+				let row_number = RowNumber::from(sequence);
 				let mut cols = Vec::with_capacity(1 + data_columns.len());
 				cols.push(Column {
 					name: Fragment::internal(key_column_name),

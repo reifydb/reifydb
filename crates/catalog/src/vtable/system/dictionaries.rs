@@ -22,6 +22,12 @@ pub struct SystemDictionaries {
 	exhausted: bool,
 }
 
+impl Default for SystemDictionaries {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemDictionaries {
 	pub fn new() -> Self {
 		Self {

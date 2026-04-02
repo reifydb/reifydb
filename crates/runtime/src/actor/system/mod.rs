@@ -23,17 +23,9 @@ pub use native::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
 #[cfg(reifydb_single_threaded)]
 pub use wasm::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ActorConfig {
 	pub mailbox_capacity: Option<usize>,
-}
-
-impl Default for ActorConfig {
-	fn default() -> Self {
-		Self {
-			mailbox_capacity: None,
-		}
-	}
 }
 
 impl ActorConfig {

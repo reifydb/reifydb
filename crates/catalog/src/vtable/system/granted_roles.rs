@@ -22,6 +22,12 @@ pub struct SystemGrantedRoles {
 	exhausted: bool,
 }
 
+impl Default for SystemGrantedRoles {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemGrantedRoles {
 	pub fn new() -> Self {
 		Self {

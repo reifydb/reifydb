@@ -13,7 +13,7 @@ pub fn is_not_equal(l: bool, r: bool) -> bool {
 
 #[inline]
 pub fn is_greater_than(l: bool, r: bool) -> bool {
-	l > r
+	l & !r
 }
 
 #[inline]
@@ -23,7 +23,7 @@ pub fn is_greater_than_equal(l: bool, r: bool) -> bool {
 
 #[inline]
 pub fn is_less_than(l: bool, r: bool) -> bool {
-	l < r
+	!l & r
 }
 
 #[inline]

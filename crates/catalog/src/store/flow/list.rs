@@ -17,37 +17,36 @@ impl CatalogStore {
 	pub(crate) fn list_flows_all(rx: &mut Transaction<'_>) -> Result<Vec<Flow>> {
 		let mut result = Vec::new();
 
-		let mut stream = rx.range(FlowKey::full_scan(), 1024)?;
+		let stream = rx.range(FlowKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
-			if let Some(key) = Key::decode(&entry.key) {
-				if let Key::Flow(flow_key) = key {
-					let flow_id = flow_key.flow;
+			if let Some(key) = Key::decode(&entry.key)
+				&& let Key::Flow(flow_key) = key
+			{
+				let flow_id = flow_key.flow;
 
-					let namespace_id =
-						NamespaceId(flow::SHAPE.get_u64(&entry.row, flow::NAMESPACE));
-					let name = flow::SHAPE.get_utf8(&entry.row, flow::NAME).to_string();
-					let status_u8 = flow::SHAPE.get_u8(&entry.row, flow::STATUS);
-					let status = FlowStatus::from_u8(status_u8);
+				let namespace_id = NamespaceId(flow::SHAPE.get_u64(&entry.row, flow::NAMESPACE));
+				let name = flow::SHAPE.get_utf8(&entry.row, flow::NAME).to_string();
+				let status_u8 = flow::SHAPE.get_u8(&entry.row, flow::STATUS);
+				let status = FlowStatus::from_u8(status_u8);
 
-					let tick_nanos = flow::SHAPE.get_u64(&entry.row, flow::TICK_NANOS);
-					let tick = if tick_nanos > 0 {
-						Some(Duration::from_nanoseconds(tick_nanos as i64)?)
-					} else {
-						None
-					};
+				let tick_nanos = flow::SHAPE.get_u64(&entry.row, flow::TICK_NANOS);
+				let tick = if tick_nanos > 0 {
+					Some(Duration::from_nanoseconds(tick_nanos as i64)?)
+				} else {
+					None
+				};
 
-					let flow = Flow {
-						id: flow_id,
-						namespace: namespace_id,
-						name,
-						status,
-						tick,
-					};
+				let flow = Flow {
+					id: flow_id,
+					namespace: namespace_id,
+					name,
+					status,
+					tick,
+				};
 
-					result.push(flow);
-				}
+				result.push(flow);
 			}
 		}
 

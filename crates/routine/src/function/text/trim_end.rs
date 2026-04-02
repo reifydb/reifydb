@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextTrimEnd;
 
+impl Default for TextTrimEnd {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextTrimEnd {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextTrimEnd {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

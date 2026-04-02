@@ -16,6 +16,12 @@ const SI_UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
 /// Formats bytes using SI/decimal units (1000-based: B, KB, MB, GB, TB, PB)
 pub struct FormatBytesSi;
 
+impl Default for FormatBytesSi {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl FormatBytesSi {
 	pub fn new() -> Self {
 		Self
@@ -39,7 +45,7 @@ impl ScalarFunction for FormatBytesSi {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),

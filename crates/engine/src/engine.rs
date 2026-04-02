@@ -14,7 +14,6 @@ use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	shape::RowShapeRegistry,
 	vtable::{
 		system::flow_operator_store::{SystemFlowOperatorEventListener, SystemFlowOperatorStore},
 		tables::UserVTableDataFunction,
@@ -34,12 +33,9 @@ use reifydb_core::{
 			vtable::{VTable, VTableId},
 		},
 	},
-	util::ioc::IocContainer,
 };
-use reifydb_extension::transform::registry::Transforms;
 use reifydb_metric::metric::MetricReader;
-use reifydb_routine::{function::registry::Functions, procedure::registry::Procedures};
-use reifydb_runtime::{actor::system::ActorSystem, context::RuntimeContext};
+use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
@@ -58,13 +54,11 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::remote::RemoteRegistry;
 use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Trusted, Validated},
 	interceptor::catalog::MaterializedCatalogInterceptor,
-	vm::{Admin, Command, Query, Subscription, executor::Executor},
+	vm::{Admin, Command, Query, Subscription, executor::Executor, services::EngineConfig},
 };
 
 pub struct StandardEngine(Arc<Inner>);
@@ -273,7 +267,7 @@ impl StandardEngine {
 		// Look up namespace by name (use max u64 to get latest version)
 		let ns_def = catalog
 			.find_namespace_by_name(namespace)
-			.ok_or_else(|| Error(namespace_not_found(Fragment::None, namespace)))?;
+			.ok_or_else(|| Error(Box::new(namespace_not_found(Fragment::None, namespace))))?;
 
 		// Allocate a new table ID
 		let table_id = self.executor.virtual_table_registry.allocate_id();
@@ -324,8 +318,8 @@ impl CdcHost for StandardEngine {
 		StandardEngine::wait_for_mark_timeout(self, version, timeout)
 	}
 
-	fn row_shape_registry(&self) -> &RowShapeRegistry {
-		&self.catalog.shape
+	fn materialized_catalog(&self) -> &MaterializedCatalog {
+		&self.catalog.materialized
 	}
 }
 
@@ -361,19 +355,15 @@ impl StandardEngine {
 		event_bus: EventBus,
 		interceptors: InterceptorFactory,
 		catalog: Catalog,
-		runtime_context: RuntimeContext,
-		functions: Functions,
-		procedures: Procedures,
-		transforms: Transforms,
-		ioc: IocContainer,
-		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
+		config: EngineConfig,
 	) -> Self {
 		let flow_operator_store = SystemFlowOperatorStore::new();
 		let listener = SystemFlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);
 
 		// Get the metrics store from IoC to create the stats reader
-		let metrics_store = ioc
+		let metrics_store = config
+			.ioc
 			.resolve::<SingleStore>()
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let stats_reader = MetricReader::new(metrics_store);
@@ -392,18 +382,7 @@ impl StandardEngine {
 			multi,
 			single,
 			event_bus,
-			executor: Executor::new(
-				catalog.clone(),
-				runtime_context,
-				functions,
-				procedures,
-				transforms,
-				flow_operator_store.clone(),
-				stats_reader,
-				ioc,
-				#[cfg(not(target_arch = "wasm32"))]
-				remote_registry,
-			),
+			executor: Executor::new(catalog.clone(), config, flow_operator_store.clone(), stats_reader),
 			interceptors,
 			catalog,
 			flow_operator_store,
@@ -537,7 +516,7 @@ impl StandardEngine {
 
 	pub(crate) fn reject_if_read_only(&self) -> Result<()> {
 		if self.is_read_only() {
-			return Err(Error(read_only_rejection(Fragment::None)));
+			return Err(Error(Box::new(read_only_rejection(Fragment::None))));
 		}
 		Ok(())
 	}

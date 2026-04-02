@@ -46,10 +46,10 @@ impl TransactionalTestChanges for AdminTransaction {
 				if test.id == id {
 					return Some(test);
 				}
-			} else if let Some(test) = &change.pre {
-				if test.id == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(test) = &change.pre
+				&& test.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

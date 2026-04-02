@@ -22,6 +22,12 @@ pub struct SystemTags {
 	exhausted: bool,
 }
 
+impl Default for SystemTags {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemTags {
 	pub fn new() -> Self {
 		Self {

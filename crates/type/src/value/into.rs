@@ -93,7 +93,7 @@ impl IntoValue for u128 {
 
 impl IntoValue for f32 {
 	fn into_value(self) -> Value {
-		OrderedF32::try_from(self).map(|v| Value::Float4(v)).unwrap_or(Value::None {
+		OrderedF32::try_from(self).map(Value::Float4).unwrap_or(Value::None {
 			inner: Type::Float4,
 		})
 	}
@@ -101,7 +101,7 @@ impl IntoValue for f32 {
 
 impl IntoValue for f64 {
 	fn into_value(self) -> Value {
-		OrderedF64::try_from(self).map(|v| Value::Float8(v)).unwrap_or(Value::None {
+		OrderedF64::try_from(self).map(Value::Float8).unwrap_or(Value::None {
 			inner: Type::Float8,
 		})
 	}

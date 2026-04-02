@@ -144,9 +144,7 @@ pub fn encode_primary_key(
 				// supported
 				panic!("Uint columns in primary keys not yet supported");
 			}
-			Type::Decimal {
-				..
-			} => {
+			Type::Decimal => {
 				// Decimal columns in primary keys not yet
 				// supported
 				panic!("Decimal columns in primary keys not yet supported");

@@ -73,6 +73,12 @@ fn to_json_pretty(value: &Value, indent: usize) -> String {
 
 pub struct JsonPretty;
 
+impl Default for JsonPretty {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl JsonPretty {
 	pub fn new() -> Self {
 		Self
@@ -88,7 +94,7 @@ impl ScalarFunction for JsonPretty {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 		let results: Vec<String> =
 			(0..row_count).map(|row| to_json_pretty(&col.data().get_value(row), 0)).collect();
 

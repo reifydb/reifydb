@@ -58,10 +58,10 @@ impl TransactionalMigrationChanges for AdminTransaction {
 				if migration.id == id {
 					return Some(migration);
 				}
-			} else if let Some(migration) = &change.pre {
-				if migration.id == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(migration) = &change.pre
+				&& migration.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

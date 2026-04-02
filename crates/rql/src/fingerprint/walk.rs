@@ -520,15 +520,352 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 
 		Ast::Create(node) => {
 			buf.write_u8(tag::CREATE);
-			buf.write_str(node.token().value());
+			match node {
+				AstCreate::Table(n) => {
+					buf.write_u8(0x01);
+					for ns in &n.table.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.table.name.text());
+					write_column_defs(buf, &n.columns);
+				}
+				AstCreate::Namespace(n) => {
+					buf.write_u8(0x02);
+					for seg in &n.namespace.segments {
+						buf.write_str(seg.text());
+					}
+				}
+				AstCreate::DeferredView(n) => {
+					buf.write_u8(0x03);
+					for ns in &n.view.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.view.name.text());
+					write_column_defs(buf, &n.columns);
+					if let Some(stmt) = &n.as_clause {
+						write_statement(buf, stmt);
+					}
+				}
+				AstCreate::TransactionalView(n) => {
+					buf.write_u8(0x04);
+					for ns in &n.view.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.view.name.text());
+					write_column_defs(buf, &n.columns);
+					if let Some(stmt) = &n.as_clause {
+						write_statement(buf, stmt);
+					}
+				}
+				AstCreate::Series(n) => {
+					buf.write_u8(0x05);
+					for ns in &n.series.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.series.name.text());
+					write_column_defs(buf, &n.columns);
+				}
+				AstCreate::Subscription(n) => {
+					buf.write_u8(0x06);
+					write_column_defs(buf, &n.columns);
+					if let Some(stmt) = &n.as_clause {
+						write_statement(buf, stmt);
+					}
+				}
+				AstCreate::RingBuffer(n) => {
+					buf.write_u8(0x07);
+					for ns in &n.ringbuffer.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.ringbuffer.name.text());
+					write_column_defs(buf, &n.columns);
+				}
+				AstCreate::Dictionary(n) => {
+					buf.write_u8(0x08);
+					for ns in &n.dictionary.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.dictionary.name.text());
+					write_ast_type(buf, &n.value_type);
+					write_ast_type(buf, &n.id_type);
+				}
+				AstCreate::Enum(n) => {
+					buf.write_u8(0x09);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+					write_variants(buf, &n.variants);
+				}
+				AstCreate::Index(n) => {
+					buf.write_u8(0x0A);
+					for ns in &n.index.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.index.table.text());
+					buf.write_str(n.index.name.text());
+				}
+				AstCreate::PrimaryKey(n) => {
+					buf.write_u8(0x0B);
+					for ns in &n.table.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.table.name.text());
+				}
+				AstCreate::ColumnProperty(n) => {
+					buf.write_u8(0x0C);
+					buf.write_str(n.column.name.text());
+				}
+				AstCreate::Procedure(n) => {
+					buf.write_u8(0x0D);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+				}
+				AstCreate::Event(n) => {
+					buf.write_u8(0x0E);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+					write_variants(buf, &n.variants);
+				}
+				AstCreate::Tag(n) => {
+					buf.write_u8(0x0F);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+					write_variants(buf, &n.variants);
+				}
+				AstCreate::Handler(n) => {
+					buf.write_u8(0x10);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+					for ns in &n.on_event.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.on_event.name.text());
+					buf.write_str(n.on_variant.text());
+					fingerprint_ast_slice(buf, &n.body);
+				}
+				AstCreate::Identity(n) => {
+					buf.write_u8(0x11);
+					buf.write_str(n.name.text());
+				}
+				AstCreate::Role(n) => {
+					buf.write_u8(0x12);
+					buf.write_str(n.name.text());
+				}
+				AstCreate::Authentication(n) => {
+					buf.write_u8(0x13);
+					buf.write_str(n.user.text());
+				}
+				AstCreate::Policy(n) => {
+					buf.write_u8(0x14);
+					buf.write_str(n.target_type.as_str());
+					if let Some(name) = &n.name {
+						buf.write_str(name.text());
+					}
+					match &n.scope {
+						AstPolicyScope::Specific(segments) => {
+							buf.write_u8(0x01);
+							for seg in segments {
+								buf.write_str(seg.text());
+							}
+						}
+						AstPolicyScope::NamespaceWide(ns) => {
+							buf.write_u8(0x02);
+							buf.write_str(ns.text());
+						}
+						AstPolicyScope::Global => buf.write_u8(0x03),
+					}
+				}
+				AstCreate::Migration(n) => {
+					buf.write_u8(0x15);
+					buf.write_str(&n.name);
+				}
+				AstCreate::Test(n) => {
+					buf.write_u8(0x16);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+				}
+				AstCreate::Source(n) => {
+					buf.write_u8(0x17);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+					buf.write_str(n.connector.text());
+				}
+				AstCreate::Sink(n) => {
+					buf.write_u8(0x18);
+					for ns in &n.name.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.name.name.text());
+					buf.write_str(n.connector.text());
+				}
+				AstCreate::RemoteNamespace(n) => {
+					buf.write_u8(0x19);
+					for seg in &n.namespace.segments {
+						buf.write_str(seg.text());
+					}
+					buf.write_str(n.grpc.text());
+				}
+			}
 		}
 		Ast::Alter(node) => {
 			buf.write_u8(tag::ALTER);
-			buf.write_str(node.token().value());
+			match node {
+				AstAlter::Sequence(n) => {
+					buf.write_u8(0x01);
+					for ns in &n.sequence.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.sequence.name.text());
+					buf.write_str(n.column.text());
+				}
+				AstAlter::Policy(n) => {
+					buf.write_u8(0x02);
+					buf.write_str(n.target_type.as_str());
+					buf.write_str(n.name.text());
+					match n.action {
+						AstAlterPolicyAction::Enable => buf.write_u8(0x01),
+						AstAlterPolicyAction::Disable => buf.write_u8(0x02),
+					}
+				}
+				AstAlter::Table(n) => {
+					buf.write_u8(0x03);
+					for ns in &n.table.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.table.name.text());
+					match &n.action {
+						AstAlterTableAction::AddColumn {
+							column,
+						} => {
+							buf.write_u8(0x01);
+							buf.write_str(column.name.text());
+							write_ast_type(buf, &column.ty);
+						}
+						AstAlterTableAction::DropColumn {
+							column,
+						} => {
+							buf.write_u8(0x02);
+							buf.write_str(column.text());
+						}
+						AstAlterTableAction::RenameColumn {
+							old_name,
+							new_name,
+						} => {
+							buf.write_u8(0x03);
+							buf.write_str(old_name.text());
+							buf.write_str(new_name.text());
+						}
+					}
+				}
+				AstAlter::RemoteNamespace(n) => {
+					buf.write_u8(0x04);
+					for seg in &n.namespace.segments {
+						buf.write_str(seg.text());
+					}
+					buf.write_str(n.grpc.text());
+				}
+			}
 		}
 		Ast::Drop(node) => {
 			buf.write_u8(tag::DROP);
-			buf.write_str(node.token().value());
+			match node {
+				AstDrop::Table(n) => {
+					buf.write_u8(0x01);
+					for ns in &n.table.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.table.name.text());
+				}
+				AstDrop::View(n) => {
+					buf.write_u8(0x02);
+					for ns in &n.view.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.view.name.text());
+				}
+				AstDrop::RingBuffer(n) => {
+					buf.write_u8(0x03);
+					for ns in &n.ringbuffer.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.ringbuffer.name.text());
+				}
+				AstDrop::Namespace(n) => {
+					buf.write_u8(0x04);
+					for seg in &n.namespace.segments {
+						buf.write_str(seg.text());
+					}
+				}
+				AstDrop::Dictionary(n) => {
+					buf.write_u8(0x05);
+					for ns in &n.dictionary.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.dictionary.name.text());
+				}
+				AstDrop::Enum(n) => {
+					buf.write_u8(0x06);
+					for ns in &n.sumtype.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.sumtype.name.text());
+				}
+				AstDrop::Subscription(n) => {
+					buf.write_u8(0x07);
+					buf.write_str(n.identifier.text());
+				}
+				AstDrop::Series(n) => {
+					buf.write_u8(0x08);
+					for ns in &n.series.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.series.name.text());
+				}
+				AstDrop::Identity(n) => {
+					buf.write_u8(0x09);
+					buf.write_str(n.name.text());
+				}
+				AstDrop::Role(n) => {
+					buf.write_u8(0x0A);
+					buf.write_str(n.name.text());
+				}
+				AstDrop::Authentication(n) => {
+					buf.write_u8(0x0B);
+					buf.write_str(n.user.text());
+				}
+				AstDrop::Policy(n) => {
+					buf.write_u8(0x0C);
+					buf.write_str(n.target_type.as_str());
+					buf.write_str(n.name.text());
+				}
+				AstDrop::Source(n) => {
+					buf.write_u8(0x0D);
+					for ns in &n.source.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.source.name.text());
+				}
+				AstDrop::Sink(n) => {
+					buf.write_u8(0x0E);
+					for ns in &n.sink.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(n.sink.name.text());
+				}
+			}
 		}
 		Ast::Describe(AstDescribe::Query {
 			node,
@@ -537,13 +874,60 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 			buf.write_u8(tag::DESCRIBE);
 			fingerprint_ast(buf, node);
 		}
-		Ast::Grant(_) => buf.write_u8(tag::GRANT),
-		Ast::Revoke(_) => buf.write_u8(tag::REVOKE),
+		Ast::Grant(node) => {
+			buf.write_u8(tag::GRANT);
+			buf.write_str(node.role.text());
+			buf.write_str(node.user.text());
+		}
+		Ast::Revoke(node) => {
+			buf.write_u8(tag::REVOKE);
+			buf.write_str(node.role.text());
+			buf.write_str(node.user.text());
+		}
 		Ast::Identity(_) => buf.write_u8(tag::IDENTITY),
-		Ast::Require(_) => buf.write_u8(tag::REQUIRE),
-		Ast::Migrate(_) => buf.write_u8(tag::MIGRATE),
-		Ast::RollbackMigration(_) => buf.write_u8(tag::ROLLBACK_MIGRATION),
-		Ast::RunTests(_) => buf.write_u8(tag::RUN_TESTS),
+		Ast::Require(node) => {
+			buf.write_u8(tag::REQUIRE);
+			fingerprint_ast(buf, &node.body);
+		}
+		Ast::Migrate(node) => {
+			buf.write_u8(tag::MIGRATE);
+			if let Some(target) = &node.target {
+				buf.write_str(target);
+			}
+		}
+		Ast::RollbackMigration(node) => {
+			buf.write_u8(tag::ROLLBACK_MIGRATION);
+			if let Some(target) = &node.target {
+				buf.write_str(target);
+			}
+		}
+		Ast::RunTests(node) => {
+			buf.write_u8(tag::RUN_TESTS);
+			match node {
+				AstRunTests::All {
+					..
+				} => buf.write_u8(0x01),
+				AstRunTests::Namespace {
+					namespace,
+					..
+				} => {
+					buf.write_u8(0x02);
+					for seg in &namespace.segments {
+						buf.write_str(seg.text());
+					}
+				}
+				AstRunTests::Single {
+					test,
+					..
+				} => {
+					buf.write_u8(0x03);
+					for ns in &test.namespace {
+						buf.write_str(ns.text());
+					}
+					buf.write_str(test.name.text());
+				}
+			}
+		}
 		Ast::Assert(node) => {
 			buf.write_u8(tag::ASSERT);
 			if let Some(n) = &node.node {
@@ -739,5 +1123,49 @@ fn write_optional_returning(buf: &mut FingerprintBuffer, returning: &Option<Vec<
 			fingerprint_ast_slice(buf, nodes);
 		}
 		None => buf.write_u8(0),
+	}
+}
+
+fn write_column_defs(buf: &mut FingerprintBuffer, columns: &[AstColumnToCreate<'_>]) {
+	buf.write_u16(columns.len() as u16);
+	for col in columns {
+		buf.write_str(col.name.text());
+		write_ast_type(buf, &col.ty);
+	}
+}
+
+fn write_ast_type(buf: &mut FingerprintBuffer, ty: &AstType<'_>) {
+	match ty {
+		AstType::Unconstrained(frag) => {
+			buf.write_u8(0x01);
+			buf.write_str(frag.text());
+		}
+		AstType::Constrained {
+			name,
+			..
+		} => {
+			buf.write_u8(0x02);
+			buf.write_str(name.text());
+		}
+		AstType::Optional(inner) => {
+			buf.write_u8(0x03);
+			write_ast_type(buf, inner);
+		}
+		AstType::Qualified {
+			namespace,
+			name,
+		} => {
+			buf.write_u8(0x04);
+			buf.write_str(namespace.text());
+			buf.write_str(name.text());
+		}
+	}
+}
+
+fn write_variants(buf: &mut FingerprintBuffer, variants: &[AstVariant<'_>]) {
+	buf.write_u16(variants.len() as u16);
+	for v in variants {
+		buf.write_str(v.name.text());
+		write_column_defs(buf, &v.columns);
 	}
 }

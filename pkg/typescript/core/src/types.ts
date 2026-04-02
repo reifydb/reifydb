@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {Type, TypeValuePair} from './value';
-import {SchemaNode, InferSchema} from './schema';
+import {ShapeNode, InferShape} from './shape';
 
 export type Params = (TypeValuePair | null)[] | Record<string, TypeValuePair | null>;
 
@@ -98,24 +98,24 @@ export class ReifyError extends Error {
  * Simplified type for inferring frame results to avoid deep instantiation
  * This provides a workaround for TypeScript's limitation with deeply nested types
  */
-export type FrameResults<S extends readonly SchemaNode[]> =
+export type FrameResults<S extends readonly ShapeNode[]> =
     S extends readonly [infer First, ...infer Rest]
-        ? First extends SchemaNode
-            ? Rest extends readonly SchemaNode[]
-                ? [InferSchema<First>[], ...FrameResults<Rest>]
-                : [InferSchema<First>[]]
+        ? First extends ShapeNode
+            ? Rest extends readonly ShapeNode[]
+                ? [InferShape<First>[], ...FrameResults<Rest>]
+                : [InferShape<First>[]]
             : never
         : [];
 
 /**
  * Helper type to extract a single frame result
  */
-export type SingleFrameResult<S extends SchemaNode> = InferSchema<S>[];
+export type SingleFrameResult<S extends ShapeNode> = InferShape<S>[];
 
 /**
  * Type-safe cast helper for frame results
  */
-export function asFrameResults<S extends readonly SchemaNode[]>(
+export function asFrameResults<S extends readonly ShapeNode[]>(
     results: any
 ): FrameResults<S> {
     return results as FrameResults<S>;

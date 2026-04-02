@@ -45,7 +45,7 @@ use crate::{
 };
 
 #[instrument(name = "mutate::series::delete", level = "trace", skip_all)]
-pub(crate) fn delete_series<'a>(
+pub(crate) fn delete_series(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: DeleteSeriesNode,
@@ -119,13 +119,12 @@ pub(crate) fn delete_series<'a>(
 					.unwrap_or(0);
 
 				let variant_tag = if has_tag {
-					columns.iter()
-						.find(|c| c.name().text() == "tag")
-						.map(|c| match c.data().get_value(row_idx) {
+					columns.iter().find(|c| c.name().text() == "tag").and_then(|c| {
+						match c.data().get_value(row_idx) {
 							Value::Uint1(v) => Some(v),
 							_ => None,
-						})
-						.flatten()
+						}
+					})
 				} else {
 					None
 				};
@@ -182,7 +181,7 @@ pub(crate) fn delete_series<'a>(
 					Some(existing) => {
 						let mut cols = Vec::new();
 						for (i, col) in columns.iter().enumerate() {
-							if let Some(existing_col) = existing.iter().nth(i) {
+							if let Some(existing_col) = existing.get(i) {
 								let mut data = ColumnData::with_capacity(
 									col.data().get_type(),
 									existing_col.data().len() + col.data().len(),
@@ -217,7 +216,7 @@ pub(crate) fn delete_series<'a>(
 		let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
 
 		let mut stream = txn.range(range, 4096)?;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let entry = entry?;
 			entries_to_delete.push((entry.key, entry.row));
 		}

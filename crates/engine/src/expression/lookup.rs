@@ -60,10 +60,10 @@ pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Res
 		return extract_column_data(col, ctx);
 	}
 
-	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbols.get(name) {
-		if let Some(col) = scalar_cols.columns.first() {
-			return extract_column_data(col, ctx);
-		}
+	if let Some(Variable::Scalar(scalar_cols)) = ctx.symbols.get(name)
+		&& let Some(col) = scalar_cols.columns.first()
+	{
+		return extract_column_data(col, ctx);
 	}
 
 	Ok(Column::new(name.to_string(), ColumnData::none_typed(Type::Boolean, ctx.row_count)))
@@ -101,25 +101,25 @@ fn extract_column_data_by_type(col: &Column, take: usize, col_type: Type) -> Res
 		Type::Uint4 => extract_typed_column!(col, take, Uint4(n) => n, 0, uint4_with_bitvec),
 		Type::Uint8 => extract_typed_column!(col, take, Uint8(n) => n, 0, uint8_with_bitvec),
 		Type::Uint16 => extract_typed_column!(col, take, Uint16(n) => n, 0, uint16_with_bitvec),
-		Type::Date => extract_typed_column!(col, take, Date(d) => d.clone(), Date::default(), date_with_bitvec),
+		Type::Date => extract_typed_column!(col, take, Date(d) => d, Date::default(), date_with_bitvec),
 		Type::DateTime => {
-			extract_typed_column!(col, take, DateTime(dt) => dt.clone(), DateTime::default(), datetime_with_bitvec)
+			extract_typed_column!(col, take, DateTime(dt) => dt, DateTime::default(), datetime_with_bitvec)
 		}
-		Type::Time => extract_typed_column!(col, take, Time(t) => t.clone(), Time::default(), time_with_bitvec),
+		Type::Time => extract_typed_column!(col, take, Time(t) => t, Time::default(), time_with_bitvec),
 		Type::Duration => {
-			extract_typed_column!(col, take, Duration(i) => i.clone(), Duration::default(), duration_with_bitvec)
+			extract_typed_column!(col, take, Duration(i) => i, Duration::default(), duration_with_bitvec)
 		}
 		Type::IdentityId => {
-			extract_typed_column!(col, take, IdentityId(i) => i.clone(), IdentityId::default(), identity_id_with_bitvec)
+			extract_typed_column!(col, take, IdentityId(i) => i, IdentityId::default(), identity_id_with_bitvec)
 		}
 		Type::Uuid4 => {
-			extract_typed_column!(col, take, Uuid4(i) => i.clone(), Uuid4::default(), uuid4_with_bitvec)
+			extract_typed_column!(col, take, Uuid4(i) => i, Uuid4::default(), uuid4_with_bitvec)
 		}
 		Type::Uuid7 => {
-			extract_typed_column!(col, take, Uuid7(i) => i.clone(), Uuid7::default(), uuid7_with_bitvec)
+			extract_typed_column!(col, take, Uuid7(i) => i, Uuid7::default(), uuid7_with_bitvec)
 		}
 		Type::DictionaryId => {
-			extract_typed_column!(col, take, DictionaryId(i) => i.clone(), DictionaryEntryId::default(), dictionary_id_with_bitvec)
+			extract_typed_column!(col, take, DictionaryId(i) => i, DictionaryEntryId::default(), dictionary_id_with_bitvec)
 		}
 		Type::Blob => {
 			extract_typed_column!(col, take, Blob(b) => b.clone(), Blob::new(vec![]), blob_with_bitvec)

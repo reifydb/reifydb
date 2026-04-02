@@ -8,6 +8,12 @@ use crate::function::{ScalarFunction, ScalarFunctionContext, error::ScalarFuncti
 
 pub struct JsonArray;
 
+impl Default for JsonArray {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl JsonArray {
 	pub fn new() -> Self {
 		Self

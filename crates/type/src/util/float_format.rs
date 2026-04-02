@@ -58,7 +58,7 @@ pub fn format_f32(v: f32) -> String {
 fn count_significant_digits(s: &str) -> usize {
 	let s = s.strip_prefix('-').unwrap_or(s);
 	// Remove exponent part if present
-	let s = if let Some(pos) = s.find(|c| c == 'e' || c == 'E') {
+	let s = if let Some(pos) = s.find(['e', 'E']) {
 		&s[..pos]
 	} else {
 		s

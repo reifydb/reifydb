@@ -53,10 +53,10 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 	services.catalog.drop_view(txn, def)?;
 
 	// Also drop the view's own auto-created flow (if any)
-	if let Some(own_id) = own_flow_id {
-		if let Some(own_flow) = flows.iter().find(|f| f.id == own_id) {
-			services.catalog.drop_flow(txn, own_flow.clone())?;
-		}
+	if let Some(own_id) = own_flow_id
+		&& let Some(own_flow) = flows.iter().find(|f| f.id == own_id)
+	{
+		services.catalog.drop_flow(txn, own_flow.clone())?;
 	}
 
 	Ok(Columns::single_row([

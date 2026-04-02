@@ -48,9 +48,7 @@ pub fn to_number(
 	if data.is_utf8() {
 		return match &target {
 			Type::Float4 | Type::Float8 => text_to_float(data, target, lazy_fragment),
-			Type::Decimal {
-				..
-			} => text_to_decimal(data, target, lazy_fragment),
+			Type::Decimal => text_to_decimal(data, target, lazy_fragment),
 			_ => text_to_integer(data, target, lazy_fragment),
 		};
 	}
@@ -60,12 +58,12 @@ pub fn to_number(
 	}
 
 	let from = data.get_type();
-	return Err(TypeError::UnsupportedCast {
+	Err(TypeError::UnsupportedCast {
 		from,
 		to: target,
 		fragment: lazy_fragment.fragment(),
 	}
-	.into());
+	.into())
 }
 
 fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
@@ -130,9 +128,7 @@ fn boolean_to_number(data: &ColumnData, target: Type, lazy_fragment: impl LazyFr
 						Uint::from_u64(0)
 					})
 				},
-				Type::Decimal {
-					..
-				} => |out: &mut ColumnData, val: bool| {
+				Type::Decimal => |out: &mut ColumnData, val: bool| {
 					let decimal = if val {
 						Decimal::from_i64(1)
 					} else {
@@ -189,9 +185,7 @@ fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFra
 			Type::Uint16 => f32_to_u128_vec(container),
 			Type::Int => f32_to_int_vec(container),
 			Type::Uint => f32_to_uint_vec(container),
-			Type::Decimal {
-				..
-			} => f32_to_decimal_vec(container, target),
+			Type::Decimal => f32_to_decimal_vec(container, target),
 			_ => {
 				let from = data.get_type();
 				Err(TypeError::UnsupportedCast {
@@ -215,9 +209,7 @@ fn float_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFra
 			Type::Uint16 => f64_to_u128_vec(container),
 			Type::Int => f64_to_int_vec(container),
 			Type::Uint => f64_to_uint_vec(container),
-			Type::Decimal {
-				..
-			} => f64_to_decimal_vec(container, target),
+			Type::Decimal => f64_to_decimal_vec(container, target),
 			_ => {
 				let from = data.get_type();
 				Err(TypeError::UnsupportedCast {
@@ -403,9 +395,7 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 								})?;
 							out.push::<Uint>(result);
 						}
-						Type::Decimal {
-							..
-						} => {
+						Type::Decimal => {
 							let target_clone = target.clone();
 							let result = parse_decimal(temp_fragment.clone()).map_err(
 								|mut e| {
@@ -447,7 +437,7 @@ fn text_to_integer(data: &ColumnData, target: Type, lazy_fragment: impl LazyFrag
 	}
 }
 
-fn text_to_float<'a>(column_data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
+fn text_to_float(column_data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
 		..
@@ -511,7 +501,7 @@ fn text_to_float<'a>(column_data: &ColumnData, target: Type, lazy_fragment: impl
 	}
 }
 
-fn text_to_decimal<'a>(column_data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
+fn text_to_decimal(column_data: &ColumnData, target: Type, lazy_fragment: impl LazyFragment) -> Result<ColumnData> {
 	if let ColumnData::Utf8 {
 		container,
 		..
@@ -928,9 +918,7 @@ fn number_to_number(
 					ColumnData::push::<Uint>,
 				);
 			}
-			Type::Decimal {
-				..
-			} => {
+			Type::Decimal => {
 				return convert_vec_clone::<Int, Decimal>(
 					container,
 					ctx,
@@ -1067,9 +1055,7 @@ fn number_to_number(
 					ColumnData::push::<Int>,
 				);
 			}
-			Type::Decimal {
-				..
-			} => {
+			Type::Decimal => {
 				return convert_vec_clone::<Uint, Decimal>(
 					container,
 					ctx,
@@ -1216,9 +1202,7 @@ fn number_to_number(
 					ColumnData::push::<Uint>,
 				);
 			}
-			Type::Decimal {
-				..
-			} => {
+			Type::Decimal => {
 				return convert_vec_clone::<Decimal, Decimal>(
 					container,
 					ctx,
@@ -1240,7 +1224,7 @@ fn number_to_number(
 	.into())
 }
 
-pub(crate) fn convert_vec<'a, From, To>(
+pub(crate) fn convert_vec<From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,
@@ -1267,7 +1251,7 @@ where
 	Ok(out)
 }
 
-pub(crate) fn convert_vec_clone<'a, From, To>(
+pub(crate) fn convert_vec_clone<From, To>(
 	container: &NumberContainer<From>,
 	ctx: impl Convert,
 	lazy_fragment: impl LazyFragment,

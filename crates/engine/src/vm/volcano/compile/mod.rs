@@ -136,7 +136,7 @@ pub(crate) fn compile<'a>(
 						}
 						_ => None,
 					})
-					.expect(&format!("TAKE variable ${} must be a numeric value", name)),
+					.unwrap_or_else(|| panic!("TAKE variable ${} must be a numeric value", name)),
 			};
 			// Optimize: TAKE over SORT becomes TopK
 			if let RqlQueryPlan::Sort(sort_node) = *input {
@@ -200,7 +200,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_number,
 		}) => {
-			let resolved_source = ResolvedShape::from(source);
+			let resolved_source = source;
 			Box::new(
 				RowPointLookupNode::new(resolved_source, row_number, context)
 					.expect("Failed to create RowPointLookupNode"),
@@ -210,7 +210,7 @@ pub(crate) fn compile<'a>(
 			source,
 			row_numbers,
 		}) => {
-			let resolved_source = ResolvedShape::from(source);
+			let resolved_source = source;
 			Box::new(
 				RowListLookupNode::new(resolved_source, row_numbers, context)
 					.expect("Failed to create RowListLookupNode"),
@@ -221,7 +221,7 @@ pub(crate) fn compile<'a>(
 			start,
 			end,
 		}) => {
-			let resolved_source = ResolvedShape::from(source);
+			let resolved_source = source;
 			Box::new(
 				RowRangeScanNode::new(resolved_source, start, end, context)
 					.expect("Failed to create RowRangeScanNode"),

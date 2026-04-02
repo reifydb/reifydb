@@ -18,9 +18,9 @@ impl CatalogStore {
 	pub(crate) fn list_sources_all(rx: &mut Transaction<'_>) -> Result<Vec<Source>> {
 		let mut result = Vec::new();
 
-		let mut stream = rx.range(SourceKey::full_scan(), 1024)?;
+		let stream = rx.range(SourceKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
 			let row = &entry.row;
 

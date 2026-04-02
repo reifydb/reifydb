@@ -17,9 +17,9 @@ impl CatalogStore {
 	}
 
 	pub(crate) fn find_identity_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
-		let mut stream = rx.range(IdentityKey::full_scan(), 1024)?;
+		let stream = rx.range(IdentityKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let identity_name = identity::SHAPE.get_utf8(&multi.row, identity::NAME);
 			if name == identity_name {

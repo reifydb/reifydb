@@ -22,6 +22,12 @@ pub struct SystemPolicies {
 	exhausted: bool,
 }
 
+impl Default for SystemPolicies {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemPolicies {
 	pub fn new() -> Self {
 		Self {

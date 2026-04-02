@@ -23,6 +23,12 @@ pub struct SystemShapeRetentionPolicies {
 	exhausted: bool,
 }
 
+impl Default for SystemShapeRetentionPolicies {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemShapeRetentionPolicies {
 	pub fn new() -> Self {
 		Self {

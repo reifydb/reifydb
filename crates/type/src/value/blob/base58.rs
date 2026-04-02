@@ -10,7 +10,6 @@ use crate::{
 
 impl Blob {
 	pub fn from_b58(fragment: Fragment) -> Result<Self, Error> {
-		let fragment = fragment;
 		let b58_str = fragment.text();
 		match base58::decode(b58_str) {
 			Ok(bytes) => Ok(Blob::new(bytes)),

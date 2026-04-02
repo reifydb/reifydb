@@ -102,7 +102,7 @@ impl Engine {
 			}
 
 			// Total length must be divisible by 4
-			if input.len() % 4 != 0 {
+			if !input.len().is_multiple_of(4) {
 				return Err(DecodeError::InvalidPadding);
 			}
 

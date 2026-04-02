@@ -239,6 +239,6 @@ impl IntoDiagnostic for AuthError {
 
 impl From<AuthError> for Error {
 	fn from(err: AuthError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }

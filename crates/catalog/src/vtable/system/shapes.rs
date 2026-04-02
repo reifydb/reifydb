@@ -45,7 +45,7 @@ impl BaseVTable for SystemShapes {
 			return Ok(None);
 		}
 
-		let shapes = self.catalog.shape.list_all();
+		let shapes = self.catalog.materialized.list_row_shapes();
 
 		let mut fingerprints = ColumnData::uint8_with_capacity(shapes.len());
 		let mut field_counts = ColumnData::uint2_with_capacity(shapes.len());

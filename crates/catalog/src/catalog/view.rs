@@ -150,7 +150,9 @@ impl Catalog {
 				if TransactionalViewChanges::is_view_deleted(t.inner, id) {
 					return Ok(None);
 				}
-				if let Some(view) = CatalogStore::find_view(&mut Transaction::Test(t.reborrow()), id)? {
+				if let Some(view) =
+					CatalogStore::find_view(&mut Transaction::Test(Box::new(t.reborrow())), id)?
+				{
 					return Ok(Some(view));
 				}
 				Ok(None)
@@ -303,7 +305,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(view) = CatalogStore::find_view_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {
@@ -353,7 +355,7 @@ impl Catalog {
 		txn.track_view_created(view.clone())?;
 
 		let shape = RowShape::from(view.columns());
-		let _registered_shape = self.shape.get_or_create(shape.fields().to_vec())?;
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(view)
 	}
@@ -364,7 +366,7 @@ impl Catalog {
 		txn.track_view_created(view.clone())?;
 
 		let shape = RowShape::from(view.columns());
-		let _registered_shape = self.shape.get_or_create(shape.fields().to_vec())?;
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
 
 		Ok(view)
 	}

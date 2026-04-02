@@ -27,4 +27,4 @@ export {
     useSubscription,
     type SubscriptionOptions
 } from './hooks/use-subscription';
-export {useSchema, type TableInfo, type ColumnInfo} from './hooks/use-schema';
+export {useShape, type TableInfo, type ColumnInfo} from './hooks/use-shape';

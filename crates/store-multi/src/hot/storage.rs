@@ -16,7 +16,7 @@ use super::memory::storage::MemoryPrimitiveStorage;
 use super::sqlite::config::SqliteConfig;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use super::sqlite::storage::SqlitePrimitiveStorage;
-use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
+use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierBatch, TierStorage};
 
 /// Hot storage tier.
 ///
@@ -85,11 +85,7 @@ impl TierStorage for HotStorage {
 	}
 
 	#[inline]
-	fn set(
-		&self,
-		version: CommitVersion,
-		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
-	) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		match self {
 			Self::Memory(s) => s.set(version, batches),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]

@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#![cfg(reifydb_target = "native")]
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
-
 //! Host runtime for FFI operators
 //!
 //! This module provides the host-side implementation for FFI operator integration,

@@ -52,15 +52,15 @@ impl CatalogTrackSeriesChangeOperations for AdminTransaction {
 impl TransactionalSeriesChanges for AdminTransaction {
 	fn find_series(&self, id: SeriesId) -> Option<&Series> {
 		for change in self.changes.series.iter().rev() {
-			if let Some(series) = &change.post {
-				if series.id == id {
-					return Some(series);
-				}
+			if let Some(series) = &change.post
+				&& series.id == id
+			{
+				return Some(series);
 			}
-			if let Some(series) = &change.pre {
-				if series.id == id && change.op == Delete {
-					return None;
-				}
+			if let Some(series) = &change.pre
+				&& series.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None
@@ -68,15 +68,17 @@ impl TransactionalSeriesChanges for AdminTransaction {
 
 	fn find_series_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Series> {
 		for change in self.changes.series.iter().rev() {
-			if let Some(series) = &change.post {
-				if series.namespace == namespace && series.name == name {
-					return Some(series);
-				}
+			if let Some(series) = &change.post
+				&& series.namespace == namespace
+				&& series.name == name
+			{
+				return Some(series);
 			}
-			if let Some(series) = &change.pre {
-				if series.namespace == namespace && series.name == name && change.op == Delete {
-					return None;
-				}
+			if let Some(series) = &change.pre
+				&& series.namespace == namespace
+				&& series.name == name && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

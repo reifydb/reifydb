@@ -15,22 +15,21 @@ impl CatalogStore {
 		// First, collect all subscription IDs and metadata
 		let mut subscription_data = Vec::new();
 		{
-			let mut stream = rx.range(SubscriptionKey::full_scan(), 1024)?;
+			let stream = rx.range(SubscriptionKey::full_scan(), 1024)?;
 
-			while let Some(result_entry) = stream.next() {
+			for result_entry in stream {
 				let entry = result_entry?;
-				if let Some(key) = Key::decode(&entry.key) {
-					if let Key::Subscription(sub_key) = key {
-						let subscription_id = sub_key.subscription;
+				if let Some(key) = Key::decode(&entry.key)
+					&& let Key::Subscription(sub_key) = key
+				{
+					let subscription_id = sub_key.subscription;
 
-						let acknowledged_version =
-							CommitVersion(subscription::SHAPE.get_u64(
-								&entry.row,
-								subscription::ACKNOWLEDGED_VERSION,
-							));
+					let acknowledged_version = CommitVersion(
+						subscription::SHAPE
+							.get_u64(&entry.row, subscription::ACKNOWLEDGED_VERSION),
+					);
 
-						subscription_data.push((subscription_id, acknowledged_version));
-					}
+					subscription_data.push((subscription_id, acknowledged_version));
 				}
 			}
 		} // stream dropped here, releasing the borrow on rx

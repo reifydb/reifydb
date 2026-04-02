@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateWeek;
 
+impl Default for DateWeek {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateWeek {
 	pub fn new() -> Self {
 		Self
@@ -44,9 +50,8 @@ fn iso_week_number(date: &Date) -> i32 {
 	let jan1_days = jan1.to_days_since_epoch();
 
 	// Week number = how many weeks between Jan 1 of that year and the Thursday
-	let week = (thursday - jan1_days) / 7 + 1;
 
-	week
+	(thursday - jan1_days) / 7 + 1
 }
 
 impl ScalarFunction for DateWeek {
@@ -66,7 +71,7 @@ impl ScalarFunction for DateWeek {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Date(container) => {
@@ -75,7 +80,7 @@ impl ScalarFunction for DateWeek {
 
 				for i in 0..row_count {
 					if let Some(date) = container.get(i) {
-						data.push(iso_week_number(&date));
+						data.push(iso_week_number(date));
 						bitvec.push(true);
 					} else {
 						data.push(0);

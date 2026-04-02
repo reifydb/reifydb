@@ -3,7 +3,7 @@
 
 //! Column marshalling and unmarshalling
 
-use std::{mem::size_of, ptr, slice, str};
+use std::{mem, mem::size_of, ptr, slice, str};
 
 use postcard::to_allocvec;
 use reifydb_abi::data::{
@@ -350,18 +350,18 @@ impl Arena {
 			ColumnData::Bool(container) => {
 				// BoolContainer stores packed bits internally
 				let len = container.len();
-				let byte_count = (len + 7) / 8;
+				let byte_count = len.div_ceil(8);
 				let ptr = self.alloc(byte_count);
 				if !ptr.is_null() {
 					unsafe {
 						ptr::write_bytes(ptr, 0, byte_count);
 					}
 					for i in 0..len {
-						if let Some(val) = container.get(i) {
-							if val {
-								unsafe {
-									*ptr.add(i / 8) |= 1 << (i % 8);
-								}
+						if let Some(val) = container.get(i)
+							&& val
+						{
+							unsafe {
+								*ptr.add(i / 8) |= 1 << (i % 8);
 							}
 						}
 					}
@@ -377,44 +377,44 @@ impl Arena {
 			}
 
 			// Numeric types - use Deref to [T]
-			ColumnData::Float4(container) => self.marshal_numeric_slice::<f32>(&**container),
-			ColumnData::Float8(container) => self.marshal_numeric_slice::<f64>(&**container),
-			ColumnData::Int1(container) => self.marshal_numeric_slice::<i8>(&**container),
-			ColumnData::Int2(container) => self.marshal_numeric_slice::<i16>(&**container),
-			ColumnData::Int4(container) => self.marshal_numeric_slice::<i32>(&**container),
-			ColumnData::Int8(container) => self.marshal_numeric_slice::<i64>(&**container),
-			ColumnData::Int16(container) => self.marshal_numeric_slice::<i128>(&**container),
-			ColumnData::Uint1(container) => self.marshal_numeric_slice::<u8>(&**container),
-			ColumnData::Uint2(container) => self.marshal_numeric_slice::<u16>(&**container),
-			ColumnData::Uint4(container) => self.marshal_numeric_slice::<u32>(&**container),
-			ColumnData::Uint8(container) => self.marshal_numeric_slice::<u64>(&**container),
-			ColumnData::Uint16(container) => self.marshal_numeric_slice::<u128>(&**container),
+			ColumnData::Float4(container) => self.marshal_numeric_slice::<f32>(container),
+			ColumnData::Float8(container) => self.marshal_numeric_slice::<f64>(container),
+			ColumnData::Int1(container) => self.marshal_numeric_slice::<i8>(container),
+			ColumnData::Int2(container) => self.marshal_numeric_slice::<i16>(container),
+			ColumnData::Int4(container) => self.marshal_numeric_slice::<i32>(container),
+			ColumnData::Int8(container) => self.marshal_numeric_slice::<i64>(container),
+			ColumnData::Int16(container) => self.marshal_numeric_slice::<i128>(container),
+			ColumnData::Uint1(container) => self.marshal_numeric_slice::<u8>(container),
+			ColumnData::Uint2(container) => self.marshal_numeric_slice::<u16>(container),
+			ColumnData::Uint4(container) => self.marshal_numeric_slice::<u32>(container),
+			ColumnData::Uint8(container) => self.marshal_numeric_slice::<u64>(container),
+			ColumnData::Uint16(container) => self.marshal_numeric_slice::<u128>(container),
 
 			// Temporal types - extract encoded values
 			ColumnData::Date(container) => {
-				let dates: &[Date] = &**container;
+				let dates: &[Date] = container;
 				let encoded: Vec<i32> = dates.iter().map(|d| d.to_days_since_epoch()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
 			ColumnData::DateTime(container) => {
-				let datetimes: &[DateTime] = &**container;
+				let datetimes: &[DateTime] = container;
 				let encoded: Vec<i64> = datetimes.iter().map(|dt| dt.timestamp()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
 			ColumnData::Time(container) => {
-				let times: &[Time] = &**container;
+				let times: &[Time] = container;
 				let encoded: Vec<u64> = times.iter().map(|t| t.to_nanos_since_midnight()).collect();
 				self.marshal_numeric_slice(&encoded)
 			}
 			ColumnData::Duration(container) => {
 				// Duration has 3 fields (months, days, nanos), serialize with postcard
-				let durations: &[Duration] = &**container;
+				let durations: &[Duration] = container;
 				self.marshal_serialized(durations)
 			}
 
 			// UUID types - 16 bytes each
 			ColumnData::IdentityId(container) => {
-				let ids: &[IdentityId] = &**container;
+				let ids: &[IdentityId] = container;
 				let bytes: Vec<u8> =
 					ids.iter().flat_map(|id| id.0.as_bytes().iter().copied()).collect();
 				let ptr = self.copy_bytes(&bytes);
@@ -428,7 +428,7 @@ impl Arena {
 				)
 			}
 			ColumnData::Uuid4(container) => {
-				let uuids: &[Uuid4] = &**container;
+				let uuids: &[Uuid4] = container;
 				let bytes: Vec<u8> =
 					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
 				let ptr = self.copy_bytes(&bytes);
@@ -442,7 +442,7 @@ impl Arena {
 				)
 			}
 			ColumnData::Uuid7(container) => {
-				let uuids: &[Uuid7] = &**container;
+				let uuids: &[Uuid7] = container;
 				let bytes: Vec<u8> =
 					uuids.iter().flat_map(|u| u.0.as_bytes().iter().copied()).collect();
 				let ptr = self.copy_bytes(&bytes);
@@ -461,7 +461,7 @@ impl Arena {
 				container,
 				..
 			} => {
-				let strings: &[String] = &**container;
+				let strings: &[String] = container;
 				self.marshal_strings(strings)
 			}
 			ColumnData::Blob {
@@ -469,7 +469,7 @@ impl Arena {
 				..
 			} => {
 				// Blob is a newtype around Vec<u8>, get bytes from each
-				let blobs: &[Blob] = &**container;
+				let blobs: &[Blob] = container;
 				self.marshal_blob_slices(blobs)
 			}
 
@@ -478,21 +478,21 @@ impl Arena {
 				container,
 				..
 			} => {
-				let values: &[Int] = &**container;
+				let values: &[Int] = container;
 				self.marshal_serialized(values)
 			}
 			ColumnData::Uint {
 				container,
 				..
 			} => {
-				let values: &[Uint] = &**container;
+				let values: &[Uint] = container;
 				self.marshal_serialized(values)
 			}
 			ColumnData::Decimal {
 				container,
 				..
 			} => {
-				let values: &[Decimal] = &**container;
+				let values: &[Decimal] = container;
 				self.marshal_serialized(values)
 			}
 			ColumnData::Any(container) => {
@@ -523,7 +523,7 @@ impl Arena {
 
 	/// Marshal a numeric slice to raw bytes
 	pub(super) fn marshal_numeric_slice<T: Copy>(&mut self, slice: &[T]) -> (BufferFFI, BufferFFI) {
-		let byte_len = slice.len() * size_of::<T>();
+		let byte_len = mem::size_of_val(slice);
 		if byte_len == 0 {
 			return (BufferFFI::empty(), BufferFFI::empty());
 		}
@@ -590,7 +590,7 @@ impl Arena {
 	/// Helper: marshal data and offsets to arena
 	pub(super) fn marshal_with_offsets(&mut self, data: &[u8], offsets: &[u64]) -> (BufferFFI, BufferFFI) {
 		let data_ptr = self.copy_bytes(data);
-		let offsets_byte_len = offsets.len() * size_of::<u64>();
+		let offsets_byte_len = mem::size_of_val(offsets);
 		let offsets_ptr = self.alloc(offsets_byte_len) as *mut u64;
 		if !offsets_ptr.is_null() {
 			unsafe {
@@ -614,7 +614,7 @@ impl Arena {
 
 	/// Marshal a BitVec (definedness bitmap) to FFI
 	pub(super) fn marshal_bitvec(&mut self, bitvec: &BitVec, len: usize) -> BufferFFI {
-		let byte_count = (len + 7) / 8;
+		let byte_count = len.div_ceil(8);
 		let ptr = self.alloc(byte_count);
 		if !ptr.is_null() {
 			unsafe {

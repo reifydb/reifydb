@@ -161,10 +161,10 @@ impl Columns {
 				Value::Uint4(v) => ColumnData::uint4([v]),
 				Value::Uint8(v) => ColumnData::uint8([v]),
 				Value::Uint16(v) => ColumnData::uint16([v]),
-				Value::Date(v) => ColumnData::date([v.clone()]),
-				Value::DateTime(v) => ColumnData::datetime([v.clone()]),
-				Value::Time(v) => ColumnData::time([v.clone()]),
-				Value::Duration(v) => ColumnData::duration([v.clone()]),
+				Value::Date(v) => ColumnData::date([v]),
+				Value::DateTime(v) => ColumnData::datetime([v]),
+				Value::Time(v) => ColumnData::time([v]),
+				Value::Duration(v) => ColumnData::duration([v]),
 				Value::IdentityId(v) => ColumnData::identity_id([v]),
 				Value::Uuid4(v) => ColumnData::uuid4([v]),
 				Value::Uuid7(v) => ColumnData::uuid7([v]),
@@ -225,13 +225,9 @@ impl Columns {
 		let row_count = if !self.row_numbers.is_empty() {
 			self.row_numbers.len()
 		} else {
-			self.get(0).map(|c| c.data().len()).unwrap_or(0)
+			self.first().map(|c| c.data().len()).unwrap_or(0)
 		};
 		(row_count, self.len())
-	}
-
-	pub fn into_iter(self) -> impl Iterator<Item = Column> {
-		self.columns.into_iter()
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -256,6 +252,15 @@ impl Columns {
 
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
 		self.iter().map(|col| col.data().get_value(index)).collect()
+	}
+}
+
+impl IntoIterator for Columns {
+	type Item = Column;
+	type IntoIter = std::vec::IntoIter<Column>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		self.columns.into_iter()
 	}
 }
 
@@ -474,13 +479,11 @@ impl Columns {
 			};
 			data.push_value(value);
 
-			if column_type == Type::DictionaryId {
-				if let ColumnData::DictionaryId(container) = &mut data {
-					if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
-					{
-						container.set_dictionary_id(*dict_id);
-					}
-				}
+			if column_type == Type::DictionaryId
+				&& let ColumnData::DictionaryId(container) = &mut data
+				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+			{
+				container.set_dictionary_id(*dict_id);
 			}
 
 			let name = row.shape.get_field_name(idx).expect("RowShape missing name for field");
@@ -508,7 +511,7 @@ impl Columns {
 			self.row_numbers.len()
 		);
 
-		let row_number = self.row_numbers.first().unwrap().clone();
+		let row_number = *self.row_numbers.first().unwrap();
 
 		// Build shape fields for the layout
 		let fields: Vec<RowShapeField> = self

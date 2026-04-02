@@ -40,7 +40,7 @@ impl<'bump> Compiler<'bump> {
 				} => {
 					if let Some(n) = namespace.first() {
 						let interned = self.interner.intern_fragment(n);
-						interned.with_text(&ns_segments.join("::"))
+						interned.with_text(ns_segments.join("::"))
 					} else {
 						Fragment::internal("default".to_string())
 					}

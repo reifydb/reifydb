@@ -4,7 +4,7 @@
 //! Native clock implementation.
 
 use std::{
-	fmt,
+	cmp, fmt, ops,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -13,15 +13,17 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[allow(clippy::disallowed_methods)]
 #[inline(always)]
 fn platform_now_nanos() -> u128 {
 	SystemTime::now().duration_since(UNIX_EPOCH).expect("System time is before Unix epoch").as_nanos()
 }
 
 /// A clock that provides time - either real system time or mock time for testing.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum Clock {
 	/// Real system clock - delegates to platform time
+	#[default]
 	Real,
 	/// Mock clock with controllable time
 	Mock(MockClock),
@@ -51,6 +53,7 @@ impl Clock {
 		(self.now_nanos() / 1_000_000_000) as u64
 	}
 
+	#[allow(clippy::disallowed_methods)]
 	pub fn instant(&self) -> Instant {
 		match self {
 			Clock::Real => Instant {
@@ -63,12 +66,6 @@ impl Clock {
 				},
 			},
 		}
-	}
-}
-
-impl Default for Clock {
-	fn default() -> Self {
-		Clock::Real
 	}
 }
 
@@ -205,7 +202,7 @@ impl Instant {
 	}
 
 	#[inline]
-	pub fn duration_since(&self, earlier: Instant) -> Duration {
+	pub fn duration_since(&self, earlier: &Instant) -> Duration {
 		match (&self.inner, &earlier.inner) {
 			(InstantInner::Real(this), InstantInner::Real(other)) => this.duration_since(*other),
 			(
@@ -223,6 +220,81 @@ impl Instant {
 			}
 			_ => panic!("Cannot compare instants from different clock types"),
 		}
+	}
+}
+
+impl PartialEq for Instant {
+	fn eq(&self, other: &Self) -> bool {
+		match (&self.inner, &other.inner) {
+			(InstantInner::Real(a), InstantInner::Real(b)) => a == b,
+			(
+				InstantInner::Mock {
+					captured_nanos: a,
+					..
+				},
+				InstantInner::Mock {
+					captured_nanos: b,
+					..
+				},
+			) => a == b,
+			_ => panic!("Cannot compare instants from different clock types"),
+		}
+	}
+}
+
+impl Eq for Instant {}
+
+impl PartialOrd for Instant {
+	fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+		Some(self.cmp(other))
+	}
+}
+
+impl Ord for Instant {
+	fn cmp(&self, other: &Self) -> cmp::Ordering {
+		match (&self.inner, &other.inner) {
+			(InstantInner::Real(a), InstantInner::Real(b)) => a.cmp(b),
+			(
+				InstantInner::Mock {
+					captured_nanos: a,
+					..
+				},
+				InstantInner::Mock {
+					captured_nanos: b,
+					..
+				},
+			) => a.cmp(b),
+			_ => panic!("Cannot compare instants from different clock types"),
+		}
+	}
+}
+
+impl ops::Add<Duration> for Instant {
+	type Output = Instant;
+
+	fn add(self, duration: Duration) -> Instant {
+		match self.inner {
+			InstantInner::Real(instant) => Instant {
+				inner: InstantInner::Real(instant + duration),
+			},
+			InstantInner::Mock {
+				captured_nanos,
+				clock,
+			} => Instant {
+				inner: InstantInner::Mock {
+					captured_nanos: captured_nanos + duration.as_nanos(),
+					clock,
+				},
+			},
+		}
+	}
+}
+
+impl ops::Sub for &Instant {
+	type Output = Duration;
+
+	fn sub(self, other: &Instant) -> Duration {
+		self.duration_since(other)
 	}
 }
 

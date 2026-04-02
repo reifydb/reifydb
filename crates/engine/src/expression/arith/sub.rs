@@ -46,7 +46,7 @@ pub(crate) fn sub_columns(
 				})
 			}
 
-			_ => return Err(TypeError::BinaryOperatorNotApplicable {
+			_ => Err(TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Sub,
 				left: left.get_type(),
 				right: right.get_type(),
@@ -56,7 +56,7 @@ pub(crate) fn sub_columns(
 	})
 }
 
-fn sub_numeric<'a, L, R>(
+fn sub_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -88,7 +88,7 @@ where
 	})
 }
 
-fn sub_numeric_clone<'a, L, R>(
+fn sub_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,

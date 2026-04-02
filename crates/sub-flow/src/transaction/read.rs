@@ -107,13 +107,9 @@ impl FlowTransaction {
 	}
 
 	fn is_flow_state_key(key: &EncodedKey) -> bool {
-		match Key::kind(&key) {
+		match Key::kind(key) {
 			None => false,
-			Some(kind) => match kind {
-				KeyKind::FlowNodeState => true,
-				KeyKind::FlowNodeInternalState => true,
-				_ => false,
-			},
+			Some(kind) => matches!(kind, KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState),
 		}
 	}
 
@@ -285,7 +281,7 @@ where
 						Err(_) => {
 							// Consume the error from the iterator and propagate it
 							let err = self.storage_iter.next().unwrap();
-							return Some(err.map_err(|e| e.into()));
+							return Some(err);
 						}
 					};
 					let cmp = pending_key.cmp(&storage_val.key);
@@ -315,7 +311,7 @@ where
 						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else {
 						// Storage key comes first
-						return Some(self.storage_iter.next().unwrap().map_err(|e| e.into()));
+						return Some(self.storage_iter.next().unwrap());
 					}
 				}
 				(Some(_), None) => {
@@ -332,7 +328,7 @@ where
 				}
 				(None, Some(_)) => {
 					// Only storage left
-					return Some(self.storage_iter.next().unwrap().map_err(|e| e.into()));
+					return Some(self.storage_iter.next().unwrap());
 				}
 				(None, None) => return None,
 			}
@@ -383,7 +379,7 @@ where
 						Err(_) => {
 							// Consume the error from the iterator and propagate it
 							let err = self.storage_iter.next().unwrap();
-							return Some(err.map_err(|e| e.into()));
+							return Some(err);
 						}
 					};
 					let cmp = pending_key.cmp(&storage_val.key);
@@ -413,7 +409,7 @@ where
 						// PendingWrite::Remove = skip (tombstone), continue loop
 					} else {
 						// Storage key comes first in reverse order
-						return Some(self.storage_iter.next().unwrap().map_err(|e| e.into()));
+						return Some(self.storage_iter.next().unwrap());
 					}
 				}
 				(Some(_), None) => {
@@ -430,7 +426,7 @@ where
 				}
 				(None, Some(_)) => {
 					// Only storage left
-					return Some(self.storage_iter.next().unwrap().map_err(|e| e.into()));
+					return Some(self.storage_iter.next().unwrap());
 				}
 				(None, None) => return None,
 			}

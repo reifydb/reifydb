@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextSubstring;
 
+impl Default for TextSubstring {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextSubstring {
 	pub fn new() -> Self {
 		Self
@@ -36,7 +42,7 @@ impl ScalarFunction for TextSubstring {
 			});
 		}
 
-		let text_column = columns.get(0).unwrap();
+		let text_column = columns.first().unwrap();
 		let start_column = columns.get(1).unwrap();
 		let length_column = columns.get(2).unwrap();
 

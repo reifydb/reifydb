@@ -14,7 +14,7 @@ use crate::{
 	},
 };
 
-pub fn parse_primitive_int<'a, T>(fragment: Fragment) -> Result<T, Error>
+pub fn parse_primitive_int<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: IsInt + 'static,
 {
@@ -35,7 +35,7 @@ where
 	}
 }
 
-pub fn parse_primitive_uint<'a, T>(fragment: Fragment) -> Result<T, Error>
+pub fn parse_primitive_uint<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: IsUint + 'static,
 {
@@ -56,7 +56,7 @@ where
 	}
 }
 
-pub fn parse_float<'a, T>(fragment: Fragment) -> Result<T, Error>
+pub fn parse_float<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: IsFloat + 'static,
 {
@@ -174,7 +174,7 @@ impl TypeInfo for f64 {
 }
 
 #[inline]
-fn parse_signed_generic<'a, T>(fragment: Fragment) -> Result<T, Error>
+fn parse_signed_generic<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
@@ -182,8 +182,8 @@ where
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
@@ -274,7 +274,7 @@ where
 }
 
 #[inline]
-fn parse_unsigned_generic<'a, T>(fragment: Fragment) -> Result<T, Error>
+fn parse_unsigned_generic<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: FromStr<Err = num::ParseIntError> + TypeInfo + 'static,
 {
@@ -282,8 +282,8 @@ where
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
@@ -346,21 +346,19 @@ where
 							}
 							.into())
 						}
-					} else {
-						if value.contains("-") {
-							Err(TypeError::NumberOutOfRange {
-								target: T::type_enum(),
-								fragment,
-								descriptor: None,
-							}
-							.into())
-						} else {
-							Err(TypeError::InvalidNumberFormat {
-								target: T::type_enum(),
-								fragment,
-							}
-							.into())
+					} else if value.contains("-") {
+						Err(TypeError::NumberOutOfRange {
+							target: T::type_enum(),
+							fragment,
+							descriptor: None,
 						}
+						.into())
+					} else {
+						Err(TypeError::InvalidNumberFormat {
+							target: T::type_enum(),
+							fragment,
+						}
+						.into())
 					}
 				}
 				IntErrorKind::PosOverflow => Err(TypeError::NumberOutOfRange {
@@ -387,7 +385,7 @@ where
 }
 
 #[inline]
-fn parse_float_generic<'a, T>(fragment: Fragment) -> Result<T, Error>
+fn parse_float_generic<T>(fragment: Fragment) -> Result<T, Error>
 where
 	T: FromStr<Err = num::ParseFloatError> + Copy + TypeInfo + PartialEq + 'static,
 {
@@ -395,8 +393,8 @@ where
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
@@ -420,7 +418,7 @@ where
 		Ok(v) => {
 			if TypeId::of::<T>() == TypeId::of::<f32>() {
 				let v_f32 = cast::<f32, T>(v);
-				if v_f32 == f32::INFINITY || v_f32 == f32::NEG_INFINITY {
+				if v_f32.is_infinite() {
 					return Err(TypeError::NumberOutOfRange {
 						target: T::type_enum(),
 						fragment,
@@ -430,7 +428,7 @@ where
 				}
 			} else if TypeId::of::<T>() == TypeId::of::<f64>() {
 				let v_f64 = cast::<f64, T>(v);
-				if v_f64 == f64::INFINITY || v_f64 == f64::NEG_INFINITY {
+				if v_f64.is_infinite() {
 					return Err(TypeError::NumberOutOfRange {
 						target: T::type_enum(),
 						fragment,
@@ -450,62 +448,62 @@ where
 }
 
 #[inline]
-fn parse_f32<'a>(fragment: Fragment) -> Result<f32, Error> {
+fn parse_f32(fragment: Fragment) -> Result<f32, Error> {
 	parse_float_generic::<f32>(fragment)
 }
 
 #[inline]
-fn parse_f64<'a>(fragment: Fragment) -> Result<f64, Error> {
+fn parse_f64(fragment: Fragment) -> Result<f64, Error> {
 	parse_float_generic::<f64>(fragment)
 }
 
 #[inline]
-fn parse_i8<'a>(fragment: Fragment) -> Result<i8, Error> {
+fn parse_i8(fragment: Fragment) -> Result<i8, Error> {
 	parse_signed_generic::<i8>(fragment)
 }
 
 #[inline]
-fn parse_i16<'a>(fragment: Fragment) -> Result<i16, Error> {
+fn parse_i16(fragment: Fragment) -> Result<i16, Error> {
 	parse_signed_generic::<i16>(fragment)
 }
 
 #[inline]
-fn parse_i32<'a>(fragment: Fragment) -> Result<i32, Error> {
+fn parse_i32(fragment: Fragment) -> Result<i32, Error> {
 	parse_signed_generic::<i32>(fragment)
 }
 
 #[inline]
-fn parse_i64<'a>(fragment: Fragment) -> Result<i64, Error> {
+fn parse_i64(fragment: Fragment) -> Result<i64, Error> {
 	parse_signed_generic::<i64>(fragment)
 }
 
 #[inline]
-fn parse_i128<'a>(fragment: Fragment) -> Result<i128, Error> {
+fn parse_i128(fragment: Fragment) -> Result<i128, Error> {
 	parse_signed_generic::<i128>(fragment)
 }
 
 #[inline]
-fn parse_u8<'a>(fragment: Fragment) -> Result<u8, Error> {
+fn parse_u8(fragment: Fragment) -> Result<u8, Error> {
 	parse_unsigned_generic::<u8>(fragment)
 }
 
 #[inline]
-fn parse_u16<'a>(fragment: Fragment) -> Result<u16, Error> {
+fn parse_u16(fragment: Fragment) -> Result<u16, Error> {
 	parse_unsigned_generic::<u16>(fragment)
 }
 
 #[inline]
-fn parse_u32<'a>(fragment: Fragment) -> Result<u32, Error> {
+fn parse_u32(fragment: Fragment) -> Result<u32, Error> {
 	parse_unsigned_generic::<u32>(fragment)
 }
 
 #[inline]
-fn parse_u64<'a>(fragment: Fragment) -> Result<u64, Error> {
+fn parse_u64(fragment: Fragment) -> Result<u64, Error> {
 	parse_unsigned_generic::<u64>(fragment)
 }
 
 #[inline]
-fn parse_u128<'a>(fragment: Fragment) -> Result<u128, Error> {
+fn parse_u128(fragment: Fragment) -> Result<u128, Error> {
 	parse_unsigned_generic::<u128>(fragment)
 }
 

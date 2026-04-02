@@ -17,18 +17,10 @@ use crate::{
 /// without date information.
 ///
 /// Internally stored as nanoseconds since midnight (00:00:00.000000000).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Time {
 	// Nanoseconds since midnight (0 to 86_399_999_999_999)
 	nanos_since_midnight: u64,
-}
-
-impl Default for Time {
-	fn default() -> Self {
-		Self {
-			nanos_since_midnight: 0,
-		} // 00:00:00.000000000
-	}
 }
 
 impl Time {
@@ -64,14 +56,18 @@ impl Time {
 		})
 	}
 
-	pub fn from_hms(hour: u32, min: u32, sec: u32) -> Result<Self, TypeError> {
-		Self::new(hour, min, sec, 0)
-			.ok_or_else(|| Self::overflow_err(format!("invalid time: {:02}:{:02}:{:02}", hour, min, sec)))
+	pub fn from_hms(hour: u32, min: u32, sec: u32) -> Result<Self, Box<TypeError>> {
+		Self::new(hour, min, sec, 0).ok_or_else(|| {
+			Box::new(Self::overflow_err(format!("invalid time: {:02}:{:02}:{:02}", hour, min, sec)))
+		})
 	}
 
-	pub fn from_hms_nano(hour: u32, min: u32, sec: u32, nano: u32) -> Result<Self, TypeError> {
+	pub fn from_hms_nano(hour: u32, min: u32, sec: u32, nano: u32) -> Result<Self, Box<TypeError>> {
 		Self::new(hour, min, sec, nano).ok_or_else(|| {
-			Self::overflow_err(format!("invalid time: {:02}:{:02}:{:02}.{:09}", hour, min, sec, nano))
+			Box::new(Self::overflow_err(format!(
+				"invalid time: {:02}:{:02}:{:02}.{:09}",
+				hour, min, sec, nano
+			)))
 		})
 	}
 
@@ -460,9 +456,9 @@ pub mod tests {
 		assert_eq!(time, recovered);
 	}
 
-	fn assert_time_overflow<T: Debug>(result: Result<T, TypeError>) {
+	fn assert_time_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {
 		let err = result.expect_err("expected TimeOverflow error");
-		match err {
+		match *err {
 			TypeError::Temporal {
 				kind: TemporalKind::TimeOverflow {
 					..

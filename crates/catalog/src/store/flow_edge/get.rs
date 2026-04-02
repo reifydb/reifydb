@@ -13,10 +13,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn get_flow_edge(rx: &mut Transaction<'_>, edge_id: FlowEdgeId) -> Result<FlowEdge> {
 		CatalogStore::find_flow_edge(rx, edge_id)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Flow edge with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				edge_id
-			))
+			)))
 		})
 	}
 }

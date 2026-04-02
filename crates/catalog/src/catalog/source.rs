@@ -171,7 +171,7 @@ impl Catalog {
 				}
 
 				if let Some(source) = CatalogStore::find_source_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {

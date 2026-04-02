@@ -27,7 +27,7 @@ fn effective_alias(alias: Option<Fragment>, right: &QueryPlan) -> Option<Fragmen
 }
 
 fn compile_equi_or_nested<'a>(
-	left: Box<QueryPlan>,
+	left: QueryPlan,
 	right: Box<QueryPlan>,
 	on: Vec<Expression>,
 	alias: Option<Fragment>,
@@ -36,7 +36,7 @@ fn compile_equi_or_nested<'a>(
 	is_left_join: bool,
 ) -> Box<dyn QueryNode> {
 	let effective_alias = effective_alias(alias, &right);
-	let left_node = compile(*left, rx, context.clone());
+	let left_node = compile(left, rx, context.clone());
 	let right_node = compile(*right, rx, context.clone());
 
 	let analysis = hash::extract_equi_keys(&on);
@@ -58,7 +58,7 @@ pub(crate) fn compile_inner_join<'a>(
 	rx: &mut Transaction<'a>,
 	context: Arc<QueryContext>,
 ) -> Box<dyn QueryNode> {
-	compile_equi_or_nested(node.left, node.right, node.on, node.alias, rx, context, false)
+	compile_equi_or_nested(*node.left, node.right, node.on, node.alias, rx, context, false)
 }
 
 pub(crate) fn compile_left_join<'a>(
@@ -66,7 +66,7 @@ pub(crate) fn compile_left_join<'a>(
 	rx: &mut Transaction<'a>,
 	context: Arc<QueryContext>,
 ) -> Box<dyn QueryNode> {
-	compile_equi_or_nested(node.left, node.right, node.on, node.alias, rx, context, true)
+	compile_equi_or_nested(*node.left, node.right, node.on, node.alias, rx, context, true)
 }
 
 pub(crate) fn compile_natural_join<'a>(

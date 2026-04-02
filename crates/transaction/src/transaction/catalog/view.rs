@@ -56,10 +56,10 @@ impl TransactionalViewChanges for AdminTransaction {
 				if view.id() == id {
 					return Some(view);
 				}
-			} else if let Some(view) = &change.pre {
-				if view.id() == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(view) = &change.pre
+				&& view.id() == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

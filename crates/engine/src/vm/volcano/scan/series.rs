@@ -111,7 +111,7 @@ impl QueryNode for SeriesScanNode {
 		let mut stream = rx.range(range, batch_size as usize)?;
 		let mut count = 0;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let entry = entry?;
 
 			// Decode the key to get timestamp and optional tag

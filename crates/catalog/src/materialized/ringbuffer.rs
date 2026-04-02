@@ -51,10 +51,10 @@ impl MaterializedCatalog {
 
 	pub fn set_ringbuffer(&self, id: RingBufferId, version: CommitVersion, ringbuffer: Option<RingBuffer>) {
 		// Look up the current ringbuffer to update the index
-		if let Some(entry) = self.ringbuffers.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.ringbuffers_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.ringbuffers.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.ringbuffers_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.ringbuffers.get_or_insert_with(id, MultiVersionRingBuffer::new);

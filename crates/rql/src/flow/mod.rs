@@ -9,6 +9,7 @@
 //! async recursion and generic MultiVersionCommandTransaction types.
 
 pub mod analyzer;
+#[allow(clippy::module_inception)]
 pub mod flow;
 pub mod graph;
 pub mod loader;

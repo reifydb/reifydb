@@ -103,10 +103,7 @@ impl Utf8Container<Cow> {
 	/// Try to decompose into raw Vec for recycling.
 	/// Returns `None` if the inner storage is shared.
 	pub fn try_into_raw_parts(self) -> Option<Vec<String>> {
-		match self.data.try_into_vec() {
-			Ok(v) => Some(v),
-			Err(_) => None,
-		}
+		self.data.try_into_vec().ok()
 	}
 
 	pub fn from_vec(data: Vec<String>) -> Self {
@@ -193,7 +190,7 @@ impl<S: Storage> Utf8Container<S> {
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<&String>> + '_ {
-		self.data.iter().map(|v| Some(v))
+		self.data.iter().map(Some)
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {

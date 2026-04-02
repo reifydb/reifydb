@@ -25,7 +25,7 @@ impl<'bump> Compiler<'bump> {
 		let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.series.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&ns_segments.join("::"))
+				interned.with_text(ns_segments.join("::"))
 			} else {
 				Fragment::internal("default".to_string())
 			};
@@ -50,7 +50,7 @@ impl<'bump> Compiler<'bump> {
 			let Some(tag_ns) = self.catalog.find_namespace_by_segments(rx, &tag_ns_segments)? else {
 				let ns_fragment = if let Some(n) = tag_ident.namespace.first() {
 					let interned = self.interner.intern_fragment(n);
-					interned.with_text(&tag_ns_segments.join("::"))
+					interned.with_text(tag_ns_segments.join("::"))
 				} else {
 					Fragment::internal(tag_ns_segments.join("::"))
 				};

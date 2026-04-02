@@ -311,7 +311,7 @@ pub fn scan_keyword<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		// Check that the next character is not an identifier
 		// continuation
 		let next_char = cursor.peek_ahead(word.chars().count());
-		if next_char.map_or(true, |ch| !is_identifier_char(ch) && ch != '.' && ch != ':') {
+		if next_char.is_none_or(|ch| !is_identifier_char(ch) && ch != '.' && ch != ':') {
 			// Consume the keyword
 			for _ in 0..word.chars().count() {
 				cursor.consume();

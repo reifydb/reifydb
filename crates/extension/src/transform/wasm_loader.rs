@@ -42,5 +42,5 @@ pub fn load_transforms_from_dir(dir: &Path) -> Result<Transforms> {
 			.register(&name, move || WasmTransform::new(name_for_closure.clone(), wasm_bytes.clone()));
 	}
 
-	Ok(builder.build())
+	Ok(builder.configure())
 }

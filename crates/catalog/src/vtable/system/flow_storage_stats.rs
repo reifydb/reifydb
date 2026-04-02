@@ -22,6 +22,12 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
+/// A row of storage statistics: (id, namespace_id, tier, current_key_bytes, current_value_bytes,
+/// current_total_bytes, current_count, historical_key_bytes, historical_value_bytes,
+/// historical_total_bytes, historical_count, total_bytes, cdc_key_bytes, cdc_value_bytes,
+/// cdc_total_bytes, cdc_count).
+type StorageStatsRow = (u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64);
+
 /// Virtual table that exposes storage statistics for flows
 pub struct SystemFlowStorageStats {
 	pub(crate) definition: Arc<VTable>,
@@ -64,20 +70,19 @@ impl BaseVTable for SystemFlowStorageStats {
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();
 			for (obj_id, stats) in tier_stats {
-				if let MetricId::FlowNode(flow_node_id) = obj_id {
-					if let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id)? {
-						let key = (node_def.flow, tier);
-						let entry = aggregated.entry(key).or_default();
-						entry.storage += stats.storage;
-						entry.cdc += stats.cdc;
-					}
+				if let MetricId::FlowNode(flow_node_id) = obj_id
+					&& let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id)?
+				{
+					let key = (node_def.flow, tier);
+					let entry = aggregated.entry(key).or_default();
+					entry.storage += stats.storage;
+					entry.cdc += stats.cdc;
 				}
 			}
 		}
 
 		// Convert aggregated stats to rows
-		let mut rows: Vec<(u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64)> =
-			Vec::new();
+		let mut rows: Vec<StorageStatsRow> = Vec::new();
 
 		for ((flow_id, tier), stats) in aggregated {
 			// Look up namespace_id from catalog

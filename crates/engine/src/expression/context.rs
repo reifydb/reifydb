@@ -93,9 +93,9 @@ impl<'a> EvalSession<'a> {
 	/// Build a testing session with static empty values.
 	pub fn testing() -> EvalSession<'static> {
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
-		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(|| SymbolTable::new());
-		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(|| Functions::empty());
-		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::default());
+		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
+		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
+		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(RuntimeContext::default);
 		EvalSession {
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
@@ -133,9 +133,13 @@ impl<'a> EvalContext<'a> {
 		self.target
 			.as_ref()
 			.and_then(|t| {
-				t.properties().into_iter().find_map(|p| match p {
-					ColumnPropertyKind::Saturation(policy) => Some(policy),
-				})
+				t.properties()
+					.into_iter()
+					.map(|p| {
+						let ColumnPropertyKind::Saturation(policy) = p;
+						policy
+					})
+					.next()
 			})
 			.unwrap_or(DEFAULT_COLUMN_SATURATION_POLICY.clone())
 	}

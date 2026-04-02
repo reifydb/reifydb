@@ -18,7 +18,7 @@ impl CatalogStore {
 		let col_range = SubscriptionColumnKey::subscription_range(subscription);
 		let mut col_stream = txn.range(col_range, 1000)?;
 		let mut col_keys = Vec::new();
-		while let Some(entry) = col_stream.next() {
+		for entry in col_stream.by_ref() {
 			let entry = entry?;
 			col_keys.push(entry.key.clone());
 		}
@@ -31,7 +31,7 @@ impl CatalogStore {
 		let row_range = SubscriptionRowKey::full_scan(subscription);
 		let mut row_stream = txn.range(row_range, 10000)?;
 		let mut row_keys = Vec::new();
-		while let Some(entry) = row_stream.next() {
+		for entry in row_stream.by_ref() {
 			let entry = entry?;
 			row_keys.push(entry.key.clone());
 		}

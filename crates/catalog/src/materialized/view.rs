@@ -46,10 +46,10 @@ impl MaterializedCatalog {
 
 	pub fn set_view(&self, id: ViewId, version: CommitVersion, view: Option<View>) {
 		// Look up the current view to update the index
-		if let Some(entry) = self.views.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				self.views_by_name.remove(&(pre.namespace(), pre.name().to_string()));
-			}
+		if let Some(entry) = self.views.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			self.views_by_name.remove(&(pre.namespace(), pre.name().to_string()));
 		}
 
 		let multi = self.views.get_or_insert_with(id, MultiVersionView::new);

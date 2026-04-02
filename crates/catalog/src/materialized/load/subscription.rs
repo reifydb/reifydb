@@ -23,9 +23,9 @@ use crate::{
 
 pub(crate) fn load_subscriptions(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = SubscriptionKey::full_scan();
-	let mut stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, 1024)?;
 
-	while let Some(result) = stream.next() {
+	for result in stream {
 		let multi = result?;
 		let version = multi.version;
 

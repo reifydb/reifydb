@@ -16,7 +16,6 @@ use super::StateIterator;
 use crate::transaction::FlowTransaction;
 
 /// Helper functions for state operations that can be used by any stateful trait
-
 /// Get raw bytes for a key
 pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
@@ -79,9 +78,9 @@ pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &En
 /// Scan all keys for this operator
 pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<StateIterator> {
 	let range = FlowNodeStateKey::node_range(id);
-	let mut stream = txn.range(range, 1024);
+	let stream = txn.range(range, 1024);
 	let mut items = Vec::new();
-	while let Some(result) = stream.next() {
+	for result in stream {
 		let multi = result?;
 		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
 			items.push((EncodedKey::new(state_key.key), multi.row));
@@ -95,9 +94,9 @@ pub fn state_scan(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<StateIter
 /// Range query between keys
 pub fn state_range(id: FlowNodeId, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<StateIterator> {
 	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
-	let mut stream = txn.range(prefixed_range, 1024);
+	let stream = txn.range(prefixed_range, 1024);
 	let mut items = Vec::new();
-	while let Some(result) = stream.next() {
+	for result in stream {
 		let multi = result?;
 		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
 			items.push((EncodedKey::new(state_key.key), multi.row));
@@ -112,9 +111,9 @@ pub fn state_range(id: FlowNodeId, txn: &mut FlowTransaction, range: EncodedKeyR
 pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
 	let keys_to_remove = {
-		let mut stream = txn.range(range, 1024);
+		let stream = txn.range(range, 1024);
 		let mut keys = Vec::new();
-		while let Some(result) = stream.next() {
+		for result in stream {
 			let multi = result?;
 			keys.push(multi.key);
 		}

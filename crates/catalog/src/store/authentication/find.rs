@@ -27,9 +27,9 @@ impl CatalogStore {
 		identity: IdentityId,
 		method: &str,
 	) -> Result<Option<Authentication>> {
-		let mut stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
+		let stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let auth_identity = authentication::SHAPE.get_identity_id(&multi.row, authentication::IDENTITY);
 			let auth_method = authentication::SHAPE.get_utf8(&multi.row, authentication::METHOD);
@@ -46,10 +46,10 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		method: &str,
 	) -> Result<Vec<Authentication>> {
-		let mut stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
+		let stream = rx.range(AuthenticationKey::full_scan(), 1024)?;
 		let mut results = Vec::new();
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let auth_method = authentication::SHAPE.get_utf8(&multi.row, authentication::METHOD);
 			if auth_method == method {

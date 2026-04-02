@@ -21,15 +21,14 @@ pub(crate) fn create_ringbuffer(
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.ringbuffer.text(),
-	)? {
-		if plan.if_not_exists {
-			return Ok(Columns::single_row([
-				("id", Value::Uint8(existing.id.0)),
-				("namespace", Value::Utf8(plan.namespace.name().to_string())),
-				("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
-				("created", Value::Boolean(false)),
-			]));
-		}
+	)? && plan.if_not_exists
+	{
+		return Ok(Columns::single_row([
+			("id", Value::Uint8(existing.id.0)),
+			("namespace", Value::Utf8(plan.namespace.name().to_string())),
+			("ringbuffer", Value::Utf8(plan.ringbuffer.text().to_string())),
+			("created", Value::Boolean(false)),
+		]));
 		// The error will be returned by create_ringbuffer if
 		// the ring buffer exists
 	}

@@ -56,7 +56,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceSourceKey::full_scan(namespace), 1024)?;
 
 		let mut found_source = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let source_name = source_namespace::SHAPE.get_utf8(row, source_namespace::NAME);

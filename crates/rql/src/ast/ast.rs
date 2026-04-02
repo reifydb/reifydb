@@ -65,7 +65,7 @@ impl<'bump> IntoIterator for AstStatement<'bump> {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub enum Ast<'bump> {
 	Aggregate(AstAggregate<'bump>),
 	Append(AstAppend<'bump>),
@@ -100,6 +100,7 @@ pub enum Ast<'bump> {
 	Take(AstTake<'bump>),
 	List(AstList<'bump>),
 	Literal(AstLiteral<'bump>),
+	#[default]
 	Nop,
 	Variable(AstVariable<'bump>),
 	Environment(AstEnvironment<'bump>),
@@ -130,12 +131,6 @@ pub enum Ast<'bump> {
 	Migrate(AstMigrate<'bump>),
 	RollbackMigration(AstRollbackMigration<'bump>),
 	RunTests(AstRunTests<'bump>),
-}
-
-impl<'bump> Default for Ast<'bump> {
-	fn default() -> Self {
-		Self::Nop
-	}
 }
 
 impl<'bump> Ast<'bump> {
@@ -413,6 +408,10 @@ pub struct AstInline<'bump> {
 impl<'bump> AstInline<'bump> {
 	pub fn len(&self) -> usize {
 		self.keyed_values.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 
@@ -1068,6 +1067,10 @@ impl<'bump> AstList<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 impl<'bump> Index<usize> for AstList<'bump> {
@@ -1350,6 +1353,10 @@ impl<'bump> AstMap<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 #[derive(Debug)]
@@ -1370,6 +1377,10 @@ impl<'bump> Index<usize> for AstGenerator<'bump> {
 impl<'bump> AstGenerator<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 
@@ -1392,6 +1403,10 @@ impl<'bump> AstExtend<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
 }
 
 #[derive(Debug)]
@@ -1404,6 +1419,10 @@ pub struct AstPatch<'bump> {
 impl<'bump> AstPatch<'bump> {
 	pub fn len(&self) -> usize {
 		self.assignments.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 
@@ -1424,6 +1443,10 @@ pub struct AstTuple<'bump> {
 impl<'bump> AstTuple<'bump> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 }
 
@@ -1620,11 +1643,7 @@ impl<'bump> AstVariable<'bump> {
 	pub fn name(&self) -> &str {
 		// Extract name from token value (skip the '$')
 		let text = self.token.value();
-		if text.starts_with('$') {
-			&text[1..]
-		} else {
-			text
-		}
+		text.strip_prefix('$').unwrap_or(text)
 	}
 }
 

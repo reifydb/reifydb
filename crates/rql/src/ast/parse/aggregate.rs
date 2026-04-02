@@ -29,7 +29,7 @@ impl<'bump> Parser<'bump> {
 		};
 
 		// Parse optional BY clause
-		let by = if !self.is_eof() && self.current().map_or(false, |t| t.is_keyword(Keyword::By)) {
+		let by = if !self.is_eof() && self.current().is_ok_and(|t| t.is_keyword(Keyword::By)) {
 			let by_token = self.consume_keyword(Keyword::By)?;
 			if !self.current()?.is_operator(OpenCurly) {
 				return Err(RqlError::OperatorMissingBraces {

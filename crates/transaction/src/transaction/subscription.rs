@@ -137,7 +137,7 @@ impl SubscriptionTransaction {
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		let result = executor.rql(&mut Transaction::Subscription(self), rql, params);
 		if let Err(ref e) = result {
-			self.inner.poison(e.0.clone());
+			self.inner.poison(*e.0.clone());
 		}
 		result
 	}

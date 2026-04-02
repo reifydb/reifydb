@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 //! WASI bridge for ReifyDB test suite.
 //!
@@ -17,11 +20,9 @@ use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{
 		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
-		load_shape_registry,
 	},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
-	shape::RowShapeRegistry,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -36,7 +37,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine};
+use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_routine::{function::default_functions, procedure::default_procedures};
 use reifydb_rql::RqlVersion;
@@ -48,7 +49,7 @@ use reifydb_store_multi::{
 };
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::Subsystem;
-use reifydb_sub_flow::{builder::FlowBuilderConfig, subsystem::FlowSubsystem};
+use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
 	TransactionVersion,
 	interceptor::factory::InterceptorFactory,
@@ -112,15 +113,12 @@ impl Bridge {
 
 		let ioc_ref = ioc.clone();
 
-		let shape_registry = RowShapeRegistry::new(single.clone());
-
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
 		bootstrap_root_identity(&multi, &single, &materialized_catalog, &eventbus)?;
 		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)?;
-		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &shape_registry, &eventbus)?;
-		load_shape_registry(&multi, &single, &shape_registry)?;
+		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)?;
 
-		let procedures = default_procedures().build();
+		let procedures = default_procedures().configure();
 
 		let eventbus_clone = eventbus.clone();
 		let engine = StandardEngine::new(
@@ -128,14 +126,16 @@ impl Bridge {
 			single.clone(),
 			eventbus,
 			InterceptorFactory::default(),
-			Catalog::new(materialized_catalog, shape_registry),
-			RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
-			default_functions().build(),
-			procedures,
-			Transforms::empty(),
-			ioc,
-			#[cfg(not(target_arch = "wasm32"))]
-			None,
+			Catalog::new(materialized_catalog),
+			EngineConfig {
+				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
+				functions: default_functions().configure(),
+				procedures,
+				transforms: Transforms::empty(),
+				ioc,
+				#[cfg(not(target_arch = "wasm32"))]
+				remote_registry: None,
+			},
 		);
 
 		eprintln!("[WASI] Spawning CDC producer actor...");
@@ -152,7 +152,7 @@ impl Bridge {
 		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
 		eprintln!("[WASI] CDC producer actor registered!");
 
-		let flow_config = FlowBuilderConfig {
+		let flow_config = FlowConfig {
 			operators_dir: None,
 			num_workers: 1,
 			custom_operators: HashMap::new(),

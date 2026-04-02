@@ -16,13 +16,13 @@ impl CatalogStore {
 		// Collect view IDs first to avoid holding stream borrow
 		let mut view_ids = Vec::new();
 		{
-			let mut stream = rx.range(ViewKey::full_scan(), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = rx.range(ViewKey::full_scan(), 1024)?;
+			for entry in stream {
 				let entry = entry?;
-				if let Some(key) = Key::decode(&entry.key) {
-					if let Key::View(view_key) = key {
-						view_ids.push(view_key.view);
-					}
+				if let Some(key) = Key::decode(&entry.key)
+					&& let Key::View(view_key) = key
+				{
+					view_ids.push(view_key.view);
 				}
 			}
 		}

@@ -41,7 +41,7 @@ impl CatalogStore {
 		Self::store_subscription(txn, subscription_id)?;
 		Self::insert_columns_for_subscription(txn, subscription_id, &to_create)?;
 
-		Ok(Self::get_subscription(&mut Transaction::Admin(&mut *txn), subscription_id)?)
+		Self::get_subscription(&mut Transaction::Admin(&mut *txn), subscription_id)
 	}
 
 	fn store_subscription(txn: &mut AdminTransaction, subscription: SubscriptionId) -> Result<()> {
@@ -85,10 +85,10 @@ impl CatalogStore {
 		txn: &mut Transaction<'_>,
 		subscription: SubscriptionId,
 	) -> Result<Vec<SubscriptionColumn>> {
-		let mut stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
+		let stream = txn.range(SubscriptionColumnKey::subscription_range(subscription), 256)?;
 
 		let mut columns = Vec::new();
-		while let Some(result) = stream.next() {
+		for result in stream {
 			let multi = result?;
 			let row = &multi.row;
 			let id = SubscriptionColumnId(subscription_column::SHAPE.get_u64(row, subscription_column::ID));

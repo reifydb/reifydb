@@ -7,10 +7,7 @@
 
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
-use reifydb::{
-	Database, WithSubsystem, server, sub_server_grpc::factory::GrpcConfig, sub_server_http::factory::HttpConfig,
-	sub_server_ws::factory::WsConfig,
-};
+use reifydb::{Database, WithSubsystem, server};
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::command::Command;
 use tokio::runtime::Runtime;
@@ -18,9 +15,9 @@ use tokio::runtime::Runtime;
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
 		.with_flow(|f| f)
-		.with_grpc(GrpcConfig::default().admin_bind_addr("[::1]:0"))
-		.with_http(HttpConfig::default().admin_bind_addr("::1:0"))
-		.with_ws(WsConfig::default().admin_bind_addr("::1:0"))
+		.with_grpc(|grpc| grpc.admin_bind_addr("[::1]:0"))
+		.with_http(|http| http.admin_bind_addr("::1:0"))
+		.with_ws(|ws| ws.admin_bind_addr("::1:0"))
 		.build()
 		.unwrap()
 }

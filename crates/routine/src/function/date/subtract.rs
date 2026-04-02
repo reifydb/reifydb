@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateSubtract;
 
+impl Default for DateSubtract {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateSubtract {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for DateSubtract {
 			});
 		}
 
-		let date_col = columns.get(0).unwrap();
+		let date_col = columns.first().unwrap();
 		let dur_col = columns.get(1).unwrap();
 
 		match (date_col.data(), dur_col.data()) {

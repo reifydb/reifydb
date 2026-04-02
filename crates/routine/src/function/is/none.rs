@@ -11,6 +11,12 @@ use crate::function::{
 
 pub struct IsNone;
 
+impl Default for IsNone {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl IsNone {
 	pub fn new() -> Self {
 		Self
@@ -30,7 +36,7 @@ impl ScalarFunction for IsNone {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 		let data: Vec<bool> = (0..row_count).map(|i| !column.data().is_defined(i)).collect();
 
 		Ok(ColumnData::bool(data))

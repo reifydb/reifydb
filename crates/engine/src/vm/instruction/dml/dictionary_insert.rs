@@ -32,7 +32,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn insert_dictionary<'a>(
+pub(crate) fn insert_dictionary(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: InsertDictionaryNode,

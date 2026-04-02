@@ -22,7 +22,7 @@ fn main() {
 	// Clean up any existing database
 	if Path::new(db_path).exists() {
 		info!("Removing existing database file...");
-		fs::remove_dir_all(db_path).unwrap_or_else(|_| ());
+		fs::remove_dir_all(db_path).unwrap_or(());
 		info!("✓ Cleanup complete\n");
 	}
 
@@ -171,6 +171,6 @@ fn main() {
 	// Cleanup
 	info!("\n=== Cleanup ===");
 	info!("Removing database files...");
-	fs::remove_dir_all(db_path).unwrap_or_else(|_| ());
+	fs::remove_dir_all(db_path).unwrap_or(());
 	info!("✓ Cleanup complete");
 }

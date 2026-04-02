@@ -48,11 +48,11 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_dictionary(&self, id: DictionaryId, version: CommitVersion, dictionary: Option<Dictionary>) {
-		if let Some(entry) = self.dictionaries.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				// Remove old name from index
-				self.dictionaries_by_name.remove(&(pre.namespace, pre.name.clone()));
-			}
+		if let Some(entry) = self.dictionaries.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+		{
+			// Remove old name from index
+			self.dictionaries_by_name.remove(&(pre.namespace, pre.name.clone()));
 		}
 
 		let multi = self.dictionaries.get_or_insert_with(id, MultiVersionDictionary::new);

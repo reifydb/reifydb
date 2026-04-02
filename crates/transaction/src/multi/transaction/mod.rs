@@ -182,8 +182,7 @@ where
 	/// Used by the replica applier so that `clock.current()` returns
 	/// the latest replicated version for subsequent query transactions.
 	pub fn advance_clock_to(&self, version: CommitVersion) {
-		let inner = self.inner.inner.read();
-		inner.clock.advance_to(version);
+		self.inner.clock.advance_to(version);
 	}
 
 	/// Returns the highest version where ALL prior versions have completed.
@@ -385,7 +384,7 @@ impl MultiTransaction {
 
 pub enum TransactionType {
 	Query(MultiReadTransaction),
-	Command(MultiWriteTransaction),
+	Command(Box<MultiWriteTransaction>),
 }
 
 impl MultiTransaction {

@@ -73,9 +73,8 @@ impl CdcStorage for MemoryCdcStorage {
 
 		let range_iter = guard.range((start, end));
 		let mut items: Vec<Cdc> = Vec::with_capacity(batch_size.min(64));
-		let mut count = 0;
 
-		for (_, cdc) in range_iter {
+		for (count, (_, cdc)) in range_iter.enumerate() {
 			if count >= batch_size {
 				// We've hit the batch limit, there are more items
 				return Ok(CdcBatch {
@@ -84,7 +83,6 @@ impl CdcStorage for MemoryCdcStorage {
 				});
 			}
 			items.push(cdc.clone());
-			count += 1;
 		}
 
 		Ok(CdcBatch {

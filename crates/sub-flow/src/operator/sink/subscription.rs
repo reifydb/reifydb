@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	encoded::{
 		key::EncodedKey,
@@ -84,11 +83,7 @@ impl Operator for SinkSubscriptionOperator {
 					post,
 				} => {
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Insert);
-
-					let shape = {
-						let catalog = txn.catalog();
-						create_shape_from_columns(&with_implicit, catalog)?
-					};
+					let shape = create_shape_from_columns(&with_implicit, txn);
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
@@ -110,11 +105,7 @@ impl Operator for SinkSubscriptionOperator {
 					post,
 				} => {
 					let with_implicit = Self::add_implicit_columns(post, DiffType::Update);
-
-					let shape = {
-						let catalog = txn.catalog();
-						create_shape_from_columns(&with_implicit, catalog)?
-					};
+					let shape = create_shape_from_columns(&with_implicit, txn);
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
@@ -135,11 +126,7 @@ impl Operator for SinkSubscriptionOperator {
 					pre,
 				} => {
 					let with_implicit = Self::add_implicit_columns(pre, DiffType::Remove);
-
-					let shape = {
-						let catalog = txn.catalog();
-						create_shape_from_columns(&with_implicit, catalog)?
-					};
+					let shape = create_shape_from_columns(&with_implicit, txn);
 
 					let row_count = with_implicit.row_count();
 					for row_idx in 0..row_count {
@@ -167,12 +154,13 @@ impl Operator for SinkSubscriptionOperator {
 	}
 }
 
-/// Create and persist a shape from actual column data
-fn create_shape_from_columns(columns: &Columns, catalog: &Catalog) -> Result<RowShape> {
+/// Create a shape from column data, deferring persistence.
+fn create_shape_from_columns(columns: &Columns, txn: &mut FlowTransaction) -> RowShape {
 	let fields: Vec<RowShapeField> = columns
 		.iter()
 		.map(|col| RowShapeField::unconstrained(col.name.to_string(), col.data().get_type()))
 		.collect();
 
-	catalog.shape.get_or_create(fields)
+	let inner = txn.inner_mut();
+	inner.catalog.get_or_create_row_shape_pending(&mut inner.pending_shapes, fields)
 }

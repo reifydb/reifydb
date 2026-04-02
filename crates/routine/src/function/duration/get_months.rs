@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DurationGetMonths;
 
+impl Default for DurationGetMonths {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DurationGetMonths {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DurationGetMonths {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Duration(container) => {

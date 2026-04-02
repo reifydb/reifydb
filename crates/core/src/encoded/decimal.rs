@@ -22,7 +22,7 @@ impl RowShape {
 	/// - Values that fit in i128: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
-		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal { .. }));
+		debug_assert!(matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal));
 
 		// Serialize as scale (i64) + mantissa (variable bytes)
 		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
@@ -39,7 +39,7 @@ impl RowShape {
 	/// Get a Decimal value, detecting storage mode from MSB
 	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
 		let field = &self.fields()[index];
-		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal { .. }));
+		debug_assert!(matches!(field.constraint.get_type().inner_type(), Type::Decimal));
 
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
@@ -68,7 +68,7 @@ impl RowShape {
 	/// Try to get a Decimal value, returning None if undefined
 	pub fn try_get_decimal(&self, row: &EncodedRow, index: usize) -> Option<Decimal> {
 		if row.is_defined(index)
-			&& matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal { .. })
+			&& matches!(self.fields()[index].constraint.get_type().inner_type(), Type::Decimal)
 		{
 			Some(self.get_decimal(row, index))
 		} else {

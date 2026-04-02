@@ -35,7 +35,7 @@ where
 		// (256-bit SIMD) This ensures we can engine data in chunks
 		// without bounds checking
 		let simd_alignment = 32 / mem::size_of::<T>().max(1);
-		let aligned_capacity = ((capacity + simd_alignment - 1) / simd_alignment) * simd_alignment;
+		let aligned_capacity = capacity.div_ceil(simd_alignment) * simd_alignment;
 		Self {
 			inner: Arc::new(Vec::with_capacity(aligned_capacity)),
 		}
@@ -43,6 +43,10 @@ where
 
 	pub fn len(&self) -> usize {
 		self.inner.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 
 	pub fn capacity(&self) -> usize {
@@ -201,7 +205,7 @@ impl<T: Clone + PartialEq> CowVec<T> {
 	pub fn is_simd_aligned(&self) -> bool {
 		let alignment = 32; // 256-bit SIMD alignment
 		let ptr = self.inner.as_ptr() as usize;
-		ptr % alignment == 0
+		ptr.is_multiple_of(alignment)
 	}
 
 	pub fn take(&self, n: usize) -> Self {

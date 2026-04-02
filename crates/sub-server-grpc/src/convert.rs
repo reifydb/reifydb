@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, iter, sync::Arc};
 
 use num_bigint::BigInt;
 use reifydb_type::{
@@ -435,7 +435,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 		}
 		FrameColumnData::DictionaryId(c) => {
 			let mut buf = Vec::new();
-			if c.len() > 0 {
+			if !c.is_empty() {
 				let first = c.get(0);
 				let disc = match first {
 					Some(DictionaryEntryId::U1(_)) => 1u8,
@@ -465,9 +465,7 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 						}
 					} else {
 						// Write zero bytes for the width
-						for _ in 0..disc as usize {
-							buf.push(0);
-						}
+						buf.extend(iter::repeat_n(0u8, disc as usize));
 					}
 				}
 			}
@@ -487,9 +485,9 @@ fn encode_column_data(col: &FrameColumnData) -> (u8, Vec<u8>, Vec<u8>) {
 
 fn encode_bitvec(bv: &BitVec) -> Vec<u8> {
 	let len = bv.len();
-	let mut buf = Vec::with_capacity(4 + (len + 7) / 8);
+	let mut buf = Vec::with_capacity(4 + len.div_ceil(8));
 	buf.extend_from_slice(&(len as u32).to_le_bytes());
-	for i in 0..((len + 7) / 8) {
+	for i in 0..len.div_ceil(8) {
 		let mut byte = 0u8;
 		for bit in 0..8 {
 			let idx = i * 8 + bit;

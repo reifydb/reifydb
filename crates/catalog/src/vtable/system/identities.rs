@@ -22,6 +22,12 @@ pub struct SystemIdentities {
 	exhausted: bool,
 }
 
+impl Default for SystemIdentities {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemIdentities {
 	pub fn new() -> Self {
 		Self {

@@ -16,6 +16,12 @@ use crate::function::{
 
 pub struct Power;
 
+impl Default for Power {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Power {
 	pub fn new() -> Self {
 		Self {}
@@ -463,7 +469,7 @@ impl ScalarFunction for Power {
 			});
 		}
 
-		let base_column = columns.get(0).unwrap();
+		let base_column = columns.first().unwrap();
 		let exponent_column = columns.get(1).unwrap();
 
 		match (base_column.data(), exponent_column.data()) {

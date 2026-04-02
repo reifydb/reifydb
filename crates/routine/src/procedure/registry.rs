@@ -20,11 +20,11 @@ pub struct Procedures(Arc<ProceduresInner>);
 
 impl Procedures {
 	pub fn empty() -> Procedures {
-		Procedures::builder().build()
+		Procedures::builder().configure()
 	}
 
-	pub fn builder() -> ProceduresBuilder {
-		ProceduresBuilder {
+	pub fn builder() -> ProceduresConfigurator {
+		ProceduresConfigurator {
 			procedures: HashMap::new(),
 			deferred_handlers: Vec::new(),
 		}
@@ -88,12 +88,12 @@ impl ProceduresInner {
 	}
 }
 
-pub struct ProceduresBuilder {
+pub struct ProceduresConfigurator {
 	procedures: HashMap<String, ProcedureFactory>,
 	deferred_handlers: Vec<(String, ProcedureFactory)>,
 }
 
-impl ProceduresBuilder {
+impl ProceduresConfigurator {
 	pub fn with_procedure<F, P>(mut self, name: &str, init: F) -> Self
 	where
 		F: Fn() -> P + Send + Sync + 'static,
@@ -118,7 +118,7 @@ impl ProceduresBuilder {
 		self
 	}
 
-	pub fn build(self) -> Procedures {
+	pub fn configure(self) -> Procedures {
 		Procedures(Arc::new(ProceduresInner {
 			state: Arc::new(Mutex::new(RegistryState {
 				procedures: self.procedures,

@@ -99,7 +99,7 @@ pub(crate) fn update_row_in_entry(
 
 /// Check if a right side has any rows for a given key
 pub(crate) fn has_right_rows(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
-	Ok(right_store.contains_key(txn, key_hash)?)
+	right_store.contains_key(txn, key_hash)
 }
 
 /// Check if it's the first right row being added for a key
@@ -121,6 +121,17 @@ pub(crate) fn pull_from_store(
 	}
 }
 
+/// Context for the "opposite side" of a join emit operation.
+///
+/// Groups the parameters that describe which opposite-side data to look up
+/// and how to combine it with the primary side.
+pub(crate) struct JoinEmitContext<'a> {
+	pub opposite_store: &'a Store,
+	pub key_hash: &'a Hash128,
+	pub operator: &'a JoinOperator,
+	pub opposite_parent: &'a Arc<Operators>,
+}
+
 /// Emit joined columns when inserting a row that has matches on the opposite side.
 /// Uses index-based access, no Row allocation.
 pub(crate) fn emit_joined_columns(
@@ -128,19 +139,16 @@ pub(crate) fn emit_joined_columns(
 	primary: &Columns,
 	primary_idx: usize,
 	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
+	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
-	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
 
 	let joined = match primary_side {
-		JoinSide::Left => operator.join_columns_one_to_many(txn, primary, primary_idx, &opposite)?,
-		JoinSide::Right => operator.join_columns_many_to_one(txn, &opposite, primary, primary_idx)?,
+		JoinSide::Left => ctx.operator.join_columns_one_to_many(txn, primary, primary_idx, &opposite)?,
+		JoinSide::Right => ctx.operator.join_columns_many_to_one(txn, &opposite, primary, primary_idx)?,
 	};
 
 	if joined.is_empty() {
@@ -158,19 +166,16 @@ pub(crate) fn emit_remove_joined_columns(
 	primary: &Columns,
 	primary_idx: usize,
 	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
+	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
-	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
 
 	let joined = match primary_side {
-		JoinSide::Left => operator.join_columns_one_to_many(txn, primary, primary_idx, &opposite)?,
-		JoinSide::Right => operator.join_columns_many_to_one(txn, &opposite, primary, primary_idx)?,
+		JoinSide::Left => ctx.operator.join_columns_one_to_many(txn, primary, primary_idx, &opposite)?,
+		JoinSide::Right => ctx.operator.join_columns_many_to_one(txn, &opposite, primary, primary_idx)?,
 	};
 
 	if joined.is_empty() {
@@ -189,24 +194,21 @@ pub(crate) fn emit_update_joined_columns(
 	post: &Columns,
 	row_idx: usize,
 	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
+	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
-	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
 
 	let (pre_joined, post_joined) = match primary_side {
 		JoinSide::Left => (
-			operator.join_columns_one_to_many(txn, pre, row_idx, &opposite)?,
-			operator.join_columns_one_to_many(txn, post, row_idx, &opposite)?,
+			ctx.operator.join_columns_one_to_many(txn, pre, row_idx, &opposite)?,
+			ctx.operator.join_columns_one_to_many(txn, post, row_idx, &opposite)?,
 		),
 		JoinSide::Right => (
-			operator.join_columns_many_to_one(txn, &opposite, pre, row_idx)?,
-			operator.join_columns_many_to_one(txn, &opposite, post, row_idx)?,
+			ctx.operator.join_columns_many_to_one(txn, &opposite, pre, row_idx)?,
+			ctx.operator.join_columns_many_to_one(txn, &opposite, post, row_idx)?,
 		),
 	};
 
@@ -226,16 +228,13 @@ pub(crate) fn emit_joined_columns_batch(
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
+	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
 	}
 
-	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
@@ -243,11 +242,23 @@ pub(crate) fn emit_joined_columns_batch(
 	let joined = match primary_side {
 		JoinSide::Left => {
 			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			operator.join_columns_cartesian(txn, primary, primary_indices, &opposite, &opposite_indices)?
+			ctx.operator.join_columns_cartesian(
+				txn,
+				primary,
+				primary_indices,
+				&opposite,
+				&opposite_indices,
+			)?
 		}
 		JoinSide::Right => {
 			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary, primary_indices)?
+			ctx.operator.join_columns_cartesian(
+				txn,
+				&opposite,
+				&opposite_indices,
+				primary,
+				primary_indices,
+			)?
 		}
 	};
 
@@ -266,16 +277,13 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
-	opposite_store: &Store,
-	key_hash: &Hash128,
-	operator: &JoinOperator,
-	opposite_parent: &Arc<Operators>,
+	ctx: &JoinEmitContext<'_>,
 ) -> Result<Option<Diff>> {
 	if primary_indices.is_empty() {
 		return Ok(None);
 	}
 
-	let opposite = pull_from_store(txn, opposite_store, key_hash, opposite_parent)?;
+	let opposite = pull_from_store(txn, ctx.opposite_store, ctx.key_hash, ctx.opposite_parent)?;
 	if opposite.is_empty() {
 		return Ok(None);
 	}
@@ -283,11 +291,23 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	let joined = match primary_side {
 		JoinSide::Left => {
 			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			operator.join_columns_cartesian(txn, primary, primary_indices, &opposite, &opposite_indices)?
+			ctx.operator.join_columns_cartesian(
+				txn,
+				primary,
+				primary_indices,
+				&opposite,
+				&opposite_indices,
+			)?
 		}
 		JoinSide::Right => {
 			let opposite_indices: Vec<usize> = (0..opposite.row_count()).collect();
-			operator.join_columns_cartesian(txn, &opposite, &opposite_indices, primary, primary_indices)?
+			ctx.operator.join_columns_cartesian(
+				txn,
+				&opposite,
+				&opposite_indices,
+				primary,
+				primary_indices,
+			)?
 		}
 	};
 

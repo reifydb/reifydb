@@ -68,7 +68,7 @@ impl CatalogStore {
 		// Initialize dictionary sequence counter to 0
 		Self::initialize_dictionary_sequence(txn, dictionary_id)?;
 
-		Ok(Self::get_dictionary(&mut Transaction::Admin(&mut *txn), dictionary_id)?)
+		Self::get_dictionary(&mut Transaction::Admin(&mut *txn), dictionary_id)
 	}
 
 	fn store_dictionary(

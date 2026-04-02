@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from "vitest";
 import {Client, HttpClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 import {
     expectSingleResult,
     expectSingleDateResult,
@@ -26,7 +26,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [true],
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
 
             expectSingleResult(frames, true, 'boolean');
@@ -36,7 +36,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [42],
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
 
             expectSingleResult(frames, 42, 'number');
@@ -46,7 +46,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [1234],
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
 
             expectSingleResult(frames, 1234, 'number');
@@ -56,7 +56,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [12345678],
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
 
             expectSingleResult(frames, 12345678, 'number');
@@ -66,7 +66,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [BigInt("9223372036854775807")],
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
 
             expectSingleResult(frames, BigInt("9223372036854775807"), 'bigint');
@@ -76,7 +76,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [BigInt("170141183460469231731687303715884105727")],
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
 
             expectSingleResult(frames, BigInt("170141183460469231731687303715884105727"), 'bigint');
@@ -86,7 +86,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [255],
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
 
             expectSingleResult(frames, 255, 'number');
@@ -96,7 +96,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [65535],
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
 
             expectSingleResult(frames, 65535, 'number');
@@ -106,7 +106,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [4294967295],
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
 
             expectSingleResult(frames, BigInt(4294967295), 'bigint');
@@ -116,7 +116,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [BigInt("18446744073709551615")],
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
 
             expectSingleResult(frames, BigInt("18446744073709551615"), 'bigint');
@@ -126,7 +126,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [BigInt("340282366920938463463374607431768211455")],
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
 
             expectSingleResult(frames, BigInt("340282366920938463463374607431768211455"), 'bigint');
@@ -136,7 +136,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [3.14],
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
 
             expectSingleResult(frames, 3.14, 'number');
@@ -146,7 +146,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [3.141592653589793],
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -160,7 +160,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [decimal],
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
 
             expectSingleResult(frames, decimal, 'string');
@@ -170,7 +170,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 ["Hello, World!"],
-                [Schema.object({result: Schema.utf8()})]
+                [Shape.object({result: Shape.utf8()})]
             );
 
             expectSingleResult(frames, "Hello, World!", 'string');
@@ -181,7 +181,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [data],
-                [Schema.object({result: Schema.blob()})]
+                [Shape.object({result: Shape.blob()})]
             );
 
             expectSingleBlobResult(frames, data);
@@ -192,7 +192,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [date],
-                [Schema.object({result: Schema.date()})]
+                [Shape.object({result: Shape.date()})]
             );
 
             expectSingleDateResult(frames, date);
@@ -203,7 +203,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [time],
-                [Schema.object({result: Schema.time()})]
+                [Shape.object({result: Shape.time()})]
             );
 
             expectSingleDateResult(frames, time);
@@ -214,7 +214,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [datetime],
-                [Schema.object({result: Schema.datetime()})]
+                [Shape.object({result: Shape.datetime()})]
             );
 
             expectSingleDateResult(frames, datetime);
@@ -225,7 +225,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [duration],
-                [Schema.object({result: Schema.duration()})]
+                [Shape.object({result: Shape.duration()})]
             );
 
             expectSingleResult(frames, duration, 'string');
@@ -236,7 +236,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [uuid],
-                [Schema.object({result: Schema.uuid4()})]
+                [Shape.object({result: Shape.uuid4()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -247,7 +247,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [uuid],
-                [Schema.object({result: Schema.uuid7()})]
+                [Shape.object({result: Shape.uuid7()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -258,7 +258,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [identityId],
-                [Schema.object({result: Schema.identityid()})]
+                [Shape.object({result: Shape.identityid()})]
             );
 
             expectSingleResult(frames, identityId, 'string');
@@ -272,7 +272,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [true],
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
 
             expectSingleResult(frames, true, 'boolean');
@@ -282,7 +282,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [42],
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
 
             expectSingleResult(frames, 42, 'number');
@@ -292,7 +292,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [1234],
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
 
             expectSingleResult(frames, 1234, 'number');
@@ -302,7 +302,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [12345678],
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
 
             expectSingleResult(frames, 12345678, 'number');
@@ -312,7 +312,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [BigInt("9223372036854775807")],
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
 
             expectSingleResult(frames, BigInt("9223372036854775807"), 'bigint');
@@ -322,7 +322,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [BigInt("170141183460469231731687303715884105727")],
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
 
             expectSingleResult(frames, BigInt("170141183460469231731687303715884105727"), 'bigint');
@@ -332,7 +332,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [255],
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
 
             expectSingleResult(frames, 255, 'number');
@@ -342,7 +342,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [65535],
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
 
             expectSingleResult(frames, 65535, 'number');
@@ -352,7 +352,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [4294967295],
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
 
             expectSingleResult(frames, BigInt(4294967295), 'bigint');
@@ -362,7 +362,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [BigInt("18446744073709551615")],
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
 
             expectSingleResult(frames, BigInt("18446744073709551615"), 'bigint');
@@ -372,7 +372,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [BigInt("340282366920938463463374607431768211455")],
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
 
             expectSingleResult(frames, BigInt("340282366920938463463374607431768211455"), 'bigint');
@@ -382,7 +382,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [3.14],
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
 
             expectSingleResult(frames, 3.14, 'number');
@@ -392,7 +392,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [3.141592653589793],
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -406,7 +406,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [decimal],
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
 
             expectSingleResult(frames, decimal, 'string');
@@ -416,7 +416,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 ["Hello, World!"],
-                [Schema.object({result: Schema.utf8()})]
+                [Shape.object({result: Shape.utf8()})]
             );
 
             expectSingleResult(frames, "Hello, World!", 'string');
@@ -427,7 +427,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [data],
-                [Schema.object({result: Schema.blob()})]
+                [Shape.object({result: Shape.blob()})]
             );
 
             expectSingleBlobResult(frames, data);
@@ -438,7 +438,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [date],
-                [Schema.object({result: Schema.date()})]
+                [Shape.object({result: Shape.date()})]
             );
 
             expectSingleDateResult(frames, date);
@@ -449,7 +449,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [time],
-                [Schema.object({result: Schema.time()})]
+                [Shape.object({result: Shape.time()})]
             );
 
             expectSingleDateResult(frames, time);
@@ -460,7 +460,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [datetime],
-                [Schema.object({result: Schema.datetime()})]
+                [Shape.object({result: Shape.datetime()})]
             );
 
             expectSingleDateResult(frames, datetime);
@@ -471,7 +471,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [duration],
-                [Schema.object({result: Schema.duration()})]
+                [Shape.object({result: Shape.duration()})]
             );
 
             expectSingleResult(frames, duration, 'string');
@@ -482,7 +482,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [uuid],
-                [Schema.object({result: Schema.uuid4()})]
+                [Shape.object({result: Shape.uuid4()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -493,7 +493,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [uuid],
-                [Schema.object({result: Schema.uuid7()})]
+                [Shape.object({result: Shape.uuid7()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -504,7 +504,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [identityId],
-                [Schema.object({result: Schema.identityid()})]
+                [Shape.object({result: Shape.identityid()})]
             );
 
             expectSingleResult(frames, identityId, 'string');
@@ -518,7 +518,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [true],
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
 
             expectSingleResult(frames, true, 'boolean');
@@ -528,7 +528,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [42],
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
 
             expectSingleResult(frames, 42, 'number');
@@ -538,7 +538,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [1234],
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
 
             expectSingleResult(frames, 1234, 'number');
@@ -548,7 +548,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [12345678],
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
 
             expectSingleResult(frames, 12345678, 'number');
@@ -558,7 +558,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [BigInt("9223372036854775807")],
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
 
             expectSingleResult(frames, BigInt("9223372036854775807"), 'bigint');
@@ -568,7 +568,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [BigInt("170141183460469231731687303715884105727")],
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
 
             expectSingleResult(frames, BigInt("170141183460469231731687303715884105727"), 'bigint');
@@ -578,7 +578,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [255],
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
 
             expectSingleResult(frames, 255, 'number');
@@ -588,7 +588,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [65535],
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
 
             expectSingleResult(frames, 65535, 'number');
@@ -598,7 +598,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [4294967295],
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
 
             expectSingleResult(frames, BigInt(4294967295), 'bigint');
@@ -608,7 +608,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [BigInt("18446744073709551615")],
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
 
             expectSingleResult(frames, BigInt("18446744073709551615"), 'bigint');
@@ -618,7 +618,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [BigInt("340282366920938463463374607431768211455")],
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
 
             expectSingleResult(frames, BigInt("340282366920938463463374607431768211455"), 'bigint');
@@ -628,7 +628,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [3.14],
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
 
             expectSingleResult(frames, 3.14, 'number');
@@ -638,7 +638,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [3.141592653589793],
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
 
             expect(frames).toHaveLength(1);
@@ -652,7 +652,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [decimal],
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
 
             expectSingleResult(frames, decimal, 'string');
@@ -662,7 +662,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 ["Hello, World!"],
-                [Schema.object({result: Schema.utf8()})]
+                [Shape.object({result: Shape.utf8()})]
             );
 
             expectSingleResult(frames, "Hello, World!", 'string');
@@ -673,7 +673,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [data],
-                [Schema.object({result: Schema.blob()})]
+                [Shape.object({result: Shape.blob()})]
             );
 
             expectSingleBlobResult(frames, data);
@@ -684,7 +684,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [date],
-                [Schema.object({result: Schema.date()})]
+                [Shape.object({result: Shape.date()})]
             );
 
             expectSingleDateResult(frames, date);
@@ -695,7 +695,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [time],
-                [Schema.object({result: Schema.time()})]
+                [Shape.object({result: Shape.time()})]
             );
 
             expectSingleDateResult(frames, time);
@@ -706,7 +706,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [datetime],
-                [Schema.object({result: Schema.datetime()})]
+                [Shape.object({result: Shape.datetime()})]
             );
 
             expectSingleDateResult(frames, datetime);
@@ -717,7 +717,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [duration],
-                [Schema.object({result: Schema.duration()})]
+                [Shape.object({result: Shape.duration()})]
             );
 
             expectSingleResult(frames, duration, 'string');
@@ -728,7 +728,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [uuid],
-                [Schema.object({result: Schema.uuid4()})]
+                [Shape.object({result: Shape.uuid4()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -739,7 +739,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [uuid],
-                [Schema.object({result: Schema.uuid7()})]
+                [Shape.object({result: Shape.uuid7()})]
             );
 
             expectSingleResult(frames, uuid, 'string');
@@ -750,7 +750,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [identityId],
-                [Schema.object({result: Schema.identityid()})]
+                [Shape.object({result: Shape.identityid()})]
             );
 
             expectSingleResult(frames, identityId, 'string');

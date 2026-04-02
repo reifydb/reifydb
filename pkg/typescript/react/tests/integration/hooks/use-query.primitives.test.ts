@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, getConnection, clearConnection, Schema} from '../../../src';
+import {useQueryOne, useQueryMany, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useQuery with TypeScript Primitive Types', () => {
@@ -16,15 +16,15 @@ describe('useQuery with TypeScript Primitive Types', () => {
         clearConnection();
     });
 
-    describe('Primitive Type - With Schema Returns JS Primitives', () => {
+    describe('Primitive Type - With Shape Returns JS Primitives', () => {
         describe('String Type', () => {
             it('should handle string primitive type', async () => {
-                const schema = Schema.object({ name: Schema.string() });
+                const shape = Shape.object({ name: Shape.string() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {name: 'John Doe'}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -32,18 +32,18 @@ describe('useQuery with TypeScript Primitive Types', () => {
                     expect(result.current.isExecuting).toBe(false);
                 });
 
-                // With schema, strings return as JS primitives
+                // With shape, strings return as JS primitives
                 expect(result.current.result!.rows[0].name).toBe('John Doe');
                 expect(typeof result.current.result!.rows[0].name).toBe('string');
             });
 
             it('should handle string with special characters', async () => {
-                const schema = Schema.object({ text: Schema.string() });
+                const shape = Shape.object({ text: Shape.string() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {text: 'Hello World'}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -51,19 +51,19 @@ describe('useQuery with TypeScript Primitive Types', () => {
                     expect(result.current.isExecuting).toBe(false);
                 });
 
-                // With schema, strings return as JS primitives
+                // With shape, strings return as JS primitives
                 expect(result.current.error).toBeUndefined();
                 expect(result.current.result).toBeDefined();
                 expect(result.current.result!.rows[0].text).toBe('Hello World');
             });
 
             it('should handle empty string', async () => {
-                const schema = Schema.object({ empty: Schema.string() });
+                const shape = Shape.object({ empty: Shape.string() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {empty: ''}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -71,19 +71,19 @@ describe('useQuery with TypeScript Primitive Types', () => {
                     expect(result.current.isExecuting).toBe(false);
                 });
 
-                // With schema, strings return as JS primitives
+                // With shape, strings return as JS primitives
                 expect(result.current.result!.rows[0].empty).toBe('');
             });
         });
 
         describe('Number Types', () => {
             it('should handle number primitive type', async () => {
-                const schema = Schema.object({ age: Schema.number() });
+                const shape = Shape.object({ age: Shape.number() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {age: 25}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -96,12 +96,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             it('should handle float numbers', async () => {
-                const schema = Schema.object({ price: Schema.float() });
+                const shape = Shape.object({ price: Shape.float() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {price: 19.99}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -113,12 +113,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             it('should handle double precision numbers', async () => {
-                const schema = Schema.object({ value: Schema.double() });
+                const shape = Shape.object({ value: Shape.double() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {value: 3.141592653589793}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -130,12 +130,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             it('should handle decimal numbers', async () => {
-                const schema = Schema.object({ amount: Schema.decimal() });
+                const shape = Shape.object({ amount: Shape.decimal() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {amount: cast('123.456789', decimal)}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -148,12 +148,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             it('should handle integer type', async () => {
-                const schema = Schema.object({ count: Schema.int() });
+                const shape = Shape.object({ count: Shape.int() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {count: 100}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -166,12 +166,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             it('should handle negative numbers', async () => {
-                const schema = Schema.object({ temperature: Schema.number() });
+                const shape = Shape.object({ temperature: Shape.number() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {temperature: -40.5}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -183,12 +183,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             it('should handle zero', async () => {
-                const schema = Schema.object({ zero: Schema.number() });
+                const shape = Shape.object({ zero: Shape.number() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {zero: 0}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -202,12 +202,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
 
         describe('Boolean Type', () => {
             it('should handle boolean true', async () => {
-                const schema = Schema.object({ active: Schema.boolean() });
+                const shape = Shape.object({ active: Shape.boolean() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {active: true}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -220,12 +220,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             it('should handle boolean false', async () => {
-                const schema = Schema.object({ enabled: Schema.bool() });
+                const shape = Shape.object({ enabled: Shape.bool() });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {enabled: false}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -239,12 +239,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
 
         describe('Special Types', () => {
             it('should handle undefined type', async () => {
-                const schema = Schema.object({ missing: Schema.optional(Schema.string()) });
+                const shape = Shape.object({ missing: Shape.optional(Shape.string()) });
                 const { result } = renderHook(() => 
                     useQueryOne(
                         `MAP {missing: undefined}`,
                         undefined,
-                        schema
+                        shape
                     )
                 );
 
@@ -258,17 +258,17 @@ describe('useQuery with TypeScript Primitive Types', () => {
         });
     });
 
-    describe('Complex Schema Scenarios', () => {
-        it('should handle string schema', async () => {
-            const schema = Schema.object({
-                name: Schema.string()
+    describe('Complex Shape Scenarios', () => {
+        it('should handle string shape', async () => {
+            const shape = Shape.object({
+                name: Shape.string()
             });
 
             const { result } = renderHook(() => 
                 useQueryOne(
                     `MAP {name: 'Alice'}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -276,21 +276,21 @@ describe('useQuery with TypeScript Primitive Types', () => {
                 expect(result.current.isExecuting).toBe(false);
             });
 
-            // With schema, strings are still JS strings
+            // With shape, strings are still JS strings
             expect(result.current.result!.rows[0].name).toBe('Alice');
             expect(typeof result.current.result!.rows[0].name).toBe('string');
         });
 
-        it('should handle number schema', async () => {
-            const schema = Schema.object({
-                age: Schema.number()
+        it('should handle number shape', async () => {
+            const shape = Shape.object({
+                age: Shape.number()
             });
 
             const { result } = renderHook(() => 
                 useQueryOne(
                     `MAP {age: 30}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -298,21 +298,21 @@ describe('useQuery with TypeScript Primitive Types', () => {
                 expect(result.current.isExecuting).toBe(false);
             });
 
-            // With schema, numbers are still JS numbers  
+            // With shape, numbers are still JS numbers  
             expect(result.current.result!.rows[0].age).toBe(30);
             expect(typeof result.current.result!.rows[0].age).toBe('number');
         });
 
-        it('should handle boolean schema', async () => {
-            const schema = Schema.object({
-                active: Schema.boolean()
+        it('should handle boolean shape', async () => {
+            const shape = Shape.object({
+                active: Shape.boolean()
             });
 
             const { result } = renderHook(() => 
                 useQueryOne(
                     `MAP {active: true}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -325,16 +325,16 @@ describe('useQuery with TypeScript Primitive Types', () => {
         });
 
         it('should handle optional fields', async () => {
-            const schema = Schema.object({
-                required: Schema.string(),
-                optional: Schema.optional(Schema.number())
+            const shape = Shape.object({
+                required: Shape.string(),
+                optional: Shape.optional(Shape.number())
             });
 
             const { result } = renderHook(() => 
                 useQueryOne(
                     `MAP {required: 'present', optional: undefined}`,
                     undefined,
-                    schema
+                    shape
                 )
             );
 
@@ -350,12 +350,12 @@ describe('useQuery with TypeScript Primitive Types', () => {
     describe('Primitive Type Parameters', () => {
         it('should handle primitive parameters', async () => {
             const params = { name: 'Parameter Value' };
-            const schema = Schema.object({ result: Schema.string() });
+            const shape = Shape.object({ result: Shape.string() });
             const { result } = renderHook(() => 
                 useQueryOne(
                     `MAP {result: $name}`,
                     params,
-                    schema
+                    shape
                 )
             );
 
@@ -374,10 +374,10 @@ describe('useQuery with TypeScript Primitive Types', () => {
                 suffix: 'World!',
                 isActive: true 
             };
-            const schema = Schema.object({
-                sum: Schema.number(),
-                concat: Schema.string(),
-                flag: Schema.boolean()
+            const shape = Shape.object({
+                sum: Shape.number(),
+                concat: Shape.string(),
+                flag: Shape.boolean()
             });
             const { result } = renderHook(() => 
                 useQueryOne(
@@ -387,7 +387,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
                         flag: $isActive
                     }`,
                     params,
-                    schema
+                    shape
                 )
             );
 
@@ -402,8 +402,8 @@ describe('useQuery with TypeScript Primitive Types', () => {
         });
     });
 
-    describe('useQueryMany with mixed schemas', () => {
-        it('should handle multiple queries without schemas', async () => {
+    describe('useQueryMany with mixed shapes', () => {
+        it('should handle multiple queries without shapes', async () => {
             const queries = [
                 `MAP {str: 'test'}`,
                 `MAP {num: 42}`,
@@ -418,17 +418,17 @@ describe('useQuery with TypeScript Primitive Types', () => {
                 expect(result.current.isExecuting).toBe(false);
             });
 
-            // Without schemas, these return value objects
+            // Without shapes, these return value objects
             // @ts-ignore
             expect(result.current.results![0].rows[0].str.type).toBe('Utf8');
             expect(result.current.results![1].rows[0].num.type).toBe('Int1');
             expect(result.current.results![2].rows[0].bool.type).toBe('Boolean');
         });
 
-        it('should handle multiple queries with schemas', async () => {
-            const schemas = [
-                Schema.object({ value: Schema.string() }),
-                Schema.object({ value: Schema.number() })
+        it('should handle multiple queries with shapes', async () => {
+            const shapes = [
+                Shape.object({ value: Shape.string() }),
+                Shape.object({ value: Shape.number() })
             ] as const;
             const queries = [
                 `MAP {value: 'hello'}`,
@@ -436,7 +436,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             ];
 
             const { result } = renderHook(() => 
-                useQueryMany(queries, undefined, schemas)
+                useQueryMany(queries, undefined, shapes)
             );
 
             await waitFor(() => {

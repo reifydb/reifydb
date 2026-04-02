@@ -54,8 +54,7 @@ fn process_tumbling_group_insert(
 
 	let timestamps = operator.resolve_event_timestamps(columns, row_count)?;
 
-	for row_idx in 0..row_count {
-		let timestamp = timestamps[row_idx];
+	for (row_idx, &timestamp) in timestamps.iter().enumerate() {
 		let (event_timestamp, window_id) = if operator.is_count_based() {
 			let event_timestamp = operator.current_timestamp();
 			let global_count = operator.get_and_increment_global_count(txn, group_hash)?;

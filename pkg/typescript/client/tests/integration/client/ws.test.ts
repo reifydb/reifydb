@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
 describe('ReifyDB Client Integration Tests', () => {
-    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+    const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
     const AUTH_TOKEN = process.env.REIFYDB_TOKEN;
 
     beforeAll(async () => {
@@ -44,7 +44,7 @@ describe('ReifyDB Client Integration Tests', () => {
                 'MAP {result: 42}',
                 {},
                 [
-                    Schema.object({result: Schema.number()}),
+                    Shape.object({result: Shape.number()}),
                 ]
             );
 
@@ -59,7 +59,7 @@ describe('ReifyDB Client Integration Tests', () => {
                 'MAP {result: 42}',
                 {},
                 [
-                    Schema.object({result: Schema.number()}),
+                    Shape.object({result: Shape.number()}),
                 ]
             );
 

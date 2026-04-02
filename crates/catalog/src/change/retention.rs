@@ -18,10 +18,10 @@ pub(super) struct ShapeRetentionPolicyApplier;
 impl CatalogChangeApplier for ShapeRetentionPolicyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		if let Some(k) = ShapeRetentionPolicyKey::decode(key) {
-			if let Some(policy) = decode_retention_policy(row) {
-				catalog.materialized.set_shape_retention_policy(k.shape, txn.version(), Some(policy));
-			}
+		if let Some(k) = ShapeRetentionPolicyKey::decode(key)
+			&& let Some(policy) = decode_retention_policy(row)
+		{
+			catalog.materialized.set_shape_retention_policy(k.shape, txn.version(), Some(policy));
 		}
 		Ok(())
 	}
@@ -40,14 +40,10 @@ pub(super) struct OperatorRetentionPolicyApplier;
 impl CatalogChangeApplier for OperatorRetentionPolicyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		if let Some(k) = OperatorRetentionPolicyKey::decode(key) {
-			if let Some(policy) = decode_retention_policy(row) {
-				catalog.materialized.set_operator_retention_policy(
-					k.operator,
-					txn.version(),
-					Some(policy),
-				);
-			}
+		if let Some(k) = OperatorRetentionPolicyKey::decode(key)
+			&& let Some(policy) = decode_retention_policy(row)
+		{
+			catalog.materialized.set_operator_retention_policy(k.operator, txn.version(), Some(policy));
 		}
 		Ok(())
 	}

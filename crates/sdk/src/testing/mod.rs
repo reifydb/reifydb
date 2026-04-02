@@ -14,18 +14,18 @@
 //!
 //! #[test]
 //! fn test_my_operator() {
-//! 	let mut harness = OperatorTestHarness::<MyOperator>::builder()
-//! 		.with_config([("key", Value::Utf8("value"))])
-//! 		.build()?;
+//!     let mut harness = OperatorTestHarness::<MyOperator>::builder()
+//!         .with_config([("key", Value::Utf8("value"))])
+//!         .build()?;
 //!
-//! 	let input = TestChangeBuilder::new()
-//! 		.insert_row(RowNumber(1), vec![Value::Int8(42i64)])
-//! 		.build();
+//!     let input = TestChangeBuilder::new()
+//!         .insert_row(RowNumber(1), vec![Value::Int8(42i64)])
+//!         .build();
 //!
-//! 	let output = harness.apply(input)?;
+//!     let output = harness.apply(input)?;
 //!
-//! 	assert_eq!(output.diffs.len(), 1);
-//! 	harness.assert_state("my_key", Value::Int8(42i64));
+//!     assert_eq!(output.diffs.len(), 1);
+//!     harness.assert_state("my_key", Value::Int8(42i64));
 //! }
 //! ```
 

@@ -299,7 +299,7 @@ async fn execute_and_respond(
 	let metadata = build_metadata(headers);
 	let params = match request.params {
 		None => Params::None,
-		Some(wp) => wp.into_params().map_err(|e| AppError::InvalidParams(e))?,
+		Some(wp) => wp.into_params().map_err(AppError::InvalidParams)?,
 	};
 
 	let ctx = RequestContext {
@@ -322,7 +322,7 @@ async fn execute_and_respond(
 
 	let mut response = if format_params.format.as_deref() == Some("json") {
 		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
-			.map_err(|e| AppError::BadRequest(e))?;
+			.map_err(AppError::BadRequest)?;
 		(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response()
 	} else {
 		Json(QueryResponse {

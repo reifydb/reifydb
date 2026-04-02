@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TimeTrunc;
 
+impl Default for TimeTrunc {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TimeTrunc {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for TimeTrunc {
 			});
 		}
 
-		let time_col = columns.get(0).unwrap();
+		let time_col = columns.first().unwrap();
 		let prec_col = columns.get(1).unwrap();
 
 		match (time_col.data(), prec_col.data()) {

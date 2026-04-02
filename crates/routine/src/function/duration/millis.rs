@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DurationMillis;
 
+impl Default for DurationMillis {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DurationMillis {
 	pub fn new() -> Self {
 		Self
@@ -64,7 +70,7 @@ impl ScalarFunction for DurationMillis {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		if !is_integer_type(col.data()) {
 			return Err(ScalarFunctionError::InvalidArgumentType {

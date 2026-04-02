@@ -209,7 +209,7 @@ pub fn scan_operator<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 		if let Some(&op) = WORD_OPERATORS.get(uppercase_word.as_str()) {
 			let next_char = cursor.peek_ahead(word.chars().count());
-			if next_char.map_or(true, |ch| !is_identifier_char(ch)) {
+			if next_char.is_none_or(|ch| !is_identifier_char(ch)) {
 				for _ in 0..word.chars().count() {
 					cursor.consume();
 				}

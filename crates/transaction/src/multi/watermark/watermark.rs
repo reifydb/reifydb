@@ -119,8 +119,7 @@ impl WaterMark {
 	/// Returns the maximum index that has the property that all indices
 	/// less than or equal to it are done.
 	pub fn done_until(&self) -> CommitVersion {
-		let val = CommitVersion(self.shared.done_until.load(Ordering::SeqCst));
-		val
+		CommitVersion(self.shared.done_until.load(Ordering::SeqCst))
 	}
 
 	/// Returns the last index that was begun.
@@ -168,8 +167,8 @@ impl WaterMark {
 		}
 
 		// Wait with timeout using condvar
-		let result = waiter.wait_timeout(timeout);
-		result
+
+		waiter.wait_timeout(timeout)
 	}
 }
 

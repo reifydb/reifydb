@@ -29,9 +29,7 @@ pub fn value_max<'a>(value: Type) -> &'a str {
 		Type::Blob => unreachable!(),
 		Type::Int => "unlimited",
 		Type::Uint => "unlimited",
-		Type::Decimal {
-			..
-		} => "unlimited",
+		Type::Decimal => "unlimited",
 		Type::Option(_) => unreachable!(),
 		Type::Any => unreachable!(),
 		Type::DictionaryId => unreachable!(),
@@ -69,9 +67,7 @@ pub fn value_range<'a>(value: Type) -> &'a str {
 		Type::Blob => unreachable!(),
 		Type::Int => "unlimited",
 		Type::Uint => "unlimited",
-		Type::Decimal {
-			..
-		} => "unlimited",
+		Type::Decimal => "unlimited",
 		Type::Option(_) => unreachable!(),
 		Type::Any => unreachable!(),
 		Type::DictionaryId => unreachable!(),

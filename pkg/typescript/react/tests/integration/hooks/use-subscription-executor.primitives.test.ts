@@ -3,13 +3,13 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useSubscriptionExecutor, getConnection, clearConnection, Schema} from '../../../src';
+import {useSubscriptionExecutor, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabase} from '../setup';
 import {
     createTestTableForHook
 } from './subscription-test-helpers';
 
-describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
+describe('useSubscriptionExecutor - Primitive Shape Transformations', () => {
     beforeAll(async () => {
         await waitForDatabase();
         const conn = getConnection({token: process.env.REIFYDB_TOKEN});
@@ -32,7 +32,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.number()})
+                    Shape.object({id: Shape.number(), value: Shape.number()})
                 );
             });
 
@@ -71,7 +71,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), bigValue: Schema.number()})
+                    Shape.object({id: Shape.number(), bigValue: Shape.number()})
                 );
             });
 
@@ -109,7 +109,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), floatValue: Schema.number()})
+                    Shape.object({id: Shape.number(), floatValue: Shape.number()})
                 );
             });
 
@@ -146,7 +146,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), doubleValue: Schema.number()})
+                    Shape.object({id: Shape.number(), doubleValue: Shape.number()})
                 );
             });
 
@@ -185,7 +185,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), name: Schema.string()})
+                    Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
@@ -222,7 +222,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), text: Schema.string()})
+                    Shape.object({id: Shape.number(), text: Shape.string()})
                 );
             });
 
@@ -260,7 +260,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), isActive: Schema.boolean()})
+                    Shape.object({id: Shape.number(), isActive: Shape.boolean()})
                 );
             });
 
@@ -301,11 +301,11 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({
-                        id: Schema.number(),
-                        name: Schema.string(),
-                        score: Schema.number(),
-                        isValid: Schema.boolean()
+                    Shape.object({
+                        id: Shape.number(),
+                        name: Shape.string(),
+                        score: Shape.number(),
+                        isValid: Shape.boolean()
                     })
                 );
             });
@@ -353,10 +353,10 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({
-                        id: Schema.number(),
-                        name: Schema.string(),
-                        value: Schema.number()
+                    Shape.object({
+                        id: Shape.number(),
+                        name: Shape.string(),
+                        value: Shape.number()
                     })
                 );
             });
@@ -405,7 +405,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.number()})
+                    Shape.object({id: Shape.number(), value: Shape.number()})
                 );
             });
 
@@ -452,7 +452,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), name: Schema.string()})
+                    Shape.object({id: Shape.number(), name: Shape.string()})
                 );
             });
 
@@ -491,7 +491,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), count: Schema.number()})
+                    Shape.object({id: Shape.number(), count: Shape.number()})
                 );
             });
 
@@ -562,9 +562,9 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({
-                        id: Schema.number(),
-                        optionalValue: Schema.number()
+                    Shape.object({
+                        id: Shape.number(),
+                        optionalValue: Shape.number()
                     })
                 );
             });
@@ -600,7 +600,7 @@ describe('useSubscriptionExecutor - Primitive Schema Transformations', () => {
                 await result.current.subscribe(
                     `from test::${tableName}`,
                     null,
-                    Schema.object({id: Schema.number(), value: Schema.number()})
+                    Shape.object({id: Shape.number(), value: Shape.number()})
                 );
             });
 

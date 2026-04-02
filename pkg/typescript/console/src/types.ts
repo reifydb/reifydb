@@ -4,6 +4,7 @@
 import type { Diagnostic } from '@reifydb/core';
 
 export type { Diagnostic };
+export type { TransactionType } from './executor/ws-executor';
 
 export interface ExecutionResult {
   success: boolean;

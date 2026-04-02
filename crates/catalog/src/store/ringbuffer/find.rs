@@ -98,10 +98,10 @@ impl CatalogStore {
 		ringbuffer: &RingBuffer,
 	) -> Result<Vec<PartitionedMetadata>> {
 		let range = RingBufferMetadataKey::full_scan_for_ringbuffer(ringbuffer.id);
-		let mut stream = rx.range(range, 4096)?;
+		let stream = rx.range(range, 4096)?;
 		let mut results = Vec::new();
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let metadata = decode_ringbuffer_metadata(&multi.row);
 			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
@@ -164,7 +164,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceRingBufferKey::full_scan(namespace), 1024)?;
 
 		let mut found_ringbuffer = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let ringbuffer_name = ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME);

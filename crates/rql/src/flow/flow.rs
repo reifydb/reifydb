@@ -64,8 +64,8 @@ impl FlowBuilder {
 
 	/// Add a node to the flow during construction
 	pub fn add_node(&mut self, node: FlowNode) -> FlowNodeId {
-		let node_id = node.id.clone();
-		self.graph.add_node(node_id.clone(), node);
+		let node_id = node.id;
+		self.graph.add_node(node_id, node);
 		node_id
 	}
 
@@ -75,21 +75,27 @@ impl FlowBuilder {
 		let target = edge.target;
 
 		if self.graph.get_node(&source).is_none() {
-			return Err(Error(internal!("Flow edge references missing source node {:?}", source)));
+			return Err(Error(Box::new(internal!(
+				"Flow edge references missing source node {:?}",
+				source
+			))));
 		}
 		if self.graph.get_node(&target).is_none() {
-			return Err(Error(internal!("Flow edge references missing target node {:?}", target)));
+			return Err(Error(Box::new(internal!(
+				"Flow edge references missing target node {:?}",
+				target
+			))));
 		}
 
 		self.graph.add_edge(edge);
 
 		// Update operator input/output lists
 		if let Some(from_node) = self.graph.get_node_mut(&source) {
-			from_node.outputs.push(target.clone());
+			from_node.outputs.push(target);
 		}
 
 		if let Some(to_node) = self.graph.get_node_mut(&target) {
-			to_node.inputs.push(source.clone());
+			to_node.inputs.push(source);
 		}
 
 		Ok(())

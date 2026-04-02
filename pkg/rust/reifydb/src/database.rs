@@ -252,10 +252,10 @@ impl Database {
 		// Apply all pending migrations
 		debug!("Running MIGRATE to apply pending migrations");
 		let result = self.admin_as_root("MIGRATE;", Params::None)?;
-		if let Some(frame) = result.first() {
-			if let Ok(Some(count)) = frame.get::<u32>("migrations_applied", 0) {
-				debug!("Applied {} pending migrations", count);
-			}
+		if let Some(frame) = result.first()
+			&& let Ok(Some(count)) = frame.get::<u32>("migrations_applied", 0)
+		{
+			debug!("Applied {} pending migrations", count);
 		}
 
 		Ok(())
@@ -342,7 +342,7 @@ impl Database {
 		let sub_id: u64 = frame
 			.get::<u64>("subscription_id", 0)
 			.map_err(|e| {
-				reifydb_type::error::Error(Diagnostic {
+				reifydb_type::error::Error(Box::new(Diagnostic {
 					code: "SUB_001".to_string(),
 					statement: None,
 					message: format!("failed to read subscription_id: {}", e),
@@ -353,10 +353,10 @@ impl Database {
 					notes: vec![],
 					cause: None,
 					operator_chain: None,
-				})
+				}))
 			})?
 			.ok_or_else(|| {
-				reifydb_type::error::Error(Diagnostic {
+				reifydb_type::error::Error(Box::new(Diagnostic {
 					code: "SUB_001".to_string(),
 					statement: None,
 					message: "subscription_id not found in response".to_string(),
@@ -367,7 +367,7 @@ impl Database {
 					notes: vec![],
 					cause: None,
 					operator_chain: None,
-				})
+				}))
 			})?;
 		Ok(SubscriptionCursor::new(
 			SubscriptionId(sub_id),

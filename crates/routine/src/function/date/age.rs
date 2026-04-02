@@ -15,6 +15,12 @@ use crate::function::{
 
 pub struct DateAge;
 
+impl Default for DateAge {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateAge {
 	pub fn new() -> Self {
 		Self
@@ -23,7 +29,7 @@ impl DateAge {
 
 /// Compute calendar-aware age between two dates.
 /// Returns Duration with months + days components.
-pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, TypeError> {
+pub fn date_age(d1: &Date, d2: &Date) -> Result<Duration, Box<TypeError>> {
 	let y1 = d1.year();
 	let m1 = d1.month() as i32;
 	let day1 = d1.day() as i32;
@@ -78,7 +84,7 @@ impl ScalarFunction for DateAge {
 			});
 		}
 
-		let col1 = columns.get(0).unwrap();
+		let col1 = columns.first().unwrap();
 		let col2 = columns.get(1).unwrap();
 
 		match (col1.data(), col2.data()) {
@@ -88,7 +94,7 @@ impl ScalarFunction for DateAge {
 				for i in 0..row_count {
 					match (container1.get(i), container2.get(i)) {
 						(Some(d1), Some(d2)) => {
-							container.push(date_age(&d1, &d2)?);
+							container.push(date_age(d1, d2)?);
 						}
 						_ => container.push_default(),
 					}

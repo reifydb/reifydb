@@ -161,10 +161,10 @@ impl WatermarkState {
 				break; // Gap detected - wait for begin()
 			}
 
-			if let Some(done) = self.pending.get(&min) {
-				if done.gt(&0) {
-					break; // Still pending (begin called but not done)
-				}
+			if let Some(done) = self.pending.get(&min)
+				&& done.gt(&0)
+			{
+				break; // Still pending (begin called but not done)
 			}
 			// Version is complete (begun and done count <= 0)
 			self.indices.pop();

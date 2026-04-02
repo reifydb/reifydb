@@ -64,7 +64,7 @@ impl TestStateStore {
 
 	/// Get all key-value pairs
 	pub fn entries(&self) -> Vec<(&EncodedKey, &EncodedRow)> {
-		self.data.iter().map(|(k, v)| (k, v)).collect()
+		self.data.iter().collect()
 	}
 
 	/// Decode a value using a shape
@@ -111,7 +111,8 @@ impl TestStateStore {
 
 	/// Assert that a key has a specific value
 	pub fn assert_value(&self, key: &EncodedKey, expected: &[Value], shape: &RowShape) {
-		let actual = self.decode_value(key, shape).expect(&format!("Key {:?} not found in state", key));
+		let actual =
+			self.decode_value(key, shape).unwrap_or_else(|| panic!("Key {:?} not found in state", key));
 		assert_eq!(actual, expected, "State value mismatch for key {:?}", key);
 	}
 

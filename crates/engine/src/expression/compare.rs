@@ -350,16 +350,16 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 			}
 
 			(ColumnData::Date(l), ColumnData::Date(r)) => {
-				return Ok(compare_temporal::<Op, _>(l, r, fragment));
+				Ok(compare_temporal::<Op, _>(l, r, fragment))
 			},
 			(ColumnData::DateTime(l), ColumnData::DateTime(r)) => {
-				return Ok(compare_temporal::<Op, _>(l, r, fragment));
+				Ok(compare_temporal::<Op, _>(l, r, fragment))
 			},
 			(ColumnData::Time(l), ColumnData::Time(r)) => {
-				return Ok(compare_temporal::<Op, _>(l, r, fragment));
+				Ok(compare_temporal::<Op, _>(l, r, fragment))
 			},
 			(ColumnData::Duration(l), ColumnData::Duration(r)) => {
-				return Ok(compare_temporal::<Op, _>(l, r, fragment));
+				Ok(compare_temporal::<Op, _>(l, r, fragment))
 			},
 
 			(
@@ -372,17 +372,17 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 					..
 				},
 			) => {
-				return Ok(compare_utf8::<Op>(l, r, fragment));
+				Ok(compare_utf8::<Op>(l, r, fragment))
 			},
 
 			(ColumnData::Uuid4(l), ColumnData::Uuid4(r)) => {
-				return Ok(compare_uuid::<Op, _>(l, r, fragment));
+				Ok(compare_uuid::<Op, _>(l, r, fragment))
 			},
 			(ColumnData::Uuid7(l), ColumnData::Uuid7(r)) => {
-				return Ok(compare_uuid::<Op, _>(l, r, fragment));
+				Ok(compare_uuid::<Op, _>(l, r, fragment))
 			},
 			(ColumnData::IdentityId(l), ColumnData::IdentityId(r)) => {
-				return Ok(compare_identity_id::<Op>(l, r, fragment));
+				Ok(compare_identity_id::<Op>(l, r, fragment))
 			},
 			(
 				ColumnData::Blob {
@@ -394,7 +394,7 @@ pub(crate) fn compare_columns<Op: CompareOp>(
 					..
 				},
 			) => {
-				return Ok(compare_blob::<Op>(l, r, fragment));
+				Ok(compare_blob::<Op>(l, r, fragment))
 			},
 
 			_ => {

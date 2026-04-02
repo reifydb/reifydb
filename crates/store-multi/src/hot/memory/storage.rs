@@ -15,7 +15,7 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
-use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
+use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///
@@ -29,6 +29,12 @@ pub struct MemoryPrimitiveStorage {
 struct MemoryPrimitiveStorageInner {
 	/// Storage for each type
 	entries: Entries,
+}
+
+impl Default for MemoryPrimitiveStorage {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl MemoryPrimitiveStorage {
@@ -103,10 +109,10 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		// Check current first (fast path)
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(&key) {
-			if *cur_version <= version {
-				return Ok(value.clone());
-			}
+		if let Some((cur_version, value)) = current.get(&key)
+			&& *cur_version <= version
+		{
+			return Ok(value.clone());
 		}
 		drop(current);
 
@@ -137,11 +143,11 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 		// Check current first
 		let current = entry.current.read();
-		if let Some((cur_version, value)) = current.get(&key) {
-			if *cur_version <= version {
-				// Key exists if not a tombstone
-				return Ok(value.is_some());
-			}
+		if let Some((cur_version, value)) = current.get(&key)
+			&& *cur_version <= version
+		{
+			// Key exists if not a tombstone
+			return Ok(value.is_some());
 		}
 		drop(current);
 
@@ -163,11 +169,7 @@ impl TierStorage for MemoryPrimitiveStorage {
 		total_entry_count = field::Empty,
 		version = version.0
 	))]
-	fn set(
-		&self,
-		version: CommitVersion,
-		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
-	) -> Result<()> {
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {
 		let total_entries: usize = batches.values().map(|v| v.len()).sum();
 
 		batches.into_iter().for_each(|(table, entries)| {
@@ -494,14 +496,14 @@ impl TierStorage for MemoryPrimitiveStorage {
 
 			for (key, version) in entries {
 				// Check if the version to drop is in current
-				if let Some((cur_version, _)) = current.get(&key) {
-					if *cur_version == version {
-						// Dropping current version - remove from current and all historical
-						// versions
-						current.remove(&key);
-						historical.remove(&key);
-						continue;
-					}
+				if let Some((cur_version, _)) = current.get(&key)
+					&& *cur_version == version
+				{
+					// Dropping current version - remove from current and all historical
+					// versions
+					current.remove(&key);
+					historical.remove(&key);
+					continue;
 				}
 
 				// Otherwise check historical - removing one version from historical

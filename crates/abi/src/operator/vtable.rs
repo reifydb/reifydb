@@ -23,7 +23,7 @@ pub struct OperatorVTableFFI {
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
-	pub apply: extern "C" fn(
+	pub apply: unsafe extern "C" fn(
 		instance: *mut c_void,
 		ctx: *mut ContextFFI,
 		input: *const ChangeFFI,
@@ -41,7 +41,7 @@ pub struct OperatorVTableFFI {
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
-	pub pull: extern "C" fn(
+	pub pull: unsafe extern "C" fn(
 		instance: *mut c_void,
 		ctx: *mut ContextFFI,
 		row_numbers: *const u64,
@@ -59,7 +59,7 @@ pub struct OperatorVTableFFI {
 	///
 	/// # Returns
 	/// - 0 on success with output, 1 on success without output (no-op), negative error code on failure
-	pub tick: extern "C" fn(
+	pub tick: unsafe extern "C" fn(
 		instance: *mut c_void,
 		ctx: *mut ContextFFI,
 		timestamp_nanos: u64,
@@ -75,5 +75,5 @@ pub struct OperatorVTableFFI {
 	/// - The instance pointer must have been created by this operator's create function
 	/// - The instance must not be used after calling destroy
 	/// - This function must be called exactly once per instance
-	pub destroy: extern "C" fn(instance: *mut c_void),
+	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 }

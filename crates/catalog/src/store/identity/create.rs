@@ -40,7 +40,7 @@ impl CatalogStore {
 		clock: &Clock,
 		rng: &Rng,
 	) -> Result<Identity> {
-		if let Some(_) = Self::find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)? {
+		if (Self::find_identity_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some() {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Identity,
 				namespace: "system".to_string(),

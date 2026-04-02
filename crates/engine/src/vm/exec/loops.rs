@@ -40,11 +40,7 @@ impl Vm {
 	/// Returns true if the loop ended (jump to end_addr), false to continue loop body.
 	pub(crate) fn exec_for_next(&mut self, variable_name: &Fragment, end_addr: usize) -> Result<bool> {
 		let var_name = variable_name.text();
-		let clean_name = if var_name.starts_with('$') {
-			&var_name[1..]
-		} else {
-			var_name
-		};
+		let clean_name = var_name.strip_prefix('$').unwrap_or(var_name);
 		let iter_key = format!("__for_{}", var_name);
 
 		let (columns, index) = match self.symbols.get(&iter_key) {

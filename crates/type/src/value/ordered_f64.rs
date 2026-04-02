@@ -97,15 +97,28 @@ impl Eq for OrderedF64 {}
 
 impl PartialOrd for OrderedF64 {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-		self.0.partial_cmp(&other.0)
+		Some(self.cmp(other))
 	}
 }
 
 impl Ord for OrderedF64 {
 	fn cmp(&self, other: &Self) -> Ordering {
-		let l = self.0.to_bits() ^ ((self.0.to_bits() >> 63) & 0x7fffffffffffffff);
-		let r = other.0.to_bits() ^ ((other.0.to_bits() >> 63) & 0x7fffffffffffffff);
+		let l = float_to_ordered_u64(self.0);
+		let r = float_to_ordered_u64(other.0);
 		l.cmp(&r)
+	}
+}
+
+/// Convert f64 bits to a u64 that sorts in the same order as the float.
+/// Positive floats: flip sign bit so they sort above negative.
+/// Negative floats: flip all bits so magnitude order is reversed.
+#[inline]
+fn float_to_ordered_u64(f: f64) -> u64 {
+	let bits = f.to_bits();
+	if bits & 0x8000000000000000 == 0 {
+		bits ^ 0x8000000000000000
+	} else {
+		!bits
 	}
 }
 
@@ -194,5 +207,33 @@ pub mod tests {
 	#[test]
 	fn test_nan_fails() {
 		assert!(OrderedF64::try_from(f64::NAN).is_err());
+	}
+
+	#[test]
+	fn test_negative_less_than_positive() {
+		let neg = OrderedF64::try_from(-1.5).unwrap();
+		let pos = OrderedF64::try_from(1.5).unwrap();
+		assert!(neg < pos);
+	}
+
+	#[test]
+	fn test_negative_less_than_zero() {
+		let neg = OrderedF64::try_from(-0.0001).unwrap();
+		let zero = OrderedF64::try_from(0.0).unwrap();
+		assert!(neg < zero);
+	}
+
+	#[test]
+	fn test_sorting_with_negatives() {
+		let mut values = vec![
+			OrderedF64::try_from(3.14).unwrap(),
+			OrderedF64::try_from(-1.5).unwrap(),
+			OrderedF64::try_from(0.0).unwrap(),
+			OrderedF64::try_from(99999.0).unwrap(),
+			OrderedF64::try_from(-100.0).unwrap(),
+		];
+		values.sort();
+		let sorted: Vec<f64> = values.into_iter().map(|v| v.0).collect();
+		assert_eq!(sorted, vec![-100.0, -1.5, 0.0, 3.14, 99999.0]);
 	}
 }

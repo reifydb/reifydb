@@ -33,7 +33,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceHandlerKey::full_scan(namespace), 1024)?;
 
 		let mut found_id = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let entry_name = handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME);

@@ -56,7 +56,7 @@ impl CatalogStore {
 		Self::store_source(txn, shape_id, namespace_id, &to_create)?;
 		Self::link_source_to_namespace(txn, namespace_id, shape_id, to_create.name.text())?;
 
-		Ok(Self::get_source(&mut Transaction::Admin(&mut *txn), shape_id)?)
+		Self::get_source(&mut Transaction::Admin(&mut *txn), shape_id)
 	}
 
 	fn store_source(

@@ -7,24 +7,24 @@ import {
     useCommandOne, 
     useCommandMany,
     useQueryOne,
-    Schema 
+    Shape 
 } from '@reifydb/react';
 
 // Example: Creating a user management component
 function UserManager() {
-    // Schema for user data
-    const userSchema = Schema.object({
-        id: Schema.number(),
-        name: Schema.string(),
-        email: Schema.string(),
-        created: Schema.string()
+    // Shape for user data
+    const userShape = Shape.object({
+        id: Shape.number(),
+        name: Shape.string(),
+        email: Shape.string(),
+        created: Shape.string()
     });
 
     // Query to get all users
     const { result: users, error: queryError } = useQueryOne(
         `FROM users SELECT *`,
         undefined,
-        Schema.array(userSchema)
+        Shape.array(userShape)
     );
 
     // Command to add a new user
@@ -35,7 +35,7 @@ function UserManager() {
     } = useCommandOne(
         `INSERT INTO users VALUES {name: :name, email: :email, created: CURRENT_TIMESTAMP}`,
         { name: 'New User', email: 'user@example.com' },
-        userSchema
+        userShape
     );
 
     // Command to delete a user

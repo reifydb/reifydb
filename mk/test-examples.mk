@@ -9,7 +9,7 @@ test-examples: build-examples run-examples
 .PHONY: build-examples
 build-examples:
 	@echo "Building examples (release mode)..."
-	cd pkg/rust/examples && cargo build --bins $(CARGO_OFFLINE)
+	cd pkg/rust/examples && cargo build --release --bins $(CARGO_OFFLINE)
 
 # Run all examples in release mode (in order by directory, then by filename)
 .PHONY: run-examples

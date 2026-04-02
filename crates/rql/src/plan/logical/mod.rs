@@ -236,13 +236,11 @@ impl<'bump> Compiler<'bump> {
 			Ast::Patch(node) => self.compile_patch(node),
 			Ast::Apply(node) => self.compile_apply(node),
 			Ast::Window(node) => self.compile_window(node),
-			Ast::Identifier(ref id) => {
-				return Err(AstError::UnsupportedAstNode {
-					node_type: "standalone identifier".to_string(),
-					fragment: id.token.fragment.to_owned(),
-				}
-				.into());
+			Ast::Identifier(ref id) => Err(AstError::UnsupportedAstNode {
+				node_type: "standalone identifier".to_string(),
+				fragment: id.token.fragment.to_owned(),
 			}
+			.into()),
 			// Auto-wrap scalar expressions into MAP constructs
 			Ast::Literal(_) => self.compile_scalar_as_map(node),
 			Ast::Variable(var) => {
@@ -265,11 +263,11 @@ impl<'bump> Compiler<'bump> {
 			}
 			Ast::Block(_) => {
 				// Blocks are handled by their parent constructs (IF, LOOP, etc.)
-				return Err(AstError::UnsupportedAstNode {
+				Err(AstError::UnsupportedAstNode {
 					node_type: "standalone block".to_string(),
 					fragment: node.token().fragment.to_owned(),
 				}
-				.into());
+				.into())
 			}
 			Ast::DefFunction(node) => self.compile_def_function(node, tx),
 			Ast::Return(node) => self.compile_return(node),
@@ -311,11 +309,11 @@ impl<'bump> Compiler<'bump> {
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
-				return Err(AstError::UnsupportedAstNode {
+				Err(AstError::UnsupportedAstNode {
 					node_type: node_type.to_string(),
 					fragment: node.token().fragment.to_owned(),
 				}
-				.into());
+				.into())
 			}
 		}
 	}
@@ -360,11 +358,7 @@ impl<'bump> Compiler<'bump> {
 
 				// Extract variable name (remove $ prefix if present)
 				let name_text = variable.token.fragment.text();
-				let clean_name = if name_text.starts_with('$') {
-					&name_text[1..]
-				} else {
-					name_text
-				};
+				let clean_name = name_text.strip_prefix('$').unwrap_or(name_text);
 
 				Ok(LogicalPlan::Assign(AssignNode {
 					name: BumpFragment::internal(self.bump, clean_name),
@@ -373,11 +367,11 @@ impl<'bump> Compiler<'bump> {
 			}
 			_ => {
 				// Other infix operations are not supported as standalone statements
-				return Err(AstError::UnsupportedAstNode {
+				Err(AstError::UnsupportedAstNode {
 					node_type: "infix operation as statement".to_string(),
 					fragment: node.token.fragment.to_owned(),
 				}
-				.into());
+				.into())
 			}
 		}
 	}

@@ -14,7 +14,7 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &MaterializedCata
 	let range = PolicyKey::full_scan();
 	let mut stream = rx.range(range, 1024)?;
 
-	while let Some(entry) = stream.next() {
+	for entry in stream.by_ref() {
 		let multi = entry?;
 		let version = multi.version;
 		let policy = convert_policy(multi);
@@ -24,9 +24,9 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &MaterializedCata
 
 	// Load policy operations
 	let op_range = PolicyOpKey::full_scan();
-	let mut op_stream = rx.range(op_range, 1024)?;
+	let op_stream = rx.range(op_range, 1024)?;
 
-	while let Some(entry) = op_stream.next() {
+	for entry in op_stream {
 		let multi = entry?;
 		let op_def = convert_policy_op(multi);
 		let policy_id = op_def.policy_id;

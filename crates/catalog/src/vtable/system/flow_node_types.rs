@@ -22,6 +22,12 @@ pub struct SystemFlowNodeTypes {
 	exhausted: bool,
 }
 
+impl Default for SystemFlowNodeTypes {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemFlowNodeTypes {
 	pub fn new() -> Self {
 		Self {

@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextEndsWith;
 
+impl Default for TextEndsWith {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextEndsWith {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextEndsWith {
 			});
 		}
 
-		let str_col = columns.get(0).unwrap();
+		let str_col = columns.first().unwrap();
 		let suffix_col = columns.get(1).unwrap();
 
 		match (str_col.data(), suffix_col.data()) {

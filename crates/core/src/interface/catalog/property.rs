@@ -45,8 +45,9 @@ impl ColumnPropertyKind {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum ColumnSaturationPolicy {
+	#[default]
 	Error,
 	// Saturate,
 	// Wrap,
@@ -63,9 +64,3 @@ impl Display for ColumnPropertyKind {
 }
 
 pub const DEFAULT_COLUMN_SATURATION_POLICY: ColumnSaturationPolicy = ColumnSaturationPolicy::Error;
-
-impl Default for ColumnSaturationPolicy {
-	fn default() -> Self {
-		Self::Error
-	}
-}

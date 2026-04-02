@@ -56,25 +56,26 @@ pub enum AuthResponse {
 	},
 }
 
-/// Configuration for the authentication service.
-#[derive(Debug, Clone)]
-pub struct AuthServiceConfig {
-	/// Default session token TTL. `None` means tokens don't expire.
-	pub session_ttl: Option<Duration>,
-	/// TTL for pending challenges (default: 60 seconds).
-	pub challenge_ttl: Duration,
+/// Configurator for the authentication service.
+pub struct AuthConfigurator {
+	session_ttl: Option<Duration>,
+	challenge_ttl: Duration,
 }
 
-impl Default for AuthServiceConfig {
+impl Default for AuthConfigurator {
 	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl AuthConfigurator {
+	pub fn new() -> Self {
 		Self {
 			session_ttl: Some(Duration::from_secs(24 * 60 * 60)), // 24 hours
 			challenge_ttl: Duration::from_secs(60),
 		}
 	}
-}
 
-impl AuthServiceConfig {
 	pub fn session_ttl(mut self, ttl: Duration) -> Self {
 		self.session_ttl = Some(ttl);
 		self
@@ -88,6 +89,28 @@ impl AuthServiceConfig {
 	pub fn challenge_ttl(mut self, ttl: Duration) -> Self {
 		self.challenge_ttl = ttl;
 		self
+	}
+
+	pub fn configure(self) -> AuthServiceConfig {
+		AuthServiceConfig {
+			session_ttl: self.session_ttl,
+			challenge_ttl: self.challenge_ttl,
+		}
+	}
+}
+
+/// Immutable configuration for the authentication service.
+#[derive(Debug, Clone)]
+pub struct AuthServiceConfig {
+	/// Default session token TTL. `None` means tokens don't expire.
+	pub session_ttl: Option<Duration>,
+	/// TTL for pending challenges (default: 60 seconds).
+	pub challenge_ttl: Duration,
+}
+
+impl Default for AuthServiceConfig {
+	fn default() -> Self {
+		AuthConfigurator::new().configure()
 	}
 }
 
@@ -151,7 +174,7 @@ impl AuthService {
 		}
 	}
 
-	/// Persist a token to the database.
+	/// Persist a session token to the database using the configured session TTL.
 	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<Token, Error> {
 		let mut admin = self.engine.begin_admin()?;
 
@@ -160,10 +183,31 @@ impl AuthService {
 		admin.commit()?;
 		Ok(def)
 	}
+
+	/// Create a token for an identity with an explicit expiration.
+	///
+	/// Unlike `persist_token` (which uses the configured session TTL), this
+	/// accepts an explicit `expires_at` — pass `None` for non-expiring tokens.
+	///
+	/// Used by applications to issue API tokens.
+	pub fn create_token(
+		&self,
+		token: &str,
+		identity: IdentityId,
+		expires_at: Option<DateTime>,
+	) -> Result<Token, Error> {
+		let mut admin = self.engine.begin_admin()?;
+		let def = create_token(&mut admin, token, identity, expires_at, self.now()?)?;
+		admin.commit()?;
+		Ok(def)
+	}
 }
 
-/// Generate a session token (64 hex characters) using the provided RNG.
+/// Generate a session token (64 hex characters) using the infrastructure RNG stream.
+///
+/// Uses `infra_bytes_32` so that session token generation does not consume
+/// from the primary RNG, ensuring deterministic test output across runners.
 pub(super) fn generate_session_token(rng: &SystemRng) -> String {
-	let bytes = rng.bytes_32();
+	let bytes = rng.infra_bytes_32();
 	bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }

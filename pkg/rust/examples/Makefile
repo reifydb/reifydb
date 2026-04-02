@@ -45,79 +45,79 @@ help:
 # Basic Examples
 .PHONY: basic-hello-world
 basic-hello-world:
-	cargo run --bin basic-hello-world
+	cargo run --release --bin basic-hello-world
 
 .PHONY: basic-tables
 basic-tables:
-	cargo run --bin basic-tables
+	cargo run --release --bin basic-tables
 
 .PHONY: basic-enums
 basic-enums:
-	cargo run --bin basic-enums
+	cargo run --release --bin basic-enums
 
 .PHONY: basic-events-and-handlers
 basic-events-and-handlers:
-	cargo run --bin basic-events-and-handlers
+	cargo run --release --bin basic-events-and-handlers
 
 # RQL Examples
 .PHONY: rql-from
 rql-from:
-	cargo run --bin rql-from
+	cargo run --release --bin rql-from
 
 .PHONY: rql-map
 rql-map:
-	cargo run --bin rql-map
+	cargo run --release --bin rql-map
 
 .PHONY: rql-filter
 rql-filter:
-	cargo run --bin rql-filter
+	cargo run --release --bin rql-filter
 
 .PHONY: rql-sort
 rql-sort:
-	cargo run --bin rql-sort
+	cargo run --release --bin rql-sort
 
 .PHONY: rql-take
 rql-take:
-	cargo run --bin rql-take
+	cargo run --release --bin rql-take
 
 .PHONY: rql-aggregate
 rql-aggregate:
-	cargo run --bin rql-aggregate
+	cargo run --release --bin rql-aggregate
 
 .PHONY: rql-join
 rql-join:
-	cargo run --bin rql-join
+	cargo run --release --bin rql-join
 
 .PHONY: rql-arithmetic
 rql-arithmetic:
-	cargo run --bin rql-arithmetic
+	cargo run --release --bin rql-arithmetic
 
 .PHONY: rql-comparison
 rql-comparison:
-	cargo run --bin rql-comparison
+	cargo run --release --bin rql-comparison
 
 .PHONY: rql-logical
 rql-logical:
-	cargo run --bin rql-logical
+	cargo run --release --bin rql-logical
 
 # Interceptor Examples
 .PHONY: intercept-table-view
 intercept-table-view:
-	RUST_LOG=info cargo run --bin intercept-table-view
+	RUST_LOG=info cargo run --release --bin intercept-table-view
 
 .PHONY: intercept-deferred-view
 intercept-deferred-view:
-	RUST_LOG=info cargo run --bin intercept-deferred-view
+	RUST_LOG=info cargo run --release --bin intercept-deferred-view
 
 # Subscription Examples
 .PHONY: subscription-cursor
 subscription-cursor:
-	RUST_LOG=info cargo run --bin subscription-cursor
+	RUST_LOG=info cargo run --release --bin subscription-cursor
 
 # Replication Examples
 .PHONY: replication-basic
 replication-basic:
-	RUST_LOG=info cargo run --bin replication-basic
+	RUST_LOG=info cargo run --release --bin replication-basic
 
 # Define example groups
 BASIC_EXAMPLES := basic-hello-world basic-tables basic-enums basic-events-and-handlers
@@ -137,11 +137,11 @@ run-all:
 	echo ""; \
 	for example in $(BASIC_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if cargo run --bin $$example; then \
+		if cargo run --release --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(cargo run --bin $$example 2>&1); \
+			output=$$(cargo run --release --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -153,11 +153,11 @@ run-all:
 	echo ""; \
 	for example in $(RQL_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if cargo run --bin $$example; then \
+		if cargo run --release --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(cargo run --bin $$example 2>&1); \
+			output=$$(cargo run --release --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -169,11 +169,11 @@ run-all:
 	echo ""; \
 	for example in $(INTERCEPT_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if RUST_LOG=info cargo run --bin $$example; then \
+		if RUST_LOG=info cargo run --release --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(RUST_LOG=info cargo run --bin $$example 2>&1); \
+			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -185,11 +185,11 @@ run-all:
 	echo ""; \
 	for example in $(SUBSCRIPTION_EXAMPLES); do \
 		echo "--- Running $$example ---"; \
-		if RUST_LOG=info cargo run --bin $$example; then \
+		if RUST_LOG=info cargo run --release --bin $$example; then \
 			true; \
 		else \
 			exit_code=$$?; \
-			output=$$(RUST_LOG=info cargo run --bin $$example 2>&1); \
+			output=$$(RUST_LOG=info cargo run --release --bin $$example 2>&1); \
 			panic=$$(echo "$$output" | grep -A2 "panicked at" | head -3 || echo "Unknown error"); \
 			[ $$first_error -eq 0 ] && first_error=$$exit_code; \
 			failed_examples="$$failed_examples $$example"; \
@@ -229,4 +229,4 @@ clean:
 
 .PHONY: build
 build:
-	cargo build --bins
+	cargo build --release --bins

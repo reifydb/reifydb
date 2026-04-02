@@ -23,6 +23,20 @@ use reifydb_type::value::sumtype::VariantRef;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::remote::RemoteRegistry;
 
+/// Configuration bundle for engine services.
+///
+/// Groups the shared extension registries and runtime context that flow through
+/// `StandardEngine::new` -> `Executor::new` -> `Services::new`.
+pub struct EngineConfig {
+	pub runtime_context: RuntimeContext,
+	pub functions: Functions,
+	pub procedures: Procedures,
+	pub transforms: Transforms,
+	pub ioc: IocContainer,
+	#[cfg(not(target_arch = "wasm32"))]
+	pub remote_registry: Option<RemoteRegistry>,
+}
+
 /// Services is a container for shared resources used throughout the execution engine.
 ///
 /// This struct provides a single location for all the shared resources that the VM,
@@ -46,30 +60,25 @@ pub struct Services {
 impl Services {
 	pub fn new(
 		catalog: Catalog,
-		runtime_context: RuntimeContext,
-		functions: Functions,
-		procedures: Procedures,
-		transforms: Transforms,
+		config: EngineConfig,
 		flow_operator_store: SystemFlowOperatorStore,
 		stats_reader: MetricReader<SingleStore>,
-		ioc: IocContainer,
-		#[cfg(not(target_arch = "wasm32"))] remote_registry: Option<RemoteRegistry>,
 	) -> Self {
-		let auth_registry = AuthenticationRegistry::new(runtime_context.clock.clone());
+		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
 		Self {
 			compiler: Compiler::new(catalog.clone()),
 			catalog,
-			runtime_context,
-			functions,
-			procedures,
-			transforms,
+			runtime_context: config.runtime_context,
+			functions: config.functions,
+			procedures: config.procedures,
+			transforms: config.transforms,
 			flow_operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
 			stats_reader,
-			ioc,
+			ioc: config.ioc,
 			auth_registry,
 			#[cfg(not(target_arch = "wasm32"))]
-			remote_registry,
+			remote_registry: config.remote_registry,
 		}
 	}
 
@@ -86,15 +95,17 @@ impl Services {
 		let store = SingleStore::testing_memory();
 		let mut services = Self::new(
 			Catalog::testing(),
-			RuntimeContext::default(),
-			default_functions().build(),
-			Procedures::empty(),
-			Transforms::empty(),
+			EngineConfig {
+				runtime_context: RuntimeContext::default(),
+				functions: default_functions().configure(),
+				procedures: Procedures::empty(),
+				transforms: Transforms::empty(),
+				ioc: IocContainer::new(),
+				#[cfg(not(target_arch = "wasm32"))]
+				remote_registry: None,
+			},
 			SystemFlowOperatorStore::new(),
 			MetricReader::new(store),
-			IocContainer::new(),
-			#[cfg(not(target_arch = "wasm32"))]
-			None,
 		);
 		services.auth_registry = AuthenticationRegistry::default();
 		Arc::new(services)

@@ -43,7 +43,7 @@ pub(crate) fn execute_migrate(
 	let pending: Vec<Migration> = migrations
 		.into_iter()
 		.filter(|m| {
-			let latest = events.iter().filter(|e| e.migration_id == m.id).last();
+			let latest = events.iter().rfind(|e| e.migration_id == m.id);
 			match latest {
 				Some(e) => e.action != MigrationAction::Applied,
 				None => true, // No events = never applied

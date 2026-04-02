@@ -42,7 +42,13 @@ impl<T: FFITransform> TransformWrapper<T> {
 }
 
 /// FFI transform function - unmarshal input, call transform, marshal output
-pub extern "C" fn ffi_transform<T: FFITransform>(
+///
+/// # Safety
+///
+/// - `instance` must be a valid pointer to a `TransformWrapper<T>` created by `Box::new`.
+/// - `input` must be a valid pointer to a `ColumnsFFI` for reading.
+/// - `output` must be a valid pointer to a `ColumnsFFI` for writing.
+pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	instance: *mut c_void,
 	input: *const ColumnsFFI,
 	output: *mut ColumnsFFI,
@@ -85,7 +91,12 @@ pub extern "C" fn ffi_transform<T: FFITransform>(
 }
 
 /// FFI destroy function - drop the transform wrapper
-pub extern "C" fn ffi_transform_destroy<T: FFITransform>(instance: *mut c_void) {
+///
+/// # Safety
+///
+/// - `instance` must be a valid pointer to a `TransformWrapper<T>` originally created by `Box::new`, or null (in which
+///   case this is a no-op).
+pub unsafe extern "C" fn ffi_transform_destroy<T: FFITransform>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;
 	}

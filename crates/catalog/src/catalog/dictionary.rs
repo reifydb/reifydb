@@ -145,9 +145,10 @@ impl Catalog {
 				if TransactionalDictionaryChanges::is_dictionary_deleted(t.inner, id) {
 					return Ok(None);
 				}
-				if let Some(dict) =
-					CatalogStore::find_dictionary(&mut Transaction::Test(t.reborrow()), id)?
-				{
+				if let Some(dict) = CatalogStore::find_dictionary(
+					&mut Transaction::Test(Box::new(t.reborrow())),
+					id,
+				)? {
 					return Ok(Some(dict));
 				}
 				Ok(None)
@@ -311,7 +312,7 @@ impl Catalog {
 					return Ok(None);
 				}
 				if let Some(dict) = CatalogStore::find_dictionary_by_name(
-					&mut Transaction::Test(t.reborrow()),
+					&mut Transaction::Test(Box::new(t.reborrow())),
 					namespace,
 					name,
 				)? {

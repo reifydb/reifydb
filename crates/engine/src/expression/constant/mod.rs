@@ -83,7 +83,7 @@ pub(crate) fn constant_value(expr: &ConstantExpression, row_count: usize) -> Res
 		}
 		ConstantExpression::Text {
 			fragment,
-		} => ColumnData::utf8(iter::repeat(fragment.text()).take(row_count)),
+		} => ColumnData::utf8(iter::repeat_n(fragment.text(), row_count)),
 		ConstantExpression::Temporal {
 			fragment,
 		} => TemporalParser::parse_temporal(fragment.clone(), row_count)?,

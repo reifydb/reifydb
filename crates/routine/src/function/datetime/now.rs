@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeNow;
 
+impl Default for DateTimeNow {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeNow {
 	pub fn new() -> Self {
 		Self
@@ -25,7 +31,7 @@ impl ScalarFunction for DateTimeNow {
 		}
 		let row_count = ctx.row_count;
 
-		if ctx.columns.len() != 0 {
+		if !ctx.columns.is_empty() {
 			return Err(ScalarFunctionError::ArityMismatch {
 				function: ctx.fragment.clone(),
 				expected: 0,

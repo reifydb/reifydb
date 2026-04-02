@@ -18,13 +18,13 @@ pub(crate) fn create_subscription(
 	plan: CreateSubscriptionNode,
 ) -> Result<Columns> {
 	// Check if the plan targets a remote source
-	if let Some(ref as_clause) = plan.as_clause {
-		if let QueryPlan::RemoteScan(ref remote) = **as_clause {
-			return Ok(Columns::single_row([
-				("remote_address", Value::Utf8(remote.address.clone())),
-				("remote_rql", Value::Utf8(remote.remote_rql.clone())),
-			]));
-		}
+	if let Some(ref as_clause) = plan.as_clause
+		&& let QueryPlan::RemoteScan(ref remote) = **as_clause
+	{
+		return Ok(Columns::single_row([
+			("remote_address", Value::Utf8(remote.address.clone())),
+			("remote_rql", Value::Utf8(remote.remote_rql.clone())),
+		]));
 	}
 
 	let result = services.catalog.create_subscription(

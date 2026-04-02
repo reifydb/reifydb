@@ -54,7 +54,7 @@ pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<
 
 				// Handle dot-commands
 				if buffer.is_empty() && line.trim().starts_with('.') {
-					match handle_dot_command(&line.trim(), &mut current_token, &mut display_mode) {
+					match handle_dot_command(line.trim(), &mut current_token, &mut display_mode) {
 						DotCommandResult::Exit => break,
 						DotCommandResult::Reauthenticate(new_token) => {
 							match client.authenticate(&new_token).await {
@@ -263,7 +263,7 @@ fn print_frame_truncated(frame: &reifydb_client::Frame, max_width: usize) {
 	let mut current_width = 0;
 	for &col_width in &natural_widths {
 		let col_total = col_width + 3; // 2 padding + 1 separator
-		if current_width + col_total + 1 <= max_width {
+		if current_width + col_total < max_width {
 			// +1 for final "|"
 			current_width += col_total;
 			num_cols_to_show += 1;

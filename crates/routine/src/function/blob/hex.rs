@@ -15,6 +15,12 @@ use crate::function::{
 
 pub struct BlobHex;
 
+impl Default for BlobHex {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl BlobHex {
 	pub fn new() -> Self {
 		Self
@@ -39,7 +45,7 @@ impl ScalarFunction for BlobHex {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

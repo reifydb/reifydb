@@ -8,6 +8,6 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
-reifydb = { path = "../../reifydb" }
+reifydb = { workspace = true }
 reifydb-type = { workspace = true }
 tokio = { workspace = true }

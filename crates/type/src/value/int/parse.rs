@@ -16,8 +16,8 @@ pub fn parse_int(fragment: Fragment) -> Result<Int, Error> {
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {

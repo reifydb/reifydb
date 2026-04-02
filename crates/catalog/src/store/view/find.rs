@@ -40,7 +40,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceViewKey::full_scan(namespace), 1024)?;
 
 		let mut found_view = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let view_name = view_namespace::SHAPE.get_utf8(row, view_namespace::NAME);
@@ -79,7 +79,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 		0 => ViewKind::Deferred,
 		1 => ViewKind::Transactional,
 		_ => {
-			return Err(Error(Diagnostic {
+			return Err(Error(Box::new(Diagnostic {
 				code: "CA_026".to_string(),
 				statement: None,
 				message: format!("unknown view kind: {}", kind_raw),
@@ -90,7 +90,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 				notes: vec![],
 				cause: None,
 				operator_chain: None,
-			}));
+			})));
 		}
 	};
 

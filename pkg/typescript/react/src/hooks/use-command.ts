@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import {useEffect, useMemo} from 'react';
-import {SchemaNode, InferSchema} from '@reifydb/core';
+import {ShapeNode, InferShape} from '@reifydb/core';
 import {ConnectionConfig} from '../connection/connection';
 import {useCommandExecutor, type CommandResult, type CommandExecutorOptions} from './use-command-executor';
 
@@ -11,14 +11,14 @@ export interface CommandOptions extends CommandExecutorOptions {
 }
 
 // Single command hook - returns a single result
-export function useCommandOne<S extends SchemaNode = any>(
+export function useCommandOne<S extends ShapeNode = any>(
     statement: string,
     params?: any,
-    schema?: S,
+    shape?: S,
     options?: CommandOptions
 ): {
     isExecuting: boolean;
-    result: CommandResult<S extends SchemaNode ? InferSchema<S> : any> | undefined;
+    result: CommandResult<S extends ShapeNode ? InferShape<S> : any> | undefined;
     error: string | undefined;
 } {
     const {
@@ -26,12 +26,12 @@ export function useCommandOne<S extends SchemaNode = any>(
         results,
         error,
         command
-    } = useCommandExecutor<S extends SchemaNode ? InferSchema<S> : any>(options);
+    } = useCommandExecutor<S extends ShapeNode ? InferShape<S> : any>(options);
 
     useEffect(() => {
-        // Pass schema as array for the executor
-        const schemas = schema ? [schema] : undefined;
-        command(statement, params, schemas);
+        // Pass shape as array for the executor
+        const shapes = shape ? [shape] : undefined;
+        command(statement, params, shapes);
     }, [statement, params, command]);
 
     // Extract first result for single command convenience
@@ -43,14 +43,14 @@ export function useCommandOne<S extends SchemaNode = any>(
 }
 
 // Multiple command hook - returns multiple results
-export function useCommandMany<S extends readonly SchemaNode[] = readonly SchemaNode[]>(
+export function useCommandMany<S extends readonly ShapeNode[] = readonly ShapeNode[]>(
     statements: string | string[],
     params?: any,
-    schemas?: S,
+    shapes?: S,
     options?: CommandOptions
 ): {
     isExecuting: boolean;
-    results: CommandResult<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>[] | undefined;
+    results: CommandResult<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>[] | undefined;
     error: string | undefined;
 } {
     const {
@@ -58,10 +58,10 @@ export function useCommandMany<S extends readonly SchemaNode[] = readonly Schema
         results,
         error,
         command
-    } = useCommandExecutor<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>(options);
+    } = useCommandExecutor<S extends readonly ShapeNode[] ? InferShape<S[number]> : any>(options);
 
     useEffect(() => {
-        command(statements, params, schemas);
+        command(statements, params, shapes);
     }, [statements, params, command]);
 
     return {isExecuting, results, error};

@@ -321,7 +321,7 @@ impl TryFromValue for Blob {
 impl TryFromValue for Uuid4 {
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::Uuid4(v) => Ok(v.clone()),
+			Value::Uuid4(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::Uuid4,
 				found: value.get_type(),
@@ -333,7 +333,7 @@ impl TryFromValue for Uuid4 {
 impl TryFromValue for Uuid7 {
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::Uuid7(v) => Ok(v.clone()),
+			Value::Uuid7(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::Uuid7,
 				found: value.get_type(),
@@ -345,7 +345,7 @@ impl TryFromValue for Uuid7 {
 impl TryFromValue for Date {
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::Date(v) => Ok(v.clone()),
+			Value::Date(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::Date,
 				found: value.get_type(),
@@ -357,7 +357,7 @@ impl TryFromValue for Date {
 impl TryFromValue for DateTime {
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::DateTime(v) => Ok(v.clone()),
+			Value::DateTime(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::DateTime,
 				found: value.get_type(),
@@ -369,7 +369,7 @@ impl TryFromValue for DateTime {
 impl TryFromValue for Time {
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::Time(v) => Ok(v.clone()),
+			Value::Time(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::Time,
 				found: value.get_type(),
@@ -381,7 +381,7 @@ impl TryFromValue for Time {
 impl TryFromValue for Duration {
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::Duration(v) => Ok(v.clone()),
+			Value::Duration(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::Duration,
 				found: value.get_type(),
@@ -393,7 +393,7 @@ impl TryFromValue for Duration {
 impl TryFromValue for IdentityId {
 	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
 		match value {
-			Value::IdentityId(v) => Ok(v.clone()),
+			Value::IdentityId(v) => Ok(*v),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::IdentityId,
 				found: value.get_type(),

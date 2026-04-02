@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
+	encoded::shape::RowShape,
 	interface::{
 		catalog::flow::FlowId,
 		change::{Change, ChangeOrigin},
@@ -60,9 +61,10 @@ pub enum FlowMsg {
 
 /// Response from the flow actor
 pub enum FlowResponse {
-	/// Operation succeeded with pending writes and view changes for cascading
+	/// Operation succeeded with pending writes, pending shapes, and view changes
 	Success {
 		pending: Pending,
+		pending_shapes: Vec<RowShape>,
 		view_changes: Vec<Change>,
 	},
 	/// Operation failed with error message
@@ -114,8 +116,9 @@ impl Actor for FlowWorkerActor {
 			} => {
 				let result = self.process_request(&mut state.flow_engine, batch);
 				let resp = match result {
-					Ok((pending, view_changes)) => FlowResponse::Success {
+					Ok((pending, pending_shapes, view_changes)) => FlowResponse::Success {
 						pending,
+						pending_shapes,
 						view_changes,
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
@@ -131,8 +134,9 @@ impl Actor for FlowWorkerActor {
 				let result =
 					self.process_tick(&mut state.flow_engine, flow_ids, timestamp, state_version);
 				let resp = match result {
-					Ok(pending) => FlowResponse::Success {
+					Ok((pending, pending_shapes)) => FlowResponse::Success {
 						pending,
+						pending_shapes,
 						view_changes: Vec::new(),
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
@@ -151,6 +155,7 @@ impl Actor for FlowWorkerActor {
 				let resp = match result {
 					Ok(_) => FlowResponse::Success {
 						pending: Pending::new(),
+						pending_shapes: Vec::new(),
 						view_changes: Vec::new(),
 					},
 					Err(e) => FlowResponse::Error(e.to_string()),
@@ -177,7 +182,7 @@ impl FlowWorkerActor {
 		flow_ids: Vec<FlowId>,
 		timestamp: DateTime,
 		state_version: CommitVersion,
-	) -> Result<Pending> {
+	) -> Result<(Pending, Vec<RowShape>)> {
 		let primitive_query = self.engine.multi().begin_query_at_version(state_version)?;
 		let state_query = self.engine.multi().begin_query_at_version(state_version)?;
 		let interceptors = self.engine.create_interceptors();
@@ -197,18 +202,23 @@ impl FlowWorkerActor {
 			}
 		}
 
-		Ok(txn.take_pending())
+		Ok((txn.take_pending(), txn.take_pending_shapes()))
 	}
 
 	#[instrument(name = "flow::actor::process", level = "debug", skip(self, flow_engine, batch), fields(
 		instructions = batch.instructions.len(),
 		total_changes = field::Empty
 	))]
-	fn process_request(&self, flow_engine: &mut FlowEngine, batch: WorkerBatch) -> Result<(Pending, Vec<Change>)> {
+	fn process_request(
+		&self,
+		flow_engine: &mut FlowEngine,
+		batch: WorkerBatch,
+	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
 		let total_changes: usize = batch.instructions.iter().map(|i| i.changes.len()).sum();
 		Span::current().record("total_changes", total_changes);
 
 		let mut pending = Pending::new();
+		let mut all_pending_shapes: Vec<RowShape> = Vec::new();
 		let mut all_view_changes: Vec<Change> = Vec::new();
 		let interceptors = self.engine.create_interceptors();
 
@@ -248,9 +258,10 @@ impl FlowWorkerActor {
 				});
 			}
 
+			all_pending_shapes.extend(txn.take_pending_shapes());
 			pending = txn.take_pending();
 		}
 
-		Ok((pending, all_view_changes))
+		Ok((pending, all_pending_shapes, all_view_changes))
 	}
 }

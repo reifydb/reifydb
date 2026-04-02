@@ -9,7 +9,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, view::View};
+use reifydb_core::{
+	encoded::shape::RowShape,
+	interface::catalog::{flow::FlowId, id::ViewId, view::View},
+};
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_transaction::transaction::Transaction;
@@ -63,6 +66,11 @@ impl FlowCatalog {
 	/// Get all registered flow IDs
 	pub fn get_flow_ids(&self) -> Vec<FlowId> {
 		self.flows.read().keys().copied().collect()
+	}
+
+	/// Persist pending row shapes via the underlying catalog.
+	pub fn persist_pending_shapes(&self, txn: &mut Transaction<'_>, shapes: Vec<RowShape>) -> Result<()> {
+		self.catalog.persist_pending_shapes(txn, shapes)
 	}
 }
 

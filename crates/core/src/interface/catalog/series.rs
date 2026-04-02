@@ -15,17 +15,13 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum TimestampPrecision {
+	#[default]
 	Millisecond = 0,
 	Microsecond = 1,
 	Nanosecond = 2,
 	Second = 3,
-}
-
-impl Default for TimestampPrecision {
-	fn default() -> Self {
-		TimestampPrecision::Millisecond
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

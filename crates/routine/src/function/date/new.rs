@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateNew;
 
+impl Default for DateNew {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateNew {
 	pub fn new() -> Self {
 		Self
@@ -65,7 +71,7 @@ impl ScalarFunction for DateNew {
 			});
 		}
 
-		let year_col = columns.get(0).unwrap();
+		let year_col = columns.first().unwrap();
 		let month_col = columns.get(1).unwrap();
 		let day_col = columns.get(2).unwrap();
 

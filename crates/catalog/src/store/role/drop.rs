@@ -16,12 +16,12 @@ impl CatalogStore {
 			let range = GrantedRoleKey::full_scan();
 			let mut stream = txn.range(range, 1024)?;
 			let mut keys_to_remove = Vec::new();
-			while let Some(entry) = stream.next() {
+			for entry in stream.by_ref() {
 				let entry = entry?;
-				if let Some(key) = GrantedRoleKey::decode(&entry.key) {
-					if key.role == role {
-						keys_to_remove.push(key);
-					}
+				if let Some(key) = GrantedRoleKey::decode(&entry.key)
+					&& key.role == role
+				{
+					keys_to_remove.push(key);
 				}
 			}
 			drop(stream);

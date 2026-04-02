@@ -33,7 +33,7 @@ impl RowShape {
 		// Try i128 inline storage first (fits in 127 bits)
 		if let Some(i128_val) = value.0.to_i128() {
 			// Check if value fits in 127 bits (MSB must be 0)
-			if i128_val >= -(1i128 << 126) && i128_val < (1i128 << 126) {
+			if (-(1i128 << 126)..(1i128 << 126)).contains(&i128_val) {
 				// Clean up old dynamic data if transitioning from dynamic→inline
 				self.remove_dynamic_data(row, index);
 

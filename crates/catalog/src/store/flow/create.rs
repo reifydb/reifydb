@@ -52,7 +52,7 @@ impl CatalogStore {
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
 
-		Ok(Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?)
+		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
 	}
 
 	/// Create a flow with a specific ID (for subscription flows where FlowId == SubscriptionId).
@@ -66,7 +66,7 @@ impl CatalogStore {
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, to_create.name.text())?;
 
-		Ok(Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?)
+		Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)
 	}
 
 	fn store_flow(

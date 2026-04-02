@@ -3,14 +3,14 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, ConnectionProvider, getConnection, clearConnection, Schema} from '../../../src';
+import {useCommandOne, useCommandMany, ConnectionProvider, getConnection, clearConnection, Shape} from '../../../src';
 import {waitForDatabaseHttp} from '../setup';
 // @ts-ignore
 import React from "react";
 
 describe('useCommand Hooks (JSON HTTP)', () => {
     const wrapper = ({children}: { children: React.ReactNode }) => (
-        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
+        <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
     );
 
     beforeAll(async () => {
@@ -27,12 +27,12 @@ describe('useCommand Hooks (JSON HTTP)', () => {
 
     describe('useCommandOne', () => {
         it('should execute a single command and return one result', async () => {
-            const schema = Schema.object({answer: Schema.number()});
+            const shape = Shape.object({answer: Shape.number()});
             const {result} = renderHook(() =>
                 useCommandOne(
                     `MAP {answer: 42}`,
                     undefined,
-                    schema
+                    shape
                 ), {wrapper}
             );
 
@@ -50,13 +50,13 @@ describe('useCommand Hooks (JSON HTTP)', () => {
         });
 
         it('should handle parameters', async () => {
-            const schema = Schema.object({result: Schema.string()});
+            const shape = Shape.object({result: Shape.string()});
             const params = {value: 'hello'};
             const {result} = renderHook(() =>
                 useCommandOne(
                     `MAP {result: $value}`,
                     params,
-                    schema
+                    shape
                 ), {wrapper}
             );
 
@@ -70,7 +70,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
 
         it('should re-execute when command changes', async () => {
             const {result, rerender} = renderHook(
-                ({command}) => useCommandOne(command, undefined, Schema.object({num: Schema.number()})),
+                ({command}) => useCommandOne(command, undefined, Shape.object({num: Shape.number()})),
                 {initialProps: {command: `MAP {num: 1}`}, wrapper}
             );
 
@@ -88,9 +88,9 @@ describe('useCommand Hooks (JSON HTTP)', () => {
         });
 
         it('should re-execute when params change', async () => {
-            const schema = Schema.object({result: Schema.number()});
+            const shape = Shape.object({result: Shape.number()});
             const {result, rerender} = renderHook(
-                ({params}) => useCommandOne(`MAP {result: $value}`, params, schema),
+                ({params}) => useCommandOne(`MAP {result: $value}`, params, shape),
                 {initialProps: {params: {value: 10}}, wrapper}
             );
 
@@ -107,17 +107,17 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             });
         });
 
-        it('should handle schema conversion', async () => {
-            const schema = Schema.object({
-                name: Schema.string(),
-                age: Schema.number()
+        it('should handle shape conversion', async () => {
+            const shape = Shape.object({
+                name: Shape.string(),
+                age: Shape.number()
             });
 
             const {result} = renderHook(() =>
                 useCommandOne(
                     `MAP {name: 'Alice', age: 30}`,
                     undefined,
-                    schema
+                    shape
                 ), {wrapper}
             );
 
@@ -133,7 +133,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             const {result} = renderHook(() =>
                 useCommandOne('INVALID COMMAND SYNTAX',
                     undefined,
-                    Schema.object({nothing: Schema.boolean()})
+                    Shape.object({nothing: Shape.boolean()})
                 ), {wrapper}
             );
 
@@ -147,7 +147,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
 
         it('should handle empty results', async () => {
             const {result} = renderHook(() =>
-                useCommandOne(`FROM [{x:1}] FILTER x > 10`, undefined, Schema.object({x: Schema.number()}))
+                useCommandOne(`FROM [{x:1}] FILTER x > 10`, undefined, Shape.object({x: Shape.number()}))
             , {wrapper});
 
             await waitFor(() => {
@@ -161,10 +161,10 @@ describe('useCommand Hooks (JSON HTTP)', () => {
 
     describe('useCommandMany', () => {
         it('should execute multiple queries', async () => {
-            const schemas = [
-                Schema.object({first: Schema.number()}),
-                Schema.object({second: Schema.number()}),
-                Schema.object({third: Schema.number()})
+            const shapes = [
+                Shape.object({first: Shape.number()}),
+                Shape.object({second: Shape.number()}),
+                Shape.object({third: Shape.number()})
             ] as const;
             const queries = [
                 `MAP {first: 1}`,
@@ -173,7 +173,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             ];
 
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useCommandMany(queries, undefined, shapes)
             , {wrapper});
 
             await waitFor(() => {
@@ -192,7 +192,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 useCommandMany(
                     `MAP {answer: 42}`,
                     undefined,
-                    [Schema.object({answer: Schema.number()})]
+                    [Shape.object({answer: Shape.number()})]
                 )
             , {wrapper});
 
@@ -205,9 +205,9 @@ describe('useCommand Hooks (JSON HTTP)', () => {
         });
 
         it('should handle parameters for multiple queries', async () => {
-            const schemas = [
-                Schema.object({first: Schema.number()}),
-                Schema.object({second: Schema.number()})
+            const shapes = [
+                Shape.object({first: Shape.number()}),
+                Shape.object({second: Shape.number()})
             ] as const;
             const queries = [
                 `MAP {first: $x}`,
@@ -216,7 +216,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             const params = {x: 10, y: 20};
 
             const {result} = renderHook(() =>
-                useCommandMany(queries, params, schemas)
+                useCommandMany(queries, params, shapes)
             , {wrapper});
 
             await waitFor(() => {
@@ -227,10 +227,10 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             expect(result.current.results![1].rows[0]).toEqual({second: 20});
         });
 
-        it('should handle multiple schemas', async () => {
-            const schemas = [
-                Schema.object({value: Schema.number()}),
-                Schema.object({name: Schema.string()})
+        it('should handle multiple shapes', async () => {
+            const shapes = [
+                Shape.object({value: Shape.number()}),
+                Shape.object({name: Shape.string()})
             ] as const;
 
             const queries = [
@@ -239,7 +239,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
             ];
 
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useCommandMany(queries, undefined, shapes)
             , {wrapper});
 
             await waitFor(() => {
@@ -252,7 +252,7 @@ describe('useCommand Hooks (JSON HTTP)', () => {
 
         it('should re-execute when statements change', async () => {
             const {result, rerender} = renderHook(
-                ({queries}) => useCommandMany(queries, undefined, [Schema.object({x: Schema.number()})]),
+                ({queries}) => useCommandMany(queries, undefined, [Shape.object({x: Shape.number()})]),
                 {initialProps: {queries: [`MAP {x: 1}`]}, wrapper}
             );
 
@@ -275,13 +275,13 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 `FROM [{x:1}] FILTER x > 10`,
                 `MAP {value: 2}`
             ];
-            const schemas = [
-                Schema.object({value: Schema.number()}),
-                Schema.object({value: Schema.number()}),
-                Schema.object({value: Schema.number()}),
+            const shapes = [
+                Shape.object({value: Shape.number()}),
+                Shape.object({value: Shape.number()}),
+                Shape.object({value: Shape.number()}),
             ];
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useCommandMany(queries, undefined, shapes)
             , {wrapper});
 
             await waitFor(() => {
@@ -300,13 +300,13 @@ describe('useCommand Hooks (JSON HTTP)', () => {
                 'INVALID SYNTAX',
                 `MAP {valid: 2}`
             ];
-            const schemas = [
-                Schema.object({valid: Schema.number()}),
-                Schema.object({valid: Schema.number()}),
-                Schema.object({valid: Schema.number()}),
+            const shapes = [
+                Shape.object({valid: Shape.number()}),
+                Shape.object({valid: Shape.number()}),
+                Shape.object({valid: Shape.number()}),
             ];
             const {result} = renderHook(() =>
-                useCommandMany(queries, undefined, schemas)
+                useCommandMany(queries, undefined, shapes)
             , {wrapper});
 
             await waitFor(() => {
@@ -320,18 +320,18 @@ describe('useCommand Hooks (JSON HTTP)', () => {
 
     describe('Hook interaction', () => {
         it('should allow multiple hooks to run different queries simultaneously', async () => {
-            const schema1 = Schema.object({value: Schema.number()});
+            const shape1 = Shape.object({value: Shape.number()});
             const {result: result1} = renderHook(() =>
-                useCommandOne(`MAP {value: 100}`, undefined, schema1)
+                useCommandOne(`MAP {value: 100}`, undefined, shape1)
             , {wrapper});
 
             const queries2 = [`MAP {x: 200}`, `MAP {y: 300}`];
-            const schemas2 = [
-                Schema.object({x: Schema.number()}),
-                Schema.object({y: Schema.number()})
+            const shapes2 = [
+                Shape.object({x: Shape.number()}),
+                Shape.object({y: Shape.number()})
             ] as const;
             const {result: result2} = renderHook(() =>
-                useCommandMany(queries2, undefined, schemas2)
+                useCommandMany(queries2, undefined, shapes2)
             , {wrapper});
 
             await waitFor(() => {
@@ -347,12 +347,12 @@ describe('useCommand Hooks (JSON HTTP)', () => {
         it('should work with ConnectionProvider', async () => {
             // @ts-ignore
             const wrapper = ({children}: { children: React.ReactNode }) => (
-                <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
+                <ConnectionProvider config={{url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', token: process.env.REIFYDB_TOKEN, format: 'json'}} children={children}/>
             );
 
-            const schema = Schema.object({value: Schema.number()});
+            const shape = Shape.object({value: Shape.number()});
             const {result} = renderHook(
-                () => useCommandOne(`MAP {value: 999}`, undefined, schema),
+                () => useCommandOne(`MAP {value: 999}`, undefined, shape),
                 {wrapper}
             );
 
@@ -364,14 +364,14 @@ describe('useCommand Hooks (JSON HTTP)', () => {
         });
 
         it('should support config override in hooks', async () => {
-            const schema = Schema.object({test: Schema.string()});
-            const overrideConfig = {url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091', options: {timeoutMs: 2000}};
+            const shape = Shape.object({test: Shape.string()});
+            const overrideConfig = {url: process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091', options: {timeoutMs: 2000}};
 
             const {result, unmount} = renderHook(() =>
                 useCommandOne(
                     `MAP {test: 'override'}`,
                     undefined,
-                    schema,
+                    shape,
                     {connectionConfig: overrideConfig}
                 )
             , {wrapper});

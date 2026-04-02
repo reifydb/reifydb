@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{columns::Columns, data::ColumnData},
 };
 use reifydb_policy::{
-	enforce::{enforce_identity_policy, enforce_session_policy, enforce_write_policies},
+	enforce::{PolicyTarget, enforce_identity_policy, enforce_session_policy, enforce_write_policies},
 	evaluate::PolicyEvaluator as PolicyEvaluatorTrait,
 };
 use reifydb_rql::expression::Expression;
@@ -49,16 +49,13 @@ impl<'a> PolicyEvaluator<'a> {
 		row_columns: &Columns,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
-		enforce_write_policies(
-			&self.services.catalog,
-			tx,
-			target_namespace,
-			target_object,
+		let target = PolicyTarget {
+			namespace: target_namespace,
+			object: target_object,
 			operation,
-			row_columns,
 			target_type,
-			self,
-		)
+		};
+		enforce_write_policies(&self.services.catalog, tx, &target, row_columns, self)
 	}
 
 	pub fn enforce_session_policy(
@@ -78,15 +75,13 @@ impl<'a> PolicyEvaluator<'a> {
 		operation: &str,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
-		enforce_identity_policy(
-			&self.services.catalog,
-			tx,
-			target_namespace,
-			target_object,
+		let target = PolicyTarget {
+			namespace: target_namespace,
+			object: target_object,
 			operation,
 			target_type,
-			self,
-		)
+		};
+		enforce_identity_policy(&self.services.catalog, tx, &target, self)
 	}
 }
 

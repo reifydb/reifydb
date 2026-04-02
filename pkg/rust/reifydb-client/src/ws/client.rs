@@ -139,11 +139,10 @@ impl WsClient {
 					}
 
 					// Send the request
-					if let Ok(json) = serde_json::to_string(&request) {
-						if write.send(Message::Text(json.into())).await.is_err() {
+					if let Ok(json) = serde_json::to_string(&request)
+						&& write.send(Message::Text(json.into())).await.is_err() {
 							break;
 						}
-					}
 				}
 
 				// Handle shutdown signal
@@ -181,7 +180,7 @@ impl WsClient {
 				self.is_authenticated = true;
 				Ok(())
 			}
-			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
 			_ => panic!("Unexpected response type for auth"), // FIXME better error handling
 		}
 	}
@@ -232,7 +231,7 @@ impl WsClient {
 					panic!("Authentication failed") // FIXME better error handling
 				}
 			}
-			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
 			_ => panic!("Unexpected response type for login"), // FIXME better error handling
 		}
 	}
@@ -256,7 +255,7 @@ impl WsClient {
 				self.is_authenticated = false;
 				Ok(())
 			}
-			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
 			_ => panic!("Unexpected response type for logout"), // FIXME better error handling
 		}
 	}
@@ -272,7 +271,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: vec![rql.to_string()],
-				params: params.map(params_to_wire).flatten(),
+				params: params.and_then(params_to_wire),
 			}),
 		};
 
@@ -287,7 +286,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: statements.into_iter().map(String::from).collect(),
-				params: params.map(params_to_wire).flatten(),
+				params: params.and_then(params_to_wire),
 			}),
 		};
 
@@ -306,7 +305,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Command(CommandRequest {
 				statements: vec![rql.to_string()],
-				params: params.map(params_to_wire).flatten(),
+				params: params.and_then(params_to_wire),
 			}),
 		};
 
@@ -325,7 +324,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Query(QueryRequest {
 				statements: vec![rql.to_string()],
-				params: params.map(params_to_wire).flatten(),
+				params: params.and_then(params_to_wire),
 			}),
 		};
 
@@ -344,7 +343,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Command(CommandRequest {
 				statements: statements.into_iter().map(String::from).collect(),
-				params: params.map(params_to_wire).flatten(),
+				params: params.and_then(params_to_wire),
 			}),
 		};
 
@@ -359,7 +358,7 @@ impl WsClient {
 			id,
 			payload: RequestPayload::Query(QueryRequest {
 				statements: statements.into_iter().map(String::from).collect(),
-				params: params.map(params_to_wire).flatten(),
+				params: params.and_then(params_to_wire),
 			}),
 		};
 
@@ -386,7 +385,7 @@ impl WsClient {
 		let response = self.send_request(request).await?;
 		match response.payload {
 			ResponsePayload::Subscribed(sub) => Ok(sub.subscription_id),
-			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
 			// _ => Err(Error(internal("Unexpected response type for subscribe"))),
 			_ => panic!("Unexpected response type for subscribe"), // FIXME better error handling
 		}
@@ -408,7 +407,7 @@ impl WsClient {
 		let response = self.send_request(request).await?;
 		match response.payload {
 			ResponsePayload::Unsubscribed(_) => Ok(()),
-			ResponsePayload::Err(err) => Err(Error(err.diagnostic)),
+			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
 			// _ => Err(Error(internal("Unexpected response type for unsubscribe"))),
 			_ => panic!("Unexpected response type for unsubscribe"), // FIXME better error handling
 		}

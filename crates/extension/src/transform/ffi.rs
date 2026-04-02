@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#![cfg(reifydb_target = "native")]
-
 //! FFI transform implementation that bridges native shared-library transforms with ReifyDB
 
 use std::{
@@ -64,7 +62,7 @@ unsafe impl Sync for NativeTransformFFI {}
 impl Drop for NativeTransformFFI {
 	fn drop(&mut self) {
 		if !self.instance.is_null() {
-			(self.vtable.destroy)(self.instance);
+			unsafe { (self.vtable.destroy)(self.instance) };
 		}
 	}
 }
@@ -77,7 +75,7 @@ impl Transform for NativeTransformFFI {
 		let ffi_input = arena.marshal_columns(&input);
 		let mut ffi_output = ColumnsFFI::empty();
 
-		let result = catch_unwind(AssertUnwindSafe(|| {
+		let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 			(self.vtable.transform)(self.instance, &ffi_input, &mut ffi_output)
 		}));
 

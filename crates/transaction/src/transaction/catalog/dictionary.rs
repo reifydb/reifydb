@@ -54,10 +54,10 @@ impl TransactionalDictionaryChanges for AdminTransaction {
 				if dictionary.id == id {
 					return Some(dictionary);
 				}
-			} else if let Some(dictionary) = &change.pre {
-				if dictionary.id == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(dictionary) = &change.pre
+				&& dictionary.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

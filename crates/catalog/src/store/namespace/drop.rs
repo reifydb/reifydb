@@ -23,7 +23,7 @@ impl CatalogStore {
 			let range = NamespaceTableKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
 			let mut table_ids = Vec::new();
-			while let Some(entry) = stream.next() {
+			for entry in stream.by_ref() {
 				let entry = entry?;
 				if let Some(key) = NamespaceTableKey::decode(&entry.key) {
 					table_ids.push(key.table);
@@ -40,7 +40,7 @@ impl CatalogStore {
 			let range = NamespaceViewKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
 			let mut view_ids = Vec::new();
-			while let Some(entry) = stream.next() {
+			for entry in stream.by_ref() {
 				let entry = entry?;
 				if let Some(key) = NamespaceViewKey::decode(&entry.key) {
 					view_ids.push(key.view);
@@ -57,7 +57,7 @@ impl CatalogStore {
 			let range = NamespaceRingBufferKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
 			let mut rb_ids = Vec::new();
-			while let Some(entry) = stream.next() {
+			for entry in stream.by_ref() {
 				let entry = entry?;
 				if let Some(key) = NamespaceRingBufferKey::decode(&entry.key) {
 					rb_ids.push(key.ringbuffer);
@@ -74,7 +74,7 @@ impl CatalogStore {
 			let range = NamespaceFlowKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
 			let mut flow_ids = Vec::new();
-			while let Some(entry) = stream.next() {
+			for entry in stream.by_ref() {
 				let entry = entry?;
 				if let Some(key) = NamespaceFlowKey::decode(&entry.key) {
 					flow_ids.push(key.flow);
@@ -91,7 +91,7 @@ impl CatalogStore {
 			let range = NamespaceDictionaryKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
 			let mut dict_ids = Vec::new();
-			while let Some(entry) = stream.next() {
+			for entry in stream.by_ref() {
 				let entry = entry?;
 				if let Some(key) = NamespaceDictionaryKey::decode(&entry.key) {
 					dict_ids.push(key.dictionary);
@@ -108,7 +108,7 @@ impl CatalogStore {
 			let range = NamespaceSumTypeKey::full_scan(namespace);
 			let mut stream = txn.range(range, 1024)?;
 			let mut st_ids = Vec::new();
-			while let Some(entry) = stream.next() {
+			for entry in stream.by_ref() {
 				let entry = entry?;
 				if let Some(key) = NamespaceSumTypeKey::decode(&entry.key) {
 					st_ids.push(key.sumtype);

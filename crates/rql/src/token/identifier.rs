@@ -12,7 +12,7 @@ pub fn scan_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	if !cursor.peek().map_or(false, is_identifier_start) {
+	if !cursor.peek().is_some_and(is_identifier_start) {
 		return None;
 	}
 
@@ -72,7 +72,7 @@ pub fn scan_digit_starting_identifier<'b>(cursor: &mut Cursor<'b>) -> Option<Tok
 	let state = cursor.save_state();
 
 	// Must start with an ASCII digit
-	if !cursor.peek().map_or(false, |c| c.is_ascii_digit()) {
+	if !cursor.peek().is_some_and(|c| c.is_ascii_digit()) {
 		return None;
 	}
 

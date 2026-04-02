@@ -26,16 +26,16 @@ impl CatalogStore {
 		to_create: PolicyToCreate,
 	) -> Result<(Policy, Vec<PolicyOperation>)> {
 		// Check duplicate by name if named
-		if let Some(ref name) = to_create.name {
-			if let Some(_) = Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)? {
-				return Err(CatalogError::AlreadyExists {
-					kind: CatalogObjectKind::Policy,
-					namespace: "system".to_string(),
-					name: name.clone(),
-					fragment: Fragment::None,
-				}
-				.into());
+		if let Some(ref name) = to_create.name
+			&& (Self::find_policy_by_name(&mut Transaction::Admin(&mut *txn), name)?).is_some()
+		{
+			return Err(CatalogError::AlreadyExists {
+				kind: CatalogObjectKind::Policy,
+				namespace: "system".to_string(),
+				name: name.clone(),
+				fragment: Fragment::None,
 			}
+			.into());
 		}
 
 		let policy_id = SystemSequence::next_policy_id(txn)?;

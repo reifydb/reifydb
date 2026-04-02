@@ -13,6 +13,8 @@ use tracing::instrument;
 
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage};
 
+type MemoryStore = Arc<RwLock<BTreeMap<CowVec<u8>, Option<CowVec<u8>>>>>;
+
 /// Memory-based single-version storage implementation.
 ///
 /// Uses a single BTreeMap with RwLock for concurrent access.
@@ -23,7 +25,13 @@ pub struct MemoryPrimitiveStorage {
 
 struct MemoryPrimitiveStorageInner {
 	/// Single storage map for all keys
-	data: Arc<RwLock<BTreeMap<CowVec<u8>, Option<CowVec<u8>>>>>,
+	data: MemoryStore,
+}
+
+impl Default for MemoryPrimitiveStorage {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl MemoryPrimitiveStorage {

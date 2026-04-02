@@ -56,7 +56,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceSinkKey::full_scan(namespace), 1024)?;
 
 		let mut found_sink = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let sink_name = sink_namespace::SHAPE.get_utf8(row, sink_namespace::NAME);

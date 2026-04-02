@@ -25,6 +25,12 @@ pub struct SystemRingBuffers {
 	exhausted: bool,
 }
 
+impl Default for SystemRingBuffers {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemRingBuffers {
 	pub fn new() -> Self {
 		Self {

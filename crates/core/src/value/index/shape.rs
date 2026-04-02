@@ -61,7 +61,7 @@ impl IndexShapeInner {
 		assert_eq!(types.len(), directions.len());
 
 		let num_fields = types.len();
-		let bitvec_bytes = (num_fields + 7) / 8;
+		let bitvec_bytes = num_fields.div_ceil(8);
 
 		let mut offset = bitvec_bytes;
 		let mut fields = Vec::with_capacity(num_fields);
@@ -118,7 +118,7 @@ impl IndexShapeInner {
 
 		let bitvec_slice = &key[..self.bitvec_size];
 		for (i, &byte) in bitvec_slice.iter().enumerate() {
-			let bits_in_byte = if i == self.bitvec_size - 1 && bits % 8 != 0 {
+			let bits_in_byte = if i == self.bitvec_size - 1 && !bits.is_multiple_of(8) {
 				bits % 8
 			} else {
 				8

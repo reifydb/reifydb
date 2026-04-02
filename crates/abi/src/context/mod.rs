@@ -3,5 +3,6 @@
 
 //! Execution context and iterator types for FFI operators
 
+#[allow(clippy::module_inception)]
 pub mod context;
 pub mod iterators;

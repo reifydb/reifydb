@@ -31,8 +31,8 @@ impl CatalogStore {
 		// Collect column IDs first to avoid holding stream borrow
 		let mut ids = Vec::new();
 		{
-			let mut stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
-			while let Some(entry) = stream.next() {
+			let stream = rx.range(ColumnKey::full_scan(shape), 1024)?;
+			for entry in stream {
 				let multi = entry?;
 				let row = multi.row;
 				ids.push(ColumnId(primitive_column::SHAPE.get_u64(&row, primitive_column::ID)));

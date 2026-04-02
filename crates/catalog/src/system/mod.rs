@@ -199,6 +199,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, SOURCE, TARGET];
 		}
 
+		#[allow(clippy::module_inception)]
 		pub mod columns {
 			use reifydb_core::interface::catalog::id::ColumnId;
 

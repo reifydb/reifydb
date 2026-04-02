@@ -17,6 +17,12 @@ use crate::function::{
 
 pub struct RqlFingerprint;
 
+impl Default for RqlFingerprint {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl RqlFingerprint {
 	pub fn new() -> Self {
 		Self
@@ -40,7 +46,7 @@ impl ScalarFunction for RqlFingerprint {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

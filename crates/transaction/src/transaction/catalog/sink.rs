@@ -42,15 +42,15 @@ impl CatalogTrackSinkChangeOperations for AdminTransaction {
 impl TransactionalSinkChanges for AdminTransaction {
 	fn find_sink(&self, id: SinkId) -> Option<&Sink> {
 		for change in self.changes.sink.iter().rev() {
-			if let Some(sink) = &change.post {
-				if sink.id == id {
-					return Some(sink);
-				}
+			if let Some(sink) = &change.post
+				&& sink.id == id
+			{
+				return Some(sink);
 			}
-			if let Some(sink) = &change.pre {
-				if sink.id == id && change.op == Delete {
-					return None;
-				}
+			if let Some(sink) = &change.pre
+				&& sink.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None
@@ -58,15 +58,17 @@ impl TransactionalSinkChanges for AdminTransaction {
 
 	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Sink> {
 		for change in self.changes.sink.iter().rev() {
-			if let Some(sink) = &change.post {
-				if sink.namespace == namespace && sink.name == name {
-					return Some(sink);
-				}
+			if let Some(sink) = &change.post
+				&& sink.namespace == namespace
+				&& sink.name == name
+			{
+				return Some(sink);
 			}
-			if let Some(sink) = &change.pre {
-				if sink.namespace == namespace && sink.name == name && change.op == Delete {
-					return None;
-				}
+			if let Some(sink) = &change.pre
+				&& sink.namespace == namespace
+				&& sink.name == name && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

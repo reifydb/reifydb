@@ -42,7 +42,7 @@ use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::{info, warn};
 
 use crate::{
-	builder::FlowBuilderConfig,
+	builder::FlowConfig,
 	catalog::FlowCatalog,
 	deferred::{
 		coordinator::{CoordinatorActor, CoordinatorMsg, FlowConsumeRef, extract_new_flow_ids},
@@ -71,44 +71,41 @@ impl CdcConsume for FlowConsumeDispatcher {
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>) {
 		// Check for newly-created flows that might be transactional views.
 		let new_flow_ids = extract_new_flow_ids(&cdcs);
-		if !new_flow_ids.is_empty() {
-			if let Ok(mut query) = self.engine.begin_query(IdentityId::system()) {
-				for flow_id in new_flow_ids {
-					match self
-						.flow_catalog
-						.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id)
-					{
-						Ok((flow, true)) => {
-							// Newly-loaded flow: try to register as transactional.
-							// If transactional, FlowCatalog now caches it so the
-							// coordinator's get_or_load_flow sees is_new=false.
-							match self.registrar.try_register(flow) {
-								Ok(true) => { /* transactional, leave cached */ }
-								Ok(false) => {
-									// NOT transactional — remove from cache so
-									// the coordinator discovers it as new.
-									self.flow_catalog.remove(flow_id);
-								}
-								Err(e) => {
-									self.flow_catalog.remove(flow_id);
-									warn!(
-										flow_id = flow_id.0,
-										error = %e,
-										"failed to register transactional flow"
-									);
-								}
+		if !new_flow_ids.is_empty()
+			&& let Ok(mut query) = self.engine.begin_query(IdentityId::system())
+		{
+			for flow_id in new_flow_ids {
+				match self.flow_catalog.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id) {
+					Ok((flow, true)) => {
+						// Newly-loaded flow: try to register as transactional.
+						// If transactional, FlowCatalog now caches it so the
+						// coordinator's get_or_load_flow sees is_new=false.
+						match self.registrar.try_register(flow) {
+							Ok(true) => { /* transactional, leave cached */ }
+							Ok(false) => {
+								// NOT transactional — remove from cache so
+								// the coordinator discovers it as new.
+								self.flow_catalog.remove(flow_id);
+							}
+							Err(e) => {
+								self.flow_catalog.remove(flow_id);
+								warn!(
+									flow_id = flow_id.0,
+									error = %e,
+									"failed to register transactional flow"
+								);
 							}
 						}
-						Ok((_, false)) => {
-							// Already cached — nothing to do.
-						}
-						Err(e) => {
-							warn!(
-								flow_id = flow_id.0,
-								error = %e,
-								"failed to load flow for transactional check"
-							);
-						}
+					}
+					Ok((_, false)) => {
+						// Already cached — nothing to do.
+					}
+					Err(e) => {
+						warn!(
+							flow_id = flow_id.0,
+							error = %e,
+							"failed to load flow for transactional check"
+						);
 					}
 				}
 			}
@@ -133,7 +130,7 @@ pub struct FlowSubsystem {
 
 impl FlowSubsystem {
 	/// Create a new flow subsystem.
-	pub fn new(config: FlowBuilderConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
+	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Self {
 		let catalog = engine.catalog();
 		let executor = engine.executor();
 		let event_bus = engine.event_bus().clone();
@@ -285,17 +282,18 @@ impl FlowSubsystem {
 							hook_custom_operators.clone(),
 						);
 
-						let flows = hook_catalog
-							.list_flows_all(&mut Transaction::Test(test_txn.reborrow()))?;
+						let flows = hook_catalog.list_flows_all(&mut Transaction::Test(
+							Box::new(test_txn.reborrow()),
+						))?;
 
 						for flow in flows {
 							let dag = load_flow_dag(
 								&hook_catalog,
-								&mut Transaction::Test(test_txn.reborrow()),
+								&mut Transaction::Test(Box::new(test_txn.reborrow())),
 								flow.id,
 							)?;
 							fresh_engine.register_with_transaction(
-								&mut Transaction::Test(test_txn.reborrow()),
+								&mut Transaction::Test(Box::new(test_txn.reborrow())),
 								dag,
 							)?;
 						}

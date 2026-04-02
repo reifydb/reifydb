@@ -52,15 +52,15 @@ impl CatalogTrackFlowChangeOperations for AdminTransaction {
 impl TransactionalFlowChanges for AdminTransaction {
 	fn find_flow(&self, id: FlowId) -> Option<&Flow> {
 		for change in self.changes.flow.iter().rev() {
-			if let Some(flow) = &change.post {
-				if flow.id == id {
-					return Some(flow);
-				}
+			if let Some(flow) = &change.post
+				&& flow.id == id
+			{
+				return Some(flow);
 			}
-			if let Some(flow) = &change.pre {
-				if flow.id == id && change.op == Delete {
-					return None;
-				}
+			if let Some(flow) = &change.pre
+				&& flow.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None
@@ -68,15 +68,17 @@ impl TransactionalFlowChanges for AdminTransaction {
 
 	fn find_flow_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Flow> {
 		for change in self.changes.flow.iter().rev() {
-			if let Some(flow) = &change.post {
-				if flow.namespace == namespace && flow.name == name {
-					return Some(flow);
-				}
+			if let Some(flow) = &change.post
+				&& flow.namespace == namespace
+				&& flow.name == name
+			{
+				return Some(flow);
 			}
-			if let Some(flow) = &change.pre {
-				if flow.namespace == namespace && flow.name == name && change.op == Delete {
-					return None;
-				}
+			if let Some(flow) = &change.pre
+				&& flow.namespace == namespace
+				&& flow.name == name && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

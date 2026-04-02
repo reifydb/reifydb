@@ -30,7 +30,7 @@ use super::{
 };
 use crate::{
 	Result,
-	tier::{EntryKind, EntryKind::Multi, RangeCursor, TierStorage},
+	tier::{EntryKind, EntryKind::Multi, RangeCursor, TierBatch, TierStorage},
 };
 
 /// Fixed chunk size for internal tier scans.
@@ -118,7 +118,7 @@ impl MultiVersionCommit for StandardMultiStore {
 		let mut pending_set_keys: HashSet<CowVec<u8>> = HashSet::new();
 		let mut writes: Vec<StorageWrite> = Vec::new();
 		let mut deletes: Vec<StorageDelete> = Vec::new();
-		let mut batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>> = HashMap::new();
+		let mut batches: TierBatch = HashMap::new();
 		let mut explicit_drops: Vec<(EntryKind, EncodedKey, Option<CommitVersion>, Option<usize>)> = Vec::new();
 
 		for delta in deltas.iter() {
@@ -201,10 +201,8 @@ impl MultiVersionCommit for StandardMultiStore {
 			});
 		}
 
-		if !drop_batch.is_empty() {
-			if self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
-				warn!("Failed to send drop batch");
-			}
+		if !drop_batch.is_empty() && self.drop_actor.send_blocking(DropMessage::Batch(drop_batch)).is_err() {
+			warn!("Failed to send drop batch");
 		}
 
 		// Pass version explicitly to storage
@@ -247,6 +245,15 @@ impl MultiVersionRangeCursor {
 	}
 }
 
+/// Parameters shared by tier scan operations (forward and reverse).
+struct TierScanQuery<'a> {
+	table: EntryKind,
+	start: &'a [u8],
+	end: &'a [u8],
+	version: CommitVersion,
+	range: &'a EncodedKeyRange,
+}
+
 impl StandardMultiStore {
 	/// Fetch the next batch of entries, continuing from cursor position.
 	///
@@ -269,6 +276,13 @@ impl StandardMultiStore {
 		let table = classify_key_range(&range);
 		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
+		let scan = TierScanQuery {
+			table,
+			start: &start,
+			end: &end,
+			version,
+			range: &range,
+		};
 
 		// Collected entries: logical_key -> (version, value)
 		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
@@ -278,54 +292,27 @@ impl StandardMultiStore {
 			let mut any_progress = false;
 
 			// Scan chunk from hot tier
-			if let Some(hot) = &self.hot {
-				if !cursor.hot.exhausted {
-					let progress = Self::scan_tier_chunk(
-						hot,
-						table,
-						&mut cursor.hot,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(hot) = &self.hot
+				&& !cursor.hot.exhausted
+			{
+				let progress = Self::scan_tier_chunk(hot, &mut cursor.hot, &scan, &mut collected)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from warm tier
-			if let Some(warm) = &self.warm {
-				if !cursor.warm.exhausted {
-					let progress = Self::scan_tier_chunk(
-						warm,
-						table,
-						&mut cursor.warm,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(warm) = &self.warm
+				&& !cursor.warm.exhausted
+			{
+				let progress = Self::scan_tier_chunk(warm, &mut cursor.warm, &scan, &mut collected)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from cold tier
-			if let Some(cold) = &self.cold {
-				if !cursor.cold.exhausted {
-					let progress = Self::scan_tier_chunk(
-						cold,
-						table,
-						&mut cursor.cold,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(cold) = &self.cold
+				&& !cursor.cold.exhausted
+			{
+				let progress = Self::scan_tier_chunk(cold, &mut cursor.cold, &scan, &mut collected)?;
+				any_progress |= progress;
 			}
 
 			if !any_progress {
@@ -360,20 +347,16 @@ impl StandardMultiStore {
 	/// Returns true if any entries were processed (i.e., made progress).
 	fn scan_tier_chunk<S: TierStorage>(
 		storage: &S,
-		table: EntryKind,
 		cursor: &mut RangeCursor,
-		start: &[u8],
-		end: &[u8],
-		version: CommitVersion,
-		range: &EncodedKeyRange,
+		scan: &TierScanQuery,
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 	) -> Result<bool> {
 		let batch = storage.range_next(
-			table,
+			scan.table,
 			cursor,
-			Bound::Included(start),
-			Bound::Included(end),
-			version,
+			Bound::Included(scan.start),
+			Bound::Included(scan.end),
+			scan.version,
 			TIER_SCAN_CHUNK_SIZE,
 		)?;
 
@@ -388,7 +371,7 @@ impl StandardMultiStore {
 
 			// Skip if key is not within the requested logical range
 			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-			if !range.contains(&original_key_encoded) {
+			if !scan.range.contains(&original_key_encoded) {
 				continue;
 			}
 
@@ -471,6 +454,13 @@ impl StandardMultiStore {
 		let table = classify_key_range(&range);
 		let (start, end) = make_range_bounds(&range);
 		let batch_size = batch_size as usize;
+		let scan = TierScanQuery {
+			table,
+			start: &start,
+			end: &end,
+			version,
+			range: &range,
+		};
 
 		// Collected entries: logical_key -> (version, value)
 		let mut collected: BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)> = BTreeMap::new();
@@ -480,54 +470,29 @@ impl StandardMultiStore {
 			let mut any_progress = false;
 
 			// Scan chunk from hot tier (reverse)
-			if let Some(hot) = &self.hot {
-				if !cursor.hot.exhausted {
-					let progress = Self::scan_tier_chunk_rev(
-						hot,
-						table,
-						&mut cursor.hot,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(hot) = &self.hot
+				&& !cursor.hot.exhausted
+			{
+				let progress = Self::scan_tier_chunk_rev(hot, &mut cursor.hot, &scan, &mut collected)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from warm tier (reverse)
-			if let Some(warm) = &self.warm {
-				if !cursor.warm.exhausted {
-					let progress = Self::scan_tier_chunk_rev(
-						warm,
-						table,
-						&mut cursor.warm,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(warm) = &self.warm
+				&& !cursor.warm.exhausted
+			{
+				let progress =
+					Self::scan_tier_chunk_rev(warm, &mut cursor.warm, &scan, &mut collected)?;
+				any_progress |= progress;
 			}
 
 			// Scan chunk from cold tier (reverse)
-			if let Some(cold) = &self.cold {
-				if !cursor.cold.exhausted {
-					let progress = Self::scan_tier_chunk_rev(
-						cold,
-						table,
-						&mut cursor.cold,
-						&start,
-						&end,
-						version,
-						&range,
-						&mut collected,
-					)?;
-					any_progress |= progress;
-				}
+			if let Some(cold) = &self.cold
+				&& !cursor.cold.exhausted
+			{
+				let progress =
+					Self::scan_tier_chunk_rev(cold, &mut cursor.cold, &scan, &mut collected)?;
+				any_progress |= progress;
 			}
 
 			if !any_progress {
@@ -563,20 +528,16 @@ impl StandardMultiStore {
 	/// Returns true if any entries were processed (i.e., made progress).
 	fn scan_tier_chunk_rev<S: TierStorage>(
 		storage: &S,
-		table: EntryKind,
 		cursor: &mut RangeCursor,
-		start: &[u8],
-		end: &[u8],
-		version: CommitVersion,
-		range: &EncodedKeyRange,
+		scan: &TierScanQuery,
 		collected: &mut BTreeMap<Vec<u8>, (CommitVersion, Option<CowVec<u8>>)>,
 	) -> Result<bool> {
 		let batch = storage.range_rev_next(
-			table,
+			scan.table,
 			cursor,
-			Bound::Included(start),
-			Bound::Included(end),
-			version,
+			Bound::Included(scan.start),
+			Bound::Included(scan.end),
+			scan.version,
 			TIER_SCAN_CHUNK_SIZE,
 		)?;
 
@@ -591,7 +552,7 @@ impl StandardMultiStore {
 
 			// Skip if key is not within the requested logical range
 			let original_key_encoded = EncodedKey(CowVec::new(original_key.clone()));
-			if !range.contains(&original_key_encoded) {
+			if !scan.range.contains(&original_key_encoded) {
 				continue;
 			}
 

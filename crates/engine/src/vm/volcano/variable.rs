@@ -74,17 +74,17 @@ impl QueryNode for VariableNode {
 			}
 			Some(Variable::Closure(_)) => {
 				// Closures cannot be used as data sources in queries
-				return Err(EngineError::VariableNotFound {
+				Err(EngineError::VariableNotFound {
 					name: variable_name.to_string(),
 				}
-				.into());
+				.into())
 			}
 			None => {
 				// Variable not found - return error
-				return Err(EngineError::VariableNotFound {
+				Err(EngineError::VariableNotFound {
 					name: variable_name.to_string(),
 				}
-				.into());
+				.into())
 			}
 		}
 	}

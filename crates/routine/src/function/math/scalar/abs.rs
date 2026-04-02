@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct Abs;
 
+impl Default for Abs {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Abs {
 	pub fn new() -> Self {
 		Self {}
@@ -35,7 +41,7 @@ impl ScalarFunction for Abs {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Int1(container) => {

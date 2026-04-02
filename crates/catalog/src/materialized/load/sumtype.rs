@@ -24,9 +24,9 @@ use crate::{
 
 pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let range = SumTypeKey::full_scan();
-	let mut stream = rx.range(range, 1024)?;
+	let stream = rx.range(range, 1024)?;
 
-	while let Some(entry) = stream.next() {
+	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
 		let def = convert_sumtype(multi);

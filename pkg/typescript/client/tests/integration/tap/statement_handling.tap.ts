@@ -9,7 +9,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Client, WsClient } from '../../../src';
 import { waitForDatabase } from '../setup';
-import { Schema } from '@reifydb/core';
+import { Shape } from '@reifydb/core';
 
 describe('Statement Handling', () => {
     let wsClient: WsClient;
@@ -75,8 +75,8 @@ describe('Statement Handling', () => {
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 null,
                 [
-                    Schema.object({ one: Schema.int4() }),
-                    Schema.object({ two: Schema.int4() })
+                    Shape.object({ one: Shape.int4() }),
+                    Shape.object({ two: Shape.int4() })
                 ]
             );
             expect(frames).toHaveLength(2);
@@ -94,7 +94,7 @@ describe('Statement Handling', () => {
             const frames = await wsClient.command(
                 'MAP {result: 1};',
                 null,
-                [Schema.object({ result: Schema.int4() })]
+                [Shape.object({ result: Shape.int4() })]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
@@ -106,9 +106,9 @@ describe('Statement Handling', () => {
                 'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
                 null,
                 [
-                    Schema.object({ result: Schema.int4() }),
-                    Schema.object({ result: Schema.int4() }),
-                    Schema.object({ result: Schema.int4() })
+                    Shape.object({ result: Shape.int4() }),
+                    Shape.object({ result: Shape.int4() }),
+                    Shape.object({ result: Shape.int4() })
                 ]
             );
             expect(frames).toHaveLength(3);
@@ -131,9 +131,9 @@ describe('Statement Handling', () => {
                 "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
                 null,
                 [
-                    Schema.object({ result: Schema.int4() }),
-                    Schema.object({ a: Schema.int4(), b: Schema.int4() }),
-                    Schema.object({ result: Schema.utf8() })
+                    Shape.object({ result: Shape.int4() }),
+                    Shape.object({ a: Shape.int4(), b: Shape.int4() }),
+                    Shape.object({ result: Shape.utf8() })
                 ]
             );
             expect(frames).toHaveLength(3);
@@ -156,7 +156,7 @@ describe('Statement Handling', () => {
             const frames = await wsClient.command(
                 'MAP {x: 1}',
                 null,
-                [Schema.object({ x: Schema.int4() })]
+                [Shape.object({ x: Shape.int4() })]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
@@ -168,8 +168,8 @@ describe('Statement Handling', () => {
                 'OUTPUT MAP {x: 1};MAP {y: 2}',
                 null,
                 [
-                    Schema.object({ x: Schema.int4() }),
-                    Schema.object({ y: Schema.int4() })
+                    Shape.object({ x: Shape.int4() }),
+                    Shape.object({ y: Shape.int4() })
                 ]
             );
             expect(frames).toHaveLength(2);
@@ -188,8 +188,8 @@ describe('Statement Handling', () => {
                 '  OUTPUT MAP {result: 1}  ;  MAP {result: 2}  ',
                 null,
                 [
-                    Schema.object({ result: Schema.int4() }),
-                    Schema.object({ result: Schema.int4() })
+                    Shape.object({ result: Shape.int4() }),
+                    Shape.object({ result: Shape.int4() })
                 ]
             );
             expect(frames).toHaveLength(2);
@@ -238,8 +238,8 @@ describe('Statement Handling', () => {
                 ';OUTPUT MAP {one: 1} ;;;MAP {two: 2}',
                 null,
                 [
-                    Schema.object({ one: Schema.int4() }),
-                    Schema.object({ two: Schema.int4() })
+                    Shape.object({ one: Shape.int4() }),
+                    Shape.object({ two: Shape.int4() })
                 ]
             );
             expect(frames).toHaveLength(2);
@@ -257,7 +257,7 @@ describe('Statement Handling', () => {
             const frames = await wsClient.query(
                 'MAP {result: 1};',
                 null,
-                [Schema.object({ result: Schema.int4() })]
+                [Shape.object({ result: Shape.int4() })]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toHaveLength(1);
@@ -269,9 +269,9 @@ describe('Statement Handling', () => {
                 'OUTPUT MAP {result: 1};OUTPUT MAP {result: 2};MAP {result: 3};',
                 null,
                 [
-                    Schema.object({ result: Schema.int4() }),
-                    Schema.object({ result: Schema.int4() }),
-                    Schema.object({ result: Schema.int4() })
+                    Shape.object({ result: Shape.int4() }),
+                    Shape.object({ result: Shape.int4() }),
+                    Shape.object({ result: Shape.int4() })
                 ]
             );
             expect(frames).toHaveLength(3);
@@ -294,9 +294,9 @@ describe('Statement Handling', () => {
                 "OUTPUT MAP {result: 1};OUTPUT MAP { a: 2, b: 3 };MAP {result: 'ReifyDB'};",
                 null,
                 [
-                    Schema.object({ result: Schema.int4() }),
-                    Schema.object({ a: Schema.int4(), b: Schema.int4() }),
-                    Schema.object({ result: Schema.utf8() })
+                    Shape.object({ result: Shape.int4() }),
+                    Shape.object({ a: Shape.int4(), b: Shape.int4() }),
+                    Shape.object({ result: Shape.utf8() })
                 ]
             );
             expect(frames).toHaveLength(3);

@@ -13,10 +13,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn get_subscription(rx: &mut Transaction<'_>, subscription: SubscriptionId) -> Result<Subscription> {
 		CatalogStore::find_subscription(rx, subscription)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Subscription with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				subscription
-			))
+			)))
 		})
 	}
 }

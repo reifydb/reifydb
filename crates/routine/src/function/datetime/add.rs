@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeAdd;
 
+impl Default for DateTimeAdd {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeAdd {
 	pub fn new() -> Self {
 		Self
@@ -34,7 +40,7 @@ impl ScalarFunction for DateTimeAdd {
 			});
 		}
 
-		let dt_col = columns.get(0).unwrap();
+		let dt_col = columns.first().unwrap();
 		let dur_col = columns.get(1).unwrap();
 
 		match (dt_col.data(), dur_col.data()) {
@@ -43,7 +49,7 @@ impl ScalarFunction for DateTimeAdd {
 
 				for i in 0..row_count {
 					match (dt_container.get(i), dur_container.get(i)) {
-						(Some(dt), Some(dur)) => match dt.add_duration(&dur) {
+						(Some(dt), Some(dur)) => match dt.add_duration(dur) {
 							Ok(result) => container.push(result),
 							Err(err) => {
 								return Err(ScalarFunctionError::ExecutionFailed {

@@ -212,7 +212,7 @@ impl Subsystem for OtelSubsystem {
 	}
 
 	fn shutdown(&mut self) -> Result<()> {
-		if !self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+		if self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
 			return Ok(()); // Already shutdown
 		}
 

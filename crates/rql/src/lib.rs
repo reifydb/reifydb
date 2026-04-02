@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb_core::internal_error;
 use reifydb_type::{
@@ -124,12 +126,10 @@ pub(crate) fn convert_data_type_with_constraints(ast: &AstType) -> Result<TypeCo
 		AstType::Qualified {
 			name,
 			..
-		} => {
-			return Err(AstError::UnrecognizedType {
-				fragment: name.to_owned(),
-			}
-			.into());
+		} => Err(AstError::UnrecognizedType {
+			fragment: name.to_owned(),
 		}
+		.into()),
 	}
 }
 

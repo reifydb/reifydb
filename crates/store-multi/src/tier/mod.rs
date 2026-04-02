@@ -14,6 +14,9 @@ use reifydb_core::{
 };
 use reifydb_type::{Result, util::cowvec::CowVec};
 
+/// A batch of key-value entries grouped by entry kind, used for atomic multi-table writes.
+pub type TierBatch = HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>;
+
 /// Identifies a logical table/namespace in storage.
 ///
 /// The store layer routes keys to the appropriate storage based on key type.
@@ -101,7 +104,6 @@ impl Default for RangeCursor {
 /// All MVCC, CDC, and routing logic belongs in the store layer above.
 ///
 /// Implementations must be thread-safe and cloneable.
-
 pub trait TierStorage: Send + Sync + Clone + 'static {
 	/// Get the value for a key at or before the given version.
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<Option<CowVec<u8>>>;
@@ -115,11 +117,7 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 	///
 	/// All entries across all tables are written in a single transaction.
 	/// This ensures durability and atomicity for multi-table commits.
-	fn set(
-		&self,
-		version: CommitVersion,
-		batches: HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>,
-	) -> Result<()>;
+	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()>;
 
 	/// Fetch the next batch of entries in key order at or before version.
 	///

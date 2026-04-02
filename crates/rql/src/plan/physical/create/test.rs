@@ -24,7 +24,7 @@ impl<'bump> Compiler<'bump> {
 		let Some(namespace_def) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
 			let ns_fragment = if let Some(n) = create.test.namespace.first() {
 				let interned = self.interner.intern_fragment(n);
-				interned.with_text(&ns_segments.join("::"))
+				interned.with_text(ns_segments.join("::"))
 			} else {
 				Fragment::internal("default".to_string())
 			};

@@ -245,6 +245,7 @@ impl<'a> TestTransaction<'a> {
 		let mut ctx = PreCommitContext {
 			flow_changes: self.inner.accumulator.take_changes_from(offset, CommitVersion(0)),
 			pending_writes: Vec::new(),
+			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
 		};
@@ -273,7 +274,7 @@ pub enum Transaction<'a> {
 	Admin(&'a mut AdminTransaction),
 	Query(&'a mut QueryTransaction),
 	Subscription(&'a mut SubscriptionTransaction),
-	Test(TestTransaction<'a>),
+	Test(Box<TestTransaction<'a>>),
 	Replica(&'a mut ReplicaTransaction),
 }
 
@@ -472,7 +473,7 @@ impl<'a> Transaction<'a> {
 		let mut tx = self.reborrow();
 		let result = executor.rql(&mut tx, rql, params);
 		if let Err(ref e) = result {
-			self.poison(e.0.clone());
+			self.poison(*e.0.clone());
 		}
 		result
 	}
@@ -498,7 +499,7 @@ impl<'a> Transaction<'a> {
 			Transaction::Admin(admin) => Transaction::Admin(admin),
 			Transaction::Query(qry) => Transaction::Query(qry),
 			Transaction::Subscription(sub) => Transaction::Subscription(sub),
-			Transaction::Test(t) => Transaction::Test(TestTransaction {
+			Transaction::Test(t) => Transaction::Test(Box::new(TestTransaction {
 				inner: t.inner,
 				baseline: t.baseline,
 				events: t.events,
@@ -508,7 +509,7 @@ impl<'a> Transaction<'a> {
 				savepoint: None,
 				session_type: t.session_type.clone(),
 				session_default_deny: t.session_default_deny,
-			}),
+			})),
 			Transaction::Replica(rep) => Transaction::Replica(rep),
 		}
 	}
@@ -721,28 +722,13 @@ impl<'a> Transaction<'a> {
 	}
 
 	/// Record a test handler invocation. No-op for non-Test transactions.
-	pub fn record_test_handler(
-		&mut self,
-		namespace: String,
-		handler: String,
-		event: String,
-		variant: String,
-		duration_ns: u64,
-		outcome: String,
-		message: String,
-	) {
+	///
+	/// The `sequence` field of `invocation` will be overwritten with the next handler sequence number.
+	pub fn record_test_handler(&mut self, mut invocation: CapturedInvocation) {
 		if let Transaction::Test(t) = self {
 			*t.handler_seq += 1;
-			t.invocations.push(CapturedInvocation {
-				sequence: *t.handler_seq,
-				namespace,
-				handler,
-				event,
-				variant,
-				duration_ns,
-				outcome,
-				message,
-			});
+			invocation.sequence = *t.handler_seq;
+			t.invocations.push(invocation);
 		}
 	}
 }

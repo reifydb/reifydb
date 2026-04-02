@@ -207,7 +207,7 @@ impl TypeConstraint {
 		match (&self.base_type, &self.constraint) {
 			(Type::Utf8, Some(Constraint::MaxBytes(max))) => {
 				if let Value::Utf8(s) = value {
-					let byte_len = s.as_bytes().len();
+					let byte_len = s.len();
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
 						return Err(TypeError::ConstraintViolation {
@@ -364,6 +364,7 @@ impl TypeConstraint {
 	}
 
 	/// Get a human-readable string representation
+	#[allow(clippy::inherent_to_string)]
 	pub fn to_string(&self) -> String {
 		match &self.constraint {
 			None => format!("{}", self.base_type),

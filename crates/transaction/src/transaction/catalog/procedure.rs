@@ -56,10 +56,10 @@ impl TransactionalProcedureChanges for AdminTransaction {
 				if procedure.id == id {
 					return Some(procedure);
 				}
-			} else if let Some(procedure) = &change.pre {
-				if procedure.id == id && change.op == Delete {
-					return None;
-				}
+			} else if let Some(procedure) = &change.pre
+				&& procedure.id == id && change.op == Delete
+			{
+				return None;
 			}
 		}
 		None

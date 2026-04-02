@@ -177,12 +177,7 @@ impl<S: Storage> BoolContainer<S> {
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<bool>> + '_ {
-		DataBitVec::iter(&self.data).map(|v| Some(v))
-	}
-
-	pub fn into_iter(self) -> impl Iterator<Item = Option<bool>> {
-		let data: Vec<bool> = DataBitVec::iter(&self.data).collect();
-		data.into_iter().map(|v| Some(v))
+		DataBitVec::iter(&self.data).map(Some)
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
@@ -226,6 +221,16 @@ impl<S: Storage> BoolContainer<S> {
 		Self {
 			data: DataBitVec::take(&self.data, num),
 		}
+	}
+}
+
+impl<S: Storage> IntoIterator for BoolContainer<S> {
+	type Item = Option<bool>;
+	type IntoIter = std::iter::Map<std::vec::IntoIter<bool>, fn(bool) -> Option<bool>>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let data: Vec<bool> = DataBitVec::iter(&self.data).collect();
+		data.into_iter().map(Some as fn(bool) -> Option<bool>)
 	}
 }
 

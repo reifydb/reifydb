@@ -212,9 +212,7 @@ impl Columns {
 						vec![Uint::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Decimal {
-						..
-					} => ColumnData::decimal_with_bitvec(
+					Type::Decimal => ColumnData::decimal_with_bitvec(
 						vec![Decimal::from(0); size],
 						BitVec::repeat(size, false),
 					),
@@ -223,12 +221,11 @@ impl Columns {
 							vec![Default::default(); size],
 							BitVec::repeat(size, false),
 						);
-						if let ColumnData::DictionaryId(container) = &mut col_data {
-							if let Some(Constraint::Dictionary(dict_id, _)) =
+						if let ColumnData::DictionaryId(container) = &mut col_data
+							&& let Some(Constraint::Dictionary(dict_id, _)) =
 								field.constraint.constraint()
-							{
-								container.set_dictionary_id(*dict_id);
-							}
+						{
+							container.set_dictionary_id(*dict_id);
 						}
 						col_data
 					}
@@ -244,13 +241,11 @@ impl Columns {
 			}
 
 			// Set dictionary_id on DictionaryId containers from shape constraint
-			if let ColumnData::DictionaryId(container) = column.data_mut() {
-				if container.dictionary_id().is_none() {
-					if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
-					{
-						container.set_dictionary_id(*dict_id);
-					}
-				}
+			if let ColumnData::DictionaryId(container) = column.data_mut()
+				&& container.dictionary_id().is_none()
+				&& let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint()
+			{
+				container.set_dictionary_id(*dict_id);
 			}
 		}
 
@@ -260,9 +255,9 @@ impl Columns {
 			let all_defined = (0..shape.field_count()).all(|i| row.is_defined(i));
 
 			if all_defined {
-				self.append_all_defined_from_shape(shape, &row)?;
+				self.append_all_defined_from_shape(shape, row)?;
 			} else {
-				self.append_fallback_from_shape(shape, &row)?;
+				self.append_fallback_from_shape(shape, row)?;
 			}
 		}
 
@@ -282,7 +277,7 @@ impl Columns {
 					},
 					_ty,
 				) => {
-					let value = shape.get_value(&row, index);
+					let value = shape.get_value(row, index);
 					if matches!(value, Value::None { .. }) {
 						inner.push_none();
 						DataBitVec::push(bitvec, false);
@@ -292,28 +287,28 @@ impl Columns {
 					}
 				}
 				(ColumnData::Bool(container), Type::Boolean) => {
-					container.push(shape.get_bool(&row, index));
+					container.push(shape.get_bool(row, index));
 				}
 				(ColumnData::Float4(container), Type::Float4) => {
-					container.push(shape.get_f32(&row, index));
+					container.push(shape.get_f32(row, index));
 				}
 				(ColumnData::Float8(container), Type::Float8) => {
-					container.push(shape.get_f64(&row, index));
+					container.push(shape.get_f64(row, index));
 				}
 				(ColumnData::Int1(container), Type::Int1) => {
-					container.push(shape.get_i8(&row, index));
+					container.push(shape.get_i8(row, index));
 				}
 				(ColumnData::Int2(container), Type::Int2) => {
-					container.push(shape.get_i16(&row, index));
+					container.push(shape.get_i16(row, index));
 				}
 				(ColumnData::Int4(container), Type::Int4) => {
-					container.push(shape.get_i32(&row, index));
+					container.push(shape.get_i32(row, index));
 				}
 				(ColumnData::Int8(container), Type::Int8) => {
-					container.push(shape.get_i64(&row, index));
+					container.push(shape.get_i64(row, index));
 				}
 				(ColumnData::Int16(container), Type::Int16) => {
-					container.push(shape.get_i128(&row, index));
+					container.push(shape.get_i128(row, index));
 				}
 				(
 					ColumnData::Utf8 {
@@ -322,43 +317,43 @@ impl Columns {
 					},
 					Type::Utf8,
 				) => {
-					container.push(shape.get_utf8(&row, index).to_string());
+					container.push(shape.get_utf8(row, index).to_string());
 				}
 				(ColumnData::Uint1(container), Type::Uint1) => {
-					container.push(shape.get_u8(&row, index));
+					container.push(shape.get_u8(row, index));
 				}
 				(ColumnData::Uint2(container), Type::Uint2) => {
-					container.push(shape.get_u16(&row, index));
+					container.push(shape.get_u16(row, index));
 				}
 				(ColumnData::Uint4(container), Type::Uint4) => {
-					container.push(shape.get_u32(&row, index));
+					container.push(shape.get_u32(row, index));
 				}
 				(ColumnData::Uint8(container), Type::Uint8) => {
-					container.push(shape.get_u64(&row, index));
+					container.push(shape.get_u64(row, index));
 				}
 				(ColumnData::Uint16(container), Type::Uint16) => {
-					container.push(shape.get_u128(&row, index));
+					container.push(shape.get_u128(row, index));
 				}
 				(ColumnData::Date(container), Type::Date) => {
-					container.push(shape.get_date(&row, index));
+					container.push(shape.get_date(row, index));
 				}
 				(ColumnData::DateTime(container), Type::DateTime) => {
-					container.push(shape.get_datetime(&row, index));
+					container.push(shape.get_datetime(row, index));
 				}
 				(ColumnData::Time(container), Type::Time) => {
-					container.push(shape.get_time(&row, index));
+					container.push(shape.get_time(row, index));
 				}
 				(ColumnData::Duration(container), Type::Duration) => {
-					container.push(shape.get_duration(&row, index));
+					container.push(shape.get_duration(row, index));
 				}
 				(ColumnData::Uuid4(container), Type::Uuid4) => {
-					container.push(shape.get_uuid4(&row, index));
+					container.push(shape.get_uuid4(row, index));
 				}
 				(ColumnData::Uuid7(container), Type::Uuid7) => {
-					container.push(shape.get_uuid7(&row, index));
+					container.push(shape.get_uuid7(row, index));
 				}
 				(ColumnData::IdentityId(container), Type::IdentityId) => {
-					container.push(shape.get_identity_id(&row, index));
+					container.push(shape.get_identity_id(row, index));
 				}
 				(
 					ColumnData::Blob {
@@ -367,7 +362,7 @@ impl Columns {
 					},
 					Type::Blob,
 				) => {
-					container.push(shape.get_blob(&row, index));
+					container.push(shape.get_blob(row, index));
 				}
 				(
 					ColumnData::Int {
@@ -376,7 +371,7 @@ impl Columns {
 					},
 					Type::Int,
 				) => {
-					container.push(shape.get_int(&row, index));
+					container.push(shape.get_int(row, index));
 				}
 				(
 					ColumnData::Uint {
@@ -385,21 +380,19 @@ impl Columns {
 					},
 					Type::Uint,
 				) => {
-					container.push(shape.get_uint(&row, index));
+					container.push(shape.get_uint(row, index));
 				}
 				(
 					ColumnData::Decimal {
 						container,
 						..
 					},
-					Type::Decimal {
-						..
-					},
+					Type::Decimal,
 				) => {
-					container.push(shape.get_decimal(&row, index));
+					container.push(shape.get_decimal(row, index));
 				}
 				(ColumnData::DictionaryId(container), Type::DictionaryId) => {
-					match shape.get_value(&row, index) {
+					match shape.get_value(row, index) {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
 					}
@@ -534,9 +527,7 @@ impl Columns {
 						container,
 						..
 					},
-					Type::Decimal {
-						..
-					},
+					Type::Decimal,
 				) => {
 					container.push(shape.get_decimal(row, index));
 				}

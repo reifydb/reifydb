@@ -47,9 +47,7 @@ impl SubscriptionConsumer {
 			}
 		};
 
-		// Get shape registry for resolving per-row shapes
 		let catalog = engine.catalog();
-		let row_shape_registry = &catalog.shape;
 
 		// Create range for scanning rows
 		let range = if let Some(last_key) = last_consumed_key {
@@ -60,7 +58,7 @@ impl SubscriptionConsumer {
 
 		let mut stream = cmd_txn.range(range, batch_size)?;
 		let mut entries = Vec::new();
-		while let Some(result) = stream.next() {
+		for result in stream.by_ref() {
 			entries.push(result?);
 		}
 		drop(stream); // Explicitly drop to release the borrow on cmd_txn
@@ -82,14 +80,14 @@ impl SubscriptionConsumer {
 				// Extract shape fingerprint from the encoded row
 				let fingerprint = entry.row.fingerprint();
 
-				// Resolve shape using RowShapeRegistry
-				let shape = row_shape_registry
-					.get_or_load(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
+				// Resolve shape using catalog
+				let shape = catalog
+					.get_or_load_row_shape(fingerprint, &mut Transaction::Command(&mut cmd_txn))?
 					.ok_or_else(|| {
-						Error(internal(format!(
+						Error(Box::new(internal(format!(
 							"Shape not found for fingerprint: {:?}",
 							fingerprint
-						)))
+						))))
 					})?;
 
 				let mut seen_in_this_entry = HashSet::new();

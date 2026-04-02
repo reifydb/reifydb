@@ -6,7 +6,7 @@ import {afterEach} from 'vitest';
 
 export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<void> {
     for (let i = 0; i < maxRetries; i++) {
-        let url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:8090';
+        let url = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
         let client = null;
         try {
             client = await Client.connect_ws(url, {timeoutMs: 5000, token: process.env.REIFYDB_TOKEN});
@@ -35,7 +35,7 @@ export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<vo
 
 export async function waitForDatabaseHttp(maxRetries = 30, delay = 1000): Promise<void> {
     for (let i = 0; i < maxRetries; i++) {
-        let url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+        let url = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
         try {
             const client = Client.connect_http(url, {token: process.env.REIFYDB_TOKEN});
             const result = await client.query(`MAP {test: 1}`, null, []);

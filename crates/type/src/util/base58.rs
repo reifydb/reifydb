@@ -3,7 +3,7 @@
 
 //! Simple base58 encoding/decoding implementation
 
-use std::{error, fmt};
+use std::{error, fmt, iter};
 const BASE58_CHARS: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
 /// Encode bytes to base58 string
@@ -31,9 +31,7 @@ pub fn encode(input: &[u8]) -> String {
 	}
 
 	// Add leading '1's for each leading zero byte
-	for _ in 0..leading_zeros {
-		result.push(b'1');
-	}
+	result.extend(iter::repeat_n(b'1', leading_zeros));
 
 	// Reverse and convert to string
 	result.reverse();

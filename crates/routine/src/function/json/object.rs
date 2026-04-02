@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct JsonObject;
 
+impl Default for JsonObject {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl JsonObject {
 	pub fn new() -> Self {
 		Self
@@ -27,7 +33,7 @@ impl ScalarFunction for JsonObject {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		if columns.len() % 2 != 0 {
+		if !columns.len().is_multiple_of(2) {
 			return Err(ScalarFunctionError::ExecutionFailed {
 				function: ctx.fragment.clone(),
 				reason: "json::object requires an even number of arguments (key-value pairs)"

@@ -50,12 +50,13 @@ pub(crate) fn find_flow_dependents(
 	for node in nodes {
 		let node_type: FlowNodeType = from_bytes(node.data.as_ref())
 			.map_err(|e| internal_error!("Failed to deserialize flow node type: {}", e))?;
-		if check(&node_type) && seen_flows.insert(node.flow) {
-			if let Some(flow) = flows.iter().find(|f| f.id == node.flow) {
-				let ns = catalog.find_namespace(&mut Transaction::Admin(txn), flow.namespace)?;
-				let ns_name = ns.map(|n| n.name().to_string()).unwrap_or_else(|| "?".to_string());
-				dependents.push(format!("flow `{}.{}`", ns_name, flow.name));
-			}
+		if check(&node_type)
+			&& seen_flows.insert(node.flow)
+			&& let Some(flow) = flows.iter().find(|f| f.id == node.flow)
+		{
+			let ns = catalog.find_namespace(&mut Transaction::Admin(txn), flow.namespace)?;
+			let ns_name = ns.map(|n| n.name().to_string()).unwrap_or_else(|| "?".to_string());
+			dependents.push(format!("flow `{}.{}`", ns_name, flow.name));
 		}
 	}
 	Ok(dependents)

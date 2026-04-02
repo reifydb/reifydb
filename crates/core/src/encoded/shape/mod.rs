@@ -201,7 +201,7 @@ impl RowShape {
 	/// Returns the fields with computed offsets and the total row size.
 	fn compute_layout(mut fields: Vec<RowShapeField>) -> Vec<RowShapeField> {
 		// Start offset calculation from where data section begins (after header + bitvec)
-		let bitvec_size = (fields.len() + 7) / 8;
+		let bitvec_size = fields.len().div_ceil(8);
 		let mut offset: u32 = (SCHEMA_HEADER_SIZE + bitvec_size) as u32;
 
 		for field in fields.iter_mut() {
@@ -224,7 +224,7 @@ impl RowShape {
 
 	/// Size of the bitvec section in bytes
 	pub fn bitvec_size(&self) -> usize {
-		(self.fields.len() + 7) / 8
+		self.fields.len().div_ceil(8)
 	}
 
 	/// Offset where field data starts (after header and bitvec)
@@ -286,11 +286,7 @@ impl RowShape {
 						as usize;
 				Some((offset, length))
 			}
-			Type::Int
-			| Type::Uint
-			| Type::Decimal {
-				..
-			} => {
+			Type::Int | Type::Uint | Type::Decimal => {
 				let packed = unsafe {
 					(row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned()
 				};
@@ -316,11 +312,7 @@ impl RowShape {
 				ref_slice[0..4].copy_from_slice(&(offset as u32).to_le_bytes());
 				ref_slice[4..8].copy_from_slice(&(length as u32).to_le_bytes());
 			}
-			Type::Int
-			| Type::Uint
-			| Type::Decimal {
-				..
-			} => {
+			Type::Int | Type::Uint | Type::Decimal => {
 				let offset_part = (offset as u128) & PACKED_OFFSET_MASK;
 				let length_part = ((length as u128) << 64) & PACKED_LENGTH_MASK;
 				let packed = PACKED_MODE_DYNAMIC | offset_part | length_part;

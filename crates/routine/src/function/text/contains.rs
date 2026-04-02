@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextContains;
 
+impl Default for TextContains {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextContains {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextContains {
 			});
 		}
 
-		let str_col = columns.get(0).unwrap();
+		let str_col = columns.first().unwrap();
 		let substr_col = columns.get(1).unwrap();
 
 		match (str_col.data(), substr_col.data()) {

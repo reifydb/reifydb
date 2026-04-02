@@ -7,37 +7,25 @@ use std::{fmt, time::Duration};
 
 use reifydb_runtime::SharedRuntime;
 
-/// Configuration for the admin server subsystem.
-#[derive(Clone)]
-pub struct AdminConfig {
-	/// Address to bind the admin server to (e.g., "127.0.0.1:9090").
-	pub bind_addr: String,
-	/// Maximum number of concurrent connections.
-	pub max_connections: usize,
-	/// Timeout for entire request lifecycle.
-	pub request_timeout: Duration,
-	/// Whether authentication is required.
-	pub auth_required: bool,
-	/// Authentication token (if auth is required).
-	pub auth_token: Option<String>,
-	/// Optional shared runtime .
-	pub runtime: Option<SharedRuntime>,
+/// Configurator for the admin server subsystem.
+pub struct AdminConfigurator {
+	bind_addr: String,
+	max_connections: usize,
+	request_timeout: Duration,
+	auth_required: bool,
+	auth_token: Option<String>,
+	runtime: Option<SharedRuntime>,
 }
 
-impl fmt::Debug for AdminConfig {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("AdminConfig")
-			.field("bind_addr", &self.bind_addr)
-			.field("max_connections", &self.max_connections)
-			.field("request_timeout", &self.request_timeout)
-			.field("auth_required", &self.auth_required)
-			.field("auth_token", &self.auth_token.as_ref().map(|_| "****"))
-			.finish()
+impl Default for AdminConfigurator {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
-impl Default for AdminConfig {
-	fn default() -> Self {
+impl AdminConfigurator {
+	/// Create a new AdminConfigurator with default values.
+	pub fn new() -> Self {
 		Self {
 			bind_addr: "127.0.0.1:9090".to_string(),
 			max_connections: 1_000,
@@ -46,13 +34,6 @@ impl Default for AdminConfig {
 			auth_token: None,
 			runtime: None,
 		}
-	}
-}
-
-impl AdminConfig {
-	/// Create a new AdminConfig with default values.
-	pub fn new() -> Self {
-		Self::default()
 	}
 
 	/// Set the bind address.
@@ -84,5 +65,51 @@ impl AdminConfig {
 	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.runtime = Some(runtime);
 		self
+	}
+
+	pub(crate) fn configure(self) -> AdminConfig {
+		AdminConfig {
+			bind_addr: self.bind_addr,
+			max_connections: self.max_connections,
+			request_timeout: self.request_timeout,
+			auth_required: self.auth_required,
+			auth_token: self.auth_token,
+			runtime: self.runtime,
+		}
+	}
+}
+
+/// Immutable configuration for the admin server subsystem.
+#[derive(Clone)]
+pub struct AdminConfig {
+	/// Address to bind the admin server to (e.g., "127.0.0.1:9090").
+	pub bind_addr: String,
+	/// Maximum number of concurrent connections.
+	pub max_connections: usize,
+	/// Timeout for entire request lifecycle.
+	pub request_timeout: Duration,
+	/// Whether authentication is required.
+	pub auth_required: bool,
+	/// Authentication token (if auth is required).
+	pub auth_token: Option<String>,
+	/// Optional shared runtime.
+	pub runtime: Option<SharedRuntime>,
+}
+
+impl fmt::Debug for AdminConfig {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("AdminConfig")
+			.field("bind_addr", &self.bind_addr)
+			.field("max_connections", &self.max_connections)
+			.field("request_timeout", &self.request_timeout)
+			.field("auth_required", &self.auth_required)
+			.field("auth_token", &self.auth_token.as_ref().map(|_| "****"))
+			.finish()
+	}
+}
+
+impl Default for AdminConfig {
+	fn default() -> Self {
+		AdminConfigurator::new().configure()
 	}
 }

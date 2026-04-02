@@ -16,7 +16,7 @@ use reifydb_sdk::ffi::arena::Arena;
 // Thread-local storage for the current arena
 // All allocations during an FFI operation will use this arena
 thread_local! {
-	static CURRENT_ARENA: RefCell<Option<*mut Arena>> = RefCell::new(None);
+	static CURRENT_ARENA: RefCell<Option<*mut Arena>> = const { RefCell::new(None) };
 }
 
 /// Set the current arena for this thread
@@ -56,8 +56,13 @@ pub extern "C" fn host_alloc(size: usize) -> *mut u8 {
 }
 
 /// Free memory (no-op for arena memory, system free otherwise)
+///
+/// # Safety
+///
+/// - `ptr` must have been previously returned by `host_alloc` or `host_realloc`, or be null.
+/// - `size` must match the size used in the corresponding allocation.
 #[unsafe(no_mangle)]
-pub extern "C" fn host_free(ptr: *mut u8, size: usize) {
+pub unsafe extern "C" fn host_free(ptr: *mut u8, size: usize) {
 	if ptr.is_null() || size == 0 {
 		return;
 	}
@@ -66,7 +71,6 @@ pub extern "C" fn host_free(ptr: *mut u8, size: usize) {
 	CURRENT_ARENA.with(|a| {
 		if (*a.borrow()).is_some() {
 			// Arena memory is freed automatically - do nothing
-			return;
 		}
 	});
 
@@ -79,15 +83,20 @@ pub extern "C" fn host_free(ptr: *mut u8, size: usize) {
 }
 
 /// Reallocate memory (allocates new for arena, uses system realloc otherwise)
+///
+/// # Safety
+///
+/// - `ptr` must have been previously returned by `host_alloc` or `host_realloc`, or be null.
+/// - `old_size` must match the size of the current allocation at `ptr`.
 #[unsafe(no_mangle)]
-pub extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
+pub unsafe extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
 	// For arena allocations, we can't realloc in place, so alloc new and copy
 	if ptr.is_null() {
 		return host_alloc(new_size);
 	}
 
 	if new_size == 0 {
-		host_free(ptr, old_size);
+		unsafe { host_free(ptr, old_size) };
 		return ptr::null_mut();
 	}
 

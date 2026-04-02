@@ -208,8 +208,7 @@ impl<'bump> Compiler<'bump> {
 	pub fn parse_duration(duration_str: &str) -> Result<Duration> {
 		let duration_str = duration_str.trim_matches('"');
 
-		if duration_str.ends_with("ms") {
-			let number_part = &duration_str[..duration_str.len() - 2];
+		if let Some(number_part) = duration_str.strip_suffix("ms") {
 			let number: u64 =
 				number_part.parse().map_err(|_| internal_error!("Invalid duration number"))?;
 			return Ok(Duration::from_millis(number));
@@ -237,24 +236,20 @@ impl<'bump> Compiler<'bump> {
 	}
 
 	pub fn extract_literal_string(ast: &Ast) -> Option<String> {
-		if let Literal(literal) = ast {
-			if let Text(text) = literal {
-				Some(text.0.fragment.text().to_string())
-			} else {
-				None
-			}
+		if let Literal(literal) = ast
+			&& let Text(text) = literal
+		{
+			Some(text.0.fragment.text().to_string())
 		} else {
 			None
 		}
 	}
 
 	pub fn extract_literal_number(ast: &Ast) -> Option<i64> {
-		if let Literal(literal) = ast {
-			if let Number(number) = literal {
-				number.0.fragment.text().parse().ok()
-			} else {
-				None
-			}
+		if let Literal(literal) = ast
+			&& let Number(number) = literal
+		{
+			number.0.fragment.text().parse().ok()
 		} else {
 			None
 		}

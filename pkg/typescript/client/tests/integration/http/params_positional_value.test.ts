@@ -8,7 +8,7 @@ import {
     Float4Value, Float8Value, DecimalValue, Utf8Value, BlobValue,
     DateValue, TimeValue, DateTimeValue, DurationValue,
     Uuid4Value, Uuid7Value, NoneValue, IdentityIdValue,
-    Schema
+    Shape
 } from "@reifydb/core";
 import { expectSingleValueResult } from "./test-helper";
 
@@ -27,7 +27,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
-                [Schema.object({result: Schema.booleanValue()})]
+                [Shape.object({result: Shape.booleanValue()})]
             );
 
             expectSingleValueResult(frames, new BooleanValue(true));
@@ -37,7 +37,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
-                [Schema.object({result: Schema.int1Value()})]
+                [Shape.object({result: Shape.int1Value()})]
             );
 
             expectSingleValueResult(frames, new Int1Value(42));
@@ -47,7 +47,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
-                [Schema.object({result: Schema.int2Value()})]
+                [Shape.object({result: Shape.int2Value()})]
             );
 
             expectSingleValueResult(frames, new Int2Value(1234));
@@ -57,7 +57,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
-                [Schema.object({result: Schema.int4Value()})]
+                [Shape.object({result: Shape.int4Value()})]
             );
 
             expectSingleValueResult(frames, new Int4Value(12345678));
@@ -67,7 +67,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
-                [Schema.object({result: Schema.int8Value()})]
+                [Shape.object({result: Shape.int8Value()})]
             );
 
             expectSingleValueResult(frames, new Int8Value(BigInt("9223372036854775807")));
@@ -77,7 +77,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
-                [Schema.object({result: Schema.int16Value()})]
+                [Shape.object({result: Shape.int16Value()})]
             );
 
             expectSingleValueResult(frames, new Int16Value(BigInt("170141183460469231731687303715884105727")));
@@ -87,7 +87,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
-                [Schema.object({result: Schema.uint1Value()})]
+                [Shape.object({result: Shape.uint1Value()})]
             );
 
             expectSingleValueResult(frames, new Uint1Value(255));
@@ -97,7 +97,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
-                [Schema.object({result: Schema.uint2Value()})]
+                [Shape.object({result: Shape.uint2Value()})]
             );
 
             expectSingleValueResult(frames, new Uint2Value(65535));
@@ -107,7 +107,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
-                [Schema.object({result: Schema.uint4Value()})]
+                [Shape.object({result: Shape.uint4Value()})]
             );
 
             expectSingleValueResult(frames, new Uint4Value(4294967295));
@@ -117,7 +117,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
-                [Schema.object({result: Schema.uint8Value()})]
+                [Shape.object({result: Shape.uint8Value()})]
             );
 
             expectSingleValueResult(frames, new Uint8Value(BigInt("18446744073709551615")));
@@ -127,7 +127,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
-                [Schema.object({result: Schema.uint16Value()})]
+                [Shape.object({result: Shape.uint16Value()})]
             );
 
             expectSingleValueResult(frames, new Uint16Value(BigInt("340282366920938463463374607431768211455")));
@@ -137,7 +137,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
-                [Schema.object({result: Schema.float4Value()})]
+                [Shape.object({result: Shape.float4Value()})]
             );
 
             expectSingleValueResult(frames, new Float4Value(3.14));
@@ -147,7 +147,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
-                [Schema.object({result: Schema.float8Value()})]
+                [Shape.object({result: Shape.float8Value()})]
             );
 
             expectSingleValueResult(frames, new Float8Value(3.141592653589793));
@@ -157,7 +157,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
-                [Schema.object({result: Schema.decimalValue()})]
+                [Shape.object({result: Shape.decimalValue()})]
             );
 
             expectSingleValueResult(frames, new DecimalValue("123.456789"));
@@ -167,7 +167,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
-                [Schema.object({result: Schema.utf8Value()})]
+                [Shape.object({result: Shape.utf8Value()})]
             );
 
             expectSingleValueResult(frames, new Utf8Value("Hello, World!"));
@@ -178,7 +178,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
-                [Schema.object({result: Schema.blobValue()})]
+                [Shape.object({result: Shape.blobValue()})]
             );
 
             expectSingleValueResult(frames, new BlobValue(data));
@@ -189,7 +189,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new DateValue(date)],
-                [Schema.object({result: Schema.dateValue()})]
+                [Shape.object({result: Shape.dateValue()})]
             );
 
             expectSingleValueResult(frames, new DateValue(date));
@@ -199,7 +199,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
-                [Schema.object({result: Schema.timeValue()})]
+                [Shape.object({result: Shape.timeValue()})]
             );
 
             expectSingleValueResult(frames, new TimeValue("14:30:00.123456789"));
@@ -210,7 +210,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
-                [Schema.object({result: Schema.dateTimeValue()})]
+                [Shape.object({result: Shape.dateTimeValue()})]
             );
 
             expectSingleValueResult(frames, new DateTimeValue(datetime));
@@ -220,7 +220,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
-                [Schema.object({result: Schema.durationValue()})]
+                [Shape.object({result: Shape.durationValue()})]
             );
 
             expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
@@ -231,7 +231,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
-                [Schema.object({result: Schema.uuid4Value()})]
+                [Shape.object({result: Shape.uuid4Value()})]
             );
 
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
@@ -242,7 +242,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
-                [Schema.object({result: Schema.uuid7Value()})]
+                [Shape.object({result: Shape.uuid7Value()})]
             );
 
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
@@ -253,7 +253,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
-                [Schema.object({result: Schema.identityIdValue()})]
+                [Shape.object({result: Shape.identityIdValue()})]
             );
 
             expectSingleValueResult(frames, new IdentityIdValue(identityId));
@@ -263,7 +263,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.admin(
                 'MAP {result: $1}',
                 [new NoneValue()],
-                [Schema.object({result: Schema.noneValue()})]
+                [Shape.object({result: Shape.noneValue()})]
             );
 
             expectSingleValueResult(frames, new NoneValue());
@@ -276,7 +276,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
-                [Schema.object({result: Schema.booleanValue()})]
+                [Shape.object({result: Shape.booleanValue()})]
             );
 
             expectSingleValueResult(frames, new BooleanValue(true));
@@ -286,7 +286,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
-                [Schema.object({result: Schema.int1Value()})]
+                [Shape.object({result: Shape.int1Value()})]
             );
 
             expectSingleValueResult(frames, new Int1Value(42));
@@ -296,7 +296,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
-                [Schema.object({result: Schema.int2Value()})]
+                [Shape.object({result: Shape.int2Value()})]
             );
 
             expectSingleValueResult(frames, new Int2Value(1234));
@@ -306,7 +306,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
-                [Schema.object({result: Schema.int4Value()})]
+                [Shape.object({result: Shape.int4Value()})]
             );
 
             expectSingleValueResult(frames, new Int4Value(12345678));
@@ -316,7 +316,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
-                [Schema.object({result: Schema.int8Value()})]
+                [Shape.object({result: Shape.int8Value()})]
             );
 
             expectSingleValueResult(frames, new Int8Value(BigInt("9223372036854775807")));
@@ -326,7 +326,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
-                [Schema.object({result: Schema.int16Value()})]
+                [Shape.object({result: Shape.int16Value()})]
             );
 
             expectSingleValueResult(frames, new Int16Value(BigInt("170141183460469231731687303715884105727")));
@@ -336,7 +336,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
-                [Schema.object({result: Schema.uint1Value()})]
+                [Shape.object({result: Shape.uint1Value()})]
             );
 
             expectSingleValueResult(frames, new Uint1Value(255));
@@ -346,7 +346,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
-                [Schema.object({result: Schema.uint2Value()})]
+                [Shape.object({result: Shape.uint2Value()})]
             );
 
             expectSingleValueResult(frames, new Uint2Value(65535));
@@ -356,7 +356,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
-                [Schema.object({result: Schema.uint4Value()})]
+                [Shape.object({result: Shape.uint4Value()})]
             );
 
             expectSingleValueResult(frames, new Uint4Value(4294967295));
@@ -366,7 +366,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
-                [Schema.object({result: Schema.uint8Value()})]
+                [Shape.object({result: Shape.uint8Value()})]
             );
 
             expectSingleValueResult(frames, new Uint8Value(BigInt("18446744073709551615")));
@@ -376,7 +376,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
-                [Schema.object({result: Schema.uint16Value()})]
+                [Shape.object({result: Shape.uint16Value()})]
             );
 
             expectSingleValueResult(frames, new Uint16Value(BigInt("340282366920938463463374607431768211455")));
@@ -386,7 +386,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
-                [Schema.object({result: Schema.float4Value()})]
+                [Shape.object({result: Shape.float4Value()})]
             );
 
             expectSingleValueResult(frames, new Float4Value(3.14));
@@ -396,7 +396,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
-                [Schema.object({result: Schema.float8Value()})]
+                [Shape.object({result: Shape.float8Value()})]
             );
 
             expectSingleValueResult(frames, new Float8Value(3.141592653589793));
@@ -406,7 +406,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
-                [Schema.object({result: Schema.decimalValue()})]
+                [Shape.object({result: Shape.decimalValue()})]
             );
 
             expectSingleValueResult(frames, new DecimalValue("123.456789"));
@@ -416,7 +416,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
-                [Schema.object({result: Schema.utf8Value()})]
+                [Shape.object({result: Shape.utf8Value()})]
             );
 
             expectSingleValueResult(frames, new Utf8Value("Hello, World!"));
@@ -427,7 +427,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
-                [Schema.object({result: Schema.blobValue()})]
+                [Shape.object({result: Shape.blobValue()})]
             );
 
             expectSingleValueResult(frames, new BlobValue(data));
@@ -438,7 +438,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new DateValue(date)],
-                [Schema.object({result: Schema.dateValue()})]
+                [Shape.object({result: Shape.dateValue()})]
             );
 
             expectSingleValueResult(frames, new DateValue(date));
@@ -448,7 +448,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
-                [Schema.object({result: Schema.timeValue()})]
+                [Shape.object({result: Shape.timeValue()})]
             );
 
             expectSingleValueResult(frames, new TimeValue("14:30:00.123456789"));
@@ -459,7 +459,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
-                [Schema.object({result: Schema.dateTimeValue()})]
+                [Shape.object({result: Shape.dateTimeValue()})]
             );
 
             expectSingleValueResult(frames, new DateTimeValue(datetime));
@@ -469,7 +469,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
-                [Schema.object({result: Schema.durationValue()})]
+                [Shape.object({result: Shape.durationValue()})]
             );
 
             expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
@@ -480,7 +480,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
-                [Schema.object({result: Schema.uuid4Value()})]
+                [Shape.object({result: Shape.uuid4Value()})]
             );
 
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
@@ -491,7 +491,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
-                [Schema.object({result: Schema.uuid7Value()})]
+                [Shape.object({result: Shape.uuid7Value()})]
             );
 
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
@@ -502,7 +502,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
-                [Schema.object({result: Schema.identityIdValue()})]
+                [Shape.object({result: Shape.identityIdValue()})]
             );
 
             expectSingleValueResult(frames, new IdentityIdValue(identityId));
@@ -512,7 +512,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.command(
                 'MAP {result: $1}',
                 [new NoneValue()],
-                [Schema.object({result: Schema.noneValue()})]
+                [Shape.object({result: Shape.noneValue()})]
             );
 
             expectSingleValueResult(frames, new NoneValue());
@@ -525,7 +525,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new BooleanValue(true)],
-                [Schema.object({result: Schema.booleanValue()})]
+                [Shape.object({result: Shape.booleanValue()})]
             );
 
             expectSingleValueResult(frames, new BooleanValue(true));
@@ -535,7 +535,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Int1Value(42)],
-                [Schema.object({result: Schema.int1Value()})]
+                [Shape.object({result: Shape.int1Value()})]
             );
 
             expectSingleValueResult(frames, new Int1Value(42));
@@ -545,7 +545,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Int2Value(1234)],
-                [Schema.object({result: Schema.int2Value()})]
+                [Shape.object({result: Shape.int2Value()})]
             );
 
             expectSingleValueResult(frames, new Int2Value(1234));
@@ -555,7 +555,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Int4Value(12345678)],
-                [Schema.object({result: Schema.int4Value()})]
+                [Shape.object({result: Shape.int4Value()})]
             );
 
             expectSingleValueResult(frames, new Int4Value(12345678));
@@ -565,7 +565,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Int8Value(BigInt("9223372036854775807"))],
-                [Schema.object({result: Schema.int8Value()})]
+                [Shape.object({result: Shape.int8Value()})]
             );
 
             expectSingleValueResult(frames, new Int8Value(BigInt("9223372036854775807")));
@@ -575,7 +575,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Int16Value(BigInt("170141183460469231731687303715884105727"))],
-                [Schema.object({result: Schema.int16Value()})]
+                [Shape.object({result: Shape.int16Value()})]
             );
 
             expectSingleValueResult(frames, new Int16Value(BigInt("170141183460469231731687303715884105727")));
@@ -585,7 +585,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Uint1Value(255)],
-                [Schema.object({result: Schema.uint1Value()})]
+                [Shape.object({result: Shape.uint1Value()})]
             );
 
             expectSingleValueResult(frames, new Uint1Value(255));
@@ -595,7 +595,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Uint2Value(65535)],
-                [Schema.object({result: Schema.uint2Value()})]
+                [Shape.object({result: Shape.uint2Value()})]
             );
 
             expectSingleValueResult(frames, new Uint2Value(65535));
@@ -605,7 +605,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Uint4Value(4294967295)],
-                [Schema.object({result: Schema.uint4Value()})]
+                [Shape.object({result: Shape.uint4Value()})]
             );
 
             expectSingleValueResult(frames, new Uint4Value(4294967295));
@@ -615,7 +615,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Uint8Value(BigInt("18446744073709551615"))],
-                [Schema.object({result: Schema.uint8Value()})]
+                [Shape.object({result: Shape.uint8Value()})]
             );
 
             expectSingleValueResult(frames, new Uint8Value(BigInt("18446744073709551615")));
@@ -625,7 +625,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Uint16Value(BigInt("340282366920938463463374607431768211455"))],
-                [Schema.object({result: Schema.uint16Value()})]
+                [Shape.object({result: Shape.uint16Value()})]
             );
 
             expectSingleValueResult(frames, new Uint16Value(BigInt("340282366920938463463374607431768211455")));
@@ -635,7 +635,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Float4Value(3.14)],
-                [Schema.object({result: Schema.float4Value()})]
+                [Shape.object({result: Shape.float4Value()})]
             );
 
             expectSingleValueResult(frames, new Float4Value(3.14));
@@ -645,7 +645,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Float8Value(3.141592653589793)],
-                [Schema.object({result: Schema.float8Value()})]
+                [Shape.object({result: Shape.float8Value()})]
             );
 
             expectSingleValueResult(frames, new Float8Value(3.141592653589793));
@@ -655,7 +655,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new DecimalValue("123.456789")],
-                [Schema.object({result: Schema.decimalValue()})]
+                [Shape.object({result: Shape.decimalValue()})]
             );
 
             expectSingleValueResult(frames, new DecimalValue("123.456789"));
@@ -665,7 +665,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Utf8Value("Hello, World!")],
-                [Schema.object({result: Schema.utf8Value()})]
+                [Shape.object({result: Shape.utf8Value()})]
             );
 
             expectSingleValueResult(frames, new Utf8Value("Hello, World!"));
@@ -676,7 +676,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new BlobValue(data)],
-                [Schema.object({result: Schema.blobValue()})]
+                [Shape.object({result: Shape.blobValue()})]
             );
 
             expectSingleValueResult(frames, new BlobValue(data));
@@ -687,7 +687,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new DateValue(date)],
-                [Schema.object({result: Schema.dateValue()})]
+                [Shape.object({result: Shape.dateValue()})]
             );
 
             expectSingleValueResult(frames, new DateValue(date));
@@ -697,7 +697,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new TimeValue("14:30:00.123456789")],
-                [Schema.object({result: Schema.timeValue()})]
+                [Shape.object({result: Shape.timeValue()})]
             );
 
             expectSingleValueResult(frames, new TimeValue("14:30:00.123456789"));
@@ -708,7 +708,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new DateTimeValue(datetime)],
-                [Schema.object({result: Schema.dateTimeValue()})]
+                [Shape.object({result: Shape.dateTimeValue()})]
             );
 
             expectSingleValueResult(frames, new DateTimeValue(datetime));
@@ -718,7 +718,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new DurationValue("P1DT2H30M")],
-                [Schema.object({result: Schema.durationValue()})]
+                [Shape.object({result: Shape.durationValue()})]
             );
 
             expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
@@ -729,7 +729,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Uuid4Value(uuid)],
-                [Schema.object({result: Schema.uuid4Value()})]
+                [Shape.object({result: Shape.uuid4Value()})]
             );
 
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
@@ -740,7 +740,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new Uuid7Value(uuid)],
-                [Schema.object({result: Schema.uuid7Value()})]
+                [Shape.object({result: Shape.uuid7Value()})]
             );
 
             expectSingleValueResult(frames, uuid.includes("550e8400") ? new Uuid4Value(uuid) : new Uuid7Value(uuid));
@@ -751,7 +751,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new IdentityIdValue(identityId)],
-                [Schema.object({result: Schema.identityIdValue()})]
+                [Shape.object({result: Shape.identityIdValue()})]
             );
 
             expectSingleValueResult(frames, new IdentityIdValue(identityId));
@@ -761,7 +761,7 @@ describe('Positional Parameters', () => {
             const frames = await httpClient.query(
                 'MAP {result: $1}',
                 [new NoneValue()],
-                [Schema.object({result: Schema.noneValue()})]
+                [Shape.object({result: Shape.noneValue()})]
             );
 
             expectSingleValueResult(frames, new NoneValue());

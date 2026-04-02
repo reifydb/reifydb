@@ -53,7 +53,7 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	if cursor.peek_str(2).eq_ignore_ascii_case("0o") {
 		cursor.consume();
 		cursor.consume();
-		let oct_part = cursor.consume_while(|c| c >= '0' && c <= '7' || c == '_');
+		let oct_part = cursor.consume_while(|c| ('0'..='7').contains(&c) || c == '_');
 		if !oct_part.is_empty()
 			&& !oct_part.starts_with('_')
 			&& !oct_part.ends_with('_')
@@ -74,11 +74,11 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let has_leading_dot = cursor.peek() == Some('.');
 	if has_leading_dot {
 		cursor.consume();
-		if !cursor.peek().map_or(false, |c| c.is_ascii_digit()) {
+		if !cursor.peek().is_some_and(|c| c.is_ascii_digit()) {
 			cursor.restore_state(state);
 			return None;
 		}
-	} else if !cursor.peek().map_or(false, |c| c.is_ascii_digit()) {
+	} else if !cursor.peek().is_some_and(|c| c.is_ascii_digit()) {
 		return None;
 	}
 
@@ -89,7 +89,7 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 	// Fractional part
 	if cursor.peek() == Some('.') && !has_leading_dot {
-		if cursor.peek_ahead(1).map_or(false, |c| c.is_ascii_digit()) {
+		if cursor.peek_ahead(1).is_some_and(|c| c.is_ascii_digit()) {
 			cursor.consume(); // consume '.'
 			cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
 		}
@@ -99,20 +99,20 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	}
 
 	// Scientific notation (e/E)
-	if let Some(e) = cursor.peek() {
-		if e == 'e' || e == 'E' {
+	if let Some(e) = cursor.peek()
+		&& (e == 'e' || e == 'E')
+	{
+		cursor.consume();
+		if let Some(sign) = cursor.peek()
+			&& (sign == '+' || sign == '-')
+		{
 			cursor.consume();
-			if let Some(sign) = cursor.peek() {
-				if sign == '+' || sign == '-' {
-					cursor.consume();
-				}
-			}
-			let exp_part = cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
-			if exp_part.is_empty() {
-				// Invalid scientific notation
-				cursor.restore_state(state);
-				return None;
-			}
+		}
+		let exp_part = cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
+		if exp_part.is_empty() {
+			// Invalid scientific notation
+			cursor.restore_state(state);
+			return None;
 		}
 	}
 
@@ -124,7 +124,7 @@ pub fn scan_number<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	// Special case: leading dot decimals followed by identifier chars should be rejected
 	// This allows ".5sec" to parse as Dot + Number("5") + Identifier("sec")
 	// instead of Number(".5") + Identifier("sec")
-	if has_leading_dot && cursor.peek().map_or(false, |c| is_identifier_char(c)) {
+	if has_leading_dot && cursor.peek().is_some_and(is_identifier_char) {
 		cursor.restore_state(state);
 		return None;
 	}

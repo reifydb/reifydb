@@ -206,7 +206,7 @@ impl HashJoinNode {
 		let right_width = build_columns.len();
 
 		// Pre-resolve right key name → column index (empty when build side has no columns)
-		let right_key_indices: Vec<usize> = if build_columns.len() == 0 {
+		let right_key_indices: Vec<usize> = if build_columns.is_empty() {
 			Vec::new()
 		} else {
 			self.right_key_names

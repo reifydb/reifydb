@@ -63,6 +63,10 @@ impl ReifyDbReplication for ReplicationService {
 			let mut cursor = since;
 
 			loop {
+				// Register for notification BEFORE reading so we don't miss
+				// entries written between the read and the await.
+				let notified = notify.notified();
+
 				let batch = store.read_range(Bound::Excluded(cursor), Bound::Unbounded, batch_size);
 
 				match batch {
@@ -89,7 +93,7 @@ impl ReifyDbReplication for ReplicationService {
 				}
 
 				// Wait for notification that new CDC entries were written
-				notify.notified().await;
+				notified.await;
 			}
 		});
 

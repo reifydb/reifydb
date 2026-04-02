@@ -65,10 +65,10 @@ use crate::{
 impl CatalogStore {
 	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> Result<Column> {
 		let multi = rx.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				column
-			))
+			)))
 		})?;
 
 		let row = multi.row;

@@ -37,7 +37,7 @@ pub fn explain_logical_plans(plans: &[LogicalPlan<'_>]) -> Result<String> {
 	let mut result = String::new();
 	for plan in plans {
 		let mut output = String::new();
-		render_logical_plan_inner(&plan, "", true, &mut output);
+		render_logical_plan_inner(plan, "", true, &mut output);
 		result += output.as_str();
 	}
 
@@ -247,7 +247,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			}
 
 			if let Some(map_expr) = map {
-				output.push_str(&format!("{}└── Map: {}\n", child_prefix, map_expr.to_string()));
+				output.push_str(&format!("{}└── Map: {}\n", child_prefix, map_expr));
 			}
 		}
 		LogicalPlan::DeleteTable(delete) => {
@@ -369,7 +369,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 		}) => {
 			let msg = message.as_deref().unwrap_or("assertion failed");
 			output.push_str(&format!("{}{} Assert \"{}\"\n", prefix, branch, msg));
-			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition));
 		}
 		LogicalPlan::AssertBlock(node) => {
 			let kind = if node.expect_error {
@@ -385,14 +385,14 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 			..
 		}) => {
 			output.push_str(&format!("{}{} Filter\n", prefix, branch));
-			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition));
 		}
 		LogicalPlan::Gate(GateNode {
 			condition,
 			..
 		}) => {
 			output.push_str(&format!("{}{} Filter\n", prefix, branch));
-			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition.to_string()));
+			output.push_str(&format!("{}{} condition: {}\n", child_prefix, "└──", condition));
 		}
 
 		LogicalPlan::Map(MapNode {
@@ -410,7 +410,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					} else {
 						"├──"
 					},
-					expr.to_string()
+					expr
 				));
 			}
 		}
@@ -429,7 +429,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					} else {
 						"├──"
 					},
-					expr.to_string()
+					expr
 				));
 			}
 		}
@@ -448,7 +448,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					} else {
 						"├──"
 					},
-					expr.to_string()
+					expr
 				));
 			}
 		}
@@ -473,7 +473,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 						} else {
 							"├──"
 						},
-						expr.to_string()
+						expr
 					));
 				}
 			}
@@ -492,7 +492,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 						} else {
 							"├──"
 						},
-						expr.to_string()
+						expr
 					));
 				}
 			} else {
@@ -515,7 +515,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					} else {
 						"├──"
 					},
-					key.to_string()
+					key
 				));
 			}
 		}
@@ -657,7 +657,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan<'_>, prefix: &str, is_last: bool
 					}
 					output.push_str(col.name.text());
 				}
-				output.push_str("\n");
+				output.push('\n');
 			}
 		}
 		LogicalPlan::Apply(apply) => {

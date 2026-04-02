@@ -174,12 +174,12 @@ impl Catalog {
 					self.materialized.list_tests_in_namespace_at(namespace, admin.version());
 				// Add transactional additions
 				for change in &admin.changes.test {
-					if let Some(t) = &change.post {
-						if t.namespace == namespace
-							&& !tests.iter().any(|existing| existing.id == t.id)
-						{
-							tests.push(t.clone());
-						}
+					if let Some(t) = &change.post
+						&& t.namespace == namespace && !tests
+						.iter()
+						.any(|existing| existing.id == t.id)
+					{
+						tests.push(t.clone());
 					}
 				}
 				Ok(tests)
@@ -191,12 +191,12 @@ impl Catalog {
 				let mut tests = self.materialized.list_tests_in_namespace_at(namespace, sub.version());
 				// Add transactional additions
 				for change in &sub.as_admin_mut().changes.test {
-					if let Some(t) = &change.post {
-						if t.namespace == namespace
-							&& !tests.iter().any(|existing| existing.id == t.id)
-						{
-							tests.push(t.clone());
-						}
+					if let Some(t) = &change.post
+						&& t.namespace == namespace && !tests
+						.iter()
+						.any(|existing| existing.id == t.id)
+					{
+						tests.push(t.clone());
 					}
 				}
 				Ok(tests)
@@ -206,12 +206,12 @@ impl Catalog {
 					self.materialized.list_tests_in_namespace_at(namespace, t.inner.version());
 				// Add transactional additions
 				for change in &t.inner.changes.test {
-					if let Some(t) = &change.post {
-						if t.namespace == namespace
-							&& !tests.iter().any(|existing| existing.id == t.id)
-						{
-							tests.push(t.clone());
-						}
+					if let Some(t) = &change.post
+						&& t.namespace == namespace && !tests
+						.iter()
+						.any(|existing| existing.id == t.id)
+					{
+						tests.push(t.clone());
 					}
 				}
 				Ok(tests)
@@ -229,10 +229,10 @@ impl Catalog {
 			Transaction::Admin(admin) => {
 				let mut tests = self.materialized.list_all_tests_at(admin.version());
 				for change in &admin.changes.test {
-					if let Some(t) = &change.post {
-						if !tests.iter().any(|existing| existing.id == t.id) {
-							tests.push(t.clone());
-						}
+					if let Some(t) = &change.post
+						&& !tests.iter().any(|existing| existing.id == t.id)
+					{
+						tests.push(t.clone());
 					}
 				}
 				Ok(tests)
@@ -241,10 +241,10 @@ impl Catalog {
 			Transaction::Subscription(sub) => {
 				let mut tests = self.materialized.list_all_tests_at(sub.version());
 				for change in &sub.as_admin_mut().changes.test {
-					if let Some(t) = &change.post {
-						if !tests.iter().any(|existing| existing.id == t.id) {
-							tests.push(t.clone());
-						}
+					if let Some(t) = &change.post
+						&& !tests.iter().any(|existing| existing.id == t.id)
+					{
+						tests.push(t.clone());
 					}
 				}
 				Ok(tests)
@@ -252,10 +252,10 @@ impl Catalog {
 			Transaction::Test(t) => {
 				let mut tests = self.materialized.list_all_tests_at(t.inner.version());
 				for change in &t.inner.changes.test {
-					if let Some(t) = &change.post {
-						if !tests.iter().any(|existing| existing.id == t.id) {
-							tests.push(t.clone());
-						}
+					if let Some(t) = &change.post
+						&& !tests.iter().any(|existing| existing.id == t.id)
+					{
+						tests.push(t.clone());
 					}
 				}
 				Ok(tests)

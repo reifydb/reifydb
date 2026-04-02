@@ -23,6 +23,12 @@ pub struct SystemOperatorRetentionPolicies {
 	exhausted: bool,
 }
 
+impl Default for SystemOperatorRetentionPolicies {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemOperatorRetentionPolicies {
 	pub fn new() -> Self {
 		Self {

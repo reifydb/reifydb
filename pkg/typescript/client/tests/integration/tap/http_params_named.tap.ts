@@ -3,7 +3,7 @@
 
 import {beforeAll, describe, expect, it} from 'vitest';
 import {Client, HttpClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 
 describe('Named Parameters - Primitive Types', () => {
     let httpClient: HttpClient;
@@ -20,7 +20,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $bool_val}",
                 {bool_val: true},
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: true}]);
@@ -30,7 +30,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $int1_val}",
                 {int1_val: 42},
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 42}]);
@@ -40,7 +40,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $int2_val}",
                 {int2_val: 1234},
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 1234}]);
@@ -50,7 +50,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $int4_val}",
                 {int4_val: 12345678},
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 12345678}]);
@@ -60,7 +60,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $int8_val}",
                 {int8_val: BigInt("9223372036854775807")},
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("9223372036854775807")}]);
@@ -70,7 +70,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $int16_val}",
                 {int16_val: BigInt("170141183460469231731687303715884105727")},
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("170141183460469231731687303715884105727")}]);
@@ -80,7 +80,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $uint1_val}",
                 {uint1_val: 255},
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 255}]);
@@ -90,7 +90,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $uint2_val}",
                 {uint2_val: 65535},
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 65535}]);
@@ -100,7 +100,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $uint4_val}",
                 {uint4_val: 4294967295},
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 4294967295n}]);
@@ -110,7 +110,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $uint8_val}",
                 {uint8_val: BigInt("18446744073709551615")},
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("18446744073709551615")}]);
@@ -120,7 +120,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $uint16_val}",
                 {uint16_val: BigInt("340282366920938463463374607431768211455")},
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("340282366920938463463374607431768211455")}]);
@@ -130,7 +130,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $float4_val}",
                 {float4_val: 3.14},
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
             expect(frames).toHaveLength(1);
             // Use approximate comparison for floats
@@ -141,7 +141,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $float8_val}",
                 {float8_val: 3.141592653589793},
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
@@ -151,7 +151,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.command(
                 "MAP {result: $decimal_val}",
                 {decimal_val: "123.456789"},
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: "123.456789"}]);
@@ -163,7 +163,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $bool_val}",
                 {bool_val: true},
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: true}]);
@@ -173,7 +173,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $int1_val}",
                 {int1_val: 42},
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 42}]);
@@ -183,7 +183,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $int2_val}",
                 {int2_val: 1234},
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 1234}]);
@@ -193,7 +193,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $int4_val}",
                 {int4_val: 12345678},
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 12345678}]);
@@ -203,7 +203,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $int8_val}",
                 {int8_val: BigInt("9223372036854775807")},
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("9223372036854775807")}]);
@@ -213,7 +213,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $int16_val}",
                 {int16_val: BigInt("170141183460469231731687303715884105727")},
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("170141183460469231731687303715884105727")}]);
@@ -223,7 +223,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $uint1_val}",
                 {uint1_val: 255},
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 255}]);
@@ -233,7 +233,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $uint2_val}",
                 {uint2_val: 65535},
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 65535}]);
@@ -243,7 +243,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $uint4_val}",
                 {uint4_val: 4294967295},
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 4294967295n}]);
@@ -253,7 +253,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $uint8_val}",
                 {uint8_val: BigInt("18446744073709551615")},
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("18446744073709551615")}]);
@@ -263,7 +263,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $uint16_val}",
                 {uint16_val: BigInt("340282366920938463463374607431768211455")},
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("340282366920938463463374607431768211455")}]);
@@ -273,7 +273,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $float4_val}",
                 {float4_val: 3.14},
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.14, 2);
@@ -283,7 +283,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $float8_val}",
                 {float8_val: 3.141592653589793},
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
@@ -293,7 +293,7 @@ describe('Named Parameters - Primitive Types', () => {
             const frames = await httpClient.query(
                 "MAP {result: $decimal_val}",
                 {decimal_val: "123.456789"},
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: "123.456789"}]);

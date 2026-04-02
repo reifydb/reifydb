@@ -70,10 +70,10 @@ impl<'bump> Parser<'bump> {
 
 			// Check for pipe continuation (e.g., $data | filter { ... })
 			while !self.is_eof() {
-				if let Ok(current) = self.current() {
-					if current.is_separator(Separator::Semicolon) {
-						break;
-					}
+				if let Ok(current) = self.current()
+					&& current.is_separator(Separator::Semicolon)
+				{
+					break;
 				}
 				if self.current()?.is_operator(Operator::Pipe) {
 					self.advance()?; // consume the pipe

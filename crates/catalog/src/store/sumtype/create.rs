@@ -68,7 +68,7 @@ impl CatalogStore {
 
 		txn.set(&NamespaceSumTypeKey::encoded(namespace_id, sumtype_id), ns_row)?;
 
-		Ok(CatalogStore::get_sumtype(&mut Transaction::Admin(&mut *txn), sumtype_id)?)
+		CatalogStore::get_sumtype(&mut Transaction::Admin(&mut *txn), sumtype_id)
 	}
 }
 

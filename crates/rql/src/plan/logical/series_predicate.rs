@@ -121,14 +121,13 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 		}
 		// key_column BETWEEN A AND B
 		Expression::Between(between) => {
-			if is_key_column(&between.value, key_column_name) {
-				if let (Some(lower), Some(upper)) =
+			if is_key_column(&between.value, key_column_name)
+				&& let (Some(lower), Some(upper)) =
 					(extract_constant_u64(&between.lower), extract_constant_u64(&between.upper))
-				{
-					result.key_start = Some(merge_max(result.key_start, lower));
-					result.key_end = Some(merge_min(result.key_end, upper));
-					return true;
-				}
+			{
+				result.key_start = Some(merge_max(result.key_start, lower));
+				result.key_end = Some(merge_min(result.key_end, upper));
+				return true;
 			}
 			false
 		}

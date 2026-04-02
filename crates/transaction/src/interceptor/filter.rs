@@ -89,8 +89,8 @@ impl InterceptFilter {
 
 	/// Check if the filter matches the given namespace and name.
 	pub fn matches(&self, namespace: &str, name: &str) -> bool {
-		let ns_matches = self.namespace.as_ref().map_or(true, |ns| ns == namespace);
-		let name_matches = self.name.as_ref().map_or(true, |n| n == name);
+		let ns_matches = self.namespace.as_ref().is_none_or(|ns| ns == namespace);
+		let name_matches = self.name.as_ref().is_none_or(|n| n == name);
 		ns_matches && name_matches
 	}
 

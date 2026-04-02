@@ -2,7 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { SchemaNode } from '@reifydb/core';
+import { ShapeNode } from '@reifydb/core';
 import { useConnection } from './use-connection';
 import type { ConnectionConfig } from '../connection/connection';
 
@@ -45,7 +45,7 @@ export function useSubscriptionExecutor<T = any>(
     const subscriptionIdRef = useRef<string | undefined>(undefined);
     const queryRef = useRef<string | undefined>(undefined);
     const paramsRef = useRef<any>(undefined);
-    const schemaRef = useRef<SchemaNode | undefined>(undefined);
+    const shapeRef = useRef<ShapeNode | undefined>(undefined);
 
     // Keep clientRef in sync with client
     useEffect(() => {
@@ -90,7 +90,7 @@ export function useSubscriptionExecutor<T = any>(
     const subscribe = useCallback(async (
         query: string,
         params?: any,
-        schema?: SchemaNode
+        shape?: ShapeNode
     ) => {
         const currentClient = clientRef.current;
         if (!currentClient) {
@@ -106,7 +106,7 @@ export function useSubscriptionExecutor<T = any>(
         // Store refs for reconnection
         queryRef.current = query;
         paramsRef.current = params;
-        schemaRef.current = schema;
+        shapeRef.current = shape;
 
         setState(prev => ({
             ...prev,
@@ -115,7 +115,7 @@ export function useSubscriptionExecutor<T = any>(
         }));
 
         try {
-            const subId = await currentClient.subscribe(query, params, schema, {
+            const subId = await currentClient.subscribe(query, params, shape, {
                 onInsert: handleInsert,
                 onUpdate: handleUpdate,
                 onRemove: handleRemove
@@ -147,7 +147,7 @@ export function useSubscriptionExecutor<T = any>(
             subscriptionIdRef.current = undefined;
             queryRef.current = undefined;
             paramsRef.current = undefined;
-            schemaRef.current = undefined;
+            shapeRef.current = undefined;
 
             setState(prev => ({
                 ...prev,

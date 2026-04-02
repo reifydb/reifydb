@@ -23,17 +23,9 @@ const NANOS_PER_DAY: u64 = 86_400 * NANOS_PER_SECOND;
 ///
 /// Internally stored as nanoseconds since Unix epoch (1970-01-01T00:00:00Z).
 /// Only supports dates from 1970-01-01 onward.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DateTime {
 	nanos: u64,
-}
-
-impl Default for DateTime {
-	fn default() -> Self {
-		Self {
-			nanos: 0,
-		} // 1970-01-01T00:00:00.000000000Z
-	}
 }
 
 impl DateTime {
@@ -54,12 +46,19 @@ impl DateTime {
 		})
 	}
 
-	pub fn from_ymd_hms(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32) -> Result<Self, TypeError> {
+	pub fn from_ymd_hms(
+		year: i32,
+		month: u32,
+		day: u32,
+		hour: u32,
+		min: u32,
+		sec: u32,
+	) -> Result<Self, Box<TypeError>> {
 		Self::new(year, month, day, hour, min, sec, 0).ok_or_else(|| {
-			Self::overflow_err(format!(
+			Box::new(Self::overflow_err(format!(
 				"invalid datetime: {}-{:02}-{:02} {:02}:{:02}:{:02}",
 				year, month, day, hour, min, sec
-			))
+			)))
 		})
 	}
 
@@ -86,33 +85,33 @@ impl DateTime {
 		self.nanos
 	}
 
-	pub fn from_timestamp(timestamp: i64) -> Result<Self, TypeError> {
+	pub fn from_timestamp(timestamp: i64) -> Result<Self, Box<TypeError>> {
 		if timestamp < 0 {
-			return Err(Self::overflow_err(format!(
+			return Err(Box::new(Self::overflow_err(format!(
 				"DateTime does not support timestamps before Unix epoch: {}",
 				timestamp
-			)));
+			))));
 		}
 		let nanos = (timestamp as u64).checked_mul(NANOS_PER_SECOND).ok_or_else(|| {
-			Self::overflow_err(format!("timestamp {} overflows DateTime range", timestamp))
+			Box::new(Self::overflow_err(format!("timestamp {} overflows DateTime range", timestamp)))
 		})?;
 		Ok(Self {
 			nanos,
 		})
 	}
 
-	pub fn from_timestamp_millis(millis: u64) -> Result<Self, TypeError> {
+	pub fn from_timestamp_millis(millis: u64) -> Result<Self, Box<TypeError>> {
 		let nanos = millis.checked_mul(NANOS_PER_MILLI).ok_or_else(|| {
-			Self::overflow_err(format!("timestamp_millis {} overflows DateTime range", millis))
+			Box::new(Self::overflow_err(format!("timestamp_millis {} overflows DateTime range", millis)))
 		})?;
 		Ok(Self {
 			nanos,
 		})
 	}
 
-	pub fn from_timestamp_nanos(nanos: u128) -> Result<Self, TypeError> {
+	pub fn from_timestamp_nanos(nanos: u128) -> Result<Self, Box<TypeError>> {
 		let nanos = u64::try_from(nanos).map_err(|_| {
-			Self::overflow_err(format!("timestamp_nanos {} overflows u64 DateTime range", nanos))
+			Box::new(Self::overflow_err(format!("timestamp_nanos {} overflows u64 DateTime range", nanos)))
 		})?;
 		Ok(Self {
 			nanos,
@@ -127,16 +126,16 @@ impl DateTime {
 		(self.nanos / NANOS_PER_MILLI) as i64
 	}
 
-	pub fn timestamp_nanos(&self) -> Result<i64, TypeError> {
-		i64::try_from(self.nanos).map_err(|_| Self::overflow_err("DateTime nanos exceeds i64::MAX"))
+	pub fn timestamp_nanos(&self) -> Result<i64, Box<TypeError>> {
+		i64::try_from(self.nanos).map_err(|_| Box::new(Self::overflow_err("DateTime nanos exceeds i64::MAX")))
 	}
 
-	pub fn try_date(&self) -> Result<Date, TypeError> {
+	pub fn try_date(&self) -> Result<Date, Box<TypeError>> {
 		let days_u64 = self.nanos / NANOS_PER_DAY;
 		let days = i32::try_from(days_u64)
-			.map_err(|_| Self::overflow_err("DateTime nanos too large for date extraction"))?;
+			.map_err(|_| Box::new(Self::overflow_err("DateTime nanos too large for date extraction")))?;
 		Date::from_days_since_epoch(days)
-			.ok_or_else(|| Self::overflow_err("DateTime days out of range for Date"))
+			.ok_or_else(|| Box::new(Self::overflow_err("DateTime days out of range for Date")))
 	}
 
 	pub fn date(&self) -> Date {
@@ -182,7 +181,7 @@ impl DateTime {
 	}
 
 	/// Add a Duration to this DateTime, handling calendar arithmetic for months/days.
-	pub fn add_duration(&self, dur: &Duration) -> Result<Self, TypeError> {
+	pub fn add_duration(&self, dur: &Duration) -> Result<Self, Box<TypeError>> {
 		let date = self.date();
 		let time = self.time();
 		let mut year = date.year();
@@ -202,10 +201,10 @@ impl DateTime {
 
 		// Convert to nanos since epoch and add day/nanos components
 		let base_date = Date::new(year, month as u32, day).ok_or_else(|| {
-			Self::overflow_err(format!(
+			Box::new(Self::overflow_err(format!(
 				"invalid date after adding duration: {}-{:02}-{:02}",
 				year, month, day
-			))
+			)))
 		})?;
 		let base_days = base_date.to_days_since_epoch() as i64 + dur.get_days() as i64;
 		let time_nanos = time.to_nanos_since_midnight() as i64 + dur.get_nanos();
@@ -213,11 +212,11 @@ impl DateTime {
 		let total_nanos = base_days as i128 * 86_400_000_000_000i128 + time_nanos as i128;
 
 		if total_nanos < 0 {
-			return Err(Self::overflow_err("result is before Unix epoch"));
+			return Err(Box::new(Self::overflow_err("result is before Unix epoch")));
 		}
 
-		let nanos =
-			u64::try_from(total_nanos).map_err(|_| Self::overflow_err("result exceeds DateTime range"))?;
+		let nanos = u64::try_from(total_nanos)
+			.map_err(|_| Box::new(Self::overflow_err("result exceeds DateTime range")))?;
 		Ok(Self {
 			nanos,
 		})
@@ -573,9 +572,9 @@ pub mod tests {
 		assert_eq!(datetime, recovered);
 	}
 
-	fn assert_datetime_overflow<T: Debug>(result: Result<T, TypeError>) {
+	fn assert_datetime_overflow<T: Debug>(result: Result<T, Box<TypeError>>) {
 		let err = result.expect_err("expected DateTimeOverflow error");
-		match err {
+		match *err {
 			TypeError::Temporal {
 				kind: TemporalKind::DateTimeOverflow {
 					..

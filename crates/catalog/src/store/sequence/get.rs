@@ -10,10 +10,10 @@ use crate::{CatalogStore, Result, store::sequence::Sequence};
 impl CatalogStore {
 	pub(crate) fn get_sequence(rx: &mut Transaction<'_>, sequence_id: SequenceId) -> Result<Sequence> {
 		CatalogStore::find_sequence(rx, sequence_id)?.ok_or_else(|| {
-			Error(internal!(
+			Error(Box::new(internal!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id
-			))
+			)))
 		})
 	}
 }

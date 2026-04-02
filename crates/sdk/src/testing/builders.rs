@@ -82,6 +82,12 @@ pub struct TestChangeBuilder {
 	version: CommitVersion,
 }
 
+impl Default for TestChangeBuilder {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TestChangeBuilder {
 	/// Create a new flow change builder with default origin and version
 	pub fn new() -> Self {
@@ -173,6 +179,12 @@ impl TestChangeBuilder {
 /// Builder for creating test shapes
 pub struct TestLayoutBuilder {
 	fields: Vec<RowShapeField>,
+}
+
+impl Default for TestLayoutBuilder {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl TestLayoutBuilder {

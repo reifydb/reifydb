@@ -23,7 +23,7 @@ pub struct ProcedureVTableFFI {
 	///
 	/// # Returns
 	/// - 0 on success, negative error code on failure
-	pub call: extern "C" fn(
+	pub call: unsafe extern "C" fn(
 		instance: *mut c_void,
 		ctx: *mut ContextFFI,
 		params_ptr: *const u8,
@@ -35,5 +35,5 @@ pub struct ProcedureVTableFFI {
 	///
 	/// # Parameters
 	/// - `instance`: The procedure instance pointer to destroy
-	pub destroy: extern "C" fn(instance: *mut c_void),
+	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 }

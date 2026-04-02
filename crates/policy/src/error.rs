@@ -102,6 +102,6 @@ impl IntoDiagnostic for PolicyError {
 
 impl From<PolicyError> for Error {
 	fn from(err: PolicyError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }

@@ -1,28 +1,29 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::{catalog::Catalog, change::apply_system_change};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use reifydb_catalog::change::apply_system_change;
 use reifydb_core::{common::CommitVersion, encoded::shape::RowShapeField};
-use reifydb_transaction::{
-	multi::transaction::MultiTransaction,
-	transaction::{Transaction, replica::ReplicaTransaction},
-};
-use reifydb_type::Result;
+use reifydb_engine::engine::StandardEngine;
+use reifydb_transaction::transaction::{Transaction, replica::ReplicaTransaction};
+use reifydb_type::{Result, value::identity::IdentityId};
 use tracing::debug;
 
 use crate::{convert::proto_entry_to_system_changes, generated::CdcEntry};
 
 /// Applies replicated CDC entries to local storage.
 pub struct ReplicaApplier {
-	multi: MultiTransaction,
-	catalog: Catalog,
+	engine: StandardEngine,
+	last_applied: AtomicU64,
 }
 
 impl ReplicaApplier {
-	pub fn new(multi: MultiTransaction, catalog: Catalog) -> Self {
+	pub fn new(engine: StandardEngine) -> Self {
+		let last_applied = AtomicU64::new(engine.multi().done_until().0);
 		Self {
-			multi,
-			catalog,
+			engine,
+			last_applied,
 		}
 	}
 
@@ -33,19 +34,22 @@ impl ReplicaApplier {
 		let (version, system_changes) = proto_entry_to_system_changes(entry);
 
 		if system_changes.is_empty() {
-			self.multi.advance_version_for_replica(version);
+			self.engine.multi().advance_version_for_replica(version);
+			self.last_applied.store(version.0, Ordering::SeqCst);
 			return Ok(());
 		}
 
-		let mut replica_txn = ReplicaTransaction::new(self.multi.clone(), version)?;
+		let catalog = self.engine.catalog();
+		let mut replica_txn = ReplicaTransaction::new(self.engine.multi_owned(), version)?;
 		for change in &system_changes {
-			apply_system_change(&self.catalog, &mut Transaction::Replica(&mut replica_txn), change)?;
+			apply_system_change(&catalog, &mut Transaction::Replica(&mut replica_txn), change)?;
 		}
 		replica_txn.commit_at_version()?;
-		self.multi.advance_version_for_replica(version);
+		self.engine.multi().advance_version_for_replica(version);
 
 		self.ensure_shapes()?;
 
+		self.last_applied.store(version.0, Ordering::SeqCst);
 		debug!(version = version.0, "Replica applied CDC entry");
 		Ok(())
 	}
@@ -53,10 +57,13 @@ impl ReplicaApplier {
 	/// Ensure row shapes exist for all tables in the materialized catalog.
 	///
 	/// After catalog changes, tables have columns but their row shapes may
-	/// not exist in the replica's shape registry yet. This creates them via
-	/// `get_or_create`, which is idempotent.
+	/// not exist in the replica's shape cache yet. This creates them via
+	/// `get_or_create_row_shape_pending` and persists them.
 	fn ensure_shapes(&self) -> Result<()> {
-		for table in self.catalog.materialized.list_tables() {
+		let catalog = self.engine.catalog();
+		let mut pending_shapes = Vec::new();
+
+		for table in catalog.materialized.list_tables() {
 			if table.columns.is_empty() {
 				continue;
 			}
@@ -65,8 +72,15 @@ impl ReplicaApplier {
 				.iter()
 				.map(|col| RowShapeField::new(col.name.clone(), col.constraint.clone()))
 				.collect();
-			self.catalog.shape.get_or_create(fields)?;
+			catalog.get_or_create_row_shape_pending(&mut pending_shapes, fields);
 		}
+
+		if !pending_shapes.is_empty() {
+			let mut cmd = self.engine.begin_command(IdentityId::system())?;
+			catalog.persist_pending_shapes(&mut Transaction::Command(&mut cmd), pending_shapes)?;
+			cmd.commit()?;
+		}
+
 		Ok(())
 	}
 
@@ -78,8 +92,8 @@ impl ReplicaApplier {
 		Ok(())
 	}
 
-	/// Get the current replicated version (done_until on the replica).
+	/// Get the last successfully applied CDC entry version.
 	pub fn current_version(&self) -> CommitVersion {
-		self.multi.done_until()
+		CommitVersion(self.last_applied.load(Ordering::SeqCst))
 	}
 }

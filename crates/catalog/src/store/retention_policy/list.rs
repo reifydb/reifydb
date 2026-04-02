@@ -38,17 +38,17 @@ impl CatalogStore {
 	) -> Result<Vec<ShapeRetentionPolicyEntry>> {
 		let mut result = Vec::new();
 
-		let mut stream = rx.range(ShapeRetentionPolicyKeyRange::full_scan(), 1024)?;
+		let stream = rx.range(ShapeRetentionPolicyKeyRange::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
-			if let Some(key) = ShapeRetentionPolicyKey::decode(&entry.key) {
-				if let Some(policy) = decode_retention_policy(&entry.row) {
-					result.push(ShapeRetentionPolicyEntry {
-						shape: key.shape,
-						policy,
-					});
-				}
+			if let Some(key) = ShapeRetentionPolicyKey::decode(&entry.key)
+				&& let Some(policy) = decode_retention_policy(&entry.row)
+			{
+				result.push(ShapeRetentionPolicyEntry {
+					shape: key.shape,
+					policy,
+				});
 			}
 		}
 
@@ -61,17 +61,17 @@ impl CatalogStore {
 	) -> Result<Vec<OperatorRetentionPolicyEntry>> {
 		let mut result = Vec::new();
 
-		let mut stream = rx.range(OperatorRetentionPolicyKeyRange::full_scan(), 1024)?;
+		let stream = rx.range(OperatorRetentionPolicyKeyRange::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let entry = entry?;
-			if let Some(key) = OperatorRetentionPolicyKey::decode(&entry.key) {
-				if let Some(policy) = decode_retention_policy(&entry.row) {
-					result.push(OperatorRetentionPolicyEntry {
-						operator: key.operator,
-						policy,
-					});
-				}
+			if let Some(key) = OperatorRetentionPolicyKey::decode(&entry.key)
+				&& let Some(policy) = decode_retention_policy(&entry.row)
+			{
+				result.push(OperatorRetentionPolicyEntry {
+					operator: key.operator,
+					policy,
+				});
 			}
 		}
 

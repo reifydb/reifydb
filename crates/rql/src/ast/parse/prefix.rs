@@ -27,20 +27,20 @@ impl<'bump> Parser<'bump> {
 
 		let expr = self.parse_node(precedence)?;
 
-		if matches!(operator, AstPrefixOperator::Negate(_)) {
-			if let Ast::Literal(AstLiteral::Number(literal)) = &expr {
-				let text = self.bump().alloc_str(&format!("-{}", literal.0.fragment.text()));
-				return Ok(Ast::Literal(AstLiteral::Number(AstLiteralNumber(Token {
-					kind: TokenKind::Literal(Number),
-					fragment: BumpFragment::Statement {
-						column: operator.token().fragment.column(),
-						line: operator.token().fragment.line(),
-						offset: 0,
-						source_end: 0,
-						text,
-					},
-				}))));
-			}
+		if matches!(operator, AstPrefixOperator::Negate(_))
+			&& let Ast::Literal(AstLiteral::Number(literal)) = &expr
+		{
+			let text = self.bump().alloc_str(&format!("-{}", literal.0.fragment.text()));
+			return Ok(Ast::Literal(AstLiteral::Number(AstLiteralNumber(Token {
+				kind: TokenKind::Literal(Number),
+				fragment: BumpFragment::Statement {
+					column: operator.token().fragment.column(),
+					line: operator.token().fragment.line(),
+					offset: 0,
+					source_end: 0,
+					text,
+				},
+			}))));
 		}
 
 		Ok(Ast::Prefix(AstPrefix {
@@ -57,19 +57,15 @@ impl<'bump> Parser<'bump> {
 				Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
 				Operator::Bang => Ok(AstPrefixOperator::Not(token)),
 				Operator::Not => Ok(AstPrefixOperator::Not(token)),
-				_ => {
-					return Err(AstError::UnsupportedToken {
-						fragment: token.fragment.to_owned(),
-					}
-					.into());
-				}
-			},
-			_ => {
-				return Err(AstError::UnsupportedToken {
+				_ => Err(AstError::UnsupportedToken {
 					fragment: token.fragment.to_owned(),
 				}
-				.into());
+				.into()),
+			},
+			_ => Err(AstError::UnsupportedToken {
+				fragment: token.fragment.to_owned(),
 			}
+			.into()),
 		}
 	}
 }

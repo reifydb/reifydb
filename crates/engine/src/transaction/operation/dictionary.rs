@@ -86,7 +86,7 @@ impl DictionaryOperations for CommandTransaction {
 		// 7. Update sequence
 		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
-		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
+		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id, &value)?;
 
 		Ok(entry_id)
 	}
@@ -159,7 +159,7 @@ impl DictionaryOperations for AdminTransaction {
 		// 7. Update sequence
 		self.set(&seq_key, EncodedRow(CowVec::new(next_id.to_be_bytes().to_vec())))?;
 
-		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id.clone(), &value)?;
+		DictionaryRowInterceptor::post_insert(self, dictionary, entry_id, &value)?;
 
 		// Track for testing::dictionaries::changed()
 		self.track_flow_change(Change {
@@ -212,11 +212,10 @@ impl DictionaryOperations for Transaction<'_> {
 			Transaction::Subscription(sub) => sub.as_admin_mut().insert_into_dictionary(dictionary, value),
 			Transaction::Test(t) => t.inner.insert_into_dictionary(dictionary, value),
 			Transaction::Query(_) => {
-				Err(internal_error!("Cannot insert into dictionary during a query transaction").into())
+				Err(internal_error!("Cannot insert into dictionary during a query transaction"))
 			}
 			Transaction::Replica(_) => {
-				Err(internal_error!("Cannot insert into dictionary during a replica transaction")
-					.into())
+				Err(internal_error!("Cannot insert into dictionary during a replica transaction"))
 			}
 		}
 	}

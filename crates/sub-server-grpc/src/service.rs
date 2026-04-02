@@ -75,10 +75,10 @@ impl ReifyDbService {
 	fn build_metadata<T>(request: &Request<T>) -> RequestMetadata {
 		let mut meta = RequestMetadata::new(Protocol::Grpc);
 		for key_and_value in request.metadata().iter() {
-			if let KeyAndValueRef::Ascii(key, value) = key_and_value {
-				if let Ok(v) = value.to_str() {
-					meta.insert(key.as_str(), v);
-				}
+			if let KeyAndValueRef::Ascii(key, value) = key_and_value
+				&& let Ok(v) = value.to_str()
+			{
+				meta.insert(key.as_str(), v);
 			}
 		}
 		meta

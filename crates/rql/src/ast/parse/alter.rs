@@ -109,13 +109,13 @@ impl<'bump> Parser<'bump> {
 		}
 
 		let fragment = self.current()?.fragment.to_owned();
-		return Err(Error::from(TypeError::Ast {
+		Err(Error::from(TypeError::Ast {
 			kind: AstErrorKind::UnexpectedToken {
 				expected: "SEQUENCE, FLOW, TABLE, or a policy target type after ALTER".to_string(),
 			},
 			message: format!("Unexpected token after ALTER: {}", fragment.text()),
 			fragment,
-		}));
+		}))
 	}
 
 	fn parse_alter_sequence(&mut self, token: Token<'bump>) -> Result<AstAlter<'bump>> {

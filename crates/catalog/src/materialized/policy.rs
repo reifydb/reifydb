@@ -59,12 +59,11 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_policy(&self, id: PolicyId, version: CommitVersion, policy: Option<Policy>) {
-		if let Some(entry) = self.policies.get(&id) {
-			if let Some(pre) = entry.value().get_latest() {
-				if let Some(name) = &pre.name {
-					self.policies_by_name.remove(name);
-				}
-			}
+		if let Some(entry) = self.policies.get(&id)
+			&& let Some(pre) = entry.value().get_latest()
+			&& let Some(name) = &pre.name
+		{
+			self.policies_by_name.remove(name);
 		}
 
 		let multi = self.policies.get_or_insert_with(id, MultiVersionPolicy::new);

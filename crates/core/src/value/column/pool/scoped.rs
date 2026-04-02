@@ -17,6 +17,12 @@ pub struct ScopedPools {
 	previous: Option<Pools>,
 }
 
+impl Default for ScopedPools {
+	fn default() -> Self {
+		Self::new(Pools::default())
+	}
+}
+
 impl ScopedPools {
 	/// Create a new scoped pools guard
 	/// Sets the given pools as thread-local and saves the previous state
@@ -26,11 +32,6 @@ impl ScopedPools {
 		Self {
 			previous,
 		}
-	}
-
-	/// Create a scoped guard with new default pools
-	pub fn default() -> Self {
-		Self::new(Pools::default())
 	}
 
 	/// Create a scoped guard with custom configuration

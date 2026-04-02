@@ -145,7 +145,7 @@ impl DropActor {
 		state.last_flush = self.clock.instant();
 
 		state.flush_count += 1;
-		if state.flush_count % 100 == 0 {
+		if state.flush_count.is_multiple_of(100) {
 			self.storage.maintenance();
 		}
 	}
@@ -193,10 +193,10 @@ impl DropActor {
 			}
 		}
 
-		if !batches.is_empty() {
-			if let Err(e) = storage.drop(batches) {
-				error!("Drop actor failed to execute drops: {}", e);
-			}
+		if !batches.is_empty()
+			&& let Err(e) = storage.drop(batches)
+		{
+			error!("Drop actor failed to execute drops: {}", e);
 		}
 
 		let total_dropped = drops_with_stats.len();

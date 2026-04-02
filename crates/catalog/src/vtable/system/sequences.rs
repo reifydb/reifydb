@@ -22,6 +22,12 @@ pub struct SystemSequences {
 	exhausted: bool,
 }
 
+impl Default for SystemSequences {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemSequences {
 	pub fn new() -> Self {
 		Self {

@@ -45,14 +45,14 @@ pub(crate) fn create_namespace(
 	}
 
 	// Create the final (leaf) namespace
-	if let Some(existing) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)? {
-		if plan.if_not_exists {
-			return Ok(Columns::single_row([
-				("id", Value::Uint8(existing.id().0)),
-				("namespace", Value::Utf8(full_name)),
-				("created", Value::Boolean(false)),
-			]));
-		}
+	if let Some(existing) = services.catalog.find_namespace_by_name(&mut Transaction::Admin(txn), &full_name)?
+		&& plan.if_not_exists
+	{
+		return Ok(Columns::single_row([
+			("id", Value::Uint8(existing.id().0)),
+			("namespace", Value::Utf8(full_name)),
+			("created", Value::Boolean(false)),
+		]));
 	}
 
 	let result = services.catalog.create_namespace(

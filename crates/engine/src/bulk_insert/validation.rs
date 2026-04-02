@@ -3,6 +3,8 @@
 
 //! Row validation and column mapping for bulk inserts with batch coercion.
 
+use std::iter;
+
 use reifydb_core::{
 	interface::catalog::{column::Column, ringbuffer::RingBuffer, table::Table},
 	value::column::data::ColumnData,
@@ -109,14 +111,15 @@ fn collect_rows_to_columns(rows: &[Params], columns: &[Column], source_name: &st
 					}
 					.into());
 				}
-				for col_idx in 0..num_cols {
-					let value = vals.get(col_idx).cloned().unwrap_or(Value::none());
-					column_data[col_idx].push_value(value);
+				for (col_data, val) in
+					column_data.iter_mut().zip(vals.iter().map(Some).chain(iter::repeat(None)))
+				{
+					col_data.push_value(val.cloned().unwrap_or(Value::none()));
 				}
 			}
 			Params::None => {
-				for col_idx in 0..num_cols {
-					column_data[col_idx].push_none();
+				for col_data in column_data.iter_mut() {
+					col_data.push_none();
 				}
 			}
 		}
@@ -146,8 +149,8 @@ fn columns_to_rows(columns: &[ColumnData], num_rows: usize, num_cols: usize) -> 
 
 	for row_idx in 0..num_rows {
 		let mut row_values = Vec::with_capacity(num_cols);
-		for col_idx in 0..num_cols {
-			row_values.push(columns[col_idx].get_value(row_idx));
+		for col in columns.iter().take(num_cols) {
+			row_values.push(col.get_value(row_idx));
 		}
 		result.push(row_values);
 	}

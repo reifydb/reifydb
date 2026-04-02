@@ -213,6 +213,6 @@ impl IntoDiagnostic for AstError {
 
 impl From<AstError> for Error {
 	fn from(err: AstError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }

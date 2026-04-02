@@ -51,16 +51,15 @@ impl BaseVTable for SystemProcedures {
 		let mut is_tests = Vec::new();
 
 		for entry in self.catalog.materialized.procedures.iter() {
-			if let Some(proc_def) = entry.value().get_latest() {
-				if matches!(
+			if let Some(proc_def) = entry.value().get_latest()
+				&& matches!(
 					proc_def.trigger,
 					ProcedureTrigger::Call | ProcedureTrigger::NativeCall { .. }
 				) {
-					ids.push(proc_def.id.0);
-					namespace_ids.push(proc_def.namespace.0);
-					names.push(proc_def.name.clone());
-					is_tests.push(proc_def.is_test);
-				}
+				ids.push(proc_def.id.0);
+				namespace_ids.push(proc_def.namespace.0);
+				names.push(proc_def.name.clone());
+				is_tests.push(proc_def.is_test);
 			}
 		}
 

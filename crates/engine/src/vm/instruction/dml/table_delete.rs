@@ -46,7 +46,7 @@ use crate::{
 	},
 };
 
-pub(crate) fn delete<'a>(
+pub(crate) fn delete(
 	services: &Arc<Services>,
 	txn: &mut Transaction<'_>,
 	plan: DeleteTableNode,
@@ -91,11 +91,7 @@ pub(crate) fn delete<'a>(
 	let resolved_source = Some(ResolvedShape::Table(resolved_table));
 
 	let mut deleted_count = 0;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if plan.returning.is_some() {
-		Vec::new()
-	} else {
-		Vec::new()
-	};
+	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
 
 	if let Some(input_plan) = plan.input {
 		// Delete specific rows based on input plan
@@ -132,7 +128,7 @@ pub(crate) fn delete<'a>(
 			// Enforce write policies before processing rows
 			PolicyEvaluator::new(services, symbols).enforce_write_policies(
 				txn,
-				&namespace.name(),
+				namespace.name(),
 				&table.name,
 				"delete",
 				&columns,
@@ -169,13 +165,14 @@ pub(crate) fn delete<'a>(
 			if let Some(ref pk_def) = pk_def {
 				// Load shape from the row data
 				let fingerprint = row_values.fingerprint();
-				let shape = services.catalog.shape.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-					internal_error!(
-						"Shape with fingerprint {:?} not found for table {}",
-						fingerprint,
-						table.name
-					)
-				})?;
+				let shape =
+					services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+						internal_error!(
+							"Shape with fingerprint {:?} not found for table {}",
+							fingerprint,
+							table.name
+						)
+					})?;
 				let index_key = primary_key::encode_primary_key(pk_def, &row_values, &table, &shape)?;
 
 				txn.remove(
@@ -208,13 +205,14 @@ pub(crate) fn delete<'a>(
 		for multi in rows {
 			if let Some(ref pk_def) = pk_def {
 				let fingerprint = multi.row.fingerprint();
-				let shape = services.catalog.shape.get_or_load(fingerprint, txn)?.ok_or_else(|| {
-					internal_error!(
-						"Shape with fingerprint {:?} not found for table {}",
-						fingerprint,
-						table.name
-					)
-				})?;
+				let shape =
+					services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+						internal_error!(
+							"Shape with fingerprint {:?} not found for table {}",
+							fingerprint,
+							table.name
+						)
+					})?;
 				let index_key = primary_key::encode_primary_key(pk_def, &multi.row, &table, &shape)?;
 
 				txn.remove(

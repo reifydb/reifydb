@@ -20,15 +20,14 @@ pub(crate) fn create_dictionary(
 		&mut Transaction::Admin(txn),
 		plan.namespace.id(),
 		plan.dictionary.text(),
-	)? {
-		if plan.if_not_exists {
-			return Ok(Columns::single_row([
-				("id", Value::Uint8(existing.id.0)),
-				("namespace", Value::Utf8(plan.namespace.name().to_string())),
-				("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
-				("created", Value::Boolean(false)),
-			]));
-		}
+	)? && plan.if_not_exists
+	{
+		return Ok(Columns::single_row([
+			("id", Value::Uint8(existing.id.0)),
+			("namespace", Value::Utf8(plan.namespace.name().to_string())),
+			("dictionary", Value::Utf8(plan.dictionary.text().to_string())),
+			("created", Value::Boolean(false)),
+		]));
 	}
 
 	let result = services.catalog.create_dictionary(

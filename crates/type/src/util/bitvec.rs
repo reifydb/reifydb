@@ -72,7 +72,7 @@ impl BitVec {
 		if value {
 			BitVec::from_fn(len, |_| true)
 		} else {
-			let byte_count = (len + 7) / 8;
+			let byte_count = len.div_ceil(8);
 			BitVec {
 				inner: Arc::new(BitVecInner {
 					bits: vec![0x00; byte_count],
@@ -84,8 +84,8 @@ impl BitVec {
 
 	pub fn from_slice(slice: &[bool]) -> Self {
 		let mut bv = BitVec::repeat(slice.len(), false);
-		for i in 0..slice.len() {
-			if slice[i] {
+		for (i, &val) in slice.iter().enumerate() {
+			if val {
 				bv.set(i, true);
 			}
 		}
@@ -114,7 +114,7 @@ impl BitVec {
 	pub fn take(&self, n: usize) -> BitVec {
 		let len = n.min(self.inner.len);
 
-		let byte_len = (len + 7) / 8;
+		let byte_len = len.div_ceil(8);
 		let mut bits = vec![0u8; byte_len];
 
 		for i in 0..len {
@@ -141,7 +141,7 @@ impl BitVec {
 		let start_len = self.len();
 		let other_len = other.len();
 		let total_len = start_len + other_len;
-		let total_byte_len = (total_len + 7) / 8;
+		let total_byte_len = total_len.div_ceil(8);
 
 		let inner = self.make_mut();
 		inner.bits.resize(total_byte_len, 0);
@@ -186,6 +186,10 @@ impl BitVec {
 		self.inner.len
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	pub fn capacity(&self) -> usize {
 		self.inner.bits.capacity() * 8
 	}
@@ -219,7 +223,7 @@ impl BitVec {
 	pub fn and(&self, other: &Self) -> Self {
 		assert_eq!(self.len(), other.len());
 		let len = self.len();
-		let byte_count = (len + 7) / 8;
+		let byte_count = len.div_ceil(8);
 		let mut result_bits = vec![0u8; byte_count];
 
 		// Process 8 bytes at a time for better performance
@@ -325,7 +329,7 @@ impl BitVec {
 	pub fn or(&self, other: &Self) -> Self {
 		assert_eq!(self.len(), other.len());
 		let len = self.len();
-		let byte_count = (len + 7) / 8;
+		let byte_count = len.div_ceil(8);
 		let mut result_bits = vec![0u8; byte_count];
 
 		// Process 8 bytes at a time for better performance
@@ -382,7 +386,7 @@ impl BitVec {
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
-		let byte_capacity = (capacity + 7) / 8;
+		let byte_capacity = capacity.div_ceil(8);
 		Self {
 			inner: Arc::new(BitVecInner {
 				bits: Vec::with_capacity(byte_capacity),
@@ -415,7 +419,7 @@ impl BitVec {
 	pub fn reorder(&mut self, indices: &[usize]) {
 		assert_eq!(self.len(), indices.len());
 		let len = self.len();
-		let byte_count = (len + 7) / 8;
+		let byte_count = len.div_ceil(8);
 		let mut new_bits = vec![0u8; byte_count];
 
 		// Collect old bit values before mutating

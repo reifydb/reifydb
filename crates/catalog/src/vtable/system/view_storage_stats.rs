@@ -18,6 +18,12 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
+/// A row of storage statistics: (id, namespace_id, tier, current_key_bytes, current_value_bytes,
+/// current_total_bytes, current_count, historical_key_bytes, historical_value_bytes,
+/// historical_total_bytes, historical_count, total_bytes, cdc_key_bytes, cdc_value_bytes,
+/// cdc_total_bytes, cdc_count).
+type StorageStatsRow = (u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64);
+
 /// Virtual table that exposes storage statistics for views
 pub struct SystemViewStorageStats {
 	pub(crate) definition: Arc<VTable>,
@@ -55,8 +61,7 @@ impl BaseVTable for SystemViewStorageStats {
 		}
 
 		// Collect all view stats across all tiers
-		#[allow(clippy::type_complexity)]
-		let mut rows: Vec<(u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = Vec::new();
+		let mut rows: Vec<StorageStatsRow> = Vec::new();
 
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			let tier_stats = self.stats_reader.scan_tier(tier).unwrap_or_default();

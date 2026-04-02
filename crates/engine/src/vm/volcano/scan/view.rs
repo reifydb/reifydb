@@ -55,7 +55,7 @@ impl ViewScanNode {
 		let fingerprint = first_row.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("ViewScanNode context not set");
-		let shape = stored_ctx.services.catalog.shape.get_or_load(fingerprint, rx)?.ok_or_else(|| {
+		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
 				"RowShape with fingerprint {:?} not found for view {}",
 				fingerprint,
@@ -102,7 +102,7 @@ impl QueryNode for ViewScanNode {
 						new_last_key = Some(multi.key);
 					}
 				}
-				Some(Err(e)) => return Err(e.into()),
+				Some(Err(e)) => return Err(e),
 				None => {
 					self.exhausted = true;
 					break;

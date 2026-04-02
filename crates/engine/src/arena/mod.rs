@@ -112,7 +112,7 @@ impl<'bump> Debug for BumpBitVec<'bump> {
 
 impl<'bump> BumpBitVec<'bump> {
 	pub fn with_capacity_in(capacity: usize, bump: &'bump BumpAlloc) -> Self {
-		let byte_capacity = (capacity + 7) / 8;
+		let byte_capacity = capacity.div_ceil(8);
 		Self {
 			bits: BumpaloVec::with_capacity_in(byte_capacity, bump),
 			len: 0,

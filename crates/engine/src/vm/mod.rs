@@ -39,5 +39,6 @@ pub mod instruction;
 pub(crate) mod scalar;
 pub mod services;
 pub mod stack;
+#[allow(clippy::module_inception)]
 pub mod vm;
 pub(crate) mod volcano;

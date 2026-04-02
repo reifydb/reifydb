@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::common::CommitVersion;
 
 /// Retention policy for managing MVCC version cleanup
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum RetentionPolicy {
 	/// Keep all versions forever (default)
+	#[default]
 	KeepForever,
 
 	/// Keep only the last N versions
@@ -41,12 +42,6 @@ pub enum CleanupAction {
 
 	/// Do nothing
 	Keep,
-}
-
-impl Default for RetentionPolicy {
-	fn default() -> Self {
-		RetentionPolicy::KeepForever
-	}
 }
 
 impl RetentionPolicy {

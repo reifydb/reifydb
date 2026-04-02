@@ -21,27 +21,25 @@ use reifydb_type::Result;
 
 use crate::subsystem::HttpSubsystem;
 
-/// Configuration for the HTTP server subsystem.
-#[derive(Clone, Debug)]
-pub struct HttpConfig {
-	/// Address to bind the HTTP server to (e.g., "0.0.0.0:8091").
-	pub bind_addr: Option<String>,
-	/// Address to bind the admin HTTP server to (e.g., "127.0.0.1:9091").
-	/// When set, admin operations are only available on this port.
-	/// When not set, admin operations are not available.
-	pub admin_bind_addr: Option<String>,
-	/// Maximum number of concurrent connections.
-	pub max_connections: usize,
-	/// Timeout for query execution.
-	pub query_timeout: Duration,
-	/// Timeout for entire request lifecycle.
-	pub request_timeout: Duration,
-	/// Optional shared runtime .
-	pub runtime: Option<SharedRuntime>,
+/// Configurator for the HTTP server subsystem (builder pattern).
+pub struct HttpConfigurator {
+	bind_addr: Option<String>,
+	admin_bind_addr: Option<String>,
+	max_connections: usize,
+	query_timeout: Duration,
+	request_timeout: Duration,
+	runtime: Option<SharedRuntime>,
 }
 
-impl Default for HttpConfig {
+impl Default for HttpConfigurator {
 	fn default() -> Self {
+		Self::new()
+	}
+}
+
+impl HttpConfigurator {
+	/// Create a new HTTP configurator with default values.
+	pub fn new() -> Self {
 		Self {
 			bind_addr: None,
 			admin_bind_addr: None,
@@ -50,13 +48,6 @@ impl Default for HttpConfig {
 			request_timeout: Duration::from_secs(60),
 			runtime: None,
 		}
-	}
-}
-
-impl HttpConfig {
-	/// Create a new HTTP config with default values.
-	pub fn new() -> Self {
-		Self::default()
 	}
 
 	/// Set the bind address.
@@ -95,34 +86,76 @@ impl HttpConfig {
 		self.runtime = Some(runtime);
 		self
 	}
+
+	/// Finalize the configurator into an immutable config.
+	pub(crate) fn configure(self) -> HttpConfig {
+		HttpConfig {
+			bind_addr: self.bind_addr,
+			admin_bind_addr: self.admin_bind_addr,
+			max_connections: self.max_connections,
+			query_timeout: self.query_timeout,
+			request_timeout: self.request_timeout,
+			runtime: self.runtime,
+		}
+	}
+}
+
+/// Immutable configuration for the HTTP server subsystem.
+#[derive(Clone, Debug)]
+pub struct HttpConfig {
+	/// Address to bind the HTTP server to (e.g., "0.0.0.0:8091").
+	pub bind_addr: Option<String>,
+	/// Address to bind the admin HTTP server to (e.g., "127.0.0.1:9091").
+	/// When set, admin operations are only available on this port.
+	/// When not set, admin operations are not available.
+	pub admin_bind_addr: Option<String>,
+	/// Maximum number of concurrent connections.
+	pub max_connections: usize,
+	/// Timeout for query execution.
+	pub query_timeout: Duration,
+	/// Timeout for entire request lifecycle.
+	pub request_timeout: Duration,
+	/// Optional shared runtime.
+	pub runtime: Option<SharedRuntime>,
+}
+
+impl Default for HttpConfig {
+	fn default() -> Self {
+		HttpConfigurator::new().configure()
+	}
 }
 
 /// Factory for creating HTTP subsystem instances.
 pub struct HttpSubsystemFactory {
-	config: HttpConfig,
+	config_fn: Box<dyn FnOnce() -> HttpConfig + Send>,
 }
 
 impl HttpSubsystemFactory {
-	/// Create a new HTTP subsystem factory with the given configuration.
-	pub fn new(config: HttpConfig) -> Self {
+	/// Create a new HTTP subsystem factory with the given configurator closure.
+	pub fn new<F>(configurator: F) -> Self
+	where
+		F: FnOnce(HttpConfigurator) -> HttpConfigurator + Send + 'static,
+	{
 		Self {
-			config,
+			config_fn: Box::new(move || configurator(HttpConfigurator::new()).configure()),
 		}
 	}
 }
 
 impl SubsystemFactory for HttpSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+		let config = (self.config_fn)();
+
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let ioc_runtime = ioc.resolve::<SharedRuntime>()?;
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 
 		let query_config = StateConfig::new()
-			.query_timeout(self.config.query_timeout)
-			.request_timeout(self.config.request_timeout)
-			.max_connections(self.config.max_connections);
+			.query_timeout(config.query_timeout)
+			.request_timeout(config.request_timeout)
+			.max_connections(config.max_connections);
 
-		let runtime = self.config.runtime.unwrap_or(ioc_runtime);
+		let runtime = config.runtime.unwrap_or(ioc_runtime);
 
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
@@ -141,12 +174,8 @@ impl SubsystemFactory for HttpSubsystemFactory {
 			runtime.clock().clone(),
 			runtime.rng().clone(),
 		);
-		let subsystem = HttpSubsystem::new(
-			self.config.bind_addr.clone(),
-			self.config.admin_bind_addr.clone(),
-			state,
-			runtime,
-		);
+		let subsystem =
+			HttpSubsystem::new(config.bind_addr.clone(), config.admin_bind_addr.clone(), state, runtime);
 
 		Ok(Box::new(subsystem))
 	}

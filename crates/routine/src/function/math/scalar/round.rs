@@ -11,17 +11,12 @@ use crate::function::{
 	propagate_options,
 };
 
+#[derive(Default)]
 pub struct Round;
-
-impl Default for Round {
-	fn default() -> Self {
-		Self {}
-	}
-}
 
 impl Round {
 	pub fn new() -> Self {
-		Self::default()
+		Self
 	}
 }
 

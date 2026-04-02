@@ -33,7 +33,7 @@ impl Blob {
 
 	/// Create a BLOB from a byte slice
 	pub fn from_slice(bytes: &[u8]) -> Self {
-		Self(Vec::from(bytes.to_vec()))
+		Self(bytes.to_vec())
 	}
 
 	/// Get the raw bytes

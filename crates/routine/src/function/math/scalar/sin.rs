@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct Sin;
 
+impl Default for Sin {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Sin {
 	pub fn new() -> Self {
 		Self
@@ -65,7 +71,7 @@ impl ScalarFunction for Sin {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		if !column.data().get_type().is_number() {
 			return Err(ScalarFunctionError::InvalidArgumentType {

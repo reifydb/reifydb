@@ -62,7 +62,7 @@ pub fn persist_flow(
 
 		// Serialize the node type
 		let data = to_stdvec(&compiled_node.node_type)
-			.map_err(|e| Error(internal!("Failed to serialize FlowNodeType: {}", e)))?;
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize FlowNodeType: {}", e))))?;
 
 		// Create and persist the catalog entry
 		let node_def = FlowNode {

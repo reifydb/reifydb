@@ -2,6 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 import type { ConnectionStatus } from '../connection/ConnectionPanel';
+import type { TransactionType } from '../../types';
+
+const TX_TYPES: TransactionType[] = ['query', 'command', 'admin'];
 
 interface EditorToolbarProps {
   onRun: () => void;
@@ -11,6 +14,9 @@ interface EditorToolbarProps {
   connectionStatus: ConnectionStatus;
   connectionLocked?: boolean;
   onToggleConnectionPanel: () => void;
+  connectionMode: 'wasm' | 'websocket';
+  transactionType: TransactionType;
+  onTransactionTypeChange: (type: TransactionType) => void;
 }
 
 export function EditorToolbar({
@@ -21,6 +27,9 @@ export function EditorToolbar({
   connectionStatus,
   connectionLocked,
   onToggleConnectionPanel,
+  connectionMode,
+  transactionType,
+  onTransactionTypeChange,
 }: EditorToolbarProps) {
   return (
     <div className="rdb-editor-toolbar">
@@ -38,6 +47,19 @@ export function EditorToolbar({
             <span className={`rdb-editor-toolbar__connection-dot rdb-editor-toolbar__connection-dot--${connectionStatus}`}>●</span>
             <span>[{connectionLabel}]</span>
           </button>
+        )}
+        {connectionMode === 'websocket' && (
+          <div className="rdb-editor-toolbar__tx-type">
+            {TX_TYPES.map((t) => (
+              <button
+                key={t}
+                className={`rdb-editor-toolbar__tx-type-btn${t === transactionType ? ' rdb-editor-toolbar__tx-type-btn--active' : ''}`}
+                onClick={() => onTransactionTypeChange(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
         )}
         <span className="rdb-editor-toolbar__hint">ctrl+enter to run</span>
       </div>

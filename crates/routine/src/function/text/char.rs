@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextChar;
 
+impl Default for TextChar {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextChar {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextChar {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::Int1(c) => {
@@ -56,9 +62,7 @@ impl ScalarFunction for TextChar {
 			ColumnData::Uint2(c) => {
 				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
 			}
-			ColumnData::Uint4(c) => {
-				convert_to_char(row_count, c.data().len(), |i| c.get(i).map(|&v| v as u32))
-			}
+			ColumnData::Uint4(c) => convert_to_char(row_count, c.data().len(), |i| c.get(i).copied()),
 			other => Err(ScalarFunctionError::InvalidArgumentType {
 				function: ctx.fragment.clone(),
 				argument_index: 0,

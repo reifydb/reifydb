@@ -355,7 +355,7 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(PhysicalPlan::DropSource(nodes::DropSourceNode {
 			if_exists: drop.if_exists,
-			namespace: namespace.into(),
+			namespace,
 			name: self.interner.intern_fragment(&drop.source.name),
 			cascade: drop.cascade,
 		}))
@@ -379,7 +379,7 @@ impl<'bump> Compiler<'bump> {
 
 		Ok(PhysicalPlan::DropSink(nodes::DropSinkNode {
 			if_exists: drop.if_exists,
-			namespace: namespace.into(),
+			namespace,
 			name: self.interner.intern_fragment(&drop.sink.name),
 			cascade: drop.cascade,
 		}))

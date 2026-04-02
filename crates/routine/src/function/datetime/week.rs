@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct DateTimeWeek;
 
+impl Default for DateTimeWeek {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl DateTimeWeek {
 	pub fn new() -> Self {
 		Self
@@ -56,7 +62,7 @@ impl ScalarFunction for DateTimeWeek {
 			});
 		}
 
-		let col = columns.get(0).unwrap();
+		let col = columns.first().unwrap();
 
 		match col.data() {
 			ColumnData::DateTime(container) => {

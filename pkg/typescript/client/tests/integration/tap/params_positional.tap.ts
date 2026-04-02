@@ -4,7 +4,7 @@
 import {afterEach, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {Client, WsClient} from "../../../src";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 
 describe('Positional Parameters - Primitive Types', () => {
     let wsClient: WsClient;
@@ -41,7 +41,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [true],
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: true}]);
@@ -51,7 +51,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [42],
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 42}]);
@@ -61,7 +61,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [1234],
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 1234}]);
@@ -71,7 +71,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [12345678],
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 12345678}]);
@@ -81,7 +81,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [BigInt("9223372036854775807")],
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("9223372036854775807")}]);
@@ -91,7 +91,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [BigInt("170141183460469231731687303715884105727")],
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("170141183460469231731687303715884105727")}]);
@@ -101,7 +101,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [255],
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 255}]);
@@ -111,7 +111,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [65535],
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 65535}]);
@@ -121,7 +121,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [4294967295],
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 4294967295n}]);
@@ -131,7 +131,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [BigInt("18446744073709551615")],
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("18446744073709551615")}]);
@@ -141,7 +141,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [BigInt("340282366920938463463374607431768211455")],
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("340282366920938463463374607431768211455")}]);
@@ -151,7 +151,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [3.14],
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.14, 2);
@@ -161,7 +161,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 [3.141592653589793],
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
@@ -171,7 +171,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.command(
                 "MAP {result: $1}",
                 ["123.456789"],
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: "123.456789"}]);
@@ -183,7 +183,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [true],
-                [Schema.object({result: Schema.boolean()})]
+                [Shape.object({result: Shape.boolean()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: true}]);
@@ -193,7 +193,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [42],
-                [Schema.object({result: Schema.int1()})]
+                [Shape.object({result: Shape.int1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 42}]);
@@ -203,7 +203,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [1234],
-                [Schema.object({result: Schema.int2()})]
+                [Shape.object({result: Shape.int2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 1234}]);
@@ -213,7 +213,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [12345678],
-                [Schema.object({result: Schema.int4()})]
+                [Shape.object({result: Shape.int4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 12345678}]);
@@ -223,7 +223,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [BigInt("9223372036854775807")],
-                [Schema.object({result: Schema.int8()})]
+                [Shape.object({result: Shape.int8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("9223372036854775807")}]);
@@ -233,7 +233,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [BigInt("170141183460469231731687303715884105727")],
-                [Schema.object({result: Schema.int16()})]
+                [Shape.object({result: Shape.int16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("170141183460469231731687303715884105727")}]);
@@ -243,7 +243,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [255],
-                [Schema.object({result: Schema.uint1()})]
+                [Shape.object({result: Shape.uint1()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 255}]);
@@ -253,7 +253,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [65535],
-                [Schema.object({result: Schema.uint2()})]
+                [Shape.object({result: Shape.uint2()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 65535}]);
@@ -263,7 +263,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [4294967295],
-                [Schema.object({result: Schema.uint4()})]
+                [Shape.object({result: Shape.uint4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: 4294967295n}]);
@@ -273,7 +273,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [BigInt("18446744073709551615")],
-                [Schema.object({result: Schema.uint8()})]
+                [Shape.object({result: Shape.uint8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("18446744073709551615")}]);
@@ -283,7 +283,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [BigInt("340282366920938463463374607431768211455")],
-                [Schema.object({result: Schema.uint16()})]
+                [Shape.object({result: Shape.uint16()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: BigInt("340282366920938463463374607431768211455")}]);
@@ -293,7 +293,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [3.14],
-                [Schema.object({result: Schema.float4()})]
+                [Shape.object({result: Shape.float4()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.14, 2);
@@ -303,7 +303,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 [3.141592653589793],
-                [Schema.object({result: Schema.float8()})]
+                [Shape.object({result: Shape.float8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0][0].result).toBeCloseTo(3.141592653589793, 10);
@@ -313,7 +313,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP {result: $1}",
                 ["123.456789"],
-                [Schema.object({result: Schema.decimal()})]
+                [Shape.object({result: Shape.decimal()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{result: "123.456789"}]);
@@ -323,7 +323,7 @@ describe('Positional Parameters - Primitive Types', () => {
             const frames = await wsClient.query(
                 "MAP { sum: $1 + $2, name: $3 }",
                 [10, 20, "test"],
-                [Schema.object({sum: Schema.int4(), name: Schema.utf8()})]
+                [Shape.object({sum: Shape.int4(), name: Shape.utf8()})]
             );
             expect(frames).toHaveLength(1);
             expect(frames[0]).toEqual([{sum: 30, name: "test"}]);

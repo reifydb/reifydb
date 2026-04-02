@@ -13,6 +13,12 @@ use crate::function::{
 
 pub struct UuidV4;
 
+impl Default for UuidV4 {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl UuidV4 {
 	pub fn new() -> Self {
 		Self
@@ -45,7 +51,7 @@ impl ScalarFunction for UuidV4 {
 			return Ok(ColumnData::uuid4(data));
 		}
 
-		let column = ctx.columns.get(0).unwrap();
+		let column = ctx.columns.first().unwrap();
 		match &column.data() {
 			ColumnData::Utf8 {
 				container,

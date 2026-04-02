@@ -112,9 +112,10 @@ impl Catalog {
 					return Ok(None);
 				}
 
-				if let Some(policy) =
-					CatalogStore::find_policy_by_name(&mut Transaction::Test(t.reborrow()), name)?
-				{
+				if let Some(policy) = CatalogStore::find_policy_by_name(
+					&mut Transaction::Test(Box::new(t.reborrow())),
+					name,
+				)? {
 					return Ok(Some(policy));
 				}
 
@@ -193,7 +194,8 @@ impl Catalog {
 
 	pub fn list_all_policies(&self, txn: &mut Transaction<'_>) -> Result<Vec<Policy>> {
 		if let Transaction::Test(t) = txn {
-			let mut policies = CatalogStore::list_all_policies(&mut Transaction::Test(t.reborrow()))?;
+			let mut policies =
+				CatalogStore::list_all_policies(&mut Transaction::Test(Box::new(t.reborrow())))?;
 			policies.sort_by_key(|p| p.id);
 			return Ok(policies);
 		}

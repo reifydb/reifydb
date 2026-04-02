@@ -360,7 +360,7 @@ impl Serialize for ColumnData<Cow> {
 			Any(&'a AnyContainer),
 			DictionaryId(&'a DictionaryContainer),
 			Option {
-				inner: &'a Box<ColumnData>,
+				inner: &'a ColumnData,
 				bitvec: &'a BitVec,
 			},
 		}
@@ -428,7 +428,7 @@ impl Serialize for ColumnData<Cow> {
 				inner,
 				bitvec,
 			} => Helper::Option {
-				inner,
+				inner: inner.as_ref(),
 				bitvec,
 			},
 		};
@@ -759,7 +759,7 @@ impl<S: Storage> ColumnData<S> {
 				| Type::Int4 | Type::Int8 | Type::Int16
 				| Type::Uint1 | Type::Uint2 | Type::Uint4
 				| Type::Uint8 | Type::Uint16 | Type::Int
-				| Type::Uint | Type::Decimal { .. }
+				| Type::Uint | Type::Decimal
 		)
 	}
 
@@ -797,6 +797,10 @@ impl<S: Storage> ColumnData<S> {
 			} => inner.len(),
 			_ => with_container!(self, |c| c.len()),
 		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
 	}
 
 	pub fn capacity(&self) -> usize {

@@ -15,6 +15,12 @@ use crate::function::{
 
 pub struct BlobB58;
 
+impl Default for BlobB58 {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl BlobB58 {
 	pub fn new() -> Self {
 		Self
@@ -39,7 +45,7 @@ impl ScalarFunction for BlobB58 {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

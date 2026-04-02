@@ -54,7 +54,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceFlowKey::full_scan(namespace), 1024)?;
 
 		let mut found_flow = None;
-		while let Some(entry) = stream.next() {
+		for entry in stream.by_ref() {
 			let multi = entry?;
 			let row = &multi.row;
 			let flow_name = flow_namespace::SHAPE.get_utf8(row, flow_namespace::NAME);

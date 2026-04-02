@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
-
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![cfg_attr(not(debug_assertions), deny(warnings))]
+#![allow(clippy::tabs_in_doc_comments)]
 
 use std::{
 	fmt,
@@ -15,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_type::{error::Error, value::uuid::Uuid7};
-use uuid::Uuid;
+use uuid::{Builder, Uuid};
 
 pub mod change;
 pub mod change_accumulator;
@@ -29,14 +31,8 @@ pub mod transaction;
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct TransactionId(pub(crate) Uuid7);
-
-impl Default for TransactionId {
-	fn default() -> Self {
-		Self(Uuid7::default())
-	}
-}
 
 impl Deref for TransactionId {
 	type Target = Uuid7;
@@ -47,8 +43,16 @@ impl Deref for TransactionId {
 }
 
 impl TransactionId {
+	/// Generate a new transaction ID using the infrastructure RNG stream.
+	///
+	/// Uses `rng.infra_bytes_10()` instead of `rng.bytes_10()` so that
+	/// transaction ID generation does not consume from the primary RNG.
+	/// This ensures deterministic test output across runners that create
+	/// different numbers of internal transactions (e.g. gRPC vs embedded).
 	pub fn generate(clock: &Clock, rng: &Rng) -> Self {
-		Self(Uuid7::generate(clock, rng))
+		let millis = clock.now_millis();
+		let random_bytes = rng.infra_bytes_10();
+		Self(Uuid7(Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid()))
 	}
 }
 

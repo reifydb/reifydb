@@ -9,12 +9,7 @@ name = "reifydb-forge"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { path = "../../pkg/rust/reifydb", features = [
-    "sub_server_admin",
-    "sub_server_grpc",
-    "sub_server_ws",
-    "sub_tracing",
-] }
+reifydb = { workspace = true }
 reifydb-routine = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }

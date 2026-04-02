@@ -214,6 +214,10 @@ impl FrameColumnData {
 		}
 	}
 
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+
 	pub fn as_string(&self, index: usize) -> String {
 		match self {
 			FrameColumnData::Bool(container) => container.as_string(index),

@@ -22,6 +22,12 @@ pub struct SystemTagVariants {
 	exhausted: bool,
 }
 
+impl Default for SystemTagVariants {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemTagVariants {
 	pub fn new() -> Self {
 		Self {

@@ -16,7 +16,7 @@ use crate::{
 impl Vm {
 	pub(crate) fn exec_load_var(&mut self, fragment: &Fragment) -> Result<()> {
 		let name = strip_dollar_prefix(fragment.text());
-		match self.symbols.get(&name) {
+		match self.symbols.get(name) {
 			Some(Variable::Scalar(c)) => {
 				self.stack.push(Variable::Scalar(c.clone()));
 			}
@@ -85,7 +85,7 @@ impl Vm {
 	pub(crate) fn exec_field_access(&mut self, object: &Fragment, field: &Fragment) -> Result<()> {
 		let var_name = strip_dollar_prefix(object.text());
 		let field_name = field.text();
-		match self.symbols.get(&var_name) {
+		match self.symbols.get(var_name) {
 			Some(Variable::Columns(columns)) => {
 				let col = columns.columns.iter().find(|c| c.name.text() == field_name);
 				match col {

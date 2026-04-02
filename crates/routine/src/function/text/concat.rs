@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextConcat;
 
+impl Default for TextConcat {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextConcat {
 	pub fn new() -> Self {
 		Self

@@ -100,11 +100,7 @@ impl CommittedWindow {
 }
 
 /// Oracle implementation with time-window based conflict detection
-pub(crate) struct OracleInner<L>
-where
-	L: VersionProvider,
-{
-	pub clock: L,
+pub(crate) struct OracleInner {
 	pub last_cleanup: CommitVersion,
 
 	/// Time windows containing committed transactions, keyed by window
@@ -136,7 +132,8 @@ pub(crate) struct Oracle<L>
 where
 	L: VersionProvider,
 {
-	pub(crate) inner: RwLock<OracleInner<L>>,
+	pub(crate) clock: L,
+	pub(crate) inner: RwLock<OracleInner>,
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
 	shutdown_signal: Arc<RwLock<bool>>,
@@ -160,8 +157,8 @@ where
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
 		Self {
+			clock,
 			inner: RwLock::new(OracleInner {
-				clock,
 				last_cleanup: CommitVersion(0),
 				time_windows: BTreeMap::new(),
 				key_to_windows: HashMap::with_capacity(10000),
@@ -317,17 +314,17 @@ where
 						continue;
 					}
 
-					if let Some(old_conflicts) = &committed_txn.conflict_manager {
-						if conflicts.has_conflict(old_conflicts) {
-							Span::current().record(
-								"conflict_check_us",
-								conflict_start.elapsed().as_micros() as u64,
-							);
-							Span::current().record("windows_checked", windows_checked);
-							Span::current().record("txns_checked", txns_checked);
-							Span::current().record("has_conflict", true);
-							return Ok(CreateCommitResult::Conflict(conflicts));
-						}
+					if let Some(old_conflicts) = &committed_txn.conflict_manager
+						&& conflicts.has_conflict(old_conflicts)
+					{
+						Span::current().record(
+							"conflict_check_us",
+							conflict_start.elapsed().as_micros() as u64,
+						);
+						Span::current().record("windows_checked", windows_checked);
+						Span::current().record("txns_checked", txns_checked);
+						Span::current().record("has_conflict", true);
+						return Ok(CreateCommitResult::Conflict(conflicts));
 					}
 				}
 			}
@@ -347,10 +344,7 @@ where
 
 		// Get commit version - lock-free with gap-tolerant watermark
 		let commit_version = {
-			let clock = {
-				let inner = self.inner.read();
-				inner.clock.clone()
-			};
+			let clock = self.clock.clone();
 
 			let clock_start = self.metrics_clock.instant();
 			let version = clock.next()?;
@@ -397,7 +391,7 @@ where
 	}
 
 	pub(crate) fn version(&self) -> Result<CommitVersion> {
-		self.inner.read().clock.current()
+		self.clock.current()
 	}
 
 	pub fn stop(&mut self) {
@@ -429,14 +423,11 @@ where
 
 	/// Advance the version provider for replica replication.
 	pub(crate) fn advance_version_for_replica(&self, version: CommitVersion) {
-		self.inner.read().clock.advance_to(version);
+		self.clock.advance_to(version);
 	}
 }
 
-impl<L> OracleInner<L>
-where
-	L: VersionProvider,
-{
+impl OracleInner {
 	/// Add a committed transaction to the appropriate time window
 	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager, window_size: u64) {
 		// Determine which window this transaction belongs to
@@ -449,7 +440,7 @@ where
 		// Update key index for all conflict keys
 		let write_keys = conflicts.get_write_keys();
 		for key in write_keys {
-			self.key_to_windows.entry(key.clone()).or_insert_with(BTreeSet::new).insert(window_start);
+			self.key_to_windows.entry(key.clone()).or_default().insert(window_start);
 		}
 
 		// Add transaction to window
@@ -468,7 +459,7 @@ where
 	L: VersionProvider,
 {
 	fn drop(&mut self) {
-		let _ = self.stop();
+		self.stop();
 	}
 }
 

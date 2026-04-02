@@ -148,9 +148,9 @@ impl RowNumberProvider {
 		let full_range = EncodedKeyRange::prefix(&state_prefix.encode());
 
 		let keys_to_remove = {
-			let mut stream = txn.range(full_range, 1024);
+			let stream = txn.range(full_range, 1024);
 			let mut keys = Vec::new();
-			while let Some(result) = stream.next() {
+			for result in stream {
 				let multi = result?;
 				keys.push(multi.key);
 			}

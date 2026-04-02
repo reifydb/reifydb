@@ -31,7 +31,7 @@ pub(crate) fn div_columns(
 			&left.data(), &right.data();
 			fixed: div_numeric, arb: div_numeric_clone (ctx, target, fragment);
 
-			_ => return Err(TypeError::BinaryOperatorNotApplicable {
+			_ => Err(TypeError::BinaryOperatorNotApplicable {
 				operator: BinaryOp::Div,
 				left: left.get_type(),
 				right: right.get_type(),
@@ -41,7 +41,7 @@ pub(crate) fn div_columns(
 	})
 }
 
-fn div_numeric<'a, L, R>(
+fn div_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -73,7 +73,7 @@ where
 	})
 }
 
-fn div_numeric_clone<'a, L, R>(
+fn div_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,

@@ -13,9 +13,9 @@ use crate::{
 impl CatalogStore {
 	/// Find a token by its value using constant-time comparison.
 	pub(crate) fn find_token_by_value(rx: &mut Transaction<'_>, value: &str) -> Result<Option<Token>> {
-		let mut stream = rx.range(TokenKey::full_scan(), 1024)?;
+		let stream = rx.range(TokenKey::full_scan(), 1024)?;
 
-		while let Some(entry) = stream.next() {
+		for entry in stream {
 			let multi = entry?;
 			let stored_token = token::SHAPE.get_utf8(&multi.row, token::TOKEN);
 			if stored_token.as_bytes().ct_eq(value.as_bytes()).into() {

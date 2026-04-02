@@ -15,6 +15,12 @@ use crate::function::{
 
 pub struct BlobB64url;
 
+impl Default for BlobB64url {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl BlobB64url {
 	pub fn new() -> Self {
 		Self
@@ -39,7 +45,7 @@ impl ScalarFunction for BlobB64url {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

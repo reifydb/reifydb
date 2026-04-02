@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from 'vitest';
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 import {Client, HttpClient} from "../../../src";
 
 describe('ReifyDB Client Integration Tests', () => {
-    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
     const AUTH_TOKEN = process.env.REIFYDB_TOKEN;
 
     describe('HTTP Client', () => {
@@ -23,7 +23,7 @@ describe('ReifyDB Client Integration Tests', () => {
                 'MAP {result: 42}',
                 {},
                 [
-                    Schema.object({result: Schema.number()}),
+                    Shape.object({result: Shape.number()}),
                 ]
             );
 
@@ -38,7 +38,7 @@ describe('ReifyDB Client Integration Tests', () => {
                 'MAP {result: 42}',
                 {},
                 [
-                    Schema.object({result: Schema.number()}),
+                    Shape.object({result: Shape.number()}),
                 ]
             );
 

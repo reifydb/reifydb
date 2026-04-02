@@ -33,12 +33,10 @@ pub fn explain_physical_plan(catalog: &Catalog, rx: &mut Transaction<'_>, query:
 	}
 
 	let mut result = String::new();
-	for plan in plans {
-		if let Some(plan) = plan {
-			let mut output = String::new();
-			render_physical_plan_inner(&plan, "", true, &mut output);
-			result += output.as_str();
-		}
+	for plan in plans.into_iter().flatten() {
+		let mut output = String::new();
+		render_physical_plan_inner(&plan, "", true, &mut output);
+		result += output.as_str();
 	}
 
 	Ok(result)
@@ -231,7 +229,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 							} else {
 								"├──"
 							},
-							expr.to_string()
+							expr
 						)
 						.unwrap();
 					}
@@ -253,7 +251,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 							} else {
 								"├──"
 							},
-							expr.to_string()
+							expr
 						)
 						.unwrap();
 					}
@@ -535,7 +533,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan<'_>, prefix: &str, is_last: bo
 			};
 			write_node_header(output, prefix, is_last, &label);
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(input, &child_prefix, true, output);
+				render_physical_plan_inner(input, child_prefix, true, output);
 			});
 		}
 		PhysicalPlan::CreatePrimaryKey(_) => {

@@ -1,0 +1,4 @@
+disallowed-methods = [
+    { path = "std::time::Instant::now", reason = "Use reifydb_runtime::context::clock::Clock::instant() instead" },
+    { path = "std::time::SystemTime::now", reason = "Use reifydb_runtime::context::clock::Clock::now_*() instead" },
+]

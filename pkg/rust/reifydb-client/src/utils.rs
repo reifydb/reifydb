@@ -8,6 +8,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Generate a unique request ID
+#[allow(clippy::disallowed_methods)]
 pub(crate) fn generate_request_id() -> String {
 	static COUNTER: AtomicU64 = AtomicU64::new(0);
 

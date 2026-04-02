@@ -30,6 +30,7 @@ pub async fn wait_for_condition<F>(condition: F, timeout: Duration, poll_interva
 where
 	F: Fn() -> bool,
 {
+	#[allow(clippy::disallowed_methods)]
 	let start = Instant::now();
 	let mut poll_count = 0u64;
 
@@ -42,7 +43,7 @@ where
 			panic!("Timeout after {:?}: {}", timeout, timeout_message);
 		}
 		poll_count += 1;
-		if poll_count % 1000 == 0 {
+		if poll_count.is_multiple_of(1000) {
 			println!(
 				"[DEBUG:await] poll #{poll_count} elapsed={:.1}s msg={timeout_message}",
 				start.elapsed().as_secs_f64()

@@ -4,11 +4,23 @@
 import type { Executor, ExecutionResult, Diagnostic } from '../types';
 import { ReifyError } from '@reifydb/core';
 
+export type TransactionType = 'admin' | 'query' | 'command';
+
 export interface WsClient {
   admin<const S extends readonly unknown[]>(
     statements: string | string[],
     params: unknown,
-    schemas: S
+    shapes: S
+  ): Promise<unknown[][]>;
+  query<const S extends readonly unknown[]>(
+    statements: string | string[],
+    params: unknown,
+    shapes: S
+  ): Promise<unknown[][]>;
+  command<const S extends readonly unknown[]>(
+    statements: string | string[],
+    params: unknown,
+    shapes: S
   ): Promise<unknown[][]>;
 }
 
@@ -44,6 +56,7 @@ function toDiagnostic(error: ReifyError): Diagnostic {
 
 export class WsExecutor implements Executor {
   private client: WsClient;
+  transactionType: TransactionType = 'admin';
 
   constructor(client: WsClient) {
     this.client = client;
@@ -59,7 +72,7 @@ export class WsExecutor implements Executor {
 
     const startTime = performance.now();
     try {
-      const frames = await this.client.admin(query, null, []);
+      const frames = await this.client[this.transactionType](query, null, []);
       const executionTime = Math.round(performance.now() - startTime);
       const results = frames[0] ?? [];
 

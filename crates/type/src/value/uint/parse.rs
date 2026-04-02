@@ -16,8 +16,8 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().is_some_and(|&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().is_some_and(|&b| b.is_ascii_whitespace());
 
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
@@ -42,15 +42,15 @@ pub fn parse_uint(fragment: Fragment) -> Result<Uint, Error> {
 	// float parsing
 	if value.starts_with('-') && value != "-0.0" && value != "-0" {
 		// Quick check for other obvious negative values
-		if let Ok(bigint) = value.parse::<BigInt>() {
-			if bigint.sign() == Sign::Minus {
-				return Err(TypeError::NumberOutOfRange {
-					target: Type::Uint,
-					fragment,
-					descriptor: None,
-				}
-				.into());
+		if let Ok(bigint) = value.parse::<BigInt>()
+			&& bigint.sign() == Sign::Minus
+		{
+			return Err(TypeError::NumberOutOfRange {
+				target: Type::Uint,
+				fragment,
+				descriptor: None,
 			}
+			.into());
 		}
 		// For non-BigInt parseable values, let float parsing handle it
 	}

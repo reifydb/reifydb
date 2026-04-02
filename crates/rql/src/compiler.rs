@@ -453,11 +453,7 @@ fn scan_free_variables(body: &[Instruction], params: &[nodes::FunctionParameter]
 		.iter()
 		.map(|p| {
 			let name = p.name.text();
-			if name.starts_with('$') {
-				&name[1..]
-			} else {
-				name
-			}
+			name.strip_prefix('$').unwrap_or(name)
 		})
 		.collect();
 

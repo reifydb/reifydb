@@ -22,6 +22,12 @@ pub struct SystemFlows {
 	exhausted: bool,
 }
 
+impl Default for SystemFlows {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SystemFlows {
 	pub fn new() -> Self {
 		Self {

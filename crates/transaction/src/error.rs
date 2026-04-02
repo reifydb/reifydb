@@ -33,7 +33,7 @@ pub enum TransactionError {
 
 	#[error("Transaction was poisoned by a prior error")]
 	Poisoned {
-		cause: Diagnostic,
+		cause: Box<Diagnostic>,
 	},
 
 	#[error("Raft proposal failed: {message}")]
@@ -148,7 +148,7 @@ impl IntoDiagnostic for TransactionError {
 				label: None,
 				help: Some("A previous statement failed, invalidating this transaction. Start a new transaction.".to_string()),
 				notes: vec![],
-				cause: Some(Box::new(cause)),
+				cause: Some(cause),
 				operator_chain: None,
 			},
 
@@ -170,6 +170,6 @@ impl IntoDiagnostic for TransactionError {
 
 impl From<TransactionError> for Error {
 	fn from(err: TransactionError) -> Self {
-		Error(err.into_diagnostic())
+		Error(Box::new(err.into_diagnostic()))
 	}
 }

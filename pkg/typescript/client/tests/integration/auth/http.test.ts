@@ -2,11 +2,11 @@
 // Copyright (c) 2025 ReifyDB
 import {beforeAll, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
-import {Schema} from "@reifydb/core";
+import {Shape} from "@reifydb/core";
 import {Client, HttpClient} from "../../../src";
 
 describe('Auth Login Tests — HTTP', () => {
-    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:8091';
+    const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
 
     beforeAll(async () => {
         await waitForDatabase();
@@ -22,7 +22,7 @@ describe('Auth Login Tests — HTTP', () => {
             expect(result.identity).toBeDefined();
             expect(result.identity.length).toBeGreaterThan(0);
 
-            const frames = await client.query('MAP {v: 42}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await client.query('MAP {v: 42}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(42);
         }, 10000);
 
@@ -47,7 +47,7 @@ describe('Auth Login Tests — HTTP', () => {
             expect(result.identity).toBeDefined();
             expect(result.identity.length).toBeGreaterThan(0);
 
-            const frames = await client.query('MAP {v: 42}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await client.query('MAP {v: 42}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(42);
         }, 10000);
 
@@ -69,14 +69,14 @@ describe('Auth Login Tests — HTTP', () => {
             const resultA = await client.loginWithPassword('alice', 'alice-pass');
             expect(resultA.token).toBeDefined();
 
-            const framesA = await client.query('MAP {v: 1}', {}, [Schema.object({v: Schema.number()})]);
+            const framesA = await client.query('MAP {v: 1}', {}, [Shape.object({v: Shape.number()})]);
             expect(framesA[0][0].v).toBe(1);
 
             const resultB = await client.loginWithToken('bob', 'bob-secret-token');
             expect(resultB.token).toBeDefined();
             expect(resultB.token).not.toBe(resultA.token);
 
-            const framesB = await client.query('MAP {v: 2}', {}, [Schema.object({v: Schema.number()})]);
+            const framesB = await client.query('MAP {v: 2}', {}, [Shape.object({v: Shape.number()})]);
             expect(framesB[0][0].v).toBe(2);
         }, 10000);
     });
@@ -87,14 +87,14 @@ describe('Auth Login Tests — HTTP', () => {
             const result = await client.loginWithPassword('alice', 'alice-pass');
             const oldToken = result.token;
 
-            const frames = await client.query('MAP {v: 1}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await client.query('MAP {v: 1}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(1);
 
             await client.logout();
 
             // Verify the old token is revoked server-side
             const client2 = Client.connect_http(HTTP_URL, {timeoutMs: 10000, token: oldToken});
-            await expect(client2.query('MAP {v: 2}', {}, [Schema.object({v: Schema.number()})])).rejects.toThrow();
+            await expect(client2.query('MAP {v: 2}', {}, [Shape.object({v: Shape.number()})])).rejects.toThrow();
         }, 10000);
 
         it('should handle double logout', async () => {
@@ -122,7 +122,7 @@ describe('Auth Login Tests — HTTP', () => {
             await clientA.logout();
 
             // clientB should still work
-            const frames = await clientB.query('MAP {v: 42}', {}, [Schema.object({v: Schema.number()})]);
+            const frames = await clientB.query('MAP {v: 42}', {}, [Shape.object({v: Shape.number()})]);
             expect(frames[0][0].v).toBe(42);
         }, 10000);
     });

@@ -41,14 +41,10 @@ impl AuthService {
 			None => {
 				drop(txn);
 
-				if method == "solana" {
-					if let Some(public_key) = credentials.get("public_key").cloned() {
-						return self.auto_provision_solana(
-							identifier,
-							&public_key,
-							&credentials,
-						);
-					}
+				if method == "solana"
+					&& let Some(public_key) = credentials.get("public_key").cloned()
+				{
+					return self.auto_provision_solana(identifier, &public_key, &credentials);
 				}
 				return Ok(AuthResponse::Failed {
 					reason: "invalid credentials".to_string(),

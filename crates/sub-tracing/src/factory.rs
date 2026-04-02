@@ -6,14 +6,11 @@ use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_type::Result;
 
-use crate::builder::TracingBuilder;
-
-/// Configuration function for the tracing subsystem
-pub type TracingConfigurator = Box<dyn FnOnce(TracingBuilder) -> TracingBuilder + Send>;
+use crate::builder::TracingConfigurator;
 
 /// Factory for creating TracingSubsystem instances
 pub struct TracingSubsystemFactory {
-	configurator: Option<TracingConfigurator>,
+	configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send>>,
 }
 
 impl TracingSubsystemFactory {
@@ -27,7 +24,7 @@ impl TracingSubsystemFactory {
 	/// Create a factory with a custom configurator
 	pub fn with_configurator<F>(configurator: F) -> Self
 	where
-		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
+		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
 	{
 		Self {
 			configurator: Some(Box::new(configurator)),
@@ -48,11 +45,11 @@ impl SubsystemFactory for TracingSubsystemFactory {
 	}
 
 	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
-		let builder = if let Some(configurator) = self.configurator {
-			configurator(TracingBuilder::new())
+		let configurator = if let Some(configure_fn) = self.configurator {
+			configure_fn(TracingConfigurator::new())
 		} else {
-			TracingBuilder::default()
+			TracingConfigurator::default()
 		};
-		Ok(Box::new(builder.build()))
+		Ok(Box::new(configurator.configure()))
 	}
 }

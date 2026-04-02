@@ -26,11 +26,11 @@ impl CatalogStore {
 				ShapeId::Series(_) => "Series",
 			};
 
-			Error(internal!(
+			Error(Box::new(internal!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				shape_type,
 				object_id
-			))
+			)))
 		})
 	}
 }

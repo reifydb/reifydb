@@ -22,15 +22,14 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 		&mut Transaction::Admin(txn),
 		plan.namespace.def().id(),
 		plan.table.text(),
-	)? {
-		if plan.if_not_exists {
-			return Ok(Columns::single_row([
-				("id", Value::Uint8(existing.id.0)),
-				("namespace", Value::Utf8(plan.namespace.name().to_string())),
-				("table", Value::Utf8(plan.table.text().to_string())),
-				("created", Value::Boolean(false)),
-			]));
-		}
+	)? && plan.if_not_exists
+	{
+		return Ok(Columns::single_row([
+			("id", Value::Uint8(existing.id.0)),
+			("namespace", Value::Utf8(plan.namespace.name().to_string())),
+			("table", Value::Utf8(plan.table.text().to_string())),
+			("created", Value::Boolean(false)),
+		]));
 		// The error will be returned by create_table if the
 		// table exists
 	}

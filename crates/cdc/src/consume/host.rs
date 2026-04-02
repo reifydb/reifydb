@@ -8,7 +8,7 @@
 
 use std::time::Duration;
 
-use reifydb_catalog::shape::RowShapeRegistry;
+use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_core::common::CommitVersion;
 use reifydb_transaction::transaction::{command::CommandTransaction, query::QueryTransaction};
 use reifydb_type::Result;
@@ -30,6 +30,6 @@ pub trait CdcHost: Clone + Send + Sync + 'static {
 	/// Returns true if the version was reached, false if timeout.
 	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool;
 
-	/// Get the shape registry for fingerprint-based shape lookup.
-	fn row_shape_registry(&self) -> &RowShapeRegistry;
+	/// Get the materialized catalog for fingerprint-based shape lookup.
+	fn materialized_catalog(&self) -> &MaterializedCatalog;
 }

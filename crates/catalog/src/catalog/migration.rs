@@ -31,7 +31,7 @@ impl Catalog {
 	#[instrument(name = "catalog::migration::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_migration(&self, txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
 		// Check transactional changes first
-		if let Some(_) = txn.find_migration_by_name(&to_create.name) {
+		if txn.find_migration_by_name(&to_create.name).is_some() {
 			return Err(CatalogError::AlreadyExists {
 				kind: CatalogObjectKind::Migration,
 				namespace: String::new(),

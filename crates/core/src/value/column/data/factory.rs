@@ -829,9 +829,7 @@ impl ColumnData {
 			Type::IdentityId => Self::identity_id(vec![IdentityId::default(); len]),
 			Type::Int => Self::int(vec![Int::default(); len]),
 			Type::Uint => Self::uint(vec![Uint::default(); len]),
-			Type::Decimal {
-				..
-			} => Self::decimal(vec![Decimal::from(0); len]),
+			Type::Decimal => Self::decimal(vec![Decimal::from(0); len]),
 			Type::Any => Self::any(vec![Box::new(Value::none()); len]),
 			Type::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
 			Type::List(_) => Self::any(vec![Box::new(Value::List(vec![])); len]),

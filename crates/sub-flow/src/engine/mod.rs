@@ -99,11 +99,11 @@ impl FlowEngine {
 
 		// Serialize config to postcard
 		let config_bytes = to_stdvec(config)
-			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
+			.map_err(|e| Error(Box::new(internal!("Failed to serialize operator config: {:?}", e))))?;
 
 		let (descriptor, instance) = loader_write
 			.create_operator_by_name(operator, node_id, &config_bytes)
-			.map_err(|e| Error(internal!("Failed to create FFI operator: {:?}", e)))?;
+			.map_err(|e| Error(Box::new(internal!("Failed to create FFI operator: {:?}", e))))?;
 
 		Ok(Box::new(FFIOperator::new(descriptor, instance, node_id, self.executor.clone())))
 	}

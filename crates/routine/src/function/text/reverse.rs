@@ -12,6 +12,12 @@ use crate::function::{
 
 pub struct TextReverse;
 
+impl Default for TextReverse {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl TextReverse {
 	pub fn new() -> Self {
 		Self
@@ -35,7 +41,7 @@ impl ScalarFunction for TextReverse {
 			});
 		}
 
-		let column = columns.get(0).unwrap();
+		let column = columns.first().unwrap();
 
 		match &column.data() {
 			ColumnData::Utf8 {

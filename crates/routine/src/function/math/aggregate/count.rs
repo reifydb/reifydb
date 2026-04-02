@@ -16,6 +16,12 @@ pub struct Count {
 	pub counts: IndexMap<Vec<Value>, i64>,
 }
 
+impl Default for Count {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Count {
 	pub fn new() -> Self {
 		Self {

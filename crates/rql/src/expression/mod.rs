@@ -809,11 +809,7 @@ impl VariableExpression {
 	pub fn name(&self) -> &str {
 		// Extract variable name from token value (skip the '$')
 		let text = self.fragment.text();
-		if text.starts_with('$') {
-			&text[1..]
-		} else {
-			text
-		}
+		text.strip_prefix('$').unwrap_or(text)
 	}
 }
 
@@ -1223,10 +1219,10 @@ impl ExpressionCompiler {
 	/// Used for IF/ELSE blocks in expression context.
 	fn compile_block_as_expr(block: AstBlock<'_>) -> Result<Expression> {
 		let fragment = block.token.fragment.to_owned();
-		if let Some(first_stmt) = block.statements.into_iter().next() {
-			if let Some(first_node) = first_stmt.nodes.into_iter().next() {
-				return Self::compile(first_node);
-			}
+		if let Some(first_stmt) = block.statements.into_iter().next()
+			&& let Some(first_node) = first_stmt.nodes.into_iter().next()
+		{
+			return Self::compile(first_node);
 		}
 		// Empty block → none
 		Ok(Expression::Constant(ConstantExpression::None {
@@ -1801,10 +1797,10 @@ impl ExpressionCompiler {
 			InfixOperator::Assign(token) => {
 				// Assignment operator (=) is not valid in expression context
 				// Use == for equality comparison
-				return Err(AstError::UnsupportedToken {
+				Err(AstError::UnsupportedToken {
 					fragment: token.fragment.to_owned(),
 				}
-				.into());
+				.into())
 			}
 
 			InfixOperator::TypeAscription(token) => {
@@ -1829,7 +1825,7 @@ impl ExpressionCompiler {
 						}))
 					}
 					_ => {
-						return err!(Diagnostic {
+						err!(Diagnostic {
 							code: "EXPR_001".to_string(),
 							statement: None,
 							message: "Invalid alias expression".to_string(),
@@ -1840,7 +1836,7 @@ impl ExpressionCompiler {
 							notes: vec![],
 							cause: None,
 							operator_chain: None,
-						});
+						})
 					}
 				}
 			}

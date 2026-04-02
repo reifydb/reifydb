@@ -36,7 +36,7 @@ impl CatalogStore {
 				kind: CatalogObjectKind::Namespace,
 				namespace: namespace.name().to_string(),
 				name: namespace.name().to_string(),
-				fragment: to_create.namespace_fragment.unwrap_or_else(|| Fragment::None),
+				fragment: to_create.namespace_fragment.unwrap_or(Fragment::None),
 			}
 			.into());
 		}
@@ -57,7 +57,7 @@ impl CatalogStore {
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 
-		Ok(Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)?)
+		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
 	}
 }
 

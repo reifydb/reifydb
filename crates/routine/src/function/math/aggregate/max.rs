@@ -23,6 +23,12 @@ pub struct Max {
 	input_type: Option<Type>,
 }
 
+impl Default for Max {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl Max {
 	pub fn new() -> Self {
 		Self {
@@ -114,13 +120,13 @@ impl AggregateFunction for Max {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<f32> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(&val) = container.get(i) {
-								max = Some(match max {
-									Some(current) => f32::max(current, val),
-									None => val,
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(&val) = container.get(i)
+						{
+							max = Some(match max {
+								Some(current) => f32::max(current, val),
+								None => val,
+							});
 						}
 					}
 					match max {
@@ -138,13 +144,13 @@ impl AggregateFunction for Max {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<f64> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(&val) = container.get(i) {
-								max = Some(match max {
-									Some(current) => f64::max(current, val),
-									None => val,
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(&val) = container.get(i)
+						{
+							max = Some(match max {
+								Some(current) => f64::max(current, val),
+								None => val,
+							});
 						}
 					}
 					match max {
@@ -165,14 +171,14 @@ impl AggregateFunction for Max {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<Int> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								max = Some(match max {
-									Some(current) if *val > current => val.clone(),
-									Some(current) => current,
-									None => val.clone(),
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							max = Some(match max {
+								Some(current) if *val > current => val.clone(),
+								Some(current) => current,
+								None => val.clone(),
+							});
 						}
 					}
 					match max {
@@ -193,14 +199,14 @@ impl AggregateFunction for Max {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<Uint> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								max = Some(match max {
-									Some(current) if *val > current => val.clone(),
-									Some(current) => current,
-									None => val.clone(),
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							max = Some(match max {
+								Some(current) if *val > current => val.clone(),
+								Some(current) => current,
+								None => val.clone(),
+							});
 						}
 					}
 					match max {
@@ -221,14 +227,14 @@ impl AggregateFunction for Max {
 				for (group, indices) in groups.iter() {
 					let mut max: Option<Decimal> = None;
 					for &i in indices {
-						if column.data().is_defined(i) {
-							if let Some(val) = container.get(i) {
-								max = Some(match max {
-									Some(current) if *val > current => val.clone(),
-									Some(current) => current,
-									None => val.clone(),
-								});
-							}
+						if column.data().is_defined(i)
+							&& let Some(val) = container.get(i)
+						{
+							max = Some(match max {
+								Some(current) if *val > current => val.clone(),
+								Some(current) => current,
+								None => val.clone(),
+							});
 						}
 					}
 					match max {

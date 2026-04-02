@@ -21,7 +21,7 @@ use crate::expression::context::EvalContext;
 macro_rules! impl_scalar_op {
 	($method:ident, $safe_trait:ident, $checked_method:ident) => {
 		impl EvalContext<'_> {
-			pub fn $method<'a, L, R>(
+			pub fn $method<L, R>(
 				&self,
 				l: &L,
 				r: &R,
