@@ -114,7 +114,7 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: clean format-check check-code-quality check build build-testcontainer test-full push-testcontainer push
+all: format-check check-code-quality check build build-testcontainer test-full push-testcontainer push
 
 .PHONY: check-code-quality
 check-code-quality:
