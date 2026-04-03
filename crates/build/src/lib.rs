@@ -60,5 +60,4 @@ pub fn emit_target_cfg() {
 		println!("cargo:rustc-cfg=reifydb_single_threaded");
 	}
 	println!("cargo:rerun-if-changed=build.rs");
-	println!("cargo:rerun-if-env-changed=TARGET");
 }
