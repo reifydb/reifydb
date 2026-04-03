@@ -1,0 +1,177 @@
+@layer base {
+  html {
+    background: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    color-scheme: dark;
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  *:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-primary);
+    color: var(--color-bg-primary);
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-text-muted);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+/* ── Section divider ─────────────────────────────────────── */
+.section-divider {
+  height: 1px;
+  background: var(--color-border-light);
+}
+
+/* ── Card ─────────────────────────────────────────────────── */
+.card-modern {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.card-modern:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+/* ── Glass / glow utilities ──────────────────────────────── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  transition: all 0.3s ease;
+}
+.glass-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow-glow-sm);
+}
+
+.glass-card-strong {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-lg);
+  transition: all 0.3s ease;
+}
+.glass-card-strong:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.glass {
+  background: rgba(26, 26, 26, 0.80);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glow-primary {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+
+/* ── Card nested inner ───────────────────────────────────── */
+.card-nested-inner {
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+}
+
+/* ── Brutalist tab underline ─────────────────────────────── */
+.tab-brutalist {
+  position: relative;
+  padding-bottom: 8px;
+  transition: color 0.15s ease;
+}
+.tab-brutalist::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--color-primary);
+  transition: width 0.15s ease;
+}
+.tab-brutalist-active::after {
+  width: 100%;
+}
+
+/* ── Status indicators ───────────────────────────────────── */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.status-dot-connected {
+  background: var(--color-status-success);
+  animation: status-pulse 1.5s ease-in-out infinite;
+}
+.status-dot-loading {
+  background: var(--color-status-warning);
+  animation: status-pulse 0.6s ease-in-out infinite;
+}
+.status-dot-error {
+  background: var(--color-status-error);
+}
+.status-dot-idle {
+  background: var(--color-text-muted);
+}
+
+/* ── Animations ──────────────────────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(129, 140, 248, 0.3); }
+  50% { box-shadow: 0 0 40px rgba(129, 140, 248, 0.5); }
+}
+
+@keyframes slide-up-fade {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.5s ease-out forwards;
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up-fade 0.6s ease-out forwards;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-bg-primary); }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+
+/* ── Reduced motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

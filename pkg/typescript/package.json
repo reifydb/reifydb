@@ -11,12 +11,13 @@
     "test:integration": "pnpm build && pnpm -r --stream test:integration",
     "test:coverage": "pnpm build && pnpm -r --stream test:coverage",
     "test:watch": "pnpm -r --stream test:unit:watch",
-    "publish:all": "pnpm publish:core && pnpm publish:client && pnpm publish:console && pnpm publish:react && pnpm publish:shell && pnpm publish:wasm",
+    "publish:all": "pnpm publish:core && pnpm publish:client && pnpm publish:console && pnpm publish:react && pnpm publish:shell && pnpm publish:ui && pnpm publish:wasm",
     "publish:core": "pnpm --filter @reifydb/core publish:npm",
     "publish:client": "pnpm --filter @reifydb/client publish:npm",
     "publish:console": "pnpm --filter @reifydb/console publish:npm",
     "publish:react": "pnpm --filter @reifydb/react publish:npm",
     "publish:shell": "pnpm --filter @reifydb/shell publish:npm",
+    "publish:ui": "pnpm --filter @reifydb/ui publish:npm",
     "publish:wasm": "pnpm --filter @reifydb/wasm publish:npm"
   },
   "dependencies": {
