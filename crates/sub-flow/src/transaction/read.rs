@@ -27,6 +27,18 @@ use vec::IntoIter;
 
 use super::{FlowTransaction, PendingWrite};
 
+/// Determines which query snapshot to read from inside a FlowTransaction.
+pub(crate) enum ReadFrom {
+	/// Snapshots at the latest committed version. Use for keys whose values
+	/// are produced by flow processing and must reflect writes committed by
+	/// previous CDC batches (operator state, ringbuffer metadata, series metadata).
+	StateQuery,
+	/// Snapshots at the CDC event version. Use for keys whose values are the
+	/// source data being consumed — the original table rows that triggered
+	/// the CDC event, plus catalog/schema metadata the flow reads but never writes.
+	Query,
+}
+
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then (if transactional) base_pending, then querying
 	/// multi-version store
@@ -54,27 +66,26 @@ impl FlowTransaction {
 			}
 		}
 
-		// 3. Ephemeral: state keys from HashMap, source keys from primitive_query
+		// 3. Ephemeral: state keys from HashMap, source keys from query
 		if let Self::Ephemeral {
 			inner,
 			state,
 		} = self
 		{
-			if Self::is_flow_state_key(key) {
-				return Ok(state.get(key).cloned());
-			}
-			return match inner.primitive_query.get(key)? {
-				Some(multi) => Ok(Some(multi.row().clone())),
-				None => Ok(None),
+			return match Self::read_from(key) {
+				ReadFrom::StateQuery => Ok(state.get(key).cloned()),
+				ReadFrom::Query => match inner.query.get(key)? {
+					Some(multi) => Ok(Some(multi.row().clone())),
+					None => Ok(None),
+				},
 			};
 		}
 
 		// 4. Fall through to committed storage
 		let inner = self.inner_mut();
-		let query = if Self::is_flow_state_key(key) {
-			inner.state_query.as_ref().unwrap()
-		} else {
-			&inner.primitive_query
+		let query = match Self::read_from(key) {
+			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
+			ReadFrom::Query => &inner.query,
 		};
 		match query.get(key)? {
 			Some(multi) => Ok(Some(multi.row().clone())),
@@ -105,23 +116,22 @@ impl FlowTransaction {
 			}
 		}
 
-		// Ephemeral: state keys from HashMap, source keys from primitive_query
+		// Ephemeral: state keys from HashMap, source keys from query
 		if let Self::Ephemeral {
 			inner,
 			state,
 		} = self
 		{
-			if Self::is_flow_state_key(key) {
-				return Ok(state.contains_key(key));
-			}
-			return inner.primitive_query.contains_key(key);
+			return match Self::read_from(key) {
+				ReadFrom::StateQuery => Ok(state.contains_key(key)),
+				ReadFrom::Query => inner.query.contains_key(key),
+			};
 		}
 
 		let inner = self.inner_mut();
-		let query = if Self::is_flow_state_key(key) {
-			inner.state_query.as_ref().unwrap()
-		} else {
-			&inner.primitive_query
+		let query = match Self::read_from(key) {
+			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
+			ReadFrom::Query => &inner.query,
 		};
 		query.contains_key(key)
 	}
@@ -136,10 +146,89 @@ impl FlowTransaction {
 		})
 	}
 
-	pub(crate) fn is_flow_state_key(key: &EncodedKey) -> bool {
+	pub(crate) fn read_from(key: &EncodedKey) -> ReadFrom {
 		match Key::kind(key) {
-			None => false,
-			Some(kind) => matches!(kind, KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState),
+			None => ReadFrom::Query,
+			Some(kind) => match kind {
+				// Flow-produced state — read from state_query so subsequent
+				// CDC batches see the prior batch's committed writes.
+				KeyKind::FlowNodeState => ReadFrom::StateQuery,
+				KeyKind::FlowNodeInternalState => ReadFrom::StateQuery,
+				KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
+				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
+
+				// Row keys are used for both source tables and flow-produced views.
+				// Sink operators write view/ringbuffer rows but never read them
+				// back via get() — they only read metadata and operator state.
+				// Source table rows must come from query (CDC event version).
+				// If a future operator needs to read back its own row output
+				// across CDC batches, this will need finer-grained routing
+				// based on the ShapeId embedded in the RowKey.
+				KeyKind::Row => ReadFrom::Query,
+
+				// Source data & catalog metadata — read from query
+				KeyKind::Namespace => ReadFrom::Query,
+				KeyKind::Table => ReadFrom::Query,
+				KeyKind::NamespaceTable => ReadFrom::Query,
+				KeyKind::SystemSequence => ReadFrom::Query,
+				KeyKind::Columns => ReadFrom::Query,
+				KeyKind::Column => ReadFrom::Query,
+				KeyKind::RowSequence => ReadFrom::Query,
+				KeyKind::ColumnProperty => ReadFrom::Query,
+				KeyKind::SystemVersion => ReadFrom::Query,
+				KeyKind::TransactionVersion => ReadFrom::Query,
+				KeyKind::Index => ReadFrom::Query,
+				KeyKind::IndexEntry => ReadFrom::Query,
+				KeyKind::ColumnSequence => ReadFrom::Query,
+				KeyKind::CdcConsumer => ReadFrom::Query,
+				KeyKind::View => ReadFrom::Query,
+				KeyKind::NamespaceView => ReadFrom::Query,
+				KeyKind::PrimaryKey => ReadFrom::Query,
+				KeyKind::RingBuffer => ReadFrom::Query,
+				KeyKind::NamespaceRingBuffer => ReadFrom::Query,
+				KeyKind::ShapeRetentionPolicy => ReadFrom::Query,
+				KeyKind::OperatorRetentionPolicy => ReadFrom::Query,
+				KeyKind::Flow => ReadFrom::Query,
+				KeyKind::NamespaceFlow => ReadFrom::Query,
+				KeyKind::FlowNode => ReadFrom::Query,
+				KeyKind::FlowNodeByFlow => ReadFrom::Query,
+				KeyKind::FlowEdge => ReadFrom::Query,
+				KeyKind::FlowEdgeByFlow => ReadFrom::Query,
+				KeyKind::Dictionary => ReadFrom::Query,
+				KeyKind::DictionaryEntry => ReadFrom::Query,
+				KeyKind::DictionaryEntryIndex => ReadFrom::Query,
+				KeyKind::NamespaceDictionary => ReadFrom::Query,
+				KeyKind::DictionarySequence => ReadFrom::Query,
+				KeyKind::Metric => ReadFrom::Query,
+				KeyKind::FlowVersion => ReadFrom::Query,
+				KeyKind::Subscription => ReadFrom::Query,
+				KeyKind::SubscriptionRow => ReadFrom::Query,
+				KeyKind::SubscriptionColumn => ReadFrom::Query,
+				KeyKind::Shape => ReadFrom::Query,
+				KeyKind::RowShapeField => ReadFrom::Query,
+				KeyKind::SumType => ReadFrom::Query,
+				KeyKind::NamespaceSumType => ReadFrom::Query,
+				KeyKind::Handler => ReadFrom::Query,
+				KeyKind::NamespaceHandler => ReadFrom::Query,
+				KeyKind::VariantHandler => ReadFrom::Query,
+				KeyKind::Series => ReadFrom::Query,
+				KeyKind::NamespaceSeries => ReadFrom::Query,
+				KeyKind::Identity => ReadFrom::Query,
+				KeyKind::Role => ReadFrom::Query,
+				KeyKind::GrantedRole => ReadFrom::Query,
+				KeyKind::Policy => ReadFrom::Query,
+				KeyKind::PolicyOp => ReadFrom::Query,
+				KeyKind::Migration => ReadFrom::Query,
+				KeyKind::MigrationEvent => ReadFrom::Query,
+				KeyKind::Authentication => ReadFrom::Query,
+				KeyKind::Config => ReadFrom::Query,
+				KeyKind::Token => ReadFrom::Query,
+				KeyKind::Source => ReadFrom::Query,
+				KeyKind::NamespaceSource => ReadFrom::Query,
+				KeyKind::Sink => ReadFrom::Query,
+				KeyKind::NamespaceSink => ReadFrom::Query,
+				KeyKind::SourceCheckpoint => ReadFrom::Query,
+			},
 		}
 	}
 
@@ -167,14 +256,11 @@ impl FlowTransaction {
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
 				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => {
-						if Self::is_flow_state_key(start) {
-							inner.state_query.as_ref().unwrap()
-						} else {
-							&inner.primitive_query
-						}
-					}
-					Unbounded => &inner.primitive_query,
+					Included(start) | Excluded(start) => match Self::read_from(start) {
+						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
+						ReadFrom::Query => &inner.query,
+					},
+					Unbounded => &inner.query,
 				};
 
 				let storage_iter = query.range(range, batch_size);
@@ -197,14 +283,11 @@ impl FlowTransaction {
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
 				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => {
-						if Self::is_flow_state_key(start) {
-							inner.state_query.as_ref().unwrap()
-						} else {
-							&inner.primitive_query
-						}
-					}
-					Unbounded => &inner.primitive_query,
+					Included(start) | Excluded(start) => match Self::read_from(start) {
+						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
+						ReadFrom::Query => &inner.query,
+					},
+					Unbounded => &inner.query,
 				};
 
 				let storage_iter = query.range(range, batch_size);
@@ -215,9 +298,11 @@ impl FlowTransaction {
 				inner,
 				state,
 			} => {
-				// Merge pending writes with ephemeral state or primitive_query
+				// Merge pending writes with ephemeral state or query
 				let is_state_range = match range.start.as_ref() {
-					Included(start) | Excluded(start) => Self::is_flow_state_key(start),
+					Included(start) | Excluded(start) => {
+						matches!(Self::read_from(start), ReadFrom::StateQuery)
+					}
 					Unbounded => false,
 				};
 
@@ -250,8 +335,8 @@ impl FlowTransaction {
 					});
 					Box::new(flow_merge_pending_iterator(pending_vec, sorted_items.into_iter(), v))
 				} else {
-					// Source data: delegate to primitive_query
-					let storage_iter = inner.primitive_query.range(range, batch_size);
+					// Source data: delegate to query
+					let storage_iter = inner.query.range(range, batch_size);
 					let v = inner.version;
 					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 				}
@@ -282,14 +367,11 @@ impl FlowTransaction {
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => {
-						if Self::is_flow_state_key(start) {
-							inner.state_query.as_ref().unwrap()
-						} else {
-							&inner.primitive_query
-						}
-					}
-					Unbounded => &inner.primitive_query,
+					Included(start) | Excluded(start) => match Self::read_from(start) {
+						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
+						ReadFrom::Query => &inner.query,
+					},
+					Unbounded => &inner.query,
 				};
 
 				let storage_iter = query.range_rev(range, batch_size);
@@ -311,14 +393,11 @@ impl FlowTransaction {
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => {
-						if Self::is_flow_state_key(start) {
-							inner.state_query.as_ref().unwrap()
-						} else {
-							&inner.primitive_query
-						}
-					}
-					Unbounded => &inner.primitive_query,
+					Included(start) | Excluded(start) => match Self::read_from(start) {
+						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
+						ReadFrom::Query => &inner.query,
+					},
+					Unbounded => &inner.query,
 				};
 
 				let storage_iter = query.range_rev(range, batch_size);
@@ -330,7 +409,9 @@ impl FlowTransaction {
 				state,
 			} => {
 				let is_state_range = match range.start.as_ref() {
-					Included(start) | Excluded(start) => Self::is_flow_state_key(start),
+					Included(start) | Excluded(start) => {
+						matches!(Self::read_from(start), ReadFrom::StateQuery)
+					}
 					Unbounded => false,
 				};
 
@@ -366,8 +447,8 @@ impl FlowTransaction {
 						v,
 					))
 				} else {
-					// Source data: delegate to primitive_query
-					let storage_iter = inner.primitive_query.range_rev(range, batch_size);
+					// Source data: delegate to query
+					let storage_iter = inner.query.range_rev(range, batch_size);
 					let v = inner.version;
 					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 				}

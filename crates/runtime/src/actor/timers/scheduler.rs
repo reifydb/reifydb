@@ -93,6 +93,12 @@ pub struct SchedulerHandle {
 	join_handle: Option<JoinHandle<()>>,
 }
 
+impl Default for SchedulerHandle {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl SchedulerHandle {
 	/// Create and start a new scheduler.
 	///
