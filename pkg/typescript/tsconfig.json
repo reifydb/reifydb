@@ -3,6 +3,7 @@
   "references": [
     { "path": "./client" },
     { "path": "./react" },
+    { "path": "./ui" },
     { "path": "./wasm" }
   ]
 }

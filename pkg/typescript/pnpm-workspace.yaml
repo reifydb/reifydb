@@ -4,6 +4,7 @@ packages:
   - console
   - react
   - shell
+  - ui
   - wasm
 
 overrides:
