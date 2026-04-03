@@ -32,7 +32,7 @@ use reifydb_metric::worker::{
 use reifydb_routine::{function::default_functions, procedure::registry::Procedures};
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
-	actor::system::{ActorHandle, ActorSystem, ActorSystemConfig},
+	actor::system::{ActorHandle, ActorSystem},
 	context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
@@ -163,17 +163,13 @@ impl TestEngineBuilder {
 	}
 
 	pub fn build(self) -> TestEngine {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let actor_system = ActorSystem::new(1);
 		let eventbus = EventBus::new(&actor_system);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default()
-				.async_threads(2)
-				.compute_threads(2)
-				.compute_max_in_flight(32)
-				.deterministic_testing(1000),
+			SharedRuntimeConfig::default().async_threads(2).compute_threads(2).deterministic_testing(1000),
 		);
 		let system_config = SystemConfig::new();
 		register_oracle_defaults(&system_config);
@@ -260,7 +256,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+	let actor_system = ActorSystem::new(1);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let system_config = SystemConfig::new();
@@ -283,10 +279,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(ActorSystemConfig {
-		pool_threads: 1,
-		max_in_flight: 1,
-	});
+	let actor_system = ActorSystem::new(1);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let system_config = SystemConfig::new();

@@ -10,13 +10,13 @@
 use std::{error, fmt, sync::Arc, time::Duration};
 
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
 	value::{frame::frame::Frame, identity::IdentityId},
 };
-use tokio::time;
+use tokio::{task::spawn_blocking, time};
 use tracing::warn;
 
 use crate::interceptor::{Operation, RequestContext, RequestInterceptorChain, ResponseContext};
@@ -98,7 +98,6 @@ where
 }
 
 async fn raw_query(
-	system: ActorSystem,
 	engine: StandardEngine,
 	query: String,
 	identity: IdentityId,
@@ -106,7 +105,7 @@ async fn raw_query(
 	timeout: Duration,
 	clock: Clock,
 ) -> ExecuteResult<(Vec<Frame>, Duration)> {
-	let task = system.execute(move || {
+	let task = spawn_blocking(move || -> (Result<Vec<Frame>, Error>, Duration) {
 		let t = clock.instant();
 		let r = engine.query_as(identity, &query, params);
 		(r, t.elapsed())
@@ -119,7 +118,6 @@ async fn raw_query(
 }
 
 async fn raw_command(
-	system: ActorSystem,
 	engine: StandardEngine,
 	statements: String,
 	identity: IdentityId,
@@ -127,7 +125,7 @@ async fn raw_command(
 	timeout: Duration,
 	clock: Clock,
 ) -> ExecuteResult<(Vec<Frame>, Duration)> {
-	let task = system.execute(move || {
+	let task = spawn_blocking(move || -> (Result<Vec<Frame>, Error>, Duration) {
 		let t = clock.instant();
 		let r = retry_on_conflict(|| engine.command_as(identity, &statements, params.clone()));
 		(r, t.elapsed())
@@ -140,7 +138,6 @@ async fn raw_command(
 }
 
 async fn raw_admin(
-	system: ActorSystem,
 	engine: StandardEngine,
 	statements: String,
 	identity: IdentityId,
@@ -148,7 +145,7 @@ async fn raw_admin(
 	timeout: Duration,
 	clock: Clock,
 ) -> ExecuteResult<(Vec<Frame>, Duration)> {
-	let task = system.execute(move || {
+	let task = spawn_blocking(move || -> (Result<Vec<Frame>, Error>, Duration) {
 		let t = clock.instant();
 		let r = retry_on_conflict(|| engine.admin_as(identity, &statements, params.clone()));
 		(r, t.elapsed())
@@ -161,7 +158,6 @@ async fn raw_admin(
 }
 
 async fn raw_subscription(
-	system: ActorSystem,
 	engine: StandardEngine,
 	statement: String,
 	identity: IdentityId,
@@ -169,7 +165,7 @@ async fn raw_subscription(
 	timeout: Duration,
 	clock: Clock,
 ) -> ExecuteResult<(Vec<Frame>, Duration)> {
-	let task = system.execute(move || {
+	let task = spawn_blocking(move || -> (Result<Vec<Frame>, Error>, Duration) {
 		let t = clock.instant();
 		let r = retry_on_conflict(|| engine.subscribe_as(identity, &statement, params.clone()));
 		(r, t.elapsed())
@@ -193,7 +189,6 @@ async fn raw_subscription(
 /// When the interceptor chain is empty, steps 1 and 3 are skipped.
 pub async fn execute(
 	chain: &RequestInterceptorChain,
-	system: ActorSystem,
 	engine: StandardEngine,
 	mut ctx: RequestContext,
 	timeout: Duration,
@@ -217,18 +212,13 @@ pub async fn execute(
 	};
 
 	let result = match operation {
-		Operation::Query => {
-			raw_query(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
-		}
+		Operation::Query => raw_query(engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await,
 		Operation::Command => {
-			raw_command(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
+			raw_command(engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
 		}
-		Operation::Admin => {
-			raw_admin(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
-		}
+		Operation::Admin => raw_admin(engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await,
 		Operation::Subscribe => {
-			raw_subscription(system, engine, combined, ctx.identity, ctx.params, timeout, clock.clone())
-				.await
+			raw_subscription(engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
 		}
 	};
 

@@ -19,9 +19,9 @@ pub mod native;
 pub mod wasm;
 
 #[cfg(not(reifydb_single_threaded))]
-pub use native::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
+pub use native::{ActorHandle, ActorSystem, JoinError};
 #[cfg(reifydb_single_threaded)]
-pub use wasm::{ActorHandle, ActorSystem, ActorSystemConfig, JoinError};
+pub use wasm::{ActorHandle, ActorSystem, JoinError};
 
 #[derive(Debug, Clone, Default)]
 pub struct ActorConfig {

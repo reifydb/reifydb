@@ -42,7 +42,6 @@ pub mod replica;
 pub(crate) mod version;
 pub mod write;
 
-use reifydb_runtime::SharedRuntimeConfig;
 use reifydb_store_single::SingleStore;
 
 use crate::multi::{
@@ -258,7 +257,7 @@ impl MultiTransaction {
 	pub fn testing() -> Self {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let actor_system = ActorSystem::new(1);
 		let event_bus = EventBus::new(&actor_system);
 		let system_config = SystemConfig::new();
 		oracle::register_defaults(&system_config);

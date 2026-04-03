@@ -5,7 +5,6 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::event::EventBus;
 use reifydb_runtime::{
-	SharedRuntimeConfig,
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
 };
@@ -94,12 +93,12 @@ impl Deref for StandardMultiStore {
 
 impl StandardMultiStore {
 	pub fn testing_memory() -> Self {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let actor_system = ActorSystem::new(1);
 		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
 	}
 
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let actor_system = ActorSystem::new(1);
 		Self::new(MultiStoreConfig {
 			hot: Some(HotConfig {
 				storage: HotStorage::memory(),

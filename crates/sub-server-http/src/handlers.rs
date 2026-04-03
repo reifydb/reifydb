@@ -310,15 +310,9 @@ async fn execute_and_respond(
 		metadata,
 	};
 
-	let (frames, duration) = execute(
-		state.request_interceptors(),
-		state.actor_system(),
-		state.engine_clone(),
-		ctx,
-		state.query_timeout(),
-		state.clock(),
-	)
-	.await?;
+	let (frames, duration) =
+		execute(state.request_interceptors(), state.engine_clone(), ctx, state.query_timeout(), state.clock())
+			.await?;
 
 	let mut response = if format_params.format.as_deref() == Some("json") {
 		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))

@@ -26,7 +26,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_runtime::{
-	SharedRuntimeConfig,
 	actor::system::ActorSystem,
 	context::{
 		clock::{Clock, MockClock},
@@ -61,8 +60,8 @@ test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all 
 fn test_serializable(path: &Path) {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
-	let bus = EventBus::new(&ActorSystem::new(SharedRuntimeConfig::default().actor_system_config()));
-	let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+	let bus = EventBus::new(&ActorSystem::new(1));
+	let actor_system = ActorSystem::new(1);
 	let system_config = SystemConfig::new();
 	register_oracle_defaults(&system_config);
 	let engine = MultiTransaction::new(

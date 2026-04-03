@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync
 
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, context::clock::Instant};
-use tokio::{select, sync::mpsc, time};
+use tokio::{select, sync::mpsc, task::spawn_blocking, time};
 use tracing::{debug, error, info};
 
 use crate::{
@@ -218,8 +218,7 @@ fn spawn_task(
 			(TaskWork::Sync(f), TaskExecutor::ComputePool) => {
 				let f = f.clone();
 				let ctx_clone = ctx.clone();
-				runtime.actor_system()
-					.compute(move || f(ctx_clone))
+				spawn_blocking(move || f(ctx_clone))
 					.await
 					.map_err(|e| Box::new(e) as Box<dyn Error + Send>)
 					.and_then(|r| r)

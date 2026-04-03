@@ -181,12 +181,12 @@ pub mod tests {
 		thread,
 	};
 
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+	use reifydb_runtime::actor::system::ActorSystem;
 
 	use crate::event::{Event, EventBus, EventListener};
 
 	fn test_actor_system() -> ActorSystem {
-		ActorSystem::new(SharedRuntimeConfig::default().actor_system_config())
+		ActorSystem::new(1)
 	}
 
 	define_event! {

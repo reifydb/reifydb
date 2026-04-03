@@ -15,7 +15,7 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
-use rayon::ThreadPool;
+use rayon::spawn;
 
 use super::{TimerHandle, next_timer_id};
 
@@ -97,14 +97,14 @@ impl SchedulerHandle {
 	/// Create and start a new scheduler.
 	///
 	/// The scheduler runs on a dedicated coordinator thread and dispatches
-	/// timer callbacks to the provided rayon thread pool.
-	pub fn new(pool: Arc<ThreadPool>) -> Self {
+	/// timer callbacks to the global rayon thread pool.
+	pub fn new() -> Self {
 		let (command_tx, command_rx) = bounded(256);
 
 		let join_handle = thread::Builder::new()
 			.name("timer-scheduler".to_string())
 			.spawn(move || {
-				scheduler_loop(command_rx, pool);
+				scheduler_loop(command_rx);
 			})
 			.expect("failed to spawn timer scheduler thread");
 
@@ -183,7 +183,7 @@ impl Drop for SchedulerHandle {
 }
 
 /// The main scheduler loop running on the coordinator thread.
-fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>) {
+fn scheduler_loop(command_rx: Receiver<SchedulerCommand>) {
 	let mut heap: BinaryHeap<TimerEntry> = BinaryHeap::new();
 
 	loop {
@@ -235,7 +235,7 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 					let deadline = if delay.is_zero() {
 						// Zero delay - fire immediately
 						if !cancelled.load(Ordering::SeqCst) {
-							pool.spawn(callback);
+							spawn(callback);
 						}
 						continue;
 					} else {
@@ -293,7 +293,7 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 				TimerKind::Once {
 					callback,
 				} => {
-					pool.spawn(callback);
+					spawn(callback);
 				}
 				TimerKind::Repeat {
 					callback,
@@ -303,7 +303,7 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>)
 					let callback_clone = callback.clone();
 
 					// Dispatch callback to pool
-					pool.spawn(move || {
+					spawn(move || {
 						if !cancelled.load(Ordering::SeqCst) {
 							let continue_timer = callback_clone();
 							if !continue_timer {
@@ -335,18 +335,12 @@ mod tests {
 	use std::sync::{atomic::AtomicUsize, mpsc};
 
 	use parking_lot::Mutex;
-	use rayon::ThreadPoolBuilder;
 
 	use super::*;
 
-	fn test_pool() -> Arc<ThreadPool> {
-		Arc::new(ThreadPoolBuilder::new().num_threads(2).build().unwrap())
-	}
-
 	#[test]
 	fn test_schedule_once() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::from_millis(10), move || {
@@ -359,8 +353,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_once_zero_delay() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::ZERO, move || {
@@ -373,8 +366,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -396,8 +388,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat_stops_on_false() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -419,8 +410,7 @@ mod tests {
 
 	#[test]
 	fn test_cancel_before_fire() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new();
 
 		let (tx, rx) = mpsc::channel();
 		let handle = scheduler.schedule_once(Duration::from_millis(50), move || {
@@ -438,8 +428,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_timers() {
-		let pool = test_pool();
-		let mut scheduler = SchedulerHandle::new(pool);
+		let mut scheduler = SchedulerHandle::new();
 
 		let results = Arc::new(Mutex::new(Vec::new()));
 

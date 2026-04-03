@@ -12,7 +12,7 @@ use std::sync::{
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
-use rayon::ThreadPool;
+use rayon::spawn;
 use tracing::debug;
 
 use super::{ActorSystem, JoinError};
@@ -40,7 +40,6 @@ struct ActorCell<A: Actor> {
 	schedule_state: AtomicU8,
 	completion_tx: Sender<()>,
 	done_tx: Sender<()>,
-	pool: Arc<ThreadPool>,
 }
 
 /// Transition the actor to SCHEDULED and submit a task to the pool if it was IDLE.
@@ -52,8 +51,7 @@ where
 	let prev = cell.schedule_state.fetch_max(SCHEDULED, Ordering::AcqRel);
 	if prev == IDLE {
 		let cell = Arc::clone(cell);
-		let pool = Arc::clone(&cell.pool);
-		pool.spawn(move || run_batch(cell));
+		spawn(move || run_batch(cell));
 	}
 }
 
@@ -143,14 +141,14 @@ where
 				Ok(_) => {
 					// Was NOTIFIED, resubmit
 					let cell2 = Arc::clone(&cell);
-					cell.pool.spawn(move || run_batch(cell2));
+					spawn(move || run_batch(cell2));
 				}
 				Err(SCHEDULED) => {
 					// No new notifications — check if there are still messages
 					if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
 						// Messages still pending, resubmit
 						let cell2 = Arc::clone(&cell);
-						cell.pool.spawn(move || run_batch(cell2));
+						spawn(move || run_batch(cell2));
 					} else {
 						// Go idle
 						cell.schedule_state.store(IDLE, Ordering::Release);
@@ -198,7 +196,6 @@ where
 
 	let cancel = system.cancellation_token();
 	let rx = mailbox.rx;
-	let pool = Arc::clone(system.pool());
 
 	let (completion_tx, completion_rx) = bounded(1);
 	let (done_tx, done_rx) = bounded(1);
@@ -213,7 +210,6 @@ where
 		schedule_state: AtomicU8::new(SCHEDULED),
 		completion_tx,
 		done_tx,
-		pool,
 	});
 
 	// Notify closure uses Weak to avoid ActorCell ↔ notify self-referential cycle.
@@ -233,7 +229,7 @@ where
 	// Spawn init + first batch on the pool
 	let actor_name = name.to_string();
 	let cell_for_init = Arc::clone(&cell);
-	cell.pool.spawn(move || {
+	spawn(move || {
 		debug!(actor = %actor_name, "Pool actor starting");
 
 		{
