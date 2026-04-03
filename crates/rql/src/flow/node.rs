@@ -7,6 +7,7 @@ use reifydb_core::{
 		flow::{FlowEdgeId, FlowId, FlowNodeId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
 		series::SeriesKey,
+		shape::ShapeId,
 	},
 	sort::SortKey,
 };
@@ -163,6 +164,81 @@ impl FlowNodeType {
 			FlowNodeType::SinkSeriesView {
 				..
 			} => 21,
+		}
+	}
+
+	/// If this node is a primitive data source (table, ring buffer, or series),
+	/// returns its [`ShapeId`]. Returns `None` for all other node types.
+	///
+	/// Uses an exhaustive match so that adding a new variant to [`FlowNodeType`]
+	/// produces a compiler error, forcing the author to decide whether the new
+	/// variant is a primitive source.
+	pub fn primitive_source_shape_id(&self) -> Option<ShapeId> {
+		match self {
+			FlowNodeType::SourceTable {
+				table,
+			} => Some(ShapeId::table(*table)),
+			FlowNodeType::SourceRingBuffer {
+				ringbuffer,
+			} => Some(ShapeId::ringbuffer(*ringbuffer)),
+			FlowNodeType::SourceSeries {
+				series,
+			} => Some(ShapeId::series(*series)),
+			FlowNodeType::SourceInlineData {
+				..
+			}
+			| FlowNodeType::SourceView {
+				..
+			}
+			| FlowNodeType::SourceFlow {
+				..
+			}
+			| FlowNodeType::Filter {
+				..
+			}
+			| FlowNodeType::Gate {
+				..
+			}
+			| FlowNodeType::Map {
+				..
+			}
+			| FlowNodeType::Extend {
+				..
+			}
+			| FlowNodeType::Join {
+				..
+			}
+			| FlowNodeType::Aggregate {
+				..
+			}
+			| FlowNodeType::Append
+			| FlowNodeType::Sort {
+				..
+			}
+			| FlowNodeType::Take {
+				..
+			}
+			| FlowNodeType::Distinct {
+				..
+			}
+			| FlowNodeType::Apply {
+				..
+			}
+			| FlowNodeType::SinkTableView {
+				..
+			}
+			| FlowNodeType::SinkRingBufferView {
+				..
+			}
+			| FlowNodeType::SinkSeriesView {
+				..
+			}
+			| FlowNodeType::SinkSubscription {
+				..
+			}
+			| FlowNodeType::Window {
+				..
+			} => None,
 		}
 	}
 }

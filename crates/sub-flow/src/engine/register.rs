@@ -116,49 +116,67 @@ impl FlowEngine {
 				// view is computed on-the-fly; its changes are never published to CDC. By
 				// registering the view's upstream primitives, the deferred flow is triggered
 				// when the underlying data changes.
+				//
+				// However, skip this when the CURRENT flow also writes to a transactional
+				// view. In that case the pre-commit interceptor already propagates changes
+				// through `available_changes` and extra source registration would cause the
+				// downstream flow to receive raw table changes with a mismatched schema.
 				if view.kind() == ViewKind::Transactional {
-					let mut additional_sources = Vec::new();
-					if let Some(view_flow) = self.catalog.find_flow_by_name(
-						&mut txn.reborrow(),
-						view.namespace(),
-						view.name(),
-					)? {
-						let flow_nodes = self
-							.catalog
-							.list_flow_nodes_by_flow(&mut txn.reborrow(), view_flow.id)?;
-						for flow_node in &flow_nodes {
-							// SourceTable = 1, SourceRingBuffer = 17, SourceSeries = 18
-							if (flow_node.node_type == 1
-								|| flow_node.node_type == 17 || flow_node.node_type == 18)
-								&& let Ok(nt) =
+					let current_flow_is_transactional = flow.get_node_ids().any(|nid| {
+						if let Some(n) = flow.get_node(&nid) {
+							let sink_view = match &n.ty {
+								SinkTableView {
+									view,
+									..
+								}
+								| SinkRingBufferView {
+									view,
+									..
+								}
+								| SinkSeriesView {
+									view,
+									..
+								} => Some(view),
+								_ => None,
+							};
+							sink_view
+								.and_then(|v| {
+									self.catalog
+										.find_view(&mut txn.reborrow(), *v)
+										.ok()
+										.flatten()
+								})
+								.map(|v| v.kind() == ViewKind::Transactional)
+								.unwrap_or(false)
+						} else {
+							false
+						}
+					});
+
+					if !current_flow_is_transactional {
+						let mut additional_sources = Vec::new();
+						if let Some(view_flow) = self.catalog.find_flow_by_name(
+							&mut txn.reborrow(),
+							view.namespace(),
+							view.name(),
+						)? {
+							let flow_nodes = self.catalog.list_flow_nodes_by_flow(
+								&mut txn.reborrow(),
+								view_flow.id,
+							)?;
+							for flow_node in &flow_nodes {
+								if let Ok(nt) =
 									from_bytes::<FlowNodeType>(&flow_node.data)
-							{
-								match nt {
-									SourceTable {
-										table: t,
-									} => {
-										additional_sources
-											.push(ShapeId::table(t));
-									}
-									SourceRingBuffer {
-										ringbuffer: rb,
-									} => {
-										additional_sources
-											.push(ShapeId::ringbuffer(rb));
-									}
-									SourceSeries {
-										series: s,
-									} => {
-										additional_sources
-											.push(ShapeId::series(s));
-									}
-									_ => {}
+									&& let Some(shape) =
+										nt.primitive_source_shape_id()
+								{
+									additional_sources.push(shape);
 								}
 							}
 						}
-					}
-					for source in additional_sources {
-						self.add_source(flow.id, node.id, source);
+						for source in additional_sources {
+							self.add_source(flow.id, node.id, source);
+						}
 					}
 				}
 
