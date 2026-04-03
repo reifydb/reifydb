@@ -31,8 +31,8 @@ fn main() {
 
 	// Start the database and wait for signal
 	println!("Starting database...");
-	println!("HTTP server: http://0.0.0.0:8091");
-	println!("WebSocket server: ws://0.0.0.0:8090");
+	println!("HTTP server: http://0.0.0.0:18091");
+	println!("WebSocket server: ws://0.0.0.0:18090");
 	// println!("Jaeger UI: http://localhost:16686 (if running)");
 	println!();
 	println!("Press Ctrl+C to stop...");

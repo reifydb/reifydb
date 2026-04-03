@@ -48,6 +48,6 @@ RUN chown root:root /usr/local/bin/testcontainer && \
 
 USER reifydb
 
-EXPOSE 8090
-EXPOSE 8091
+EXPOSE 18090
+EXPOSE 18091
 CMD ["testcontainer"]
