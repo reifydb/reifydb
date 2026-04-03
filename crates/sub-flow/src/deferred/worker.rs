@@ -183,14 +183,14 @@ impl FlowWorkerActor {
 		timestamp: DateTime,
 		state_version: CommitVersion,
 	) -> Result<(Pending, Vec<RowShape>)> {
-		let primitive_query = self.engine.multi().begin_query_at_version(state_version)?;
+		let query = self.engine.multi().begin_query_at_version(state_version)?;
 		let state_query = self.engine.multi().begin_query_at_version(state_version)?;
 		let interceptors = self.engine.create_interceptors();
 
 		let mut txn = FlowTransaction::deferred_from_parts(
 			state_version,
 			Pending::new(),
-			primitive_query,
+			query,
 			state_query,
 			self.catalog.clone(),
 			interceptors,
@@ -231,13 +231,13 @@ impl FlowWorkerActor {
 
 			let primitive_version = instruction.to_version;
 
-			let primitive_query = self.engine.multi().begin_query_at_version(primitive_version)?;
+			let query = self.engine.multi().begin_query_at_version(primitive_version)?;
 			let state_query = self.engine.multi().begin_query_at_version(batch.state_version)?;
 
 			let mut txn = FlowTransaction::deferred_from_parts(
 				primitive_version,
 				pending,
-				primitive_query,
+				query,
 				state_query,
 				self.catalog.clone(),
 				interceptors.clone(),

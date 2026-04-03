@@ -146,6 +146,10 @@ incremental = true
 debug-assertions = true
 overflow-checks = true
 
+[profile.release]
+codegen-units = 256
+strip = true
+
 [workspace.dependencies]
 reifydb = { version = "0.4.7", path = "pkg/rust/reifydb", features = [
     "sub_flow", "sub_tracing", "sub_server", "sub_server_admin",

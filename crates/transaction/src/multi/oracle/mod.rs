@@ -476,7 +476,7 @@ pub mod tests {
 	};
 
 	use reifydb_core::encoded::key::EncodedKeyRange;
-	use reifydb_runtime::{SharedRuntimeConfig, context::clock::MockClock};
+	use reifydb_runtime::context::clock::MockClock;
 
 	use super::{register_defaults, *};
 	use crate::multi::transaction::version::VersionProvider;
@@ -515,7 +515,7 @@ pub mod tests {
 
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let actor_system = ActorSystem::new(1);
 		let config = SystemConfig::new();
 		register_defaults(&config);
 		Oracle::new(clock, actor_system, Clock::Mock(MockClock::from_millis(1000)), Rng::seeded(42), config)

@@ -176,7 +176,7 @@ impl WaterMark {
 pub mod tests {
 	use std::{sync::atomic::AtomicUsize, thread, thread::sleep, time::Duration};
 
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem, context::clock::Clock};
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
@@ -228,7 +228,7 @@ pub mod tests {
 
 	#[test]
 	fn test_high_concurrency() {
-		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let system = ActorSystem::new(1);
 		let watermark = Arc::new(WaterMark::new("concurrent".into(), &system));
 
 		const NUM_TASKS: usize = 50;
@@ -265,7 +265,7 @@ pub mod tests {
 
 	#[test]
 	fn test_concurrent_wait_for_mark() {
-		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let system = ActorSystem::new(1);
 		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), &system));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
@@ -429,7 +429,7 @@ pub mod tests {
 	where
 		F: FnOnce(Arc<WaterMark>),
 	{
-		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let system = ActorSystem::new(1);
 		let watermark = Arc::new(WaterMark::new("watermark".into(), &system));
 
 		f(watermark);

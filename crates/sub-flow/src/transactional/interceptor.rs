@@ -130,7 +130,7 @@ pub(crate) fn execute_inline_flow_changes(
 				continue;
 			}
 
-			let primitive_query = engine.multi().begin_query()?;
+			let query = engine.multi().begin_query()?;
 			let state_query = engine.multi().begin_query()?;
 			let interceptors = engine.create_interceptors();
 
@@ -138,7 +138,7 @@ pub(crate) fn execute_inline_flow_changes(
 				read_version,
 				Pending::new(),
 				base_pending.clone(),
-				primitive_query,
+				query,
 				state_query,
 				catalog.clone(),
 				interceptors,

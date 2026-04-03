@@ -53,13 +53,10 @@ use crossbeam_channel::unbounded;
 use crate::actor::mailbox::ActorRef;
 #[cfg(reifydb_single_threaded)]
 use crate::actor::mailbox::create_actor_ref;
-use crate::{
-	SharedRuntimeConfig,
-	actor::{
-		context::{CancellationToken, Context},
-		system::ActorSystem,
-		traits::{Actor, Directive},
-	},
+use crate::actor::{
+	context::{CancellationToken, Context},
+	system::ActorSystem,
+	traits::{Actor, Directive},
 };
 
 /// Test harness for synchronous actor testing.
@@ -245,7 +242,7 @@ impl<M: Send + 'static> TestContext<M> {
 		let actor_ref = create_actor_ref();
 
 		// Create an actor system for testing
-		let system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let system = ActorSystem::new(1);
 
 		Context::new(actor_ref, system, self.cancel.clone())
 	}

@@ -24,7 +24,7 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -59,7 +59,7 @@ pub struct Runner {
 
 impl Runner {
 	fn new(storage: HotStorage) -> Self {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let actor_system = ActorSystem::new(1);
 		let store = StandardMultiStore::new(MultiStoreConfig {
 			hot: Some(HotConfig {
 				storage,

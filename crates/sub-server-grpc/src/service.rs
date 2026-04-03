@@ -17,6 +17,7 @@ use reifydb_type::{params::Params, value::identity::IdentityId};
 use tokio::{
 	select, spawn,
 	sync::{mpsc, watch},
+	task::spawn_blocking,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{Request, Response, Status, metadata::KeyAndValueRef};
@@ -111,7 +112,6 @@ impl ReifyDbService {
 		// Spawn cleanup task that monitors when the receiver is dropped or shutdown is signaled
 		let registry = self.registry.clone();
 		let engine = self.state.engine_clone();
-		let system = self.state.actor_system();
 		let mut shutdown_rx = self.shutdown_rx.clone();
 		spawn(async move {
 			let client_disconnected = select! {
@@ -129,9 +129,10 @@ impl ReifyDbService {
 			// Only run database cleanup on client disconnect, not server shutdown
 			if client_disconnected {
 				let engine_clone = engine.clone();
-				let result = system
-					.compute(move || cleanup_subscription_sync(&engine_clone, subscription_id))
-					.await;
+				let result = spawn_blocking(move || {
+					cleanup_subscription_sync(&engine_clone, subscription_id)
+				})
+				.await;
 				match result {
 					Ok(Ok(())) => debug!("Cleaned up gRPC subscription {}", subscription_id),
 					Ok(Err(e)) => warn!(
@@ -139,7 +140,7 @@ impl ReifyDbService {
 						subscription_id, e
 					),
 					Err(e) => warn!(
-						"Compute pool error cleaning up subscription {}: {:?}",
+						"Blocking task error cleaning up subscription {}: {:?}",
 						subscription_id, e
 					),
 				}
@@ -204,7 +205,6 @@ impl ReifyDb for ReifyDbService {
 
 		let (frames, _duration) = execute(
 			self.state.request_interceptors(),
-			self.state.actor_system(),
 			self.state.engine_clone(),
 			ctx,
 			self.state.query_timeout(),
@@ -234,7 +234,6 @@ impl ReifyDb for ReifyDbService {
 
 		let (frames, _duration) = execute(
 			self.state.request_interceptors(),
-			self.state.actor_system(),
 			self.state.engine_clone(),
 			ctx,
 			self.state.query_timeout(),
@@ -264,7 +263,6 @@ impl ReifyDb for ReifyDbService {
 
 		let (frames, _duration) = execute(
 			self.state.request_interceptors(),
-			self.state.actor_system(),
 			self.state.engine_clone(),
 			ctx,
 			self.state.query_timeout(),
@@ -323,14 +321,13 @@ impl ReifyDb for ReifyDbService {
 
 		// Cleanup the subscription from the database
 		let engine = self.state.engine_clone();
-		let system = self.state.actor_system();
-		let result = system.compute(move || cleanup_subscription_sync(&engine, subscription_id)).await;
+		let result = spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id)).await;
 		match result {
 			Ok(Ok(())) => info!("gRPC subscription {} unsubscribed", subscription_id),
 			Ok(Err(e)) => {
 				warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e)
 			}
-			Err(e) => warn!("Compute pool error cleaning up subscription {}: {:?}", subscription_id, e),
+			Err(e) => warn!("Blocking task error cleaning up subscription {}: {:?}", subscription_id, e),
 		}
 
 		Ok(Response::new(UnsubscribeResponse {

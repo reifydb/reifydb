@@ -24,8 +24,7 @@
 //! // Or with custom configuration
 //! let config = SharedRuntimeConfig::default()
 //!     .async_threads(4)
-//!     .compute_threads(4)
-//!     .compute_max_in_flight(16);
+//!     .compute_threads(4);
 //! let runtime = SharedRuntime::from_config(config);
 //!
 //! // Spawn async work
@@ -33,12 +32,9 @@
 //!     // async work here
 //! });
 //!
-//! // Use the actor system for spawning actors and compute
+//! // Use the actor system for spawning actors
 //! let system = runtime.actor_system();
 //! let handle = system.spawn("my-actor", MyActor::new());
-//!
-//! // Run CPU-bound work
-//! let result = system.install(|| expensive_calculation());
 //! ```
 
 #![allow(dead_code)]
@@ -51,12 +47,12 @@ pub mod sync;
 
 pub mod actor;
 
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, thread::available_parallelism};
 #[cfg(not(target_arch = "wasm32"))]
 use std::{mem::ManuallyDrop, time::Duration};
 
 use crate::{
-	actor::system::{ActorSystem, ActorSystemConfig},
+	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
 };
 
@@ -67,8 +63,6 @@ pub struct SharedRuntimeConfig {
 	pub async_threads: usize,
 	/// Number of worker threads for compute/actor pool (ignored in WASM)
 	pub compute_threads: usize,
-	/// Maximum concurrent compute tasks (ignored in WASM)
-	pub compute_max_in_flight: usize,
 	/// Clock for time operations (defaults to real system clock)
 	pub clock: Clock,
 	/// Random number generator (defaults to OS entropy)
@@ -79,8 +73,7 @@ impl Default for SharedRuntimeConfig {
 	fn default() -> Self {
 		Self {
 			async_threads: 1,
-			compute_threads: 1,
-			compute_max_in_flight: 32,
+			compute_threads: available_parallelism().map_or(1, |n| n.get()),
 			clock: Clock::Real,
 			rng: context::rng::Rng::default(),
 		}
@@ -100,26 +93,12 @@ impl SharedRuntimeConfig {
 		self
 	}
 
-	/// Set the maximum number of in-flight compute tasks.
-	pub fn compute_max_in_flight(mut self, max: usize) -> Self {
-		self.compute_max_in_flight = max;
-		self
-	}
-
 	/// Configure for deterministic testing with the given seed.
 	/// Sets a mock clock starting at `seed` milliseconds and a seeded RNG.
 	pub fn deterministic_testing(mut self, seed: u64) -> Self {
 		self.clock = Clock::Mock(MockClock::from_millis(seed));
 		self.rng = context::rng::Rng::seeded(seed);
 		self
-	}
-
-	/// Derive an [`ActorSystemConfig`] from this runtime config.
-	pub fn actor_system_config(&self) -> ActorSystemConfig {
-		ActorSystemConfig {
-			pool_threads: self.compute_threads,
-			max_in_flight: self.compute_max_in_flight,
-		}
 	}
 }
 
@@ -242,7 +221,7 @@ impl SharedRuntime {
 			.build()
 			.expect("Failed to create tokio runtime");
 
-		let system = ActorSystem::new(config.actor_system_config());
+		let system = ActorSystem::new(config.compute_threads);
 
 		Self(Arc::new(SharedRuntimeInner {
 			tokio: ManuallyDrop::new(tokio),
@@ -255,7 +234,7 @@ impl SharedRuntime {
 	/// Create a new shared runtime from configuration.
 	#[cfg(target_arch = "wasm32")]
 	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let system = ActorSystem::new(config.actor_system_config());
+		let system = ActorSystem::new(config.compute_threads);
 
 		Self(Arc::new(SharedRuntimeInner {
 			system,
@@ -342,18 +321,6 @@ impl SharedRuntime {
 	{
 		unimplemented!("block_on not supported in WASM - use async execution instead")
 	}
-
-	/// Executes a closure on the actor system's pool directly.
-	///
-	/// This is a convenience method that delegates to the actor system's `install`.
-	/// Synchronous and bypasses admission control.
-	pub fn install<R, F>(&self, f: F) -> R
-	where
-		R: Send,
-		F: FnOnce() -> R + Send,
-	{
-		self.0.system.install(f)
-	}
 }
 
 impl fmt::Debug for SharedRuntime {
@@ -368,7 +335,7 @@ mod tests {
 	use super::*;
 
 	fn test_config() -> SharedRuntimeConfig {
-		SharedRuntimeConfig::default().async_threads(2).compute_threads(2).compute_max_in_flight(4)
+		SharedRuntimeConfig::default().async_threads(2).compute_threads(2)
 	}
 
 	#[test]
@@ -396,28 +363,6 @@ mod tests {
 	#[test]
 	fn test_actor_system_accessible() {
 		let runtime = SharedRuntime::from_config(test_config());
-		let system = runtime.actor_system();
-		let result = system.install(|| 42);
-		assert_eq!(result, 42);
-	}
-
-	#[test]
-	fn test_install() {
-		let runtime = SharedRuntime::from_config(test_config());
-		let result = runtime.install(|| 42);
-		assert_eq!(result, 42);
-	}
-}
-
-#[cfg(all(test, reifydb_single_threaded))]
-mod wasm_tests {
-	use super::*;
-
-	#[test]
-	fn test_wasm_runtime_creation() {
-		let runtime = SharedRuntime::from_config(SharedRuntimeConfig::default());
-		let system = runtime.actor_system();
-		let result = system.install(|| 42);
-		assert_eq!(result, 42);
+		let _system = runtime.actor_system();
 	}
 }

@@ -21,29 +21,6 @@ use crate::actor::{
 	traits::{Actor, Directive},
 };
 
-/// Configuration for the actor system (mostly ignored in WASM).
-#[derive(Debug, Clone)]
-pub struct ActorSystemConfig {
-	/// Number of worker threads (ignored in WASM).
-	pub pool_threads: usize,
-	/// Maximum concurrent compute tasks (ignored in WASM).
-	pub max_in_flight: usize,
-}
-
-impl ActorSystemConfig {
-	/// Set the number of pool threads (ignored in WASM).
-	pub fn pool_threads(mut self, threads: usize) -> Self {
-		self.pool_threads = threads;
-		self
-	}
-
-	/// Set the maximum number of in-flight compute tasks (ignored in WASM).
-	pub fn max_in_flight(mut self, max: usize) -> Self {
-		self.max_in_flight = max;
-		self
-	}
-}
-
 /// Inner shared state for the actor system.
 struct ActorSystemInner {
 	cancel: CancellationToken,
@@ -61,8 +38,8 @@ pub struct ActorSystem {
 impl ActorSystem {
 	/// Create a new actor system.
 	///
-	/// Configuration parameters are ignored in WASM.
-	pub fn new(_config: ActorSystemConfig) -> Self {
+	/// Pool threads parameter is ignored in WASM.
+	pub fn new(_pool_threads: usize) -> Self {
 		Self {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
@@ -200,40 +177,6 @@ impl ActorSystem {
 		ActorHandle {
 			actor_ref,
 		}
-	}
-
-	/// Executes a closure immediately (sequential execution).
-	///
-	/// In WASM, there's no thread pool, so this executes synchronously.
-	pub fn install<R, F>(&self, f: F) -> R
-	where
-		R: Send,
-		F: FnOnce() -> R + Send,
-	{
-		f()
-	}
-
-	/// Runs a CPU-bound function immediately (sequential execution).
-	///
-	/// In WASM, there's no thread pool or admission control, so this
-	/// executes synchronously and returns immediately.
-	pub async fn compute<R, F>(&self, f: F) -> Result<R, WasmJoinError>
-	where
-		R: Send + 'static,
-		F: FnOnce() -> R + Send + 'static,
-	{
-		Ok(f())
-	}
-
-	/// Runs a potentially I/O-blocking function immediately (sequential execution).
-	///
-	/// In WASM, this is identical to `compute()` — executes synchronously.
-	pub async fn execute<R, F>(&self, f: F) -> Result<R, WasmJoinError>
-	where
-		R: Send + 'static,
-		F: FnOnce() -> R + Send + 'static,
-	{
-		Ok(f())
 	}
 }
 

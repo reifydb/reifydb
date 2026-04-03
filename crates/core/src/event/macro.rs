@@ -116,7 +116,7 @@ mod tests {
 		thread,
 	};
 
-	use reifydb_runtime::{SharedRuntimeConfig, actor::system::ActorSystem};
+	use reifydb_runtime::actor::system::ActorSystem;
 
 	use crate::event::{Event, EventBus, EventListener};
 
@@ -204,7 +204,7 @@ mod tests {
 
 	#[test]
 	fn testine_event_with_event_bus() {
-		let actor_system = ActorSystem::new(SharedRuntimeConfig::default().actor_system_config());
+		let actor_system = ActorSystem::new(1);
 		let event_bus = EventBus::new(&actor_system);
 
 		// Create a listener for DefineTestEvent

@@ -309,7 +309,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 
 			match execute(
 				conn.state.request_interceptors(),
-				conn.state.actor_system(),
 				conn.state.engine_clone(),
 				ctx,
 				timeout,
@@ -360,7 +359,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 
 			match execute(
 				conn.state.request_interceptors(),
-				conn.state.actor_system(),
 				conn.state.engine_clone(),
 				ctx,
 				timeout,
@@ -411,7 +409,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 
 			match execute(
 				conn.state.request_interceptors(),
-				conn.state.actor_system(),
 				conn.state.engine_clone(),
 				ctx,
 				timeout,

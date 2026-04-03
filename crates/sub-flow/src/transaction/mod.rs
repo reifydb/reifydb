@@ -4,6 +4,7 @@
 use std::{collections::HashMap, mem};
 
 use pending::{Pending, PendingWrite};
+use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	common::CommitVersion,
@@ -93,7 +94,7 @@ pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
 	pub pending_shapes: Vec<RowShape>,
-	pub primitive_query: MultiReadTransaction,
+	pub query: MultiReadTransaction,
 	pub state_query: Option<MultiReadTransaction>,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
@@ -128,7 +129,7 @@ pub struct FlowTransactionInner {
 ///          │    ├─ Deferred: skip
 ///          │    └─ Transactional { base_pending }: check base_pending
 ///          │
-///          ├──► primitive_query (at CDC version)
+///          ├──► query (at CDC version)
 ///          │    - Source tables / views / regular data
 ///          │
 ///          └──► state_query (at latest version)
@@ -168,7 +169,7 @@ pub enum FlowTransaction {
 	/// Ephemeral subscription flow processing.
 	///
 	/// Operator state lives in an in-memory HashMap instead of the multi-version
-	/// store; source reads go through primitive_query at the CDC version.
+	/// store; source reads go through query at the CDC version.
 	/// No writes are committed to persistent storage.
 	Ephemeral {
 		inner: FlowTransactionInner,
@@ -223,8 +224,8 @@ impl FlowTransaction {
 		catalog: Catalog,
 		interceptors: Interceptors,
 	) -> Self {
-		let mut primitive_query = parent.multi.begin_query().unwrap();
-		primitive_query.read_as_of_version_inclusive(version);
+		let mut query = parent.multi.begin_query().unwrap();
+		query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().unwrap();
 		Self::Deferred {
@@ -232,7 +233,7 @@ impl FlowTransaction {
 				version,
 				pending: Pending::new(),
 				pending_shapes: Vec::new(),
-				primitive_query,
+				query,
 				state_query: Some(state_query),
 				catalog,
 				interceptors,
@@ -247,7 +248,7 @@ impl FlowTransaction {
 	pub fn deferred_from_parts(
 		version: CommitVersion,
 		pending: Pending,
-		primitive_query: MultiReadTransaction,
+		query: MultiReadTransaction,
 		state_query: MultiReadTransaction,
 		catalog: Catalog,
 		interceptors: Interceptors,
@@ -257,7 +258,7 @@ impl FlowTransaction {
 				version,
 				pending,
 				pending_shapes: Vec::new(),
-				primitive_query,
+				query,
 				state_query: Some(state_query),
 				catalog,
 				interceptors,
@@ -275,7 +276,7 @@ impl FlowTransaction {
 		version: CommitVersion,
 		pending: Pending,
 		base_pending: Pending,
-		primitive_query: MultiReadTransaction,
+		query: MultiReadTransaction,
 		state_query: MultiReadTransaction,
 		catalog: Catalog,
 		interceptors: Interceptors,
@@ -285,7 +286,7 @@ impl FlowTransaction {
 				version,
 				pending,
 				pending_shapes: Vec::new(),
-				primitive_query,
+				query,
 				state_query: Some(state_query),
 				catalog,
 				interceptors,
@@ -298,15 +299,15 @@ impl FlowTransaction {
 	/// Create an ephemeral (subscription) FlowTransaction.
 	///
 	/// Operator state is backed by an in-memory HashMap. Source data reads
-	/// go through `primitive_query` at the specified version. State reads
+	/// go through `query` at the specified version. State reads
 	/// go to `state` instead of the multi-version store.
 	pub fn ephemeral(
 		version: CommitVersion,
-		primitive_query: MultiReadTransaction,
+		query: MultiReadTransaction,
 		catalog: Catalog,
 		state: HashMap<EncodedKey, EncodedRow>,
 	) -> Self {
-		let mut pq = primitive_query;
+		let mut pq = query;
 		pq.read_as_of_version_inclusive(version);
 
 		Self::Ephemeral {
@@ -314,7 +315,7 @@ impl FlowTransaction {
 				version,
 				pending: Pending::new(),
 				pending_shapes: Vec::new(),
-				primitive_query: pq,
+				query: pq,
 				state_query: None,
 				catalog,
 				interceptors: Interceptors::new(),
@@ -339,7 +340,7 @@ impl FlowTransaction {
 		} = self
 		{
 			for (key, write) in inner.pending.iter_sorted() {
-				if Self::is_flow_state_key(key) {
+				if matches!(Self::read_from(key), ReadFrom::StateQuery) {
 					match write {
 						PendingWrite::Set(row) => {
 							state.insert(key.clone(), row.clone());
@@ -412,7 +413,7 @@ impl FlowTransaction {
 	pub fn update_version(&mut self, new_version: CommitVersion) {
 		let inner = self.inner_mut();
 		inner.version = new_version;
-		inner.primitive_query.read_as_of_version_inclusive(new_version);
+		inner.query.read_as_of_version_inclusive(new_version);
 	}
 
 	/// Get access to the catalog for reading metadata

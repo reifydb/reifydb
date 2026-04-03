@@ -11,6 +11,7 @@ use reifydb_type::{
 	params::Params,
 	value::{Value, identity::IdentityId},
 };
+use tokio::task::spawn_blocking;
 use tracing::{debug, error};
 
 use crate::{
@@ -76,15 +77,9 @@ pub async fn create_subscription(
 		metadata,
 	};
 
-	let (frames, _duration) = execute(
-		state.request_interceptors(),
-		state.actor_system(),
-		state.engine_clone(),
-		ctx,
-		state.query_timeout(),
-		state.clock(),
-	)
-	.await?;
+	let (frames, _duration) =
+		execute(state.request_interceptors(), state.engine_clone(), ctx, state.query_timeout(), state.clock())
+			.await?;
 
 	let frame = frames.first().ok_or(CreateSubscriptionError::ExtractionFailed)?;
 
@@ -150,12 +145,11 @@ pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: Subsc
 	Ok(())
 }
 
-/// Async cleanup via the compute pool.
+/// Async cleanup via a blocking task.
 pub async fn cleanup_subscription(state: &AppState, subscription_id: SubscriptionId) -> TypeResult<()> {
 	let engine = state.engine_clone();
-	let system = state.actor_system();
 
-	system.compute(move || cleanup_subscription_sync(&engine, subscription_id))
+	spawn_blocking(move || cleanup_subscription_sync(&engine, subscription_id))
 		.await
-		.map_err(|e| Error(Box::new(internal(format!("Compute pool error: {:?}", e)))))?
+		.map_err(|e| Error(Box::new(internal(format!("Blocking task error: {:?}", e)))))?
 }
