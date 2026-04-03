@@ -18,18 +18,19 @@ use std::{
 	sync::{Arc, RwLock},
 };
 
+use rayon::prelude::*;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::{
-	catalog::flow::FlowId,
-	change::{Change, ChangeOrigin},
+use reifydb_core::{
+	encoded::shape::RowShape,
+	interface::{
+		catalog::{flow::FlowId, shape::ShapeId},
+		change::{Change, ChangeOrigin, Diff},
+	},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::{
 	change::OperationType,
-	interceptor::{
-		interceptors::Interceptors,
-		transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
-	},
+	interceptor::transaction::{PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
 	multi::transaction::read::MultiReadTransaction,
 	transaction::Transaction,
 };
@@ -85,8 +86,8 @@ pub(crate) fn execute_inline_flow_changes(
 		return Ok(());
 	}
 
-	let execution_order = flow_engine.calculate_execution_order();
-	if execution_order.is_empty() {
+	let execution_levels = flow_engine.calculate_execution_levels();
+	if execution_levels.is_empty() {
 		return Ok(());
 	}
 
@@ -95,7 +96,6 @@ pub(crate) fn execute_inline_flow_changes(
 		q.version()
 	};
 
-	// Stamp the correct version on changes from the accumulator
 	let mut available_changes: Vec<Change> = ctx
 		.flow_changes
 		.iter()
@@ -106,61 +106,78 @@ pub(crate) fn execute_inline_flow_changes(
 		})
 		.collect();
 
-	for flow_id in execution_order {
-		let relevant: Vec<Change> = available_changes
-			.iter()
-			.filter(|c| flow_is_interested_in(c, flow_id, flow_engine))
-			.cloned()
-			.collect();
-
-		if relevant.is_empty() {
-			continue;
-		}
-
-		let primitive_query: MultiReadTransaction = engine.multi().begin_query()?;
-		let state_query: MultiReadTransaction = engine.multi().begin_query()?;
-		let interceptors: Interceptors = engine.create_interceptors();
-
-		let mut base_pending = Pending::new();
+	let base_pending = {
+		let mut p = Pending::new();
 		for (key, value) in &ctx.transaction_writes {
 			match value {
-				Some(v) => base_pending.insert(key.clone(), v.clone()),
-				None => base_pending.remove(key.clone()),
+				Some(v) => p.insert(key.clone(), v.clone()),
+				None => p.remove(key.clone()),
 			}
 		}
+		p
+	};
 
-		let mut flow_txn = FlowTransaction::transactional(
-			read_version,
-			Pending::new(),
-			base_pending,
-			primitive_query,
-			state_query,
-			catalog.clone(),
-			interceptors,
-		);
+	for level in execution_levels {
+		let mut flow_txns: Vec<(FlowId, Vec<Change>, FlowTransaction)> = Vec::new();
+		for &flow_id in &level {
+			let relevant: Vec<Change> = available_changes
+				.iter()
+				.filter(|c| flow_is_interested_in(c, flow_id, flow_engine))
+				.cloned()
+				.collect();
 
-		for change in relevant {
-			flow_engine.process(&mut flow_txn, change, flow_id)?;
+			if relevant.is_empty() {
+				continue;
+			}
+
+			let primitive_query = engine.multi().begin_query()?;
+			let state_query = engine.multi().begin_query()?;
+			let interceptors = engine.create_interceptors();
+
+			let flow_txn = FlowTransaction::transactional(
+				read_version,
+				Pending::new(),
+				base_pending.clone(),
+				primitive_query,
+				state_query,
+				catalog.clone(),
+				interceptors,
+			);
+
+			flow_txns.push((flow_id, relevant, flow_txn));
 		}
 
-		let view_entries = flow_txn.take_accumulator_entries();
-		for (id, diff) in &view_entries {
-			available_changes.push(Change {
-				origin: ChangeOrigin::Shape(*id),
-				version: read_version,
-				diffs: vec![diff.clone()],
-			});
-		}
-		ctx.view_entries.extend(view_entries);
+		let results: Vec<Result<FlowResult>> = flow_txns
+			.into_par_iter()
+			.map(|(flow_id, relevant, mut flow_txn)| {
+				for change in relevant {
+					flow_engine.process(&mut flow_txn, change, flow_id)?;
+				}
 
-		let flow_pending_shapes = flow_txn.take_pending_shapes();
-		ctx.pending_shapes.extend(flow_pending_shapes);
+				Ok(FlowResult {
+					view_entries: flow_txn.take_accumulator_entries(),
+					pending: flow_txn.take_pending(),
+					pending_shapes: flow_txn.take_pending_shapes(),
+				})
+			})
+			.collect();
 
-		let flow_pending = flow_txn.take_pending();
-		for (key, pw) in flow_pending.iter_sorted() {
-			match pw {
-				PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
-				PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
+		for result in results {
+			let result = result?;
+			for (id, diff) in &result.view_entries {
+				available_changes.push(Change {
+					origin: ChangeOrigin::Shape(*id),
+					version: read_version,
+					diffs: vec![diff.clone()],
+				});
+			}
+			ctx.view_entries.extend(result.view_entries);
+			ctx.pending_shapes.extend(result.pending_shapes);
+			for (key, pw) in result.pending.iter_sorted() {
+				match pw {
+					PendingWrite::Set(v) => ctx.pending_writes.push((key.clone(), Some(v.clone()))),
+					PendingWrite::Remove => ctx.pending_writes.push((key.clone(), None)),
+				}
 			}
 		}
 	}
@@ -181,6 +198,12 @@ fn flow_is_interested_in(change: &Change, flow_id: FlowId, engine: &FlowEngine) 
 	} else {
 		false
 	}
+}
+
+struct FlowResult {
+	view_entries: Vec<(ShapeId, Diff)>,
+	pending: Pending,
+	pending_shapes: Vec<RowShape>,
 }
 
 /// Post-commit interceptor that eagerly registers transactional flows.

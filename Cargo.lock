@@ -2958,6 +2958,7 @@ dependencies = [
  "libloading",
  "num_cpus",
  "postcard",
+ "rayon",
  "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
