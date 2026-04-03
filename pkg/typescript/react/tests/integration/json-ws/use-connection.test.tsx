@@ -5,7 +5,7 @@ import {afterEach, afterAll, beforeAll, beforeEach, describe, expect, it} from '
 import {renderHook, act, waitFor} from '@testing-library/react';
 // @ts-ignore
 import React from 'react';
-import {useConnection, ConnectionProvider, clearConnection} from '../../../src';
+import {useConnection, ConnectionProvider, clearConnection, getConnection} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe.sequential('useConnection Hook (JSON WS)', () => {
@@ -16,6 +16,8 @@ describe.sequential('useConnection Hook (JSON WS)', () => {
     beforeEach(async () => {
         // Clear all connections before each test to ensure clean state
         await clearConnection();
+        // Seed the connection pool with the correct URL
+        getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
     });
 
     afterEach(async () => {

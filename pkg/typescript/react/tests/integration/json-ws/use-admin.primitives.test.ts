@@ -8,7 +8,7 @@ import {waitForDatabase} from '../setup';
 describe('useAdmin with TypeScript Primitive Types (JSON WS)', () => {
     beforeAll(async () => {
         await waitForDatabase();
-        const conn = getConnection({token: process.env.REIFYDB_TOKEN, format: 'json'});
+        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
         await conn.connect();
     }, 30000);
 

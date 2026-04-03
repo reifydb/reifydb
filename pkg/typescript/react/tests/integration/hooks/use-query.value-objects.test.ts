@@ -8,7 +8,7 @@ import {waitForDatabase} from '../setup';
 describe('useQuery with Value Objects and Shapes', () => {
     beforeAll(async () => {
         await waitForDatabase();
-        const conn = getConnection({token: process.env.REIFYDB_TOKEN});
+        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
         await conn.connect();
     }, 30000);
 

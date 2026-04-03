@@ -35,15 +35,15 @@ export class HttpClient {
         return new HttpClient(options);
     }
 
-    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
-        return this.login("password", principal, {password});
+    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
+        return this.login("password", identity, {password});
     }
 
-    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
-        return this.login("token", principal, {token});
+    async loginWithToken(identity: string, token: string): Promise<LoginResult> {
+        return this.login("token", identity, {token});
     }
 
-    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
+    async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
         const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -52,7 +52,7 @@ export class HttpClient {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({method, principal, credentials}),
+                body: JSON.stringify({method, credentials: {identifier: identity, ...credentials}}),
                 signal: controller.signal,
             });
 

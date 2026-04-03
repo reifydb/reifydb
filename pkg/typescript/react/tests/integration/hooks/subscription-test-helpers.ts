@@ -42,7 +42,7 @@ export async function createTestTableForHook(
         createTestTable
     } = await import('../../../../client/tests/integration/ws/subscription-helpers');
 
-    const conn = getConnection({token: process.env.REIFYDB_TOKEN});
+    const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN});
 
     // Wait for connection to be fully established
     // Handle race conditions where connection might be in progress
