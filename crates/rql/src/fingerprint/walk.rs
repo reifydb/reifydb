@@ -55,6 +55,7 @@ mod tag {
 	pub const ROWNUM: u8 = 0x13;
 	pub const ENVIRONMENT: u8 = 0x14;
 	pub const NOP: u8 = 0x15;
+	pub const SYSTEM_COLUMN: u8 = 0x16;
 
 	// Operators
 	pub const INFIX: u8 = 0x20;
@@ -190,6 +191,10 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 		}
 		Ast::Wildcard(_) => buf.write_u8(tag::WILDCARD),
 		Ast::Rownum(_) => buf.write_u8(tag::ROWNUM),
+		Ast::SystemColumn(node) => {
+			buf.write_u8(tag::SYSTEM_COLUMN);
+			buf.write_str(node.token.fragment.text());
+		}
 		Ast::Environment(_) => buf.write_u8(tag::ENVIRONMENT),
 		Ast::Nop => buf.write_u8(tag::NOP),
 

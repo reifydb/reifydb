@@ -104,7 +104,16 @@ fn convert_envelope_response(body: serde_json::Value) -> Vec<Frame> {
 			.collect();
 
 		let row_numbers = frame.row_numbers.into_iter().map(RowNumber::new).collect();
-		result.push(Frame::with_row_numbers(columns, row_numbers));
+		let created_at =
+			frame.created_at.iter().filter_map(|s| parse_datetime(Fragment::internal(s)).ok()).collect();
+		let updated_at =
+			frame.updated_at.iter().filter_map(|s| parse_datetime(Fragment::internal(s)).ok()).collect();
+		result.push(Frame {
+			row_numbers,
+			created_at,
+			updated_at,
+			columns,
+		});
 	}
 
 	result

@@ -46,6 +46,8 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 
 	Columns {
 		row_numbers: CowVec::new(row_numbers),
+		created_at: CowVec::new(Vec::new()),
+		updated_at: CowVec::new(Vec::new()),
 		columns: CowVec::new(columns_vec),
 	}
 }

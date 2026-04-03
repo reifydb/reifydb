@@ -5,6 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_type::{
 	error::{Diagnostic, Error},
+	fragment::Fragment,
 	params::Params,
 	util::bitvec::BitVec,
 	value::{
@@ -22,6 +23,7 @@ use reifydb_type::{
 		identity::IdentityId,
 		int::Int,
 		row_number::RowNumber,
+		temporal::parse::datetime::parse_datetime,
 		time::Time,
 		r#type::Type,
 		uint::Uint,
@@ -424,7 +426,22 @@ fn proto_frames_to_frames(frames: Vec<ProtoFrame>) -> Vec<Frame> {
 					}
 				})
 				.collect();
-			Frame::with_row_numbers(columns, row_numbers)
+			let created_at = f
+				.created_at
+				.iter()
+				.filter_map(|s| parse_datetime(Fragment::internal(s)).ok())
+				.collect();
+			let updated_at = f
+				.updated_at
+				.iter()
+				.filter_map(|s| parse_datetime(Fragment::internal(s)).ok())
+				.collect();
+			Frame {
+				row_numbers,
+				created_at,
+				updated_at,
+				columns,
+			}
 		})
 		.collect()
 }

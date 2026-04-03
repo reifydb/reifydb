@@ -677,6 +677,9 @@ impl WindowOperator {
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
+		let now_nanos = self.runtime_context.clock.now_nanos() as u64;
+		encoded.set_timestamps(now_nanos, now_nanos);
+
 		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
 		let result_row = Row {

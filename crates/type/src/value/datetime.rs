@@ -18,6 +18,9 @@ const NANOS_PER_SECOND: u64 = 1_000_000_000;
 const NANOS_PER_MILLI: u64 = 1_000_000;
 const NANOS_PER_DAY: u64 = 86_400 * NANOS_PER_SECOND;
 
+pub static CREATED_AT_COLUMN_NAME: &str = "created_at";
+pub static UPDATED_AT_COLUMN_NAME: &str = "updated_at";
+
 /// A date and time value with nanosecond precision.
 /// Always in SVTC timezone.
 ///

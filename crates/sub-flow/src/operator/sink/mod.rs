@@ -31,6 +31,7 @@ use reifydb_type::{
 	Result,
 	fragment::Fragment,
 	params::Params,
+	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
@@ -101,9 +102,13 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		}
 	}
 
-	// Preserve row numbers
-	let row_numbers = columns.row_numbers.iter().cloned().collect();
-	Ok(Columns::with_row_numbers(result_columns, row_numbers))
+	// Preserve system columns
+	Ok(Columns {
+		row_numbers: columns.row_numbers.clone(),
+		created_at: columns.created_at.clone(),
+		updated_at: columns.updated_at.clone(),
+		columns: CowVec::new(result_columns),
+	})
 }
 
 /// Encode values at a specific row index with explicit row number
@@ -133,6 +138,10 @@ pub(crate) fn encode_row_at_index(
 	// Encode directly
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
+
+	let created_at_nanos = columns.created_at.get(row_idx).map(|dt| dt.to_nanos()).unwrap_or(0);
+	let updated_at_nanos = columns.updated_at.get(row_idx).map(|dt| dt.to_nanos()).unwrap_or(0);
+	encoded.set_timestamps(created_at_nanos, updated_at_nanos);
 
 	(row_number, encoded)
 }

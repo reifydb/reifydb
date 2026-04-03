@@ -58,6 +58,22 @@ pub fn unsupported_source_qualification(fragment: Fragment, name: &str) -> Diagn
 	}
 }
 
+pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
+	let name = fragment.text();
+	Diagnostic {
+		code: "QUERY_004".to_string(),
+		statement: None,
+		message: format!("system column '{}' is read-only", name),
+		fragment,
+		label: Some("system columns are managed automatically and cannot be set".to_string()),
+		help: Some("remove this field from the INSERT/UPDATE values".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic {
 	Diagnostic {
 		code: "QUERY_003".to_string(),

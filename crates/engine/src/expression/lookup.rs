@@ -7,7 +7,7 @@ use reifydb_type::value::{
 	Value,
 	blob::Blob,
 	date::Date,
-	datetime::DateTime,
+	datetime::{CREATED_AT_COLUMN_NAME, DateTime, UPDATED_AT_COLUMN_NAME},
 	decimal::Decimal,
 	dictionary::DictionaryEntryId,
 	duration::Duration,
@@ -50,10 +50,23 @@ macro_rules! extract_typed_column {
 pub(crate) fn column_lookup(ctx: &EvalContext, column: &ColumnExpression) -> Result<Column> {
 	let name = column.0.name.text();
 
-	// Check for rownum pseudo-column first
 	if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers.is_empty() {
 		let row_numbers: Vec<u64> = ctx.columns.row_numbers.iter().map(|r| r.value()).collect();
 		return Ok(Column::new(ROW_NUMBER_COLUMN_NAME.to_string(), ColumnData::uint8(row_numbers)));
+	}
+
+	if name == CREATED_AT_COLUMN_NAME && !ctx.columns.created_at.is_empty() {
+		return Ok(Column::new(
+			CREATED_AT_COLUMN_NAME.to_string(),
+			ColumnData::datetime(ctx.columns.created_at.to_vec()),
+		));
+	}
+
+	if name == UPDATED_AT_COLUMN_NAME && !ctx.columns.updated_at.is_empty() {
+		return Ok(Column::new(
+			UPDATED_AT_COLUMN_NAME.to_string(),
+			ColumnData::datetime(ctx.columns.updated_at.to_vec()),
+		));
 	}
 
 	if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {

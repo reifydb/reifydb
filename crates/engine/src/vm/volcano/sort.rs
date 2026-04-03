@@ -9,11 +9,19 @@ use reifydb_core::{
 		SortDirection::{Asc, Desc},
 		SortKey,
 	},
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{columns::Columns, data::ColumnData, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{error, error::Error, util::cowvec::CowVec};
+use reifydb_type::{
+	error,
+	error::Error,
+	util::cowvec::CowVec,
+	value::{
+		datetime::{CREATED_AT_COLUMN_NAME, UPDATED_AT_COLUMN_NAME},
+		row_number::ROW_NUMBER_COLUMN_NAME,
+	},
+};
 use tracing::instrument;
 
 use crate::{
@@ -53,6 +61,9 @@ impl QueryNode for SortNode {
 
 		while let Some(columns) = self.input.next(rx, ctx)? {
 			if let Some(existing_columns) = &mut columns_opt {
+				existing_columns.row_numbers.make_mut().extend(columns.row_numbers.iter().copied());
+				existing_columns.created_at.make_mut().extend(columns.created_at.iter().copied());
+				existing_columns.updated_at.make_mut().extend(columns.updated_at.iter().copied());
 				for (i, col) in columns.into_iter().enumerate() {
 					existing_columns[i].data_mut().extend(col.data().clone())?;
 				}
@@ -81,16 +92,37 @@ impl QueryNode for SortNode {
 
 impl Transform for SortNode {
 	fn apply(&self, _ctx: &TransformContext, mut columns: Columns) -> Result<Columns> {
-		let key_refs =
-			self.by.iter()
-				.map(|key| {
-					let col = columns
-						.iter()
-						.find(|c| c.name() == key.column.fragment())
-						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
-					Ok::<_, Error>((col.data().clone(), key.direction.clone()))
-				})
-				.collect::<Result<Vec<_>>>()?;
+		let key_refs = self
+			.by
+			.iter()
+			.map(|key| {
+				let name = key.column.fragment();
+				let stripped = name.strip_prefix('#').unwrap_or(name);
+
+				if stripped == ROW_NUMBER_COLUMN_NAME && !columns.row_numbers.is_empty() {
+					let data: Vec<u64> = columns.row_numbers.iter().map(|r| r.value()).collect();
+					return Ok::<_, Error>((ColumnData::uint8(data), key.direction.clone()));
+				}
+				if stripped == CREATED_AT_COLUMN_NAME && !columns.created_at.is_empty() {
+					return Ok((
+						ColumnData::datetime(columns.created_at.to_vec()),
+						key.direction.clone(),
+					));
+				}
+				if stripped == UPDATED_AT_COLUMN_NAME && !columns.updated_at.is_empty() {
+					return Ok((
+						ColumnData::datetime(columns.updated_at.to_vec()),
+						key.direction.clone(),
+					));
+				}
+
+				let col = columns
+					.iter()
+					.find(|c| c.name() == name)
+					.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
+				Ok((col.data().clone(), key.direction.clone()))
+			})
+			.collect::<Result<Vec<_>>>()?;
 
 		let row_count = columns.row_count();
 		let mut indices: Vec<usize> = (0..row_count).collect();
@@ -114,6 +146,14 @@ impl Transform for SortNode {
 		if !columns.row_numbers.is_empty() {
 			let reordered: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
 			columns.row_numbers = CowVec::new(reordered);
+		}
+		if !columns.created_at.is_empty() {
+			let reordered: Vec<_> = indices.iter().map(|&i| columns.created_at[i]).collect();
+			columns.created_at = CowVec::new(reordered);
+		}
+		if !columns.updated_at.is_empty() {
+			let reordered: Vec<_> = indices.iter().map(|&i| columns.updated_at[i]).collect();
+			columns.updated_at = CowVec::new(reordered);
 		}
 
 		let cols = columns.columns.make_mut();

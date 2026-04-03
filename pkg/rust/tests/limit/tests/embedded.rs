@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use db_embedded::memory;
-use reifydb::{Database, Params, embedded as db_embedded};
+use reifydb::{Database, Params, SharedRuntimeConfig, embedded as db_embedded};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 
@@ -15,7 +15,10 @@ pub struct Runner {
 impl Runner {
 	pub fn new() -> Self {
 		Self {
-			instance: memory().build().unwrap(),
+			instance: memory()
+				.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
+				.build()
+				.unwrap(),
 		}
 	}
 }

@@ -26,7 +26,7 @@ use reifydb_type::{
 	params::Params,
 	return_error,
 	util::cowvec::CowVec,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -201,6 +201,9 @@ pub(crate) fn insert_series(
 				shape.set_value(&mut row, i + 1, value);
 			}
 
+			let now_nanos = services.runtime_context.clock.now_nanos() as u64;
+			row.set_timestamps(now_nanos, now_nanos);
+
 			let row = SeriesRowInterceptor::pre_insert(txn, &series, row)?;
 			txn.set(&encoded_key, row.clone())?;
 			SeriesRowInterceptor::post_insert(txn, &series, &row)?;
@@ -227,6 +230,8 @@ pub(crate) fn insert_series(
 				}
 				let post = Columns {
 					row_numbers: CowVec::new(vec![row_number]),
+					created_at: CowVec::new(vec![DateTime::from_nanos(row.created_at_nanos())]),
+					updated_at: CowVec::new(vec![DateTime::from_nanos(row.updated_at_nanos())]),
 					columns: CowVec::new(cols),
 				};
 				txn.track_flow_change(Change {

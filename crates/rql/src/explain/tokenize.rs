@@ -44,6 +44,9 @@ pub fn explain_tokenize(query: &str) -> Result<String> {
 				TokenKind::Separator(sep) => {
 					format!("Separator({:?})", sep)
 				}
+				TokenKind::SystemColumn => {
+					format!("SystemColumn(\"{}\")", token.value())
+				}
 			};
 
 			result.push_str(&format!("  [{:>3}] {}\n", i, label));

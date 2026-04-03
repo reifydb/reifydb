@@ -3,8 +3,8 @@
 
 use reifydb_type::{
 	fragment::Fragment,
-	util::bitvec::BitVec,
-	value::{Value, row_number::RowNumber, r#type::Type},
+	util::{bitvec::BitVec, cowvec::CowVec},
+	value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 
 use crate::{
@@ -124,11 +124,15 @@ impl LazyBatch {
 	pub fn into_columns(self) -> Columns {
 		let valid_count = self.valid_row_count();
 
-		// Collect valid row numbers
+		// Collect valid row numbers and timestamps
 		let mut result_row_numbers = Vec::with_capacity(valid_count);
+		let mut result_created_at = Vec::with_capacity(valid_count);
+		let mut result_updated_at = Vec::with_capacity(valid_count);
 		for (row_idx, &row_num) in self.row_numbers.iter().enumerate() {
 			if self.is_row_valid(row_idx) {
 				result_row_numbers.push(row_num);
+				result_created_at.push(DateTime::from_nanos(self.rows[row_idx].created_at_nanos()));
+				result_updated_at.push(DateTime::from_nanos(self.rows[row_idx].updated_at_nanos()));
 			}
 		}
 
@@ -150,7 +154,12 @@ impl LazyBatch {
 			});
 		}
 
-		Columns::with_row_numbers(result_columns, result_row_numbers)
+		Columns {
+			row_numbers: CowVec::new(result_row_numbers),
+			created_at: CowVec::new(result_created_at),
+			updated_at: CowVec::new(result_updated_at),
+			columns: CowVec::new(result_columns),
+		}
 	}
 
 	/// Get column names for headers

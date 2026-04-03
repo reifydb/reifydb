@@ -33,7 +33,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, blob::Blob, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, blob::Blob, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 use serde::{Deserialize, Serialize};
 
@@ -59,6 +59,8 @@ struct DistinctLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedRow {
 	number: RowNumber,
+	created_at: DateTime,
+	updated_at: DateTime,
 	/// Column values serialized with postcard
 	#[serde(with = "serde_bytes")]
 	values_bytes: Vec<u8>,
@@ -68,6 +70,16 @@ impl SerializedRow {
 	/// Create from Columns at a specific row index - no Row allocation
 	fn from_columns_at_index(columns: &Columns, row_idx: usize) -> Self {
 		let number = columns.row_numbers[row_idx];
+		let created_at = if columns.created_at.is_empty() {
+			DateTime::default()
+		} else {
+			columns.created_at[row_idx]
+		};
+		let updated_at = if columns.updated_at.is_empty() {
+			DateTime::default()
+		} else {
+			columns.updated_at[row_idx]
+		};
 
 		let values: Vec<Value> = columns.iter().map(|c| c.data().get_value(row_idx)).collect();
 
@@ -76,6 +88,8 @@ impl SerializedRow {
 
 		Self {
 			number,
+			created_at,
+			updated_at,
 			values_bytes,
 		}
 	}
@@ -98,6 +112,8 @@ impl SerializedRow {
 
 		Columns {
 			row_numbers: CowVec::new(vec![self.number]),
+			created_at: CowVec::new(vec![self.created_at]),
+			updated_at: CowVec::new(vec![self.updated_at]),
 			columns: CowVec::new(columns_vec),
 		}
 	}

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::error::diagnostic::query;
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{err, error::Diagnostic, fragment::Fragment};
+use reifydb_type::{err, error, error::Diagnostic, fragment::Fragment};
 
 use crate::{
 	Result,
@@ -58,6 +59,16 @@ impl<'bump> Compiler<'bump> {
 						Ast::Inline(row) => {
 							let mut alias_fields = Vec::new();
 							for field in row.keyed_values {
+								if field.key.token.fragment.text().starts_with('#') {
+									return Err(error!(
+										query::system_column_read_only(
+											field.key
+												.token
+												.fragment
+												.to_owned()
+										)
+									));
+								}
 								let key_fragment = field.key.token.fragment.to_owned();
 								let alias = IdentExpression(key_fragment.clone());
 								let expr = ExpressionCompiler::compile(

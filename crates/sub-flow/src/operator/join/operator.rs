@@ -737,6 +737,8 @@ impl Operator for JoinOperator {
 
 			Ok(Columns {
 				row_numbers: CowVec::new(Vec::new()),
+				created_at: CowVec::new(Vec::new()),
+				updated_at: CowVec::new(Vec::new()),
 				columns: CowVec::new(all_columns),
 			})
 		} else if found_columns.len() == 1 {

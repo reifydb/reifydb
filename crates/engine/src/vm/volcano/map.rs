@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
@@ -124,11 +124,12 @@ impl Transform for MapNode {
 			new_columns.push(column);
 		}
 
-		if !input.row_numbers.is_empty() {
-			Ok(Columns::with_row_numbers(new_columns, input.row_numbers.to_vec()))
-		} else {
-			Ok(Columns::new(new_columns))
-		}
+		Ok(Columns {
+			row_numbers: input.row_numbers,
+			created_at: input.created_at,
+			updated_at: input.updated_at,
+			columns: CowVec::new(new_columns),
+		})
 	}
 }
 

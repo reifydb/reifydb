@@ -10,6 +10,7 @@ use crate::encoded::shape::fingerprint::RowShapeFingerprint;
 
 /// Size of shape header (fingerprint) in bytes
 pub const SCHEMA_HEADER_SIZE: usize = 8;
+pub const TIMESTAMP_TRAILER_SIZE: usize = 16;
 
 /// A boxed values iterator.
 pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
@@ -63,5 +64,33 @@ impl EncodedRow {
 	/// Write the shape fingerprint to the header
 	pub fn set_fingerprint(&mut self, fingerprint: RowShapeFingerprint) {
 		self.0.make_mut()[0..8].copy_from_slice(&fingerprint.to_le_bytes());
+	}
+
+	#[inline]
+	pub fn created_at_nanos(&self) -> u64 {
+		let len = self.0.len();
+		if len < TIMESTAMP_TRAILER_SIZE {
+			return 0;
+		}
+		let offset = len - TIMESTAMP_TRAILER_SIZE;
+		let bytes: [u8; 8] = self.0[offset..offset + 8].try_into().unwrap();
+		u64::from_le_bytes(bytes)
+	}
+
+	#[inline]
+	pub fn updated_at_nanos(&self) -> u64 {
+		let len = self.0.len();
+		if len < TIMESTAMP_TRAILER_SIZE {
+			return 0;
+		}
+		let offset = len - TIMESTAMP_TRAILER_SIZE + 8;
+		let bytes: [u8; 8] = self.0[offset..offset + 8].try_into().unwrap();
+		u64::from_le_bytes(bytes)
+	}
+
+	pub fn set_timestamps(&mut self, created_at_nanos: u64, updated_at_nanos: u64) {
+		let buf = self.0.make_mut();
+		buf.extend_from_slice(&created_at_nanos.to_le_bytes());
+		buf.extend_from_slice(&updated_at_nanos.to_le_bytes());
 	}
 }

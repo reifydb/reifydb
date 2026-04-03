@@ -13,7 +13,7 @@ use reifydb_type::{
 	Result,
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{Value, constraint::Constraint, row_number::RowNumber, r#type::Type},
+	value::{Value, constraint::Constraint, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 
 use crate::{
@@ -29,6 +29,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Columns {
 	pub row_numbers: CowVec<RowNumber>,
+	pub created_at: CowVec<DateTime>,
+	pub updated_at: CowVec<DateTime>,
 	pub columns: CowVec<Column>,
 }
 
@@ -100,6 +102,8 @@ impl Columns {
 		};
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(vec![column]),
 		}
 	}
@@ -123,6 +127,8 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
 		}
 	}
@@ -134,6 +140,8 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(row_numbers),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
 		}
 	}
@@ -190,6 +198,8 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
 		}
 	}
@@ -322,6 +332,8 @@ impl Columns {
 	pub fn empty() -> Self {
 		Self {
 			row_numbers: CowVec::new(vec![]),
+			created_at: CowVec::new(vec![]),
+			updated_at: CowVec::new(vec![]),
 			columns: CowVec::new(vec![]),
 		}
 	}
@@ -343,6 +355,8 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
 		}
 	}
@@ -360,6 +374,8 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
 		}
 	}
@@ -381,6 +397,8 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
 		}
 	}
@@ -412,11 +430,26 @@ impl Columns {
 			})
 			.collect();
 
-		if self.row_numbers.is_empty() {
-			Columns::new(new_columns)
+		let new_row_numbers: Vec<RowNumber> = if self.row_numbers.is_empty() {
+			Vec::new()
 		} else {
-			let new_row_numbers: Vec<RowNumber> = indices.iter().map(|&i| self.row_numbers[i]).collect();
-			Columns::with_row_numbers(new_columns, new_row_numbers)
+			indices.iter().map(|&i| self.row_numbers[i]).collect()
+		};
+		let new_created_at: Vec<DateTime> = if self.created_at.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| self.created_at[i]).collect()
+		};
+		let new_updated_at: Vec<DateTime> = if self.updated_at.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| self.updated_at[i]).collect()
+		};
+		Columns {
+			row_numbers: CowVec::new(new_row_numbers),
+			created_at: CowVec::new(new_created_at),
+			updated_at: CowVec::new(new_updated_at),
+			columns: CowVec::new(new_columns),
 		}
 	}
 
@@ -439,6 +472,8 @@ impl Columns {
 
 		Columns {
 			row_numbers: self.row_numbers.clone(),
+			created_at: self.created_at.clone(),
+			updated_at: self.updated_at.clone(),
 			columns: CowVec::new(new_columns),
 		}
 	}
@@ -496,6 +531,8 @@ impl Columns {
 
 		Self {
 			row_numbers: CowVec::new(vec![row.number]),
+			created_at: CowVec::new(vec![DateTime::from_nanos(row.encoded.created_at_nanos())]),
+			updated_at: CowVec::new(vec![DateTime::from_nanos(row.encoded.updated_at_nanos())]),
 			columns: CowVec::new(columns),
 		}
 	}

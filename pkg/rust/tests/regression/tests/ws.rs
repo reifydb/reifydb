@@ -3,7 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::util::retry::retry, server};
+use reifydb::{Database, SharedRuntimeConfig, core::util::retry::retry, server};
 use reifydb_client::WsClient;
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
@@ -18,8 +18,11 @@ pub struct WsRunner {
 
 impl WsRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
-		let instance =
-			server::memory().with_ws(|ws| ws.bind_addr("::1:0").admin_bind_addr("::1:0")).build().unwrap();
+		let instance = server::memory()
+			.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
+			.with_ws(|ws| ws.bind_addr("::1:0").admin_bind_addr("::1:0"))
+			.build()
+			.unwrap();
 
 		Self {
 			instance: Some(instance),

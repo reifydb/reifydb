@@ -14,6 +14,7 @@ use reifydb_core::{
 		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedShape},
 	},
 	internal_error,
+	key::row::RowKey,
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::UpdateRingBufferNode;
@@ -184,6 +185,14 @@ pub(crate) fn update_ringbuffer(
 
 				// Update the encoded using the existing RowNumber from the columns
 				let row_number = row_numbers[row_idx];
+
+				let old_row_key = RowKey::encoded(ringbuffer.id, row_number);
+				let old_created_at = txn
+					.get(&old_row_key)?
+					.expect("row must exist for update")
+					.row
+					.created_at_nanos();
+				row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos() as u64);
 
 				// Find which partition this row belongs to
 				let is_occupied = partitions.iter().any(|p| {

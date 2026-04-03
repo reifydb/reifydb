@@ -5,7 +5,7 @@ use reifydb_core::value::column::{Column, columns::Columns, data::ColumnData};
 use reifydb_type::{
 	fragment::Fragment,
 	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
 /// Builder for creating combined columns when joining left and right sides.
@@ -103,6 +103,8 @@ impl JoinedColumnsBuilder {
 
 		Columns {
 			row_numbers: CowVec::new(vec![row_number]),
+			created_at: CowVec::new(Self::extract_single_timestamp(&left.created_at, left_idx)),
+			updated_at: CowVec::new(Self::extract_single_timestamp(&left.updated_at, left_idx)),
 			columns: CowVec::new(result_columns),
 		}
 	}
@@ -149,6 +151,8 @@ impl JoinedColumnsBuilder {
 
 		Columns {
 			row_numbers: CowVec::new(row_numbers.to_vec()),
+			created_at: CowVec::new(Self::duplicate_timestamp(&left.created_at, left_idx, right_count)),
+			updated_at: CowVec::new(Self::duplicate_timestamp(&left.updated_at, left_idx, right_count)),
 			columns: CowVec::new(result_columns),
 		}
 	}
@@ -195,6 +199,8 @@ impl JoinedColumnsBuilder {
 
 		Columns {
 			row_numbers: CowVec::new(row_numbers.to_vec()),
+			created_at: left.created_at.clone(),
+			updated_at: left.updated_at.clone(),
 			columns: CowVec::new(result_columns),
 		}
 	}
@@ -248,6 +254,16 @@ impl JoinedColumnsBuilder {
 
 		Columns {
 			row_numbers: CowVec::new(row_numbers.to_vec()),
+			created_at: CowVec::new(Self::expand_timestamps_cartesian(
+				&left.created_at,
+				left_indices,
+				right_count,
+			)),
+			updated_at: CowVec::new(Self::expand_timestamps_cartesian(
+				&left.updated_at,
+				left_indices,
+				right_count,
+			)),
 			columns: CowVec::new(result_columns),
 		}
 	}
@@ -286,6 +302,8 @@ impl JoinedColumnsBuilder {
 
 		Columns {
 			row_numbers: CowVec::new(vec![row_number]),
+			created_at: CowVec::new(Self::extract_single_timestamp(&left.created_at, left_idx)),
+			updated_at: CowVec::new(Self::extract_single_timestamp(&left.updated_at, left_idx)),
 			columns: CowVec::new(result_columns),
 		}
 	}
@@ -331,6 +349,8 @@ impl JoinedColumnsBuilder {
 
 		Columns {
 			row_numbers: CowVec::new(row_numbers.to_vec()),
+			created_at: CowVec::new(Self::extract_timestamps_at_indices(&left.created_at, left_indices)),
+			updated_at: CowVec::new(Self::extract_timestamps_at_indices(&left.updated_at, left_indices)),
 			columns: CowVec::new(result_columns),
 		}
 	}
@@ -338,5 +358,46 @@ impl JoinedColumnsBuilder {
 	/// Get the pre-computed aliased names for right columns.
 	pub(crate) fn right_column_names(&self) -> &[String] {
 		&self.right_column_names
+	}
+
+	fn extract_single_timestamp(ts: &CowVec<DateTime>, idx: usize) -> Vec<DateTime> {
+		if ts.is_empty() {
+			Vec::new()
+		} else {
+			vec![ts[idx]]
+		}
+	}
+
+	fn duplicate_timestamp(ts: &CowVec<DateTime>, idx: usize, count: usize) -> Vec<DateTime> {
+		if ts.is_empty() {
+			Vec::new()
+		} else {
+			vec![ts[idx]; count]
+		}
+	}
+
+	fn expand_timestamps_cartesian(
+		ts: &CowVec<DateTime>,
+		left_indices: &[usize],
+		right_count: usize,
+	) -> Vec<DateTime> {
+		if ts.is_empty() {
+			return Vec::new();
+		}
+		let mut result = Vec::with_capacity(left_indices.len() * right_count);
+		for &left_idx in left_indices {
+			for _ in 0..right_count {
+				result.push(ts[left_idx]);
+			}
+		}
+		result
+	}
+
+	fn extract_timestamps_at_indices(ts: &CowVec<DateTime>, indices: &[usize]) -> Vec<DateTime> {
+		if ts.is_empty() {
+			Vec::new()
+		} else {
+			indices.iter().map(|&i| ts[i]).collect()
+		}
 	}
 }

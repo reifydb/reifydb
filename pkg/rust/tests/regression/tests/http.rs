@@ -3,7 +3,7 @@
 
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
-use reifydb::{Database, core::util::retry::retry, server};
+use reifydb::{Database, SharedRuntimeConfig, core::util::retry::retry, server};
 use reifydb_client::HttpClient;
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
@@ -19,6 +19,7 @@ pub struct HttpRunner {
 impl HttpRunner {
 	pub fn new(runtime: Arc<Runtime>) -> Self {
 		let instance = server::memory()
+			.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
 			.with_http(|http| http.bind_addr("::1:0").admin_bind_addr("::1:0"))
 			.build()
 			.unwrap();

@@ -15,7 +15,8 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
-	value::{Value, row_number::RowNumber, r#type::Type},
+	util::cowvec::CowVec,
+	value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 use tracing::instrument;
 
@@ -102,6 +103,8 @@ impl QueryNode for SeriesScanNode {
 		let mut key_values: Vec<u64> = Vec::new();
 		let mut tags: Vec<u8> = Vec::new();
 		let mut sequences: Vec<u64> = Vec::new();
+		let mut created_at_values: Vec<DateTime> = Vec::new();
+		let mut updated_at_values: Vec<DateTime> = Vec::new();
 		let mut data_rows: Vec<Vec<Value>> = Vec::new();
 		let mut new_last_key = None;
 
@@ -118,6 +121,8 @@ impl QueryNode for SeriesScanNode {
 			if let Some(key) = SeriesRowKey::decode(&entry.key) {
 				key_values.push(key.key);
 				sequences.push(key.sequence);
+				created_at_values.push(DateTime::from_nanos(entry.row.created_at_nanos()));
+				updated_at_values.push(DateTime::from_nanos(entry.row.updated_at_nanos()));
 				if has_tag {
 					tags.push(key.variant_tag.unwrap_or(0));
 				}
@@ -202,7 +207,12 @@ impl QueryNode for SeriesScanNode {
 		}
 
 		let row_numbers: Vec<RowNumber> = sequences.into_iter().map(RowNumber::from).collect();
-		Ok(Some(Columns::with_row_numbers(result_columns, row_numbers)))
+		Ok(Some(Columns {
+			row_numbers: CowVec::new(row_numbers),
+			created_at: CowVec::new(created_at_values),
+			updated_at: CowVec::new(updated_at_values),
+			columns: CowVec::new(result_columns),
+		}))
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

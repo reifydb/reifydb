@@ -141,6 +141,10 @@ pub struct Frame {
     pub row_numbers: ::prost::alloc::vec::Vec<u64>,
     #[prost(message, repeated, tag = "2")]
     pub columns: ::prost::alloc::vec::Vec<FrameColumn>,
+    #[prost(string, repeated, tag = "3")]
+    pub created_at: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag = "4")]
+    pub updated_at: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct FrameColumn {

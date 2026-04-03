@@ -14,7 +14,9 @@ pub mod token;
 pub mod variable;
 
 use cursor::Cursor;
+use identifier::{is_identifier_char, is_identifier_start};
 use reifydb_type::fragment::Fragment;
+use token::{Token, TokenKind};
 use variable::scan_variable;
 
 use crate::{
@@ -26,12 +28,43 @@ use crate::{
 		literal::scan_literal,
 		operator::scan_operator,
 		separator::scan_separator,
-		token::Token,
 	},
 };
 
 /// Tokenize the input string into a vector of tokens.
 /// The input lifetime is tied to the bump lifetime, enabling zero-copy fragments.
+const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at"];
+
+fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
+	if cursor.peek() != Some('#') {
+		return None;
+	}
+
+	let state = cursor.save_state();
+	let start_pos = cursor.pos();
+	let start_line = cursor.line();
+	let start_column = cursor.column();
+
+	cursor.consume();
+
+	if let Some(ch) = cursor.peek() {
+		if is_identifier_start(ch) {
+			cursor.consume_while(is_identifier_char);
+			let fragment = cursor.make_fragment(start_pos, start_line, start_column);
+			let name = &fragment.text()[1..];
+			if SYSTEM_COLUMNS.contains(&name) {
+				return Some(Token {
+					kind: TokenKind::SystemColumn,
+					fragment,
+				});
+			}
+		}
+	}
+
+	cursor.restore_state(state);
+	None
+}
+
 pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<'b>>> {
 	let mut cursor = Cursor::new(input);
 	// Estimate token count: rough heuristic of 1 token per 6 characters
@@ -52,6 +85,8 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 			Some(ch) => match ch {
 				// Variables start with $
 				'$' => scan_variable(&mut cursor),
+
+				'#' => scan_system_column(&mut cursor).or_else(|| scan_literal(&mut cursor)),
 
 				// Backtick-quoted identifiers
 				'`' => scan_quoted_identifier(&mut cursor),

@@ -82,6 +82,7 @@ fn render_ast_tree_inner(ast: &Ast<'_>, prefix: &str, is_last: bool, output: &mu
 		Ast::StatementExpression(_) => "StatementExpression",
 		Ast::Environment(_) => "Environment",
 		Ast::Rownum(_) => "Rownum",
+		Ast::SystemColumn(_) => "SystemColumn",
 		Ast::DefFunction(_) => "DefFunction",
 		Ast::Return(_) => "Return",
 		Ast::Append(_) => "Append",

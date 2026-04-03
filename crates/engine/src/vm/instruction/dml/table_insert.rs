@@ -177,7 +177,9 @@ pub(crate) fn insert_table(
 				shape.set_value(&mut row, table_idx, &value);
 			}
 
-			// Store the validated and encoded row for later insertion
+			let now_nanos = services.runtime_context.clock.now_nanos() as u64;
+			row.set_timestamps(now_nanos, now_nanos);
+
 			validated_rows.push(row);
 		}
 	}

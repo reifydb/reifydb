@@ -137,6 +137,24 @@ impl<'bump> Cursor<'bump> {
 		}
 	}
 
+	/// Check if `#` at current position starts a system column name
+	fn is_system_column_ahead(&self) -> bool {
+		const SYSTEM_COLUMNS: &[&str] = &["rownum", "created_at", "updated_at"];
+		let remaining = &self.input[self.pos..];
+		for col in SYSTEM_COLUMNS {
+			let prefixed = format!("#{col}");
+			if remaining.starts_with(&prefixed) {
+				let next_char = remaining[prefixed.len()..].chars().next();
+				if next_char.is_none()
+					|| !(next_char.unwrap().is_alphanumeric() || next_char.unwrap() == '_')
+				{
+					return true;
+				}
+			}
+		}
+		false
+	}
+
 	/// Skip whitespace characters - optimized for common ASCII cases
 	pub fn skip_whitespace(&mut self) {
 		// Fast path for ASCII whitespace (most common case)
@@ -146,6 +164,10 @@ impl<'bump> Cursor<'bump> {
 					self.consume();
 				}
 				'#' => {
+					// Check if this is a system column (e.g., #created_at) rather than a comment
+					if self.is_system_column_ahead() {
+						break;
+					}
 					// Single-line comment: skip to end of line or EOF
 					self.consume(); // consume '#'
 					while let Some(ch) = self.current_char {

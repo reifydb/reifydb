@@ -40,33 +40,55 @@ impl FrameRenderer {
 	fn render_internal(frame: &Frame, f: &mut dyn Write, include_row_numbers: bool) -> fmt::Result {
 		let row_count = frame.first().map_or(0, |c| c.data.len());
 		let has_row_numbers = include_row_numbers && !frame.row_numbers.is_empty();
+		let has_created_at = !frame.created_at.is_empty();
+		let has_updated_at = !frame.updated_at.is_empty();
 		let col_count = frame.len()
 			+ if has_row_numbers {
 				1
 			} else {
 				0
-			};
+			} + if has_created_at {
+			1
+		} else {
+			0
+		} + if has_updated_at {
+			1
+		} else {
+			0
+		};
 
 		// Get the display order for regular columns
 		let column_order = Self::get_column_display_order(frame);
 
 		let mut col_widths = vec![0; col_count];
 
-		// If we have encoded numbers, calculate width for encoded number column
-		let row_num_col_idx = if has_row_numbers {
-			// Row number column is always first
-			let row_num_header = "rownum";
-			col_widths[0] = Self::display_width(row_num_header);
-
-			// Calculate max width needed for encoded numbers
+		// Calculate widths for system columns
+		let mut sys_col_idx = 0;
+		if has_row_numbers {
+			col_widths[sys_col_idx] = Self::display_width("#rownum");
 			for row_num in &frame.row_numbers {
-				let s = row_num.to_string();
-				col_widths[0] = col_widths[0].max(Self::display_width(&s));
+				col_widths[sys_col_idx] =
+					col_widths[sys_col_idx].max(Self::display_width(&row_num.to_string()));
 			}
-			1 // Start regular columns at index 1
-		} else {
-			0 // Start regular columns at index 0
-		};
+			sys_col_idx += 1;
+		}
+		if has_created_at {
+			col_widths[sys_col_idx] = Self::display_width("#created_at");
+			for ts in &frame.created_at {
+				col_widths[sys_col_idx] =
+					col_widths[sys_col_idx].max(Self::display_width(&ts.to_string()));
+			}
+			sys_col_idx += 1;
+		}
+		if has_updated_at {
+			col_widths[sys_col_idx] = Self::display_width("#updated_at");
+			for ts in &frame.updated_at {
+				col_widths[sys_col_idx] =
+					col_widths[sys_col_idx].max(Self::display_width(&ts.to_string()));
+			}
+			sys_col_idx += 1;
+		}
+		let row_num_col_idx = sys_col_idx;
 
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &frame[col_idx];
@@ -93,15 +115,36 @@ impl FrameRenderer {
 
 		let mut header = Vec::new();
 
-		// Add encoded number header if present
+		// Add system column headers
+		let mut sys_idx = 0;
 		if has_row_numbers {
-			let w = col_widths[0];
-			let name = "rownum";
+			let w = col_widths[sys_idx];
+			let name = "#rownum";
 			let pad = w - Self::display_width(name);
 			let l = pad / 2;
 			let r = pad - l;
 			header.push(format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r));
+			sys_idx += 1;
 		}
+		if has_created_at {
+			let w = col_widths[sys_idx];
+			let name = "#created_at";
+			let pad = w - Self::display_width(name);
+			let l = pad / 2;
+			let r = pad - l;
+			header.push(format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r));
+			sys_idx += 1;
+		}
+		if has_updated_at {
+			let w = col_widths[sys_idx];
+			let name = "#updated_at";
+			let pad = w - Self::display_width(name);
+			let l = pad / 2;
+			let r = pad - l;
+			header.push(format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r));
+			sys_idx += 1;
+		}
+		let _ = sys_idx;
 
 		// Add regular column headers
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
@@ -121,15 +164,36 @@ impl FrameRenderer {
 		for row_numberx in 0..row_count {
 			let mut row = Vec::new();
 
-			// Add encoded number value if present
+			// Add system column values
+			let mut sys_idx = 0;
 			if has_row_numbers {
-				let w = col_widths[0];
+				let w = col_widths[sys_idx];
 				let s = frame.row_numbers[row_numberx].to_string();
 				let pad = w - Self::display_width(&s);
 				let l = pad / 2;
 				let r = pad - l;
 				row.push(format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r));
+				sys_idx += 1;
 			}
+			if has_created_at {
+				let w = col_widths[sys_idx];
+				let s = frame.created_at[row_numberx].to_string();
+				let pad = w - Self::display_width(&s);
+				let l = pad / 2;
+				let r = pad - l;
+				row.push(format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r));
+				sys_idx += 1;
+			}
+			if has_updated_at {
+				let w = col_widths[sys_idx];
+				let s = frame.updated_at[row_numberx].to_string();
+				let pad = w - Self::display_width(&s);
+				let l = pad / 2;
+				let r = pad - l;
+				row.push(format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r));
+				sys_idx += 1;
+			}
+			let _ = sys_idx;
 
 			// Add regular column values
 			for (display_idx, &col_idx) in column_order.iter().enumerate() {

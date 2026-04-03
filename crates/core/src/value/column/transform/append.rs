@@ -38,9 +38,15 @@ impl Columns {
 			.into());
 		}
 
-		// Append encoded numbers from the other columns
+		// Append system columns from the other columns
 		if !other.row_numbers.is_empty() {
 			self.row_numbers.make_mut().extend(other.row_numbers.iter().copied());
+		}
+		if !other.created_at.is_empty() {
+			self.created_at.make_mut().extend(other.created_at.iter().copied());
+		}
+		if !other.updated_at.is_empty() {
+			self.updated_at.make_mut().extend(other.updated_at.iter().copied());
 		}
 
 		let columns = self.columns.make_mut();
@@ -97,6 +103,12 @@ impl Columns {
 		// Append row numbers if provided
 		if !row_numbers.is_empty() {
 			self.row_numbers.make_mut().extend(row_numbers);
+		}
+
+		// Extract and append timestamps from encoded rows
+		for row in &rows {
+			self.created_at.make_mut().push(DateTime::from_nanos(row.created_at_nanos()));
+			self.updated_at.make_mut().push(DateTime::from_nanos(row.updated_at_nanos()));
 		}
 
 		// Handle all-none Option column conversion to properly-typed Option column

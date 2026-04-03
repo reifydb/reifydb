@@ -15,6 +15,7 @@ use reifydb_core::{
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_type::{
 	fragment::Fragment,
@@ -233,10 +234,13 @@ fn execute_table_insert(
 		for (idx, value) in values.iter().enumerate() {
 			shape.set_value(&mut row, idx, value);
 		}
+
+		let now_nanos = Clock::default().now_nanos() as u64;
+		row.set_timestamps(now_nanos, now_nanos);
+
 		encoded_rows.push(row);
 	}
 
-	// 4. Batch allocate row numbers
 	let total_rows = encoded_rows.len();
 	if total_rows == 0 {
 		return Ok(TableInsertResult {
@@ -371,7 +375,9 @@ fn execute_ringbuffer_insert(
 			shape.set_value(&mut row, idx, value);
 		}
 
-		// Handle ring buffer overflow - delete oldest entry if full
+		let now_nanos = Clock::default().now_nanos() as u64;
+		row.set_timestamps(now_nanos, now_nanos);
+
 		if metadata.is_full() {
 			let oldest_row = RowNumber(metadata.head);
 			txn.remove_from_ringbuffer(&ringbuffer, oldest_row)?;

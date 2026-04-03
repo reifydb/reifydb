@@ -117,6 +117,7 @@ pub enum Ast<'bump> {
 	Window(AstWindow<'bump>),
 	StatementExpression(AstStatementExpression<'bump>),
 	Rownum(AstRownum<'bump>),
+	SystemColumn(AstSystemColumn<'bump>),
 	DefFunction(AstDefFunction<'bump>),
 	Return(AstReturn<'bump>),
 	SumTypeConstructor(AstSumTypeConstructor<'bump>),
@@ -209,6 +210,7 @@ impl<'bump> Ast<'bump> {
 			Ast::StatementExpression(node) => node.expression.token(),
 			Ast::Environment(node) => &node.token,
 			Ast::Rownum(node) => &node.token,
+			Ast::SystemColumn(node) => &node.token,
 			Ast::DefFunction(node) => &node.token,
 			Ast::Return(node) => &node.token,
 			Ast::SumTypeConstructor(node) => &node.token,
@@ -1476,6 +1478,11 @@ pub struct AstVariable<'bump> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstRownum<'bump> {
+	pub token: Token<'bump>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstSystemColumn<'bump> {
 	pub token: Token<'bump>,
 }
 

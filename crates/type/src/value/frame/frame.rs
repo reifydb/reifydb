@@ -11,12 +11,14 @@ use serde::{Deserialize, Serialize};
 use super::column::FrameColumn;
 use crate::{
 	util::unicode::UnicodeWidthStr,
-	value::{Value, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Frame {
 	pub row_numbers: Vec<RowNumber>,
+	pub created_at: Vec<DateTime>,
+	pub updated_at: Vec<DateTime>,
 	pub columns: Vec<FrameColumn>,
 }
 
@@ -44,6 +46,8 @@ impl Frame {
 	pub fn new(columns: Vec<FrameColumn>) -> Self {
 		Self {
 			row_numbers: Vec::new(),
+			created_at: Vec::new(),
+			updated_at: Vec::new(),
 			columns,
 		}
 	}
@@ -51,6 +55,8 @@ impl Frame {
 	pub fn with_row_numbers(columns: Vec<FrameColumn>, row_numbers: Vec<RowNumber>) -> Self {
 		Self {
 			row_numbers,
+			created_at: Vec::new(),
+			updated_at: Vec::new(),
 			columns,
 		}
 	}
@@ -69,14 +75,25 @@ impl Display for Frame {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let row_count = self.first().map_or(0, |c| c.data.len());
 		let has_row_numbers = !self.row_numbers.is_empty();
+		let has_created_at = !self.created_at.is_empty();
+		let has_updated_at = !self.updated_at.is_empty();
 
 		// Calculate column widths
 		let mut col_widths: Vec<usize> = Vec::new();
 
-		// Row number column width
 		if has_row_numbers {
-			let header_width = "rownum".width();
+			let header_width = "#rownum".width();
 			let max_val_width = self.row_numbers.iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
+			col_widths.push(header_width.max(max_val_width));
+		}
+		if has_created_at {
+			let header_width = "#created_at".width();
+			let max_val_width = self.created_at.iter().map(|ts| ts.to_string().width()).max().unwrap_or(0);
+			col_widths.push(header_width.max(max_val_width));
+		}
+		if has_updated_at {
+			let header_width = "#updated_at".width();
+			let max_val_width = self.updated_at.iter().map(|ts| ts.to_string().width()).max().unwrap_or(0);
 			col_widths.push(header_width.max(max_val_width));
 		}
 
@@ -108,7 +125,25 @@ impl Display for Frame {
 		let mut header_parts = Vec::new();
 		let mut col_idx = 0;
 		if has_row_numbers {
-			let name = "rownum";
+			let name = "#rownum";
+			let w = col_widths[col_idx];
+			let pad = w - name.width();
+			let l = pad / 2;
+			let r = pad - l;
+			header_parts.push(format!(" {:l$}{}{:r$} ", "", name, ""));
+			col_idx += 1;
+		}
+		if has_created_at {
+			let name = "#created_at";
+			let w = col_widths[col_idx];
+			let pad = w - name.width();
+			let l = pad / 2;
+			let r = pad - l;
+			header_parts.push(format!(" {:l$}{}{:r$} ", "", name, ""));
+			col_idx += 1;
+		}
+		if has_updated_at {
+			let name = "#updated_at";
 			let w = col_widths[col_idx];
 			let pad = w - name.width();
 			let l = pad / 2;
@@ -135,6 +170,24 @@ impl Display for Frame {
 			if has_row_numbers {
 				let w = col_widths[col_idx];
 				let val = self.row_numbers[row_idx].to_string();
+				let pad = w - val.width();
+				let l = pad / 2;
+				let r = pad - l;
+				row_parts.push(format!(" {:l$}{}{:r$} ", "", val, ""));
+				col_idx += 1;
+			}
+			if has_created_at {
+				let w = col_widths[col_idx];
+				let val = self.created_at[row_idx].to_string();
+				let pad = w - val.width();
+				let l = pad / 2;
+				let r = pad - l;
+				row_parts.push(format!(" {:l$}{}{:r$} ", "", val, ""));
+				col_idx += 1;
+			}
+			if has_updated_at {
+				let w = col_widths[col_idx];
+				let val = self.updated_at[row_idx].to_string();
 				let pad = w - val.width();
 				let l = pad / 2;
 				let r = pad - l;

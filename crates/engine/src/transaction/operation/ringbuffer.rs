@@ -15,7 +15,11 @@ use reifydb_transaction::{
 	interceptor::ringbuffer_row::RingBufferRowInterceptor,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_type::{fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::{
+	fragment::Fragment,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::Result;
 
@@ -36,6 +40,8 @@ fn build_encoded_columns(shape: &RowShape, row_number: RowNumber, encoded: &Enco
 
 	Columns {
 		row_numbers: CowVec::new(vec![row_number]),
+		created_at: CowVec::new(vec![DateTime::from_nanos(encoded.created_at_nanos())]),
+		updated_at: CowVec::new(vec![DateTime::from_nanos(encoded.updated_at_nanos())]),
 		columns: CowVec::new(columns_vec),
 	}
 }

@@ -80,10 +80,11 @@ impl From<Column> for FrameColumn {
 impl From<Columns> for Frame {
 	fn from(columns: Columns) -> Self {
 		let frame_columns: Vec<FrameColumn> = columns.columns.into_iter().map(|col| col.into()).collect();
-		if !columns.row_numbers.is_empty() {
-			Frame::with_row_numbers(frame_columns, columns.row_numbers.to_vec())
-		} else {
-			Frame::new(frame_columns)
+		Frame {
+			row_numbers: columns.row_numbers.to_vec(),
+			created_at: columns.created_at.to_vec(),
+			updated_at: columns.updated_at.to_vec(),
+			columns: frame_columns,
 		}
 	}
 }
@@ -159,6 +160,8 @@ impl From<Frame> for Columns {
 		let columns: Vec<Column> = frame.columns.into_iter().map(|col| col.into()).collect();
 		Columns {
 			row_numbers: CowVec::new(frame.row_numbers),
+			created_at: CowVec::new(frame.created_at),
+			updated_at: CowVec::new(frame.updated_at),
 			columns: CowVec::new(columns),
 		}
 	}

@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResponseFrame {
 	pub row_numbers: Vec<u64>,
+	pub created_at: Vec<String>,
+	pub updated_at: Vec<String>,
 	pub columns: Vec<ResponseColumn>,
 }
 
@@ -29,6 +31,8 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 
 	for frame in frames {
 		let row_numbers: Vec<u64> = frame.row_numbers.iter().map(|rn| rn.value()).collect();
+		let created_at: Vec<String> = frame.created_at.iter().map(|dt| dt.to_string()).collect();
+		let updated_at: Vec<String> = frame.updated_at.iter().map(|dt| dt.to_string()).collect();
 
 		let mut columns = Vec::new();
 
@@ -54,6 +58,8 @@ pub fn convert_frames(frames: &[Frame]) -> Vec<ResponseFrame> {
 
 		result.push(ResponseFrame {
 			row_numbers,
+			created_at,
+			updated_at,
 			columns,
 		});
 	}

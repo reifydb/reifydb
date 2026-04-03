@@ -1087,8 +1087,6 @@ impl ExpressionCompiler {
 				fragment: var.token.fragment.to_owned(),
 			})),
 			Ast::Rownum(_rownum) => {
-				// Compile rownum to a column reference for rownum
-
 				let column = ColumnIdentifier {
 					shape: ColumnShape::Qualified {
 						namespace: Fragment::Internal {
@@ -1100,6 +1098,28 @@ impl ExpressionCompiler {
 					},
 					name: Fragment::Internal {
 						text: Arc::from(ROW_NUMBER_COLUMN_NAME),
+					},
+				};
+				Ok(Expression::Column(ColumnExpression(column)))
+			}
+			Ast::SystemColumn(node) => {
+				let name = node
+					.token
+					.fragment
+					.text()
+					.strip_prefix('#')
+					.unwrap_or(node.token.fragment.text());
+				let column = ColumnIdentifier {
+					shape: ColumnShape::Qualified {
+						namespace: Fragment::Internal {
+							text: Arc::from("_context"),
+						},
+						name: Fragment::Internal {
+							text: Arc::from("_context"),
+						},
+					},
+					name: Fragment::Internal {
+						text: Arc::from(name),
 					},
 				};
 				Ok(Expression::Column(ColumnExpression(column)))

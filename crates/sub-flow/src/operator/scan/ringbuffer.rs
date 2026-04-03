@@ -10,7 +10,12 @@ use reifydb_core::{
 	key::row::RowKey,
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_type::{Result, fragment::Fragment, util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	fragment::Fragment,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use crate::{Operator, operator::sink::decode_dictionary_columns, transaction::FlowTransaction};
 
@@ -89,11 +94,15 @@ impl Operator for PrimitiveRingBufferOperator {
 			});
 		}
 		let mut row_numbers = Vec::with_capacity(rows.len());
+		let mut created_at = Vec::with_capacity(rows.len());
+		let mut updated_at = Vec::with_capacity(rows.len());
 
 		for row_num in rows {
 			let key = RowKey::encoded(ShapeId::ringbuffer(self.ringbuffer.id), *row_num);
 			if let Some(encoded) = txn.get(&key)? {
 				row_numbers.push(*row_num);
+				created_at.push(DateTime::from_nanos(encoded.created_at_nanos()));
+				updated_at.push(DateTime::from_nanos(encoded.updated_at_nanos()));
 				for (i, _field) in fields.iter().enumerate() {
 					let value = shape.get_value(&encoded, i);
 					columns_vec[i].data.push_value(value);
@@ -106,6 +115,8 @@ impl Operator for PrimitiveRingBufferOperator {
 		} else {
 			Ok(Columns {
 				row_numbers: CowVec::new(row_numbers),
+				created_at: CowVec::new(created_at),
+				updated_at: CowVec::new(updated_at),
 				columns: CowVec::new(columns_vec),
 			})
 		}
@@ -125,6 +136,8 @@ impl PrimitiveRingBufferOperator {
 			.collect();
 		Columns {
 			row_numbers: CowVec::new(Vec::new()),
+			created_at: CowVec::new(Vec::new()),
+			updated_at: CowVec::new(Vec::new()),
 			columns: CowVec::new(columns),
 		}
 	}

@@ -208,6 +208,10 @@ pub(crate) fn update_table(
 					)?;
 				}
 
+				let old_created_at =
+					txn.get(&row_key)?.expect("row must exist for update").row.created_at_nanos();
+				row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos() as u64);
+
 				let stored_row = txn.update_table(table.clone(), row_number, row)?;
 
 				if plan.returning.is_some() {

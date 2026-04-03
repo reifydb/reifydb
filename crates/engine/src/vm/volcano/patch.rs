@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::fragment::Fragment;
+use reifydb_type::{fragment::Fragment, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
@@ -123,6 +123,8 @@ impl Transform for PatchNode {
 
 		let row_count = input.row_count();
 		let row_numbers = input.row_numbers.to_vec();
+		let created_at = input.created_at.clone();
+		let updated_at = input.updated_at.clone();
 
 		let patch_names: Vec<Fragment> = self.expressions.iter().map(column_name_from_expression).collect();
 
@@ -176,10 +178,11 @@ impl Transform for PatchNode {
 			}
 		}
 
-		if row_numbers.is_empty() {
-			Ok(Columns::new(result_columns))
-		} else {
-			Ok(Columns::with_row_numbers(result_columns, row_numbers))
-		}
+		Ok(Columns {
+			row_numbers: CowVec::new(row_numbers),
+			created_at,
+			updated_at,
+			columns: CowVec::new(result_columns),
+		})
 	}
 }

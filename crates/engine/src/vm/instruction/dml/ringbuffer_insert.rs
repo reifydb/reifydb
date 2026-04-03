@@ -174,7 +174,9 @@ pub(crate) fn insert_ringbuffer(
 				shape.set_value(&mut row, rb_idx, &value);
 			}
 
-			// Extract partition key (empty vec for global → single partition)
+			let now_nanos = services.runtime_context.clock.now_nanos() as u64;
+			row.set_timestamps(now_nanos, now_nanos);
+
 			let partition_key: Vec<Value> =
 				partition_col_indices.iter().map(|&idx| row_values[idx].clone()).collect();
 

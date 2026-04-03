@@ -203,6 +203,8 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 
 		// Convert Columns to ResponseFrame
 		let row_numbers: Vec<u64> = columns.row_numbers.iter().map(|r| r.0).collect();
+		let created_at: Vec<String> = columns.created_at.iter().map(|dt| dt.to_string()).collect();
+		let updated_at: Vec<String> = columns.updated_at.iter().map(|dt| dt.to_string()).collect();
 		let row_count = columns.row_count();
 
 		let response_columns: Vec<ResponseColumn> = columns
@@ -226,6 +228,8 @@ impl SubscriptionDelivery for SubscriptionRegistry {
 
 		let frame = ResponseFrame {
 			row_numbers,
+			created_at,
+			updated_at,
 			columns: response_columns,
 		};
 

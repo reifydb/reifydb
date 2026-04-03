@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::column_name_from_expression};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{fragment::Fragment, return_error};
+use reifydb_type::{fragment::Fragment, return_error, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
@@ -133,6 +133,8 @@ impl Transform for ExtendNode {
 
 		let row_count = input.row_count();
 		let row_numbers = input.row_numbers.to_vec();
+		let created_at = input.created_at.clone();
+		let updated_at = input.updated_at.clone();
 
 		// Collect existing column names for duplicate checking
 		let existing_names: Vec<Fragment> = input.iter().map(|c| c.name().clone()).collect();
@@ -189,11 +191,12 @@ impl Transform for ExtendNode {
 			}
 		}
 
-		if row_numbers.is_empty() {
-			Ok(Columns::new(new_columns))
-		} else {
-			Ok(Columns::with_row_numbers(new_columns, row_numbers))
-		}
+		Ok(Columns {
+			row_numbers: CowVec::new(row_numbers),
+			created_at,
+			updated_at,
+			columns: CowVec::new(new_columns),
+		})
 	}
 }
 

@@ -8,7 +8,7 @@ use crate::{
 	ast::{
 		ast::{
 			Ast, AstCallFunction, AstEnvironment, AstFrom, AstIdentity, AstRequire, AstRownum, AstRunTests,
-			AstVariable, AstWildcard,
+			AstSystemColumn, AstVariable, AstWildcard,
 		},
 		identifier::{
 			MaybeQualifiedFunctionIdentifier, MaybeQualifiedNamespaceIdentifier,
@@ -269,6 +269,12 @@ impl<'bump> Parser<'bump> {
 					} else {
 						Ok(Ast::Identifier(self.parse_identifier()?))
 					}
+				}
+				_ if current.is_system_column() => {
+					let token = self.advance()?;
+					Ok(Ast::SystemColumn(AstSystemColumn {
+						token,
+					}))
 				}
 				_ => {
 					if let TokenKind::Variable = current.kind {

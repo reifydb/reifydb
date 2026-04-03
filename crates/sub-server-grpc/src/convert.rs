@@ -194,6 +194,8 @@ pub fn frames_to_proto(frames: Vec<Frame>) -> Vec<ProtoFrame> {
 	frames.into_iter()
 		.map(|frame| {
 			let row_numbers = frame.row_numbers.iter().map(|rn| rn.value()).collect();
+			let created_at: Vec<String> = frame.created_at.iter().map(|dt| dt.to_string()).collect();
+			let updated_at: Vec<String> = frame.updated_at.iter().map(|dt| dt.to_string()).collect();
 			let columns = frame
 				.columns
 				.into_iter()
@@ -210,6 +212,8 @@ pub fn frames_to_proto(frames: Vec<Frame>) -> Vec<ProtoFrame> {
 			ProtoFrame {
 				row_numbers,
 				columns,
+				created_at,
+				updated_at,
 			}
 		})
 		.collect()

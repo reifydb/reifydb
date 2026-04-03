@@ -7,13 +7,14 @@
 
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
-use reifydb::{Database, WithSubsystem, server};
+use reifydb::{Database, SharedRuntimeConfig, WithSubsystem, server};
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::command::Command;
 use tokio::runtime::Runtime;
 
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
+		.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
 		.with_flow(|f| f)
 		.with_grpc(|grpc| grpc.admin_bind_addr("[::1]:0"))
 		.with_http(|http| http.admin_bind_addr("::1:0"))

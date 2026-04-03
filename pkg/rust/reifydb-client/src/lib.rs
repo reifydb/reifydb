@@ -307,6 +307,10 @@ pub struct LogoutResponsePayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientFrame {
 	pub row_numbers: Vec<u64>,
+	#[serde(default)]
+	pub created_at: Vec<String>,
+	#[serde(default)]
+	pub updated_at: Vec<String>,
 	pub columns: Vec<ClientColumn>,
 }
 

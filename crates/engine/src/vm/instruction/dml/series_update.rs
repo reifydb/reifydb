@@ -22,7 +22,7 @@ use reifydb_type::{
 	params::Params,
 	return_error,
 	util::cowvec::CowVec,
-	value::{Value, identity::IdentityId, row_number::RowNumber},
+	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -153,17 +153,20 @@ pub(crate) fn update_series(
 			updates_to_apply.push((encoded_key, row, row_idx));
 		}
 
-		for (encoded_key, row, row_idx) in &updates_to_apply {
-			let pre_data = txn.get(encoded_key)?;
+		for (encoded_key, mut row, row_idx) in updates_to_apply {
+			let pre_data = txn.get(&encoded_key)?;
 			let pre_values = pre_data.map(|v| v.row);
+
+			let old_created_at = pre_values.as_ref().expect("row must exist for update").created_at_nanos();
+			row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos() as u64);
 
 			let key_value = columns
 				.iter()
 				.find(|c| c.name().text() == series.key.column())
-				.and_then(|c| series.key_to_u64(c.data().get_value(*row_idx)))
+				.and_then(|c| series.key_to_u64(c.data().get_value(row_idx)))
 				.unwrap_or(0);
 
-			let row_number = RowNumber::from(u64::from(row_numbers[*row_idx]));
+			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
 
 			if let Some(ref pre_vals) = pre_values {
 				let read_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
@@ -190,7 +193,7 @@ pub(crate) fn update_series(
 				for col in columns.iter() {
 					if col.name().text() != series.key.column() && col.name().text() != "tag" {
 						let mut data = ColumnData::with_capacity(col.data().get_type(), 1);
-						data.push_value(col.data().get_value(*row_idx));
+						data.push_value(col.data().get_value(row_idx));
 						post_col_vec.push(Column {
 							name: col.name().clone(),
 							data,
@@ -200,10 +203,18 @@ pub(crate) fn update_series(
 
 				let pre = Columns {
 					row_numbers: CowVec::new(vec![row_number]),
+					created_at: CowVec::new(vec![DateTime::from_nanos(
+						pre_vals.created_at_nanos(),
+					)]),
+					updated_at: CowVec::new(vec![DateTime::from_nanos(
+						pre_vals.updated_at_nanos(),
+					)]),
 					columns: CowVec::new(pre_col_vec),
 				};
 				let post = Columns {
 					row_numbers: CowVec::new(vec![row_number]),
+					created_at: CowVec::new(vec![DateTime::from_nanos(row.created_at_nanos())]),
+					updated_at: CowVec::new(vec![DateTime::from_nanos(row.updated_at_nanos())]),
 					columns: CowVec::new(post_col_vec),
 				};
 				txn.track_flow_change(Change {
@@ -218,7 +229,7 @@ pub(crate) fn update_series(
 
 			let pre_for_interceptor = pre_values.clone().unwrap_or_else(|| row.clone());
 			let row = SeriesRowInterceptor::pre_update(txn, &series, row.clone())?;
-			txn.set(encoded_key, row.clone())?;
+			txn.set(&encoded_key, row.clone())?;
 			SeriesRowInterceptor::post_update(txn, &series, &row, &pre_for_interceptor)?;
 			updated_count += 1;
 		}

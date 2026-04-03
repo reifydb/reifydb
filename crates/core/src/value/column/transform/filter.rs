@@ -22,6 +22,30 @@ impl Columns {
 			self.row_numbers = CowVec::new(filtered_row_numbers);
 		}
 
+		// Filter created_at timestamps if present
+		if !self.created_at.is_empty() {
+			let filtered_created_at: Vec<_> = self
+				.created_at
+				.iter()
+				.enumerate()
+				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
+				.map(|(_, &ts)| ts)
+				.collect();
+			self.created_at = CowVec::new(filtered_created_at);
+		}
+
+		// Filter updated_at timestamps if present
+		if !self.updated_at.is_empty() {
+			let filtered_updated_at: Vec<_> = self
+				.updated_at
+				.iter()
+				.enumerate()
+				.filter(|(i, _)| *i < mask.len() && mask.get(*i))
+				.map(|(_, &ts)| ts)
+				.collect();
+			self.updated_at = CowVec::new(filtered_updated_at);
+		}
+
 		// Filter columns
 		let columns = self.columns.make_mut();
 		for column in columns.iter_mut() {
