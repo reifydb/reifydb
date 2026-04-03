@@ -263,7 +263,10 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 						*conn.auth_token = auth.token;
 						Some(Response::auth(&request.id).to_json())
 					}
-					Err(e) => Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e))),
+					Err(e) => {
+						*conn.identity = None;
+						Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e)))
+					}
 				}
 			}
 		}

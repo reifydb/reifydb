@@ -220,21 +220,21 @@ export class JsonWebsocketClient {
         return response.payload.body;
     }
 
-    async loginWithPassword(principal: string, password: string): Promise<LoginResult> {
-        return this.login("password", principal, {password});
+    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
+        return this.login("password", identity, {password});
     }
 
-    async loginWithToken(principal: string, token: string): Promise<LoginResult> {
-        return this.login("token", principal, {token});
+    async loginWithToken(identity: string, token: string): Promise<LoginResult> {
+        return this.login("token", identity, {token});
     }
 
-    async login(method: string, principal: string, credentials: Record<string, string>): Promise<LoginResult> {
+    async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
         const id = `auth-${this.nextId++}`;
 
         const request: AuthRequest = {
             id,
             type: "Auth",
-            payload: {method, principal, credentials}
+            payload: {method, credentials: {identifier: identity, ...credentials}}
         };
 
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
@@ -277,12 +277,6 @@ export class JsonWebsocketClient {
 
         const id = `logout-${this.nextId++}`;
 
-        const request: LogoutRequest = {
-            id,
-            type: "Logout",
-            payload: {}
-        };
-
         const response = await new Promise<ResponsePayload>((resolve, reject) => {
             const timeoutMs = this.options.timeoutMs ?? 30_000;
             const timeout = setTimeout(() => {
@@ -295,7 +289,7 @@ export class JsonWebsocketClient {
                 resolve(res);
             });
 
-            this.socket.send(JSON.stringify(request));
+            this.socket.send(JSON.stringify({id, type: "Logout"}));
         });
 
         if (response.type === "Err") {

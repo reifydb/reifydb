@@ -35,6 +35,7 @@ serde_bytes = { workspace = true }
 postcard = { workspace = true }
 crossbeam-channel = { workspace = true }
 
+rayon = { workspace = true }
 dashmap = { workspace = true }
 indexmap = { workspace = true }
 num_cpus = { workspace = true }

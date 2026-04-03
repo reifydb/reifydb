@@ -5,6 +5,7 @@ use reifydb_core::{
 	interface::catalog::{id::SubscriptionId, subscription::SubscriptionInspectorRef},
 	value::column::columns::Columns,
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{fragment::Fragment, params::Params, value::Value};
 
 use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
@@ -24,11 +25,7 @@ impl InspectSubscription {
 }
 
 impl Procedure for InspectSubscription {
-	fn call(
-		&self,
-		ctx: &ProcedureContext,
-		_tx: &mut reifydb_transaction::transaction::Transaction<'_>,
-	) -> Result<Columns, ProcedureError> {
+	fn call(&self, ctx: &ProcedureContext, _tx: &mut Transaction<'_>) -> Result<Columns, ProcedureError> {
 		let subscription_id_value = match ctx.params {
 			Params::Positional(args) if args.len() == 1 => match &args[0] {
 				Value::Uint8(id) => *id,

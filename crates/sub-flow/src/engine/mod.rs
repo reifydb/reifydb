@@ -187,8 +187,8 @@ impl FlowEngine {
 		self.analyzer.get_flow_producing_view(dependency_graph, view_id)
 	}
 
-	pub fn calculate_execution_order(&self) -> Vec<FlowId> {
+	pub fn calculate_execution_levels(&self) -> Vec<Vec<FlowId>> {
 		let dependency_graph = self.analyzer.get_dependency_graph();
-		self.analyzer.calculate_execution_order(dependency_graph)
+		self.analyzer.calculate_execution_levels(dependency_graph)
 	}
 }

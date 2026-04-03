@@ -123,7 +123,6 @@ export interface AuthRequest {
     payload: {
         token?: string;
         method?: string;
-        principal?: string;
         credentials?: Record<string, string>;
     };
 }

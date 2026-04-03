@@ -129,8 +129,9 @@ export function createCallbackTracker<S extends ShapeNode = any>(
         callback: (rows: any[]) => {
             calls.push(rows);
             if (pendingResolve) {
-                pendingResolve(rows);
+                const fn = pendingResolve;
                 pendingResolve = null;
+                fn(rows);
             }
         },
         getCalls: () => calls,

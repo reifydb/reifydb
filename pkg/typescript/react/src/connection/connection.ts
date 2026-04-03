@@ -34,6 +34,7 @@ export class Connection {
         listeners: new Set(),
     };
     private config: ConnectionConfig;
+    private connectPromise: Promise<void> | null = null;
 
     constructor(config: ConnectionConfig = DEFAULT_CONFIG) {
         this.config = {...DEFAULT_CONFIG, ...config};
@@ -48,9 +49,13 @@ export class Connection {
     }
 
     async connect(url?: string, options?: Omit<WsClientOptions, 'url'>): Promise<void> {
-        // Don't connect if already connected or connecting
-        if (this.state.isConnected || this.state.isConnecting) {
+        if (this.state.isConnected) {
             return;
+        }
+
+        // If already connecting, wait for the in-flight connection
+        if (this.connectPromise) {
+            return this.connectPromise;
         }
 
         const connectUrl = url || this.config.url || DEFAULT_CONFIG.url!;
@@ -61,39 +66,46 @@ export class Connection {
             connectionError: null,
         });
 
-        try {
-            const isHttp = connectUrl.startsWith('http://') || connectUrl.startsWith('https://');
-            const isJson = this.config.format === 'json';
-            let client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient;
-            if (isHttp) {
-                client = isJson
-                    ? Client.connect_json_http(connectUrl, connectOptions)
-                    : Client.connect_http(connectUrl, connectOptions);
-            } else {
-                client = isJson
-                    ? await Client.connect_json_ws(connectUrl, connectOptions)
-                    : await Client.connect_ws(connectUrl, connectOptions);
+        this.connectPromise = (async () => {
+            try {
+                const isHttp = connectUrl.startsWith('http://') || connectUrl.startsWith('https://');
+                const isJson = this.config.format === 'json';
+                let client: WsClient | HttpClient | JsonHttpClient | JsonWebsocketClient;
+                if (isHttp) {
+                    client = isJson
+                        ? Client.connect_json_http(connectUrl, connectOptions)
+                        : Client.connect_http(connectUrl, connectOptions);
+                } else {
+                    client = isJson
+                        ? await Client.connect_json_ws(connectUrl, connectOptions)
+                        : await Client.connect_ws(connectUrl, connectOptions);
+                }
+                this.updateState({
+                    client,
+                    isConnected: true,
+                    isConnecting: false,
+                    connectionError: null,
+                });
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : 'Failed to connect to ReifyDB';
+                console.error('[Connection] Connection failed:', errorMessage, err);
+                this.updateState({
+                    client: null,
+                    isConnected: false,
+                    isConnecting: false,
+                    connectionError: errorMessage,
+                });
+                throw err;
+            } finally {
+                this.connectPromise = null;
             }
-            this.updateState({
-                client,
-                isConnected: true,
-                isConnecting: false,
-                connectionError: null,
-            });
-        } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Failed to connect to ReifyDB';
-            console.error('[Connection] Connection failed:', errorMessage, err);
-            this.updateState({
-                client: null,
-                isConnected: false,
-                isConnecting: false,
-                connectionError: errorMessage,
-            });
-            throw err;
-        }
+        })();
+
+        return this.connectPromise;
     }
 
     async disconnect(): Promise<void> {
+        this.connectPromise = null;
         if (this.state.client) {
             try {
                 if ('disconnect' in this.state.client) {

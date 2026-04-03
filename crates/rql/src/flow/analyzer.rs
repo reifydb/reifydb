@@ -3,7 +3,7 @@
 
 //! Flow graph analysis for calculating dependencies and relationships between flows
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, mem};
 
 use reifydb_core::interface::catalog::{
 	flow::{FlowId, FlowNodeId},
@@ -314,8 +314,11 @@ impl FlowGraphAnalyzer {
 		};
 	}
 
-	/// Calculate the execution order for all flows considering dependencies
-	pub fn calculate_execution_order(&self, dependency_graph: &FlowDependencyGraph) -> Vec<FlowId> {
+	/// Returns flows grouped by dependency level. Flows within the same level
+	/// have no dependencies on each other and can execute concurrently.
+	/// Level 0 contains flows with no dependencies, level 1 contains flows
+	/// whose dependencies are all in level 0, etc.
+	pub fn calculate_execution_levels(&self, dependency_graph: &FlowDependencyGraph) -> Vec<Vec<FlowId>> {
 		let mut in_degree: BTreeMap<FlowId, usize> = BTreeMap::new();
 		let mut adjacency: BTreeMap<FlowId, Vec<FlowId>> = BTreeMap::new();
 
@@ -324,39 +327,34 @@ impl FlowGraphAnalyzer {
 			adjacency.insert(flow_summary.id, Vec::new());
 		}
 
-		// Build adjacency list and calculate in-degrees
 		for dependency in &dependency_graph.dependencies {
 			adjacency.entry(dependency.source_flow).or_default().push(dependency.target_flow);
 			*in_degree.entry(dependency.target_flow).or_default() += 1;
 		}
 
-		// Topological sort using Kahn's algorithm
-		let mut queue = Vec::new();
-		let mut result = Vec::new();
+		let mut levels = Vec::new();
+		let mut current_level: Vec<FlowId> =
+			in_degree.iter().filter(|&(_, deg)| *deg == 0).map(|(id, _)| *id).collect();
 
-		// Start with flows that have no dependencies
-		for (flow_id, &degree) in &in_degree {
-			if degree == 0 {
-				queue.push(*flow_id);
-			}
-		}
-
-		while let Some(flow_id) = queue.pop() {
-			result.push(flow_id);
-
-			if let Some(dependents) = adjacency.get(&flow_id) {
-				for &dependent_flow in dependents {
-					if let Some(degree) = in_degree.get_mut(&dependent_flow) {
-						*degree -= 1;
-						if *degree == 0 {
-							queue.push(dependent_flow);
+		while !current_level.is_empty() {
+			let mut next_level = Vec::new();
+			for &flow_id in &current_level {
+				if let Some(dependents) = adjacency.get(&flow_id) {
+					for &dep in dependents {
+						if let Some(deg) = in_degree.get_mut(&dep) {
+							*deg -= 1;
+							if *deg == 0 {
+								next_level.push(dep);
+							}
 						}
 					}
 				}
 			}
+			levels.push(mem::take(&mut current_level));
+			current_level = next_level;
 		}
 
-		result
+		levels
 	}
 }
 
@@ -737,7 +735,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_calculate_execution_order() {
+	fn test_calculate_execution_levels_linear_chain() {
 		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
@@ -784,16 +782,90 @@ pub mod tests {
 		analyzer.add(flow3);
 		let dependency_graph = analyzer.get_dependency_graph();
 
-		let execution_order = analyzer.calculate_execution_order(dependency_graph);
+		let levels = analyzer.calculate_execution_levels(dependency_graph);
 
-		assert_eq!(execution_order.len(), 3);
-		assert_eq!(execution_order[0], FlowId(1));
-		assert_eq!(execution_order[1], FlowId(2));
-		assert_eq!(execution_order[2], FlowId(3));
+		assert_eq!(levels.len(), 3);
+		assert_eq!(levels[0], vec![FlowId(1)]);
+		assert_eq!(levels[1], vec![FlowId(2)]);
+		assert_eq!(levels[2], vec![FlowId(3)]);
 	}
 
 	#[test]
-	fn test_parallel_flows_execution_order() {
+	fn test_calculate_execution_levels_wide_fan_out() {
+		let mut analyzer = FlowGraphAnalyzer::new();
+
+		// Flow 1: table -> view 200
+		let flow1 = create_test_flow_with_nodes(
+			1,
+			vec![
+				SourceTable {
+					table: TableId(100),
+				},
+				SinkTableView {
+					view: ViewId(200),
+					table: TableId(0),
+				},
+			],
+		);
+
+		// Flows 2,3,4: all read from view 200 (independent of each other)
+		let flow2 = create_test_flow_with_nodes(
+			2,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(300),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow3 = create_test_flow_with_nodes(
+			3,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(301),
+					table: TableId(0),
+				},
+			],
+		);
+
+		let flow4 = create_test_flow_with_nodes(
+			4,
+			vec![
+				SourceView {
+					view: ViewId(200),
+				},
+				SinkTableView {
+					view: ViewId(302),
+					table: TableId(0),
+				},
+			],
+		);
+
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		analyzer.add(flow3);
+		analyzer.add(flow4);
+		let dependency_graph = analyzer.get_dependency_graph();
+
+		let levels = analyzer.calculate_execution_levels(dependency_graph);
+
+		assert_eq!(levels.len(), 2);
+		assert_eq!(levels[0], vec![FlowId(1)]);
+		assert_eq!(levels[1].len(), 3);
+		assert!(levels[1].contains(&FlowId(2)));
+		assert!(levels[1].contains(&FlowId(3)));
+		assert!(levels[1].contains(&FlowId(4)));
+	}
+
+	#[test]
+	fn test_calculate_execution_levels_independent_roots() {
 		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
@@ -826,11 +898,11 @@ pub mod tests {
 		analyzer.add(flow2);
 		let dependency_graph = analyzer.get_dependency_graph();
 
-		let execution_order = analyzer.calculate_execution_order(dependency_graph);
+		let levels = analyzer.calculate_execution_levels(dependency_graph);
 
-		assert_eq!(execution_order.len(), 2);
-
-		assert!(execution_order.contains(&FlowId(1)));
-		assert!(execution_order.contains(&FlowId(2)));
+		assert_eq!(levels.len(), 1);
+		assert_eq!(levels[0].len(), 2);
+		assert!(levels[0].contains(&FlowId(1)));
+		assert!(levels[0].contains(&FlowId(2)));
 	}
 }

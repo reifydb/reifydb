@@ -9,7 +9,7 @@ describe('useCommandExecutor Hook (JSON WS)', () => {
     beforeAll(async () => {
         await waitForDatabase();
         // Ensure we're connected before tests
-        const conn = getConnection({token: process.env.REIFYDB_TOKEN, format: 'json'});
+        const conn = getConnection({url: process.env.REIFYDB_WS_URL, token: process.env.REIFYDB_TOKEN, format: 'json'});
         await conn.connect();
     }, 30000);
 
