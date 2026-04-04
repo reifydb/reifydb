@@ -888,7 +888,7 @@ impl<'bump> Compiler<'bump> {
 				LogicalPlan::CreatePolicy(node) => {
 					let name = node.name.map(|n| self.interner.intern_fragment(&n));
 					let target_type = node.target_type.as_str().to_string();
-					let (scope_namespace, scope_object) = match &node.scope {
+					let (scope_namespace, scope_shape) = match &node.scope {
 						AstPolicyScope::Specific(segments) => {
 							if segments.len() >= 2 {
 								// Check if the full path refers to a namespace
@@ -951,7 +951,7 @@ impl<'bump> Compiler<'bump> {
 						name,
 						target_type,
 						scope_namespace,
-						scope_object,
+						scope_shape,
 						operations,
 					}));
 				}

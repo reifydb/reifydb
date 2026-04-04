@@ -6,7 +6,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::policy::shape::policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
+	store::policy::shape::policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_SHAPE, TARGET_TYPE},
 };
 
 impl CatalogStore {
@@ -21,7 +21,7 @@ impl CatalogStore {
 			SHAPE.set_utf8(&mut row, NAME, def.name.as_deref().unwrap_or(""));
 			SHAPE.set_utf8(&mut row, TARGET_TYPE, def.target_type.as_str());
 			SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, def.target_namespace.as_deref().unwrap_or(""));
-			SHAPE.set_utf8(&mut row, TARGET_OBJECT, def.target_object.as_deref().unwrap_or(""));
+			SHAPE.set_utf8(&mut row, TARGET_SHAPE, def.target_shape.as_deref().unwrap_or(""));
 			SHAPE.set_bool(&mut row, ENABLED, enabled);
 
 			txn.set(&PolicyKey::encoded(policy_id), row)?;
@@ -46,7 +46,7 @@ mod tests {
 			name: Some("test_policy".to_string()),
 			target_type: PolicyTargetType::Table,
 			target_namespace: None,
-			target_object: None,
+			target_shape: None,
 			operations: vec![],
 		};
 		let (def, _) = CatalogStore::create_policy(&mut txn, to_create).unwrap();

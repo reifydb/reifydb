@@ -45,7 +45,7 @@ pub(crate) fn create_policy(
 		name: plan.name.as_ref().map(|f| f.text().to_string()),
 		target_type,
 		target_namespace: plan.scope_namespace.as_ref().map(|f| f.text().to_string()),
-		target_object: plan.scope_object.as_ref().map(|f| f.text().to_string()),
+		target_shape: plan.scope_shape.as_ref().map(|f| f.text().to_string()),
 		operations,
 	};
 

@@ -54,7 +54,7 @@ impl BaseVTable for SystemPolicies {
 		let mut names = ColumnData::utf8_with_capacity(policies.len());
 		let mut target_types = ColumnData::utf8_with_capacity(policies.len());
 		let mut target_namespaces = ColumnData::utf8_with_capacity(policies.len());
-		let mut target_objects = ColumnData::utf8_with_capacity(policies.len());
+		let mut target_shapes = ColumnData::utf8_with_capacity(policies.len());
 		let mut enabled_flags = ColumnData::bool_with_capacity(policies.len());
 
 		for p in policies {
@@ -62,7 +62,7 @@ impl BaseVTable for SystemPolicies {
 			names.push(p.name.as_deref().unwrap_or(""));
 			target_types.push(p.target_type.as_str());
 			target_namespaces.push(p.target_namespace.as_deref().unwrap_or(""));
-			target_objects.push(p.target_object.as_deref().unwrap_or(""));
+			target_shapes.push(p.target_shape.as_deref().unwrap_or(""));
 			enabled_flags.push(p.enabled);
 		}
 
@@ -84,8 +84,8 @@ impl BaseVTable for SystemPolicies {
 				data: target_namespaces,
 			},
 			Column {
-				name: Fragment::internal("target_object"),
-				data: target_objects,
+				name: Fragment::internal("target_shape"),
+				data: target_shapes,
 			},
 			Column {
 				name: Fragment::internal("enabled"),

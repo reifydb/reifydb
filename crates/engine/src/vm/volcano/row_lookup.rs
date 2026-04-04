@@ -85,7 +85,7 @@ impl QueryNode for RowPointLookupNode {
 		}
 		self.exhausted = true;
 
-		let shape_id = get_object_id(&self.source)?;
+		let shape_id = get_shape_id(&self.source)?;
 		let encoded_key = RowKey::encoded(shape_id, RowNumber(self.row_number));
 
 		// O(1) point lookup
@@ -165,7 +165,7 @@ impl QueryNode for RowListLookupNode {
 			return Ok(None);
 		}
 
-		let shape_id = get_object_id(&self.source)?;
+		let shape_id = get_shape_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -269,7 +269,7 @@ impl QueryNode for RowRangeScanNode {
 			return Ok(None);
 		}
 
-		let shape_id = get_object_id(&self.source)?;
+		let shape_id = get_shape_id(&self.source)?;
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -332,7 +332,7 @@ fn build_headers_and_storage_types(source: &ResolvedShape) -> Result<(ColumnHead
 	Ok((headers, storage_types))
 }
 
-fn get_object_id(source: &ResolvedShape) -> Result<ShapeId> {
+fn get_shape_id(source: &ResolvedShape) -> Result<ShapeId> {
 	match source {
 		ResolvedShape::Table(table) => Ok(table.def().id.into()),
 		ResolvedShape::View(view) => Ok(view.def().underlying_id()),

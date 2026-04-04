@@ -592,11 +592,10 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(2);
 			pub const TARGET_TYPE: ColumnId = ColumnId(3);
 			pub const TARGET_NAMESPACE: ColumnId = ColumnId(4);
-			pub const TARGET_OBJECT: ColumnId = ColumnId(5);
+			pub const TARGET_SHAPE: ColumnId = ColumnId(5);
 			pub const ENABLED: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 6] =
-				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
+			pub const ALL: [ColumnId; 6] = [ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_SHAPE, ENABLED];
 		}
 
 		pub mod authentications {

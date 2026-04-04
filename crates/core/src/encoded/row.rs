@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::encoded::shape::fingerprint::RowShapeFingerprint;
 
 /// Size of shape header (fingerprint) in bytes
-pub const SCHEMA_HEADER_SIZE: usize = 8;
+pub const SHAPE_HEADER_SIZE: usize = 8;
 
 /// A boxed values iterator.
 pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
@@ -38,13 +38,13 @@ impl EncodedRow {
 
 	#[inline]
 	pub fn is_defined(&self, index: usize) -> bool {
-		let byte = SCHEMA_HEADER_SIZE + index / 8;
+		let byte = SHAPE_HEADER_SIZE + index / 8;
 		let bit = index % 8;
 		(self.0[byte] & (1 << bit)) != 0
 	}
 
 	pub(crate) fn set_valid(&mut self, index: usize, valid: bool) {
-		let byte = SCHEMA_HEADER_SIZE + index / 8;
+		let byte = SHAPE_HEADER_SIZE + index / 8;
 		let bit = index % 8;
 		if valid {
 			self.0.make_mut()[byte] |= 1 << bit;

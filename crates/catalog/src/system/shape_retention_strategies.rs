@@ -25,7 +25,7 @@ pub fn shape_retention_strategies() -> Arc<VTable> {
 			columns: vec![
 				Column {
 					id: SHAPE_ID,
-					name: "object_id".to_string(),
+					name: "shape_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),

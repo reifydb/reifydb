@@ -28,7 +28,7 @@ pub(crate) mod view {
 			RowShapeField::unconstrained("kind", Type::Uint1),
 			RowShapeField::unconstrained("primary_key", Type::Uint8),
 			RowShapeField::unconstrained("storage_kind", Type::Uint1),
-			RowShapeField::unconstrained("underlying_object_id", Type::Uint8),
+			RowShapeField::unconstrained("underlying_shape_id", Type::Uint8),
 			RowShapeField::unconstrained("capacity", Type::Uint8),
 			RowShapeField::unconstrained("propagate_evictions", Type::Uint1),
 			RowShapeField::unconstrained("key_column", Type::Utf8),

@@ -7,7 +7,7 @@
 //! `EncodedRow` into `Row`s and then into `Columns`.
 
 use reifydb_core::{
-	encoded::row::{EncodedRow, SCHEMA_HEADER_SIZE},
+	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
 	interface::change::Diff,
 	row::Row,
 	value::column::columns::Columns,
@@ -20,8 +20,8 @@ use crate::materialized::MaterializedCatalog;
 /// Try to decode an EncodedRow into a Row using the materialized catalog.
 /// Returns None if the values are too short or the shape is not in the cache.
 fn decode_row(catalog: &MaterializedCatalog, row_number: RowNumber, row: EncodedRow) -> Option<Row> {
-	if row.len() < SCHEMA_HEADER_SIZE {
-		warn!("EncodedRow too short for shape fingerprint ({} < {})", row.len(), SCHEMA_HEADER_SIZE);
+	if row.len() < SHAPE_HEADER_SIZE {
+		warn!("EncodedRow too short for shape fingerprint ({} < {})", row.len(), SHAPE_HEADER_SIZE);
 		return None;
 	}
 	let fingerprint = row.fingerprint();

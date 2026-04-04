@@ -52,9 +52,9 @@ impl Procedure for TestingChanged {
 
 		let mut mutations: Vec<MutationEntry> = Vec::new();
 
-		for (object_id, diff) in &entries {
+		for (shape_id, diff) in &entries {
 			let type_matches = matches!(
-				(&object_id, self.shape_type),
+				(&shape_id, self.shape_type),
 				(ShapeId::Table(_), "tables")
 					| (ShapeId::View(_), "views") | (ShapeId::RingBuffer(_), "ringbuffers")
 					| (ShapeId::Series(_), "series") | (ShapeId::Dictionary(_), "dictionaries")
@@ -67,7 +67,7 @@ impl Procedure for TestingChanged {
 			let name = match resolve_shape_name(
 				catalog,
 				&mut Transaction::Test(Box::new(t.reborrow())),
-				object_id,
+				shape_id,
 			) {
 				Ok(n) => n,
 				Err(_) => continue,

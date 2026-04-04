@@ -13,7 +13,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		policy::shape::{
-			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
+			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_SHAPE, TARGET_TYPE},
 			policy_op,
 		},
 		sequence::system::SystemSequence,
@@ -45,7 +45,7 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, NAME, to_create.name.as_deref().unwrap_or(""));
 		SHAPE.set_utf8(&mut row, TARGET_TYPE, to_create.target_type.as_str());
 		SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, to_create.target_namespace.as_deref().unwrap_or(""));
-		SHAPE.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
+		SHAPE.set_utf8(&mut row, TARGET_SHAPE, to_create.target_shape.as_deref().unwrap_or(""));
 		SHAPE.set_bool(&mut row, ENABLED, true);
 
 		txn.set(&PolicyKey::encoded(policy_id), row)?;
@@ -72,7 +72,7 @@ impl CatalogStore {
 			name: to_create.name,
 			target_type: to_create.target_type,
 			target_namespace: to_create.target_namespace,
-			target_object: to_create.target_object,
+			target_shape: to_create.target_shape,
 			enabled: true,
 		};
 
@@ -94,7 +94,7 @@ mod tests {
 			name: Some("read_only".to_string()),
 			target_type: PolicyTargetType::Table,
 			target_namespace: None,
-			target_object: None,
+			target_shape: None,
 			operations: vec![PolicyOpToCreate {
 				operation: "SELECT".to_string(),
 				body_source: "ALLOW".to_string(),
@@ -117,7 +117,7 @@ mod tests {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_object: None,
+				target_shape: None,
 				operations: vec![],
 			},
 		)
@@ -128,7 +128,7 @@ mod tests {
 				name: Some("read_only".to_string()),
 				target_type: PolicyTargetType::Table,
 				target_namespace: None,
-				target_object: None,
+				target_shape: None,
 				operations: vec![],
 			},
 		)

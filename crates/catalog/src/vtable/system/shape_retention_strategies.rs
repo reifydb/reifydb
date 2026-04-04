@@ -17,7 +17,7 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes object retention strategy information
+/// Virtual table that exposes shape retention strategy information
 pub struct SystemShapeRetentionStrategies {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
@@ -58,8 +58,7 @@ impl BaseVTable for SystemShapeRetentionStrategies {
 		let mut values = ColumnData::uint8_with_capacity(strategies.len());
 
 		for entry in strategies {
-			// Extract object ID and type
-			let (object_id, shape_type) = match entry.shape {
+			let (shape_id, shape_type) = match entry.shape {
 				ShapeId::Table(id) => (id.0, "table"),
 				ShapeId::View(id) => (id.0, "view"),
 				ShapeId::TableVirtual(id) => (id.0, "vtable"),
@@ -68,7 +67,7 @@ impl BaseVTable for SystemShapeRetentionStrategies {
 				ShapeId::Series(id) => (id.0, "series"),
 			};
 
-			ids.push(object_id);
+			ids.push(shape_id);
 			shape_types.push(shape_type);
 
 			// Encode strategy
@@ -94,7 +93,7 @@ impl BaseVTable for SystemShapeRetentionStrategies {
 
 		let columns = vec![
 			Column {
-				name: Fragment::internal("object_id"),
+				name: Fragment::internal("shape_id"),
 				data: ids,
 			},
 			Column {

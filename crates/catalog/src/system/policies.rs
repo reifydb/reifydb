@@ -60,8 +60,8 @@ pub fn policies() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: TARGET_OBJECT,
-					name: "target_object".to_string(),
+					id: TARGET_SHAPE,
+					name: "target_shape".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					properties: vec![],
 					index: ColumnIndex(4),

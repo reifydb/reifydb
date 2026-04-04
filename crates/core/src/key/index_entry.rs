@@ -166,7 +166,7 @@ impl IndexEntryKey {
 	}
 
 	/// Create a range for scanning all entries of a shape (all indexes)
-	pub fn object_range(shape: impl Into<ShapeId>) -> EncodedKeyRange {
+	pub fn shape_range(shape: impl Into<ShapeId>) -> EncodedKeyRange {
 		let shape = shape.into();
 		let mut start_serializer = KeySerializer::with_capacity(11);
 		start_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_shape_id(shape);

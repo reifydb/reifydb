@@ -148,17 +148,17 @@ impl RowKey {
 
 	pub fn full_scan(shape: impl Into<ShapeId>) -> EncodedKeyRange {
 		let shape = shape.into();
-		EncodedKeyRange::start_end(Some(Self::object_start(shape)), Some(Self::object_end(shape)))
+		EncodedKeyRange::start_end(Some(Self::shape_start(shape)), Some(Self::shape_end(shape)))
 	}
 
-	pub fn object_start(shape: impl Into<ShapeId>) -> EncodedKey {
+	pub fn shape_start(shape: impl Into<ShapeId>) -> EncodedKey {
 		let shape = shape.into();
 		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(shape);
 		serializer.to_encoded_key()
 	}
 
-	pub fn object_end(shape: impl Into<ShapeId>) -> EncodedKey {
+	pub fn shape_end(shape: impl Into<ShapeId>) -> EncodedKey {
 		let shape = shape.into();
 		let mut serializer = KeySerializer::with_capacity(11);
 		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_shape_id(shape.prev());

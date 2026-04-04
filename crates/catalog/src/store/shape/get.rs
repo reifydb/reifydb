@@ -11,13 +11,13 @@ use reifydb_type::error::Error;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	/// Get a object (table or view) by its ShapeId
-	/// Returns an error if the object doesn't exist
-	pub(crate) fn get_shape(rx: &mut Transaction<'_>, object: impl Into<ShapeId>) -> Result<Shape> {
-		let object_id = object.into();
+	/// Get a shape (table or view) by its ShapeId
+	/// Returns an error if the shape doesn't exist
+	pub(crate) fn get_shape(rx: &mut Transaction<'_>, shape: impl Into<ShapeId>) -> Result<Shape> {
+		let shape_id = shape.into();
 
-		CatalogStore::find_shape(rx, object_id)?.ok_or_else(|| {
-			let shape_type = match object_id {
+		CatalogStore::find_shape(rx, shape_id)?.ok_or_else(|| {
+			let shape_type = match shape_id {
 				ShapeId::Table(_) => "Table",
 				ShapeId::View(_) => "View",
 				ShapeId::TableVirtual(_) => "TableVirtual",
@@ -29,7 +29,7 @@ impl CatalogStore {
 			Error(Box::new(internal!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				shape_type,
-				object_id
+				shape_id
 			)))
 		})
 	}
@@ -59,10 +59,10 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Get object by TableId
-		let object = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), table.id).unwrap();
+		// Get shape by TableId
+		let shape = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
-		match object {
+		match shape {
 			Shape::Table(t) => {
 				assert_eq!(t.id, table.id);
 				assert_eq!(t.name, table.name);
@@ -70,11 +70,11 @@ pub mod tests {
 			_ => panic!("Expected table"),
 		}
 
-		// Get object by ShapeId::Table
-		let object =
+		// Get shape by ShapeId::Table
+		let shape =
 			CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), ShapeId::Table(table.id)).unwrap();
 
-		match object {
+		match shape {
 			Shape::Table(t) => {
 				assert_eq!(t.id, table.id);
 			}
@@ -102,10 +102,10 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get object by ViewId
-		let object = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
+		// Get shape by ViewId
+		let shape = CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
-		match object {
+		match shape {
 			Shape::View(v) => {
 				assert_eq!(v.id(), view.id());
 				assert_eq!(v.name(), view.name());
@@ -113,11 +113,11 @@ pub mod tests {
 			_ => panic!("Expected view"),
 		}
 
-		// Get object by ShapeId::View
-		let object =
+		// Get shape by ShapeId::View
+		let shape =
 			CatalogStore::get_shape(&mut Transaction::Admin(&mut txn), ShapeId::View(view.id())).unwrap();
 
-		match object {
+		match shape {
 			Shape::View(v) => {
 				assert_eq!(v.id(), view.id());
 			}

@@ -61,11 +61,11 @@ fn decode_policy(row: &EncodedRow) -> Policy {
 	} else {
 		Some(target_ns_str)
 	};
-	let target_obj_str = policy::SHAPE.get_utf8(row, policy::TARGET_OBJECT).to_string();
-	let target_object = if target_obj_str.is_empty() {
+	let target_shape_str = policy::SHAPE.get_utf8(row, policy::TARGET_SHAPE).to_string();
+	let target_shape = if target_shape_str.is_empty() {
 		None
 	} else {
-		Some(target_obj_str)
+		Some(target_shape_str)
 	};
 	let enabled = policy::SHAPE.get_bool(row, policy::ENABLED);
 
@@ -74,7 +74,7 @@ fn decode_policy(row: &EncodedRow) -> Policy {
 		name,
 		target_type,
 		target_namespace,
-		target_object,
+		target_shape,
 		enabled,
 	}
 }
