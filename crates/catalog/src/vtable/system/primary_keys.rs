@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system primary key information
 pub struct SystemPrimaryKeys {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemPrimaryKeys {
 impl SystemPrimaryKeys {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_primary_keys_table().clone(),
+			vtable: SystemCatalog::get_system_primary_keys_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -75,7 +75,7 @@ impl BaseVTable for SystemPrimaryKeys {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

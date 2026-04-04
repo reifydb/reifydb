@@ -17,7 +17,7 @@ use crate::{error::PolicyError, evaluate::PolicyEvaluator, resolve_write_policie
 /// Identifies the target of a policy enforcement check.
 pub struct PolicyTarget<'a> {
 	pub namespace: &'a str,
-	pub object: &'a str,
+	pub shape: &'a str,
 	pub operation: &'a str,
 	pub target_type: PolicyTargetType,
 }
@@ -45,7 +45,7 @@ pub fn enforce_write_policies(
 		catalog,
 		tx,
 		target.namespace,
-		target.object,
+		target.shape,
 		target.operation,
 		target.target_type,
 	)?;
@@ -53,14 +53,14 @@ pub fn enforce_write_policies(
 	if policies.is_empty() {
 		return Err(PolicyError::NoPolicyined {
 			operation: target.operation.to_string(),
-			target: format!("{}::{}", target.namespace, target.object),
+			target: format!("{}::{}", target.namespace, target.shape),
 			target_type: target_type_str,
 		}
 		.into());
 	}
 
 	let bump = Bump::new();
-	let target_name = format!("{}::{}", target.namespace, target.object);
+	let target_name = format!("{}::{}", target.namespace, target.shape);
 
 	for (policy, op) in &policies {
 		let policy_name = policy.name.as_deref().unwrap_or("<unnamed>");
@@ -201,7 +201,7 @@ pub fn enforce_identity_policy(
 		catalog,
 		tx,
 		target.namespace,
-		target.object,
+		target.shape,
 		target.operation,
 		target.target_type,
 	)?;
@@ -209,14 +209,14 @@ pub fn enforce_identity_policy(
 	if policies.is_empty() {
 		return Err(PolicyError::NoPolicyined {
 			operation: target.operation.to_string(),
-			target: format!("{}::{}", target.namespace, target.object),
+			target: format!("{}::{}", target.namespace, target.shape),
 			target_type: target_type_str,
 		}
 		.into());
 	}
 
 	let bump = Bump::new();
-	let target_name = format!("{}::{}", target.namespace, target.object);
+	let target_name = format!("{}::{}", target.namespace, target.shape);
 	let empty_columns = Columns::empty();
 
 	for (policy, op) in &policies {

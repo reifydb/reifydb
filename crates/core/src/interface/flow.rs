@@ -11,7 +11,7 @@ pub struct FlowLagRow {
 	/// The flow ID.
 	pub flow_id: FlowId,
 	/// The shape this flow subscribes to.
-	pub object_id: ShapeId,
+	pub shape_id: ShapeId,
 	/// The lag: how many versions behind the flow is for this source.
 	pub lag: u64,
 }

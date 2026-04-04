@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes all type information
 pub struct SystemTypes {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemTypes {
 impl SystemTypes {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_types_table().clone(),
+			vtable: SystemCatalog::get_system_types_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -76,7 +76,7 @@ impl BaseVTable for SystemTypes {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system granted-role assignment information
 pub struct SystemGrantedRoles {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemGrantedRoles {
 impl SystemGrantedRoles {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_granted_roles_table().clone(),
+			vtable: SystemCatalog::get_system_granted_roles_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -75,7 +75,7 @@ impl BaseVTable for SystemGrantedRoles {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

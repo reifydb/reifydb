@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system primary key column relationships
 pub struct SystemPrimaryKeyColumns {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemPrimaryKeyColumns {
 impl SystemPrimaryKeyColumns {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_primary_key_columns_table().clone(),
+			vtable: SystemCatalog::get_system_primary_key_columns_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -80,7 +80,7 @@ impl BaseVTable for SystemPrimaryKeyColumns {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

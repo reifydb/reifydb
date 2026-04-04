@@ -28,7 +28,7 @@ impl UserVTableEntry {
 	/// This creates a fresh instance with reset state for each query.
 	pub fn create_instance(&self) -> VTables {
 		VTables::UserDefined {
-			def: self.def.clone(),
+			vtable: self.def.clone(),
 			data_fn: self.data_fn.clone(),
 			params: None,
 			exhausted: false,

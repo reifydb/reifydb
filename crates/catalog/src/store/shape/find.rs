@@ -9,12 +9,12 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, vtable::VTableRegistry};
 
 impl CatalogStore {
-	/// Find a object (table, store::view, or virtual table) by its ShapeId
-	/// Returns None if the object doesn't exist
-	pub(crate) fn find_shape(rx: &mut Transaction<'_>, object: impl Into<ShapeId>) -> Result<Option<Shape>> {
-		let object_id = object.into();
+	/// Find a shape (table, store::view, or virtual table) by its ShapeId
+	/// Returns None if the shape doesn't exist
+	pub(crate) fn find_shape(rx: &mut Transaction<'_>, shape: impl Into<ShapeId>) -> Result<Option<Shape>> {
+		let shape_id = shape.into();
 
-		match object_id {
+		match shape_id {
 			ShapeId::Table(table_id) => {
 				if let Some(table) = Self::find_table(rx, table_id)? {
 					Ok(Some(Shape::Table(table)))
@@ -85,12 +85,12 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Find object by TableId
-		let object = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), table.id)
+		// Find shape by TableId
+		let shape = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), table.id)
 			.unwrap()
 			.expect("Shape should exist");
 
-		match object {
+		match shape {
 			Shape::Table(t) => {
 				assert_eq!(t.id, table.id);
 				assert_eq!(t.name, table.name);
@@ -98,12 +98,12 @@ pub mod tests {
 			_ => panic!("Expected table"),
 		}
 
-		// Find object by ShapeId::Table
-		let object = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), ShapeId::Table(table.id))
+		// Find shape by ShapeId::Table
+		let shape = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), ShapeId::Table(table.id))
 			.unwrap()
 			.expect("Shape should exist");
 
-		match object {
+		match shape {
 			Shape::Table(t) => {
 				assert_eq!(t.id, table.id);
 			}
@@ -131,12 +131,12 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Find object by ViewId
-		let object = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), view.id())
+		// Find shape by ViewId
+		let shape = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), view.id())
 			.unwrap()
 			.expect("Shape should exist");
 
-		match object {
+		match shape {
 			Shape::View(v) => {
 				assert_eq!(v.id(), view.id());
 				assert_eq!(v.name(), view.name());
@@ -144,12 +144,12 @@ pub mod tests {
 			_ => panic!("Expected view"),
 		}
 
-		// Find object by ShapeId::View
-		let object = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), ShapeId::View(view.id()))
+		// Find shape by ShapeId::View
+		let shape = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), ShapeId::View(view.id()))
 			.unwrap()
 			.expect("Shape should exist");
 
-		match object {
+		match shape {
 			Shape::View(v) => {
 				assert_eq!(v.id(), view.id());
 			}
@@ -162,16 +162,16 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Non-existent table
-		let object = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), TableId(999)).unwrap();
-		assert!(object.is_none());
+		let result = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), TableId(999)).unwrap();
+		assert!(result.is_none());
 
 		// Non-existent view
-		let object = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), ViewId(999)).unwrap();
-		assert!(object.is_none());
+		let result = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), ViewId(999)).unwrap();
+		assert!(result.is_none());
 
 		// Non-existent virtual table
-		let object = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), VTableId(999)).unwrap();
-		assert!(object.is_none());
+		let result = CatalogStore::find_shape(&mut Transaction::Admin(&mut txn), VTableId(999)).unwrap();
+		assert!(result.is_none());
 	}
 
 	#[test]

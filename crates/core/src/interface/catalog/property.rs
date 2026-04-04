@@ -19,34 +19,34 @@ pub struct ColumnProperty {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColumnPropertyKind {
-	Saturation(ColumnSaturationPolicy),
+	Saturation(ColumnSaturationStrategy),
 }
 
 impl ColumnPropertyKind {
 	pub fn to_u8(&self) -> (u8, u8) {
 		match self {
-			ColumnPropertyKind::Saturation(policy) => match policy {
-				ColumnSaturationPolicy::Error => (0x01, 0x01),
-				ColumnSaturationPolicy::None => (0x01, 0x02),
+			ColumnPropertyKind::Saturation(strategy) => match strategy {
+				ColumnSaturationStrategy::Error => (0x01, 0x01),
+				ColumnSaturationStrategy::None => (0x01, 0x02),
 			},
 		}
 	}
 
-	pub fn from_u8(policy: u8, value: u8) -> ColumnPropertyKind {
-		match (policy, value) {
-			(0x01, 0x01) => ColumnPropertyKind::Saturation(ColumnSaturationPolicy::Error),
-			(0x01, 0x02) => ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None),
+	pub fn from_u8(strategy: u8, value: u8) -> ColumnPropertyKind {
+		match (strategy, value) {
+			(0x01, 0x01) => ColumnPropertyKind::Saturation(ColumnSaturationStrategy::Error),
+			(0x01, 0x02) => ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None),
 			_ => unimplemented!(),
 		}
 	}
 
-	pub fn default_saturation_policy() -> Self {
-		Self::Saturation(ColumnSaturationPolicy::default())
+	pub fn default_saturation_strategy() -> Self {
+		Self::Saturation(ColumnSaturationStrategy::default())
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub enum ColumnSaturationPolicy {
+pub enum ColumnSaturationStrategy {
 	#[default]
 	Error,
 	// Saturate,
@@ -63,4 +63,4 @@ impl Display for ColumnPropertyKind {
 	}
 }
 
-pub const DEFAULT_COLUMN_SATURATION_POLICY: ColumnSaturationPolicy = ColumnSaturationPolicy::Error;
+pub const DEFAULT_COLUMN_SATURATION_STRATEGY: ColumnSaturationStrategy = ColumnSaturationStrategy::Error;

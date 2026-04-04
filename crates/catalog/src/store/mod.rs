@@ -18,7 +18,7 @@ pub(crate) mod policy;
 #[allow(dead_code)]
 pub(crate) mod primary_key;
 #[allow(dead_code)]
-pub(crate) mod retention_policy;
+pub(crate) mod retention_strategy;
 pub mod ringbuffer;
 pub(crate) mod role;
 pub(crate) mod row_shape;

@@ -21,7 +21,7 @@ use crate::{
 
 /// Virtual table that exposes system ring buffer information
 pub struct SystemRingBuffers {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -34,7 +34,7 @@ impl Default for SystemRingBuffers {
 impl SystemRingBuffers {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_ringbuffers_table().clone(),
+			vtable: SystemCatalog::get_system_ringbuffers_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -102,7 +102,7 @@ impl BaseVTable for SystemRingBuffers {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

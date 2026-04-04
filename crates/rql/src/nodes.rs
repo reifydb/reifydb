@@ -1007,7 +1007,7 @@ pub struct CreatePolicyNode {
 	pub name: Option<Fragment>,
 	pub target_type: String,
 	pub scope_namespace: Option<Fragment>,
-	pub scope_object: Option<Fragment>,
+	pub scope_shape: Option<Fragment>,
 	pub operations: Vec<PolicyOperationNode>,
 }
 

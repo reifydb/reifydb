@@ -76,7 +76,7 @@ impl UserVTableColumn {
 /// may be queried concurrently from multiple transactions.
 pub trait UserVTable: Clone + Send + Sync + 'static {
 	/// Return the column definitions for this table.
-	fn definition(&self) -> Vec<UserVTableColumn>;
+	fn vtable(&self) -> Vec<UserVTableColumn>;
 
 	/// Get all data for the table in columnar format.
 	///

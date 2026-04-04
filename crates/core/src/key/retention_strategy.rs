@@ -18,13 +18,13 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing retention policy for a data shape (table, view, ringbuffer)
+/// Key for storing retention strategy for a data shape (table, view, ringbuffer)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ShapeRetentionPolicyKey {
+pub struct ShapeRetentionStrategyKey {
 	pub shape: ShapeId,
 }
 
-impl ShapeRetentionPolicyKey {
+impl ShapeRetentionStrategyKey {
 	pub fn encoded(shape: impl Into<ShapeId>) -> EncodedKey {
 		Self {
 			shape: shape.into(),
@@ -33,8 +33,8 @@ impl ShapeRetentionPolicyKey {
 	}
 }
 
-impl EncodableKey for ShapeRetentionPolicyKey {
-	const KIND: KeyKind = KeyKind::ShapeRetentionPolicy;
+impl EncodableKey for ShapeRetentionStrategyKey {
+	const KIND: KeyKind = KeyKind::ShapeRetentionStrategy;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
@@ -97,13 +97,13 @@ impl EncodableKey for ShapeRetentionPolicyKey {
 	}
 }
 
-/// Key for storing retention policy for a flow operator
+/// Key for storing retention strategy for a flow operator
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct OperatorRetentionPolicyKey {
+pub struct OperatorRetentionStrategyKey {
 	pub operator: FlowNodeId,
 }
 
-impl OperatorRetentionPolicyKey {
+impl OperatorRetentionStrategyKey {
 	pub fn encoded(operator: impl Into<FlowNodeId>) -> EncodedKey {
 		Self {
 			operator: operator.into(),
@@ -112,8 +112,8 @@ impl OperatorRetentionPolicyKey {
 	}
 }
 
-impl EncodableKey for OperatorRetentionPolicyKey {
-	const KIND: KeyKind = KeyKind::OperatorRetentionPolicy;
+impl EncodableKey for OperatorRetentionStrategyKey {
+	const KIND: KeyKind = KeyKind::OperatorRetentionStrategy;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
@@ -141,43 +141,43 @@ impl EncodableKey for OperatorRetentionPolicyKey {
 }
 
 /// Range for scanning all shape retention policies
-pub struct ShapeRetentionPolicyKeyRange;
+pub struct ShapeRetentionStrategyKeyRange;
 
-impl ShapeRetentionPolicyKeyRange {
+impl ShapeRetentionStrategyKeyRange {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
 	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionPolicyKey::KIND as u8);
+		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionStrategyKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionPolicyKey::KIND as u8 - 1);
+		serializer.extend_u8(VERSION).extend_u8(ShapeRetentionStrategyKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
 
 /// Range for scanning all operator retention policies
-pub struct OperatorRetentionPolicyKeyRange;
+pub struct OperatorRetentionStrategyKeyRange;
 
-impl OperatorRetentionPolicyKeyRange {
+impl OperatorRetentionStrategyKeyRange {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
 
 	fn start() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(OperatorRetentionPolicyKey::KIND as u8);
+		serializer.extend_u8(VERSION).extend_u8(OperatorRetentionStrategyKey::KIND as u8);
 		serializer.to_encoded_key()
 	}
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(OperatorRetentionPolicyKey::KIND as u8 - 1);
+		serializer.extend_u8(VERSION).extend_u8(OperatorRetentionStrategyKey::KIND as u8 - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -187,8 +187,8 @@ pub mod tests {
 	use super::*;
 
 	#[test]
-	fn test_shape_retention_policy_key_encoding() {
-		let key = ShapeRetentionPolicyKey {
+	fn test_shape_retention_strategy_key_encoding() {
+		let key = ShapeRetentionStrategyKey {
 			shape: ShapeId::Table(TableId(42)),
 		};
 
@@ -197,13 +197,13 @@ pub mod tests {
 		assert_eq!(encoded[1], 0xE8); // kind (0x17 encoded as !0x17)
 		assert_eq!(&encoded[3..11], &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xD5]);
 
-		let decoded = ShapeRetentionPolicyKey::decode(&encoded).unwrap();
+		let decoded = ShapeRetentionStrategyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 
 	#[test]
-	fn test_operator_retention_policy_key_encoding() {
-		let key = OperatorRetentionPolicyKey {
+	fn test_operator_retention_strategy_key_encoding() {
+		let key = OperatorRetentionStrategyKey {
 			operator: FlowNodeId(12345),
 		};
 
@@ -212,7 +212,7 @@ pub mod tests {
 		assert_eq!(encoded[1], 0xE7); // kind (0x18 encoded as !0x18)
 		assert_eq!(&encoded[2..10], &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xCF, 0xC6]);
 
-		let decoded = OperatorRetentionPolicyKey::decode(&encoded).unwrap();
+		let decoded = OperatorRetentionStrategyKey::decode(&encoded).unwrap();
 		assert_eq!(key, decoded);
 	}
 }

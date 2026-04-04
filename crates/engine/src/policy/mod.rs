@@ -44,14 +44,14 @@ impl<'a> PolicyEvaluator<'a> {
 		&self,
 		tx: &mut Transaction<'_>,
 		target_namespace: &str,
-		target_object: &str,
+		target_shape: &str,
 		operation: &str,
 		row_columns: &Columns,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
 		let target = PolicyTarget {
 			namespace: target_namespace,
-			object: target_object,
+			shape: target_shape,
 			operation,
 			target_type,
 		};
@@ -71,13 +71,13 @@ impl<'a> PolicyEvaluator<'a> {
 		&self,
 		tx: &mut Transaction<'_>,
 		target_namespace: &str,
-		target_object: &str,
+		target_shape: &str,
 		operation: &str,
 		target_type: PolicyTargetType,
 	) -> Result<()> {
 		let target = PolicyTarget {
 			namespace: target_namespace,
-			object: target_object,
+			shape: target_shape,
 			operation,
 			target_type,
 		};

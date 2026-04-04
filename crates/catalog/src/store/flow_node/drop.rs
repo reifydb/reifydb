@@ -7,7 +7,7 @@ use reifydb_core::{
 		flow_node::{FlowNodeByFlowKey, FlowNodeKey},
 		flow_node_internal_state::FlowNodeInternalStateKey,
 		flow_node_state::FlowNodeStateKey,
-		retention_policy::OperatorRetentionPolicyKey,
+		retention_strategy::OperatorRetentionStrategyKey,
 	},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -44,8 +44,8 @@ impl CatalogStore {
 				txn.remove(&key)?;
 			}
 
-			// Clean up operator retention policy
-			txn.remove(&OperatorRetentionPolicyKey::encoded(node_id))?;
+			// Clean up operator retention strategy
+			txn.remove(&OperatorRetentionStrategyKey::encoded(node_id))?;
 
 			// Delete from main flow_node table
 			txn.remove(&FlowNodeKey::encoded(node_id))?;

@@ -163,7 +163,7 @@ fn inject_pipeline<'a>(
 
 /// Check if a policy's scope matches a given target namespace and object.
 fn scope_matches(policy: &Policy, target_ns: &str, target_obj: &str) -> bool {
-	match (&policy.target_namespace, &policy.target_object) {
+	match (&policy.target_namespace, &policy.target_shape) {
 		(None, None) => true, // Global
 		(Some(ns), None) => {
 			// Namespace-wide: matches the exact namespace OR any child namespace
@@ -184,7 +184,7 @@ pub fn resolve_write_policies(
 	catalog: &Catalog,
 	tx: &mut Transaction<'_>,
 	target_namespace: &str,
-	target_object: &str,
+	target_shape: &str,
 	operation: &str,
 	target_type: PolicyTargetType,
 ) -> Result<Vec<(Policy, PolicyOperation)>> {
@@ -203,7 +203,7 @@ pub fn resolve_write_policies(
 		if policy.target_type != target_type {
 			continue;
 		}
-		if !scope_matches(&policy, target_namespace, target_object) {
+		if !scope_matches(&policy, target_namespace, target_shape) {
 			continue;
 		}
 

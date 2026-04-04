@@ -63,11 +63,11 @@ impl FlowLagsProvider for FlowLags {
 				.unwrap_or(CommitVersion(0))
 				.0;
 
-			for (object_id, version) in &primitive_versions {
+			for (shape_id, version) in &primitive_versions {
 				let lag = version.0.saturating_sub(flow_version);
 				rows.push(FlowLagRow {
 					flow_id: *flow_id,
-					object_id: *object_id,
+					shape_id: *shape_id,
 					lag,
 				});
 			}

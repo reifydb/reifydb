@@ -188,8 +188,8 @@ impl EncodedKeyBuilder {
 	}
 
 	/// Extend with a ShapeId value
-	pub fn object_id(mut self, object: impl Into<ShapeId>) -> Self {
-		self.serializer.extend_shape_id(object);
+	pub fn shape_id(mut self, shape: impl Into<ShapeId>) -> Self {
+		self.serializer.extend_shape_id(shape);
 		self
 	}
 

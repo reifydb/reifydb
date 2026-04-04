@@ -10,7 +10,7 @@ use std::{
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
 use reifydb_type::value::constraint::TypeConstraint;
 
-/// Information about a single column definition in an operator
+/// Information about a single column vtable in an operator
 #[derive(Clone, Debug)]
 pub struct SystemOperatorColumnInfo {
 	pub name: String,

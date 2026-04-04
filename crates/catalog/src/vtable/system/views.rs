@@ -21,7 +21,7 @@ use crate::{
 
 /// Virtual table that exposes system view information
 pub struct SystemViews {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -34,7 +34,7 @@ impl Default for SystemViews {
 impl SystemViews {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_views_table().clone(),
+			vtable: SystemCatalog::get_system_views_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -95,7 +95,7 @@ impl BaseVTable for SystemViews {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

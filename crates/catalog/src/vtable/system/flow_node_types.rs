@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes all FlowNodeType variants
 pub struct SystemFlowNodeTypes {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemFlowNodeTypes {
 impl SystemFlowNodeTypes {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_node_types_table().clone(),
+			vtable: SystemCatalog::get_system_flow_node_types_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -101,7 +101,7 @@ impl BaseVTable for SystemFlowNodeTypes {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

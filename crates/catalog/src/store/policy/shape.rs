@@ -10,7 +10,7 @@ pub(crate) mod policy {
 	pub(crate) const NAME: usize = 1;
 	pub(crate) const TARGET_TYPE: usize = 2;
 	pub(crate) const TARGET_NAMESPACE: usize = 3;
-	pub(crate) const TARGET_OBJECT: usize = 4;
+	pub(crate) const TARGET_SHAPE: usize = 4;
 	pub(crate) const ENABLED: usize = 5;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
@@ -19,7 +19,7 @@ pub(crate) mod policy {
 			RowShapeField::unconstrained("name", Type::Utf8),
 			RowShapeField::unconstrained("target_type", Type::Utf8),
 			RowShapeField::unconstrained("target_namespace", Type::Utf8),
-			RowShapeField::unconstrained("target_object", Type::Utf8),
+			RowShapeField::unconstrained("target_shape", Type::Utf8),
 			RowShapeField::unconstrained("enabled", Type::Boolean),
 		])
 	});

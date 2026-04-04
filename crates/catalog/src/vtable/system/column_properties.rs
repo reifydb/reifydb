@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system column policy information
 pub struct SystemColumnProperties {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemColumnProperties {
 impl SystemColumnProperties {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_column_properties_table().clone(),
+			vtable: SystemCatalog::get_system_column_properties_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -87,7 +87,7 @@ impl BaseVTable for SystemColumnProperties {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

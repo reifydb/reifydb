@@ -12,7 +12,7 @@ use reifydb_core::{
 		table::Table,
 	},
 	internal,
-	retention::RetentionPolicy,
+	retention::RetentionStrategy,
 };
 use reifydb_transaction::{
 	change::TransactionalTableChanges,
@@ -57,7 +57,7 @@ pub struct TableToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
-	pub retention_policy: Option<RetentionPolicy>,
+	pub retention_strategy: Option<RetentionStrategy>,
 	/// Optional primary key columns specified by name.
 	/// If provided, the Catalog will create a primary key after creating the table.
 	pub primary_key_columns: Option<Vec<String>>,
@@ -82,7 +82,7 @@ impl From<TableToCreate> for StoreTableToCreate {
 			name: to_create.name,
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
-			retention_policy: to_create.retention_policy,
+			retention_strategy: to_create.retention_strategy,
 		}
 	}
 }

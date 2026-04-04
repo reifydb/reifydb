@@ -12,7 +12,7 @@ pub(crate) mod view {
 	pub(crate) const KIND: usize = 3;
 	pub(crate) const PRIMARY_KEY: usize = 4;
 	pub(crate) const STORAGE_KIND: usize = 5;
-	pub(crate) const UNDERLYING_PRIMITIVE_ID: usize = 6;
+	pub(crate) const UNDERLYING_SHAPE_ID: usize = 6;
 	pub(crate) const CAPACITY: usize = 7;
 	pub(crate) const PROPAGATE_EVICTIONS: usize = 8;
 	pub(crate) const KEY_COLUMN: usize = 9;
@@ -28,7 +28,7 @@ pub(crate) mod view {
 			RowShapeField::unconstrained("kind", Type::Uint1),
 			RowShapeField::unconstrained("primary_key", Type::Uint8),
 			RowShapeField::unconstrained("storage_kind", Type::Uint1),
-			RowShapeField::unconstrained("underlying_object_id", Type::Uint8),
+			RowShapeField::unconstrained("underlying_shape_id", Type::Uint8),
 			RowShapeField::unconstrained("capacity", Type::Uint8),
 			RowShapeField::unconstrained("propagate_evictions", Type::Uint1),
 			RowShapeField::unconstrained("key_column", Type::Utf8),

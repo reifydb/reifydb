@@ -260,7 +260,7 @@ impl StandardEngine {
 		// Allocate a new table ID
 		let table_id = self.executor.virtual_table_registry.allocate_id();
 		// Convert user column definitions to internal column definitions
-		let table_columns = table.definition();
+		let table_columns = table.vtable();
 		let columns = convert_vtable_user_columns_to_columns(&table_columns);
 
 		// Create the table definition

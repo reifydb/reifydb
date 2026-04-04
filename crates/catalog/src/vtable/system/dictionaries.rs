@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system dictionary information
 pub struct SystemDictionaries {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemDictionaries {
 impl SystemDictionaries {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_dictionaries_table().clone(),
+			vtable: SystemCatalog::get_system_dictionaries_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -92,7 +92,7 @@ impl BaseVTable for SystemDictionaries {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

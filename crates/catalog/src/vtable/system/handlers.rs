@@ -22,7 +22,7 @@ use crate::{
 
 /// Virtual table that exposes procedures with trigger = Event (event handlers)
 pub struct SystemHandlers {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
@@ -30,7 +30,7 @@ pub struct SystemHandlers {
 impl SystemHandlers {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_handlers_table().clone(),
+			vtable: SystemCatalog::get_system_handlers_table().clone(),
 			catalog,
 			exhausted: false,
 		}
@@ -133,7 +133,7 @@ impl BaseVTable for SystemHandlers {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

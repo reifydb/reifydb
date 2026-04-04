@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes CDC consumer checkpoint information
 pub struct SystemCdcConsumers {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemCdcConsumers {
 impl SystemCdcConsumers {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_cdc_consumers_table().clone(),
+			vtable: SystemCatalog::get_system_cdc_consumers_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -66,7 +66,7 @@ impl BaseVTable for SystemCdcConsumers {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

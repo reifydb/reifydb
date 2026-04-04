@@ -5,53 +5,53 @@ use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
 	key::{
 		EncodableKey,
-		retention_policy::{OperatorRetentionPolicyKey, ShapeRetentionPolicyKey},
+		retention_strategy::{OperatorRetentionStrategyKey, ShapeRetentionStrategyKey},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{Result, catalog::Catalog, store::retention_policy::decode_retention_policy};
+use crate::{Result, catalog::Catalog, store::retention_strategy::decode_retention_strategy};
 
-pub(super) struct ShapeRetentionPolicyApplier;
+pub(super) struct ShapeRetentionStrategyApplier;
 
-impl CatalogChangeApplier for ShapeRetentionPolicyApplier {
+impl CatalogChangeApplier for ShapeRetentionStrategyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		if let Some(k) = ShapeRetentionPolicyKey::decode(key)
-			&& let Some(policy) = decode_retention_policy(row)
+		if let Some(k) = ShapeRetentionStrategyKey::decode(key)
+			&& let Some(policy) = decode_retention_strategy(row)
 		{
-			catalog.materialized.set_shape_retention_policy(k.shape, txn.version(), Some(policy));
+			catalog.materialized.set_shape_retention_strategy(k.shape, txn.version(), Some(policy));
 		}
 		Ok(())
 	}
 
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
-		if let Some(k) = ShapeRetentionPolicyKey::decode(key) {
-			catalog.materialized.set_shape_retention_policy(k.shape, txn.version(), None);
+		if let Some(k) = ShapeRetentionStrategyKey::decode(key) {
+			catalog.materialized.set_shape_retention_strategy(k.shape, txn.version(), None);
 		}
 		Ok(())
 	}
 }
 
-pub(super) struct OperatorRetentionPolicyApplier;
+pub(super) struct OperatorRetentionStrategyApplier;
 
-impl CatalogChangeApplier for OperatorRetentionPolicyApplier {
+impl CatalogChangeApplier for OperatorRetentionStrategyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		if let Some(k) = OperatorRetentionPolicyKey::decode(key)
-			&& let Some(policy) = decode_retention_policy(row)
+		if let Some(k) = OperatorRetentionStrategyKey::decode(key)
+			&& let Some(policy) = decode_retention_strategy(row)
 		{
-			catalog.materialized.set_operator_retention_policy(k.operator, txn.version(), Some(policy));
+			catalog.materialized.set_operator_retention_strategy(k.operator, txn.version(), Some(policy));
 		}
 		Ok(())
 	}
 
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
-		if let Some(k) = OperatorRetentionPolicyKey::decode(key) {
-			catalog.materialized.set_operator_retention_policy(k.operator, txn.version(), None);
+		if let Some(k) = OperatorRetentionStrategyKey::decode(key) {
+			catalog.materialized.set_operator_retention_strategy(k.operator, txn.version(), None);
 		}
 		Ok(())
 	}

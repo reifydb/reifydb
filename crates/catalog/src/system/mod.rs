@@ -28,7 +28,7 @@ pub mod handlers;
 pub mod identities;
 pub mod migrations;
 pub mod namespaces;
-pub mod operator_retention_policies;
+pub mod operator_retention_strategies;
 pub mod policies;
 pub mod policy_operations;
 pub mod primary_key_columns;
@@ -39,7 +39,7 @@ pub mod roles;
 pub mod sequence;
 pub mod series;
 pub mod shape_fields;
-pub mod shape_retention_policies;
+pub mod shape_retention_strategies;
 pub mod shapes;
 pub mod storage_stats_dictionary;
 pub mod storage_stats_flow;
@@ -81,7 +81,7 @@ use handlers::handlers;
 use identities::identities;
 use migrations::migrations;
 use namespaces::namespaces;
-use operator_retention_policies::operator_retention_policies;
+use operator_retention_strategies::operator_retention_strategies;
 use policies::policies;
 use policy_operations::policy_operations;
 use primary_key_columns::primary_key_columns;
@@ -91,7 +91,7 @@ use roles::roles;
 use sequence::sequences;
 use series::series;
 use shape_fields::shape_fields;
-use shape_retention_policies::shape_retention_policies;
+use shape_retention_strategies::shape_retention_strategies;
 use shapes::shapes;
 use storage_stats_dictionary::dictionary_storage_stats;
 use storage_stats_flow::flow_storage_stats;
@@ -417,27 +417,27 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod shape_retention_policies {
+		pub mod shape_retention_strategies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
-			pub const PRIMITIVE_ID: ColumnId = ColumnId(1);
-			pub const PRIMITIVE_TYPE: ColumnId = ColumnId(2);
-			pub const POLICY_TYPE: ColumnId = ColumnId(3);
+			pub const SHAPE_ID: ColumnId = ColumnId(1);
+			pub const SHAPE_TYPE: ColumnId = ColumnId(2);
+			pub const STRATEGY_TYPE: ColumnId = ColumnId(3);
 			pub const CLEANUP_MODE: ColumnId = ColumnId(4);
 			pub const VALUE: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [PRIMITIVE_ID, PRIMITIVE_TYPE, POLICY_TYPE, CLEANUP_MODE, VALUE];
+			pub const ALL: [ColumnId; 5] = [SHAPE_ID, SHAPE_TYPE, STRATEGY_TYPE, CLEANUP_MODE, VALUE];
 		}
 
-		pub mod operator_retention_policies {
+		pub mod operator_retention_strategies {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR_ID: ColumnId = ColumnId(1);
-			pub const POLICY_TYPE: ColumnId = ColumnId(2);
+			pub const STRATEGY_TYPE: ColumnId = ColumnId(2);
 			pub const CLEANUP_MODE: ColumnId = ColumnId(3);
 			pub const VALUE: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] = [OPERATOR_ID, POLICY_TYPE, CLEANUP_MODE, VALUE];
+			pub const ALL: [ColumnId; 4] = [OPERATOR_ID, STRATEGY_TYPE, CLEANUP_MODE, VALUE];
 		}
 
 		pub mod flow_operators {
@@ -505,10 +505,10 @@ pub mod ids {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const FLOW_ID: ColumnId = ColumnId(1);
-			pub const PRIMITIVE_ID: ColumnId = ColumnId(2);
+			pub const SHAPE_ID: ColumnId = ColumnId(2);
 			pub const LAG: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] = [FLOW_ID, PRIMITIVE_ID, LAG];
+			pub const ALL: [ColumnId; 3] = [FLOW_ID, SHAPE_ID, LAG];
 		}
 
 		pub mod subscriptions {
@@ -592,11 +592,10 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(2);
 			pub const TARGET_TYPE: ColumnId = ColumnId(3);
 			pub const TARGET_NAMESPACE: ColumnId = ColumnId(4);
-			pub const TARGET_OBJECT: ColumnId = ColumnId(5);
+			pub const TARGET_SHAPE: ColumnId = ColumnId(5);
 			pub const ENABLED: ColumnId = ColumnId(6);
 
-			pub const ALL: [ColumnId; 6] =
-				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
+			pub const ALL: [ColumnId; 6] = [ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_SHAPE, ENABLED];
 		}
 
 		pub mod authentications {
@@ -693,8 +692,8 @@ pub mod ids {
 		pub const PRIMARY_KEYS: VTableId = VTableId(7);
 		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
 		pub const VERSIONS: VTableId = VTableId(9);
-		pub const PRIMITIVE_RETENTION_POLICIES: VTableId = VTableId(10);
-		pub const OPERATOR_RETENTION_POLICIES: VTableId = VTableId(11);
+		pub const PRIMITIVE_RETENTION_STRATEGIES: VTableId = VTableId(10);
+		pub const OPERATOR_RETENTION_STRATEGIES: VTableId = VTableId(11);
 		pub const CDC_CONSUMERS: VTableId = VTableId(12);
 		pub const FLOW_OPERATORS: VTableId = VTableId(14);
 		pub const FLOW_NODES: VTableId = VTableId(15);
@@ -747,8 +746,8 @@ pub mod ids {
 			PRIMARY_KEYS,
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
-			PRIMITIVE_RETENTION_POLICIES,
-			OPERATOR_RETENTION_POLICIES,
+			PRIMITIVE_RETENTION_STRATEGIES,
+			OPERATOR_RETENTION_STRATEGIES,
 			CDC_CONSUMERS,
 			FLOW_OPERATORS,
 			FLOW_NODES,
@@ -875,14 +874,14 @@ impl SystemCatalog {
 		versions()
 	}
 
-	/// Get the shape_retention_policies virtual table definition
-	pub fn get_system_shape_retention_policies_table() -> Arc<VTable> {
-		shape_retention_policies()
+	/// Get the shape_retention_strategies virtual table definition
+	pub fn get_system_shape_retention_strategies_table() -> Arc<VTable> {
+		shape_retention_strategies()
 	}
 
-	/// Get the operator_retention_policies virtual table definition
-	pub fn get_system_operator_retention_policies_table() -> Arc<VTable> {
-		operator_retention_policies()
+	/// Get the operator_retention_strategies virtual table definition
+	pub fn get_system_operator_retention_strategies_table() -> Arc<VTable> {
+		operator_retention_strategies()
 	}
 
 	/// Get the cdc_consumers virtual table definition

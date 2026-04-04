@@ -17,9 +17,9 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes output column definitions for FFI operators
+/// Virtual table that exposes output column vtables for FFI operators
 pub struct SystemFlowOperatorOutputs {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	flow_operator_store: SystemFlowOperatorStore,
 }
@@ -27,7 +27,7 @@ pub struct SystemFlowOperatorOutputs {
 impl SystemFlowOperatorOutputs {
 	pub fn new(flow_operator_store: SystemFlowOperatorStore) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_operator_outputs_table().clone(),
+			vtable: SystemCatalog::get_system_flow_operator_outputs_table().clone(),
 			exhausted: false,
 			flow_operator_store,
 		}
@@ -93,7 +93,7 @@ impl BaseVTable for SystemFlowOperatorOutputs {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

@@ -33,7 +33,7 @@ use super::row::EncodedRow;
 use crate::encoded::shape::fingerprint::{RowShapeFingerprint, compute_fingerprint};
 
 /// Size of shape header (fingerprint) in bytes
-pub const SCHEMA_HEADER_SIZE: usize = 8;
+pub const SHAPE_HEADER_SIZE: usize = 8;
 
 /// Constants for packed u128 dynamic references (used by Int, Uint, Decimal)
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
@@ -202,7 +202,7 @@ impl RowShape {
 	fn compute_layout(mut fields: Vec<RowShapeField>) -> Vec<RowShapeField> {
 		// Start offset calculation from where data section begins (after header + bitvec)
 		let bitvec_size = fields.len().div_ceil(8);
-		let mut offset: u32 = (SCHEMA_HEADER_SIZE + bitvec_size) as u32;
+		let mut offset: u32 = (SHAPE_HEADER_SIZE + bitvec_size) as u32;
 
 		for field in fields.iter_mut() {
 			let storage_type = field.constraint.storage_type();
@@ -229,7 +229,7 @@ impl RowShape {
 
 	/// Offset where field data starts (after header and bitvec)
 	pub fn data_offset(&self) -> usize {
-		SCHEMA_HEADER_SIZE + self.bitvec_size()
+		SHAPE_HEADER_SIZE + self.bitvec_size()
 	}
 
 	/// Compute and cache the layout (total_size, max_align).
@@ -241,7 +241,7 @@ impl RowShape {
 
 			// Compute total_size
 			let total_size = if self.fields.is_empty() {
-				SCHEMA_HEADER_SIZE + self.bitvec_size()
+				SHAPE_HEADER_SIZE + self.bitvec_size()
 			} else {
 				let last_field = &self.fields[self.fields.len() - 1];
 				let end = last_field.offset as usize + last_field.size as usize;

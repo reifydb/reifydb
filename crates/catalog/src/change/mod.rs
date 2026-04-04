@@ -45,7 +45,7 @@ use namespace::NamespaceApplier;
 use passthrough::PassthroughApplier;
 use policy::PolicyApplier;
 use primary_key::PrimaryKeyApplier;
-use retention::{OperatorRetentionPolicyApplier, ShapeRetentionPolicyApplier};
+use retention::{OperatorRetentionStrategyApplier, ShapeRetentionStrategyApplier};
 use ringbuffer::RingBufferApplier;
 use role::RoleApplier;
 use series::SeriesApplier;
@@ -87,8 +87,10 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::MigrationEvent => dispatch::<MigrationEventApplier>(catalog, txn, change),
 		KeyKind::Config => dispatch::<ConfigApplier>(catalog, txn, change),
 		KeyKind::Series => dispatch::<SeriesApplier>(catalog, txn, change),
-		KeyKind::ShapeRetentionPolicy => dispatch::<ShapeRetentionPolicyApplier>(catalog, txn, change),
-		KeyKind::OperatorRetentionPolicy => dispatch::<OperatorRetentionPolicyApplier>(catalog, txn, change),
+		KeyKind::ShapeRetentionStrategy => dispatch::<ShapeRetentionStrategyApplier>(catalog, txn, change),
+		KeyKind::OperatorRetentionStrategy => {
+			dispatch::<OperatorRetentionStrategyApplier>(catalog, txn, change)
+		}
 
 		KeyKind::Column | KeyKind::Columns => dispatch::<ColumnApplier>(catalog, txn, change),
 

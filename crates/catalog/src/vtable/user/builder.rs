@@ -103,7 +103,7 @@ impl UserVTableBuilder {
 		};
 
 		VTables::UserDefined {
-			def: Arc::new(def),
+			vtable: Arc::new(def),
 			data_fn,
 			params: None,
 			exhausted: false,

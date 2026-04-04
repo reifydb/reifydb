@@ -19,7 +19,7 @@ use crate::{
 
 /// Virtual table that exposes information about all virtual tables (system and user-defined)
 pub struct SystemTablesVirtual {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
@@ -27,7 +27,7 @@ pub struct SystemTablesVirtual {
 impl SystemTablesVirtual {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_virtual_tables_table().clone(),
+			vtable: SystemCatalog::get_system_virtual_tables_table().clone(),
 			catalog,
 			exhausted: false,
 		}
@@ -110,7 +110,7 @@ impl BaseVTable for SystemTablesVirtual {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

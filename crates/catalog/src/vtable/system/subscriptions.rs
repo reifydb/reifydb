@@ -22,7 +22,7 @@ use crate::{
 /// Each row shows the subscription ID and the number of columns in that subscription.
 /// This uses dynamic IoC resolution to avoid a hard dependency on the subscription subsystem.
 pub struct SystemSubscriptions {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	ioc: IocContainer,
 }
@@ -30,7 +30,7 @@ pub struct SystemSubscriptions {
 impl SystemSubscriptions {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_subscriptions_table().clone(),
+			vtable: SystemCatalog::get_system_subscriptions_table().clone(),
 			exhausted: false,
 			ioc,
 		}
@@ -83,7 +83,7 @@ impl BaseVTable for SystemSubscriptions {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

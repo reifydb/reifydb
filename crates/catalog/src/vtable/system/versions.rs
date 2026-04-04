@@ -19,7 +19,7 @@ use crate::{
 
 /// Virtual table that exposes system version information
 pub struct SystemVersions {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	ioc: IocContainer,
 	exhausted: bool,
 }
@@ -27,7 +27,7 @@ pub struct SystemVersions {
 impl SystemVersions {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_versions_table().clone(),
+			vtable: SystemCatalog::get_system_versions_table().clone(),
 			ioc,
 			exhausted: false,
 		}
@@ -90,7 +90,7 @@ impl BaseVTable for SystemVersions {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

@@ -10,7 +10,7 @@ use reifydb_core::{
 		table::Table,
 	},
 	key::{namespace_table::NamespaceTableKey, table::TableKey},
-	retention::RetentionPolicy,
+	retention::RetentionStrategy,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
@@ -23,7 +23,7 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		column::create::ColumnToCreate,
-		retention_policy::create::create_shape_retention_policy,
+		retention_strategy::create::create_shape_retention_strategy,
 		sequence::system::SystemSequence,
 		table::shape::{table, table_namespace},
 	},
@@ -44,7 +44,7 @@ pub struct TableToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
-	pub retention_policy: Option<RetentionPolicy>,
+	pub retention_strategy: Option<RetentionStrategy>,
 }
 
 impl CatalogStore {
@@ -70,8 +70,8 @@ impl CatalogStore {
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
 
-		if let Some(retention_policy) = &to_create.retention_policy {
-			create_shape_retention_policy(txn, ShapeId::Table(table_id), retention_policy)?;
+		if let Some(retention_strategy) = &to_create.retention_strategy {
+			create_shape_retention_strategy(txn, ShapeId::Table(table_id), retention_strategy)?;
 		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
@@ -163,7 +163,7 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
-			retention_policy: None,
+			retention_strategy: None,
 		};
 
 		// First creation should succeed
@@ -185,7 +185,7 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("test_table"),
 			columns: vec![],
-			retention_policy: None,
+			retention_strategy: None,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
@@ -194,7 +194,7 @@ pub mod tests {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("another_table"),
 			columns: vec![],
-			retention_policy: None,
+			retention_strategy: None,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();

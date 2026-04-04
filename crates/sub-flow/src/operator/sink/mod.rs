@@ -14,7 +14,7 @@ use reifydb_core::{
 		catalog::{
 			column::Column as CatalogColumn,
 			dictionary::Dictionary,
-			property::{ColumnPropertyKind, ColumnSaturationPolicy},
+			property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		},
 		evaluate::TargetColumn,
 	},
@@ -78,7 +78,7 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 			source_name: None,
 			column_name: Some(target_col.name.clone()),
 			column_type: target_type.clone(),
-			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
+			properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)],
 		});
 
 		if let Some(source_col) = columns.column(&target_col.name) {

@@ -31,7 +31,7 @@ use policy::PolicyKey;
 use policy_op::PolicyOpKey;
 use primary_key::PrimaryKeyKey;
 use property::ColumnPropertyKey;
-use retention_policy::{OperatorRetentionPolicyKey, ShapeRetentionPolicyKey};
+use retention_strategy::{OperatorRetentionStrategyKey, ShapeRetentionStrategyKey};
 use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 use role::RoleKey;
 use row::RowKey;
@@ -89,7 +89,7 @@ pub mod policy;
 pub mod policy_op;
 pub mod primary_key;
 pub mod property;
-pub mod retention_policy;
+pub mod retention_strategy;
 pub mod ringbuffer;
 pub mod role;
 pub mod row;
@@ -134,8 +134,8 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
-	ShapeRetentionPolicy(ShapeRetentionPolicyKey),
-	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
+	ShapeRetentionStrategy(ShapeRetentionStrategyKey),
+	OperatorRetentionStrategy(OperatorRetentionStrategyKey),
 	Dictionary(DictionaryKey),
 	DictionaryEntry(DictionaryEntryKey),
 	DictionaryEntryIndex(DictionaryEntryIndexKey),
@@ -189,8 +189,8 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
-			Key::ShapeRetentionPolicy(key) => key.encode(),
-			Key::OperatorRetentionPolicy(key) => key.encode(),
+			Key::ShapeRetentionStrategy(key) => key.encode(),
+			Key::OperatorRetentionStrategy(key) => key.encode(),
 			Key::Dictionary(key) => key.encode(),
 			Key::DictionaryEntry(key) => key.encode(),
 			Key::DictionaryEntryIndex(key) => key.encode(),
@@ -286,11 +286,11 @@ impl Key {
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(key).map(Self::NamespaceRingBuffer)
 			}
-			KeyKind::ShapeRetentionPolicy => {
-				ShapeRetentionPolicyKey::decode(key).map(Self::ShapeRetentionPolicy)
+			KeyKind::ShapeRetentionStrategy => {
+				ShapeRetentionStrategyKey::decode(key).map(Self::ShapeRetentionStrategy)
 			}
-			KeyKind::OperatorRetentionPolicy => {
-				OperatorRetentionPolicyKey::decode(key).map(Self::OperatorRetentionPolicy)
+			KeyKind::OperatorRetentionStrategy => {
+				OperatorRetentionStrategyKey::decode(key).map(Self::OperatorRetentionStrategy)
 			}
 			KeyKind::FlowNode
 			| KeyKind::FlowNodeByFlow

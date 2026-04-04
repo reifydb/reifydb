@@ -24,7 +24,7 @@ use crate::{
 /// This table currently returns empty results. Per-index tracking may be added
 /// in a future enhancement.
 pub struct SystemIndexStorageStats {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	#[allow(dead_code)]
 	stats_reader: MetricReader<SingleStore>,
@@ -33,7 +33,7 @@ pub struct SystemIndexStorageStats {
 impl SystemIndexStorageStats {
 	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_index_storage_stats_table().clone(),
+			vtable: SystemCatalog::get_system_index_storage_stats_table().clone(),
 			exhausted: false,
 			stats_reader,
 		}
@@ -131,7 +131,7 @@ impl BaseVTable for SystemIndexStorageStats {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

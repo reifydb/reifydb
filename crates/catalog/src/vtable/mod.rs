@@ -56,7 +56,7 @@ pub trait BaseVTable: Send + Sync {
 	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>>;
 
 	/// Get the table definition
-	fn definition(&self) -> &VTable;
+	fn vtable(&self) -> &VTable;
 }
 
 /// Registry for virtual tables (definitions only)
@@ -76,11 +76,11 @@ impl VTableRegistry {
 			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table()),
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table()),
 			VERSIONS => Some(SystemCatalog::get_system_versions_table()),
-			PRIMITIVE_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_shape_retention_policies_table())
+			PRIMITIVE_RETENTION_STRATEGIES => {
+				Some(SystemCatalog::get_system_shape_retention_strategies_table())
 			}
-			OPERATOR_RETENTION_POLICIES => {
-				Some(SystemCatalog::get_system_operator_retention_policies_table())
+			OPERATOR_RETENTION_STRATEGIES => {
+				Some(SystemCatalog::get_system_operator_retention_strategies_table())
 			}
 			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table()),
 			FLOWS => Some(SystemCatalog::get_system_flows_table()),
@@ -137,8 +137,8 @@ impl VTableRegistry {
 			SystemCatalog::get_system_primary_keys_table(),
 			SystemCatalog::get_system_primary_key_columns_table(),
 			SystemCatalog::get_system_versions_table(),
-			SystemCatalog::get_system_shape_retention_policies_table(),
-			SystemCatalog::get_system_operator_retention_policies_table(),
+			SystemCatalog::get_system_shape_retention_strategies_table(),
+			SystemCatalog::get_system_operator_retention_strategies_table(),
 			SystemCatalog::get_system_cdc_consumers_table(),
 			SystemCatalog::get_system_flows_table(),
 			SystemCatalog::get_system_flow_operators_table(),

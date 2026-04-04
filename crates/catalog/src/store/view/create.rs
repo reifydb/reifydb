@@ -133,7 +133,7 @@ impl CatalogStore {
 				underlying,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
@@ -147,7 +147,7 @@ impl CatalogStore {
 				propagate_evictions,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, *capacity);
 				view::SHAPE.set_u8(
 					&mut row,
@@ -169,7 +169,7 @@ impl CatalogStore {
 				tag,
 			} => {
 				view::SHAPE.set_u8(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
-				view::SHAPE.set_u64(&mut row, view::UNDERLYING_PRIMITIVE_ID, *underlying);
+				view::SHAPE.set_u64(&mut row, view::UNDERLYING_SHAPE_ID, *underlying);
 				view::SHAPE.set_u64(&mut row, view::CAPACITY, 0u64);
 				view::SHAPE.set_u8(&mut row, view::PROPAGATE_EVICTIONS, 0u8);
 				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());

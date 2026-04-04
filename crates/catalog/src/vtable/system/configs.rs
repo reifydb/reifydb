@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub struct SystemConfigs {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	ioc: IocContainer,
 	exhausted: bool,
 }
@@ -27,7 +27,7 @@ pub struct SystemConfigs {
 impl SystemConfigs {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_configs_table().clone(),
+			vtable: SystemCatalog::get_system_configs_table().clone(),
 			ioc,
 			exhausted: false,
 		}
@@ -102,7 +102,7 @@ impl BaseVTable for SystemConfigs {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }
