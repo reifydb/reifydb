@@ -26,7 +26,7 @@ type StorageStatsRow = (u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, 
 
 /// Virtual table that exposes storage statistics for views
 pub struct SystemViewStorageStats {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	stats_reader: MetricReader<SingleStore>,
 }
@@ -34,7 +34,7 @@ pub struct SystemViewStorageStats {
 impl SystemViewStorageStats {
 	pub fn new(stats_reader: MetricReader<SingleStore>) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_view_storage_stats_table().clone(),
+			vtable: SystemCatalog::get_system_view_storage_stats_table().clone(),
 			exhausted: false,
 			stats_reader,
 		}
@@ -206,7 +206,7 @@ impl BaseVTable for SystemViewStorageStats {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

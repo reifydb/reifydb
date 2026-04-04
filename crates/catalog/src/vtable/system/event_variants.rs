@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes variant and field information for event sumtypes
 pub struct SystemEventVariants {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemEventVariants {
 impl SystemEventVariants {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_event_variants_table().clone(),
+			vtable: SystemCatalog::get_system_event_variants_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -123,7 +123,7 @@ impl BaseVTable for SystemEventVariants {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

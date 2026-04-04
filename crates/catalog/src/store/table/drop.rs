@@ -35,7 +35,7 @@ pub mod tests {
 			id::{NamespaceId, TableId},
 			shape::ShapeId,
 		},
-		retention::RetentionPolicy,
+		retention::RetentionStrategy,
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -48,7 +48,7 @@ pub mod tests {
 		CatalogStore,
 		store::{
 			namespace::create::NamespaceToCreate,
-			retention_policy::create::create_shape_retention_policy,
+			retention_strategy::create::create_shape_retention_strategy,
 			table::create::{TableColumnToCreate, TableToCreate},
 		},
 		test_utils::{create_table, ensure_test_namespace},
@@ -79,7 +79,7 @@ pub mod tests {
 				name: Fragment::internal("test_table"),
 				namespace: namespace.id(),
 				columns: vec![],
-				retention_policy: None,
+				retention_strategy: None,
 			},
 		)
 		.unwrap();
@@ -146,16 +146,16 @@ pub mod tests {
 			],
 		);
 
-		// Add retention policy
-		create_shape_retention_policy(&mut txn, ShapeId::Table(table.id), &RetentionPolicy::KeepForever)
+		// Add retention strategy
+		create_shape_retention_strategy(&mut txn, ShapeId::Table(table.id), &RetentionStrategy::KeepForever)
 			.unwrap();
 
 		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
-		// Verify retention policy exists before drop
-		let policy = CatalogStore::find_shape_retention_policy(
+		// Verify retention strategy exists before drop
+		let policy = CatalogStore::find_shape_retention_strategy(
 			&mut Transaction::Admin(&mut txn),
 			ShapeId::Table(table.id),
 		)
@@ -169,8 +169,8 @@ pub mod tests {
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert!(columns.is_empty());
 
-		// Verify retention policy is cleaned up
-		let policy = CatalogStore::find_shape_retention_policy(
+		// Verify retention strategy is cleaned up
+		let policy = CatalogStore::find_shape_retention_strategy(
 			&mut Transaction::Admin(&mut txn),
 			ShapeId::Table(table.id),
 		)

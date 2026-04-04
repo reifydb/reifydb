@@ -33,12 +33,12 @@ pub enum Backoff {
 }
 
 /// Controls how many times a write transaction is retried on conflict (`TXN_001`).
-pub struct RetryPolicy {
+pub struct RetryStrategy {
 	pub max_attempts: u32,
 	pub backoff: Backoff,
 }
 
-impl Default for RetryPolicy {
+impl Default for RetryStrategy {
 	fn default() -> Self {
 		Self {
 			max_attempts: 3,
@@ -47,7 +47,7 @@ impl Default for RetryPolicy {
 	}
 }
 
-impl RetryPolicy {
+impl RetryStrategy {
 	/// No retries — fail immediately on conflict.
 	pub fn no_retry() -> Self {
 		Self {
@@ -123,7 +123,7 @@ pub struct Session {
 	identity: IdentityId,
 	authenticated: bool,
 	token: Option<String>,
-	retry: RetryPolicy,
+	retry: RetryStrategy,
 }
 
 impl Session {
@@ -134,7 +134,7 @@ impl Session {
 			identity: info.identity,
 			authenticated: true,
 			token: None,
-			retry: RetryPolicy::default(),
+			retry: RetryStrategy::default(),
 		}
 	}
 
@@ -145,7 +145,7 @@ impl Session {
 			identity: info.identity,
 			authenticated: true,
 			token: Some(info.token.clone()),
-			retry: RetryPolicy::default(),
+			retry: RetryStrategy::default(),
 		}
 	}
 
@@ -156,7 +156,7 @@ impl Session {
 			identity,
 			authenticated: false,
 			token: None,
-			retry: RetryPolicy::default(),
+			retry: RetryStrategy::default(),
 		}
 	}
 
@@ -165,9 +165,9 @@ impl Session {
 		Self::trusted(engine, IdentityId::anonymous())
 	}
 
-	/// Set the retry policy for command and admin operations.
-	pub fn with_retry(mut self, policy: RetryPolicy) -> Self {
-		self.retry = policy;
+	/// Set the retry strategy for command and admin operations.
+	pub fn with_retry(mut self, strategy: RetryStrategy) -> Self {
+		self.retry = strategy;
 		self
 	}
 

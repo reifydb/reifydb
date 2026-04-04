@@ -463,7 +463,7 @@ pub mod tests {
 				name: Fragment::internal("test_table2"),
 				namespace: namespace.id(),
 				columns: vec![],
-				retention_policy: None,
+				retention_strategy: None,
 			},
 		)
 		.unwrap();

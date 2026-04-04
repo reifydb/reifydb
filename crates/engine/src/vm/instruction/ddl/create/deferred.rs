@@ -95,7 +95,7 @@ fn create_underlying_primitive(
 					name: underlying_name,
 					namespace,
 					columns,
-					retention_policy: None,
+					retention_strategy: None,
 					primary_key_columns: None,
 				},
 			)?;

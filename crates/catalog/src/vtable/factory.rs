@@ -22,11 +22,11 @@ use super::VTable;
 ///
 /// impl VirtualTableFactory for MyTableFactory {
 ///     fn create_boxed(&self) -> Box<dyn BaseVTable + Send + Sync> {
-///         Box::new(MyVirtualTable::new(self.definition.clone()))
+///         Box::new(MyVirtualTable::new(self.vtable.clone()))
 ///     }
 ///
 ///     fn definition(&self) -> Arc<VTable> {
-///         self.definition.clone()
+///         self.vtable.clone()
 ///     }
 /// }
 /// ```

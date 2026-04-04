@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes variant and field information for enum sumtypes
 pub struct SystemEnumVariants {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemEnumVariants {
 impl SystemEnumVariants {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_enum_variants_table().clone(),
+			vtable: SystemCatalog::get_system_enum_variants_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -123,7 +123,7 @@ impl BaseVTable for SystemEnumVariants {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

@@ -10,22 +10,22 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
-use super::ids::{columns::operator_retention_policies::*, vtable::OPERATOR_RETENTION_POLICIES};
+use super::ids::{columns::shape_retention_strategies::*, vtable::PRIMITIVE_RETENTION_STRATEGIES};
 
-/// Returns the static definition for the system.operator_retention_policies virtual table
-/// This table exposes retention policy information for flow operators
-pub fn operator_retention_policies() -> Arc<VTable> {
+/// Returns the static definition for the system.shape_retention_strategies virtual table
+/// This table exposes retention strategy information for primitives (tables, views, ring buffers)
+pub fn shape_retention_strategies() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: OPERATOR_RETENTION_POLICIES,
+			id: PRIMITIVE_RETENTION_STRATEGIES,
 			namespace: NamespaceId::SYSTEM,
-			name: "operator_retention_policies".to_string(),
+			name: "shape_retention_strategies".to_string(),
 			columns: vec![
 				Column {
-					id: OPERATOR_ID,
-					name: "operator_id".to_string(),
+					id: SHAPE_ID,
+					name: "object_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
 					index: ColumnIndex(0),
@@ -33,11 +33,20 @@ pub fn operator_retention_policies() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: POLICY_TYPE,
-					name: "policy_type".to_string(),
+					id: SHAPE_TYPE,
+					name: "shape_type".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					properties: vec![],
 					index: ColumnIndex(1),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: STRATEGY_TYPE,
+					name: "strategy_type".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					properties: vec![],
+					index: ColumnIndex(2),
 					auto_increment: false,
 					dictionary_id: None,
 				},
@@ -46,7 +55,7 @@ pub fn operator_retention_policies() -> Arc<VTable> {
 					name: "cleanup_mode".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					properties: vec![],
-					index: ColumnIndex(2),
+					index: ColumnIndex(3),
 					auto_increment: false,
 					dictionary_id: None,
 				},
@@ -55,7 +64,7 @@ pub fn operator_retention_policies() -> Arc<VTable> {
 					name: "value".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],
-					index: ColumnIndex(3),
+					index: ColumnIndex(4),
 					auto_increment: false,
 					dictionary_id: None,
 				},

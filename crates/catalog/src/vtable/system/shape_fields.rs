@@ -19,7 +19,7 @@ use crate::{
 
 /// Virtual table that exposes field information for all registered shapes
 pub struct SystemShapeFields {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	pub(crate) catalog: Catalog,
 	exhausted: bool,
 }
@@ -27,7 +27,7 @@ pub struct SystemShapeFields {
 impl SystemShapeFields {
 	pub fn new(catalog: Catalog) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_shape_fields_table().clone(),
+			vtable: SystemCatalog::get_system_shape_fields_table().clone(),
 			catalog,
 			exhausted: false,
 		}
@@ -128,7 +128,7 @@ impl BaseVTable for SystemShapeFields {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

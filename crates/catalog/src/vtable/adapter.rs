@@ -21,7 +21,7 @@ use crate::Result;
 /// Adapter that wraps a `UserVTable` into the internal `VTable` trait.
 pub struct UserVTableAdapter<U: UserVTable> {
 	user_table: U,
-	definition: Arc<VTable>,
+	vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -30,7 +30,7 @@ impl<U: UserVTable> UserVTableAdapter<U> {
 	pub fn new(user_table: U, definition: Arc<VTable>) -> Self {
 		Self {
 			user_table,
-			definition,
+			vtable: definition,
 			exhausted: false,
 		}
 	}
@@ -63,15 +63,15 @@ impl<U: UserVTable> VTable for UserVTableAdapter<U> {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }
 
 /// Adapter that wraps a `UserVTableIterator` into the internal `VTable` trait.
 pub struct UserVTableIteratorAdapter<U: UserVTableIterator> {
 	user_iter: U,
-	definition: Arc<VTable>,
+	vtable: Arc<VTable>,
 	batch_size: usize,
 	initialized: bool,
 }
@@ -79,10 +79,10 @@ pub struct UserVTableIteratorAdapter<U: UserVTableIterator> {
 impl<U: UserVTableIterator> UserVTableIteratorAdapter<U> {
 	/// Create a new adapter wrapping the user iterator.
 	#[allow(dead_code)]
-	pub fn new(user_iter: U, definition: Arc<VTable>) -> Self {
+	pub fn new(user_iter: U, vtable: Arc<VTable>) -> Self {
 		Self {
 			user_iter,
-			definition,
+			vtable,
 			batch_size: 1000, // Default batch size
 			initialized: false,
 		}
@@ -130,7 +130,7 @@ impl<U: UserVTableIterator> VTable for UserVTableIteratorAdapter<U> {
 	}
 
 	fn definition(&self) -> &VTable {
-		&self.definition
+		&self.vtable
 	}
 }
 

@@ -42,7 +42,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 			name: plan.table.clone(),
 			namespace: plan.namespace.def().id(),
 			columns,
-			retention_policy: None,
+			retention_strategy: None,
 			primary_key_columns: None,
 		},
 	)?;

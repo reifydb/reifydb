@@ -10,14 +10,14 @@ pub mod identity;
 pub mod load;
 pub mod migration;
 pub mod namespace;
-pub mod operator_retention_policy;
+pub mod operator_retention_strategy;
 pub mod policy;
 pub mod primary_key;
 pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_shape;
-pub mod shape_retention_policy;
+pub mod shape_retention_strategy;
 pub mod sink;
 pub mod source;
 pub mod sumtype;
@@ -57,7 +57,7 @@ use reifydb_core::{
 		view::View,
 		vtable::{VTable, VTableId},
 	},
-	retention::RetentionPolicy,
+	retention::RetentionStrategy,
 	util::multi::MultiVersionContainer,
 };
 use reifydb_type::{
@@ -80,7 +80,7 @@ pub type MultiVersionTable = MultiVersionContainer<Table>;
 pub type MultiVersionView = MultiVersionContainer<View>;
 pub type MultiVersionFlow = MultiVersionContainer<Flow>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
-pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
+pub type MultiVersionRetentionStrategy = MultiVersionContainer<RetentionStrategy>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
 pub type MultiVersionHandler = MultiVersionContainer<Handler>;
 pub type MultiVersionMigration = MultiVersionContainer<Migration>;
@@ -134,10 +134,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) tests_by_name: SkipMap<(NamespaceId, String), TestId>,
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKey>,
-	/// MultiVersion source retention policies indexed by source ID
-	pub(crate) shape_retention_policies: SkipMap<ShapeId, MultiVersionRetentionPolicy>,
-	/// MultiVersion operator retention policies indexed by operator ID
-	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,
+	/// MultiVersion source retention strategies indexed by source ID
+	pub(crate) shape_retention_strategies: SkipMap<ShapeId, MultiVersionRetentionStrategy>,
+	/// MultiVersion operator retention strategies indexed by operator ID
+	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,
 	/// MultiVersion dictionary definitions indexed by dictionary ID
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionary>,
 	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
@@ -238,8 +238,8 @@ impl MaterializedCatalog {
 			flows: SkipMap::new(),
 			flows_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
-			shape_retention_policies: SkipMap::new(),
-			operator_retention_policies: SkipMap::new(),
+			shape_retention_strategies: SkipMap::new(),
+			operator_retention_strategies: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
 			sumtypes: SkipMap::new(),

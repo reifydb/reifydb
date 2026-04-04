@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system sequence information
 pub struct SystemSequences {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemSequences {
 impl SystemSequences {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_sequences_table().clone(),
+			vtable: SystemCatalog::get_system_sequences_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -95,7 +95,7 @@ impl BaseVTable for SystemSequences {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

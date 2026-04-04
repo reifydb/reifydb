@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::interface::catalog::property::ColumnSaturationPolicy;
+use reifydb_core::interface::catalog::property::ColumnSaturationStrategy;
 use reifydb_type::{
 	Result,
 	error::TypeError,
@@ -34,7 +34,7 @@ macro_rules! impl_scalar_op {
 				<L as Promote<R>>::Output: $safe_trait,
 			{
 				match &self.saturation_policy() {
-					ColumnSaturationPolicy::Error => {
+					ColumnSaturationStrategy::Error => {
 						let Some((lp, rp)) = l.checked_promote(r) else {
 							let descriptor = self
 								.target
@@ -63,7 +63,7 @@ macro_rules! impl_scalar_op {
 							})
 							.map(Some)
 					}
-					ColumnSaturationPolicy::None => {
+					ColumnSaturationStrategy::None => {
 						let Some((lp, rp)) = l.checked_promote(r) else {
 							return Ok(None);
 						};

@@ -95,7 +95,7 @@ pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: O
 	};
 
 	let storage_kind = view::SHAPE.get_u8(row, view::STORAGE_KIND);
-	let underlying_object_id = view::SHAPE.get_u64(row, view::UNDERLYING_PRIMITIVE_ID);
+	let underlying_object_id = view::SHAPE.get_u64(row, view::UNDERLYING_SHAPE_ID);
 
 	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {

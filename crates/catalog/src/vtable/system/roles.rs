@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system role information
 pub struct SystemRoles {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemRoles {
 impl SystemRoles {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_roles_table().clone(),
+			vtable: SystemCatalog::get_system_roles_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -75,7 +75,7 @@ impl BaseVTable for SystemRoles {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

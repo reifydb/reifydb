@@ -67,7 +67,7 @@ impl Runner for TestRunner {
 							name: Fragment::internal("users"),
 							namespace: default_namespace.id(),
 							columns: vec![],
-							retention_policy: None,
+							retention_strategy: None,
 							primary_key_columns: None,
 						},
 					)
@@ -79,7 +79,7 @@ impl Runner for TestRunner {
 							name: Fragment::internal("orders"),
 							namespace: default_namespace.id(),
 							columns: vec![],
-							retention_policy: None,
+							retention_strategy: None,
 							primary_key_columns: None,
 						},
 					)
@@ -107,7 +107,7 @@ impl Runner for TestRunner {
 							name: Fragment::internal("users"),
 							namespace: test_ns.id(),
 							columns: vec![],
-							retention_policy: None,
+							retention_strategy: None,
 							primary_key_columns: None,
 						},
 					)
@@ -136,7 +136,7 @@ impl Runner for TestRunner {
 							name: Fragment::internal("users"),
 							namespace: namespace.id(),
 							columns: vec![],
-							retention_policy: None,
+							retention_strategy: None,
 							primary_key_columns: None,
 						},
 					)
@@ -148,7 +148,7 @@ impl Runner for TestRunner {
 							name: Fragment::internal("orders"),
 							namespace: namespace.id(),
 							columns: vec![],
-							retention_policy: None,
+							retention_strategy: None,
 							primary_key_columns: None,
 						},
 					)

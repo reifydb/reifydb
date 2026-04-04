@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system policy information
 pub struct SystemPolicies {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemPolicies {
 impl SystemPolicies {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_policies_table().clone(),
+			vtable: SystemCatalog::get_system_policies_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -99,7 +99,7 @@ impl BaseVTable for SystemPolicies {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

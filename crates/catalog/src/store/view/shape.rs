@@ -12,7 +12,7 @@ pub(crate) mod view {
 	pub(crate) const KIND: usize = 3;
 	pub(crate) const PRIMARY_KEY: usize = 4;
 	pub(crate) const STORAGE_KIND: usize = 5;
-	pub(crate) const UNDERLYING_PRIMITIVE_ID: usize = 6;
+	pub(crate) const UNDERLYING_SHAPE_ID: usize = 6;
 	pub(crate) const CAPACITY: usize = 7;
 	pub(crate) const PROPAGATE_EVICTIONS: usize = 8;
 	pub(crate) const KEY_COLUMN: usize = 9;

@@ -35,7 +35,7 @@ pub fn flow_lags() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: PRIMITIVE_ID,
+					id: SHAPE_ID,
 					name: "object_id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					properties: vec![],

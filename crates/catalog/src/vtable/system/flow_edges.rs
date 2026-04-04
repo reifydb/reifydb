@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system flow edge information
 pub struct SystemFlowEdges {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemFlowEdges {
 impl SystemFlowEdges {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_edges_table().clone(),
+			vtable: SystemCatalog::get_system_flow_edges_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -87,7 +87,7 @@ impl BaseVTable for SystemFlowEdges {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

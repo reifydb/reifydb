@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system enum (sumtype) information
 pub struct SystemEnums {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemEnums {
 impl SystemEnums {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_enums_table().clone(),
+			vtable: SystemCatalog::get_system_enums_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -84,7 +84,7 @@ impl BaseVTable for SystemEnums {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

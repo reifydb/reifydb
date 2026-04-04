@@ -104,4 +104,4 @@ pub use reifydb_type::{
 	},
 };
 pub mod test;
-pub use session::{Backoff, RetryPolicy, Session};
+pub use session::{Backoff, RetryStrategy, Session};

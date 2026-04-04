@@ -8,7 +8,8 @@ use reifydb_core::{
 	},
 	key::{
 		column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey, primary_key::PrimaryKeyKey,
-		property::ColumnPropertyKey, retention_policy::ShapeRetentionPolicyKey, row_sequence::RowSequenceKey,
+		property::ColumnPropertyKey, retention_strategy::ShapeRetentionStrategyKey,
+		row_sequence::RowSequenceKey,
 	},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -17,7 +18,7 @@ use crate::{Result, store::column::shape::primitive_column};
 
 /// Remove all metadata associated with a shape (table, view, or ringbuffer):
 /// columns, column policies, column sequences, column definitions, primary key,
-/// row sequence, and retention policy.
+/// row sequence, and retention strategy.
 ///
 /// Physical row data (RowKey) is NOT deleted here.
 pub(crate) fn drop_shape_metadata(
@@ -68,8 +69,8 @@ pub(crate) fn drop_shape_metadata(
 	// Step 4: Delete row sequence
 	txn.remove(&RowSequenceKey::encoded(shape))?;
 
-	// Step 5: Delete retention policy
-	txn.remove(&ShapeRetentionPolicyKey::encoded(shape))?;
+	// Step 5: Delete retention strategy
+	txn.remove(&ShapeRetentionStrategyKey::encoded(shape))?;
 
 	Ok(())
 }

@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system namespace information
 pub struct SystemNamespaces {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemNamespaces {
 impl SystemNamespaces {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_namespaces_table().clone(),
+			vtable: SystemCatalog::get_system_namespaces_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -86,7 +86,7 @@ impl BaseVTable for SystemNamespaces {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

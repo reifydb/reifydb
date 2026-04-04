@@ -23,7 +23,7 @@ use crate::{
 
 /// Virtual table that exposes loaded FFI operators from shared libraries
 pub struct SystemFlowOperators {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	flow_operator_store: SystemFlowOperatorStore,
 }
@@ -31,7 +31,7 @@ pub struct SystemFlowOperators {
 impl SystemFlowOperators {
 	pub fn new(flow_operator_store: SystemFlowOperatorStore) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_operators_table().clone(),
+			vtable: SystemCatalog::get_system_flow_operators_table().clone(),
 			exhausted: false,
 			flow_operator_store,
 		}
@@ -121,7 +121,7 @@ impl BaseVTable for SystemFlowOperators {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

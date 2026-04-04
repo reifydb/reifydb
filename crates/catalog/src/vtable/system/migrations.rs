@@ -16,9 +16,9 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes migration definitions and their latest action
+/// Virtual table that exposes migration vtables and their latest action
 pub struct SystemMigrations {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemMigrations {
 impl SystemMigrations {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_migrations_table().clone(),
+			vtable: SystemCatalog::get_system_migrations_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -98,7 +98,7 @@ impl BaseVTable for SystemMigrations {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

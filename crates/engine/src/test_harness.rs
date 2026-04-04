@@ -343,7 +343,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 					dictionary_id: None,
 				},
 			],
-			retention_policy: None,
+			retention_strategy: None,
 			primary_key_columns: None,
 		},
 	)

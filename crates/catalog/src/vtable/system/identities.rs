@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system identity information
 pub struct SystemIdentities {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemIdentities {
 impl SystemIdentities {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_identities_table().clone(),
+			vtable: SystemCatalog::get_system_identities_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -81,7 +81,7 @@ impl BaseVTable for SystemIdentities {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

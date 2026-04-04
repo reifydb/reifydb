@@ -21,7 +21,7 @@ use crate::{
 ///
 /// Each row shows how far behind a flow is for a specific source primitive.
 pub struct SystemFlowLags {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 	ioc: IocContainer,
 }
@@ -29,7 +29,7 @@ pub struct SystemFlowLags {
 impl SystemFlowLags {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_lags_table().clone(),
+			vtable: SystemCatalog::get_system_flow_lags_table().clone(),
 			exhausted: false,
 			ioc,
 		}
@@ -83,7 +83,7 @@ impl BaseVTable for SystemFlowLags {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

@@ -62,7 +62,7 @@ pub mod tests {
 	use reifydb_core::interface::catalog::{
 		column::ColumnIndex,
 		id::{ColumnId, TableId},
-		property::{ColumnPropertyKind, ColumnSaturationPolicy},
+		property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -84,7 +84,7 @@ pub mod tests {
 				shape_name: "test_table".to_string(),
 				column: "with_policy".to_string(),
 				constraint: TypeConstraint::unconstrained(Type::Int2),
-				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)],
+				properties: vec![ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)],
 				index: ColumnIndex(0),
 				auto_increment: false,
 				dictionary_id: None,
@@ -99,6 +99,9 @@ pub mod tests {
 
 		assert_eq!(properties.len(), 1);
 		assert_eq!(properties[0].column, column.id);
-		assert!(matches!(properties[0].property, ColumnPropertyKind::Saturation(ColumnSaturationPolicy::None)));
+		assert!(matches!(
+			properties[0].property,
+			ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None)
+		));
 	}
 }

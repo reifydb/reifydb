@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
-	retention::{CleanupMode, RetentionPolicy},
+	retention::{CleanupMode, RetentionStrategy},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -17,28 +17,28 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-/// Virtual table that exposes operator retention policy information
-pub struct SystemOperatorRetentionPolicies {
-	pub(crate) definition: Arc<VTable>,
+/// Virtual table that exposes operator retention strategy information
+pub struct SystemOperatorRetentionStrategies {
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemOperatorRetentionPolicies {
+impl Default for SystemOperatorRetentionStrategies {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemOperatorRetentionPolicies {
+impl SystemOperatorRetentionStrategies {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_operator_retention_policies_table().clone(),
+			vtable: SystemCatalog::get_system_operator_retention_strategies_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl BaseVTable for SystemOperatorRetentionPolicies {
+impl BaseVTable for SystemOperatorRetentionStrategies {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -49,28 +49,28 @@ impl BaseVTable for SystemOperatorRetentionPolicies {
 			return Ok(None);
 		}
 
-		let policies = CatalogStore::list_operator_retention_policies(txn)?;
+		let strategies = CatalogStore::list_operator_retention_strategies(txn)?;
 
-		let mut operator_ids = ColumnData::uint8_with_capacity(policies.len());
-		let mut policy_types = ColumnData::utf8_with_capacity(policies.len());
-		let mut cleanup_modes = ColumnData::utf8_with_capacity(policies.len());
-		let mut values = ColumnData::uint8_with_capacity(policies.len());
+		let mut operator_ids = ColumnData::uint8_with_capacity(strategies.len());
+		let mut strategy_types = ColumnData::utf8_with_capacity(strategies.len());
+		let mut cleanup_modes = ColumnData::utf8_with_capacity(strategies.len());
+		let mut values = ColumnData::uint8_with_capacity(strategies.len());
 
-		for entry in policies {
+		for entry in strategies {
 			operator_ids.push(entry.operator.0);
 
-			// Encode policy
-			match entry.policy {
-				RetentionPolicy::KeepForever => {
-					policy_types.push("keep_forever");
+			// Encode strategy
+			match entry.strategy {
+				RetentionStrategy::KeepForever => {
+					strategy_types.push("keep_forever");
 					cleanup_modes.push_value(Value::none());
 					values.push_value(Value::none());
 				}
-				RetentionPolicy::KeepVersions {
+				RetentionStrategy::KeepVersions {
 					count,
 					cleanup_mode,
 				} => {
-					policy_types.push("keep_versions");
+					strategy_types.push("keep_versions");
 					cleanup_modes.push(match cleanup_mode {
 						CleanupMode::Delete => "delete",
 						CleanupMode::Drop => "drop",
@@ -86,8 +86,8 @@ impl BaseVTable for SystemOperatorRetentionPolicies {
 				data: operator_ids,
 			},
 			Column {
-				name: Fragment::internal("policy_type"),
-				data: policy_types,
+				name: Fragment::internal("strategy_type"),
+				data: strategy_types,
 			},
 			Column {
 				name: Fragment::internal("cleanup_mode"),
@@ -105,7 +105,7 @@ impl BaseVTable for SystemOperatorRetentionPolicies {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }

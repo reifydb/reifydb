@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::common::CommitVersion;
 
-/// Retention policy for managing MVCC version cleanup
+/// Retention strategy for managing MVCC version cleanup
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum RetentionPolicy {
+pub enum RetentionStrategy {
 	/// Keep all versions forever (default)
 	#[default]
 	KeepForever,
@@ -44,8 +44,8 @@ pub enum CleanupAction {
 	Keep,
 }
 
-impl RetentionPolicy {
-	/// Check if a version should be retained based on the policy
+impl RetentionStrategy {
+	/// Check if a version should be retained based on the strategy
 	pub fn should_retain(
 		&self,
 		_version: CommitVersion,
@@ -53,9 +53,9 @@ impl RetentionPolicy {
 		version_count: u64,
 	) -> bool {
 		match self {
-			RetentionPolicy::KeepForever => true,
+			RetentionStrategy::KeepForever => true,
 
-			RetentionPolicy::KeepVersions {
+			RetentionStrategy::KeepVersions {
 				count,
 				..
 			} => {
@@ -65,11 +65,11 @@ impl RetentionPolicy {
 		}
 	}
 
-	/// Get the cleanup mode for this policy
+	/// Get the cleanup mode for this strategy
 	pub fn cleanup_mode(&self) -> Option<CleanupMode> {
 		match self {
-			RetentionPolicy::KeepForever => None,
-			RetentionPolicy::KeepVersions {
+			RetentionStrategy::KeepForever => None,
+			RetentionStrategy::KeepVersions {
 				cleanup_mode,
 				..
 			} => Some(*cleanup_mode),

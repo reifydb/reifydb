@@ -18,7 +18,7 @@ use crate::{
 
 /// Virtual table that exposes system flow information
 pub struct SystemFlows {
-	pub(crate) definition: Arc<VTable>,
+	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
@@ -31,7 +31,7 @@ impl Default for SystemFlows {
 impl SystemFlows {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flows_table().clone(),
+			vtable: SystemCatalog::get_system_flows_table().clone(),
 			exhausted: false,
 		}
 	}
@@ -94,7 +94,7 @@ impl BaseVTable for SystemFlows {
 		}))
 	}
 
-	fn definition(&self) -> &VTable {
-		&self.definition
+	fn vtable(&self) -> &VTable {
+		&self.vtable
 	}
 }
