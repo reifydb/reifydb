@@ -24,7 +24,7 @@ use reifydb_core::{
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 };
-use reifydb_metric::{
+use reifydb_metric_old::{
 	cdc::{CdcStats, CdcStatsReader},
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
 	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
@@ -46,8 +46,8 @@ use reifydb_testing::{
 use reifydb_type::cow_vec;
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/metric/tests/scripts/integration" as metric_memory => test_memory }
-test_each_path! { in "crates/metric/tests/scripts/integration" as metric_sqlite => test_sqlite }
+test_each_path! { in "crates/metric-old/tests/scripts/integration" as metric_memory => test_memory }
+test_each_path! { in "crates/metric-old/tests/scripts/integration" as metric_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	let data_storage = HotStorage::memory();

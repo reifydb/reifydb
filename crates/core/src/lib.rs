@@ -13,6 +13,7 @@ pub mod delta;
 pub mod encoded;
 pub mod error;
 pub mod event;
+pub mod fingerprint;
 pub mod interface;
 pub mod key;
 pub mod retention;

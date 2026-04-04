@@ -3,10 +3,9 @@
 
 use std::ops::Deref;
 
+use reifydb_core::fingerprint::StatementFingerprint;
 use reifydb_runtime::hash::{Hash128, xxh3_128};
 use serde::{Deserialize, Serialize};
-
-use super::statement::StatementFingerprint;
 
 /// Stable identity for an entire request (batch of statements).
 ///
@@ -77,7 +76,7 @@ impl From<u128> for RequestFingerprint {
 pub fn fingerprint_request(statements: &[StatementFingerprint]) -> RequestFingerprint {
 	let mut buf = Vec::with_capacity(statements.len() * 16);
 	for fp in statements {
-		buf.extend_from_slice(&fp.to_le_bytes());
+		buf.extend_from_slice(&StatementFingerprint::to_le_bytes(fp));
 	}
 	RequestFingerprint(xxh3_128(&buf))
 }

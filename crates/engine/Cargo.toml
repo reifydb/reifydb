@@ -23,7 +23,7 @@ reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-abi = { workspace = true }
-reifydb-metric = { workspace = true }
+reifydb-metric-old = { workspace = true }
 reifydb-policy = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-rql = { workspace = true }

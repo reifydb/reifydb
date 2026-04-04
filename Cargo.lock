@@ -2551,7 +2551,7 @@ dependencies = [
  "reifydb-derive",
  "reifydb-engine",
  "reifydb-extension",
- "reifydb-metric",
+ "reifydb-metric-old",
  "reifydb-routine",
  "reifydb-rql",
  "reifydb-runtime",
@@ -2614,7 +2614,7 @@ dependencies = [
  "reifydb-abi",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-metric",
+ "reifydb-metric-old",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
@@ -2729,7 +2729,7 @@ dependencies = [
  "reifydb-client",
  "reifydb-core",
  "reifydb-extension",
- "reifydb-metric",
+ "reifydb-metric-old",
  "reifydb-policy",
  "reifydb-routine",
  "reifydb-rql",
@@ -2786,6 +2786,16 @@ dependencies = [
 
 [[package]]
 name = "reifydb-metric"
+version = "0.4.8"
+dependencies = [
+ "dashmap",
+ "reifydb-core",
+ "reifydb-runtime",
+ "serde",
+]
+
+[[package]]
+name = "reifydb-metric-old"
 version = "0.4.8"
 dependencies = [
  "crossbeam-channel",

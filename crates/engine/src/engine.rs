@@ -34,7 +34,7 @@ use reifydb_core::{
 		},
 	},
 };
-use reifydb_metric::metric::MetricReader;
+use reifydb_metric_old::metric::MetricReader;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{

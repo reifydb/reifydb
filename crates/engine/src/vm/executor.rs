@@ -6,7 +6,7 @@ use std::{ops::Deref, sync::Arc};
 use bumpalo::Bump;
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
 use reifydb_core::{error::diagnostic::subscription, value::column::columns::Columns};
-use reifydb_metric::metric::MetricReader;
+use reifydb_metric_old::metric::MetricReader;
 use reifydb_policy::inject_read_policies;
 use reifydb_rql::{
 	ast::parse_str,

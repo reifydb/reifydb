@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::fingerprint::StatementFingerprint;
+
 use super::{
 	request::{RequestFingerprint, fingerprint_request},
-	statement::{StatementFingerprint, fingerprint_statement},
+	statement::fingerprint_statement,
 };
 use crate::{ast::parse_str, bump::Bump};
 

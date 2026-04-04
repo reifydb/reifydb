@@ -22,7 +22,7 @@ reifydb-store-single = { workspace = true }
 reifydb-subscription = { workspace = true}
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
-reifydb-metric = { workspace = true }
+reifydb-metric-old = { workspace = true }
 reifydb-derive = { workspace = true }
 
 tracing = { workspace = true }

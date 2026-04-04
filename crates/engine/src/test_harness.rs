@@ -26,7 +26,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_metric::worker::{
+use reifydb_metric_old::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_routine::{function::default_functions, procedure::registry::Procedures};

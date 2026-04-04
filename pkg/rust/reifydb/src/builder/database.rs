@@ -35,7 +35,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
-use reifydb_metric::worker::{
+use reifydb_metric_old::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
 use reifydb_routine::{

@@ -13,6 +13,7 @@ members = [
     "crates/engine",
     "crates/extension",
     "crates/metric",
+    "crates/metric-old",
     "crates/policy",
     "crates/macro",
     "crates/macro-impl",
@@ -72,6 +73,7 @@ default-members = [
     "crates/engine",
     "crates/extension",
     "crates/metric",
+    "crates/metric-old",
     "crates/policy",
     "crates/macro",
     "crates/macro-impl",
@@ -171,6 +173,7 @@ reifydb-core = { version = "0.4.8", path = "crates/core" }
 reifydb-engine = { version = "0.4.8", path = "crates/engine" }
 reifydb-extension = { version = "0.4.8", path = "crates/extension" }
 reifydb-metric = { version = "0.4.8", path = "crates/metric" }
+reifydb-metric-old = { version = "0.4.8", path = "crates/metric-old" }
 reifydb-policy = { version = "0.4.8", path = "crates/policy" }
 reifydb-abi = { version = "0.4.8", path = "crates/abi" }
 reifydb-runtime = { version = "0.4.8", path = "crates/runtime" }
