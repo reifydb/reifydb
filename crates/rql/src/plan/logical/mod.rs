@@ -31,6 +31,7 @@ use reifydb_core::{
 		catalog::{property::ColumnPropertyKind, series::SeriesKey},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedShape},
 	},
+	row::RowTtl,
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
@@ -638,6 +639,7 @@ pub struct CreateTableNode<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug)]
@@ -647,6 +649,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug)]
@@ -1088,6 +1091,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: SeriesKey,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug)]

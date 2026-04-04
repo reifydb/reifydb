@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::series::SeriesToCreate;
-use reifydb_core::value::column::columns::Columns;
+use reifydb_catalog::{catalog::series::SeriesToCreate, store::ttl::create::create_row_ttl};
+use reifydb_core::{interface::catalog::shape::ShapeId, value::column::columns::Columns};
 use reifydb_rql::nodes::CreateSeriesNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
@@ -24,6 +24,10 @@ pub(crate) fn create_series(
 			key: plan.key,
 		},
 	)?;
+
+	if let Some(ttl) = plan.ttl {
+		create_row_ttl(txn, ShapeId::Series(result.id), &ttl)?;
+	}
 
 	Ok(Columns::single_row([
 		("id", Value::Uint8(result.id.0)),

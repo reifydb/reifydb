@@ -703,6 +703,13 @@ pub struct AstAlterRemoteNamespace<'bump> {
 }
 
 #[derive(Debug)]
+pub struct AstRowTtl<'bump> {
+	pub duration: Token<'bump>,
+	pub anchor: Option<Token<'bump>>,
+	pub mode: Option<Token<'bump>>,
+}
+
+#[derive(Debug)]
 pub struct AstCreateSeries<'bump> {
 	pub token: Token<'bump>,
 	pub series: MaybeQualifiedSeriesIdentifier<'bump>,
@@ -710,6 +717,7 @@ pub struct AstCreateSeries<'bump> {
 	pub tag: Option<MaybeQualifiedSumTypeIdentifier<'bump>>,
 	pub key: Option<BumpFragment<'bump>>,
 	pub precision: Option<AstTimestampPrecision>,
+	pub ttl: Option<AstRowTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -725,6 +733,7 @@ pub struct AstCreateTable<'bump> {
 	pub table: MaybeQualifiedTableIdentifier<'bump>,
 	pub if_not_exists: bool,
 	pub columns: Vec<AstColumnToCreate<'bump>>,
+	pub ttl: Option<AstRowTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -792,6 +801,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub columns: Vec<AstColumnToCreate<'bump>>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub ttl: Option<AstRowTtl<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

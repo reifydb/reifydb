@@ -17,6 +17,7 @@ pub mod procedure;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_shape;
+pub mod row_ttl;
 pub mod shape_retention_strategy;
 pub mod sink;
 pub mod source;
@@ -58,6 +59,7 @@ use reifydb_core::{
 		vtable::{VTable, VTableId},
 	},
 	retention::RetentionStrategy,
+	row::RowTtl,
 	util::multi::MultiVersionContainer,
 };
 use reifydb_type::{
@@ -95,6 +97,7 @@ pub type MultiVersionGrantedRole = MultiVersionContainer<GrantedRole>;
 pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
+pub type MultiVersionRowTtl = MultiVersionContainer<RowTtl>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -138,6 +141,8 @@ pub struct MaterializedCatalogInner {
 	pub(crate) shape_retention_strategies: SkipMap<ShapeId, MultiVersionRetentionStrategy>,
 	/// MultiVersion operator retention strategies indexed by operator ID
 	pub(crate) operator_retention_strategies: SkipMap<FlowNodeId, MultiVersionRetentionStrategy>,
+	/// MultiVersion TTL configurations indexed by shape ID
+	pub(crate) row_ttls: SkipMap<ShapeId, MultiVersionRowTtl>,
 	/// MultiVersion dictionary definitions indexed by dictionary ID
 	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionary>,
 	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
@@ -240,6 +245,7 @@ impl MaterializedCatalog {
 			primary_keys: SkipMap::new(),
 			shape_retention_strategies: SkipMap::new(),
 			operator_retention_strategies: SkipMap::new(),
+			row_ttls: SkipMap::new(),
 			dictionaries: SkipMap::new(),
 			dictionaries_by_name: SkipMap::new(),
 			sumtypes: SkipMap::new(),

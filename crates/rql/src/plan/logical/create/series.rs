@@ -179,11 +179,14 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
+		let ttl = ast.ttl.map(Self::compile_row_ttl).transpose()?;
+
 		Ok(LogicalPlan::CreateSeries(CreateSeriesNode {
 			series: ast.series,
 			columns,
 			tag: ast.tag,
 			key,
+			ttl,
 		}))
 	}
 }

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::ringbuffer::RingBufferToCreate;
+use reifydb_catalog::{catalog::ringbuffer::RingBufferToCreate, store::ttl::create::create_row_ttl};
 use reifydb_core::{
-	interface::catalog::change::CatalogTrackRingBufferChangeOperations, value::column::columns::Columns,
+	interface::catalog::{change::CatalogTrackRingBufferChangeOperations, shape::ShapeId},
+	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::CreateRingBufferNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -44,6 +45,11 @@ pub(crate) fn create_ringbuffer(
 		},
 	)?;
 	let id = result.id;
+
+	if let Some(ttl) = plan.ttl {
+		create_row_ttl(txn, ShapeId::RingBuffer(id), &ttl)?;
+	}
+
 	txn.track_ringbuffer_created(result)?;
 
 	Ok(Columns::single_row([

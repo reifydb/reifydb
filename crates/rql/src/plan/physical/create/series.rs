@@ -85,6 +85,7 @@ impl<'bump> Compiler<'bump> {
 			columns: create.columns,
 			tag,
 			key: create.key,
+			ttl: create.ttl,
 		}))
 	}
 }

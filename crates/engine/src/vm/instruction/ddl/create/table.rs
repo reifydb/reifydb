@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_catalog::catalog::table::{TableColumnToCreate, TableToCreate};
-use reifydb_core::{interface::catalog::change::CatalogTrackTableChangeOperations, value::column::columns::Columns};
+use reifydb_catalog::{
+	catalog::table::{TableColumnToCreate, TableToCreate},
+	store::ttl::create::create_row_ttl,
+};
+use reifydb_core::{
+	interface::catalog::{change::CatalogTrackTableChangeOperations, shape::ShapeId},
+	value::column::columns::Columns,
+};
 use reifydb_rql::nodes::CreateTableNode;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_type::{
@@ -46,6 +52,10 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 			primary_key_columns: None,
 		},
 	)?;
+	if let Some(ttl) = plan.ttl {
+		create_row_ttl(txn, ShapeId::Table(table.id), &ttl)?;
+	}
+
 	txn.track_table_created(table.clone())?;
 
 	Ok(Columns::single_row([

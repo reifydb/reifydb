@@ -105,6 +105,7 @@ pub mod system_version;
 pub mod table;
 pub mod token;
 pub mod transaction_version;
+pub mod ttl;
 pub mod variant_handler;
 pub mod view;
 #[derive(Debug)]
@@ -353,6 +354,10 @@ impl Key {
 			| KeyKind::NamespaceSink
 			| KeyKind::SourceCheckpoint => {
 				// Source/Sink keys are used directly via EncodableKey trait, not through Key enum
+				None
+			}
+			KeyKind::RowTtl => {
+				// RowTtl keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}
 		}

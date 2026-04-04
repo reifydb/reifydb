@@ -74,6 +74,7 @@ pub enum KeyKind {
 	Sink = 0x40,
 	NamespaceSink = 0x41,
 	SourceCheckpoint = 0x42,
+	RowTtl = 0x43,
 }
 
 impl From<KeyKind> for u8 {
@@ -152,6 +153,7 @@ impl TryFrom<u8> for KeyKind {
 			0x40 => Ok(Self::Sink),
 			0x41 => Ok(Self::NamespaceSink),
 			0x42 => Ok(Self::SourceCheckpoint),
+			0x43 => Ok(Self::RowTtl),
 			_ => Err(de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

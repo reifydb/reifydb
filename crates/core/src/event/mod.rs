@@ -20,6 +20,7 @@ pub mod flow;
 pub mod lifecycle;
 #[macro_use]
 pub mod r#macro;
+pub mod gc;
 pub mod metric;
 pub mod procedure;
 pub mod store;

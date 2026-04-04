@@ -22,6 +22,7 @@ use reifydb_core::{
 			ResolvedSeries, ResolvedShape, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
+	row::RowTtl,
 	sort::{SortDirection, SortKey},
 };
 use reifydb_type::{
@@ -214,6 +215,7 @@ pub struct CreateTableNode {
 	pub table: Fragment,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug, Clone)]
@@ -224,6 +226,7 @@ pub struct CreateRingBufferNode {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug, Clone)]
@@ -322,6 +325,7 @@ pub struct CreateSeriesNode {
 	pub columns: Vec<SeriesColumnToCreate>,
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
+	pub ttl: Option<RowTtl>,
 }
 
 /// Physical node for CREATE EVENT

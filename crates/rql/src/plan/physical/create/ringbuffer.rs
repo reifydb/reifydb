@@ -47,6 +47,7 @@ impl<'bump> Compiler<'bump> {
 			columns: create.columns,
 			capacity: create.capacity,
 			partition_by: create.partition_by,
+			ttl: create.ttl,
 		}))
 	}
 }

@@ -19,7 +19,7 @@ use crate::{
 			AstCreateProcedure, AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries,
 			AstCreateSubscription, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
 			AstCreateTransactionalView, AstIndexColumn, AstPolicyTargetType, AstPrimaryKey,
-			AstProcedureParam, AstStatement, AstTimestampPrecision, AstType, AstVariant,
+			AstProcedureParam, AstRowTtl, AstStatement, AstTimestampPrecision, AstType, AstVariant,
 			AstViewStorageKind,
 		},
 		identifier::{
@@ -640,6 +640,7 @@ impl<'bump> Parser<'bump> {
 		let mut tag = None;
 		let mut key_field = None;
 		let mut precision = None;
+		let mut ttl = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -665,11 +666,11 @@ impl<'bump> Parser<'bump> {
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'tag', or 'precision'"
+									expected: "'key', 'tag', 'precision', or 'ttl'"
 										.to_string(),
 								},
 								message: format!(
-									"expected 'key', 'tag', or 'precision', found `{}`",
+									"expected 'key', 'tag', 'precision', or 'ttl', found `{}`",
 									current.fragment.text()
 								),
 								fragment: current.fragment.to_owned(),
@@ -717,15 +718,19 @@ impl<'bump> Parser<'bump> {
 							}
 						});
 					}
+					"ttl" => {
+						ttl = Some(self.parse_row_ttl()?);
+					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'key', 'tag', or 'precision'".to_string(),
+								expected: "'key', 'tag', 'precision', or 'ttl'"
+									.to_string(),
 							},
 							message: format!(
 								"Unexpected token: expected {}, got {}",
-								"'key', 'tag', or 'precision'",
+								"'key', 'tag', 'precision', or 'ttl'",
 								fragment.text()
 							),
 							fragment,
@@ -768,6 +773,7 @@ impl<'bump> Parser<'bump> {
 			tag,
 			key: key_fragment,
 			precision,
+			ttl,
 		}))
 	}
 
@@ -1068,11 +1074,58 @@ impl<'bump> Parser<'bump> {
 
 		let table = MaybeQualifiedTableIdentifier::new(name).with_namespace(namespace);
 
+		// Parse optional WITH block
+		let mut ttl = None;
+
+		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
+			self.consume_operator(Operator::OpenCurly)?;
+
+			loop {
+				self.skip_new_line()?;
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let key = self.consume(TokenKind::Identifier)?;
+				self.consume_operator(Operator::Colon)?;
+
+				match key.fragment.text() {
+					"ttl" => {
+						ttl = Some(self.parse_row_ttl()?);
+					}
+					_other => {
+						let fragment = key.fragment.to_owned();
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'ttl'".to_string(),
+							},
+							message: format!("expected 'ttl', found `{}`", fragment.text()),
+							fragment,
+						}));
+					}
+				}
+
+				self.skip_new_line()?;
+
+				if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+					continue;
+				}
+
+				if self.current()?.is_operator(Operator::CloseCurly) {
+					break;
+				}
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+		}
+
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
 			table,
 			if_not_exists,
 			columns,
+			ttl,
 		}))
 	}
 
@@ -1088,6 +1141,7 @@ impl<'bump> Parser<'bump> {
 
 		let mut capacity: Option<u64> = None;
 		let mut partition_by: Vec<String> = Vec::new();
+		let mut ttl = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -1110,10 +1164,11 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'capacity' or 'partition_by'".to_string(),
+								expected: "'capacity', 'partition_by', or 'ttl'"
+									.to_string(),
 							},
 							message: format!(
-								"expected 'capacity' or 'partition_by', found `{}`",
+								"expected 'capacity', 'partition_by', or 'ttl', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -1157,15 +1212,18 @@ impl<'bump> Parser<'bump> {
 					}
 					self.consume_operator(Operator::CloseCurly)?;
 				}
+				"ttl" => {
+					ttl = Some(self.parse_row_ttl()?);
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity' or 'partition_by'".to_string(),
+							expected: "'capacity', 'partition_by', or 'ttl'".to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'capacity' or 'partition_by'",
+							"'capacity', 'partition_by', or 'ttl'",
 							fragment.text()
 						),
 						fragment,
@@ -1213,6 +1271,7 @@ impl<'bump> Parser<'bump> {
 			columns,
 			capacity,
 			partition_by,
+			ttl,
 		}))
 	}
 
@@ -2251,6 +2310,137 @@ impl<'bump> Parser<'bump> {
 		let token = self.consume(TokenKind::Literal(Literal::Text))?;
 		let duration_str = token.fragment.text();
 		Compiler::parse_duration(duration_str)
+	}
+
+	/// Parse a TTL config block: `{ duration: "5m", on: created, mode: drop }`
+	fn parse_row_ttl(&mut self) -> Result<AstRowTtl<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut duration = None;
+		let mut anchor = None;
+		let mut mode = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			// Read key — "on" tokenizes as Keyword::On, handle like Keyword::Tag pattern
+			let key = {
+				let current = self.current()?;
+				match current.kind {
+					TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+					TokenKind::Keyword(Keyword::On) => {
+						let token = self.advance()?;
+						Token {
+							kind: TokenKind::Identifier,
+							..token
+						}
+					}
+					_ => {
+						return Err(Error::from(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "'duration', 'on', or 'mode'".to_string(),
+							},
+							message: format!(
+								"expected 'duration', 'on', or 'mode', found `{}`",
+								current.fragment.text()
+							),
+							fragment: current.fragment.to_owned(),
+						}));
+					}
+				}
+			};
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"duration" => {
+					let token = self.consume(TokenKind::Literal(Literal::Text))?;
+					duration = Some(token);
+				}
+				"on" => {
+					// "created"/"updated" are plain identifiers
+					let token = self.consume(TokenKind::Identifier)?;
+					anchor = Some(token);
+				}
+				"mode" => {
+					// "delete"/"drop" tokenize as keywords — accept them as values
+					let current = self.current()?;
+					let token = match current.kind {
+						TokenKind::Identifier => self.consume(TokenKind::Identifier)?,
+						TokenKind::Keyword(Keyword::Delete)
+						| TokenKind::Keyword(Keyword::Drop) => {
+							let token = self.advance()?;
+							Token {
+								kind: TokenKind::Identifier,
+								..token
+							}
+						}
+						_ => {
+							return Err(Error::from(TypeError::Ast {
+								kind: AstErrorKind::UnexpectedToken {
+									expected: "'delete' or 'drop'".to_string(),
+								},
+								message: format!(
+									"expected 'delete' or 'drop', found `{}`",
+									current.fragment.text()
+								),
+								fragment: current.fragment.to_owned(),
+							}));
+						}
+					};
+					mode = Some(token);
+				}
+				_other => {
+					let fragment = key.fragment.to_owned();
+					return Err(Error::from(TypeError::Ast {
+						kind: AstErrorKind::UnexpectedToken {
+							expected: "'duration', 'on', or 'mode'".to_string(),
+						},
+						message: format!(
+							"expected 'duration', 'on', or 'mode', found `{}`",
+							fragment.text()
+						),
+						fragment,
+					}));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		let duration = duration.ok_or_else(|| {
+			let fragment = self
+				.current()
+				.ok()
+				.map(|t| t.fragment.to_owned())
+				.unwrap_or_else(|| Fragment::internal("end of input"));
+			Error::from(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "'duration' is required in ttl config".to_string(),
+				},
+				message: "'duration' is required in ttl config".to_string(),
+				fragment,
+			})
+		})?;
+
+		Ok(AstRowTtl {
+			duration,
+			anchor,
+			mode,
+		})
 	}
 }
 

@@ -13,6 +13,7 @@ pub mod primary_key;
 pub mod ringbuffer;
 pub mod role;
 pub mod row_shape;
+pub mod row_ttl;
 pub mod shape_retention_strategy;
 pub mod sink;
 pub mod source;
@@ -33,6 +34,7 @@ use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use ringbuffer::load_ringbuffers;
 use role::load_roles;
 use row_shape::load_row_shapes;
+use row_ttl::load_row_ttls;
 use shape_retention_strategy::load_shape_retention_strategies;
 use sink::load_sinks;
 use source::load_sources;
@@ -78,6 +80,7 @@ impl MaterializedCatalogLoader {
 
 		load_shape_retention_strategies(rx, catalog)?;
 		load_operator_retention_strategies(rx, catalog)?;
+		load_row_ttls(rx, catalog)?;
 
 		load_dictionaries(rx, catalog)?;
 		load_sumtypes(rx, catalog)?;

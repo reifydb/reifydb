@@ -21,6 +21,7 @@ pub mod table;
 pub mod tag;
 pub mod test;
 pub mod transactional;
+pub mod ttl;
 
 use reifydb_transaction::transaction::Transaction;
 
