@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -93,7 +94,7 @@ impl SystemChange {
 #[derive(Debug, Clone)]
 pub struct Cdc {
 	pub version: CommitVersion,
-	pub timestamp: u64,
+	pub timestamp: DateTime,
 	/// Row-data changes in columnar format
 	pub changes: Vec<Change>,
 	/// Internal system changes
@@ -103,7 +104,7 @@ pub struct Cdc {
 impl Cdc {
 	pub fn new(
 		version: CommitVersion,
-		timestamp: u64,
+		timestamp: DateTime,
 		changes: Vec<Change>,
 		system_changes: Vec<SystemChange>,
 	) -> Self {

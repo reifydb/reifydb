@@ -158,7 +158,7 @@ pub(crate) fn update_series(
 			let pre_values = pre_data.map(|v| v.row);
 
 			let old_created_at = pre_values.as_ref().expect("row must exist for update").created_at_nanos();
-			row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos() as u64);
+			row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos());
 
 			let key_value = columns
 				.iter()
@@ -224,6 +224,7 @@ pub(crate) fn update_series(
 						pre,
 						post,
 					}],
+					changed_at: DateTime::default(),
 				});
 			}
 

@@ -16,7 +16,7 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -65,6 +65,7 @@ impl Runner {
 			merge_config: Default::default(),
 			event_bus: reifydb_core::event::EventBus::new(&actor_system),
 			actor_system,
+			clock: Clock::Real,
 		})
 		.unwrap();
 		Self {

@@ -422,13 +422,24 @@ impl WindowOperator {
 					None => continue,
 				};
 
-				let pre_aggregation =
-					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
+				let changed_at = DateTime::from_nanos(post_timestamp);
+				let pre_aggregation = self.apply_aggregations(
+					txn,
+					&window_key,
+					&layout,
+					&window_state.events,
+					changed_at,
+				)?;
 
 				window_state.events[idx] = WindowEvent::from_row(post_row, post_timestamp);
 
-				let post_aggregation =
-					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
+				let post_aggregation = self.apply_aggregations(
+					txn,
+					&window_key,
+					&layout,
+					&window_state.events,
+					changed_at,
+				)?;
 
 				self.save_window_state(txn, &window_key, &window_state)?;
 
@@ -497,8 +508,14 @@ impl WindowOperator {
 					None => continue,
 				};
 
-				let pre_aggregation =
-					self.apply_aggregations(txn, &window_key, &layout, &window_state.events)?;
+				let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
+				let pre_aggregation = self.apply_aggregations(
+					txn,
+					&window_key,
+					&layout,
+					&window_state.events,
+					changed_at,
+				)?;
 
 				window_state.events.remove(idx);
 				window_state.event_count = window_state.event_count.saturating_sub(1);
@@ -516,6 +533,7 @@ impl WindowOperator {
 						&window_key,
 						&layout,
 						&window_state.events,
+						changed_at,
 					)?;
 					self.save_window_state(txn, &window_key, &window_state)?;
 
@@ -628,6 +646,7 @@ impl WindowOperator {
 		window_key: &EncodedKey,
 		window_layout: &WindowLayout,
 		events: &[WindowEvent],
+		changed_at: DateTime,
 	) -> Result<Option<(Row, bool)>> {
 		if events.is_empty() {
 			return Ok(None);
@@ -677,8 +696,8 @@ impl WindowOperator {
 		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
-		let now_nanos = self.runtime_context.clock.now_nanos() as u64;
-		encoded.set_timestamps(now_nanos, now_nanos);
+		let ts_nanos = changed_at.to_nanos();
+		encoded.set_timestamps(ts_nanos, ts_nanos);
 
 		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
@@ -716,15 +735,21 @@ impl WindowOperator {
 					);
 
 					let expired_keys = self.scan_keys_in_range(txn, &range)?;
+					let changed_at = DateTime::from_nanos(current_timestamp);
 					for key in &expired_keys {
 						let window_state = self.load_window_state(txn, key)?;
 						if !window_state.events.is_empty()
 							&& let Some(layout) = &window_state.window_layout && let Some((
 							row,
 							_,
-						)) =
-							self.apply_aggregations(txn, key, layout, &window_state.events)?
-						{
+						)) = self
+							.apply_aggregations(
+								txn,
+								key,
+								layout,
+								&window_state.events,
+								changed_at,
+							)? {
 							result.push(Diff::Remove {
 								pre: Columns::from_row(&row),
 							});
@@ -902,10 +927,15 @@ impl WindowOperator {
 			// Check if window is expired: newest event older than window size
 			let newest_event_time = window_state.events.iter().map(|e| e.timestamp).max().unwrap_or(0);
 			if current_timestamp.saturating_sub(newest_event_time) > window_size_ms {
+				let changed_at = DateTime::from_nanos(current_timestamp);
 				if let Some(layout) = &window_state.window_layout
-					&& let Some((row, _)) =
-						self.apply_aggregations(txn, &window_key, layout, &window_state.events)?
-				{
+					&& let Some((row, _)) = self.apply_aggregations(
+						txn,
+						&window_key,
+						layout,
+						&window_state.events,
+						changed_at,
+					)? {
 					result.push(Diff::Remove {
 						pre: Columns::from_row(&row),
 					});
@@ -928,7 +958,8 @@ impl WindowOperator {
 		&self,
 		txn: &mut FlowTransaction,
 		columns: &Columns,
-		group_fn: impl Fn(&WindowOperator, &mut FlowTransaction, &Columns, Hash128) -> Result<Vec<Diff>>,
+		changed_at: DateTime,
+		group_fn: impl Fn(&WindowOperator, &mut FlowTransaction, &Columns, Hash128, DateTime) -> Result<Vec<Diff>>,
 	) -> Result<Vec<Diff>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -939,7 +970,7 @@ impl WindowOperator {
 		let mut result = Vec::new();
 		for (group_hash, group_columns) in groups {
 			self.register_group(txn, group_hash)?;
-			let group_result = group_fn(self, txn, &group_columns, group_hash)?;
+			let group_result = group_fn(self, txn, &group_columns, group_hash, changed_at)?;
 			result.extend(group_result);
 		}
 		Ok(result)
@@ -1058,7 +1089,12 @@ impl Operator for WindowOperator {
 		if diffs.is_empty() {
 			Ok(None)
 		} else {
-			Ok(Some(Change::from_flow(self.node, CommitVersion(0), diffs)))
+			Ok(Some(Change::from_flow(
+				self.node,
+				CommitVersion(0),
+				diffs,
+				DateTime::from_nanos(self.runtime_context.clock.now_nanos()),
+			)))
 		}
 	}
 

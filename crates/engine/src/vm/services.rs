@@ -16,7 +16,7 @@ use reifydb_routine::{
 	procedure::{Procedure, registry::Procedures},
 };
 use reifydb_rql::compiler::Compiler;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_store_single::SingleStore;
 use reifydb_type::value::sumtype::VariantRef;
 
@@ -96,7 +96,7 @@ impl Services {
 		let mut services = Self::new(
 			Catalog::testing(),
 			EngineConfig {
-				runtime_context: RuntimeContext::default(),
+				runtime_context: RuntimeContext::with_clock(Clock::Real),
 				functions: default_functions().configure(),
 				procedures: Procedures::empty(),
 				transforms: Transforms::empty(),

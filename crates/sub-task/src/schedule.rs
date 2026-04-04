@@ -59,7 +59,7 @@ mod tests {
 
 	#[test]
 	fn test_fixed_interval_next_execution() {
-		let clock = Clock::default();
+		let clock = Clock::Real;
 		let schedule = Schedule::FixedInterval(Duration::from_secs(10));
 		let now = clock.instant();
 		let next = schedule.next_execution(now.clone());
@@ -69,7 +69,7 @@ mod tests {
 
 	#[test]
 	fn test_once_next_execution() {
-		let clock = Clock::default();
+		let clock = Clock::Real;
 		let schedule = Schedule::Once(Duration::from_secs(5));
 		let now = clock.instant();
 		let next = schedule.next_execution(now);

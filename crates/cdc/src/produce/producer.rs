@@ -33,7 +33,10 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 use tracing::{debug, error, trace};
 
 use super::decode::{build_insert_diff, build_remove_diff, build_update_diff};
@@ -50,7 +53,7 @@ const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 pub enum CdcProduceMsg {
 	Produce {
 		version: CommitVersion,
-		timestamp: u64,
+		changed_at: DateTime,
 		deltas: Vec<Delta>,
 	},
 	Tick,
@@ -83,7 +86,7 @@ where
 		}
 	}
 
-	fn process(&self, version: CommitVersion, timestamp: u64, deltas: Vec<Delta>) {
+	fn process(&self, version: CommitVersion, changed_at: DateTime, deltas: Vec<Delta>) {
 		let mut diffs_by_shape: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
 		let mut system_changes: Vec<SystemChange> = Vec::new();
 		let catalog = self.host.materialized_catalog();
@@ -278,11 +281,11 @@ where
 		let mut changes: Vec<Change> = Vec::new();
 		for (shape, diffs) in diffs_by_shape {
 			let merged = merge_diffs(diffs);
-			changes.push(Change::from_shape(shape, version, merged));
+			changes.push(Change::from_shape(shape, version, merged, changed_at));
 		}
 
 		if !changes.is_empty() || !system_changes.is_empty() {
-			let cdc = Cdc::new(version, timestamp, changes, system_changes.clone());
+			let cdc = Cdc::new(version, changed_at, changes, system_changes.clone());
 			if let Err(e) = self.storage.write(&cdc) {
 				error!(version = version.0, "CDC write failed: {:?}", e);
 				return;
@@ -493,10 +496,10 @@ where
 		match msg {
 			CdcProduceMsg::Produce {
 				version,
-				timestamp,
+				changed_at,
 				deltas,
 			} => {
-				self.process(version, timestamp, deltas);
+				self.process(version, changed_at, deltas);
 			}
 			CdcProduceMsg::Tick => {
 				self.try_cleanup();
@@ -535,7 +538,7 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	fn on(&self, event: &PostCommitEvent) {
 		let msg = CdcProduceMsg::Produce {
 			version: *event.version(),
-			timestamp: self.clock.now_millis(),
+			changed_at: DateTime::from_nanos(self.clock.now_nanos()),
 			deltas: event.deltas().iter().cloned().collect(),
 		};
 
@@ -589,7 +592,10 @@ pub mod tests {
 		single::SingleTransaction,
 		transaction::{command::CommandTransaction, query::QueryTransaction},
 	};
-	use reifydb_type::{util::cowvec::CowVec, value::identity::IdentityId};
+	use reifydb_type::{
+		util::cowvec::CowVec,
+		value::{datetime::DateTime, identity::IdentityId},
+	};
 
 	use super::*;
 	use crate::storage::memory::MemoryCdcStorage;
@@ -608,6 +614,7 @@ pub mod tests {
 		single: SingleTransaction,
 		event_bus: EventBus,
 		materialized_catalog: MaterializedCatalog,
+		clock: Clock,
 	}
 
 	impl TestCdcHost {
@@ -619,12 +626,13 @@ pub mod tests {
 			let single = SingleTransaction::new(single_store, event_bus.clone());
 			let system_config = SystemConfig::new();
 			register_oracle_defaults(&system_config);
+			let clock = Clock::Mock(MockClock::from_millis(1000));
 			let multi = MultiTransaction::new(
 				multi_store,
 				single.clone(),
 				event_bus.clone(),
 				actor_system,
-				Clock::Mock(MockClock::from_millis(1000)),
+				clock.clone(),
 				Rng::seeded(42),
 				system_config,
 			)
@@ -634,6 +642,7 @@ pub mod tests {
 				single,
 				event_bus,
 				materialized_catalog: MaterializedCatalog::new(SystemConfig::new()),
+				clock,
 			}
 		}
 	}
@@ -646,6 +655,7 @@ pub mod tests {
 				self.event_bus.clone(),
 				Interceptors::new(),
 				IdentityId::system(),
+				self.clock.clone(),
 			)
 		}
 
@@ -688,7 +698,7 @@ pub mod tests {
 		handle.actor_ref()
 			.send(CdcProduceMsg::Produce {
 				version: CommitVersion(1),
-				timestamp: 12345,
+				changed_at: DateTime::from_nanos(12345000),
 				deltas,
 			})
 			.unwrap();
@@ -739,7 +749,7 @@ pub mod tests {
 		handle.actor_ref()
 			.send(CdcProduceMsg::Produce {
 				version: CommitVersion(2),
-				timestamp: 12345,
+				changed_at: DateTime::from_nanos(12345000),
 				deltas,
 			})
 			.unwrap();

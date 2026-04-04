@@ -22,7 +22,7 @@ use reifydb_type::{
 	Result,
 	error::Diagnostic,
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{datetime::DateTime, frame::frame::Frame, identity::IdentityId},
 };
 
 use crate::{
@@ -242,7 +242,11 @@ impl<'a> TestTransaction<'a> {
 			.collect();
 
 		let mut ctx = PreCommitContext {
-			flow_changes: self.inner.accumulator.take_changes_from(offset, CommitVersion(0)),
+			flow_changes: self.inner.accumulator.take_changes_from(
+				offset,
+				CommitVersion(0),
+				DateTime::from_nanos(self.inner.clock.now_nanos()),
+			),
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,

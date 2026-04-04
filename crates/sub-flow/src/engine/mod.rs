@@ -31,7 +31,7 @@ use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
 };
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 #[cfg(reifydb_target = "native")]
 use reifydb_type::{Result, error::Error, value::Value};
 use tracing::instrument;
@@ -83,6 +83,11 @@ impl FlowEngine {
 			runtime_context,
 			custom_operators,
 		}
+	}
+
+	/// Get access to the clock for timestamp generation
+	pub fn clock(&self) -> &Clock {
+		&self.runtime_context.clock
 	}
 
 	/// Create an FFI operator instance from the global singleton loader

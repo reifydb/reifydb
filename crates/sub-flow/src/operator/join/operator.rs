@@ -35,7 +35,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{Value, identity::IdentityId, row_number::RowNumber, r#type::Type},
+	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber, r#type::Type},
 };
 
 use super::{
@@ -483,7 +483,7 @@ impl Operator for JoinOperator {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.node
 		{
-			return Ok(Change::from_flow(self.node, change.version, Vec::new()));
+			return Ok(Change::from_flow(self.node, change.version, Vec::new(), DateTime::default()));
 		}
 
 		// Create the state
@@ -663,7 +663,7 @@ impl Operator for JoinOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result))
+		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 	}
 
 	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's

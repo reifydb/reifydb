@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_type::value::datetime::DateTime;
+
 use crate::{
 	common::CommitVersion,
 	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
@@ -28,7 +30,7 @@ pub enum Diff {
 	},
 }
 
-/// A change with origin, diffs, and version
+/// A change with origin, diffs, version, and timestamp
 #[derive(Debug, Clone)]
 pub struct Change {
 	/// Origin of this change
@@ -37,24 +39,28 @@ pub struct Change {
 	pub diffs: Vec<Diff>,
 	/// Version of this change.
 	pub version: CommitVersion,
+	/// Timestamp when this was changed
+	pub changed_at: DateTime,
 }
 
 impl Change {
 	/// Create a change from a shape (external) source
-	pub fn from_shape(shape: ShapeId, version: CommitVersion, diffs: Vec<Diff>) -> Self {
+	pub fn from_shape(shape: ShapeId, version: CommitVersion, diffs: Vec<Diff>, changed_at: DateTime) -> Self {
 		Self {
 			origin: ChangeOrigin::Shape(shape),
 			diffs,
 			version,
+			changed_at,
 		}
 	}
 
 	/// Create a change from a flow node (internal)
-	pub fn from_flow(from: FlowNodeId, version: CommitVersion, diffs: Vec<Diff>) -> Self {
+	pub fn from_flow(from: FlowNodeId, version: CommitVersion, diffs: Vec<Diff>, changed_at: DateTime) -> Self {
 		Self {
 			origin: ChangeOrigin::Flow(from),
 			diffs,
 			version,
+			changed_at,
 		}
 	}
 }

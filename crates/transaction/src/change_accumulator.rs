@@ -10,6 +10,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
+use reifydb_type::value::datetime::DateTime;
 
 /// Accumulates per-row flow change diffs and produces batched `Change` objects
 /// grouped by `ShapeId`.
@@ -55,7 +56,7 @@ impl ChangeAccumulator {
 	///
 	/// Each `ShapeId` produces a single `Change` with all its diffs collected
 	/// in order. The version is stamped at this point.
-	pub fn take_changes(&mut self, version: CommitVersion) -> Vec<Change> {
+	pub fn take_changes(&mut self, version: CommitVersion, changed_at: DateTime) -> Vec<Change> {
 		let entries = mem::take(&mut self.entries);
 		let mut grouped: BTreeMap<ShapeId, Vec<Diff>> = BTreeMap::new();
 
@@ -68,6 +69,7 @@ impl ChangeAccumulator {
 				origin: ChangeOrigin::Shape(id),
 				diffs,
 				version,
+				changed_at,
 			})
 			.collect()
 	}
@@ -78,7 +80,12 @@ impl ChangeAccumulator {
 
 	/// Drain entries from `offset` onwards and produce batched `Change` objects.
 	/// Entries before `offset` are preserved.
-	pub fn take_changes_from(&mut self, offset: usize, version: CommitVersion) -> Vec<Change> {
+	pub fn take_changes_from(
+		&mut self,
+		offset: usize,
+		version: CommitVersion,
+		changed_at: DateTime,
+	) -> Vec<Change> {
 		if offset >= self.entries.len() {
 			return Vec::new();
 		}
@@ -92,6 +99,7 @@ impl ChangeAccumulator {
 				origin: ChangeOrigin::Shape(id),
 				diffs,
 				version,
+				changed_at,
 			})
 			.collect()
 	}

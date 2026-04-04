@@ -325,7 +325,7 @@ pub mod tests {
 
 			// Try to wait for a very old version (should return immediately)
 			let very_old = done_until.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
-			let clock = Clock::default();
+			let clock = Clock::Real;
 			let start = clock.instant();
 			watermark.wait_for_mark(very_old);
 			let elapsed = start.elapsed();
@@ -342,7 +342,7 @@ pub mod tests {
 			watermark.begin(CommitVersion(1));
 
 			// Wait with short timeout
-			let clock = Clock::default();
+			let clock = Clock::Real;
 			let start = clock.instant();
 			let result = watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_millis(100));
 			let elapsed = start.elapsed();

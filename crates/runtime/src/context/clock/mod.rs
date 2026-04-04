@@ -98,15 +98,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_clock_default() {
-		let clock = Clock::default();
-		match clock {
-			Clock::Real => {}
-			Clock::Mock(_) => panic!("Default should be Real"),
-		}
-	}
-
-	#[test]
 	fn test_nanosecond_precision() {
 		let mock = MockClock::new(1_234_567_890_123_456_789);
 		let clock = Clock::Mock(mock);

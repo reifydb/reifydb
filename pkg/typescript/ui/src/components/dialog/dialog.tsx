@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { useEffect, forwardRef, type ReactNode, type ButtonHTMLAttributes } from "react";
 
 export interface DialogProps {

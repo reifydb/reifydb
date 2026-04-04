@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::Result;
+use reifydb_type::{Result, value::datetime::DateTime};
 
 use super::{WindowEvent, WindowLayout, WindowOperator, WindowState};
 use crate::transaction::FlowTransaction;
@@ -70,7 +70,8 @@ impl WindowOperator {
 				None => continue,
 			};
 
-			let pre_agg = self.apply_aggregations(txn, &window_key, &layout, &state.events)?;
+			let changed_at = DateTime::from_nanos(current_timestamp);
+			let pre_agg = self.apply_aggregations(txn, &window_key, &layout, &state.events, changed_at)?;
 			let pre_count = state.events.len();
 			self.evict_old_events(&mut state, current_timestamp);
 
@@ -83,8 +84,13 @@ impl WindowOperator {
 						});
 					}
 				} else {
-					let post_agg =
-						self.apply_aggregations(txn, &window_key, &layout, &state.events)?;
+					let post_agg = self.apply_aggregations(
+						txn,
+						&window_key,
+						&layout,
+						&state.events,
+						changed_at,
+					)?;
 					self.save_window_state(txn, &window_key, &state)?;
 					if let (Some((pre_row, _)), Some((post_row, _))) = (pre_agg, post_agg) {
 						result.push(Diff::Update {
@@ -107,6 +113,7 @@ fn process_rolling_group_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
+	changed_at: DateTime,
 ) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -132,7 +139,7 @@ fn process_rolling_group_insert(
 		let layout = window_state.layout().clone();
 
 		let previous_aggregation = if !window_state.events.is_empty() {
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
+			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
 		} else {
 			None
 		};
@@ -157,9 +164,13 @@ fn process_rolling_group_insert(
 		operator.evict_old_events(&mut window_state, eviction_ts);
 
 		if !window_state.events.is_empty()
-			&& let Some((aggregated_row, is_new)) =
-				operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
-		{
+			&& let Some((aggregated_row, is_new)) = operator.apply_aggregations(
+				txn,
+				&window_key,
+				&layout,
+				&window_state.events,
+				changed_at,
+			)? {
 			result.push(WindowOperator::emit_aggregation_diff(
 				&aggregated_row,
 				is_new,
@@ -175,8 +186,9 @@ fn process_rolling_group_insert(
 
 /// Apply changes for rolling windows (no expiration — eviction handles cleanup)
 pub fn apply_rolling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, false, |op, txn, columns| {
-		op.process_insert(txn, columns, process_rolling_group_insert)
+		op.process_insert(txn, columns, changed_at, process_rolling_group_insert)
 	})?;
-	Ok(Change::from_flow(operator.node, change.version, diffs))
+	Ok(Change::from_flow(operator.node, change.version, diffs, change.changed_at))
 }

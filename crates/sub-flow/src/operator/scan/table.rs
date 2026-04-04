@@ -75,7 +75,7 @@ impl Operator for PrimitiveTableOperator {
 				}
 			});
 		}
-		Ok(Change::from_flow(self.node, change.version, decoded_diffs))
+		Ok(Change::from_flow(self.node, change.version, decoded_diffs, change.changed_at))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {

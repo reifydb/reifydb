@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import type { ReactNode } from "react";
 
 type BadgeVariant = "active" | "inactive" | "coming-soon" | "default" | "signal" | "success" | "danger" | "warning" | "error" | "outline";

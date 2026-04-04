@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import { useMemo } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-json";

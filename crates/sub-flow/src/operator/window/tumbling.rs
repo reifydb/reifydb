@@ -6,7 +6,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::Result;
+use reifydb_type::{Result, value::datetime::DateTime};
 
 use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::transaction::FlowTransaction;
@@ -45,6 +45,7 @@ fn process_tumbling_group_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
+	changed_at: DateTime,
 ) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -77,7 +78,7 @@ fn process_tumbling_group_insert(
 		let layout = window_state.layout().clone();
 
 		let previous_aggregation = if !window_state.events.is_empty() {
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
+			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
 		} else {
 			None
 		};
@@ -93,7 +94,7 @@ fn process_tumbling_group_insert(
 		}
 
 		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
+			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
 		{
 			result.push(WindowOperator::emit_aggregation_diff(
 				&aggregated_row,
@@ -111,8 +112,9 @@ fn process_tumbling_group_insert(
 
 /// Apply changes for tumbling windows
 pub fn apply_tumbling_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, true, |op, txn, columns| {
-		op.process_insert(txn, columns, process_tumbling_group_insert)
+		op.process_insert(txn, columns, changed_at, process_tumbling_group_insert)
 	})?;
-	Ok(Change::from_flow(operator.node, change.version, diffs))
+	Ok(Change::from_flow(operator.node, change.version, diffs, change.changed_at))
 }

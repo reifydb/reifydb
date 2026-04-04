@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_extension::transform::context::TransformContext;
 use reifydb_routine::function::registry::Functions;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
 use crate::{
@@ -89,7 +89,8 @@ impl<'a> EvalSession<'a> {
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
 		static EMPTY_FUNCTIONS: LazyLock<Functions> = LazyLock::new(Functions::empty);
-		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> = LazyLock::new(RuntimeContext::default);
+		static DEFAULT_RUNTIME_CONTEXT: LazyLock<RuntimeContext> =
+			LazyLock::new(|| RuntimeContext::with_clock(Clock::Real));
 
 		EvalSession {
 			params: &EMPTY_PARAMS,

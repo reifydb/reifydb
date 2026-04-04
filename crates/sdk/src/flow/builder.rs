@@ -12,12 +12,14 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
+use reifydb_type::value::datetime::DateTime;
 
 /// Builder for constructing Change objects for internal flow operators
 pub struct ChangeBuilder {
 	operator_id: FlowNodeId,
 	version: CommitVersion,
 	diffs: Vec<Diff>,
+	changed_at: DateTime,
 }
 
 impl ChangeBuilder {
@@ -31,7 +33,14 @@ impl ChangeBuilder {
 			operator_id,
 			version,
 			diffs: Vec::new(),
+			changed_at: DateTime::default(),
 		}
+	}
+
+	/// Set the timestamp when this change was made
+	pub fn changed_at(mut self, changed_at: DateTime) -> Self {
+		self.changed_at = changed_at;
+		self
 	}
 
 	/// Add an insert diff with Columns
@@ -98,6 +107,6 @@ impl ChangeBuilder {
 
 	/// Build the Change
 	pub fn build(self) -> Change {
-		Change::from_flow(self.operator_id, self.version, self.diffs)
+		Change::from_flow(self.operator_id, self.version, self.diffs, self.changed_at)
 	}
 }

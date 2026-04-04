@@ -53,12 +53,12 @@ impl Procedure for ClockSetProcedure {
 			Clock::Mock(mock) => {
 				match arg {
 					Value::DateTime(dt) => {
-						mock.set_nanos(dt.to_nanos_since_epoch_u128());
+						mock.set_nanos(dt.to_nanos());
 					}
 					Value::Duration(dur) => {
 						let epoch = DateTime::default(); // 1970-01-01T00:00:00Z
 						let target = epoch.add_duration(dur)?;
-						mock.set_nanos(target.to_nanos_since_epoch_u128());
+						mock.set_nanos(target.to_nanos());
 					}
 					other => {
 						let millis = extract_millis(other).ok_or_else(|| {
@@ -73,7 +73,7 @@ impl Procedure for ClockSetProcedure {
 					}
 				}
 				let current_nanos = mock.now_nanos();
-				let dt = DateTime::from_timestamp_nanos(current_nanos)?;
+				let dt = DateTime::from_nanos(current_nanos);
 				Ok(Columns::single_row([("clock", Value::DateTime(dt))]))
 			}
 			Clock::Real => Err(ProcedureError::ExecutionFailed {

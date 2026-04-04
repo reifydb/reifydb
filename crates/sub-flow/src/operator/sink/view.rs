@@ -14,7 +14,10 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
-use reifydb_type::{Result, value::row_number::RowNumber};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 use super::{coerce_columns, encode_row_at_index};
 use crate::{Operator, operator::Operators, transaction::FlowTransaction};
@@ -69,12 +72,14 @@ impl Operator for SinkTableViewOperator {
 						ViewRowInterceptor::post_insert(txn, &view, row_number, &encoded)?;
 					}
 					let version = txn.version();
+					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
 						}],
+						changed_at,
 					});
 				}
 				Diff::Update {
@@ -119,6 +124,7 @@ impl Operator for SinkTableViewOperator {
 						)?;
 					}
 					let version = txn.version();
+					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
@@ -126,6 +132,7 @@ impl Operator for SinkTableViewOperator {
 							pre: coerced_pre,
 							post: coerced_post,
 						}],
+						changed_at,
 					});
 				}
 				Diff::Remove {
@@ -144,18 +151,20 @@ impl Operator for SinkTableViewOperator {
 						ViewRowInterceptor::post_delete(txn, &view, row_number, &encoded)?;
 					}
 					let version = txn.version();
+					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,
 						}],
+						changed_at,
 					});
 				}
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new()))
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
 	}
 
 	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {

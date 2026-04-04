@@ -14,6 +14,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	interceptor::{
@@ -89,6 +90,18 @@ pub mod read;
 pub mod state;
 pub mod write;
 
+/// Parameters for creating a transactional (inline) FlowTransaction.
+pub struct TransactionalParams {
+	pub version: CommitVersion,
+	pub pending: Pending,
+	pub base_pending: Pending,
+	pub query: MultiReadTransaction,
+	pub state_query: MultiReadTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub clock: Clock,
+}
+
 /// Shared fields between Deferred and Transactional variants.
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
@@ -99,58 +112,9 @@ pub struct FlowTransactionInner {
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
+	pub clock: Clock,
 }
 
-/// A transaction wrapper for flow processing with dual-version read semantics.
-///
-/// # Architecture
-///
-/// FlowTransaction provides **dual-version reads** critical for stateful flow processing:
-/// 1. **Source data** - Read at CDC event version (snapshot isolation)
-/// 2. **Flow state** - Read at latest version (state continuity across CDC events)
-/// 3. **Isolated writes** - Local PendingWrites buffer returned to caller
-///
-/// This dual-version approach allows stateful operators (joins, aggregates, distinct) to:
-/// - Process source data at a consistent snapshot (the CDC event version)
-/// - Access their own state at the latest version to maintain continuity
-///
-/// # Dual-Version Read Routing
-///
-/// Reads are automatically routed to the correct query transaction based on key type:
-///
-/// ```text
-/// ┌─────────────────┐
-/// │  FlowTransaction│
-/// └────────┬────────┘
-///          │
-///          ├──► pending (flow-generated writes)
-///          │
-///          ├──► variant
-///          │    ├─ Deferred: skip
-///          │    └─ Transactional { base_pending }: check base_pending
-///          │
-///          ├──► query (at CDC version)
-///          │    - Source tables / views / regular data
-///          │
-///          └──► state_query (at latest version)
-///               - FlowNodeState / FlowNodeInternalState
-/// ```
-///
-/// # Construction
-///
-/// Use named constructors to enforce correct initialization:
-/// - [`FlowTransaction::deferred`] — CDC path (no base pending)
-/// - [`FlowTransaction::transactional`] — inline pre-commit path (with base pending)
-///
-/// # Write Path
-///
-/// All writes (`set`, `remove`) go to the local `pending` buffer:
-/// - Reads check pending buffer first, then delegate to query transactions
-/// - Pending writes are extracted via [`FlowTransaction::take_pending`]
-///
-/// # Thread Safety
-///
-/// FlowTransaction is Send because all fields are either Copy, owned, or
 pub enum FlowTransaction {
 	/// CDC-driven async flow processing.
 	/// Reads only from committed storage + flow pending writes.
@@ -217,12 +181,13 @@ impl FlowTransaction {
 	///
 	/// Used by the async worker path. Reads only from committed storage +
 	/// flow-generated pending writes — no base pending from a parent transaction.
-	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors), fields(version = version.0))]
+	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors, clock), fields(version = version.0))]
 	pub fn deferred(
 		parent: &AdminTransaction,
 		version: CommitVersion,
 		catalog: Catalog,
 		interceptors: Interceptors,
+		clock: Clock,
 	) -> Self {
 		let mut query = parent.multi.begin_query().unwrap();
 		query.read_as_of_version_inclusive(version);
@@ -238,6 +203,7 @@ impl FlowTransaction {
 				catalog,
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
+				clock,
 			},
 		}
 	}
@@ -252,6 +218,7 @@ impl FlowTransaction {
 		state_query: MultiReadTransaction,
 		catalog: Catalog,
 		interceptors: Interceptors,
+		clock: Clock,
 	) -> Self {
 		Self::Deferred {
 			inner: FlowTransactionInner {
@@ -263,6 +230,7 @@ impl FlowTransaction {
 				catalog,
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
+				clock,
 			},
 		}
 	}
@@ -272,27 +240,20 @@ impl FlowTransaction {
 	/// Used by the pre-commit interceptor path. `base_pending` is a read-only
 	/// snapshot of the committing transaction's KV writes so that flow operators
 	/// can see uncommitted row data.
-	pub fn transactional(
-		version: CommitVersion,
-		pending: Pending,
-		base_pending: Pending,
-		query: MultiReadTransaction,
-		state_query: MultiReadTransaction,
-		catalog: Catalog,
-		interceptors: Interceptors,
-	) -> Self {
+	pub fn transactional(params: TransactionalParams) -> Self {
 		Self::Transactional {
 			inner: FlowTransactionInner {
-				version,
-				pending,
+				version: params.version,
+				pending: params.pending,
 				pending_shapes: Vec::new(),
-				query,
-				state_query: Some(state_query),
-				catalog,
-				interceptors,
+				query: params.query,
+				state_query: Some(params.state_query),
+				catalog: params.catalog,
+				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
+				clock: params.clock,
 			},
-			base_pending,
+			base_pending: params.base_pending,
 		}
 	}
 
@@ -306,6 +267,7 @@ impl FlowTransaction {
 		query: MultiReadTransaction,
 		catalog: Catalog,
 		state: HashMap<EncodedKey, EncodedRow>,
+		clock: Clock,
 	) -> Self {
 		let mut pq = query;
 		pq.read_as_of_version_inclusive(version);
@@ -320,6 +282,7 @@ impl FlowTransaction {
 				catalog,
 				interceptors: Interceptors::new(),
 				accumulator: ChangeAccumulator::new(),
+				clock,
 			},
 			state,
 		}
@@ -419,6 +382,11 @@ impl FlowTransaction {
 	/// Get access to the catalog for reading metadata
 	pub fn catalog(&self) -> &Catalog {
 		&self.inner().catalog
+	}
+
+	/// Get access to the clock for timestamp generation
+	pub fn clock(&self) -> &Clock {
+		&self.inner().clock
 	}
 }
 

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Loading } from "./loading.js";
 

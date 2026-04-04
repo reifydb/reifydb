@@ -192,7 +192,7 @@ pub(crate) fn update_ringbuffer(
 					.expect("row must exist for update")
 					.row
 					.created_at_nanos();
-				row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos() as u64);
+				row.set_timestamps(old_created_at, services.runtime_context.clock.now_nanos());
 
 				// Find which partition this row belongs to
 				let is_occupied = partitions.iter().any(|p| {

@@ -10,7 +10,7 @@ use clock::{Clock, MockClock};
 use rng::Rng;
 
 /// A container for runtime services (clock, RNG) threaded through the execution engine.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct RuntimeContext {
 	pub clock: Clock,
 	pub rng: Rng,

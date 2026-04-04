@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 export { Badge } from "./components/badge/index.js";
 export type { BadgeProps } from "./components/badge/index.js";
 export { Button } from "./components/button/index.js";

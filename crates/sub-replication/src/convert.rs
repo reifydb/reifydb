@@ -17,7 +17,7 @@ use crate::generated::{
 pub fn cdc_to_proto(cdc: &Cdc) -> CdcEntry {
 	CdcEntry {
 		version: cdc.version.0,
-		timestamp: cdc.timestamp,
+		timestamp: cdc.timestamp.to_nanos(),
 		system_changes: cdc.system_changes.iter().map(system_change_to_proto).collect(),
 	}
 }

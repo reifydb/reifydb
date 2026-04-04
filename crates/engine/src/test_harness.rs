@@ -272,7 +272,15 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	)
 	.unwrap();
 
-	AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap()
+	AdminTransaction::new(
+		multi,
+		single,
+		event_bus,
+		Interceptors::new(),
+		IdentityId::system(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	)
+	.unwrap()
 }
 
 pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
@@ -300,6 +308,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		event_bus.clone(),
 		Interceptors::new(),
 		IdentityId::system(),
+		Clock::Mock(MockClock::from_millis(1000)),
 	)
 	.unwrap();
 

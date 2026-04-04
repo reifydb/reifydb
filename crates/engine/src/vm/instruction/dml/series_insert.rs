@@ -201,7 +201,7 @@ pub(crate) fn insert_series(
 				shape.set_value(&mut row, i + 1, value);
 			}
 
-			let now_nanos = services.runtime_context.clock.now_nanos() as u64;
+			let now_nanos = services.runtime_context.clock.now_nanos();
 			row.set_timestamps(now_nanos, now_nanos);
 
 			let row = SeriesRowInterceptor::pre_insert(txn, &series, row)?;
@@ -240,6 +240,7 @@ pub(crate) fn insert_series(
 					diffs: vec![Diff::Insert {
 						post,
 					}],
+					changed_at: DateTime::default(),
 				});
 			}
 
@@ -282,6 +283,6 @@ fn generate_timestamp(services: &Services, precision: &TimestampPrecision) -> u6
 		TimestampPrecision::Second => services.runtime_context.clock.now_secs(),
 		TimestampPrecision::Millisecond => services.runtime_context.clock.now_millis(),
 		TimestampPrecision::Microsecond => services.runtime_context.clock.now_micros(),
-		TimestampPrecision::Nanosecond => services.runtime_context.clock.now_nanos() as u64,
+		TimestampPrecision::Nanosecond => services.runtime_context.clock.now_nanos(),
 	}
 }

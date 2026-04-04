@@ -174,6 +174,7 @@ pub(crate) fn delete_series(
 					diffs: vec![Diff::Remove {
 						pre,
 					}],
+					changed_at: DateTime::default(),
 				});
 
 				SeriesRowInterceptor::pre_delete(txn, &series)?;
@@ -267,6 +268,7 @@ pub(crate) fn delete_series(
 					diffs: vec![Diff::Remove {
 						pre,
 					}],
+					changed_at: DateTime::default(),
 				});
 			}
 

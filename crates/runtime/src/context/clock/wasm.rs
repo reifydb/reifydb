@@ -16,9 +16,9 @@ use js_sys::Date;
 use web_sys::window;
 
 #[inline(always)]
-fn platform_now_nanos() -> u128 {
+fn platform_now_nanos() -> u64 {
 	let millis = Date::now();
-	(millis * 1_000_000.0) as u128
+	(millis * 1_000_000.0) as u64
 }
 
 fn performance_now_ms() -> f64 {
@@ -36,7 +36,7 @@ pub enum Clock {
 
 impl Clock {
 	/// Get current time in nanoseconds since Unix epoch
-	pub fn now_nanos(&self) -> u128 {
+	pub fn now_nanos(&self) -> u64 {
 		match self {
 			Clock::Real => platform_now_nanos(),
 			Clock::Mock(mock) => mock.now_nanos(),
@@ -45,17 +45,17 @@ impl Clock {
 
 	/// Get current time in microseconds since Unix epoch
 	pub fn now_micros(&self) -> u64 {
-		(self.now_nanos() / 1_000) as u64
+		self.now_nanos() / 1_000
 	}
 
 	/// Get current time in milliseconds since Unix epoch
 	pub fn now_millis(&self) -> u64 {
-		(self.now_nanos() / 1_000_000) as u64
+		self.now_nanos() / 1_000_000
 	}
 
 	/// Get current time in seconds since Unix epoch
 	pub fn now_secs(&self) -> u64 {
-		(self.now_nanos() / 1_000_000_000) as u64
+		self.now_nanos() / 1_000_000_000
 	}
 
 	pub fn instant(&self) -> Instant {
@@ -88,78 +88,72 @@ pub struct MockClock {
 }
 
 struct MockClockInner {
-	// Split u128 into two u64s for atomic access
-	time_high: AtomicU64,
-	time_low: AtomicU64,
+	time_nanos: AtomicU64,
 }
 
 impl MockClock {
 	/// Create a new mock clock starting at the given nanoseconds
-	pub fn new(initial_nanos: u128) -> Self {
+	pub fn new(initial_nanos: u64) -> Self {
 		Self {
 			inner: Arc::new(MockClockInner {
-				time_high: AtomicU64::new((initial_nanos >> 64) as u64),
-				time_low: AtomicU64::new(initial_nanos as u64),
+				time_nanos: AtomicU64::new(initial_nanos),
 			}),
 		}
 	}
 
 	/// Create a new mock clock starting at the given milliseconds
 	pub fn from_millis(millis: u64) -> Self {
-		Self::new(millis as u128 * 1_000_000)
+		Self::new(millis * 1_000_000)
 	}
 
 	/// Get current time in nanoseconds
-	pub fn now_nanos(&self) -> u128 {
-		let high = self.inner.time_high.load(Ordering::Acquire) as u128;
-		let low = self.inner.time_low.load(Ordering::Acquire) as u128;
-		(high << 64) | low
+	pub fn now_nanos(&self) -> u64 {
+		self.inner.time_nanos.load(Ordering::Acquire)
 	}
 
 	/// Get current time in microseconds
 	pub fn now_micros(&self) -> u64 {
-		(self.now_nanos() / 1_000) as u64
+		self.now_nanos() / 1_000
 	}
 
 	/// Get current time in milliseconds
 	pub fn now_millis(&self) -> u64 {
-		(self.now_nanos() / 1_000_000) as u64
+		self.now_nanos() / 1_000_000
 	}
 
 	/// Get current time in seconds
 	pub fn now_secs(&self) -> u64 {
-		(self.now_nanos() / 1_000_000_000) as u64
+		self.now_nanos() / 1_000_000_000
 	}
 
 	/// Set time to specific nanoseconds
-	pub fn set_nanos(&self, nanos: u128) {
-		self.inner.time_high.store((nanos >> 64) as u64, Ordering::Release);
-		self.inner.time_low.store(nanos as u64, Ordering::Release);
+	pub fn set_nanos(&self, nanos: u64) {
+		self.inner.time_nanos.store(nanos, Ordering::Release);
 	}
 
 	/// Set time to specific microseconds
 	pub fn set_micros(&self, micros: u64) {
-		self.set_nanos(micros as u128 * 1_000);
+		self.set_nanos(micros * 1_000);
 	}
 
 	/// Set time to specific milliseconds
 	pub fn set_millis(&self, millis: u64) {
-		self.set_nanos(millis as u128 * 1_000_000);
+		self.set_nanos(millis * 1_000_000);
 	}
 
 	/// Advance time by nanoseconds
-	pub fn advance_nanos(&self, nanos: u128) {
-		self.set_nanos(self.now_nanos() + nanos);
+	pub fn advance_nanos(&self, nanos: u64) {
+		self.set_nanos(self.now_nanos().saturating_add(nanos));
 	}
 
 	/// Advance time by microseconds
 	pub fn advance_micros(&self, micros: u64) {
-		self.advance_nanos(micros as u128 * 1_000);
+		self.advance_nanos(micros * 1_000);
 	}
 
 	/// Advance time by milliseconds
 	pub fn advance_millis(&self, millis: u64) {
-		self.advance_nanos(millis as u128 * 1_000_000);
+		self.advance_nanos(millis * 1_000_000);
 	}
 }
 
@@ -169,7 +163,7 @@ enum InstantInner {
 		timestamp_ms: f64,
 	},
 	Mock {
-		captured_nanos: u128,
+		captured_nanos: u64,
 		clock: MockClock,
 	},
 }
@@ -197,7 +191,7 @@ impl Instant {
 			} => {
 				let now = clock.now_nanos();
 				let elapsed_nanos = now.saturating_sub(*captured_nanos);
-				Duration::from_nanos(elapsed_nanos as u64)
+				Duration::from_nanos(elapsed_nanos)
 			}
 		}
 	}
@@ -228,7 +222,7 @@ impl Instant {
 				},
 			) => {
 				let elapsed = this_nanos.saturating_sub(*other_nanos);
-				Duration::from_nanos(elapsed as u64)
+				Duration::from_nanos(elapsed)
 			}
 			_ => panic!("Cannot compare instants from different clock types"),
 		}
@@ -312,7 +306,7 @@ impl ops::Add<Duration> for Instant {
 				clock,
 			} => Instant {
 				inner: InstantInner::Mock {
-					captured_nanos: captured_nanos + duration.as_nanos(),
+					captured_nanos: captured_nanos.saturating_add(duration.as_nanos() as u64),
 					clock,
 				},
 			},

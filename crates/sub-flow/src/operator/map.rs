@@ -172,7 +172,7 @@ impl Operator for MapOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result))
+		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {

@@ -43,7 +43,7 @@ use reifydb_core::{
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_routine::{function::default_functions, procedure::default_procedures};
 use reifydb_rql::RqlVersion;
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
 use reifydb_store_multi::{
 	MultiStore, MultiStoreVersion,
 	config::{HotConfig, MultiStoreConfig},
@@ -177,6 +177,7 @@ impl WasmDB {
 			merge_config: Default::default(),
 			event_bus: eventbus.clone(),
 			actor_system: actor_system.clone(),
+			clock: Clock::Real,
 		});
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 

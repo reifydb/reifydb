@@ -3,7 +3,6 @@
 
 use std::env;
 
-use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{error::Diagnostic, fragment::Fragment};
 
 /// Creates a detailed internal error diagnostic with source location and
@@ -18,13 +17,8 @@ pub fn internal_with_context(
 ) -> Diagnostic {
 	let reason = reason.into();
 
-	// Generate a unique error ID based on timestamp and location
-	let error_id = format!(
-		"ERR-{}-{}:{}",
-		Clock::default().now_millis(),
-		file.rsplit('/').next().unwrap_or(file).replace(".rs", ""),
-		line
-	);
+	// Generate a unique error ID based on location
+	let error_id = format!("ERR-{}:{}", file.rsplit('/').next().unwrap_or(file).replace(".rs", ""), line);
 
 	let detailed_message = format!("Internal error [{}]: {}", error_id, reason);
 

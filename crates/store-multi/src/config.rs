@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 use crate::hot::storage::HotStorage;
 
@@ -17,6 +17,7 @@ pub struct MultiStoreConfig {
 	pub merge_config: MergeConfig,
 	pub event_bus: EventBus,
 	pub actor_system: ActorSystem,
+	pub clock: Clock,
 }
 
 #[derive(Clone)]

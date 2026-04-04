@@ -17,11 +17,12 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{
 	Result,
 	error::Diagnostic,
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
+	value::{datetime::DateTime, frame::frame::Frame, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -129,6 +130,9 @@ pub struct AdminTransaction {
 	/// Optional RQL executor for running RQL within this transaction.
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
+	/// Clock for timestamping flow changes at commit.
+	pub(crate) clock: Clock,
+
 	/// When the transaction has been poisoned, stores the original error diagnostic.
 	poison_cause: Option<Diagnostic>,
 }
@@ -150,6 +154,7 @@ impl AdminTransaction {
 		event_bus: EventBus,
 		interceptors: Interceptors,
 		identity: IdentityId,
+		clock: Clock,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		let txn_id = cmd.tm.id();
@@ -165,6 +170,7 @@ impl AdminTransaction {
 			accumulator: ChangeAccumulator::new(),
 			identity,
 			executor: None,
+			clock,
 			poison_cause: None,
 		})
 	}
@@ -238,7 +244,9 @@ impl AdminTransaction {
 			.collect();
 
 		let mut ctx = PreCommitContext {
-			flow_changes: self.accumulator.take_changes(CommitVersion(0)),
+			flow_changes: self
+				.accumulator
+				.take_changes(CommitVersion(0), DateTime::from_nanos(self.clock.now_nanos())),
 			pending_writes: Vec::new(),
 			pending_shapes: Vec::new(),
 			transaction_writes,

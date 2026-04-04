@@ -3,7 +3,6 @@
 
 use std::env;
 
-use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{
 	error::{Diagnostic, IntoDiagnostic, util::value_max},
 	fragment::Fragment,
@@ -246,8 +245,7 @@ impl IntoDiagnostic for CoreError {
 				module_path,
 			} => {
 				let error_id = format!(
-					"ERR-{}-{}:{}",
-					Clock::default().now_millis(),
+					"ERR-{}:{}",
 					file.rsplit('/').next().unwrap_or(&file).replace(".rs", ""),
 					line
 				);

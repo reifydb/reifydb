@@ -47,17 +47,17 @@ fn scan_system_column<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 
 	cursor.consume();
 
-	if let Some(ch) = cursor.peek() {
-		if is_identifier_start(ch) {
-			cursor.consume_while(is_identifier_char);
-			let fragment = cursor.make_fragment(start_pos, start_line, start_column);
-			let name = &fragment.text()[1..];
-			if SYSTEM_COLUMNS.contains(&name) {
-				return Some(Token {
-					kind: TokenKind::SystemColumn,
-					fragment,
-				});
-			}
+	if let Some(ch) = cursor.peek()
+		&& is_identifier_start(ch)
+	{
+		cursor.consume_while(is_identifier_char);
+		let fragment = cursor.make_fragment(start_pos, start_line, start_column);
+		let name = &fragment.text()[1..];
+		if SYSTEM_COLUMNS.contains(&name) {
+			return Some(Token {
+				kind: TokenKind::SystemColumn,
+				fragment,
+			});
 		}
 	}
 

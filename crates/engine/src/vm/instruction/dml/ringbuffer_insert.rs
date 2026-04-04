@@ -174,7 +174,7 @@ pub(crate) fn insert_ringbuffer(
 				shape.set_value(&mut row, rb_idx, &value);
 			}
 
-			let now_nanos = services.runtime_context.clock.now_nanos() as u64;
+			let now_nanos = services.runtime_context.clock.now_nanos();
 			row.set_timestamps(now_nanos, now_nanos);
 
 			let partition_key: Vec<Value> =

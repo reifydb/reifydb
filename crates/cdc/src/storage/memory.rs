@@ -139,14 +139,14 @@ pub mod tests {
 		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::cdc::SystemChange,
 	};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
 
 	use super::*;
 
 	fn make_cdc(version: u64) -> Cdc {
 		Cdc::new(
 			CommitVersion(version),
-			12345,
+			DateTime::from_nanos(12345),
 			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![1, 2, 3]),
@@ -219,7 +219,7 @@ pub mod tests {
 
 		let cdc1 = Cdc::new(
 			CommitVersion(1),
-			100,
+			DateTime::from_nanos(100),
 			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![1]),
@@ -229,7 +229,7 @@ pub mod tests {
 
 		let cdc2 = Cdc::new(
 			CommitVersion(1),
-			200, // Different timestamp
+			DateTime::from_nanos(200), // Different timestamp
 			Vec::new(),
 			vec![
 				SystemChange::Insert {
@@ -250,6 +250,6 @@ pub mod tests {
 		assert_eq!(storage.count(CommitVersion(1)).unwrap(), 2);
 
 		let read = storage.read(CommitVersion(1)).unwrap().unwrap();
-		assert_eq!(read.timestamp, 200);
+		assert_eq!(read.timestamp, DateTime::from_nanos(200));
 	}
 }

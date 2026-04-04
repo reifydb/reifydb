@@ -8,6 +8,7 @@ use reifydb_core::{
 		procedure::{ProcedureParam, ProcedureTrigger},
 	},
 };
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -52,6 +53,7 @@ pub fn bootstrap_configaults(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Clock::Real,
 	)?;
 	MaterializedCatalogLoader::bootstrap_missing_defaults(&mut admin, catalog)?;
 	admin.commit()?;
@@ -74,6 +76,7 @@ pub fn bootstrap_system_procedures(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Clock::Real,
 	)?;
 
 	// Ensure the system::config sub-namespace exists (persisted to storage).
@@ -159,6 +162,7 @@ pub fn bootstrap_root_identity(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Clock::Real,
 	)?;
 
 	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root())?;

@@ -66,6 +66,7 @@ fn create_memory_store(actor_system: &ActorSystem) -> (MultiStore, SingleStore, 
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
 		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
 	// Create single-version store
@@ -111,6 +112,7 @@ fn create_sqlite_store(
 		merge_config: Default::default(),
 		event_bus: eventbus.clone(),
 		actor_system: actor_system.clone(),
+		clock: Clock::Real,
 	});
 
 	// Create single-version config with single.db in same directory

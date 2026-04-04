@@ -58,6 +58,7 @@ pub trait SingleStateful: RawStatefulOperator {
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 
 	use super::*;
@@ -91,8 +92,13 @@ pub mod tests {
 	#[test]
 	fn test_load_save_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Initially should create new state
@@ -112,8 +118,13 @@ pub mod tests {
 	#[test]
 	fn test_update_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Update state with a function
@@ -135,8 +146,13 @@ pub mod tests {
 	#[test]
 	fn test_clear_state() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create and modify state
@@ -158,8 +174,13 @@ pub mod tests {
 	#[test]
 	fn test_multiple_operators_isolated() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator1 = TestOperator::simple(FlowNodeId(1));
 		let operator2 = TestOperator::simple(FlowNodeId(2));
 
@@ -191,8 +212,13 @@ pub mod tests {
 	#[test]
 	fn test_counter_simulation() {
 		let mut txn = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&mut txn, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&mut txn,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a counter incrementing

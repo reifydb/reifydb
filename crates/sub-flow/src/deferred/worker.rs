@@ -194,6 +194,7 @@ impl FlowWorkerActor {
 			state_query,
 			self.catalog.clone(),
 			interceptors,
+			self.engine.clock().clone(),
 		);
 
 		for flow_id in flow_ids {
@@ -241,6 +242,7 @@ impl FlowWorkerActor {
 				state_query,
 				self.catalog.clone(),
 				interceptors.clone(),
+				self.engine.clock().clone(),
 			);
 
 			for change in &instruction.changes {
@@ -250,11 +252,13 @@ impl FlowWorkerActor {
 			}
 
 			let view_entries = txn.take_accumulator_entries();
+			let changed_at = DateTime::from_nanos(self.engine.clock().now_nanos());
 			for (id, diff) in view_entries {
 				all_view_changes.push(Change {
 					origin: ChangeOrigin::Shape(id),
 					version: primitive_version,
 					diffs: vec![diff],
+					changed_at,
 				});
 			}
 

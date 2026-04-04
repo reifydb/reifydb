@@ -20,7 +20,7 @@ use reifydb_transaction::interceptor::view_row::ViewRowInterceptor;
 use reifydb_type::{
 	Result,
 	error::Error,
-	value::{blob::Blob, row_number::RowNumber, r#type::Type},
+	value::{blob::Blob, datetime::DateTime, row_number::RowNumber, r#type::Type},
 };
 use serde::{Deserialize, Serialize};
 
@@ -190,12 +190,14 @@ impl Operator for SinkRingBufferViewOperator {
 						metadata.tail = assigned_rn.0 + 1;
 					}
 					let version = txn.version();
+					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Insert {
 							post: coerced,
 						}],
+						changed_at,
 					});
 				}
 				Diff::Update {
@@ -252,6 +254,7 @@ impl Operator for SinkRingBufferViewOperator {
 						)?;
 					}
 					let version = txn.version();
+					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
@@ -259,6 +262,7 @@ impl Operator for SinkRingBufferViewOperator {
 							pre: coerced_pre,
 							post: coerced_post,
 						}],
+						changed_at,
 					});
 				}
 				Diff::Remove {
@@ -279,12 +283,14 @@ impl Operator for SinkRingBufferViewOperator {
 						ViewRowInterceptor::post_delete(txn, &view, storage_rn, &encoded)?;
 					}
 					let version = txn.version();
+					let changed_at = DateTime::from_nanos(txn.clock().now_nanos());
 					txn.track_flow_change(Change {
 						origin: ChangeOrigin::Shape(ShapeId::view(view.id())),
 						version,
 						diffs: vec![Diff::Remove {
 							pre: coerced,
 						}],
+						changed_at,
 					});
 				}
 			}
@@ -293,7 +299,7 @@ impl Operator for SinkRingBufferViewOperator {
 		self.write_metadata(txn, &metadata)?;
 		self.save(txn, &state)?;
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new()))
+		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
 	}
 
 	fn pull(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> Result<Columns> {

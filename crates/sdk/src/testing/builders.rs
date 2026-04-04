@@ -11,7 +11,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_type::value::{Value, row_number::RowNumber, r#type::Type};
+use reifydb_type::value::{Value, datetime::DateTime, row_number::RowNumber, r#type::Type};
 
 /// Builder for creating test rows
 pub struct TestRowBuilder {
@@ -80,6 +80,7 @@ pub struct TestChangeBuilder {
 	origin: ChangeOrigin,
 	diffs: Vec<Diff>,
 	version: CommitVersion,
+	changed_at: DateTime,
 }
 
 impl Default for TestChangeBuilder {
@@ -95,6 +96,7 @@ impl TestChangeBuilder {
 			origin: ChangeOrigin::Shape(ShapeId::Table(TableId(1))),
 			diffs: Vec::new(),
 			version: CommitVersion(1),
+			changed_at: DateTime::default(),
 		}
 	}
 
@@ -113,6 +115,12 @@ impl TestChangeBuilder {
 	/// Set the version
 	pub fn with_version(mut self, version: CommitVersion) -> Self {
 		self.version = version;
+		self
+	}
+
+	/// Set the changed_at timestamp
+	pub fn with_changed_at(mut self, changed_at: DateTime) -> Self {
+		self.changed_at = changed_at;
 		self
 	}
 
@@ -172,6 +180,7 @@ impl TestChangeBuilder {
 			origin: self.origin,
 			diffs: self.diffs,
 			version: self.version,
+			changed_at: self.changed_at,
 		}
 	}
 }

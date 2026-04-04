@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2025 ReifyDB
+
 import type { Preview } from "@storybook/react-vite";
 import "../src/styles/index.css";
 

@@ -173,6 +173,7 @@ pub mod tests {
 		},
 		interface::catalog::flow::FlowNodeId,
 	};
+	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_type::{util::cowvec::CowVec, value::r#type::Type};
 
@@ -190,8 +191,13 @@ pub mod tests {
 	#[test]
 	fn test_state_get_set() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -208,8 +214,13 @@ pub mod tests {
 	#[test]
 	fn test_state_get_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("missing");
@@ -221,8 +232,13 @@ pub mod tests {
 	#[test]
 	fn test_state_remove() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("state_key");
@@ -239,8 +255,13 @@ pub mod tests {
 	#[test]
 	fn test_state_isolation_between_nodes() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -257,8 +278,13 @@ pub mod tests {
 	#[test]
 	fn test_state_scan() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -275,8 +301,13 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -297,8 +328,13 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -309,8 +345,13 @@ pub mod tests {
 	#[test]
 	fn test_state_range() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -331,8 +372,13 @@ pub mod tests {
 	#[test]
 	fn test_state_clear() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -353,8 +399,13 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
@@ -376,8 +427,13 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_empty_node() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 
@@ -388,8 +444,13 @@ pub mod tests {
 	#[test]
 	fn test_load_or_create_existing() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -407,8 +468,13 @@ pub mod tests {
 	#[test]
 	fn test_load_or_create_new() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -424,8 +490,13 @@ pub mod tests {
 	#[test]
 	fn test_save_row() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node_id = FlowNodeId(1);
 		let key = make_key("key1");
@@ -441,8 +512,13 @@ pub mod tests {
 	#[test]
 	fn test_state_multiple_nodes() {
 		let parent = create_test_transaction();
-		let mut txn =
-			FlowTransaction::deferred(&parent, CommitVersion(1), Catalog::testing(), Interceptors::new());
+		let mut txn = FlowTransaction::deferred(
+			&parent,
+			CommitVersion(1),
+			Catalog::testing(),
+			Interceptors::new(),
+			Clock::Mock(MockClock::from_millis(1000)),
+		);
 
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);

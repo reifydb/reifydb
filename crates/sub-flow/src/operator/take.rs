@@ -268,7 +268,7 @@ impl Operator for TakeOperator {
 
 		self.save_take_state(txn, &state)?;
 
-		Ok(Change::from_flow(self.node, version, output_diffs))
+		Ok(Change::from_flow(self.node, version, output_diffs, change.changed_at))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {

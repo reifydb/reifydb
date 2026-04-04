@@ -37,7 +37,7 @@ impl Operator for PrimitiveSeriesOperator {
 	}
 
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		Ok(Change::from_flow(self.node, change.version, change.diffs))
+		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
 	}
 
 	fn pull(&self, _txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {

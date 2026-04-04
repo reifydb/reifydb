@@ -12,7 +12,11 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_runtime::hash::Hash128;
-use reifydb_type::{Result, error::Error, value::blob::Blob};
+use reifydb_type::{
+	Result,
+	error::Error,
+	value::{blob::Blob, datetime::DateTime},
+};
 
 use super::{WindowEvent, WindowLayout, WindowOperator};
 use crate::{operator::stateful::window::WindowStateful, transaction::FlowTransaction};
@@ -104,10 +108,15 @@ impl WindowOperator {
 			}
 
 			if current_timestamp.saturating_sub(state.last_event_time) > gap_ms {
+				let changed_at = DateTime::from_nanos(current_timestamp);
 				if let Some(layout) = &state.window_layout
-					&& let Some((row, _)) =
-						self.apply_aggregations(txn, &window_key, layout, &state.events)?
-				{
+					&& let Some((row, _)) = self.apply_aggregations(
+						txn,
+						&window_key,
+						layout,
+						&state.events,
+						changed_at,
+					)? {
 					result.push(Diff::Remove {
 						pre: Columns::from_row(&row),
 					});
@@ -131,6 +140,7 @@ fn process_session_group_insert(
 	txn: &mut FlowTransaction,
 	columns: &Columns,
 	group_hash: Hash128,
+	changed_at: DateTime,
 ) -> Result<Vec<Diff>> {
 	let mut result = Vec::new();
 	let row_count = columns.row_count();
@@ -153,9 +163,13 @@ fn process_session_group_insert(
 			let pre_state = operator.load_window_state(txn, &pre_window_key)?;
 			if !pre_state.events.is_empty()
 				&& let Some(layout) = &pre_state.window_layout
-				&& let Some((pre_row, _)) =
-					operator.apply_aggregations(txn, &pre_window_key, layout, &pre_state.events)?
-			{
+				&& let Some((pre_row, _)) = operator.apply_aggregations(
+					txn,
+					&pre_window_key,
+					layout,
+					&pre_state.events,
+					changed_at,
+				)? {
 				result.push(Diff::Remove {
 					pre: Columns::from_row(&pre_row),
 				});
@@ -176,7 +190,7 @@ fn process_session_group_insert(
 		let layout = window_state.layout().clone();
 
 		let previous_aggregation = if !window_state.events.is_empty() {
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
+			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
 		} else {
 			None
 		};
@@ -192,7 +206,7 @@ fn process_session_group_insert(
 		}
 
 		if let Some((aggregated_row, is_new)) =
-			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events)?
+			operator.apply_aggregations(txn, &window_key, &layout, &window_state.events, changed_at)?
 		{
 			result.push(WindowOperator::emit_aggregation_diff(
 				&aggregated_row,
@@ -213,8 +227,9 @@ fn process_session_group_insert(
 
 /// Apply changes for session windows (no time-based expiration — sessions close lazily)
 pub fn apply_session_window(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	let changed_at = change.changed_at;
 	let diffs = operator.apply_window_change(txn, &change, false, |op, txn, columns| {
-		op.process_insert(txn, columns, process_session_group_insert)
+		op.process_insert(txn, columns, changed_at, process_session_group_insert)
 	})?;
-	Ok(Change::from_flow(operator.node, change.version, diffs))
+	Ok(Change::from_flow(operator.node, change.version, diffs, change.changed_at))
 }

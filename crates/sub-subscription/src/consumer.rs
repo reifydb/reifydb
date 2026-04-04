@@ -95,10 +95,16 @@ impl CdcConsume for SubscriptionCdcConsumer {
 						primitive_query,
 						self.catalog.clone(),
 						state,
+						flow_engine.clock().clone(),
 					);
 
 					// Process the change through the flow
-					let flow_change = Change::from_flow(*_node_id, version, change.diffs.clone());
+					let flow_change = Change::from_flow(
+						*_node_id,
+						version,
+						change.diffs.clone(),
+						change.changed_at,
+					);
 
 					if flow_engine.process(&mut txn, flow_change, *flow_id).is_ok() {
 						txn.merge_state();

@@ -58,6 +58,7 @@ fn build_ringbuffer_insert_change(
 		diffs: vec![Diff::Insert {
 			post: build_encoded_columns(shape, row_number, encoded),
 		}],
+		changed_at: DateTime::default(),
 	}
 }
 
@@ -75,6 +76,7 @@ fn build_ringbuffer_update_change(
 			pre: build_encoded_columns(&shape, row_number, pre),
 			post: build_encoded_columns(&shape, row_number, post),
 		}],
+		changed_at: DateTime::default(),
 	}
 }
 
@@ -86,6 +88,7 @@ fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encode
 		diffs: vec![Diff::Remove {
 			pre: build_encoded_columns(&shape, row_number, encoded),
 		}],
+		changed_at: DateTime::default(),
 	}
 }
 

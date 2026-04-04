@@ -27,7 +27,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 };
-use reifydb_type::value::dictionary::DictionaryId;
+use reifydb_type::value::{datetime::DateTime, dictionary::DictionaryId};
 
 use crate::ffi::arena::Arena;
 
@@ -57,6 +57,7 @@ impl Arena {
 			diff_count: diffs_count,
 			diffs: diffs_ptr,
 			version: change.version.0,
+			changed_at: change.changed_at.to_nanos(),
 		}
 	}
 
@@ -142,6 +143,7 @@ impl Arena {
 			origin: Self::unmarshal_origin(&ffi.origin)?,
 			diffs,
 			version: CommitVersion(ffi.version),
+			changed_at: DateTime::from_nanos(ffi.changed_at),
 		})
 	}
 

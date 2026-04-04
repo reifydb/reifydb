@@ -131,6 +131,6 @@ impl HealthMonitor {
 
 impl Default for HealthMonitor {
 	fn default() -> Self {
-		Self::new(Clock::default())
+		Self::new(Clock::Real)
 	}
 }

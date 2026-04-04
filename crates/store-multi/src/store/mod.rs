@@ -62,7 +62,7 @@ impl StandardMultiStore {
 			drop_config,
 			storage.clone(),
 			config.event_bus.clone(),
-			Clock::default(),
+			config.clock,
 		);
 
 		Ok(Self(Arc::new(StandardMultiStoreInner {
@@ -109,6 +109,7 @@ impl StandardMultiStore {
 			merge_config: Default::default(),
 			event_bus,
 			actor_system,
+			clock: Clock::Real,
 		})
 		.unwrap()
 	}

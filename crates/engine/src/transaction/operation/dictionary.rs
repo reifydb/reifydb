@@ -23,7 +23,7 @@ use reifydb_transaction::{
 };
 use reifydb_type::{
 	util::cowvec::CowVec,
-	value::{Value, dictionary::DictionaryEntryId},
+	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
 };
 
 use crate::Result;
@@ -168,6 +168,7 @@ impl DictionaryOperations for AdminTransaction {
 			diffs: vec![Diff::Insert {
 				post: Columns::single_row([("value", value)]),
 			}],
+			changed_at: DateTime::default(),
 		});
 
 		Ok(entry_id)

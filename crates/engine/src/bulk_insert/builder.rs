@@ -137,17 +137,20 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
+		let clock = self.engine.clock();
 		let mut result = BulkInsertResult::default();
 
 		// Process all pending table inserts
 		for pending in self.pending_tables {
-			let table_result = execute_table_insert(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
+			let table_result =
+				execute_table_insert(&catalog, &mut txn, &pending, TypeId::of::<V>(), clock)?;
 			result.tables.push(table_result);
 		}
 
 		// Process all pending ring buffer inserts
 		for pending in self.pending_ringbuffers {
-			let rb_result = execute_ringbuffer_insert(&catalog, &mut txn, &pending, TypeId::of::<V>())?;
+			let rb_result =
+				execute_ringbuffer_insert(&catalog, &mut txn, &pending, TypeId::of::<V>(), clock)?;
 			result.ringbuffers.push(rb_result);
 		}
 
@@ -164,6 +167,7 @@ fn execute_table_insert(
 	txn: &mut CommandTransaction,
 	pending: &PendingTableInsert,
 	type_id: TypeId,
+	clock: &Clock,
 ) -> Result<TableInsertResult> {
 	// 1. Look up namespace and table from catalog
 	let namespace = catalog
@@ -235,7 +239,7 @@ fn execute_table_insert(
 			shape.set_value(&mut row, idx, value);
 		}
 
-		let now_nanos = Clock::default().now_nanos() as u64;
+		let now_nanos = clock.now_nanos();
 		row.set_timestamps(now_nanos, now_nanos);
 
 		encoded_rows.push(row);
@@ -302,6 +306,7 @@ fn execute_ringbuffer_insert(
 	txn: &mut CommandTransaction,
 	pending: &PendingRingBufferInsert,
 	type_id: TypeId,
+	clock: &Clock,
 ) -> Result<RingBufferInsertResult> {
 	let namespace = catalog
 		.find_namespace_by_name(&mut Transaction::Command(txn), &pending.namespace)?
@@ -375,7 +380,7 @@ fn execute_ringbuffer_insert(
 			shape.set_value(&mut row, idx, value);
 		}
 
-		let now_nanos = Clock::default().now_nanos() as u64;
+		let now_nanos = clock.now_nanos();
 		row.set_timestamps(now_nanos, now_nanos);
 
 		if metadata.is_full() {

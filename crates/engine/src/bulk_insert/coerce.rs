@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{columns::Columns, data::ColumnData},
 };
 use reifydb_routine::function::registry::Functions;
-use reifydb_runtime::context::RuntimeContext;
+use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_type::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 use crate::{
@@ -23,11 +23,12 @@ pub(super) fn coerce_columns(
 	columns: &[Column],
 	num_rows: usize,
 ) -> Result<Vec<ColumnData>> {
+	let runtime_ctx = RuntimeContext::with_clock(Clock::Real);
 	let session = EvalSession {
 		params: &Params::None,
 		symbols: &SymbolTable::new(),
 		functions: &Functions::empty(),
-		runtime_context: &RuntimeContext::default(),
+		runtime_context: &runtime_ctx,
 		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,

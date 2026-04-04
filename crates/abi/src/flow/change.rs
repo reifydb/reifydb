@@ -27,6 +27,8 @@ pub struct ChangeFFI {
 	pub diffs: *const DiffFFI,
 	/// Version number for this change
 	pub version: u64,
+	/// Timestamp of this change in nanoseconds since Unix epoch
+	pub changed_at: u64,
 }
 
 impl ChangeFFI {
@@ -40,6 +42,7 @@ impl ChangeFFI {
 			diff_count: 0,
 			diffs: core::ptr::null(),
 			version: 0,
+			changed_at: 0,
 		}
 	}
 }

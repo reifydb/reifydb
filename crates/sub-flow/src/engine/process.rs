@@ -51,6 +51,7 @@ impl FlowEngine {
 									node_id,
 									change.version,
 									change.diffs.clone(),
+									change.changed_at,
 								),
 							)?;
 							nodes_processed += 1;

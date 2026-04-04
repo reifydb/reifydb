@@ -250,7 +250,7 @@ pub mod tests {
 		encoded::{key::EncodedKey, row::EncodedRow},
 		interface::cdc::SystemChange,
 	};
-	use reifydb_type::util::cowvec::CowVec;
+	use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
 
 	use super::*;
 
@@ -262,7 +262,7 @@ pub mod tests {
 			})
 			.collect();
 
-		Cdc::new(CommitVersion(version), 12345, Vec::new(), system_changes)
+		Cdc::new(CommitVersion(version), DateTime::from_nanos(12345), Vec::new(), system_changes)
 	}
 
 	#[test]
@@ -447,7 +447,7 @@ pub mod tests {
 		// Create CDC with known key/value sizes
 		let cdc = Cdc::new(
 			CommitVersion(1),
-			12345,
+			DateTime::from_nanos(12345),
 			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![1, 2, 3]),                     // 3 bytes

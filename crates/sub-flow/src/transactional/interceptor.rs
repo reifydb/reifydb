@@ -34,13 +34,16 @@ use reifydb_transaction::{
 	multi::transaction::read::MultiReadTransaction,
 	transaction::Transaction,
 };
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_type::{
+	Result,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 use tracing::warn;
 
 use crate::{
 	engine::FlowEngine,
 	transaction::{
-		FlowTransaction,
+		FlowTransaction, TransactionalParams,
 		pending::{Pending, PendingWrite},
 	},
 	transactional::registrar::TransactionalFlowRegistrar,
@@ -134,15 +137,16 @@ pub(crate) fn execute_inline_flow_changes(
 			let state_query = engine.multi().begin_query()?;
 			let interceptors = engine.create_interceptors();
 
-			let flow_txn = FlowTransaction::transactional(
-				read_version,
-				Pending::new(),
-				base_pending.clone(),
+			let flow_txn = FlowTransaction::transactional(TransactionalParams {
+				version: read_version,
+				pending: Pending::new(),
+				base_pending: base_pending.clone(),
 				query,
 				state_query,
-				catalog.clone(),
+				catalog: catalog.clone(),
 				interceptors,
-			);
+				clock: engine.clock().clone(),
+			});
 
 			flow_txns.push((flow_id, relevant, flow_txn));
 		}
@@ -169,6 +173,7 @@ pub(crate) fn execute_inline_flow_changes(
 					origin: ChangeOrigin::Shape(*id),
 					version: read_version,
 					diffs: vec![diff.clone()],
+					changed_at: DateTime::from_nanos(engine.clock().now_nanos()),
 				});
 			}
 			ctx.view_entries.extend(result.view_entries);

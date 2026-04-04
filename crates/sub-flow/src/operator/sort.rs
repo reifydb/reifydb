@@ -39,7 +39,7 @@ impl Operator for SortOperator {
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded sort processing
 		// For now, just pass through all changes with updated from
-		Ok(Change::from_flow(self.node, change.version, change.diffs))
+		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
 	}
 
 	fn pull(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Columns> {

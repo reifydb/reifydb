@@ -29,7 +29,7 @@ use reifydb_metric::{
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
 	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
 };
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -160,6 +160,7 @@ impl Runner {
 			merge_config: Default::default(),
 			event_bus: event_bus.clone(),
 			actor_system,
+			clock: Clock::Real,
 		})
 		.unwrap();
 
