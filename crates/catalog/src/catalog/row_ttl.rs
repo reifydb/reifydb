@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{config::GetSystemConfig, shape::ShapeId},
+	interface::catalog::{config::GetConfig, shape::ShapeId},
 	row::RowTtl,
 };
 use reifydb_store_multi::ttl::ListRowTtls;
@@ -27,7 +27,7 @@ impl ListRowTtls for Catalog {
 			.collect()
 	}
 
-	fn system_config(&self) -> Arc<dyn GetSystemConfig> {
+	fn config(&self) -> Arc<dyn GetConfig> {
 		Arc::new(self.clone())
 	}
 }

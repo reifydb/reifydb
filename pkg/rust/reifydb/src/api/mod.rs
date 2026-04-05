@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{event::EventBus, interface::catalog::config::GetSystemConfig};
+use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{clock::Clock, rng::Rng},
@@ -142,17 +142,9 @@ pub(crate) fn transaction(
 	actor_system: ActorSystem,
 	clock: Clock,
 	rng: Rng,
-	system_config: Arc<dyn GetSystemConfig>,
+	config: Arc<dyn GetConfig>,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
-	let multi = MultiTransaction::new(
-		input.0,
-		input.2.clone(),
-		input.3.clone(),
-		actor_system,
-		clock,
-		rng,
-		system_config,
-	)
-	.unwrap();
+	let multi = MultiTransaction::new(input.0, input.2.clone(), input.3.clone(), actor_system, clock, rng, config)
+		.unwrap();
 	(multi, input.2, input.3)
 }

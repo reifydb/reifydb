@@ -6,7 +6,7 @@ use std::str::FromStr;
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
-	interface::catalog::config::SystemConfigKey,
+	interface::catalog::config::ConfigKey,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
@@ -14,17 +14,17 @@ const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigStorageKey {
-	pub key: SystemConfigKey,
+	pub key: ConfigKey,
 }
 
 impl ConfigStorageKey {
-	pub fn new(key: SystemConfigKey) -> Self {
+	pub fn new(key: ConfigKey) -> Self {
 		Self {
 			key,
 		}
 	}
 
-	pub fn for_key(key: SystemConfigKey) -> EncodedKey {
+	pub fn for_key(key: ConfigKey) -> EncodedKey {
 		Self::new(key).encode()
 	}
 
@@ -60,8 +60,8 @@ impl EncodableKey for ConfigStorageKey {
 		}
 
 		let config_key_str = de.read_str().ok()?;
-		let key = SystemConfigKey::from_str(&config_key_str)
-			.expect("failed to decode SystemConfigKey from storage, unknown key");
+		let key = ConfigKey::from_str(&config_key_str)
+			.expect("failed to decode ConfigKey from storage, unknown key");
 
 		Some(Self {
 			key,

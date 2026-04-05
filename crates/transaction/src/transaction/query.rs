@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
-			config::{SystemConfig, SystemConfigKey},
+			config::{Config, ConfigKey},
 			dictionary::Dictionary,
 			flow::{Flow, FlowId},
 			handler::Handler,
@@ -44,12 +44,12 @@ use tracing::instrument;
 use crate::{
 	TransactionId,
 	change::{
-		TransactionalAuthenticationChanges, TransactionalChanges, TransactionalDictionaryChanges,
-		TransactionalFlowChanges, TransactionalGrantedRoleChanges, TransactionalHandlerChanges,
-		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
-		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
-		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
-		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalSystemConfigChanges,
+		TransactionalAuthenticationChanges, TransactionalChanges, TransactionalConfigChanges,
+		TransactionalDictionaryChanges, TransactionalFlowChanges, TransactionalGrantedRoleChanges,
+		TransactionalHandlerChanges, TransactionalIdentityChanges, TransactionalMigrationChanges,
+		TransactionalNamespaceChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
+		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalSeriesChanges,
+		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
 		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
@@ -526,8 +526,8 @@ impl TransactionalSinkChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalSystemConfigChanges for QueryTransaction {
-	fn find_system_config(&self, _key: SystemConfigKey) -> Option<&SystemConfig> {
+impl TransactionalConfigChanges for QueryTransaction {
+	fn find_config(&self, _key: ConfigKey) -> Option<&Config> {
 		None
 	}
 }

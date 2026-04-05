@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	event::row::RowsExpiredEvent,
-	interface::catalog::{config::SystemConfigKey, shape::ShapeId},
+	interface::catalog::{config::ConfigKey, shape::ShapeId},
 	row::{RowTtlAnchor, RowTtlCleanupMode},
 };
 use reifydb_runtime::actor::{
@@ -78,11 +78,11 @@ impl<P: ListRowTtls> Actor<P> {
 
 		let now_nanos = now.to_nanos();
 		let ttls = self.provider.list_row_ttls();
-		let system_config = self.provider.system_config();
+		let config = self.provider.config();
 		let mut stats = ScanStats::default();
 		let mut all_expired = Vec::new();
 
-		let batch_size = system_config.get_system_config_uint8(SystemConfigKey::RowTtlScanBatchSize) as usize;
+		let batch_size = config.get_config_uint8(ConfigKey::RowTtlScanBatchSize) as usize;
 
 		for (shape_id, ttl_config) in &ttls {
 			if ttl_config.cleanup_mode == RowTtlCleanupMode::Delete {
@@ -183,8 +183,8 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 
 	fn init(&self, ctx: &Context<Message>) -> ActorState {
 		debug!("Row TTL actor started");
-		let system_config = self.provider.system_config();
-		let scan_interval = system_config.get_system_config_duration(SystemConfigKey::RowTtlScanInterval);
+		let config = self.provider.config();
+		let scan_interval = config.get_config_duration(ConfigKey::RowTtlScanInterval);
 
 		let timer_handle = ctx.schedule_tick(scan_interval, |nanos| Message::Tick(DateTime::from_nanos(nanos)));
 		ActorState {

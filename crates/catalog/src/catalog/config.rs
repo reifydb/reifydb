@@ -2,19 +2,29 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::interface::catalog::{
-	change::CatalogTrackSystemConfigChangeOperations,
-	config::{SystemConfig, SystemConfigKey},
+	change::CatalogTrackConfigChangeOperations,
+	config::{Config, ConfigKey},
 };
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_type::value::Value;
 
 use super::Catalog;
-use crate::{CatalogStore, Result};
+use crate::{CatalogStore, Result, error::CatalogError};
 
 impl Catalog {
-	pub fn set_system_config(&self, txn: &mut AdminTransaction, key: SystemConfigKey, value: Value) -> Result<()> {
-		let pre_value = self.materialized.get_system_config(key);
-		let pre = SystemConfig {
+	pub fn set_config(&self, txn: &mut AdminTransaction, key: ConfigKey, value: Value) -> Result<()> {
+		let expected_types = key.expected_types();
+		if !expected_types.contains(&value.get_type()) {
+			return Err(CatalogError::ConfigTypeMismatch {
+				key: key.to_string(),
+				expected: expected_types.to_vec(),
+				actual: value.get_type(),
+			}
+			.into());
+		}
+
+		let pre_value = self.materialized.get_config(key);
+		let pre = Config {
 			key,
 			value: pre_value,
 			default_value: key.default_value(),
@@ -22,9 +32,9 @@ impl Catalog {
 			requires_restart: key.requires_restart(),
 		};
 
-		CatalogStore::set_system_config(txn, key, &value)?;
+		CatalogStore::set_config(txn, key, &value)?;
 
-		let post = SystemConfig {
+		let post = Config {
 			key,
 			value: value.clone(),
 			default_value: key.default_value(),
@@ -32,7 +42,7 @@ impl Catalog {
 			requires_restart: key.requires_restart(),
 		};
 
-		txn.track_system_config_set(pre, post)?;
+		txn.track_config_set(pre, post)?;
 
 		Ok(())
 	}

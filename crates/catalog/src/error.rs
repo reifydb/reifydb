@@ -190,10 +190,10 @@ pub enum CatalogError {
 	#[error("config value for key `{0}` cannot be none")]
 	ConfigValueInvalid(String),
 
-	#[error("config value for key `{key}` must be of type `{expected}`, got `{actual}`")]
+	#[error("config value for key `{key}` must be of type `{expected:?}`, got `{actual}`")]
 	ConfigTypeMismatch {
 		key: String,
-		expected: Type,
+		expected: Vec<Type>,
 		actual: Type,
 	},
 }
@@ -868,21 +868,25 @@ impl IntoDiagnostic for CatalogError {
 				key,
 				expected,
 				actual,
-			} => Diagnostic {
-				code: "CA_052".to_string(),
-				statement: None,
-				message: format!(
-					"config value for key `{}` must be of type `{}`, got `{}`",
-					key, expected, actual
-				),
-				fragment: Fragment::None,
-				label: Some("type mismatch".to_string()),
-				help: Some(format!("provide a value of type `{}`", expected)),
-				column: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
+			} => {
+				let expected_str =
+					expected.iter().map(|t| format!("`{:?}`", t)).collect::<Vec<_>>().join(", ");
+				Diagnostic {
+					code: "CA_052".to_string(),
+					statement: None,
+					message: format!(
+						"config value for key `{}` must be of type {}, got `{}`",
+						key, expected_str, actual
+					),
+					fragment: Fragment::None,
+					label: Some("type mismatch".to_string()),
+					help: Some(format!("provide a value of type {}", expected_str)),
+					column: None,
+					notes: vec![],
+					cause: None,
+					operator_chain: None,
+				}
+			}
 
 			CatalogError::InUse {
 				kind,

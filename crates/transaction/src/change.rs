@@ -6,7 +6,7 @@ use reifydb_core::{
 	encoded::row::EncodedRow,
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
-		config::{SystemConfig, SystemConfigKey},
+		config::{Config, ConfigKey},
 		dictionary::Dictionary,
 		flow::{Flow, FlowId},
 		handler::Handler,
@@ -53,12 +53,12 @@ pub trait TransactionalChanges:
 	+ TransactionalIdentityChanges
 	+ TransactionalGrantedRoleChanges
 	+ TransactionalViewChanges
-	+ TransactionalSystemConfigChanges
+	+ TransactionalConfigChanges
 {
 }
 
-pub trait TransactionalSystemConfigChanges {
-	fn find_system_config(&self, key: SystemConfigKey) -> Option<&SystemConfig>;
+pub trait TransactionalConfigChanges {
+	fn find_config(&self, key: ConfigKey) -> Option<&Config>;
 }
 
 pub trait TransactionalDictionaryChanges {
@@ -253,8 +253,8 @@ pub trait TransactionalMigrationChanges {
 pub struct TransactionalCatalogChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
-	/// System configuration changes in order
-	pub system_config: Vec<Change<SystemConfig>>,
+	/// Configuration changes in order
+	pub config: Vec<Change<Config>>,
 	/// All dictionary definition changes in order (no coalescing)
 	pub dictionary: Vec<Change<Dictionary>>,
 	/// All flow definition changes in order (no coalescing)
@@ -299,7 +299,7 @@ pub struct TransactionalCatalogChanges {
 }
 
 pub struct CatalogChangesSavepoint {
-	system_config_len: usize,
+	config_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
 	handler_len: usize,
@@ -326,7 +326,7 @@ pub struct CatalogChangesSavepoint {
 impl TransactionalCatalogChanges {
 	pub fn savepoint(&self) -> CatalogChangesSavepoint {
 		CatalogChangesSavepoint {
-			system_config_len: self.system_config.len(),
+			config_len: self.config.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
 			handler_len: self.handler.len(),
@@ -352,7 +352,7 @@ impl TransactionalCatalogChanges {
 	}
 
 	pub fn restore_savepoint(&mut self, sp: CatalogChangesSavepoint) {
-		self.system_config.truncate(sp.system_config_len);
+		self.config.truncate(sp.config_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
 		self.handler.truncate(sp.handler_len);
@@ -376,7 +376,7 @@ impl TransactionalCatalogChanges {
 		self.log.truncate(sp.log_len);
 	}
 
-	pub fn add_system_config_change(&mut self, change: Change<SystemConfig>) {
+	pub fn add_config_change(&mut self, change: Change<Config>) {
 		let key = change
 			.post
 			.as_ref()
@@ -384,8 +384,8 @@ impl TransactionalCatalogChanges {
 			.map(|c| c.key)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.system_config.push(change);
-		self.log.push(Operation::SystemConfig {
+		self.config.push(change);
+		self.log.push(Operation::Config {
 			key,
 			op,
 		});
@@ -722,8 +722,8 @@ pub enum OperationType {
 /// Log entry for operation ordering
 #[derive(Debug, Clone)]
 pub enum Operation {
-	SystemConfig {
-		key: SystemConfigKey,
+	Config {
+		key: ConfigKey,
 		op: OperationType,
 	},
 	Dictionary {
@@ -813,7 +813,7 @@ impl TransactionalCatalogChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
-			system_config: Vec::new(),
+			config: Vec::new(),
 			dictionary: Vec::new(),
 			flow: Vec::new(),
 			handler: Vec::new(),
@@ -911,7 +911,7 @@ impl TransactionalCatalogChanges {
 
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
-		self.system_config.clear();
+		self.config.clear();
 		self.dictionary.clear();
 		self.flow.clear();
 		self.handler.clear();

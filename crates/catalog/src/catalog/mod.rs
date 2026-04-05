@@ -60,16 +60,16 @@ impl Catalog {
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::config::{GetSystemConfig, SystemConfigKey},
+	interface::catalog::config::{ConfigKey, GetConfig},
 };
 use reifydb_type::value::Value;
 
-impl GetSystemConfig for Catalog {
-	fn get_system_config(&self, key: SystemConfigKey) -> Value {
-		self.materialized.get_system_config(key)
+impl GetConfig for Catalog {
+	fn get_config(&self, key: ConfigKey) -> Value {
+		self.materialized.get_config(key)
 	}
 
-	fn get_system_config_at(&self, key: SystemConfigKey, version: CommitVersion) -> Value {
-		self.materialized.get_system_config_at(key, version)
+	fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value {
+		self.materialized.get_config_at(key, version)
 	}
 }

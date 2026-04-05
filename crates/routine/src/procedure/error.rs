@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_catalog::error::CatalogError;
 use reifydb_type::{
 	error::{Diagnostic, Error, IntoDiagnostic, TypeError},
 	fragment::Fragment,
@@ -37,6 +38,12 @@ pub enum ProcedureError {
 impl From<Error> for ProcedureError {
 	fn from(err: Error) -> Self {
 		ProcedureError::Wrapped(Box::new(err))
+	}
+}
+
+impl From<CatalogError> for ProcedureError {
+	fn from(err: CatalogError) -> Self {
+		ProcedureError::Wrapped(Box::new(Error::from(err)))
 	}
 }
 

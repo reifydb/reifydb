@@ -8,14 +8,14 @@ use reifydb_type::value::{Value, duration::Duration, r#type::Type};
 use crate::common::CommitVersion;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum SystemConfigKey {
+pub enum ConfigKey {
 	OracleWindowSize,
 	OracleWaterMark,
 	RowTtlScanBatchSize,
 	RowTtlScanInterval,
 }
 
-impl SystemConfigKey {
+impl ConfigKey {
 	pub fn all() -> &'static [Self] {
 		&[Self::OracleWindowSize, Self::OracleWaterMark, Self::RowTtlScanBatchSize, Self::RowTtlScanInterval]
 	}
@@ -57,7 +57,7 @@ impl SystemConfigKey {
 	}
 }
 
-impl fmt::Display for SystemConfigKey {
+impl fmt::Display for ConfigKey {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
@@ -68,7 +68,7 @@ impl fmt::Display for SystemConfigKey {
 	}
 }
 
-impl FromStr for SystemConfigKey {
+impl FromStr for ConfigKey {
 	type Err = String;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -88,9 +88,9 @@ impl FromStr for SystemConfigKey {
 /// `default_value`, `description`, and `requires_restart` are compile-time constants
 /// provided at registration time — they are never stored to disk.
 #[derive(Debug, Clone)]
-pub struct SystemConfig {
+pub struct Config {
 	/// System configuration key
-	pub key: SystemConfigKey,
+	pub key: ConfigKey,
 	/// Currently active value (persisted override or default)
 	pub value: Value,
 	/// Compile-time default value
@@ -101,16 +101,16 @@ pub struct SystemConfig {
 	pub requires_restart: bool,
 }
 
-/// Trait for fetching system configuration values.
-pub trait GetSystemConfig: Send + Sync {
+/// Trait for fetching configuration values.
+pub trait GetConfig: Send + Sync {
 	/// Get the configuration value at the current snapshot.
-	fn get_system_config(&self, key: SystemConfigKey) -> Value;
+	fn get_config(&self, key: ConfigKey) -> Value;
 	/// Get the configuration value at a specific snapshot version.
-	fn get_system_config_at(&self, key: SystemConfigKey, version: CommitVersion) -> Value;
+	fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value;
 
 	/// Get the current value as a u64. Panics if the value is not Value::Uint8.
-	fn get_system_config_uint8(&self, key: SystemConfigKey) -> u64 {
-		let val = self.get_system_config(key);
+	fn get_config_uint8(&self, key: ConfigKey) -> u64 {
+		let val = self.get_config(key);
 		match val {
 			Value::Uint8(v) => v,
 			v => panic!("config key '{}' expected Uint8, got {:?}", key, v),
@@ -118,8 +118,8 @@ pub trait GetSystemConfig: Send + Sync {
 	}
 
 	/// Get the current value as a std::time::Duration. Panics if the value is not Value::Duration.
-	fn get_system_config_duration(&self, key: SystemConfigKey) -> StdDuration {
-		let val = self.get_system_config(key);
+	fn get_config_duration(&self, key: ConfigKey) -> StdDuration {
+		let val = self.get_config(key);
 		match val {
 			Value::Duration(v) => {
 				let total_nanos =

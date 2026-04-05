@@ -19,7 +19,7 @@ use reifydb_core::{
 	},
 	event::EventBus,
 	interface::{
-		catalog::config::{GetSystemConfig, SystemConfigKey},
+		catalog::config::{ConfigKey, GetConfig},
 		store::MultiVersionRow,
 	},
 	util::encoding::{
@@ -65,12 +65,12 @@ fn test_serializable(path: &Path) {
 	let single_store = SingleStore::testing_memory();
 	let bus = EventBus::new(&ActorSystem::new(1));
 	let actor_system = ActorSystem::new(1);
-	struct DefaultSystemConfig;
-	impl GetSystemConfig for DefaultSystemConfig {
-		fn get_system_config(&self, key: SystemConfigKey) -> Value {
+	struct DefaultConfig;
+	impl GetConfig for DefaultConfig {
+		fn get_config(&self, key: ConfigKey) -> Value {
 			key.default_value()
 		}
-		fn get_system_config_at(&self, key: SystemConfigKey, _version: CommitVersion) -> Value {
+		fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
 			key.default_value()
 		}
 	}
@@ -81,7 +81,7 @@ fn test_serializable(path: &Path) {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		Arc::new(DefaultSystemConfig),
+		Arc::new(DefaultConfig),
 	)
 	.unwrap();
 

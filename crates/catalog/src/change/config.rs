@@ -20,7 +20,7 @@ pub(super) struct ConfigApplier;
 impl CatalogChangeApplier for ConfigApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		apply_config(catalog, key, row, txn.version());
+		apply_config(catalog, key, row, txn.version())?;
 		Ok(())
 	}
 
@@ -31,13 +31,14 @@ impl CatalogChangeApplier for ConfigApplier {
 
 use reifydb_core::common::CommitVersion;
 
-fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: CommitVersion) {
+fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: CommitVersion) -> Result<()> {
 	let Some(config_key) = ConfigStorageKey::decode(key).map(|k| k.key) else {
-		return;
+		return Ok(());
 	};
 	let value = match SHAPE.get_value(row, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};
-	catalog.materialized.set_system_config(config_key, version, value);
+	catalog.materialized.set_config(config_key, version, value)?;
+	Ok(())
 }

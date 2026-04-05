@@ -10,7 +10,7 @@ use cleanup::cleanup_old_windows;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::EncodedKey,
-	interface::catalog::config::{GetSystemConfig, SystemConfigKey},
+	interface::catalog::config::{ConfigKey, GetConfig},
 	util::bloom::BloomFilter,
 };
 use reifydb_runtime::{
@@ -125,7 +125,7 @@ where
 	actor_system: ActorSystem,
 	metrics_clock: Clock,
 	rng: Rng,
-	system_config: Arc<dyn GetSystemConfig>,
+	config: Arc<dyn GetConfig>,
 }
 
 impl<L> Oracle<L>
@@ -137,7 +137,7 @@ where
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		system_config: Arc<dyn GetSystemConfig>,
+		config: Arc<dyn GetConfig>,
 	) -> Self {
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
@@ -155,13 +155,13 @@ where
 			actor_system,
 			metrics_clock,
 			rng,
-			system_config,
+			config,
 		}
 	}
 
-	/// Return the shared system config so callers can wire it to the catalog.
-	pub fn system_config(&self) -> Arc<dyn GetSystemConfig> {
-		self.system_config.clone()
+	/// Return the shared configuration so callers can wire it to the catalog.
+	pub fn config(&self) -> Arc<dyn GetConfig> {
+		self.config.clone()
 	}
 
 	/// Get the actor system
@@ -349,12 +349,11 @@ where
 			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
 
 			let add_start = self.metrics_clock.instant();
-			let window_size = self.system_config.get_system_config_uint8(SystemConfigKey::OracleWindowSize);
+			let window_size = self.config.get_config_uint8(ConfigKey::OracleWindowSize);
 			inner.add_committed_transaction(commit_version, conflicts, window_size);
 			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 			// Check if cleanup is needed
-			let water_mark =
-				self.system_config.get_system_config_uint8(SystemConfigKey::OracleWaterMark) as usize;
+			let water_mark = self.config.get_config_uint8(ConfigKey::OracleWaterMark) as usize;
 			inner.time_windows.len() > water_mark
 		};
 
@@ -504,16 +503,16 @@ pub mod tests {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::new(1);
 
-		struct DummySystemConfig;
-		impl GetSystemConfig for DummySystemConfig {
-			fn get_system_config(&self, key: SystemConfigKey) -> Value {
+		struct DummyConfig;
+		impl GetConfig for DummyConfig {
+			fn get_config(&self, key: ConfigKey) -> Value {
 				key.default_value()
 			}
-			fn get_system_config_at(&self, key: SystemConfigKey, _version: CommitVersion) -> Value {
+			fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
 				key.default_value()
 			}
 		}
-		let config = Arc::new(DummySystemConfig);
+		let config = Arc::new(DummyConfig);
 
 		Oracle::new(clock, actor_system, Clock::Mock(MockClock::from_millis(1000)), Rng::seeded(42), config)
 	}

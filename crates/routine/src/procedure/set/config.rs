@@ -3,17 +3,19 @@
 
 use std::str::FromStr;
 
-use reifydb_core::{interface::catalog::config::SystemConfigKey, value::column::columns::Columns};
+use reifydb_catalog::error::CatalogError;
+use reifydb_core::{interface::catalog::config::ConfigKey, value::column::columns::Columns};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
+	error::Error as TypeError,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, r#type::Type},
+	value::{Value, duration::Duration, r#type::Type},
 };
 
 use crate::procedure::{Procedure, context::ProcedureContext, error::ProcedureError};
 
-/// Native procedure that sets a system configuration value.
+/// Native procedure that sets a configuration value.
 ///
 /// Accepts 2 positional arguments: key (Utf8) and value (any).
 pub struct SetConfigProcedure;
@@ -62,21 +64,25 @@ impl Procedure for SetConfigProcedure {
 			}
 		};
 
-		let value_clone = value.clone();
+		if matches!(value, Value::None { .. }) {
+			return Err(CatalogError::ConfigValueInvalid(key_str).into());
+		}
 
-		let system_config_key = match SystemConfigKey::from_str(&key_str) {
+		let config_key = match ConfigKey::from_str(&key_str) {
 			Ok(k) => k,
-			Err(e) => {
-				return Err(ProcedureError::ExecutionFailed {
-					procedure: Fragment::internal("system::config::set"),
-					reason: e,
-				});
+			Err(_) => {
+				return Err(CatalogError::ConfigStorageKeyNotFound(key_str).into());
 			}
 		};
 
+		let coerced_value = coerce_config_value(config_key, value)
+			.map_err(|e| ProcedureError::Wrapped(Box::new(TypeError::from(*e))))?;
+
+		let value_clone = coerced_value.clone();
+
 		match tx {
-			Transaction::Admin(admin) => ctx.catalog.set_system_config(admin, system_config_key, value)?,
-			Transaction::Test(t) => ctx.catalog.set_system_config(t.inner, system_config_key, value)?,
+			Transaction::Admin(admin) => ctx.catalog.set_config(admin, config_key, coerced_value)?,
+			Transaction::Test(t) => ctx.catalog.set_config(t.inner, config_key, coerced_value)?,
 			_ => {
 				return Err(ProcedureError::ExecutionFailed {
 					procedure: Fragment::internal("system::config::set"),
@@ -87,4 +93,90 @@ impl Procedure for SetConfigProcedure {
 
 		Ok(Columns::single_row([("key", Value::Utf8(key_str)), ("value", value_clone)]))
 	}
+}
+
+fn coerce_config_value(key: ConfigKey, value: Value) -> Result<Value, Box<CatalogError>> {
+	let expected_types = key.expected_types();
+	if expected_types.contains(&value.get_type()) {
+		return Ok(value);
+	}
+
+	// Try basic coercion
+	for expected in expected_types {
+		match expected {
+			Type::Uint8 => {
+				if let Some(v) = value.to_usize()
+					&& v <= u64::MAX as usize
+				{
+					return Ok(Value::Uint8(v as u64));
+				}
+			}
+			Type::Uint4 => {
+				if let Some(v) = value.to_usize()
+					&& v <= u32::MAX as usize
+				{
+					return Ok(Value::Uint4(v as u32));
+				}
+			}
+			Type::Uint2 => {
+				if let Some(v) = value.to_usize()
+					&& v <= u16::MAX as usize
+				{
+					return Ok(Value::Uint2(v as u16));
+				}
+			}
+			Type::Uint1 => {
+				if let Some(v) = value.to_usize()
+					&& v <= u8::MAX as usize
+				{
+					return Ok(Value::Uint1(v as u8));
+				}
+			}
+			Type::Int8 => {
+				if let Some(v) = value.to_usize()
+					&& v <= i64::MAX as usize
+				{
+					return Ok(Value::Int8(v as i64));
+				}
+			}
+			Type::Int4 => {
+				if let Some(v) = value.to_usize()
+					&& v <= i32::MAX as usize
+				{
+					return Ok(Value::Int4(v as i32));
+				}
+			}
+			Type::Int2 => {
+				if let Some(v) = value.to_usize()
+					&& v <= i16::MAX as usize
+				{
+					return Ok(Value::Int2(v as i16));
+				}
+			}
+			Type::Int1 => {
+				if let Some(v) = value.to_usize()
+					&& v <= i8::MAX as usize
+				{
+					return Ok(Value::Int1(v as i8));
+				}
+			}
+			Type::Duration => {
+				if let Value::Duration(v) = value {
+					return Ok(Value::Duration(v));
+				}
+				if let Some(v) = value.to_usize()
+					&& let Ok(d) = Duration::from_seconds(v as i64)
+				{
+					return Ok(Value::Duration(d));
+				}
+			}
+			_ => {}
+		}
+	}
+
+	Err(Box::new(CatalogError::ConfigTypeMismatch {
+		key: key.to_string(),
+		expected: expected_types.to_vec(),
+		actual: value.get_type(),
+	}))
 }

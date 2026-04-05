@@ -1065,7 +1065,7 @@ impl SystemCatalog {
 	}
 
 	/// Get the configs virtual table definition
-	pub fn get_system_configs_table() -> Arc<VTable> {
+	pub fn get_configs_table() -> Arc<VTable> {
 		configs()
 	}
 

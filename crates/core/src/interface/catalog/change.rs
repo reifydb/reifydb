@@ -10,7 +10,7 @@ use reifydb_type::Result;
 
 use crate::interface::catalog::{
 	authentication::Authentication,
-	config::SystemConfig,
+	config::Config,
 	dictionary::Dictionary,
 	flow::Flow,
 	handler::Handler,
@@ -29,9 +29,9 @@ use crate::interface::catalog::{
 	view::View,
 };
 
-/// Trait for tracking system configuration changes during a transaction.
-pub trait CatalogTrackSystemConfigChangeOperations {
-	fn track_system_config_set(&mut self, pre: SystemConfig, post: SystemConfig) -> Result<()>;
+/// Trait for tracking configuration changes during a transaction.
+pub trait CatalogTrackConfigChangeOperations {
+	fn track_config_set(&mut self, pre: Config, post: Config) -> Result<()>;
 }
 
 /// Trait for tracking table definition changes during a transaction.
@@ -218,6 +218,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackIdentityChangeOperations
 	+ CatalogTrackGrantedRoleChangeOperations
 	+ CatalogTrackViewChangeOperations
-	+ CatalogTrackSystemConfigChangeOperations
+	+ CatalogTrackConfigChangeOperations
 {
 }

@@ -27,7 +27,7 @@ pub struct SystemConfigs {
 impl SystemConfigs {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_configs_table().clone(),
+			vtable: SystemCatalog::get_configs_table().clone(),
 			ioc,
 			exhausted: false,
 		}
@@ -52,7 +52,7 @@ impl BaseVTable for SystemConfigs {
 		};
 
 		if let Transaction::Test(t) = txn {
-			for change in &t.inner.changes.system_config {
+			for change in &t.inner.changes.config {
 				if let Some(post) = &change.post
 					&& let Some(cfg) = configs.iter_mut().find(|c| c.key == post.key)
 				{

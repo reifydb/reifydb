@@ -16,7 +16,7 @@ use reifydb_core::{
 	encoded::key::EncodedKey,
 	event::EventBus,
 	interface::{
-		catalog::config::{GetSystemConfig, SystemConfigKey},
+		catalog::config::{ConfigKey, GetConfig},
 		store::{MultiVersionContains, MultiVersionGet},
 	},
 };
@@ -104,7 +104,7 @@ where
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		config: Arc<dyn GetSystemConfig>,
+		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version = clock.next()?;
 		let oracle = Oracle::new(clock, actor_system, metrics_clock, rng, config);
@@ -120,9 +120,9 @@ where
 		self.inner.actor_system()
 	}
 
-	/// Get the shared system config from the oracle.
-	pub fn system_config(&self) -> Arc<dyn GetSystemConfig> {
-		self.inner.system_config()
+	/// Get the shared configuration.
+	pub fn config(&self) -> Arc<dyn GetConfig> {
+		self.inner.config()
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
@@ -231,7 +231,7 @@ impl Inner {
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		config: Arc<dyn GetSystemConfig>,
+		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
 		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock, rng, config)?;
@@ -259,16 +259,16 @@ impl MultiTransaction {
 		let actor_system = ActorSystem::new(1);
 		let event_bus = EventBus::new(&actor_system);
 
-		struct DummySystemConfig;
-		impl GetSystemConfig for DummySystemConfig {
-			fn get_system_config(&self, key: SystemConfigKey) -> Value {
+		struct DummyConfig;
+		impl GetConfig for DummyConfig {
+			fn get_config(&self, key: ConfigKey) -> Value {
 				key.default_value()
 			}
-			fn get_system_config_at(&self, key: SystemConfigKey, _version: CommitVersion) -> Value {
+			fn get_config_at(&self, key: ConfigKey, _version: CommitVersion) -> Value {
 				key.default_value()
 			}
 		}
-		let system_config = Arc::new(DummySystemConfig);
+		let config = Arc::new(DummyConfig);
 
 		Self::new(
 			multi_store,
@@ -277,7 +277,7 @@ impl MultiTransaction {
 			actor_system,
 			Clock::Mock(MockClock::from_millis(1000)),
 			Rng::seeded(42),
-			system_config,
+			config,
 		)
 		.expect("failed to create testing MultiTransaction")
 	}
@@ -287,7 +287,7 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, actor_system, metrics_clock, rng, system_config)
+		skip(store, single, event_bus, actor_system, metrics_clock, rng, config)
 	)]
 	pub fn new(
 		store: MultiStore,
@@ -296,17 +296,9 @@ impl MultiTransaction {
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		system_config: Arc<dyn GetSystemConfig>,
+		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(
-			store,
-			single,
-			event_bus,
-			actor_system,
-			metrics_clock,
-			rng,
-			system_config,
-		)?)))
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus, actor_system, metrics_clock, rng, config)?)))
 	}
 
 	/// Get the actor system
@@ -314,9 +306,9 @@ impl MultiTransaction {
 		self.0.actor_system()
 	}
 
-	/// Get the shared system config from the oracle.
-	pub fn system_config(&self) -> Arc<dyn GetSystemConfig> {
-		self.0.tm.system_config()
+	/// Get the shared configuration from the oracle.
+	pub fn config(&self) -> Arc<dyn GetConfig> {
+		self.0.tm.config()
 	}
 }
 

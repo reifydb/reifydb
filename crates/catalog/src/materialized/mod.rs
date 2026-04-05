@@ -33,7 +33,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
-		config::{GetSystemConfig, SystemConfig, SystemConfigKey},
+		config::{Config, ConfigKey, GetConfig},
 		dictionary::Dictionary,
 		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
@@ -108,7 +108,7 @@ pub struct MaterializedCatalog(Arc<MaterializedCatalogInner>);
 #[derive(Debug)]
 pub struct MaterializedCatalogInner {
 	/// Runtime configuration registry (shared with the oracle)
-	pub(crate) system_configs: SkipMap<SystemConfigKey, MultiVersionConfig>,
+	pub(crate) configs: SkipMap<ConfigKey, MultiVersionConfig>,
 	/// MultiVersion namespace definitions indexed by namespace ID
 	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespace>,
 	/// Index from namespace name to namespace ID for fast name lookups
@@ -234,7 +234,7 @@ impl MaterializedCatalog {
 		namespaces_by_name.insert("default".to_string(), default_namespace_id);
 
 		let inner = MaterializedCatalogInner {
-			system_configs: SkipMap::new(),
+			configs: SkipMap::new(),
 			namespaces,
 			namespaces_by_name,
 			procedures: SkipMap::new(),
@@ -363,29 +363,29 @@ impl MaterializedCatalog {
 		self.vtable_user.iter().map(|e| e.value().clone()).collect()
 	}
 
-	/// Get a system configuration value at a specific version.
-	pub fn get_system_config_at(&self, key: SystemConfigKey, version: CommitVersion) -> Value {
-		self.0.system_configs
+	/// Get a configuration value at a specific version.
+	pub fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value {
+		self.0.configs
 			.get(&key)
 			.and_then(|entry| entry.value().get(version))
 			.unwrap_or_else(|| key.default_value())
 	}
 
-	/// Get the latest system configuration value.
-	pub fn get_system_config(&self, key: SystemConfigKey) -> Value {
-		self.0.system_configs
+	/// Get the latest configuration value.
+	pub fn get_config(&self, key: ConfigKey) -> Value {
+		self.0.configs
 			.get(&key)
 			.and_then(|entry| entry.value().get_latest())
 			.unwrap_or_else(|| key.default_value())
 	}
 
-	/// List all system configurations at a specific version.
-	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<SystemConfig> {
-		SystemConfigKey::all()
+	/// List all configurations at a specific version.
+	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<Config> {
+		ConfigKey::all()
 			.iter()
-			.map(|&key| SystemConfig {
+			.map(|&key| Config {
 				key,
-				value: self.get_system_config_at(key, version),
+				value: self.get_config_at(key, version),
 				default_value: key.default_value(),
 				description: key.description(),
 				requires_restart: key.requires_restart(),
@@ -393,29 +393,30 @@ impl MaterializedCatalog {
 			.collect()
 	}
 
-	/// Set a new value for a system configuration at a given version.
-	pub fn set_system_config(&self, key: SystemConfigKey, version: CommitVersion, value: Value) {
+	/// Set a new value for a configuration at a given version.
+	pub fn set_config(&self, key: ConfigKey, version: CommitVersion, value: Value) -> Result<()> {
 		let expected_types = key.expected_types();
 		if !expected_types.contains(&value.get_type()) {
-			panic!(
-				"SystemConfig::set_system_config called with invalid value type for key {}: expected one of {:?}, got {:?}",
-				key,
-				expected_types,
-				value.get_type()
-			);
+			return Err(CatalogError::ConfigTypeMismatch {
+				key: key.to_string(),
+				expected: expected_types.to_vec(),
+				actual: value.get_type(),
+			}
+			.into());
 		}
 
-		let entry = self.0.system_configs.get_or_insert_with(key, MultiVersionContainer::new);
+		let entry = self.0.configs.get_or_insert_with(key, MultiVersionContainer::new);
 		entry.value().insert(version, value);
+		Ok(())
 	}
 }
 
-impl GetSystemConfig for MaterializedCatalog {
-	fn get_system_config(&self, key: SystemConfigKey) -> Value {
-		self.get_system_config(key)
+impl GetConfig for MaterializedCatalog {
+	fn get_config(&self, key: ConfigKey) -> Value {
+		self.get_config(key)
 	}
 
-	fn get_system_config_at(&self, key: SystemConfigKey, version: CommitVersion) -> Value {
-		self.get_system_config_at(key, version)
+	fn get_config_at(&self, key: ConfigKey, version: CommitVersion) -> Value {
+		self.get_config_at(key, version)
 	}
 }
