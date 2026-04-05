@@ -59,6 +59,50 @@ pub fn schedule_once_fn<M: Send + 'static, F: FnOnce() -> M + Send + 'static>(
 
 /// Schedule a message to be sent repeatedly at an interval.
 ///
+/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
+/// Returns a handle that can be used to cancel the timer.
+pub fn schedule_repeat_fn<M: Send + 'static, F: Fn() -> M + Send + 'static>(
+	actor_ref: ActorRef<M>,
+	interval: Duration,
+	factory: F,
+) -> TimerHandle {
+	let handle = TimerHandle::new(next_timer_id());
+	let cancelled = handle.cancelled_flag();
+
+	enqueue_repeat_fn(actor_ref, interval, factory, cancelled);
+
+	handle
+}
+
+fn enqueue_repeat_fn<M: Send + 'static, F: Fn() -> M + Send + 'static>(
+	actor_ref: ActorRef<M>,
+	interval: Duration,
+	factory: F,
+	cancelled: Arc<AtomicBool>,
+) {
+	let fire_at = Instant::now() + interval;
+	let cancelled_for_reschedule = cancelled.clone();
+
+	let callback: Box<dyn FnOnce()> = Box::new({
+		let actor_ref_clone = actor_ref.clone();
+		move || {
+			if actor_ref.send(factory()).is_ok() {
+				enqueue_repeat_fn(actor_ref_clone, interval, factory, cancelled_for_reschedule);
+			}
+		}
+	});
+
+	TIMER_QUEUE.with(|q| {
+		q.borrow_mut().push(TimerEntry {
+			fire_at,
+			callback,
+			cancelled,
+		});
+	});
+}
+
+/// Schedule a message to be sent repeatedly at an interval.
+///
 /// Each firing re-enqueues itself for the next interval.
 pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interval: Duration, msg: M) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());

@@ -18,9 +18,9 @@ use std::{
 };
 
 #[cfg(reifydb_target = "wasi")]
-use crate::actor::timers::wasi::{schedule_once_fn, schedule_repeat};
+use crate::actor::timers::wasi::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
 #[cfg(reifydb_target = "wasm")]
-use crate::actor::timers::wasm::{schedule_once_fn, schedule_repeat};
+use crate::actor::timers::wasm::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
 use crate::actor::{mailbox::ActorRef, system::ActorSystem, timers::TimerHandle};
 
 /// A cancellation token for signaling shutdown.
@@ -140,6 +140,64 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	#[cfg(reifydb_single_threaded)]
 	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
 		schedule_repeat(self.self_ref.clone(), interval, msg)
+	}
+
+	/// Schedule a message to be sent to this actor repeatedly at an interval.
+	///
+	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
+	/// The timer continues until cancelled or the actor is dropped.
+	/// Returns a handle that can be used to cancel the timer.
+	#[cfg(not(reifydb_single_threaded))]
+	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
+		&self,
+		interval: Duration,
+		factory: F,
+	) -> TimerHandle {
+		let actor_ref = self.self_ref.clone();
+		self.system.scheduler().schedule_repeat(interval, move || actor_ref.send(factory()).is_ok())
+	}
+
+	/// Schedule a message to be sent to this actor repeatedly at an interval.
+	///
+	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
+	/// The timer continues until cancelled or the actor is dropped.
+	/// Returns a handle that can be used to cancel the timer.
+	#[cfg(reifydb_single_threaded)]
+	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
+		&self,
+		interval: Duration,
+		factory: F,
+	) -> TimerHandle {
+		schedule_repeat_fn(self.self_ref.clone(), interval, factory)
+	}
+
+	/// Schedule a periodic tick message that includes the current system time.
+	///
+	/// Uses the system clock to populate a timestamp (nanoseconds since epoch)
+	/// which is passed to the factory function on each tick.
+	pub fn schedule_tick<F: Fn(u64) -> M + Send + Sync + 'static>(
+		&self,
+		interval: Duration,
+		factory: F,
+	) -> TimerHandle {
+		let actor_ref = self.self_ref.clone();
+		let clock = self.system.clock().clone();
+
+		#[cfg(not(reifydb_single_threaded))]
+		{
+			self.system.scheduler().schedule_repeat(interval, move || {
+				let now = clock.now_nanos();
+				actor_ref.send(factory(now)).is_ok()
+			})
+		}
+
+		#[cfg(reifydb_single_threaded)]
+		{
+			schedule_repeat_fn(actor_ref, interval, move || {
+				let now = clock.now_nanos();
+				factory(now)
+			})
+		}
 	}
 }
 

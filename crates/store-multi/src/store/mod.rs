@@ -20,14 +20,7 @@ pub mod worker;
 
 use worker::{DropActor, DropMessage, DropWorkerConfig};
 
-use crate::{
-	Result,
-	gc::{
-		RowTtlProvider,
-		config::GcConfig,
-		hot::{GcHotActor, GcHotMessage},
-	},
-};
+use crate::Result;
 
 #[derive(Clone)]
 pub struct StandardMultiStore(Arc<StandardMultiStoreInner>);
@@ -95,24 +88,6 @@ impl Deref for StandardMultiStore {
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
-	}
-}
-
-impl StandardMultiStore {
-	/// Spawn a TTL GC actor that periodically scans and drops expired rows.
-	///
-	/// The provider is typically implemented by the engine layer wrapping
-	/// the materialized catalog. Call this after both store and catalog
-	/// are available.
-	pub fn spawn_gc<P: RowTtlProvider>(
-		&self,
-		system: &ActorSystem,
-		config: GcConfig,
-		provider: P,
-		clock: Clock,
-	) -> ActorRef<GcHotMessage> {
-		let storage = self.hot.clone().expect("hot tier is required for TTL GC");
-		GcHotActor::spawn(system, config, storage, provider, clock, self.event_bus.clone())
 	}
 }
 

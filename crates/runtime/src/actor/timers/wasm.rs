@@ -58,6 +58,47 @@ pub fn schedule_once_fn<M: Send + 'static, F: FnOnce() -> M + Send + 'static>(
 
 /// Schedule a message to be sent repeatedly at an interval.
 ///
+/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
+/// Returns a handle that can be used to cancel the timer.
+pub fn schedule_repeat_fn<M: Send + 'static, F: Fn() -> M + Send + 'static>(
+	actor_ref: ActorRef<M>,
+	interval: Duration,
+	factory: F,
+) -> TimerHandle {
+	let handle = TimerHandle::new(next_timer_id());
+	let cancelled = handle.cancelled_flag();
+
+	// Store the interval handle so we can clear it.
+	let interval_handle: Rc<RefCell<Option<JsValue>>> = Rc::new(RefCell::new(None));
+	let interval_handle_clone = interval_handle.clone();
+
+	let closure = Closure::new(Box::new(move || {
+		if cancelled.load(Ordering::SeqCst) {
+			if let Some(h) = interval_handle_clone.borrow().as_ref() {
+				global_clear_interval(h);
+			}
+			return;
+		}
+
+		if actor_ref.send(factory()).is_err() {
+			if let Some(h) = interval_handle_clone.borrow().as_ref() {
+				global_clear_interval(h);
+			}
+		}
+	}) as Box<dyn FnMut()>);
+
+	let h = global_set_interval(closure.as_ref().unchecked_ref(), interval.as_millis() as i32);
+
+	*interval_handle.borrow_mut() = Some(h);
+
+	// Prevent closure from being dropped
+	closure.forget();
+
+	handle
+}
+
+/// Schedule a message to be sent repeatedly at an interval.
+///
 /// Returns a handle that can be used to cancel the timer.
 pub fn schedule_repeat<M: Send + Clone + 'static>(actor_ref: ActorRef<M>, interval: Duration, msg: M) -> TimerHandle {
 	let handle = TimerHandle::new(next_timer_id());

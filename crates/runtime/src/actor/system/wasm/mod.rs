@@ -15,15 +15,19 @@ use std::{
 
 use tracing::{debug, warn};
 
-use crate::actor::{
-	context::{CancellationToken, Context},
-	mailbox::ActorRef,
-	traits::{Actor, Directive},
+use crate::{
+	actor::{
+		context::{CancellationToken, Context},
+		mailbox::ActorRef,
+		traits::{Actor, Directive},
+	},
+	context::clock::Clock,
 };
 
 /// Inner shared state for the actor system.
 struct ActorSystemInner {
 	cancel: CancellationToken,
+	clock: Clock,
 }
 
 /// Unified system for all concurrent work (WASM version).
@@ -39,10 +43,16 @@ impl ActorSystem {
 	/// Create a new actor system.
 	///
 	/// Pool threads parameter is ignored in WASM.
-	pub fn new(_pool_threads: usize) -> Self {
+	pub fn new(pool_threads: usize) -> Self {
+		Self::with_clock(pool_threads, Clock::Real)
+	}
+
+	/// Create a new actor system with a specific clock.
+	pub fn with_clock(_pool_threads: usize, clock: Clock) -> Self {
 		Self {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
+				clock,
 			}),
 		}
 	}
@@ -51,6 +61,7 @@ impl ActorSystem {
 		Self {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
+				clock: self.inner.clock.clone(),
 			}),
 		}
 	}
@@ -68,6 +79,11 @@ impl ActorSystem {
 	/// Signal shutdown to all actors.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
+	}
+
+	/// Get the clock for this system.
+	pub fn clock(&self) -> &Clock {
+		&self.inner.clock
 	}
 
 	/// Wait for all actors to finish after shutdown (no-op in WASM).

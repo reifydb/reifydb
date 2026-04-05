@@ -20,15 +20,19 @@ use std::{
 use crossbeam_channel::{Receiver, RecvTimeoutError as CcRecvTimeoutError};
 use rayon::ThreadPoolBuilder;
 
-use crate::actor::{
-	context::CancellationToken, system::native::pool::PoolActorHandle, timers::scheduler::SchedulerHandle,
-	traits::Actor,
+use crate::{
+	actor::{
+		context::CancellationToken, system::native::pool::PoolActorHandle, timers::scheduler::SchedulerHandle,
+		traits::Actor,
+	},
+	context::clock::Clock,
 };
 
 /// Inner shared state for the actor system.
 struct ActorSystemInner {
 	cancel: CancellationToken,
 	scheduler: SchedulerHandle,
+	clock: Clock,
 	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
 	done_rxs: Mutex<Vec<Receiver<()>>>,
@@ -50,6 +54,11 @@ static POOL_INIT: Once = Once::new();
 impl ActorSystem {
 	/// Create a new actor system with the given number of pool threads.
 	pub fn new(pool_threads: usize) -> Self {
+		Self::with_clock(pool_threads, Clock::Real)
+	}
+
+	/// Create a new actor system with a specific clock.
+	pub fn with_clock(pool_threads: usize, clock: Clock) -> Self {
 		POOL_INIT.call_once(|| {
 			ThreadPoolBuilder::new()
 				.num_threads(pool_threads)
@@ -64,6 +73,7 @@ impl ActorSystem {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
 				scheduler,
+				clock,
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
@@ -76,6 +86,7 @@ impl ActorSystem {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
 				scheduler: self.inner.scheduler.shared(),
+				clock: self.inner.clock.clone(),
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
@@ -156,6 +167,11 @@ impl ActorSystem {
 	/// Get the timer scheduler for scheduling delayed/periodic callbacks.
 	pub fn scheduler(&self) -> &SchedulerHandle {
 		&self.inner.scheduler
+	}
+
+	/// Get the clock for this system.
+	pub fn clock(&self) -> &Clock {
+		&self.inner.clock
 	}
 
 	/// Spawn an actor on the shared work-stealing pool.

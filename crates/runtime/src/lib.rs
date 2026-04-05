@@ -221,7 +221,7 @@ impl SharedRuntime {
 			.build()
 			.expect("Failed to create tokio runtime");
 
-		let system = ActorSystem::new(config.compute_threads);
+		let system = ActorSystem::with_clock(config.compute_threads, config.clock.clone());
 
 		Self(Arc::new(SharedRuntimeInner {
 			tokio: ManuallyDrop::new(tokio),
@@ -234,7 +234,7 @@ impl SharedRuntime {
 	/// Create a new shared runtime from configuration.
 	#[cfg(target_arch = "wasm32")]
 	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let system = ActorSystem::new(config.compute_threads);
+		let system = ActorSystem::with_clock(config.compute_threads, config.clock.clone());
 
 		Self(Arc::new(SharedRuntimeInner {
 			system,

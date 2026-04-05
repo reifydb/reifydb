@@ -1,82 +1,76 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{
-	event::{EventBus, gc::MultiStoreVacuumEvent},
-	row::RowTtlCleanupMode,
+use reifydb_core::{event::gc::MultiStoreVacuumEvent, row::RowTtlCleanupMode};
+use reifydb_runtime::actor::{
+	context::Context,
+	mailbox::ActorRef,
+	system::{ActorConfig, ActorSystem},
+	timers::TimerHandle,
+	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		mailbox::ActorRef,
-		system::{ActorConfig, ActorSystem},
-		timers::TimerHandle,
-		traits::{Actor, Directive},
-	},
-	context::clock::Clock,
-};
+use reifydb_type::value::datetime::DateTime;
 use tracing::{debug, info, warn};
 
-use super::{RowTtlProvider, config::GcConfig, scanner, stats::GcScanStats};
-use crate::hot::storage::HotStorage;
+use super::{ListRowTtls, config::Config, scanner, stats::GcScanStats};
+use crate::store::StandardMultiStore;
 
 /// Messages handled by the TTL GC actor.
 #[derive(Debug, Clone)]
-pub enum GcHotMessage {
+pub enum Message {
 	/// Periodic tick triggers a full scan cycle.
-	Tick,
+	Tick(DateTime),
 	/// Shutdown gracefully.
 	Shutdown,
 }
 
 /// Internal state for the GC actor.
-pub struct GcHotActorState {
+pub struct ActorState {
 	_timer_handle: Option<TimerHandle>,
 	scanning: bool,
 }
 
 /// Background actor that periodically scans shapes for expired rows
 /// and physically drops them based on TTL configuration.
-pub struct GcHotActor<P: RowTtlProvider> {
-	storage: HotStorage,
+pub struct Actor<P: ListRowTtls> {
+	store: StandardMultiStore,
 	provider: P,
-	config: GcConfig,
-	clock: Clock,
-	event_bus: EventBus,
+	config: Config,
 }
 
-impl<P: RowTtlProvider> GcHotActor<P> {
-	pub fn new(config: GcConfig, storage: HotStorage, provider: P, clock: Clock, event_bus: EventBus) -> Self {
+impl<P: ListRowTtls> Actor<P> {
+	pub fn new(config: Config, store: StandardMultiStore, provider: P) -> Self {
 		Self {
-			storage,
+			store,
 			provider,
 			config,
-			clock,
-			event_bus,
 		}
 	}
 
 	pub fn spawn(
 		system: &ActorSystem,
-		config: GcConfig,
-		storage: HotStorage,
+		config: Config,
+		store: StandardMultiStore,
 		provider: P,
-		clock: Clock,
-		event_bus: EventBus,
-	) -> ActorRef<GcHotMessage> {
-		let actor = Self::new(config, storage, provider, clock, event_bus);
-		system.spawn("ttl-gc", actor).actor_ref().clone()
+	) -> ActorRef<Message> {
+		let actor = Self::new(config, store, provider);
+		system.spawn("row-ttl", actor).actor_ref().clone()
 	}
-
-	fn run_scan(&self, state: &mut GcHotActorState) {
+	fn run_scan(&self, state: &mut ActorState, now: DateTime) {
 		if state.scanning {
 			debug!("TTL GC scan already in progress, skipping tick");
 			return;
 		}
+
+		let Some(hot) = self.store.hot() else {
+			warn!("TTL GC skipped: hot tier is not configured");
+			return;
+		};
+
 		state.scanning = true;
 
-		let now_nanos = self.clock.now_nanos();
-		let ttls = self.provider.row_ttls();
+		let now_nanos = now.to_nanos();
+		let ttls = self.provider.list_row_ttls();
 		let mut stats = GcScanStats::default();
 
 		for (shape_id, ttl_config) in &ttls {
@@ -90,7 +84,7 @@ impl<P: RowTtlProvider> GcHotActor<P> {
 			}
 
 			match scanner::scan_shape_for_expired(
-				&self.storage,
+				hot,
 				*shape_id,
 				ttl_config,
 				now_nanos,
@@ -101,12 +95,9 @@ impl<P: RowTtlProvider> GcHotActor<P> {
 					stats.rows_expired += expired.len() as u64;
 
 					if !expired.is_empty()
-						&& let Err(e) = scanner::drop_expired_keys(
-							&self.storage,
-							*shape_id,
-							&expired,
-							&mut stats,
-						) {
+						&& let Err(e) =
+							scanner::drop_expired_keys(hot, *shape_id, &expired, &mut stats)
+					{
 						warn!(?shape_id, error = %e, "Failed to drop expired keys");
 					}
 				}
@@ -132,7 +123,7 @@ impl<P: RowTtlProvider> GcHotActor<P> {
 			);
 		}
 
-		self.event_bus.emit(MultiStoreVacuumEvent::new(
+		self.store.event_bus.emit(MultiStoreVacuumEvent::new(
 			stats.shapes_scanned,
 			stats.shapes_skipped,
 			stats.rows_expired,
@@ -144,29 +135,30 @@ impl<P: RowTtlProvider> GcHotActor<P> {
 	}
 }
 
-impl<P: RowTtlProvider> Actor for GcHotActor<P> {
-	type State = GcHotActorState;
-	type Message = GcHotMessage;
+impl<P: ListRowTtls> ActorTrait for Actor<P> {
+	type State = ActorState;
+	type Message = Message;
 
-	fn init(&self, ctx: &Context<GcHotMessage>) -> GcHotActorState {
+	fn init(&self, ctx: &Context<Message>) -> ActorState {
 		debug!("TTL GC actor started");
-		let timer_handle = ctx.schedule_repeat(self.config.scan_interval, GcHotMessage::Tick);
-		GcHotActorState {
+		let timer_handle = ctx
+			.schedule_tick(self.config.scan_interval, |nanos| Message::Tick(DateTime::from_nanos(nanos)));
+		ActorState {
 			_timer_handle: Some(timer_handle),
 			scanning: false,
 		}
 	}
 
-	fn handle(&self, state: &mut GcHotActorState, msg: GcHotMessage, ctx: &Context<GcHotMessage>) -> Directive {
+	fn handle(&self, state: &mut ActorState, msg: Message, ctx: &Context<Message>) -> Directive {
 		if ctx.is_cancelled() {
 			return Directive::Stop;
 		}
 
 		match msg {
-			GcHotMessage::Tick => {
-				self.run_scan(state);
+			Message::Tick(now) => {
+				self.run_scan(state, now);
 			}
-			GcHotMessage::Shutdown => {
+			Message::Shutdown => {
 				debug!("TTL GC actor shutting down");
 				return Directive::Stop;
 			}
@@ -182,4 +174,18 @@ impl<P: RowTtlProvider> Actor for GcHotActor<P> {
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new().mailbox_capacity(64)
 	}
+}
+
+/// Spawn a TTL GC actor that periodically scans and drops expired rows.
+///
+/// The provider is typically implemented by the engine layer wrapping
+/// the materialized catalog. Call this after both store and catalog
+/// are available.
+pub fn spawn_row_ttl_actor<P: ListRowTtls>(
+	store: StandardMultiStore,
+	system: ActorSystem,
+	config: Config,
+	provider: P,
+) -> ActorRef<Message> {
+	Actor::spawn(&system, config, store, provider)
 }
