@@ -8,6 +8,9 @@ use reifydb_core::{
 		system_version::{SystemVersion, SystemVersionKey},
 	},
 };
+use reifydb_engine::engine::StandardEngine;
+use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_store_multi::{MultiStore, ttl::actor::spawn_row_ttl_actor};
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_type::value::r#type::Type;
 
@@ -37,6 +40,20 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> crate::Resul
 	};
 
 	tx.commit()?;
+
+	Ok(())
+}
+
+/// Spawns background actors during the bootload phase.
+pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) -> crate::Result<()> {
+	// Spawn background actors
+	let store = match engine.multi_owned().store() {
+		MultiStore::Standard(s) => s.clone(),
+	};
+
+	let catalog = engine.catalog();
+
+	let _ttl_actor = spawn_row_ttl_actor(store, actor_system.clone(), catalog);
 
 	Ok(())
 }

@@ -2,9 +2,9 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::collections::HashMap;
+use std::time::Duration as StdDuration;
 
 use reifydb_core::{
-	config::SystemConfig,
 	event::row::RowsExpiredEvent,
 	interface::catalog::shape::ShapeId,
 	row::{RowTtlAnchor, RowTtlCleanupMode},
@@ -16,13 +16,13 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_type::value::{Value, datetime::DateTime};
+use reifydb_type::value::{Value, datetime::DateTime, duration::Duration};
 use tracing::{debug, info, warn};
 
-use super::{ListRowTtls, ScanStats, config::Config, scanner};
+use super::{ListRowTtls, ScanStats, scanner};
 use crate::{store::StandardMultiStore, tier::RangeCursor};
 
-/// Messages handled by the TTL GC actor.
+/// Messages handled by the row TTL actor.
 #[derive(Debug, Clone)]
 pub enum Message {
 	/// Periodic tick triggers a full scan cycle.
@@ -37,7 +37,7 @@ pub struct ScannerState {
 	cursors: HashMap<ShapeId, RangeCursor>,
 }
 
-/// Internal state for the GC actor.
+/// Internal state for the row TTL actor.
 pub struct ActorState {
 	_timer_handle: Option<TimerHandle>,
 	scanning: bool,
@@ -48,46 +48,44 @@ pub struct ActorState {
 /// and physically drops them based on TTL configuration.
 pub struct Actor<P: ListRowTtls> {
 	store: StandardMultiStore,
-	system_config: SystemConfig,
 	provider: P,
-	config: Config,
 }
 
 impl<P: ListRowTtls> Actor<P> {
-	pub fn new(config: Config, store: StandardMultiStore, provider: P, system_config: SystemConfig) -> Self {
+	pub fn new(store: StandardMultiStore, provider: P) -> Self {
+		let system_config = provider.system_config();
 		system_config.register(
 			"ROW_TTL_SCAN_BATCH_SIZE",
 			Value::Uint8(10000),
-			"Max rows to examine per batch during a TTL scan.",
+			"Max rows to examine per batch during a row TTL scan.",
+			false,
+		);
+		system_config.register(
+			"ROW_TTL_SCAN_INTERVAL",
+			Value::Duration(Duration::from_seconds(60).unwrap()),
+			"How often the row TTL actor should scan for expired rows.",
 			false,
 		);
 
 		Self {
 			store,
-			system_config,
 			provider,
-			config,
 		}
 	}
 
-	pub fn spawn(
-		system: &ActorSystem,
-		config: Config,
-		store: StandardMultiStore,
-		provider: P,
-		system_config: SystemConfig,
-	) -> ActorRef<Message> {
-		let actor = Self::new(config, store, provider, system_config);
+	pub fn spawn(system: &ActorSystem, store: StandardMultiStore, provider: P) -> ActorRef<Message> {
+		let actor = Self::new(store, provider);
 		system.spawn("row-ttl", actor).actor_ref().clone()
 	}
+
 	fn run_scan(&self, state: &mut ActorState, now: DateTime) {
 		if state.scanning {
-			debug!("TTL GC scan already in progress, skipping tick");
+			debug!("Row TTL scan already in progress, skipping tick");
 			return;
 		}
 
 		let Some(hot) = self.store.hot() else {
-			warn!("TTL GC skipped: hot tier is not configured");
+			warn!("Row TTL scan skipped: hot tier is not configured");
 			return;
 		};
 
@@ -95,11 +93,12 @@ impl<P: ListRowTtls> Actor<P> {
 
 		let now_nanos = now.to_nanos();
 		let ttls = self.provider.list_row_ttls();
+		let system_config = self.provider.system_config();
 		let mut stats = ScanStats::default();
 		let mut all_expired = Vec::new();
 
 		let batch_size =
-			self.system_config.get_uint8("ROW_TTL_SCAN_BATCH_SIZE").map(|v| v as usize).unwrap_or(10000);
+			system_config.get_uint8("ROW_TTL_SCAN_BATCH_SIZE").map(|v| v as usize).unwrap_or(10000);
 
 		for (shape_id, ttl_config) in &ttls {
 			if ttl_config.cleanup_mode == RowTtlCleanupMode::Delete {
@@ -111,7 +110,7 @@ impl<P: ListRowTtls> Actor<P> {
 				continue;
 			}
 
-			let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_else(RangeCursor::new);
+			let mut cursor = state.scanner.cursors.remove(shape_id).unwrap_or_default();
 
 			let scan_result = match ttl_config.anchor {
 				RowTtlAnchor::Created => scanner::scan_shape_by_created_at(
@@ -171,13 +170,13 @@ impl<P: ListRowTtls> Actor<P> {
 				versions_dropped = stats.versions_dropped,
 				bytes_discovered = ?stats.bytes_discovered.values().sum::<u64>(),
 				bytes_reclaimed = ?stats.bytes_reclaimed.values().sum::<u64>(),
-				"TTL GC scan completed"
+				"Row TTL scan completed"
 			);
 		} else {
 			debug!(
 				shapes_scanned = stats.shapes_scanned,
 				shapes_skipped = stats.shapes_skipped,
-				"TTL GC scan completed (no expired rows)"
+				"Row TTL scan completed (no expired rows)"
 			);
 		}
 
@@ -199,9 +198,12 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 	type Message = Message;
 
 	fn init(&self, ctx: &Context<Message>) -> ActorState {
-		debug!("TTL GC actor started");
-		let timer_handle = ctx
-			.schedule_tick(self.config.scan_interval, |nanos| Message::Tick(DateTime::from_nanos(nanos)));
+		debug!("Row TTL actor started");
+		let system_config = self.provider.system_config();
+		let scan_interval =
+			system_config.get_duration("ROW_TTL_SCAN_INTERVAL").unwrap_or_else(|| StdDuration::from_secs(60));
+
+		let timer_handle = ctx.schedule_tick(scan_interval, |nanos| Message::Tick(DateTime::from_nanos(nanos)));
 		ActorState {
 			_timer_handle: Some(timer_handle),
 			scanning: false,
@@ -219,7 +221,7 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 				self.run_scan(state, now);
 			}
 			Message::Shutdown => {
-				debug!("TTL GC actor shutting down");
+				debug!("Row TTL actor shutting down");
 				return Directive::Stop;
 			}
 		}
@@ -228,14 +230,15 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 	}
 
 	fn post_stop(&self) {
-		debug!("TTL GC actor stopped");
+		debug!("Row TTL actor stopped");
 	}
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new().mailbox_capacity(64)
 	}
 }
-/// Spawn a TTL GC actor that periodically scans and drops expired rows.
+
+/// Spawn a row TTL actor that periodically scans and drops expired rows.
 ///
 /// The provider is typically implemented by the engine layer wrapping
 /// the materialized catalog. Call this after both store and catalog
@@ -243,9 +246,7 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 pub fn spawn_row_ttl_actor<P: ListRowTtls>(
 	store: StandardMultiStore,
 	system: ActorSystem,
-	config: Config,
 	provider: P,
-	system_config: SystemConfig,
 ) -> ActorRef<Message> {
-	Actor::spawn(&system, config, store, provider, system_config)
+	Actor::spawn(&system, store, provider)
 }

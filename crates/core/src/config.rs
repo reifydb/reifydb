@@ -11,6 +11,7 @@ use std::{
 	fmt,
 	fmt::{Debug, Formatter},
 	sync::Arc,
+	time::Duration,
 };
 
 use crossbeam_skiplist::SkipMap;
@@ -139,6 +140,20 @@ impl SystemConfig {
 	/// or the value is not Value::Uint8.
 	pub fn require_uint8(&self, key: &str) -> u64 {
 		self.get_uint8(key).unwrap_or_else(|| panic!("config key '{key}' is not registered"))
+	}
+
+	/// Get the current value as a Duration, or None if the key is not registered.
+	/// Panics if the key is registered but the value is not Value::Duration.
+	pub fn get_duration(&self, key: &str) -> Option<Duration> {
+		self.0.entries.get(key).map(|entry| match entry.value().versions.get_latest() {
+			Some(Value::Duration(v)) => {
+				let total_nanos =
+					(v.get_days() as i128 * 24 * 3600 * 1_000_000_000) + (v.get_nanos() as i128);
+				Duration::from_nanos(total_nanos.max(0) as u64)
+			}
+			Some(v) => panic!("config key '{key}' expected Duration, got {v:?}"),
+			None => panic!("config key '{key}' has no value"),
+		})
 	}
 
 	/// List all registered configuration entries with their latest values.

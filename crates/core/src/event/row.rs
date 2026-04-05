@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::interface::catalog::shape::ShapeId;
 
 define_event! {
-	/// Emitted after a TTL GC scan cycle completes.
+	/// Emitted after a row TTL scan cycle completes.
 	pub struct RowsExpiredEvent {
 		pub shapes_scanned: u64,
 		pub shapes_skipped: u64,

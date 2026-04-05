@@ -27,6 +27,7 @@ pub mod procedure;
 pub mod resolve;
 pub mod ringbuffer;
 pub mod row_shape;
+pub mod row_ttl;
 pub mod sequence;
 pub mod series;
 pub mod shape;

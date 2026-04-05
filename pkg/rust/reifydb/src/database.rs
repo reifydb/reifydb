@@ -92,7 +92,7 @@ impl Database {
 		Self {
 			engine: engine.clone(),
 			auth_service,
-			bootloader: Bootloader::new(engine),
+			bootloader: Bootloader::new(engine, actor_system.clone()),
 			subsystems: subsystem_manager,
 			health_monitor,
 			shared_runtime,
