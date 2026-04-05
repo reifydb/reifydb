@@ -64,7 +64,7 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{config::SystemConfig, interface::catalog::flow::FlowStatus};
+	use reifydb_core::interface::catalog::flow::FlowStatus;
 
 	use super::*;
 
@@ -80,7 +80,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_flow() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let flow = create_test_flow(flow_id, namespace_id, "test_flow");
@@ -103,7 +103,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_flow_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let flow = create_test_flow(flow_id, namespace_id, "named_flow");
@@ -126,7 +126,7 @@ pub mod tests {
 
 	#[test]
 	fn test_flow_rename() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -161,7 +161,7 @@ pub mod tests {
 
 	#[test]
 	fn test_flow_move_between_namespaces() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
 		let namespace1 = NamespaceId::SYSTEM;
 		let namespace2 = NamespaceId::DEFAULT;
@@ -188,7 +188,7 @@ pub mod tests {
 
 	#[test]
 	fn test_flow_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -213,7 +213,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_flows_in_namespace() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 
 		let flow1 = create_test_flow(FlowId(1), namespace_id, "flow1");
@@ -233,7 +233,7 @@ pub mod tests {
 
 	#[test]
 	fn test_flow_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let flow_id = FlowId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 

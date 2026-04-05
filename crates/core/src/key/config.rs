@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use std::str::FromStr;
+
 use super::{EncodableKey, KeyKind};
 use crate::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
+	interface::catalog::config::SystemConfigKey,
 	util::encoding::keycode::{deserializer::KeyDeserializer, serializer::KeySerializer},
 };
 
@@ -11,17 +14,17 @@ const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigKey {
-	pub key: String,
+	pub key: SystemConfigKey,
 }
 
 impl ConfigKey {
-	pub fn new(key: impl Into<String>) -> Self {
+	pub fn new(key: SystemConfigKey) -> Self {
 		Self {
-			key: key.into(),
+			key,
 		}
 	}
 
-	pub fn for_key(key: &str) -> EncodedKey {
+	pub fn for_key(key: SystemConfigKey) -> EncodedKey {
 		Self::new(key).encode()
 	}
 
@@ -39,7 +42,7 @@ impl EncodableKey for ConfigKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_str(&self.key);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_str(self.key.to_string());
 		serializer.to_encoded_key()
 	}
 
@@ -56,10 +59,12 @@ impl EncodableKey for ConfigKey {
 			return None;
 		}
 
-		let config_key = de.read_str().ok()?;
+		let config_key_str = de.read_str().ok()?;
+		let key = SystemConfigKey::from_str(&config_key_str)
+			.expect("failed to decode SystemConfigKey from storage, unknown key");
 
 		Some(Self {
-			key: config_key,
+			key,
 		})
 	}
 }

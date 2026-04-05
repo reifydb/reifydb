@@ -37,7 +37,6 @@ impl MaterializedCatalog {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		config::SystemConfig,
 		interface::catalog::id::TableId,
 		row::{RowTtlAnchor, RowTtlCleanupMode},
 	};
@@ -46,7 +45,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_row_ttl() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(1));
 		let config = RowTtl {
 			duration_nanos: 300_000_000_000,
@@ -63,7 +62,7 @@ pub mod tests {
 
 	#[test]
 	fn test_row_ttl_update() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(42));
 
 		let config_v1 = RowTtl {
@@ -87,7 +86,7 @@ pub mod tests {
 
 	#[test]
 	fn test_row_ttl_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(99));
 		let config = RowTtl {
 			duration_nanos: 300_000_000_000,
@@ -105,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_row_ttl_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(100));
 
 		let config_v1 = RowTtl {

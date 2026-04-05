@@ -47,7 +47,6 @@ impl MaterializedCatalog {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		config::SystemConfig,
 		interface::catalog::id::TableId,
 		retention::{CleanupMode, RetentionStrategy},
 	};
@@ -56,7 +55,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_shape_retention_strategy() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(1));
 		let policy = RetentionStrategy::KeepVersions {
 			count: 10,
@@ -81,7 +80,7 @@ pub mod tests {
 
 	#[test]
 	fn test_shape_retention_strategy_update() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(42));
 
 		// Set initial policy
@@ -108,7 +107,7 @@ pub mod tests {
 
 	#[test]
 	fn test_shape_retention_strategy_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(99));
 
 		// Create and set policy
@@ -133,7 +132,7 @@ pub mod tests {
 
 	#[test]
 	fn test_shape_retention_strategy_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape = ShapeId::Table(TableId(100));
 
 		// Create multiple versions

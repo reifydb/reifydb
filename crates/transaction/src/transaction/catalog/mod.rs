@@ -21,6 +21,7 @@ pub mod series;
 pub mod sink;
 pub mod source;
 pub mod sumtype;
+pub mod system_config;
 pub mod table;
 pub mod test;
 pub mod view;

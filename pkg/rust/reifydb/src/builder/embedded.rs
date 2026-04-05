@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
-use reifydb_core::config::SystemConfig;
+use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
@@ -165,17 +165,16 @@ impl EmbeddedBuilder {
 		let actor_system = runtime.actor_system().scope();
 		let (multi_store, single_store, transaction_single, eventbus) =
 			self.storage_factory.create(&actor_system);
-		let system_config = SystemConfig::new();
-		crate::config::register_defaults(&system_config);
+		let materialized_catalog = MaterializedCatalog::new();
 		let (multi, single, eventbus) = transaction(
 			(multi_store.clone(), single_store.clone(), transaction_single, eventbus),
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config.clone(),
+			Arc::new(materialized_catalog.clone()),
 		);
 
-		let mut builder = DatabaseBuilder::new(system_config, multi, single, eventbus)
+		let mut builder = DatabaseBuilder::new(materialized_catalog, multi, single, eventbus)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
 			.with_actor_system(actor_system)

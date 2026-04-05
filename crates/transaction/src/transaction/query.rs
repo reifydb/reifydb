@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
+			config::{SystemConfig, SystemConfigKey},
 			dictionary::Dictionary,
 			flow::{Flow, FlowId},
 			handler::Handler,
@@ -48,8 +49,8 @@ use crate::{
 		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
 		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalRingBufferChanges,
 		TransactionalRoleChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
-		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
-		TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalSystemConfigChanges,
+		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -522,6 +523,12 @@ impl TransactionalSinkChanges for QueryTransaction {
 
 	fn is_sink_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
+	}
+}
+
+impl TransactionalSystemConfigChanges for QueryTransaction {
+	fn find_system_config(&self, _key: SystemConfigKey) -> Option<&SystemConfig> {
+		None
 	}
 }
 

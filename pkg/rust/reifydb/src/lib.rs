@@ -7,7 +7,6 @@
 mod api;
 mod boot;
 mod builder;
-mod config;
 mod context;
 mod database;
 pub mod event;

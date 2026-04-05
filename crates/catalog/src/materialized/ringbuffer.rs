@@ -69,12 +69,9 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		config::SystemConfig,
-		interface::catalog::{
-			column::{Column, ColumnIndex},
-			id::ColumnId,
-		},
+	use reifydb_core::interface::catalog::{
+		column::{Column, ColumnIndex},
+		id::ColumnId,
 	};
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -113,7 +110,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_ringbuffer() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "test_rb");
@@ -136,7 +133,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_ringbuffer_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "named_rb");
@@ -159,7 +156,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ringbuffer_rename() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -194,7 +191,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ringbuffer_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -219,7 +216,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_ringbuffer() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -240,7 +237,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_ringbuffer_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 		let rb_id = RingBufferId(1);
 

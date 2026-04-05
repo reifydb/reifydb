@@ -64,13 +64,10 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		config::SystemConfig,
-		interface::catalog::{
-			column::{Column, ColumnIndex},
-			id::{ColumnId, TableId},
-			view::{TableView, ViewKind},
-		},
+	use reifydb_core::interface::catalog::{
+		column::{Column, ColumnIndex},
+		id::{ColumnId, TableId},
+		view::{TableView, ViewKind},
 	};
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -109,7 +106,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_view() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let view = create_test_view(view_id, namespace_id, "test_view");
@@ -132,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_view_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let view = create_test_view(view_id, namespace_id, "named_view");
@@ -155,7 +152,7 @@ pub mod tests {
 
 	#[test]
 	fn test_view_rename() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -190,7 +187,7 @@ pub mod tests {
 
 	#[test]
 	fn test_view_move_between_namespaces() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace1 = NamespaceId::SYSTEM;
 		let namespace2 = NamespaceId::DEFAULT;
@@ -217,7 +214,7 @@ pub mod tests {
 
 	#[test]
 	fn test_view_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -242,7 +239,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_views_in_namespace() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 
 		let view1 = create_test_view(ViewId(1), namespace_id, "view1");
@@ -262,7 +259,7 @@ pub mod tests {
 
 	#[test]
 	fn test_view_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -290,7 +287,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_view() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -311,7 +308,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_view_deleted() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let view_id = ViewId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -327,7 +324,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_view_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 		let view_id = ViewId(1);
 

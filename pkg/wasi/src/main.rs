@@ -13,14 +13,13 @@ use std::{
 	error::Error,
 	fmt::Write as FmtWrite,
 	io::{BufRead, Write},
+	sync::Arc,
 };
 
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{
-		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
-	},
+	bootstrap::{bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
@@ -32,7 +31,6 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
-	config::SystemConfig,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
@@ -54,9 +52,7 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
-	TransactionVersion,
-	interceptor::factory::InterceptorFactory,
-	multi::transaction::{MultiTransaction, register_oracle_defaults},
+	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
@@ -88,10 +84,9 @@ impl Bridge {
 			clock: Clock::Real,
 		});
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
-
+		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let system_config = SystemConfig::new();
-		register_oracle_defaults(&system_config);
+		let materialized_catalog = MaterializedCatalog::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -99,11 +94,10 @@ impl Bridge {
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config.clone(),
+			Arc::new(materialized_catalog.clone()),
 		)?;
 
 		let mut ioc = IocContainer::new();
-		let materialized_catalog = MaterializedCatalog::new(system_config);
 		ioc = ioc.register(materialized_catalog.clone());
 		ioc = ioc.register(runtime.clone());
 		ioc = ioc.register(single_store.clone());
@@ -115,7 +109,6 @@ impl Bridge {
 
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
 		bootstrap_root_identity(&multi, &single, &materialized_catalog, &eventbus)?;
-		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)?;
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)?;
 
 		let procedures = default_procedures().configure();

@@ -52,9 +52,11 @@ impl BaseVTable for SystemConfigs {
 		};
 
 		if let Transaction::Test(t) = txn {
-			for (key, value) in &t.inner.changes.config_changes {
-				if let Some(cfg) = configs.iter_mut().find(|c| c.key == *key) {
-					cfg.value = value.clone();
+			for change in &t.inner.changes.system_config {
+				if let Some(post) = &change.post
+					&& let Some(cfg) = configs.iter_mut().find(|c| c.key == post.key)
+				{
+					cfg.value = post.value.clone();
 				}
 			}
 		}
@@ -66,7 +68,8 @@ impl BaseVTable for SystemConfigs {
 		let mut requires_restarts = ColumnData::bool_with_capacity(configs.len());
 
 		for cfg in &configs {
-			keys.push(cfg.key.as_str());
+			let key_str = cfg.key.to_string();
+			keys.push(key_str.as_str());
 			values.push(cfg.value.as_string().as_str());
 			default_values.push(cfg.default_value.as_string().as_str());
 			descriptions.push(cfg.description);

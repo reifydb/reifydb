@@ -573,10 +573,7 @@ pub mod tests {
 	use std::{thread::sleep, time::Duration};
 
 	use reifydb_catalog::materialized::MaterializedCatalog;
-	use reifydb_core::{
-		config::SystemConfig,
-		encoded::{key::EncodedKey, row::EncodedRow},
-	};
+	use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 	use reifydb_runtime::{
 		actor::system::ActorSystem,
 		context::{
@@ -588,7 +585,7 @@ pub mod tests {
 	use reifydb_store_single::SingleStore;
 	use reifydb_transaction::{
 		interceptor::interceptors::Interceptors,
-		multi::transaction::{MultiTransaction, register_oracle_defaults},
+		multi::transaction::MultiTransaction,
 		single::SingleTransaction,
 		transaction::{command::CommandTransaction, query::QueryTransaction},
 	};
@@ -624,8 +621,7 @@ pub mod tests {
 			let actor_system = ActorSystem::new(1);
 			let event_bus = EventBus::new(&actor_system);
 			let single = SingleTransaction::new(single_store, event_bus.clone());
-			let system_config = SystemConfig::new();
-			register_oracle_defaults(&system_config);
+			let materialized_catalog = MaterializedCatalog::new();
 			let clock = Clock::Mock(MockClock::from_millis(1000));
 			let multi = MultiTransaction::new(
 				multi_store,
@@ -634,14 +630,14 @@ pub mod tests {
 				actor_system,
 				clock.clone(),
 				Rng::seeded(42),
-				system_config,
+				Arc::new(materialized_catalog.clone()),
 			)
 			.unwrap();
 			Self {
 				multi,
 				single,
 				event_bus,
-				materialized_catalog: MaterializedCatalog::new(SystemConfig::new()),
+				materialized_catalog,
 				clock,
 			}
 		}

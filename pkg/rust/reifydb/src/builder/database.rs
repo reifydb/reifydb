@@ -10,9 +10,7 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{
-		bootstrap_configaults, bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog,
-	},
+	bootstrap::{bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
@@ -24,7 +22,6 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
-	config::SystemConfig,
 	event::{
 		EventBus,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
@@ -102,14 +99,13 @@ pub struct DatabaseBuilder {
 impl DatabaseBuilder {
 	#[allow(unused_mut)]
 	pub fn new(
-		system_config: SystemConfig,
+		materialized_catalog: MaterializedCatalog,
 		multi: MultiTransaction,
 		single: SingleTransaction,
 		eventbus: EventBus,
 	) -> Self {
 		let ioc = IocContainer::new()
-			.register(system_config.clone())
-			.register(MaterializedCatalog::new(system_config))
+			.register(materialized_catalog)
 			.register(eventbus)
 			.register(multi)
 			.register(single);
@@ -305,7 +301,6 @@ impl DatabaseBuilder {
 
 		load_materialized_catalog(&multi, &single, &catalog)?;
 		bootstrap_root_identity(&multi, &single, &catalog, &eventbus)?;
-		bootstrap_configaults(&multi, &single, &catalog, &eventbus)?;
 		bootstrap_system_procedures(&multi, &single, &catalog, &eventbus)?;
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;

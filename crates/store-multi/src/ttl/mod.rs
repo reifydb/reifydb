@@ -4,14 +4,17 @@
 pub mod actor;
 pub(crate) mod scanner;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::{config::SystemConfig, interface::catalog::shape::ShapeId, row::RowTtl};
+use reifydb_core::{
+	interface::catalog::{config::GetSystemConfig, shape::ShapeId},
+	row::RowTtl,
+};
 
 /// Trait for providing TTL configurations to the actor.
 pub trait ListRowTtls: Clone + Send + Sync + 'static {
 	fn list_row_ttls(&self) -> Vec<(ShapeId, RowTtl)>;
-	fn system_config(&self) -> SystemConfig;
+	fn system_config(&self) -> Arc<dyn GetSystemConfig>;
 }
 
 /// Statistics from a single row TTL scan cycle.

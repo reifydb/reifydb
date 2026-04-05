@@ -40,26 +40,6 @@ pub fn load_materialized_catalog(
 	Ok(())
 }
 
-/// Write registered config defaults to storage for keys not yet stored.
-pub fn bootstrap_configaults(
-	multi: &MultiTransaction,
-	single: &SingleTransaction,
-	catalog: &MaterializedCatalog,
-	eventbus: &EventBus,
-) -> Result<()> {
-	let mut admin = AdminTransaction::new(
-		multi.clone(),
-		single.clone(),
-		eventbus.clone(),
-		Interceptors::default(),
-		IdentityId::system(),
-		Clock::Real,
-	)?;
-	MaterializedCatalogLoader::bootstrap_missing_defaults(&mut admin, catalog)?;
-	admin.commit()?;
-	Ok(())
-}
-
 /// Create `system::config` namespace and `system::config::set` procedure.
 ///
 /// Called on every startup since procedures are not persisted to storage.

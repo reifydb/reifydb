@@ -9,17 +9,19 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path};
+use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
-	config::SystemConfig,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
 	event::EventBus,
-	interface::store::MultiVersionRow,
+	interface::{
+		catalog::config::{GetSystemConfig, SystemConfigKey},
+		store::MultiVersionRow,
+	},
 	util::encoding::{
 		binary::decode_binary,
 		format::{Formatter, raw::Raw},
@@ -40,11 +42,12 @@ use reifydb_testing::testscript::{
 };
 use reifydb_transaction::{
 	multi::transaction::{
-		MultiTransaction, read::MultiReadTransaction, register_oracle_defaults,
-		replica::MultiReplicaTransaction, write::MultiWriteTransaction,
+		MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction,
+		write::MultiWriteTransaction,
 	},
 	single::SingleTransaction,
 };
+use reifydb_type::value::Value;
 
 /// A handle to either a read, write, or replica transaction for test tracking
 enum TransactionHandle {
@@ -62,8 +65,15 @@ fn test_serializable(path: &Path) {
 	let single_store = SingleStore::testing_memory();
 	let bus = EventBus::new(&ActorSystem::new(1));
 	let actor_system = ActorSystem::new(1);
-	let system_config = SystemConfig::new();
-	register_oracle_defaults(&system_config);
+	struct DefaultSystemConfig;
+	impl GetSystemConfig for DefaultSystemConfig {
+		fn get_system_config(&self, key: SystemConfigKey) -> Value {
+			key.default_value()
+		}
+		fn get_system_config_at(&self, key: SystemConfigKey, _version: CommitVersion) -> Value {
+			key.default_value()
+		}
+	}
 	let engine = MultiTransaction::new(
 		multi_store,
 		SingleTransaction::new(single_store, bus.clone()),
@@ -71,7 +81,7 @@ fn test_serializable(path: &Path) {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		system_config,
+		Arc::new(DefaultSystemConfig),
 	)
 	.unwrap();
 

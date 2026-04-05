@@ -74,12 +74,9 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		config::SystemConfig,
-		interface::catalog::{
-			column::{Column, ColumnIndex},
-			id::ColumnId,
-		},
+	use reifydb_core::interface::catalog::{
+		column::{Column, ColumnIndex},
+		id::ColumnId,
 	};
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -116,7 +113,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_table() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let table = create_test_table(table_id, namespace_id, "test_table");
@@ -139,7 +136,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_table_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let table = create_test_table(table_id, namespace_id, "named_table");
@@ -162,7 +159,7 @@ pub mod tests {
 
 	#[test]
 	fn test_table_rename() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -197,7 +194,7 @@ pub mod tests {
 
 	#[test]
 	fn test_table_move_between_namespaces() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace1 = NamespaceId::SYSTEM;
 		let namespace2 = NamespaceId::DEFAULT;
@@ -224,7 +221,7 @@ pub mod tests {
 
 	#[test]
 	fn test_table_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -249,7 +246,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_tables_in_namespace() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 
 		let table1 = create_test_table(TableId(1), namespace_id, "table1");
@@ -269,7 +266,7 @@ pub mod tests {
 
 	#[test]
 	fn test_table_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -297,7 +294,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_table() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -318,7 +315,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_table_deleted() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -334,7 +331,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_latest_table_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 		let table_id = TableId(1);
 

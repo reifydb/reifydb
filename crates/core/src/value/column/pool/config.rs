@@ -112,7 +112,7 @@ pub mod tests {
 	use crate::value::column::pool::thread_local::{clear_thread_pools, has_thread_pools};
 
 	#[test]
-	fn test_pool_configaults() {
+	fn test_pool_defaults() {
 		let config = PoolConfig::default();
 		assert_eq!(config.max_pool_size, 16);
 		assert_eq!(config.enable_statistics, cfg!(debug_assertions));

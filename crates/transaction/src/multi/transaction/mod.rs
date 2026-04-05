@@ -13,10 +13,12 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_core::{
 	common::CommitVersion,
-	config::SystemConfig,
 	encoded::key::EncodedKey,
 	event::EventBus,
-	interface::store::{MultiVersionContains, MultiVersionGet},
+	interface::{
+		catalog::config::{GetSystemConfig, SystemConfigKey},
+		store::{MultiVersionContains, MultiVersionGet},
+	},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -26,15 +28,12 @@ use reifydb_runtime::{
 	},
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_type::{Result, util::hex};
+use reifydb_type::{Result, util::hex, value::Value};
 use tracing::instrument;
 use version::{StandardVersionProvider, VersionProvider};
 
-use crate::{
-	TransactionId,
-	multi::{oracle, oracle::*, types::*},
-	single::SingleTransaction,
-};
+pub(crate) use crate::multi::oracle::{CreateCommitResult, Oracle};
+use crate::{TransactionId, multi::types::*, single::SingleTransaction};
 
 pub mod manager;
 pub mod read;
@@ -105,7 +104,7 @@ where
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		config: SystemConfig,
+		config: Arc<dyn GetSystemConfig>,
 	) -> Result<Self> {
 		let version = clock.next()?;
 		let oracle = Oracle::new(clock, actor_system, metrics_clock, rng, config);
@@ -122,7 +121,7 @@ where
 	}
 
 	/// Get the shared system config from the oracle.
-	pub fn system_config(&self) -> SystemConfig {
+	pub fn system_config(&self) -> Arc<dyn GetSystemConfig> {
 		self.inner.system_config()
 	}
 
@@ -232,7 +231,7 @@ impl Inner {
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		config: SystemConfig,
+		config: Arc<dyn GetSystemConfig>,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
 		let tm = TransactionManager::new(version_provider, actor_system, metrics_clock, rng, config)?;
@@ -259,8 +258,18 @@ impl MultiTransaction {
 		let single_store = SingleStore::testing_memory();
 		let actor_system = ActorSystem::new(1);
 		let event_bus = EventBus::new(&actor_system);
-		let system_config = SystemConfig::new();
-		oracle::register_defaults(&system_config);
+
+		struct DummySystemConfig;
+		impl GetSystemConfig for DummySystemConfig {
+			fn get_system_config(&self, key: SystemConfigKey) -> Value {
+				key.default_value()
+			}
+			fn get_system_config_at(&self, key: SystemConfigKey, _version: CommitVersion) -> Value {
+				key.default_value()
+			}
+		}
+		let system_config = Arc::new(DummySystemConfig);
+
 		Self::new(
 			multi_store,
 			SingleTransaction::new(single_store, event_bus.clone()),
@@ -287,7 +296,7 @@ impl MultiTransaction {
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		system_config: SystemConfig,
+		system_config: Arc<dyn GetSystemConfig>,
 	) -> Result<Self> {
 		Ok(Self(Arc::new(Inner::new(
 			store,
@@ -306,14 +315,9 @@ impl MultiTransaction {
 	}
 
 	/// Get the shared system config from the oracle.
-	pub fn system_config(&self) -> SystemConfig {
+	pub fn system_config(&self) -> Arc<dyn GetSystemConfig> {
 		self.0.tm.system_config()
 	}
-}
-
-/// Register oracle config defaults into a SystemConfig registry.
-pub fn register_oracle_defaults(config: &SystemConfig) {
-	oracle::register_defaults(config)
 }
 
 impl MultiTransaction {

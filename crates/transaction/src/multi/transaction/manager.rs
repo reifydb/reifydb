@@ -197,7 +197,7 @@ where
 	#[instrument(name = "transaction::command::set", level = "debug", skip(self, row), fields(
 		txn_id = %self.id,
 		key_hex = %hex::display(key.as_ref()),
-		value_len = row.as_ref().len()
+		value_len = row.len()
 	))]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		if self.discarded {

@@ -23,7 +23,7 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_configaults, bootstrap_system_procedures, load_materialized_catalog},
+	bootstrap::{bootstrap_system_procedures, load_materialized_catalog},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
@@ -35,7 +35,6 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
-	config::SystemConfig,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
@@ -53,9 +52,7 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::Subsystem;
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
-	TransactionVersion,
-	interceptor::factory::InterceptorFactory,
-	multi::transaction::{MultiTransaction, register_oracle_defaults},
+	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
@@ -183,8 +180,7 @@ impl WasmDB {
 
 		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-		let system_config = SystemConfig::new();
-		register_oracle_defaults(&system_config);
+		let materialized_catalog = MaterializedCatalog::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -192,14 +188,13 @@ impl WasmDB {
 			actor_system.clone(),
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config.clone(),
+			Arc::new(materialized_catalog.clone()),
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 
 		// Setup IoC container
 		let mut ioc = IocContainer::new();
 
-		let materialized_catalog = MaterializedCatalog::new(system_config);
 		ioc = ioc.register(materialized_catalog.clone());
 
 		ioc = ioc.register(runtime.clone());
@@ -216,8 +211,6 @@ impl WasmDB {
 
 		// Run shared bootstrap: load catalog, config defaults, system procedures, shapes
 		load_materialized_catalog(&multi, &single, &materialized_catalog)
-			.map_err(|e| JsError::from_error(&e))?;
-		bootstrap_configaults(&multi, &single, &materialized_catalog, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;

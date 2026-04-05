@@ -32,13 +32,12 @@ impl CatalogChangeApplier for ConfigApplier {
 use reifydb_core::common::CommitVersion;
 
 fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: CommitVersion) {
-	let config_key = ConfigKey::decode(key).map(|k| k.key).unwrap_or_default();
-	if config_key.is_empty() {
+	let Some(config_key) = ConfigKey::decode(key).map(|k| k.key) else {
 		return;
-	}
+	};
 	let value = match SHAPE.get_value(row, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};
-	catalog.materialized.system_config().apply_persisted(&config_key, version, value);
+	catalog.materialized.set_system_config(config_key, version, value);
 }

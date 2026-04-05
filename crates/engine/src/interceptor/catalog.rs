@@ -201,8 +201,16 @@ impl PostCommitInterceptor for MaterializedCatalogInterceptor {
 			self.catalog.set_sink(id, version, change.post.clone());
 		}
 
-		for (key, value) in &ctx.changes.config_changes {
-			self.catalog.system_config().update(key, version, value.clone());
+		for change in &ctx.changes.system_config {
+			let key = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|c| c.key)
+				.expect("Change must have either pre or post state");
+			if let Some(post) = &change.post {
+				self.catalog.set_system_config(key, version, post.value.clone());
+			}
 		}
 
 		Ok(())

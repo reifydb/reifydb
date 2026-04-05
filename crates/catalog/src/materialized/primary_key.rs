@@ -39,12 +39,9 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{
-		config::SystemConfig,
-		interface::catalog::{
-			column::{Column, ColumnIndex},
-			id::{ColumnId, PrimaryKeyId},
-		},
+	use reifydb_core::interface::catalog::{
+		column::{Column, ColumnIndex},
+		id::{ColumnId, PrimaryKeyId},
 	};
 	use reifydb_type::value::{constraint::TypeConstraint, r#type::Type};
 
@@ -68,7 +65,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_primary_key() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);
 		let primary_key = create_test_primary_key(pk_id);
 
@@ -91,7 +88,7 @@ pub mod tests {
 
 	#[test]
 	fn test_primary_key_update() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);
 
 		// Create initial primary key with one column
@@ -120,7 +117,7 @@ pub mod tests {
 
 	#[test]
 	fn test_primary_key_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);
 		let primary_key = create_test_primary_key(pk_id);
 
@@ -142,7 +139,7 @@ pub mod tests {
 
 	#[test]
 	fn test_primary_key_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let pk_id = PrimaryKeyId(1);
 
 		// Create multiple versions

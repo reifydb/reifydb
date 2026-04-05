@@ -39,8 +39,6 @@ pub mod test;
 pub mod view;
 pub mod vtable;
 
-use reifydb_core::config::SystemConfig;
-
 use crate::materialized::MaterializedCatalog;
 
 #[derive(Debug, Clone)]
@@ -56,6 +54,22 @@ impl Catalog {
 	}
 
 	pub fn testing() -> Self {
-		Self::new(MaterializedCatalog::new(SystemConfig::new()))
+		Self::new(MaterializedCatalog::new())
+	}
+}
+
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::config::{GetSystemConfig, SystemConfigKey},
+};
+use reifydb_type::value::Value;
+
+impl GetSystemConfig for Catalog {
+	fn get_system_config(&self, key: SystemConfigKey) -> Value {
+		self.materialized.get_system_config(key)
+	}
+
+	fn get_system_config_at(&self, key: SystemConfigKey, version: CommitVersion) -> Value {
+		self.materialized.get_system_config_at(key, version)
 	}
 }

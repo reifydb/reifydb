@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{config::SystemConfig, interface::catalog::shape::ShapeId, row::RowTtl};
+use std::sync::Arc;
+
+use reifydb_core::{
+	interface::catalog::{config::GetSystemConfig, shape::ShapeId},
+	row::RowTtl,
+};
 use reifydb_store_multi::ttl::ListRowTtls;
 
 use crate::catalog::Catalog;
@@ -22,7 +27,7 @@ impl ListRowTtls for Catalog {
 			.collect()
 	}
 
-	fn system_config(&self) -> SystemConfig {
-		self.materialized.system_config()
+	fn system_config(&self) -> Arc<dyn GetSystemConfig> {
+		Arc::new(self.clone())
 	}
 }

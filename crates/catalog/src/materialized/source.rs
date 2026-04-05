@@ -69,7 +69,7 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{config::SystemConfig, interface::catalog::flow::FlowStatus};
+	use reifydb_core::interface::catalog::flow::FlowStatus;
 
 	use super::*;
 
@@ -88,7 +88,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_source() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let source = create_test_source(shape_id, namespace_id, "test_source");
@@ -111,7 +111,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_source_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let source = create_test_source(shape_id, namespace_id, "named_source");
@@ -134,7 +134,7 @@ pub mod tests {
 
 	#[test]
 	fn test_source_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -159,7 +159,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_sources_in_namespace() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 
 		let source1 = create_test_source(SourceId(1), namespace_id, "source1");
@@ -179,7 +179,7 @@ pub mod tests {
 
 	#[test]
 	fn test_source_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let shape_id = SourceId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 

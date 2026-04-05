@@ -62,7 +62,7 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{config::SystemConfig, interface::catalog::sumtype::SumTypeKind};
+	use reifydb_core::interface::catalog::sumtype::SumTypeKind;
 
 	use super::*;
 
@@ -78,7 +78,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_sumtype() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let id = SumTypeId(1);
 		let namespace = NamespaceId::SYSTEM;
 		let def = create_test_sumtype(id, namespace, "Status");
@@ -97,7 +97,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_sumtype_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let id = SumTypeId(1);
 		let namespace = NamespaceId::SYSTEM;
 		let def = create_test_sumtype(id, namespace, "Direction");
@@ -116,7 +116,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sumtype_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let id = SumTypeId(1);
 		let namespace = NamespaceId::SYSTEM;
 		let def = create_test_sumtype(id, namespace, "Deletable");
@@ -135,7 +135,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sumtype_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let id = SumTypeId(1);
 		let namespace = NamespaceId::SYSTEM;
 

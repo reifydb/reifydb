@@ -19,9 +19,7 @@ pub(crate) fn load_configs(rx: &mut Transaction<'_>, catalog: &MaterializedCatal
 	for entry in stream {
 		let multi = entry?;
 		let (key, value) = config::convert_config(multi);
-		if !key.is_empty() {
-			catalog.system_config().apply_persisted(&key, version, value);
-		}
+		catalog.set_system_config(key, version, value);
 	}
 
 	Ok(())

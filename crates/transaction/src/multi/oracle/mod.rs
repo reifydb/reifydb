@@ -7,38 +7,23 @@ use std::{
 };
 
 use cleanup::cleanup_old_windows;
-use reifydb_core::{common::CommitVersion, config::SystemConfig, encoded::key::EncodedKey, util::bloom::BloomFilter};
+use reifydb_core::{
+	common::CommitVersion,
+	encoded::key::EncodedKey,
+	interface::catalog::config::{GetSystemConfig, SystemConfigKey},
+	util::bloom::BloomFilter,
+};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{clock::Clock, rng::Rng},
 	sync::rwlock::RwLock,
 };
-use reifydb_type::{Result, value::Value};
+use reifydb_type::Result;
 use tracing::{Span, field, instrument};
 
 use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider, watermark::watermark::WaterMark};
 
 pub mod cleanup;
-
-/// Configuration for the efficient oracle
-pub(crate) const DEFAULT_WINDOW_SIZE: u64 = 500;
-pub(crate) const DEFAULT_WINDOW_WATER_MARK: usize = 20;
-
-/// Register oracle config defaults into a SystemConfig registry.
-pub(crate) fn register_defaults(config: &SystemConfig) {
-	config.register(
-		"ORACLE_WINDOW_SIZE",
-		Value::Uint8(DEFAULT_WINDOW_SIZE),
-		"Number of transactions per conflict-detection window.",
-		false,
-	);
-	config.register(
-		"ORACLE_WATER_MARK",
-		Value::Uint8(DEFAULT_WINDOW_WATER_MARK as u64),
-		"Number of conflict windows retained before cleanup is triggered.",
-		false,
-	);
-}
 
 /// Time window containing committed transactions
 pub(crate) struct CommittedWindow {
@@ -140,7 +125,7 @@ where
 	actor_system: ActorSystem,
 	metrics_clock: Clock,
 	rng: Rng,
-	system_config: SystemConfig,
+	system_config: Arc<dyn GetSystemConfig>,
 }
 
 impl<L> Oracle<L>
@@ -152,7 +137,7 @@ where
 		actor_system: ActorSystem,
 		metrics_clock: Clock,
 		rng: Rng,
-		system_config: SystemConfig,
+		system_config: Arc<dyn GetSystemConfig>,
 	) -> Self {
 		let shutdown_signal = Arc::new(RwLock::new(false));
 
@@ -175,7 +160,7 @@ where
 	}
 
 	/// Return the shared system config so callers can wire it to the catalog.
-	pub fn system_config(&self) -> SystemConfig {
+	pub fn system_config(&self) -> Arc<dyn GetSystemConfig> {
 		self.system_config.clone()
 	}
 
@@ -364,11 +349,12 @@ where
 			Span::current().record("inner_write_lock_us", write_lock_start.elapsed().as_micros() as u64);
 
 			let add_start = self.metrics_clock.instant();
-			let window_size = self.system_config.require_uint8("ORACLE_WINDOW_SIZE");
+			let window_size = self.system_config.get_system_config_uint8(SystemConfigKey::OracleWindowSize);
 			inner.add_committed_transaction(commit_version, conflicts, window_size);
 			Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
 			// Check if cleanup is needed
-			let water_mark = self.system_config.require_uint8("ORACLE_WATER_MARK") as usize;
+			let water_mark =
+				self.system_config.get_system_config_uint8(SystemConfigKey::OracleWaterMark) as usize;
 			inner.time_windows.len() > water_mark
 		};
 
@@ -477,8 +463,9 @@ pub mod tests {
 
 	use reifydb_core::encoded::key::EncodedKeyRange;
 	use reifydb_runtime::context::clock::MockClock;
+	use reifydb_type::value::Value;
 
-	use super::{register_defaults, *};
+	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
 
 	// Mock version provider for testing
@@ -516,8 +503,18 @@ pub mod tests {
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
 		let actor_system = ActorSystem::new(1);
-		let config = SystemConfig::new();
-		register_defaults(&config);
+
+		struct DummySystemConfig;
+		impl GetSystemConfig for DummySystemConfig {
+			fn get_system_config(&self, key: SystemConfigKey) -> Value {
+				key.default_value()
+			}
+			fn get_system_config_at(&self, key: SystemConfigKey, _version: CommitVersion) -> Value {
+				key.default_value()
+			}
+		}
+		let config = Arc::new(DummySystemConfig);
+
 		Oracle::new(clock, actor_system, Clock::Mock(MockClock::from_millis(1000)), Rng::seeded(42), config)
 	}
 
@@ -644,7 +641,7 @@ pub mod tests {
 			}
 
 			let mut done_read = false;
-			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
+			let version_start = CommitVersion(i as u64 * 500 + 1);
 			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}

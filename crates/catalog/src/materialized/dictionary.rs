@@ -67,7 +67,6 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::config::SystemConfig;
 	use reifydb_type::value::r#type::Type;
 
 	use super::*;
@@ -84,7 +83,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_dictionary() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let dict = create_test_dictionary(dict_id, namespace_id, "test_dict");
@@ -107,7 +106,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_dictionary_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let dict = create_test_dictionary(dict_id, namespace_id, "named_dict");
@@ -130,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_rename() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -165,7 +164,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_move_between_namespaces() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
 		let namespace1 = NamespaceId::SYSTEM;
 		let namespace2 = NamespaceId::DEFAULT;
@@ -192,7 +191,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -217,7 +216,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_dictionaries_in_namespace() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 
 		let dict1 = create_test_dictionary(DictionaryId(1), namespace_id, "dict1");
@@ -237,7 +236,7 @@ pub mod tests {
 
 	#[test]
 	fn test_dictionary_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let dict_id = DictionaryId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 

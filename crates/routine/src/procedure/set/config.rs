@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::value::column::columns::Columns;
+use std::str::FromStr;
+
+use reifydb_core::{interface::catalog::config::SystemConfigKey, value::column::columns::Columns};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	fragment::Fragment,
@@ -62,9 +64,19 @@ impl Procedure for SetConfigProcedure {
 
 		let value_clone = value.clone();
 
+		let system_config_key = match SystemConfigKey::from_str(&key_str) {
+			Ok(k) => k,
+			Err(e) => {
+				return Err(ProcedureError::ExecutionFailed {
+					procedure: Fragment::internal("system::config::set"),
+					reason: e,
+				});
+			}
+		};
+
 		match tx {
-			Transaction::Admin(admin) => ctx.catalog.set_config(admin, &key_str, value)?,
-			Transaction::Test(t) => ctx.catalog.set_config(t.inner, &key_str, value)?,
+			Transaction::Admin(admin) => ctx.catalog.set_system_config(admin, system_config_key, value)?,
+			Transaction::Test(t) => ctx.catalog.set_system_config(t.inner, system_config_key, value)?,
 			_ => {
 				return Err(ProcedureError::ExecutionFailed {
 					procedure: Fragment::internal("system::config::set"),

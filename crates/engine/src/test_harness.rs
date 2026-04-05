@@ -16,7 +16,6 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
-	config::SystemConfig,
 	event::{
 		EventBus,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
@@ -43,7 +42,7 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	interceptor::{factory::InterceptorFactory, interceptors::Interceptors},
-	multi::transaction::{MultiTransaction, register_oracle_defaults},
+	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
 };
@@ -171,8 +170,7 @@ impl TestEngineBuilder {
 		let runtime = SharedRuntime::from_config(
 			SharedRuntimeConfig::default().async_threads(2).compute_threads(2).deterministic_testing(1000),
 		);
-		let system_config = SystemConfig::new();
-		register_oracle_defaults(&system_config);
+		let materialized_catalog = MaterializedCatalog::new();
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			single.clone(),
@@ -180,13 +178,12 @@ impl TestEngineBuilder {
 			actor_system,
 			runtime.clock().clone(),
 			runtime.rng().clone(),
-			system_config,
+			Arc::new(materialized_catalog.clone()),
 		)
 		.unwrap();
 
 		let mut ioc = IocContainer::new();
 
-		let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
 		ioc = ioc.register(materialized_catalog.clone());
 
 		ioc = ioc.register(runtime.clone());
@@ -259,8 +256,6 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let actor_system = ActorSystem::new(1);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let system_config = SystemConfig::new();
-	register_oracle_defaults(&system_config);
 	let multi = MultiTransaction::new(
 		multi_store,
 		single.clone(),
@@ -268,7 +263,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		system_config,
+		Arc::new(MaterializedCatalog::new()),
 	)
 	.unwrap();
 
@@ -290,8 +285,6 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let actor_system = ActorSystem::new(1);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
-	let system_config = SystemConfig::new();
-	register_oracle_defaults(&system_config);
 	let multi = MultiTransaction::new(
 		multi_store,
 		single.clone(),
@@ -299,7 +292,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		actor_system,
 		Clock::Mock(MockClock::from_millis(1000)),
 		Rng::seeded(42),
-		system_config,
+		Arc::new(MaterializedCatalog::new()),
 	)
 	.unwrap();
 	let mut result = AdminTransaction::new(
@@ -312,7 +305,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	)
 	.unwrap();
 
-	let materialized_catalog = MaterializedCatalog::new(SystemConfig::new());
+	let materialized_catalog = MaterializedCatalog::new();
 	let catalog = Catalog::new(materialized_catalog);
 
 	let namespace = catalog

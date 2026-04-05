@@ -64,7 +64,7 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{config::SystemConfig, interface::catalog::flow::FlowStatus};
+	use reifydb_core::interface::catalog::flow::FlowStatus;
 
 	use super::*;
 
@@ -83,7 +83,7 @@ pub mod tests {
 
 	#[test]
 	fn test_set_and_find_sink() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let sink_id = SinkId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let sink = create_test_sink(sink_id, namespace_id, "test_sink");
@@ -106,7 +106,7 @@ pub mod tests {
 
 	#[test]
 	fn test_find_sink_by_name() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let sink_id = SinkId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 		let sink = create_test_sink(sink_id, namespace_id, "named_sink");
@@ -129,7 +129,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sink_deletion() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let sink_id = SinkId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
@@ -154,7 +154,7 @@ pub mod tests {
 
 	#[test]
 	fn test_multiple_sinks_in_namespace() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let namespace_id = NamespaceId::SYSTEM;
 
 		let sink1 = create_test_sink(SinkId(1), namespace_id, "sink1");
@@ -174,7 +174,7 @@ pub mod tests {
 
 	#[test]
 	fn test_sink_versioning() {
-		let catalog = MaterializedCatalog::new(SystemConfig::new());
+		let catalog = MaterializedCatalog::new();
 		let sink_id = SinkId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 

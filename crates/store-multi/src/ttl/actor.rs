@@ -2,11 +2,10 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::collections::HashMap;
-use std::time::Duration as StdDuration;
 
 use reifydb_core::{
 	event::row::RowsExpiredEvent,
-	interface::catalog::shape::ShapeId,
+	interface::catalog::{config::SystemConfigKey, shape::ShapeId},
 	row::{RowTtlAnchor, RowTtlCleanupMode},
 };
 use reifydb_runtime::actor::{
@@ -16,7 +15,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor as ActorTrait, Directive},
 };
-use reifydb_type::value::{Value, datetime::DateTime, duration::Duration};
+use reifydb_type::value::datetime::DateTime;
 use tracing::{debug, info, warn};
 
 use super::{ListRowTtls, ScanStats, scanner};
@@ -53,20 +52,6 @@ pub struct Actor<P: ListRowTtls> {
 
 impl<P: ListRowTtls> Actor<P> {
 	pub fn new(store: StandardMultiStore, provider: P) -> Self {
-		let system_config = provider.system_config();
-		system_config.register(
-			"ROW_TTL_SCAN_BATCH_SIZE",
-			Value::Uint8(10000),
-			"Max rows to examine per batch during a row TTL scan.",
-			false,
-		);
-		system_config.register(
-			"ROW_TTL_SCAN_INTERVAL",
-			Value::Duration(Duration::from_seconds(60).unwrap()),
-			"How often the row TTL actor should scan for expired rows.",
-			false,
-		);
-
 		Self {
 			store,
 			provider,
@@ -97,8 +82,7 @@ impl<P: ListRowTtls> Actor<P> {
 		let mut stats = ScanStats::default();
 		let mut all_expired = Vec::new();
 
-		let batch_size =
-			system_config.get_uint8("ROW_TTL_SCAN_BATCH_SIZE").map(|v| v as usize).unwrap_or(10000);
+		let batch_size = system_config.get_system_config_uint8(SystemConfigKey::RowTtlScanBatchSize) as usize;
 
 		for (shape_id, ttl_config) in &ttls {
 			if ttl_config.cleanup_mode == RowTtlCleanupMode::Delete {
@@ -200,8 +184,7 @@ impl<P: ListRowTtls> ActorTrait for Actor<P> {
 	fn init(&self, ctx: &Context<Message>) -> ActorState {
 		debug!("Row TTL actor started");
 		let system_config = self.provider.system_config();
-		let scan_interval =
-			system_config.get_duration("ROW_TTL_SCAN_INTERVAL").unwrap_or_else(|| StdDuration::from_secs(60));
+		let scan_interval = system_config.get_system_config_duration(SystemConfigKey::RowTtlScanInterval);
 
 		let timer_handle = ctx.schedule_tick(scan_interval, |nanos| Message::Tick(DateTime::from_nanos(nanos)));
 		ActorState {

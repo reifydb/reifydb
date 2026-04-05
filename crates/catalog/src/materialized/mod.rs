@@ -31,10 +31,9 @@ use std::{ops, sync::Arc};
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	common::CommitVersion,
-	config::SystemConfig,
 	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	interface::catalog::{
-		config::Config,
+		config::{GetSystemConfig, SystemConfig, SystemConfigKey},
 		dictionary::Dictionary,
 		flow::{Flow, FlowId, FlowNodeId},
 		handler::Handler,
@@ -98,6 +97,7 @@ pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
 pub type MultiVersionRowTtl = MultiVersionContainer<RowTtl>;
+pub type MultiVersionConfig = MultiVersionContainer<Value>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -108,7 +108,7 @@ pub struct MaterializedCatalog(Arc<MaterializedCatalogInner>);
 #[derive(Debug)]
 pub struct MaterializedCatalogInner {
 	/// Runtime configuration registry (shared with the oracle)
-	pub(crate) system_config: SystemConfig,
+	pub(crate) system_configs: SkipMap<SystemConfigKey, MultiVersionConfig>,
 	/// MultiVersion namespace definitions indexed by namespace ID
 	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespace>,
 	/// Index from namespace name to namespace ID for fast name lookups
@@ -207,8 +207,14 @@ impl ops::Deref for MaterializedCatalog {
 	}
 }
 
+impl Default for MaterializedCatalog {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 impl MaterializedCatalog {
-	pub fn new(system_config: SystemConfig) -> Self {
+	pub fn new() -> Self {
 		let system_namespace = Namespace::system();
 		let system_namespace_id = system_namespace.id();
 
@@ -219,16 +225,16 @@ impl MaterializedCatalog {
 
 		let default_namespace = Namespace::default_namespace();
 		let default_namespace_id = default_namespace.id();
-		let default_container = MultiVersionContainer::new();
-		default_container.insert(1, default_namespace);
-		namespaces.insert(default_namespace_id, default_container);
+		let container = MultiVersionContainer::new();
+		container.insert(1, default_namespace);
+		namespaces.insert(default_namespace_id, container);
 
 		let namespaces_by_name = SkipMap::new();
 		namespaces_by_name.insert("system".to_string(), system_namespace_id);
 		namespaces_by_name.insert("default".to_string(), default_namespace_id);
 
-		Self(Arc::new(MaterializedCatalogInner {
-			system_config,
+		let inner = MaterializedCatalogInner {
+			system_configs: SkipMap::new(),
 			namespaces,
 			namespaces_by_name,
 			procedures: SkipMap::new(),
@@ -273,7 +279,9 @@ impl MaterializedCatalog {
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 			row_shapes: SkipMap::new(),
-		}))
+		};
+
+		Self(Arc::new(inner))
 	}
 
 	/// Register a user-defined virtual table
@@ -355,23 +363,59 @@ impl MaterializedCatalog {
 		self.vtable_user.iter().map(|e| e.value().clone()).collect()
 	}
 
-	/// Access the system config registry.
-	pub fn system_config(&self) -> SystemConfig {
-		self.0.system_config.clone()
+	/// Get a system configuration value at a specific version.
+	pub fn get_system_config_at(&self, key: SystemConfigKey, version: CommitVersion) -> Value {
+		self.0.system_configs
+			.get(&key)
+			.and_then(|entry| entry.value().get(version))
+			.unwrap_or_else(|| key.default_value())
 	}
 
-	/// List all registered configurations with their current values.
-	pub fn list_configs(&self) -> Vec<Config> {
-		self.0.system_config.list_all()
+	/// Get the latest system configuration value.
+	pub fn get_system_config(&self, key: SystemConfigKey) -> Value {
+		self.0.system_configs
+			.get(&key)
+			.and_then(|entry| entry.value().get_latest())
+			.unwrap_or_else(|| key.default_value())
 	}
 
-	/// List all registered configurations with values as of a specific snapshot version.
-	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<Config> {
-		self.0.system_config.list_all_at(version)
+	/// List all system configurations at a specific version.
+	pub fn list_configs_at(&self, version: CommitVersion) -> Vec<SystemConfig> {
+		SystemConfigKey::all()
+			.iter()
+			.map(|&key| SystemConfig {
+				key,
+				value: self.get_system_config_at(key, version),
+				default_value: key.default_value(),
+				description: key.description(),
+				requires_restart: key.requires_restart(),
+			})
+			.collect()
 	}
 
-	/// Get the current value for a config key.
-	pub fn get_config(&self, key: &str) -> Option<Value> {
-		self.0.system_config.get(key)
+	/// Set a new value for a system configuration at a given version.
+	pub fn set_system_config(&self, key: SystemConfigKey, version: CommitVersion, value: Value) {
+		let expected_types = key.expected_types();
+		if !expected_types.contains(&value.get_type()) {
+			panic!(
+				"SystemConfig::set_system_config called with invalid value type for key {}: expected one of {:?}, got {:?}",
+				key,
+				expected_types,
+				value.get_type()
+			);
+		}
+
+		let entry = self.0.system_configs.get_or_insert_with(key, MultiVersionContainer::new);
+		entry.value().insert(version, value);
+	}
+}
+
+impl GetSystemConfig for MaterializedCatalog {
+	fn get_system_config(&self, key: SystemConfigKey) -> Value {
+		self.get_system_config(key)
+	}
+
+	fn get_system_config_at(&self, key: SystemConfigKey, version: CommitVersion) -> Value {
+		self.get_system_config_at(key, version)
 	}
 }

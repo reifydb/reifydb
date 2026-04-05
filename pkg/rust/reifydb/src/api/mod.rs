@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{config::SystemConfig, event::EventBus};
+use std::sync::Arc;
+
+use reifydb_core::{event::EventBus, interface::catalog::config::GetSystemConfig};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::{clock::Clock, rng::Rng},
@@ -140,7 +142,7 @@ pub(crate) fn transaction(
 	actor_system: ActorSystem,
 	clock: Clock,
 	rng: Rng,
-	system_config: SystemConfig,
+	system_config: Arc<dyn GetSystemConfig>,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
 	let multi = MultiTransaction::new(
 		input.0,

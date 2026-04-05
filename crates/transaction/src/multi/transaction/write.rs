@@ -158,7 +158,7 @@ impl MultiWriteTransaction {
 		}
 	}
 
-	#[instrument(name = "transaction::command::set", level = "trace", skip(self, row), fields(key_hex = %hex::display(key.as_ref()), value_len = row.as_ref().len()))]
+	#[instrument(name = "transaction::command::set", level = "trace", skip(self, row), fields(key_hex = %hex::display(key.as_ref()), value_len = row.len()))]
 	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
 		self.tm.set(key, row)
 	}
