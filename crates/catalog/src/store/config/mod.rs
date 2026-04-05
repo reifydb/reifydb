@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{catalog::config::SystemConfigKey, store::MultiVersionRow},
-	key::{EncodableKey, config::ConfigKey},
+	key::{EncodableKey, config::ConfigStorageKey},
 };
 use reifydb_type::value::Value;
 
@@ -13,8 +13,9 @@ pub mod set;
 pub mod shape;
 
 pub(crate) fn convert_config(multi: MultiVersionRow) -> (SystemConfigKey, Value) {
-	let config_key =
-		ConfigKey::decode(&multi.key).map(|k| k.key).unwrap_or_else(|| panic!("failed to decode ConfigKey"));
+	let config_key = ConfigStorageKey::decode(&multi.key)
+		.map(|k| k.key)
+		.unwrap_or_else(|| panic!("failed to decode ConfigStorageKey"));
 
 	let value = match SHAPE.get_value(&multi.row, VALUE) {
 		Value::Any(inner) => *inner,

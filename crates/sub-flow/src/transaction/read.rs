@@ -221,7 +221,7 @@ impl FlowTransaction {
 				KeyKind::Migration => ReadFrom::Query,
 				KeyKind::MigrationEvent => ReadFrom::Query,
 				KeyKind::Authentication => ReadFrom::Query,
-				KeyKind::Config => ReadFrom::Query,
+				KeyKind::ConfigStorage => ReadFrom::Query,
 				KeyKind::Token => ReadFrom::Query,
 				KeyKind::Source => ReadFrom::Query,
 				KeyKind::NamespaceSource => ReadFrom::Query,

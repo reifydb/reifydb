@@ -47,7 +47,7 @@ pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 			| KeyKind::Subscription
 			| KeyKind::SubscriptionColumn
 			| KeyKind::SubscriptionRow
-			| KeyKind::Config
+			| KeyKind::ConfigStorage
 			| KeyKind::Token
 	)
 }
@@ -126,7 +126,7 @@ pub mod tests {
 			KeyKind::Migration => {}
 			KeyKind::Authentication => {}
 			KeyKind::MigrationEvent => {}
-			KeyKind::Config => {}
+			KeyKind::ConfigStorage => {}
 			KeyKind::Token => {}
 			KeyKind::Source => {}
 			KeyKind::NamespaceSource => {}
@@ -450,6 +450,6 @@ pub mod tests {
 	// Config overrides (excluded)
 	#[test]
 	fn test_exclude_config() {
-		assert!(should_exclude_from_cdc(KeyKind::Config));
+		assert!(should_exclude_from_cdc(KeyKind::ConfigStorage));
 	}
 }

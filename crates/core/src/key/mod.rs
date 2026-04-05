@@ -344,7 +344,7 @@ impl Key {
 				None
 			}
 			KeyKind::Token => TokenKey::decode(key).map(Self::Token),
-			KeyKind::Config => {
+			KeyKind::ConfigStorage => {
 				// Config keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}

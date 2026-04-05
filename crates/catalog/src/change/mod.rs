@@ -85,7 +85,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::Sink => dispatch::<SinkApplier>(catalog, txn, change),
 		KeyKind::Migration => dispatch::<MigrationApplier>(catalog, txn, change),
 		KeyKind::MigrationEvent => dispatch::<MigrationEventApplier>(catalog, txn, change),
-		KeyKind::Config => dispatch::<ConfigApplier>(catalog, txn, change),
+		KeyKind::ConfigStorage => dispatch::<ConfigApplier>(catalog, txn, change),
 		KeyKind::Series => dispatch::<SeriesApplier>(catalog, txn, change),
 		KeyKind::ShapeRetentionStrategy => dispatch::<ShapeRetentionStrategyApplier>(catalog, txn, change),
 		KeyKind::OperatorRetentionStrategy => {

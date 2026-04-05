@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	encoded::{key::EncodedKey, row::EncodedRow},
-	key::{EncodableKey, config::ConfigKey},
+	key::{EncodableKey, config::ConfigStorageKey},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::value::Value;
@@ -32,7 +32,7 @@ impl CatalogChangeApplier for ConfigApplier {
 use reifydb_core::common::CommitVersion;
 
 fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedRow, version: CommitVersion) {
-	let Some(config_key) = ConfigKey::decode(key).map(|k| k.key) else {
+	let Some(config_key) = ConfigStorageKey::decode(key).map(|k| k.key) else {
 		return;
 	};
 	let value = match SHAPE.get_value(row, VALUE) {

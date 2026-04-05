@@ -185,7 +185,7 @@ pub enum CatalogError {
 	},
 
 	#[error("unknown config key `{0}`")]
-	ConfigKeyNotFound(String),
+	ConfigStorageKeyNotFound(String),
 
 	#[error("config value for key `{0}` cannot be none")]
 	ConfigValueInvalid(String),
@@ -838,7 +838,7 @@ impl IntoDiagnostic for CatalogError {
 				}
 			}
 
-			CatalogError::ConfigKeyNotFound(key) => Diagnostic {
+			CatalogError::ConfigStorageKeyNotFound(key) => Diagnostic {
 				code: "CA_050".to_string(),
 				statement: None,
 				message: format!("unknown config key `{}`", key),

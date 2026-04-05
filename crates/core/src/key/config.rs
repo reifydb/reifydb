@@ -13,11 +13,11 @@ use crate::{
 const VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ConfigKey {
+pub struct ConfigStorageKey {
 	pub key: SystemConfigKey,
 }
 
-impl ConfigKey {
+impl ConfigStorageKey {
 	pub fn new(key: SystemConfigKey) -> Self {
 		Self {
 			key,
@@ -37,8 +37,8 @@ impl ConfigKey {
 	}
 }
 
-impl EncodableKey for ConfigKey {
-	const KIND: KeyKind = KeyKind::Config;
+impl EncodableKey for ConfigStorageKey {
+	const KIND: KeyKind = KeyKind::ConfigStorage;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);

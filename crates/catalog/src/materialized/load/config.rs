@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::key::config::ConfigKey;
+use reifydb_core::key::config::ConfigStorageKey;
 use reifydb_transaction::transaction::Transaction;
 
 use super::MaterializedCatalog;
@@ -13,7 +13,7 @@ use crate::{Result, store::config};
 /// own bootstrap phase already see the correct (persisted) values.
 pub(crate) fn load_configs(rx: &mut Transaction<'_>, catalog: &MaterializedCatalog) -> Result<()> {
 	let version = rx.version();
-	let range = ConfigKey::full_scan();
+	let range = ConfigStorageKey::full_scan();
 	let stream = rx.range(range, 1024)?;
 
 	for entry in stream {
