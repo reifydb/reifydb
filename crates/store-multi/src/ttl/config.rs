@@ -8,15 +8,12 @@ use std::time::Duration;
 pub struct Config {
 	/// How often to run the TTL scan. Default: 60 seconds.
 	pub scan_interval: Duration,
-	/// Max rows to examine per batch during a scan. Default: 1024.
-	pub scan_batch_size: usize,
 }
 
 impl Default for Config {
 	fn default() -> Self {
 		Self {
 			scan_interval: Duration::from_secs(60),
-			scan_batch_size: 1024,
 		}
 	}
 }
