@@ -22,6 +22,7 @@ pub(crate) struct ExpiredRow {
 	pub scanned_bytes: u64,
 }
 
+#[derive(Debug)]
 pub(crate) enum ScanResult {
 	PrunedEarly,
 	Yielded,

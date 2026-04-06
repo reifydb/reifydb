@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::{interface::catalog::shape::ShapeId, key::ttl::RowTtlKey, row::RowTtl};
+use reifydb_core::{
+	interface::catalog::{change::CatalogTrackRowTtlChangeOperations, shape::ShapeId},
+	key::ttl::RowTtlKey,
+	row::RowTtl,
+};
 use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use super::encode_ttl_config;
@@ -11,6 +15,7 @@ use crate::Result;
 pub fn create_row_ttl(txn: &mut AdminTransaction, shape: ShapeId, config: &RowTtl) -> Result<()> {
 	let value = encode_ttl_config(config);
 	txn.set(&RowTtlKey::encoded(shape), value)?;
+	txn.track_row_ttl_created(shape, config.clone())?;
 	Ok(())
 }
 

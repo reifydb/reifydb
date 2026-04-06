@@ -29,6 +29,7 @@ mod sink;
 mod source;
 mod sumtype;
 mod table;
+mod ttl;
 mod view;
 
 mod role;
@@ -53,6 +54,7 @@ use sink::SinkApplier;
 use source::SourceApplier;
 use sumtype::SumTypeApplier;
 use table::TableApplier;
+use ttl::RowTtlApplier;
 use view::ViewApplier;
 
 pub trait CatalogChangeApplier {
@@ -91,6 +93,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::OperatorRetentionStrategy => {
 			dispatch::<OperatorRetentionStrategyApplier>(catalog, txn, change)
 		}
+		KeyKind::RowTtl => dispatch::<RowTtlApplier>(catalog, txn, change),
 
 		KeyKind::Column | KeyKind::Columns => dispatch::<ColumnApplier>(catalog, txn, change),
 

@@ -21,6 +21,7 @@ use reifydb_core::{
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
 		series::Series,
+		shape::ShapeId,
 		sink::Sink,
 		source::Source,
 		sumtype::SumType,
@@ -28,6 +29,7 @@ use reifydb_core::{
 		test::Test,
 		view::View,
 	},
+	row::RowTtl,
 };
 use reifydb_type::value::{dictionary::DictionaryId, identity::IdentityId, row_number::RowNumber, sumtype::SumTypeId};
 
@@ -54,7 +56,14 @@ pub trait TransactionalChanges:
 	+ TransactionalGrantedRoleChanges
 	+ TransactionalViewChanges
 	+ TransactionalConfigChanges
+	+ TransactionalRowTtlChanges
 {
+}
+
+pub trait TransactionalRowTtlChanges {
+	fn find_row_ttl(&self, shape: ShapeId) -> Option<&RowTtl>;
+
+	fn is_row_ttl_deleted(&self, shape: ShapeId) -> bool;
 }
 
 pub trait TransactionalConfigChanges {
@@ -294,6 +303,8 @@ pub struct TransactionalCatalogChanges {
 	pub policy: Vec<Change<Policy>>,
 	/// All view definition changes in order (no coalescing)
 	pub view: Vec<Change<View>>,
+	/// All row TTL changes in order (no coalescing)
+	pub row_ttl: Vec<Change<(ShapeId, RowTtl)>>,
 	/// Order of operations for replay/rollback
 	pub log: Vec<Operation>,
 }
@@ -320,6 +331,7 @@ pub struct CatalogChangesSavepoint {
 	granted_role_len: usize,
 	policy_len: usize,
 	view_len: usize,
+	row_ttl_len: usize,
 	log_len: usize,
 }
 
@@ -347,6 +359,7 @@ impl TransactionalCatalogChanges {
 			granted_role_len: self.granted_role.len(),
 			policy_len: self.policy.len(),
 			view_len: self.view.len(),
+			row_ttl_len: self.row_ttl.len(),
 			log_len: self.log.len(),
 		}
 	}
@@ -373,6 +386,7 @@ impl TransactionalCatalogChanges {
 		self.granted_role.truncate(sp.granted_role_len);
 		self.policy.truncate(sp.policy_len);
 		self.view.truncate(sp.view_len);
+		self.row_ttl.truncate(sp.row_ttl_len);
 		self.log.truncate(sp.log_len);
 	}
 
@@ -697,6 +711,21 @@ impl TransactionalCatalogChanges {
 			op,
 		});
 	}
+
+	pub fn add_row_ttl_change(&mut self, change: Change<(ShapeId, RowTtl)>) {
+		let shape = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|(s, _)| *s)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.row_ttl.push(change);
+		self.log.push(Operation::RowTtl {
+			shape,
+			op,
+		});
+	}
 }
 
 /// Represents a single change
@@ -807,6 +836,10 @@ pub enum Operation {
 		id: ViewId,
 		op: OperationType,
 	},
+	RowTtl {
+		shape: ShapeId,
+		op: OperationType,
+	},
 }
 
 impl TransactionalCatalogChanges {
@@ -834,6 +867,7 @@ impl TransactionalCatalogChanges {
 			granted_role: Vec::new(),
 			policy: Vec::new(),
 			view: Vec::new(),
+			row_ttl: Vec::new(),
 			log: Vec::new(),
 		}
 	}
@@ -878,6 +912,24 @@ impl TransactionalCatalogChanges {
 				&& view.id() == id && change.op == Delete
 			{
 				// View was deleted
+				return None;
+			}
+		}
+		None
+	}
+
+	/// Get current state of a row TTL within this transaction
+	pub fn get_row_ttl(&self, shape: ShapeId) -> Option<&RowTtl> {
+		// Find the last change for this shape ID
+		for change in self.row_ttl.iter().rev() {
+			if let Some((s, ttl)) = &change.post {
+				if *s == shape {
+					return Some(ttl);
+				}
+			} else if let Some((s, _)) = &change.pre
+				&& *s == shape && change.op == Delete
+			{
+				// TTL was deleted
 				return None;
 			}
 		}

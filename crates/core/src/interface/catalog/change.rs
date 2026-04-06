@@ -8,25 +8,29 @@
 
 use reifydb_type::Result;
 
-use crate::interface::catalog::{
-	authentication::Authentication,
-	config::Config,
-	dictionary::Dictionary,
-	flow::Flow,
-	handler::Handler,
-	identity::{GrantedRole, Identity, Role},
-	migration::{Migration, MigrationEvent},
-	namespace::Namespace,
-	policy::Policy,
-	procedure::Procedure,
-	ringbuffer::RingBuffer,
-	series::Series,
-	sink::Sink,
-	source::Source,
-	sumtype::SumType,
-	table::Table,
-	test::Test,
-	view::View,
+use crate::{
+	interface::catalog::{
+		authentication::Authentication,
+		config::Config,
+		dictionary::Dictionary,
+		flow::Flow,
+		handler::Handler,
+		identity::{GrantedRole, Identity, Role},
+		migration::{Migration, MigrationEvent},
+		namespace::Namespace,
+		policy::Policy,
+		procedure::Procedure,
+		ringbuffer::RingBuffer,
+		series::Series,
+		shape::ShapeId,
+		sink::Sink,
+		source::Source,
+		sumtype::SumType,
+		table::Table,
+		test::Test,
+		view::View,
+	},
+	row::RowTtl,
 };
 
 /// Trait for tracking configuration changes during a transaction.
@@ -196,6 +200,15 @@ pub trait CatalogTrackSinkChangeOperations {
 	fn track_sink_deleted(&mut self, sink: Sink) -> Result<()>;
 }
 
+/// Trait for tracking row TTL changes during a transaction.
+pub trait CatalogTrackRowTtlChangeOperations {
+	fn track_row_ttl_created(&mut self, shape: ShapeId, ttl: RowTtl) -> Result<()>;
+
+	fn track_row_ttl_updated(&mut self, shape: ShapeId, pre: RowTtl, post: RowTtl) -> Result<()>;
+
+	fn track_row_ttl_deleted(&mut self, shape: ShapeId, ttl: RowTtl) -> Result<()>;
+}
+
 /// Umbrella trait for all catalog change tracking operations.
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
@@ -219,5 +232,6 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackGrantedRoleChangeOperations
 	+ CatalogTrackViewChangeOperations
 	+ CatalogTrackConfigChangeOperations
+	+ CatalogTrackRowTtlChangeOperations
 {
 }

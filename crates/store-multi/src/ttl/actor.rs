@@ -16,7 +16,7 @@ use reifydb_runtime::actor::{
 	traits::{Actor as ActorTrait, Directive},
 };
 use reifydb_type::value::datetime::DateTime;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use super::{ListRowTtls, ScanStats, scanner};
 use crate::{store::StandardMultiStore, tier::RangeCursor};
@@ -77,6 +77,8 @@ impl<P: ListRowTtls> Actor<P> {
 		state.scanning = true;
 
 		let now_nanos = now.to_nanos();
+		trace!(now_nanos, "Starting row TTL scan");
+
 		let ttls = self.provider.list_row_ttls();
 		let config = self.provider.config();
 		let mut stats = ScanStats::default();
@@ -85,6 +87,7 @@ impl<P: ListRowTtls> Actor<P> {
 		let batch_size = config.get_config_uint8(ConfigKey::RowTtlScanBatchSize) as usize;
 
 		for (shape_id, ttl_config) in &ttls {
+			trace!(?shape_id, ?ttl_config, "Evaluating TTL config for shape");
 			if ttl_config.cleanup_mode == RowTtlCleanupMode::Delete {
 				debug!(
 					?shape_id,
@@ -117,6 +120,12 @@ impl<P: ListRowTtls> Actor<P> {
 
 			match scan_result {
 				Ok((expired, result)) => {
+					debug!(
+						?shape_id,
+						expired_count = expired.len(),
+						?result,
+						"Shape scan iteration completed"
+					);
 					stats.shapes_scanned += 1;
 					all_expired.extend(expired);
 
@@ -141,10 +150,16 @@ impl<P: ListRowTtls> Actor<P> {
 		for row in &all_expired {
 			*stats.bytes_discovered.entry(row.shape_id).or_insert(0) += row.scanned_bytes;
 		}
-		if !all_expired.is_empty()
-			&& let Err(e) = scanner::drop_expired_keys(hot, &all_expired, &mut stats)
-		{
-			warn!(error = %e, "Failed to drop expired keys");
+		if !all_expired.is_empty() {
+			match scanner::drop_expired_keys(hot, &all_expired, &mut stats) {
+				Ok(_) => {
+					let bytes_freed: u64 = stats.bytes_reclaimed.values().sum();
+					debug!(bytes_freed, "Freed storage from expired rows");
+				}
+				Err(e) => {
+					warn!(error = %e, "Failed to drop expired keys");
+				}
+			}
 		}
 		if stats.rows_expired > 0 {
 			info!(

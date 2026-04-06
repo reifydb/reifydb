@@ -24,6 +24,7 @@ use reifydb_core::{
 			procedure::Procedure,
 			ringbuffer::RingBuffer,
 			series::Series,
+			shape::ShapeId,
 			sink::Sink,
 			source::Source,
 			sumtype::SumType,
@@ -33,6 +34,7 @@ use reifydb_core::{
 		},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
+	row::RowTtl,
 };
 use reifydb_type::{
 	Result,
@@ -48,9 +50,10 @@ use crate::{
 		TransactionalDictionaryChanges, TransactionalFlowChanges, TransactionalGrantedRoleChanges,
 		TransactionalHandlerChanges, TransactionalIdentityChanges, TransactionalMigrationChanges,
 		TransactionalNamespaceChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
-		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalSeriesChanges,
-		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
-		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalRingBufferChanges, TransactionalRoleChanges, TransactionalRowTtlChanges,
+		TransactionalSeriesChanges, TransactionalSinkChanges, TransactionalSourceChanges,
+		TransactionalSumTypeChanges, TransactionalTableChanges, TransactionalTestChanges,
+		TransactionalViewChanges,
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -529,6 +532,16 @@ impl TransactionalSinkChanges for QueryTransaction {
 impl TransactionalConfigChanges for QueryTransaction {
 	fn find_config(&self, _key: ConfigKey) -> Option<&Config> {
 		None
+	}
+}
+
+impl TransactionalRowTtlChanges for QueryTransaction {
+	fn find_row_ttl(&self, _shape: ShapeId) -> Option<&RowTtl> {
+		None
+	}
+
+	fn is_row_ttl_deleted(&self, _shape: ShapeId) -> bool {
+		false
 	}
 }
 
