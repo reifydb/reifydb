@@ -18,16 +18,16 @@ export interface NavTabsProps {
 
 const variantStyles = {
   underline: {
-    container: "flex border-b border-white/[0.06] bg-white/[0.04]",
-    item: "px-5 py-2.5 font-mono text-xs uppercase tracking-wider transition-colors border-b-2",
+    container: "flex border-b border-border-light bg-transparent",
+    item: "px-5 py-2.5 font-mono text-xs uppercase tracking-[1.4px] transition-colors border-b-2",
     active: "border-primary font-bold text-text-primary",
     inactive: "border-transparent text-text-muted hover:text-text-primary",
   },
   pill: {
     container: "flex items-center gap-1",
-    item: "px-3 py-2 text-sm font-medium transition-colors rounded-lg",
-    active: "bg-white/[0.06] text-text-primary",
-    inactive: "text-text-muted hover:bg-white/[0.04] hover:text-text-primary",
+    item: "px-3 py-2 text-sm font-medium transition-colors rounded-[var(--radius-sm)]",
+    active: "bg-bg-tertiary text-text-primary",
+    inactive: "text-text-muted hover:bg-bg-secondary hover:text-text-primary",
   },
 };
 

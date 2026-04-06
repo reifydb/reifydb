@@ -21,8 +21,8 @@ export function Toggle({ options, value, onChange, className = "" }: ToggleProps
       </span>
       <button
         onClick={() => onChange(value === left ? right : left)}
-        className={`relative w-10 h-5 rounded-none transition-colors border-2 border-white/[0.08] ${
-          value === right ? "bg-primary" : "bg-white/[0.04]"
+        className={`relative w-10 h-5 rounded-none transition-colors border-2 border-border-default ${
+          value === right ? "bg-primary" : "bg-bg-secondary"
         }`}
       >
         <span

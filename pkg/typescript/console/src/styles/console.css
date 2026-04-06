@@ -6,7 +6,9 @@
 /* === Snippet === */
 
 .rdb-snippet {
-  background: var(--rdb-color-bg-tertiary);
+  background: var(--rdb-color-bg-secondary);
+  border: 1px solid var(--rdb-color-border);
+  border-radius: var(--rdb-radius);
   overflow: hidden;
   font-family: var(--rdb-font-mono);
 }
@@ -882,5 +884,22 @@
   color: var(--rdb-color-error);
   white-space: pre-wrap;
   font-family: var(--rdb-font-mono);
+}
+
+/* === Mobile: compact snippet actions === */
+
+@media (max-width: 639px) {
+  .rdb-snippet__action-btn {
+    font-size: 0;
+  }
+
+  .rdb-snippet__action-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .rdb-snippet__hint {
+    display: none;
+  }
 }
 

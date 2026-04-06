@@ -11,8 +11,8 @@ export interface SectionHeaderProps {
 
 export function SectionHeader({ title, badge, className = "" }: SectionHeaderProps) {
   return (
-    <div className={`flex items-center justify-between bg-white/[0.06] px-3 py-2.5 rounded-t-xl ${className}`}>
-      <span className="text-xs font-semibold text-text-secondary">{title}</span>
+    <div className={`flex items-center justify-between bg-bg-tertiary px-3 py-2.5 rounded-t-[var(--radius-md)] ${className}`}>
+      <span className="text-xs font-semibold text-text-secondary uppercase tracking-[1.4px]">{title}</span>
       {badge}
     </div>
   );

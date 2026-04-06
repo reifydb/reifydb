@@ -13,6 +13,7 @@ use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_store_multi::{MultiStore, ttl::actor::spawn_row_ttl_actor};
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_type::value::r#type::Type;
+use tracing::debug;
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 

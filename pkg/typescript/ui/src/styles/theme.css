@@ -2,37 +2,38 @@
 /* Copyright (c) 2025 ReifyDB */
 
 @theme {
-  /* Background Colors - Dark charcoal palette */
-  --color-bg-primary: #1a1a1a;
-  --color-bg-secondary: #222222;
-  --color-bg-tertiary: #2a2a2a;
-  --color-bg-elevated: #333333;
+  /* Background Colors - Pure black base */
+  --color-bg-primary: #000000;
+  --color-bg-secondary: #141414;
+  --color-bg-tertiary: #1a1a1a;
+  --color-bg-elevated: #3a3a3a;
 
-  /* Text Colors - Light on dark */
-  --color-text-primary: #F0F0F0;
-  --color-text-secondary: #A0A0A0;
-  --color-text-muted: #666666;
+  /* Text Colors */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a0a0a0;
+  --color-text-muted: #585858;
 
-  /* Primary Colors - Indigo */
+  /* Primary Colors - Indigo (unchanged) */
   --color-primary: #818cf8;
   --color-primary-light: #a5b4fc;
   --color-primary-dark: #6366f1;
 
-  /* Accent Colors */
-  --color-accent-cyan: #22d3ee;
-  --color-accent-lime: #c4f042;
+  /* Forest Green - Secondary CTA */
+  --color-forest: #166534;
+  --color-forest-border: #14572f;
 
-  /* Border Colors - White-based for dark theme */
-  --color-border-default: rgba(255, 255, 255, 0.12);
-  --color-border-light: rgba(255, 255, 255, 0.08);
-  --color-border-subtle: rgba(255, 255, 255, 0.05);
+  /* Border Colors - Charcoal-based */
+  --color-border-default: rgba(65, 65, 65, 0.8);
+  --color-border-light: #343434;
+  --color-border-subtle: #2a2a2a;
+  --color-border-ghost: rgba(129, 140, 248, 0.3);
 
   /* Code block colors */
-  --color-code-bg: #111111;
-  --color-code-bg-elevated: #1e1e1e;
-  --color-code-border: rgba(255, 255, 255, 0.10);
+  --color-code-bg: #0a0a0a;
+  --color-code-bg-elevated: #141414;
+  --color-code-border: #2a2a2a;
   --color-code-text: #E5E5E5;
-  --color-code-text-muted: #737373;
+  --color-code-text-muted: #585858;
 
   /* Status colors */
   --color-status-success: #22C55E;
@@ -40,34 +41,31 @@
   --color-status-error: #DC2626;
   --color-status-info: #818cf8;
 
-  /* Glow Shadows */
-  --shadow-glow-primary: 0 0 20px rgba(129, 140, 248, 0.15);
-  --shadow-glow-accent: 0 0 20px rgba(196, 240, 66, 0.10);
-  --shadow-glow-sm: 0 0 10px rgba(129, 140, 248, 0.10);
+  /* Shadows - Border-based depth */
+  --shadow-soft: 0px 1px 3px rgba(0, 0, 0, 0.1);
+  --shadow-medium: 0px 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-large: 0px 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-inset: 0px 4px 25px rgba(0, 0, 0, 0.14) inset;
 
-  /* Soft Shadows */
-  --shadow-soft: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-medium: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-large: 0 8px 32px rgba(0, 0, 0, 0.5);
-
-  /* Rounded Corners */
-  --radius-sm: 6px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  /* Rounded Corners - Sharp geometry */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-pill: 9999px;
 
   /* Fonts */
   --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', 'SF Mono', Monaco, Inconsolata, monospace;
+  --font-mono: 'Inconsolata', 'SF Mono', Monaco, monospace;
 
   /* Semantic grayscale */
-  --color-gray-50: #1a1a1a;
-  --color-gray-100: #222222;
-  --color-gray-200: #333333;
-  --color-gray-400: #666666;
+  --color-gray-50: #0a0a0a;
+  --color-gray-100: #141414;
+  --color-gray-200: #1a1a1a;
+  --color-gray-400: #585858;
   --color-gray-500: #888888;
   --color-gray-600: #aaaaaa;
   --color-gray-800: #e0e0e0;
-  --color-gray-900: #f0f0f0;
+  --color-gray-900: #ffffff;
 }

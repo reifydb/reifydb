@@ -33,5 +33,5 @@ export function CardContent({ children, className = "" }: { children: ReactNode;
 }
 
 export function CardFooter({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`pt-4 mt-4 border-t border-white/[0.06] ${className}`}>{children}</div>;
+  return <div className={`pt-4 mt-4 border-t border-border-light ${className}`}>{children}</div>;
 }

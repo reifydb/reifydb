@@ -33,7 +33,7 @@ describe("Tabs", () => {
 
   it("highlights active tab", () => {
     render(<Tabs tabs={tabs} value="b" onChange={() => {}} />);
-    expect(screen.getByText("Tab B").className).toContain("bg-white/[0.08]");
-    expect(screen.getByText("Tab A").className).not.toContain("bg-white/[0.08]");
+    expect(screen.getByText("Tab B").className).toContain("bg-bg-tertiary");
+    expect(screen.getByText("Tab A").className).not.toContain("bg-bg-tertiary");
   });
 });

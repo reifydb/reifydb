@@ -21,7 +21,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={inputId}
-          className={`h-9 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 text-sm text-text-primary
+          className={`h-9 rounded-[4px] border border-border-default bg-bg-secondary px-3 text-sm text-text-primary
             placeholder:text-text-muted
             focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary
             disabled:cursor-not-allowed disabled:opacity-50

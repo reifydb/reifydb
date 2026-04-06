@@ -65,7 +65,7 @@ export function QueryEditor({ code, onChange, onRun, theme = 'light', monacoThem
         hideCursorInOverviewRuler: true,
         overviewRulerBorder: false,
         renderLineHighlight: 'line',
-        fontFamily: "'IBM Plex Mono', monospace",
+        fontFamily: "'Inconsolata', monospace",
         fontSize: 13,
         padding: { top: 8, bottom: 8 },
         wordWrap: 'on',

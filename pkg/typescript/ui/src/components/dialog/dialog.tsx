@@ -52,7 +52,7 @@ export const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
   ({ className = "", children }, ref) => (
     <div
       ref={ref}
-      className={`relative w-full max-w-lg mx-4 bg-white/[0.04] backdrop-blur-2xl border border-white/[0.10] rounded-[var(--radius-lg)] shadow-xl ${className}`}
+      className={`relative w-full max-w-lg mx-4 bg-bg-secondary border border-border-default rounded-[var(--radius-md)] shadow-xl ${className}`}
       onClick={(e) => e.stopPropagation()}
     >
       {children}
@@ -63,7 +63,7 @@ DialogContent.displayName = "DialogContent";
 
 export function DialogHeader({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex flex-col gap-1.5 p-6 border-b border-white/[0.06] ${className}`}>
+    <div className={`flex flex-col gap-1.5 p-6 border-b border-border-light ${className}`}>
       {children}
     </div>
   );
@@ -105,7 +105,7 @@ DialogClose.displayName = "DialogClose";
 
 export function DialogFooter({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`flex justify-end gap-3 p-6 border-t border-white/[0.06] ${className}`}>
+    <div className={`flex justify-end gap-3 p-6 border-t border-border-light ${className}`}>
       {children}
     </div>
   );

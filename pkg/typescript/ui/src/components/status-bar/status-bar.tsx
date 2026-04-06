@@ -25,7 +25,7 @@ const dotColors: Record<StatusDot, string> = {
 
 export function StatusBar({ items, trailing, className = "" }: StatusBarProps) {
   return (
-    <div className={`flex h-7 shrink-0 items-center gap-4 border-t border-white/[0.06] bg-white/[0.04] px-4 ${className}`}>
+    <div className={`flex h-7 shrink-0 items-center gap-4 border-t border-border-light bg-bg-secondary px-4 ${className}`}>
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-1.5 text-xs text-text-muted">
           {item.dot && (

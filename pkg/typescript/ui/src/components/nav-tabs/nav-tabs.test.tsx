@@ -27,8 +27,8 @@ describe("NavTabs", () => {
 
   it("applies active styling to active item (pill)", () => {
     render(<NavTabs items={items} variant="pill" />);
-    expect(screen.getByText("Overview").className).toContain("bg-white/[0.06]");
-    expect(screen.getByText("Settings").className).not.toContain("bg-white/[0.06] ");
+    expect(screen.getByText("Overview").className).toContain("bg-bg-tertiary");
+    expect(screen.getByText("Settings").className).not.toContain("bg-bg-tertiary ");
   });
 
   it("sets correct href on links", () => {

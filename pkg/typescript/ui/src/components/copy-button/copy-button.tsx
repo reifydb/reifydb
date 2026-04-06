@@ -24,7 +24,7 @@ export function CopyButton({ text, className = "", label, onCopy }: CopyButtonPr
     <button
       onClick={handleCopy}
       className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs text-text-muted
-        rounded-sm border border-white/[0.08] transition-colors duration-75 hover:bg-white/[0.06] hover:text-text-primary ${className}`}
+        rounded-sm border border-border-default transition-colors duration-75 hover:bg-bg-tertiary hover:text-text-primary ${className}`}
     >
       {copied ? (
         <>

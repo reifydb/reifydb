@@ -3,22 +3,24 @@
 
 import { type ButtonHTMLAttributes, forwardRef } from "react";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "destructive" | "link";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "forest" | "danger" | "destructive" | "link";
 type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-primary text-[var(--accent-text,#1a1a1a)] font-semibold border-primary hover:brightness-110 hover:shadow-[0_0_16px_rgba(255,255,255,0.1)]",
+    "bg-primary text-[#141414] font-semibold border-primary hover:brightness-110",
   secondary:
-    "bg-transparent text-text-secondary border-border-default font-medium hover:border-primary hover:text-primary",
+    "bg-[#141414] text-white border-[#141414] font-medium hover:bg-bg-elevated hover:text-primary",
   ghost:
-    "text-text-secondary border-transparent hover:bg-white/[0.04] hover:text-text-primary",
+    "text-white border-border-ghost hover:text-primary",
+  forest:
+    "bg-forest text-white font-semibold border-forest-border hover:brightness-110",
   danger:
     "bg-status-error/10 text-status-error border-status-error/30 hover:bg-status-error/20",
   destructive:
     "bg-status-error text-white font-semibold border-status-error hover:bg-status-error/90",
   link:
-    "text-primary border-transparent underline-offset-4 hover:underline",
+    "text-primary border-transparent underline-offset-4 hover:underline active:text-primary-light",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -39,7 +41,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={`inline-flex items-center justify-center font-medium transition-all duration-200
-          rounded-lg border
+          rounded-[4px] border
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary
           disabled:pointer-events-none disabled:opacity-50
           ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
