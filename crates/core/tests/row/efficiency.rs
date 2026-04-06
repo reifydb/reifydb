@@ -136,7 +136,7 @@ fn test_memory_efficiency() {
 	// Expected: validity bits (rounded up) + data
 	// 3 validity bits = 1 byte, data = 1 + 4 + 8 = 13 bytes
 	// Plus any alignment padding
-	assert!(row.len() < 32, "Static row too large: {} bytes", row.len());
+	assert!(row.len() < 48, "Static row too large: {} bytes", row.len());
 
 	// Dynamic types should grow as needed - test with separate rows since
 	// dynamic fields can only be set once

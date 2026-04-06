@@ -25,7 +25,7 @@ impl ConfigKey {
 			Self::OracleWindowSize => Value::Uint8(500),
 			Self::OracleWaterMark => Value::Uint8(20),
 			Self::RowTtlScanBatchSize => Value::Uint8(10000),
-			Self::RowTtlScanInterval => Value::Duration(Duration::from_seconds(1).unwrap()),
+			Self::RowTtlScanInterval => Value::Duration(Duration::from_seconds(60).unwrap()),
 		}
 	}
 

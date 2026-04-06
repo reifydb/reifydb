@@ -12,7 +12,7 @@ use reifydb_core::{
 	row::Row,
 	value::column::columns::Columns,
 };
-use reifydb_type::value::datetime::DateTime;
+use reifydb_type::{util::cowvec::CowVec, value::datetime::DateTime};
 
 /// Builder for constructing Change objects for internal flow operators
 pub struct ChangeBuilder {
@@ -107,6 +107,43 @@ impl ChangeBuilder {
 
 	/// Build the Change
 	pub fn build(self) -> Change {
-		Change::from_flow(self.operator_id, self.version, self.diffs, self.changed_at)
+		let timestamp = self.changed_at;
+		let diffs = self
+			.diffs
+			.into_iter()
+			.map(|diff| match diff {
+				Diff::Insert {
+					post,
+				} => Diff::Insert {
+					post: Self::ensure_timestamps(post, timestamp),
+				},
+				Diff::Update {
+					pre,
+					post,
+				} => Diff::Update {
+					pre: Self::ensure_timestamps(pre, timestamp),
+					post: Self::ensure_timestamps(post, timestamp),
+				},
+				Diff::Remove {
+					pre,
+				} => Diff::Remove {
+					pre: Self::ensure_timestamps(pre, timestamp),
+				},
+			})
+			.collect();
+		Change::from_flow(self.operator_id, self.version, diffs, self.changed_at)
+	}
+
+	fn ensure_timestamps(columns: Columns, timestamp: DateTime) -> Columns {
+		let row_count = columns.row_count();
+		if row_count > 0 && columns.created_at.is_empty() {
+			Columns {
+				created_at: CowVec::new(vec![timestamp; row_count]),
+				updated_at: CowVec::new(vec![timestamp; row_count]),
+				..columns
+			}
+		} else {
+			columns
+		}
 	}
 }

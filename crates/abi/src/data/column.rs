@@ -106,6 +106,10 @@ pub struct ColumnsFFI {
 	pub row_numbers: *const u64,
 	/// Pointer to array of ColumnFFI
 	pub columns: *const ColumnFFI,
+	/// Pointer to created_at timestamps array (u64 nanos since epoch, one per row)
+	pub created_at: *const u64,
+	/// Pointer to updated_at timestamps array (u64 nanos since epoch, one per row)
+	pub updated_at: *const u64,
 }
 
 impl ColumnsFFI {
@@ -116,6 +120,8 @@ impl ColumnsFFI {
 			column_count: 0,
 			row_numbers: core::ptr::null(),
 			columns: core::ptr::null(),
+			created_at: core::ptr::null(),
+			updated_at: core::ptr::null(),
 		}
 	}
 

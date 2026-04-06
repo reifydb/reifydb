@@ -8,9 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::encoded::shape::fingerprint::RowShapeFingerprint;
 
-/// Size of shape header (fingerprint) in bytes
-pub const SHAPE_HEADER_SIZE: usize = 8;
-pub const TIMESTAMP_TRAILER_SIZE: usize = 16;
+/// Size of shape header (fingerprint + created_at + updated_at) in bytes
+pub const SHAPE_HEADER_SIZE: usize = 24;
 
 /// A boxed values iterator.
 pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
@@ -68,29 +67,19 @@ impl EncodedRow {
 
 	#[inline]
 	pub fn created_at_nanos(&self) -> u64 {
-		let len = self.0.len();
-		if len < TIMESTAMP_TRAILER_SIZE {
-			return 0;
-		}
-		let offset = len - TIMESTAMP_TRAILER_SIZE;
-		let bytes: [u8; 8] = self.0[offset..offset + 8].try_into().unwrap();
+		let bytes: [u8; 8] = self.0[8..16].try_into().unwrap();
 		u64::from_le_bytes(bytes)
 	}
 
 	#[inline]
 	pub fn updated_at_nanos(&self) -> u64 {
-		let len = self.0.len();
-		if len < TIMESTAMP_TRAILER_SIZE {
-			return 0;
-		}
-		let offset = len - TIMESTAMP_TRAILER_SIZE + 8;
-		let bytes: [u8; 8] = self.0[offset..offset + 8].try_into().unwrap();
+		let bytes: [u8; 8] = self.0[16..24].try_into().unwrap();
 		u64::from_le_bytes(bytes)
 	}
 
 	pub fn set_timestamps(&mut self, created_at_nanos: u64, updated_at_nanos: u64) {
 		let buf = self.0.make_mut();
-		buf.extend_from_slice(&created_at_nanos.to_le_bytes());
-		buf.extend_from_slice(&updated_at_nanos.to_le_bytes());
+		buf[8..16].copy_from_slice(&created_at_nanos.to_le_bytes());
+		buf[16..24].copy_from_slice(&updated_at_nanos.to_le_bytes());
 	}
 }

@@ -14,6 +14,20 @@ impl Columns {
 			self.row_numbers = CowVec::new(new_row_numbers);
 		}
 
+		// Take the first n created_at timestamps
+		if !self.created_at.is_empty() {
+			let actual_n = n.min(self.created_at.len());
+			let new_created_at: Vec<_> = self.created_at.iter().take(actual_n).copied().collect();
+			self.created_at = CowVec::new(new_created_at);
+		}
+
+		// Take the first n updated_at timestamps
+		if !self.updated_at.is_empty() {
+			let actual_n = n.min(self.updated_at.len());
+			let new_updated_at: Vec<_> = self.updated_at.iter().take(actual_n).copied().collect();
+			self.updated_at = CowVec::new(new_updated_at);
+		}
+
 		// Take the first n rows from columns
 		let mut columns = Vec::with_capacity(self.len());
 

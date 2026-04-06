@@ -18,6 +18,7 @@ use reifydb_core::{
 	},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
+use reifydb_type::value::datetime::DateTime;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{Result, error::Error, fragment::Fragment, value::identity::IdentityId};
@@ -136,7 +137,9 @@ impl SubscriptionConsumer {
 			})
 			.collect();
 
-		Ok((Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new()), row_keys))
+		let n = row_numbers.len();
+		let now = DateTime::default();
+		Ok((Columns::with_system_columns(columns, row_numbers, vec![now; n], vec![now; n]), row_keys))
 	}
 
 	/// Delete consumed rows from subscription storage.

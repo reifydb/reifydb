@@ -33,7 +33,7 @@ use super::row::EncodedRow;
 use crate::encoded::shape::fingerprint::{RowShapeFingerprint, compute_fingerprint};
 
 /// Size of shape header (fingerprint) in bytes
-pub const SHAPE_HEADER_SIZE: usize = 8;
+pub const SHAPE_HEADER_SIZE: usize = 24;
 
 /// Constants for packed u128 dynamic references (used by Int, Uint, Decimal)
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;

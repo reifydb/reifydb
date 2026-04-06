@@ -142,6 +142,8 @@ impl Columns {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
+		assert_eq!(created_at.len(), n, "created_at length must match column data length");
+		assert_eq!(updated_at.len(), n, "updated_at length must match column data length");
 
 		Self {
 			row_numbers: CowVec::new(row_numbers),
@@ -329,7 +331,9 @@ impl Columns {
 			}
 		}
 
-		Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new())
+		let n = row_numbers.len();
+		let now = DateTime::default();
+		Columns::with_system_columns(columns, row_numbers, vec![now; n], vec![now; n])
 	}
 }
 

@@ -8,7 +8,7 @@ use reifydb_core::{
 	key::{Key, subscription_row::SubscriptionRowKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
-use reifydb_type::{error::Error, fragment::Fragment};
+use reifydb_type::{error::Error, fragment::Fragment, value::datetime::DateTime};
 
 use crate::function::{GeneratorContext, GeneratorFunction, error::GeneratorFunctionResult};
 
@@ -98,6 +98,8 @@ impl GeneratorFunction for InspectSubscription {
 			})
 			.collect();
 
-		Ok(Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new()))
+		let n = row_numbers.len();
+		let now = DateTime::default();
+		Ok(Columns::with_system_columns(columns, row_numbers, vec![now; n], vec![now; n]))
 	}
 }

@@ -317,11 +317,9 @@ pub mod tests {
 				watermark.done(CommitVersion(i));
 			}
 
-			// Wait for processing
-			sleep(Duration::from_millis(50));
-
+			let reached = watermark.wait_for_mark_timeout(CommitVersion(100), Duration::from_secs(5));
+			assert!(reached, "Should have processed all 100 versions");
 			let done_until = watermark.done_until();
-			assert!(done_until.0 >= 50, "Should have processed many versions");
 
 			// Try to wait for a very old version (should return immediately)
 			let very_old = done_until.0.saturating_sub(OLD_VERSION_THRESHOLD + 10);
@@ -370,10 +368,8 @@ pub mod tests {
 			watermark.done(CommitVersion(2));
 			watermark.done(CommitVersion(3));
 
-			// Wait for processing
-			sleep(Duration::from_millis(50));
-
-			// Watermark should advance to 3
+			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
+			assert!(reached, "Timed out waiting for watermark to advance to 3");
 			let done = watermark.done_until();
 			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
 		});
@@ -416,10 +412,8 @@ pub mod tests {
 			watermark.begin(CommitVersion(3));
 			watermark.done(CommitVersion(2));
 
-			// Wait for processing
-			sleep(Duration::from_millis(50));
-
-			// All versions complete, watermark should be at 3
+			let reached = watermark.wait_for_mark_timeout(CommitVersion(3), Duration::from_secs(5));
+			assert!(reached, "Timed out waiting for watermark to advance to 3");
 			let done = watermark.done_until();
 			assert_eq!(done.0, 3, "Watermark should advance to 3, got {}", done.0);
 		});

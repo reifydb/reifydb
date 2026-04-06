@@ -224,7 +224,9 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> Columns {
 	if row_numbers.is_empty() {
 		Columns::new(columns)
 	} else {
-		Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new())
+		let n = row_numbers.len();
+		let now = DateTime::default();
+		Columns::with_system_columns(columns, row_numbers, vec![now; n], vec![now; n])
 	}
 }
 

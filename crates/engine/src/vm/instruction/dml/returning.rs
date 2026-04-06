@@ -12,7 +12,7 @@ use reifydb_type::{
 	fragment::Fragment,
 	params::Params,
 	util::cowvec::CowVec,
-	value::{identity::IdentityId, row_number::RowNumber},
+	value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 
 use crate::{
@@ -37,8 +37,12 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	}
 
 	let mut row_numbers = Vec::with_capacity(rows.len());
+	let mut created_at = Vec::with_capacity(rows.len());
+	let mut updated_at = Vec::with_capacity(rows.len());
 	for (row_number, encoded) in rows {
 		row_numbers.push(*row_number);
+		created_at.push(DateTime::from_nanos(encoded.created_at_nanos()));
+		updated_at.push(DateTime::from_nanos(encoded.updated_at_nanos()));
 		for (i, _) in fields.iter().enumerate() {
 			columns_vec[i].data.push_value(shape.get_value(encoded, i));
 		}
@@ -46,8 +50,8 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 
 	Columns {
 		row_numbers: CowVec::new(row_numbers),
-		created_at: CowVec::new(Vec::new()),
-		updated_at: CowVec::new(Vec::new()),
+		created_at: CowVec::new(created_at),
+		updated_at: CowVec::new(updated_at),
 		columns: CowVec::new(columns_vec),
 	}
 }

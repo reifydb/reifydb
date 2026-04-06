@@ -63,6 +63,34 @@ impl Arena {
 			ptr::null()
 		};
 
+		// Marshal created_at timestamps
+		let created_at_ptr = {
+			let size = columns.created_at.len() * size_of::<u64>();
+			let ptr = self.alloc(size) as *mut u64;
+			if !ptr.is_null() {
+				unsafe {
+					for (i, dt) in columns.created_at.iter().enumerate() {
+						*ptr.add(i) = dt.to_nanos();
+					}
+				}
+			}
+			ptr as *const u64
+		};
+
+		// Marshal updated_at timestamps
+		let updated_at_ptr = {
+			let size = columns.updated_at.len() * size_of::<u64>();
+			let ptr = self.alloc(size) as *mut u64;
+			if !ptr.is_null() {
+				unsafe {
+					for (i, dt) in columns.updated_at.iter().enumerate() {
+						*ptr.add(i) = dt.to_nanos();
+					}
+				}
+			}
+			ptr as *const u64
+		};
+
 		// Marshal each column
 		let columns_size = column_count * size_of::<ColumnFFI>();
 		let columns_ptr = self.alloc(columns_size) as *mut ColumnFFI;
@@ -81,6 +109,8 @@ impl Arena {
 			column_count,
 			row_numbers: row_numbers_ptr,
 			columns: columns_ptr as *const ColumnFFI,
+			created_at: created_at_ptr,
+			updated_at: updated_at_ptr,
 		}
 	}
 
@@ -100,6 +130,26 @@ impl Arena {
 			Vec::new()
 		};
 
+		// Unmarshal created_at timestamps
+		let created_at: Vec<DateTime> = if !ffi.created_at.is_null() && ffi.row_count > 0 {
+			unsafe {
+				let slice = slice::from_raw_parts(ffi.created_at, ffi.row_count);
+				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
+			}
+		} else {
+			Vec::new()
+		};
+
+		// Unmarshal updated_at timestamps
+		let updated_at: Vec<DateTime> = if !ffi.updated_at.is_null() && ffi.row_count > 0 {
+			unsafe {
+				let slice = slice::from_raw_parts(ffi.updated_at, ffi.row_count);
+				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
+			}
+		} else {
+			Vec::new()
+		};
+
 		// Unmarshal columns
 		let mut columns: Vec<Column> = Vec::with_capacity(ffi.column_count);
 		unsafe {
@@ -112,7 +162,7 @@ impl Arena {
 		if row_numbers.is_empty() {
 			Columns::new(columns)
 		} else {
-			Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new())
+			Columns::with_system_columns(columns, row_numbers, created_at, updated_at)
 		}
 	}
 }
