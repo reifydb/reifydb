@@ -170,6 +170,8 @@ release:
 	echo ""; \
 	echo "$(YELLOW)[4/7] Updating all package versions...$(NC)"; \
 	make set-version "VERSION=$$NEW_VERSION" || exit 1; \
+	echo "$(BLUE)  Updating fuzz/Cargo.lock...$(NC)"; \
+	(cd fuzz && cargo update --workspace) || exit 1; \
 	echo "$(GREEN)✓ Versions updated$(NC)"; \
 	echo ""; \
 	echo "$(YELLOW)[5/7] Creating git commit and tag...$(NC)"; \
