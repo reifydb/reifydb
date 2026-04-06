@@ -12,15 +12,20 @@
 //! - **Native**: Rayon thread pool for all actors
 //! - **WASM**: All operations execute inline (synchronously)
 
-#[cfg(not(reifydb_single_threaded))]
+#[cfg(reifydb_target = "dst")]
+pub mod dst;
+
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
 pub mod native;
 
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 pub mod wasm;
 
-#[cfg(not(reifydb_single_threaded))]
+#[cfg(reifydb_target = "dst")]
+pub use dst::{ActorHandle, ActorSystem, JoinError};
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
 pub use native::{ActorHandle, ActorSystem, JoinError};
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 pub use wasm::{ActorHandle, ActorSystem, JoinError};
 
 #[derive(Debug, Clone, Default)]

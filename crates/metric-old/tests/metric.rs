@@ -203,8 +203,6 @@ impl TestRunner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
-			// ==================== Data Operations ====================
-
 			// get KEY [version=VERSION]
 			"get" => {
 				let mut args = command.consume_args();
@@ -346,8 +344,6 @@ impl TestRunner for Runner {
 					version,
 				)?
 			}
-
-			// ==================== Stats Query Commands ====================
 
 			// stats - outputs all integration stats for hot tier
 			"stats" => {
@@ -491,8 +487,6 @@ impl TestRunner for Runner {
 					return Err("timeout waiting for stats to be processed".into());
 				}
 			}
-
-			// ==================== CDC Event Commands ====================
 
 			// cdc_write KEY=VALUE [version=VERSION] - simulates CDC entry being written
 			"cdc_write" => {

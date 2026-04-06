@@ -25,6 +25,8 @@ use std::{
 	},
 };
 
+#[cfg(reifydb_target = "dst")]
+pub(crate) mod dst;
 #[cfg(reifydb_target = "native")]
 pub mod scheduler;
 #[cfg(reifydb_target = "wasi")]

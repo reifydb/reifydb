@@ -42,13 +42,13 @@ use std::env;
 pub fn emit_target_cfg() {
 	let target = env::var("TARGET").unwrap_or_default();
 
-	let (reifydb_target, single_threaded) = if target.contains("wasm32") && target.contains("wasi") {
+	let (reifydb_target, single_threaded) = if env::var("REIFYDB_DST").is_ok() {
+		("dst", true)
+	} else if target.contains("wasm32") && target.contains("wasi") {
 		("wasi", true)
 	} else if target.contains("wasm32") {
 		("wasm", true)
 	} else {
-		// Default to native for all non-wasm targets
-		// Future: could check for DST-specific target/env var here
 		("native", false)
 	};
 
@@ -60,4 +60,5 @@ pub fn emit_target_cfg() {
 		println!("cargo:rustc-cfg=reifydb_single_threaded");
 	}
 	println!("cargo:rerun-if-changed=build.rs");
+	println!("cargo:rerun-if-env-changed=REIFYDB_DST");
 }

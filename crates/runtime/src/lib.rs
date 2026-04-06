@@ -47,9 +47,11 @@ pub mod sync;
 
 pub mod actor;
 
-use std::{future::Future, sync::Arc, thread::available_parallelism};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_target = "dst"))]
+use std::future::Future;
+#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 use std::{mem::ManuallyDrop, time::Duration};
+use std::{sync::Arc, thread::available_parallelism};
 
 use crate::{
 	actor::system::ActorSystem,
@@ -112,9 +114,9 @@ use std::{
 
 #[cfg(target_arch = "wasm32")]
 use futures_util::future::LocalBoxFuture;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 use tokio::runtime::{self as tokio_runtime, Runtime};
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 use tokio::task::JoinHandle;
 
 /// WASM-compatible handle (placeholder).
@@ -161,7 +163,7 @@ use std::error::Error;
 impl Error for WasmJoinError {}
 
 /// Inner shared state for the runtime (native).
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 struct SharedRuntimeInner {
 	tokio: ManuallyDrop<Runtime>,
 	system: ActorSystem,
@@ -169,7 +171,7 @@ struct SharedRuntimeInner {
 	rng: context::rng::Rng,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 impl Drop for SharedRuntimeInner {
 	fn drop(&mut self) {
 		// Shut down the actor system FIRST — actors may hold tokio
@@ -195,6 +197,14 @@ struct SharedRuntimeInner {
 	rng: context::rng::Rng,
 }
 
+/// Inner shared state for the runtime (DST).
+#[cfg(reifydb_target = "dst")]
+struct SharedRuntimeInner {
+	system: ActorSystem,
+	clock: Clock,
+	rng: context::rng::Rng,
+}
+
 /// Shared runtime that can be cloned and passed across subsystems.
 ///
 /// Platform-agnostic facade over:
@@ -212,7 +222,7 @@ impl SharedRuntime {
 	/// # Panics
 	///
 	/// Panics if the runtime cannot be created (native only).
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn from_config(config: SharedRuntimeConfig) -> Self {
 		let tokio = tokio_runtime::Builder::new_multi_thread()
 			.worker_threads(config.async_threads)
@@ -225,6 +235,18 @@ impl SharedRuntime {
 
 		Self(Arc::new(SharedRuntimeInner {
 			tokio: ManuallyDrop::new(tokio),
+			system,
+			clock: config.clock,
+			rng: config.rng,
+		}))
+	}
+
+	/// Create a new shared runtime from configuration (DST).
+	#[cfg(reifydb_target = "dst")]
+	pub fn from_config(config: SharedRuntimeConfig) -> Self {
+		let system = ActorSystem::with_clock(config.compute_threads, config.clock.clone());
+
+		Self(Arc::new(SharedRuntimeInner {
 			system,
 			clock: config.clock,
 			rng: config.rng,
@@ -263,7 +285,7 @@ impl SharedRuntime {
 	/// Returns a platform-specific handle type:
 	/// - Native: `tokio_runtime::Handle`
 	/// - WASM: `WasmHandle`
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn handle(&self) -> tokio_runtime::Handle {
 		self.0.tokio.handle().clone()
 	}
@@ -279,7 +301,7 @@ impl SharedRuntime {
 	/// Returns a platform-specific join handle type:
 	/// - Native: `JoinHandle`
 	/// - WASM: `WasmJoinHandle`
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
 	where
 		F: Future + Send + 'static,
@@ -303,7 +325,7 @@ impl SharedRuntime {
 	/// Block the current thread until the future completes.
 	///
 	/// **Note:** Not supported in WASM builds - will panic.
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn block_on<F>(&self, future: F) -> F::Output
 	where
 		F: Future,

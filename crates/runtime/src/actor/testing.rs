@@ -51,8 +51,10 @@ use crossbeam_channel::unbounded;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::actor::mailbox::ActorRef;
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 use crate::actor::mailbox::create_actor_ref;
+#[cfg(reifydb_target = "dst")]
+use crate::actor::mailbox::create_dst_mailbox;
 use crate::actor::{
 	context::{CancellationToken, Context},
 	system::ActorSystem,
@@ -238,8 +240,14 @@ impl<M: Send + 'static> TestContext<M> {
 			ActorRef::new(tx)
 		};
 
-		#[cfg(reifydb_single_threaded)]
+		#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 		let actor_ref = create_actor_ref();
+
+		#[cfg(reifydb_target = "dst")]
+		let actor_ref = {
+			let (actor_ref, _queue) = create_dst_mailbox();
+			actor_ref
+		};
 
 		// Create an actor system for testing
 		let system = ActorSystem::new(1);

@@ -36,6 +36,7 @@ struct ActorSystemInner {
 	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
 	done_rxs: Mutex<Vec<Receiver<()>>>,
+	children: Mutex<Vec<ActorSystem>>,
 }
 
 /// Unified system for all concurrent work.
@@ -77,21 +78,25 @@ impl ActorSystem {
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
+				children: Mutex::new(Vec::new()),
 			}),
 		}
 	}
 
 	pub fn scope(&self) -> Self {
-		Self {
+		let child = Self {
 			inner: Arc::new(ActorSystemInner {
-				cancel: CancellationToken::new(),
+				cancel: self.inner.cancel.child_token(),
 				scheduler: self.inner.scheduler.shared(),
 				clock: self.inner.clock.clone(),
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
+				children: Mutex::new(Vec::new()),
 			}),
-		}
+		};
+		self.inner.children.lock().unwrap().push(child.clone());
+		child
 	}
 
 	/// Get the cancellation token for this system.
@@ -110,6 +115,11 @@ impl ActorSystem {
 	/// and keepalive references so actor cells can be freed.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
+
+		// Propagate shutdown to child scopes.
+		for child in self.inner.children.lock().unwrap().iter() {
+			child.shutdown();
+		}
 
 		// Drain wakers: wake all parked actors and release the closures in one step.
 		let wakers = mem::take(&mut *self.inner.wakers.lock().unwrap());

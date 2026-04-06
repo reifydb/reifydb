@@ -51,6 +51,7 @@ help:
 	@printf "  %-25s %s\n" "test" "Full test suite (db + all test-suites + test clients)"
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
 	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests"
+	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
 	@echo ""
 	@echo "  🔧 Test Components"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -165,14 +166,15 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-pkg-rust test-examples test-suite test-external test-pkg-typescript fuzz-regression
+test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-external test-pkg-typescript fuzz-regression
 	@echo "✅ All tests completed successfully!"
 
-test-dev: test-workspace test-pkg-rust test-examples test-suite-dev
+test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev
 	@echo "🚀 Development tests completed!"
 
 # Include testing sub-makefiles
 include mk/test-workspace.mk
+include mk/test-dst.mk
 include mk/test-suites.mk
 include mk/test-external.mk
 include mk/test-pkg-rust.mk

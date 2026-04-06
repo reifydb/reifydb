@@ -12,14 +12,14 @@
 //! - **Native**: Uses `crossbeam-channel` for lock-free message passing between threads
 //! - **WASM**: Uses `Rc<RefCell>` processor for inline (synchronous) message handling
 
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 use std::cell::{Cell, RefCell};
 use std::fmt;
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 use std::rc::Rc;
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 use std::sync::Arc;
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 use std::sync::atomic::AtomicBool;
 
 use cfg_if::cfg_if;
@@ -27,11 +27,16 @@ use cfg_if::cfg_if;
 #[cfg(not(reifydb_single_threaded))]
 pub(crate) mod native;
 
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 pub(crate) mod wasm;
 
+#[cfg(reifydb_target = "dst")]
+pub(crate) mod dst;
+
 cfg_if! {
-	if #[cfg(not(reifydb_single_threaded))] {
+	if #[cfg(reifydb_target = "dst")] {
+		type ActorRefInnerImpl<M> = dst::ActorRefInner<M>;
+	} else if #[cfg(not(reifydb_single_threaded))] {
 		type ActorRefInnerImpl<M> = native::ActorRefInner<M>;
 	} else {
 		type ActorRefInnerImpl<M> = wasm::ActorRefInner<M>;
@@ -201,8 +206,44 @@ impl<M: Send> ActorRef<M> {
 	}
 }
 
+// DST-specific methods (no Send bound needed)
+#[cfg(reifydb_target = "dst")]
+impl<M> ActorRef<M> {
+	/// Send a message (enqueue-only in DST).
+	#[inline]
+	pub fn send(&self, msg: M) -> Result<(), SendError<M>> {
+		self.inner.send(msg)
+	}
+
+	/// Send a message, blocking if the mailbox is full.
+	///
+	/// In DST, this is identical to `send()`.
+	#[inline]
+	pub fn send_blocking(&self, msg: M) -> Result<(), SendError<M>> {
+		self.inner.send_blocking(msg)
+	}
+
+	/// Check if the actor is still alive.
+	#[inline]
+	pub fn is_alive(&self) -> bool {
+		self.inner.is_alive()
+	}
+
+	/// Mark the actor as stopped (DST only).
+	#[inline]
+	pub(crate) fn mark_stopped(&self) {
+		self.inner.mark_stopped()
+	}
+
+	/// Install the notify callback (DST only).
+	#[inline]
+	pub(crate) fn set_notify(&self, f: Box<dyn Fn()>) {
+		self.inner.set_notify(f)
+	}
+}
+
 // Single-threaded methods (no Send bound needed)
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 impl<M> ActorRef<M> {
 	/// Create a new ActorRef with WASM components (WASM only).
 	#[inline]
@@ -274,7 +315,9 @@ use std::sync;
 
 #[cfg(not(reifydb_single_threaded))]
 use crossbeam_channel::Sender;
+#[cfg(reifydb_target = "dst")]
+pub(crate) use dst::create_mailbox as create_dst_mailbox;
 #[cfg(not(reifydb_single_threaded))]
 pub(crate) use native::create_mailbox;
-#[cfg(reifydb_single_threaded)]
+#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 pub(crate) use wasm::create_actor_ref;

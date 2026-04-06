@@ -9,7 +9,7 @@ use std::{
 	cell::{Cell, RefCell},
 	error, fmt,
 	rc::Rc,
-	sync::{Arc, atomic::AtomicBool},
+	sync::{Arc, Mutex, atomic::AtomicBool},
 	time,
 };
 
@@ -28,6 +28,7 @@ use crate::{
 struct ActorSystemInner {
 	cancel: CancellationToken,
 	clock: Clock,
+	children: Mutex<Vec<ActorSystem>>,
 }
 
 /// Unified system for all concurrent work (WASM version).
@@ -53,17 +54,21 @@ impl ActorSystem {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
 				clock,
+				children: Mutex::new(Vec::new()),
 			}),
 		}
 	}
 
 	pub fn scope(&self) -> Self {
-		Self {
+		let child = Self {
 			inner: Arc::new(ActorSystemInner {
-				cancel: CancellationToken::new(),
+				cancel: self.inner.cancel.child_token(),
 				clock: self.inner.clock.clone(),
+				children: Mutex::new(Vec::new()),
 			}),
-		}
+		};
+		self.inner.children.lock().unwrap().push(child.clone());
+		child
 	}
 
 	/// Get the cancellation token for this system.
@@ -76,9 +81,14 @@ impl ActorSystem {
 		self.inner.cancel.is_cancelled()
 	}
 
-	/// Signal shutdown to all actors.
+	/// Signal shutdown to all actors and child scopes.
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
+
+		// Propagate shutdown to child scopes.
+		for child in self.inner.children.lock().unwrap().iter() {
+			child.shutdown();
+		}
 	}
 
 	/// Get the clock for this system.

@@ -17,6 +17,8 @@ use std::{
 	time::Duration,
 };
 
+#[cfg(reifydb_target = "dst")]
+use crate::actor::timers::dst as dst_timers;
 #[cfg(reifydb_target = "wasi")]
 use crate::actor::timers::wasi::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
 #[cfg(reifydb_target = "wasm")]
@@ -26,9 +28,12 @@ use crate::actor::{mailbox::ActorRef, system::ActorSystem, timers::TimerHandle};
 /// A cancellation token for signaling shutdown.
 ///
 /// This is a simple atomic boolean that can be shared across actors.
+/// Supports hierarchical cancellation: a child token is considered
+/// cancelled when its parent is cancelled.
 #[derive(Clone)]
 pub struct CancellationToken {
 	cancelled: Arc<AtomicBool>,
+	parent: Option<Arc<AtomicBool>>,
 }
 
 impl CancellationToken {
@@ -36,6 +41,17 @@ impl CancellationToken {
 	pub fn new() -> Self {
 		Self {
 			cancelled: Arc::new(AtomicBool::new(false)),
+			parent: None,
+		}
+	}
+
+	/// Create a child token that is cancelled when this token is cancelled.
+	///
+	/// Cancelling the child does NOT cancel the parent.
+	pub fn child_token(&self) -> Self {
+		Self {
+			cancelled: Arc::new(AtomicBool::new(false)),
+			parent: Some(Arc::clone(&self.cancelled)),
 		}
 	}
 
@@ -44,9 +60,9 @@ impl CancellationToken {
 		self.cancelled.store(true, Ordering::SeqCst);
 	}
 
-	/// Check if cancellation was requested.
+	/// Check if cancellation was requested (on this token or its parent).
 	pub fn is_cancelled(&self) -> bool {
-		self.cancelled.load(Ordering::SeqCst)
+		self.cancelled.load(Ordering::SeqCst) || self.parent.as_ref().is_some_and(|p| p.load(Ordering::SeqCst))
 	}
 }
 
@@ -70,7 +86,7 @@ pub struct Context<M> {
 
 impl<M: Send + 'static> Context<M> {
 	/// Create a new context.
-	pub(crate) fn new(self_ref: ActorRef<M>, system: ActorSystem, cancel: CancellationToken) -> Self {
+	pub fn new(self_ref: ActorRef<M>, system: ActorSystem, cancel: CancellationToken) -> Self {
 		Self {
 			self_ref,
 			system,
@@ -116,9 +132,21 @@ impl<M: Send + 'static> Context<M> {
 	///
 	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
 	/// Returns a handle that can be used to cancel the timer.
-	#[cfg(reifydb_single_threaded)]
+	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
 		schedule_once_fn(self.self_ref.clone(), delay, factory)
+	}
+
+	/// Schedule a message to be sent to this actor after a delay (DST).
+	#[cfg(reifydb_target = "dst")]
+	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(&self, delay: Duration, factory: F) -> TimerHandle {
+		dst_timers::schedule_once_fn(
+			self.system.timer_heap(),
+			self.system.mock_clock(),
+			self.self_ref.clone(),
+			delay,
+			factory,
+		)
 	}
 }
 
@@ -137,9 +165,21 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	///
 	/// The timer continues until cancelled or the actor is dropped.
 	/// Returns a handle that can be used to cancel the timer.
-	#[cfg(reifydb_single_threaded)]
+	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
 		schedule_repeat(self.self_ref.clone(), interval, msg)
+	}
+
+	/// Schedule a message to be sent to this actor repeatedly at an interval (DST).
+	#[cfg(reifydb_target = "dst")]
+	pub fn schedule_repeat(&self, interval: Duration, msg: M) -> TimerHandle {
+		dst_timers::schedule_repeat(
+			self.system.timer_heap(),
+			self.system.mock_clock(),
+			self.self_ref.clone(),
+			interval,
+			msg,
+		)
 	}
 
 	/// Schedule a message to be sent to this actor repeatedly at an interval.
@@ -162,13 +202,29 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	/// Uses a factory function to create the message, so `M` doesn't need to be `Clone`.
 	/// The timer continues until cancelled or the actor is dropped.
 	/// Returns a handle that can be used to cancel the timer.
-	#[cfg(reifydb_single_threaded)]
+	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,
 		interval: Duration,
 		factory: F,
 	) -> TimerHandle {
 		schedule_repeat_fn(self.self_ref.clone(), interval, factory)
+	}
+
+	/// Schedule a message to be sent to this actor repeatedly at an interval (DST).
+	#[cfg(reifydb_target = "dst")]
+	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
+		&self,
+		interval: Duration,
+		factory: F,
+	) -> TimerHandle {
+		dst_timers::schedule_repeat_fn(
+			self.system.timer_heap(),
+			self.system.mock_clock(),
+			self.self_ref.clone(),
+			interval,
+			factory,
+		)
 	}
 
 	/// Schedule a periodic tick message that includes the current system time.
@@ -191,12 +247,26 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 			})
 		}
 
-		#[cfg(reifydb_single_threaded)]
+		#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
 		{
 			schedule_repeat_fn(actor_ref, interval, move || {
 				let now = clock.now_nanos();
 				factory(now)
 			})
+		}
+
+		#[cfg(reifydb_target = "dst")]
+		{
+			dst_timers::schedule_repeat_fn(
+				self.system.timer_heap(),
+				self.system.mock_clock(),
+				actor_ref,
+				interval,
+				move || {
+					let now = clock.now_nanos();
+					factory(now)
+				},
+			)
 		}
 	}
 }

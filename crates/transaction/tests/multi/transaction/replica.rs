@@ -343,10 +343,6 @@ fn test_replica_remove() {
 	assert_eq!(from_row!(i32, sv.row()), 42);
 }
 
-// ---------------------------------------------------------------------------
-// ReplicaTransaction (high-level wrapper) tests
-// ---------------------------------------------------------------------------
-
 /// ReplicaTransaction basic write + commit + query.
 #[test]
 fn test_replica_transaction_write() {
@@ -435,10 +431,6 @@ fn test_replica_transaction_drop_auto_rollback() {
 	assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }
 
-// ---------------------------------------------------------------------------
-// Unset operation tests
-// ---------------------------------------------------------------------------
-
 /// Replica unset — delete with tombstone preservation.
 #[test]
 fn test_replica_unset() {
@@ -468,10 +460,6 @@ fn test_replica_unset() {
 	let sv = txn.get(&as_key!(1)).unwrap().unwrap();
 	assert_eq!(from_row!(i32, sv.row()), 42);
 }
-
-// ---------------------------------------------------------------------------
-// Prefix query tests
-// ---------------------------------------------------------------------------
 
 /// Replica prefix and prefix_rev queries.
 #[test]
@@ -509,10 +497,6 @@ fn test_replica_prefix() {
 	assert_eq!(batch_rev.items[0].key, k_ac);
 	assert_eq!(batch_rev.items[2].key, k_aa);
 }
-
-// ---------------------------------------------------------------------------
-// Committed row version verification
-// ---------------------------------------------------------------------------
 
 /// Verify the version on rows returned by get() matches the primary version.
 #[test]

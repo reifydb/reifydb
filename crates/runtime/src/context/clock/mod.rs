@@ -9,14 +9,14 @@
 //! - **Native**: Uses system time via the time module
 //! - **WASM**: Uses JavaScript's Date.now() via the time module
 
-#[cfg(reifydb_target = "native")]
+#[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
 mod native;
 #[cfg(reifydb_target = "wasi")]
 mod wasi;
 #[cfg(reifydb_target = "wasm")]
 mod wasm;
 
-#[cfg(reifydb_target = "native")]
+#[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
 pub use native::{Clock, Instant, MockClock};
 #[cfg(reifydb_target = "wasi")]
 pub use wasi::{Clock, Instant, MockClock};
@@ -25,6 +25,7 @@ pub use wasm::{Clock, Instant, MockClock};
 
 #[cfg(test)]
 mod tests {
+	#[cfg(reifydb_target = "native")]
 	use std::thread;
 
 	use super::*;
