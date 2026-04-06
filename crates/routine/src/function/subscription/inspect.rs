@@ -98,6 +98,6 @@ impl GeneratorFunction for InspectSubscription {
 			})
 			.collect();
 
-		Ok(Columns::with_row_numbers(columns, row_numbers))
+		Ok(Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new()))
 	}
 }

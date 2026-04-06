@@ -66,7 +66,12 @@ impl SinkSubscriptionOperator {
 			data: ColumnData::uint1(vec![op as u8; row_count]),
 		});
 
-		Columns::with_row_numbers(all_columns, columns.row_numbers.to_vec())
+		Columns::with_system_columns(
+			all_columns,
+			columns.row_numbers.to_vec(),
+			columns.created_at.to_vec(),
+			columns.updated_at.to_vec(),
+		)
 	}
 }
 
@@ -99,7 +104,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_idx,
 							&shape,
 							row_number,
-						);
+						)?;
 
 						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
@@ -125,7 +130,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_idx,
 							&shape,
 							row_number,
-						);
+						)?;
 
 						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;
@@ -150,7 +155,7 @@ impl Operator for SinkSubscriptionOperator {
 							row_idx,
 							&shape,
 							row_number,
-						);
+						)?;
 
 						let key = SubscriptionRowKey::encoded(subscription.id, row_number);
 						txn.set(&key, encoded)?;

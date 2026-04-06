@@ -62,7 +62,7 @@ impl Operator for SinkTableViewOperator {
 						let row_number = coerced.row_numbers[row_idx];
 
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, row_number);
+							encode_row_at_index(&coerced, row_idx, &shape, row_number)?;
 
 						let encoded = ViewRowInterceptor::pre_insert(
 							txn, &view, row_number, encoded,
@@ -97,13 +97,13 @@ impl Operator for SinkTableViewOperator {
 							row_idx,
 							&shape,
 							pre_row_number,
-						);
+						)?;
 						let (_, post_encoded) = encode_row_at_index(
 							&coerced_post,
 							row_idx,
 							&shape,
 							post_row_number,
-						);
+						)?;
 
 						let post_encoded = ViewRowInterceptor::pre_update(
 							txn,
@@ -143,7 +143,7 @@ impl Operator for SinkTableViewOperator {
 					for row_idx in 0..row_count {
 						let row_number = coerced.row_numbers[row_idx];
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, row_number);
+							encode_row_at_index(&coerced, row_idx, &shape, row_number)?;
 
 						ViewRowInterceptor::pre_delete(txn, &view, row_number)?;
 						let key = RowKey::encoded(object_id, row_number);

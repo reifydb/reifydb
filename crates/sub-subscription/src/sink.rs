@@ -55,7 +55,12 @@ impl EphemeralSinkSubscriptionOperator {
 			data: ColumnData::uint1(vec![op as u8; row_count]),
 		});
 
-		Columns::with_row_numbers(all_columns, columns.row_numbers.to_vec())
+		Columns::with_system_columns(
+			all_columns,
+			columns.row_numbers.to_vec(),
+			columns.created_at.to_vec(),
+			columns.updated_at.to_vec(),
+		)
 	}
 }
 

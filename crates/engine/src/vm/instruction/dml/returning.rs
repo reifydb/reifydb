@@ -67,7 +67,12 @@ fn try_column_passthrough(exprs: &[Expression], input: &Columns) -> Option<Colum
 		cols.push(col.clone());
 	}
 	if !input.row_numbers.is_empty() {
-		Some(Columns::with_row_numbers(cols, input.row_numbers.to_vec()))
+		Some(Columns::with_system_columns(
+			cols,
+			input.row_numbers.to_vec(),
+			input.created_at.to_vec(),
+			input.updated_at.to_vec(),
+		))
 	} else {
 		Some(Columns::new(cols))
 	}
@@ -113,7 +118,12 @@ pub(crate) fn evaluate_returning(
 	}
 
 	if !input.row_numbers.is_empty() {
-		Ok(Columns::with_row_numbers(new_columns, input.row_numbers.to_vec()))
+		Ok(Columns::with_system_columns(
+			new_columns,
+			input.row_numbers.to_vec(),
+			input.created_at.to_vec(),
+			input.updated_at.to_vec(),
+		))
 	} else {
 		Ok(Columns::new(new_columns))
 	}

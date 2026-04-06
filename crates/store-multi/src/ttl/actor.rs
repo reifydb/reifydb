@@ -82,7 +82,6 @@ impl<P: ListRowTtls> Actor<P> {
 		let ttls = self.provider.list_row_ttls();
 		let config = self.provider.config();
 		let mut stats = ScanStats::default();
-		let mut all_expired = Vec::new();
 
 		let batch_size = config.get_config_uint8(ConfigKey::RowTtlScanBatchSize) as usize;
 
@@ -127,10 +126,32 @@ impl<P: ListRowTtls> Actor<P> {
 						"Shape scan iteration completed"
 					);
 					stats.shapes_scanned += 1;
-					all_expired.extend(expired);
+
+					if !expired.is_empty() {
+						stats.rows_expired += expired.len() as u64;
+						for row in &expired {
+							*stats.bytes_discovered.entry(row.shape_id).or_insert(0) +=
+								row.scanned_bytes;
+						}
+
+						match scanner::drop_expired_keys(hot, &expired, &mut stats) {
+							Ok(_) => {
+								let bytes_freed: u64 =
+									stats.bytes_reclaimed.values().sum();
+								debug!(
+									?shape_id,
+									bytes_freed,
+									"Freed storage from expired rows for shape"
+								);
+							}
+							Err(e) => {
+								warn!(?shape_id, error = %e, "Failed to drop expired keys");
+							}
+						}
+					}
 
 					match result {
-						scanner::ScanResult::PrunedEarly | scanner::ScanResult::Yielded => {
+						scanner::ScanResult::Yielded => {
 							state.scanner.cursors.insert(*shape_id, cursor);
 						}
 						scanner::ScanResult::Exhausted => {
@@ -146,22 +167,10 @@ impl<P: ListRowTtls> Actor<P> {
 			}
 		}
 
-		stats.rows_expired = all_expired.len() as u64;
-		for row in &all_expired {
-			*stats.bytes_discovered.entry(row.shape_id).or_insert(0) += row.scanned_bytes;
-		}
-		if !all_expired.is_empty() {
-			match scanner::drop_expired_keys(hot, &all_expired, &mut stats) {
-				Ok(_) => {
-					let bytes_freed: u64 = stats.bytes_reclaimed.values().sum();
-					debug!(bytes_freed, "Freed storage from expired rows");
-				}
-				Err(e) => {
-					warn!(error = %e, "Failed to drop expired keys");
-				}
-			}
-		}
 		if stats.rows_expired > 0 {
+			// Trigger maintenance to physically reclaim memory/disk space (especially for SQLite)
+			hot.maintenance();
+
 			info!(
 				shapes_scanned = stats.shapes_scanned,
 				shapes_skipped = stats.shapes_skipped,

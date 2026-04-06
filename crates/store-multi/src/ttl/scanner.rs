@@ -24,7 +24,6 @@ pub(crate) struct ExpiredRow {
 
 #[derive(Debug)]
 pub(crate) enum ScanResult {
-	PrunedEarly,
 	Yielded,
 	Exhausted,
 }
@@ -51,39 +50,30 @@ pub(crate) fn scan_shape_by_created_at(
 	let mut batch_cursor = cursor.clone();
 	let batch = storage.range_next(table, &mut batch_cursor, start, end, CommitVersion(u64::MAX), batch_size)?;
 
-	let mut last_processed_key = cursor.last_key.clone();
-	let mut early_exit = false;
-
 	for entry in &batch.entries {
 		if let Some(ref value) = entry.value {
-			last_processed_key = Some(entry.key.clone());
 			let row = EncodedRow(value.clone());
 			let anchor_nanos = row.created_at_nanos();
+			assert!(
+				anchor_nanos > 0,
+				"Row is missing created_at timestamp — this is an invariant violation"
+			);
 
-			if anchor_nanos != 0 && now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
+			if now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
 				expired.push(ExpiredRow {
 					shape_id,
 					key: entry.key.clone(),
 					scanned_bytes: value.len() as u64,
 				});
-			} else {
-				early_exit = true;
-				break;
 			}
 		}
 	}
 
-	if early_exit {
-		cursor.last_key = last_processed_key;
-		cursor.exhausted = false;
-		Ok((expired, ScanResult::PrunedEarly))
+	*cursor = batch_cursor;
+	if !batch.has_more || cursor.exhausted {
+		Ok((expired, ScanResult::Exhausted))
 	} else {
-		*cursor = batch_cursor;
-		if !batch.has_more || cursor.exhausted {
-			Ok((expired, ScanResult::Exhausted))
-		} else {
-			Ok((expired, ScanResult::Yielded))
-		}
+		Ok((expired, ScanResult::Yielded))
 	}
 }
 
@@ -109,8 +99,12 @@ pub(crate) fn scan_shape_by_updated_at(
 		if let Some(ref value) = entry.value {
 			let row = EncodedRow(value.clone());
 			let anchor_nanos = row.updated_at_nanos();
+			assert!(
+				anchor_nanos > 0,
+				"Row is missing updated_at timestamp — this is an invariant violation"
+			);
 
-			if anchor_nanos != 0 && now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
+			if now_nanos.saturating_sub(anchor_nanos) >= ttl_config.duration_nanos {
 				expired.push(ExpiredRow {
 					shape_id,
 					key: entry.key.clone(),

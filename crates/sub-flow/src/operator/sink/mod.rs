@@ -18,6 +18,7 @@ use reifydb_core::{
 		},
 		evaluate::TargetColumn,
 	},
+	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{Column, columns::Columns, data::ColumnData},
 };
@@ -117,7 +118,7 @@ pub(crate) fn encode_row_at_index(
 	row_idx: usize,
 	shape: &RowShape,
 	row_number: RowNumber,
-) -> (RowNumber, EncodedRow) {
+) -> Result<(RowNumber, EncodedRow)> {
 	// Use row_number parameter instead of columns.row_numbers[row_idx]
 
 	// Collect values in SHAPE FIELD ORDER by matching column names
@@ -139,11 +140,19 @@ pub(crate) fn encode_row_at_index(
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
 
-	let created_at_nanos = columns.created_at.get(row_idx).map(|dt| dt.to_nanos()).unwrap_or(0);
-	let updated_at_nanos = columns.updated_at.get(row_idx).map(|dt| dt.to_nanos()).unwrap_or(0);
+	let created_at_nanos = columns
+		.created_at
+		.get(row_idx)
+		.ok_or_else(|| internal_error!("Row at index {} is missing created_at timestamp", row_idx))?
+		.to_nanos();
+	let updated_at_nanos = columns
+		.updated_at
+		.get(row_idx)
+		.ok_or_else(|| internal_error!("Row at index {} is missing updated_at timestamp", row_idx))?
+		.to_nanos();
 	encoded.set_timestamps(created_at_nanos, updated_at_nanos);
 
-	(row_number, encoded)
+	Ok((row_number, encoded))
 }
 
 /// Decode dictionary columns in-place using FlowTransaction for lookups.

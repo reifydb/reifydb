@@ -136,7 +136,7 @@ impl SubscriptionConsumer {
 			})
 			.collect();
 
-		Ok((Columns::with_row_numbers(columns, row_numbers), row_keys))
+		Ok((Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new()), row_keys))
 	}
 
 	/// Delete consumed rows from subscription storage.

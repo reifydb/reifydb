@@ -115,7 +115,12 @@ impl MapOperator {
 			columns.row_numbers.iter().cloned().collect()
 		};
 
-		Ok(Columns::with_row_numbers(result_columns, row_numbers))
+		Ok(Columns::with_system_columns(
+			result_columns,
+			row_numbers,
+			columns.created_at.to_vec(),
+			columns.updated_at.to_vec(),
+		))
 	}
 }
 

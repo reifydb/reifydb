@@ -14,7 +14,6 @@ use reifydb_store_multi::{MultiStore, ttl::actor::spawn_row_ttl_actor};
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_type::value::r#type::Type;
 
-
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
 /// Ensures the storage version key exists and matches the expected version.

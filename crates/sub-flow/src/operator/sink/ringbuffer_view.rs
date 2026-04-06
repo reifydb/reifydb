@@ -165,7 +165,7 @@ impl Operator for SinkRingBufferViewOperator {
 						let source_rn = coerced.row_numbers[row_idx];
 						let assigned_rn = RowNumber(metadata.tail);
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, assigned_rn);
+							encode_row_at_index(&coerced, row_idx, &shape, assigned_rn)?;
 
 						// Track alias when source row number differs from assigned key
 						if source_rn != assigned_rn {
@@ -227,13 +227,13 @@ impl Operator for SinkRingBufferViewOperator {
 							row_idx,
 							&shape,
 							pre_storage_rn,
-						);
+						)?;
 						let (_, post_encoded) = encode_row_at_index(
 							&coerced_post,
 							row_idx,
 							&shape,
 							post_storage_rn,
-						);
+						)?;
 
 						let post_encoded = ViewRowInterceptor::pre_update(
 							txn,
@@ -276,7 +276,7 @@ impl Operator for SinkRingBufferViewOperator {
 						let storage_rn = state.forward.remove(&source_rn).unwrap_or(source_rn);
 						state.reverse.remove(&storage_rn);
 						let (_, encoded) =
-							encode_row_at_index(&coerced, row_idx, &shape, storage_rn);
+							encode_row_at_index(&coerced, row_idx, &shape, storage_rn)?;
 						ViewRowInterceptor::pre_delete(txn, &view, storage_rn)?;
 						let key = RowKey::encoded(object_id, storage_rn);
 						txn.remove(&key)?;

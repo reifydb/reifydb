@@ -133,15 +133,20 @@ impl Columns {
 		}
 	}
 
-	pub fn with_row_numbers(columns: Vec<Column>, row_numbers: Vec<RowNumber>) -> Self {
+	pub fn with_system_columns(
+		columns: Vec<Column>,
+		row_numbers: Vec<RowNumber>,
+		created_at: Vec<DateTime>,
+		updated_at: Vec<DateTime>,
+	) -> Self {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
 
 		Self {
 			row_numbers: CowVec::new(row_numbers),
-			created_at: CowVec::new(Vec::new()),
-			updated_at: CowVec::new(Vec::new()),
+			created_at: CowVec::new(created_at),
+			updated_at: CowVec::new(updated_at),
 			columns: CowVec::new(columns),
 		}
 	}
@@ -324,7 +329,7 @@ impl Columns {
 			}
 		}
 
-		Columns::with_row_numbers(columns, row_numbers)
+		Columns::with_system_columns(columns, row_numbers, Vec::new(), Vec::new())
 	}
 }
 

@@ -118,9 +118,11 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = Columns::with_row_numbers(
+					let output = Columns::with_system_columns(
 						post.columns.as_ref().to_vec(),
 						output_row_numbers,
+						post.created_at.to_vec(),
+						post.updated_at.to_vec(),
 					);
 
 					result_diffs.push(Diff::Insert {
@@ -147,13 +149,17 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let pre_output = Columns::with_row_numbers(
+					let pre_output = Columns::with_system_columns(
 						pre.columns.as_ref().to_vec(),
 						output_row_numbers.clone(),
+						pre.created_at.to_vec(),
+						pre.updated_at.to_vec(),
 					);
-					let post_output = Columns::with_row_numbers(
+					let post_output = Columns::with_system_columns(
 						post.columns.as_ref().to_vec(),
 						output_row_numbers,
+						post.created_at.to_vec(),
+						post.updated_at.to_vec(),
 					);
 
 					result_diffs.push(Diff::Update {
@@ -180,9 +186,11 @@ impl Operator for AppendOperator {
 						output_row_numbers.push(output_row_number);
 					}
 
-					let output = Columns::with_row_numbers(
+					let output = Columns::with_system_columns(
 						pre.columns.as_ref().to_vec(),
 						output_row_numbers,
+						pre.created_at.to_vec(),
+						pre.updated_at.to_vec(),
 					);
 
 					result_diffs.push(Diff::Remove {
@@ -216,9 +224,11 @@ impl Operator for AppendOperator {
 
 			if !parent_cols.is_empty() {
 				// Replace row number with append output row number
-				let updated = Columns::with_row_numbers(
+				let updated = Columns::with_system_columns(
 					parent_cols.columns.as_ref().to_vec(),
 					vec![row_number],
+					parent_cols.created_at.to_vec(),
+					parent_cols.updated_at.to_vec(),
 				);
 				found_columns.push(updated);
 			}

@@ -181,7 +181,7 @@ impl QueryNode for TableScanNode {
 				.collect()
 		};
 
-		let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
+		let mut columns = Columns::with_system_columns(storage_columns, Vec::new(), Vec::new(), Vec::new());
 		{
 			let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
 			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
