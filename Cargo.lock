@@ -470,7 +470,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "cli"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "clap",
  "reifydb-client",
@@ -988,7 +988,7 @@ checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
 
 [[package]]
 name = "examples"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb",
  "tracing",
@@ -1072,7 +1072,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "forge"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "axum",
  "clap",
@@ -1823,7 +1823,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "load-test"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "clap",
  "hdrhistogram",
@@ -2238,7 +2238,7 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "playground"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "futures-util",
  "reifydb",
@@ -2537,7 +2537,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "reifydb"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "libc",
  "num_cpus",
@@ -2580,11 +2580,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-abi"
-version = "0.4.8"
+version = "0.4.9"
 
 [[package]]
 name = "reifydb-auth"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "argon2",
  "bs58",
@@ -2602,11 +2602,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-build"
-version = "0.4.8"
+version = "0.4.9"
 
 [[package]]
 name = "reifydb-catalog"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "crossbeam-skiplist",
  "futures-util",
@@ -2631,7 +2631,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-cdc"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-catalog",
  "reifydb-core",
@@ -2648,7 +2648,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-client"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "futures-util",
  "num-bigint",
@@ -2671,14 +2671,14 @@ dependencies = [
 
 [[package]]
 name = "reifydb-client-derive"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-macro-impl",
 ]
 
 [[package]]
 name = "reifydb-core"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bigdecimal",
  "crossbeam-skiplist",
@@ -2705,14 +2705,14 @@ dependencies = [
 
 [[package]]
 name = "reifydb-derive"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-macro-impl",
 ]
 
 [[package]]
 name = "reifydb-engine"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bumpalo",
  "futures-util",
@@ -2748,7 +2748,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-extension"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bumpalo",
  "libloading",
@@ -2770,7 +2770,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-macro"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-macro-impl",
  "reifydb-runtime",
@@ -2779,14 +2779,14 @@ dependencies = [
 
 [[package]]
 name = "reifydb-macro-impl"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "proc-macro2",
 ]
 
 [[package]]
 name = "reifydb-metric"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "dashmap",
  "reifydb-core",
@@ -2796,7 +2796,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-metric-old"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "crossbeam-channel",
  "reifydb-core",
@@ -2811,7 +2811,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-policy"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bumpalo",
  "reifydb-catalog",
@@ -2826,7 +2826,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-routine"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bumpalo",
  "futures-util",
@@ -2854,7 +2854,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-rql"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bumpalo",
  "postcard",
@@ -2875,7 +2875,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-runtime"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "cfg-if",
  "crossbeam-channel",
@@ -2898,7 +2898,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sdk"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bumpalo",
  "postcard",
@@ -2912,7 +2912,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sql"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-testing",
  "test_each_file",
@@ -2920,7 +2920,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-multi"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -2935,7 +2935,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-single"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-build",
  "reifydb-core",
@@ -2950,7 +2950,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-api"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
@@ -2960,7 +2960,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-flow"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "crossbeam-channel",
  "dashmap",
@@ -2992,7 +2992,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-replication"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "prost",
  "reifydb-catalog",
@@ -3013,7 +3013,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-server"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "futures-util",
  "num_cpus",
@@ -3033,7 +3033,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-server-admin"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "axum",
  "reifydb-core",
@@ -3052,7 +3052,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-server-grpc"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "dashmap",
  "num-bigint",
@@ -3077,7 +3077,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-server-http"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "axum",
  "reifydb-auth",
@@ -3097,7 +3097,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-server-otel"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -3116,7 +3116,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-server-ws"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "dashmap",
  "futures-util",
@@ -3139,7 +3139,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-subscription"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "dashmap",
  "reifydb-abi",
@@ -3160,7 +3160,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-task"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "dashmap",
  "reifydb-core",
@@ -3175,7 +3175,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-tracing"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
@@ -3189,7 +3189,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-subscription"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-catalog",
  "reifydb-core",
@@ -3203,7 +3203,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-testing"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-core",
  "reifydb-type",
@@ -3214,7 +3214,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-transaction"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "crossbeam-channel",
  "crossbeam-skiplist",
@@ -3236,7 +3236,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-type"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "bigdecimal",
  "num-bigint",
@@ -3252,7 +3252,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-wasi-bridge"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-auth",
  "reifydb-build",
@@ -3276,7 +3276,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-wasm"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb-build",
  "wasmtime",
@@ -3286,7 +3286,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-webassembly"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "console_error_panic_hook",
  "getrandom 0.4.2",
@@ -3632,7 +3632,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb",
  "tokio",
@@ -3873,7 +3873,7 @@ dependencies = [
 
 [[package]]
 name = "testcontainer"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb",
  "reifydb-type",
@@ -3882,7 +3882,7 @@ dependencies = [
 
 [[package]]
 name = "tests-integration"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb",
  "reifydb-type",
@@ -3891,7 +3891,7 @@ dependencies = [
 
 [[package]]
 name = "tests-limit"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb",
  "reifydb-testing",
@@ -3901,7 +3901,7 @@ dependencies = [
 
 [[package]]
 name = "tests-regression"
-version = "0.4.8"
+version = "0.4.9"
 dependencies = [
  "reifydb",
  "reifydb-client",
