@@ -2,7 +2,6 @@
 // Copyright (c) 2025 ReifyDB
 
 use std::path::PathBuf;
-#[cfg(feature = "sub_server")]
 use std::sync::Arc;
 
 use reifydb_auth::service::AuthConfigurator;
