@@ -67,7 +67,7 @@ fn parent_shutdown_cancels_child_scope() {
 	assert_eq!(child.alive_count(), 0);
 
 	// Child actor should be dead.
-	assert!(ch.actor_ref.send(CounterMsg::Inc).is_err());
+	assert!(ch.actor_ref.send(CounterMessage::Inc).is_err());
 }
 
 #[test]

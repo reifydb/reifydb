@@ -10,12 +10,12 @@
 
 use std::{cmp::Reverse, collections::HashMap, ops::Bound, sync::Arc};
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 use tracing::{Span, field, instrument};
 
 use super::entry::{CurrentMap, Entries, Entry, HistoricalMap, entry_id_to_key};
-use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// Memory-based primitive storage implementation.
 ///

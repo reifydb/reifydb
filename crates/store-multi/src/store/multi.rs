@@ -7,6 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
+	actors::drop::{DropMessage, DropRequest},
 	common::CommitVersion,
 	delta::Delta,
 	encoded::{
@@ -15,8 +16,8 @@ use reifydb_core::{
 	},
 	event::metric::{StorageDelete, StorageStatsRecordedEvent, StorageWrite},
 	interface::store::{
-		MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
-		MultiVersionRow, MultiVersionStore,
+		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
+		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore,
 	},
 };
 use reifydb_type::util::{cowvec::CowVec, hex};
@@ -26,11 +27,10 @@ use super::{
 	StandardMultiStore,
 	router::{classify_key, classify_range, is_single_version_semantics_key},
 	version::{VersionedGetResult, get_at_version},
-	worker::{DropMessage, DropRequest},
 };
 use crate::{
 	Result,
-	tier::{EntryKind, EntryKind::Multi, RangeCursor, TierBatch, TierStorage},
+	tier::{RangeCursor, TierBatch, TierStorage},
 };
 
 /// Fixed chunk size for internal tier scans.
@@ -696,7 +696,7 @@ impl Iterator for MultiVersionRangeRevIter {
 
 /// Classify a range to determine which table it belongs to.
 fn classify_key_range(range: &EncodedKeyRange) -> EntryKind {
-	classify_range(range).unwrap_or(Multi)
+	classify_range(range).unwrap_or(EntryKind::Multi)
 }
 
 /// Create range bounds from an EncodedKeyRange.

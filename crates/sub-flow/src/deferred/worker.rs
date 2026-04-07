@@ -5,13 +5,17 @@
 //!
 //! This module provides an actor-based implementation of flow processing:
 //! - [`FlowWorkerActor`]: The actor definition with init/handle methods
-//! - [`FlowMsg`]: Messages the actor can receive (Process, Register)
+//! - [`FlowMessage`]: Messages the actor can receive (Process, Register)
 //! - [`FlowResponse`]: Response sent back through callbacks
 
 use std::sync::Mutex;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	actors::{
+		flow::{FlowMessage, FlowResponse, WorkerBatch},
+		pending::Pending,
+	},
 	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::{
@@ -20,73 +24,38 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::actor::{
 	context::Context,
 	system::ActorConfig,
 	traits::{Actor, Directive},
 };
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result,
 	value::{datetime::DateTime, identity::IdentityId},
 };
 use tracing::{Span, error, field, instrument};
 
-use super::instruction::WorkerBatch;
-use crate::{
-	engine::FlowEngine,
-	transaction::{FlowTransaction, pending::Pending},
-};
-
-/// Messages for the flow actor
-pub enum FlowMsg {
-	/// Process a batch of flow instructions
-	Process {
-		batch: WorkerBatch,
-		reply: Box<dyn FnOnce(FlowResponse) + Send>,
-	},
-	/// Register a new flow
-	Register {
-		flow: FlowDag,
-		reply: Box<dyn FnOnce(FlowResponse) + Send>,
-	},
-	/// Process periodic tick for time-based maintenance
-	Tick {
-		flow_ids: Vec<FlowId>,
-		timestamp: DateTime,
-		state_version: CommitVersion,
-		reply: Box<dyn FnOnce(FlowResponse) + Send>,
-	},
-}
-
-/// Response from the flow actor
-pub enum FlowResponse {
-	/// Operation succeeded with pending writes, pending shapes, and view changes
-	Success {
-		pending: Pending,
-		pending_shapes: Vec<RowShape>,
-		view_changes: Vec<Change>,
-	},
-	/// Operation failed with error message
-	Error(String),
-}
+use crate::{catalog::FlowCatalog, engine::FlowEngine, transaction::FlowTransaction};
 
 pub type FlowEngineFactory = Box<dyn FnOnce() -> FlowEngine + Send>;
 
 pub struct FlowWorkerActor {
 	engine: StandardEngine,
 	catalog: Catalog,
+	flow_catalog: FlowCatalog,
 	engine_factory: Mutex<Option<FlowEngineFactory>>,
 }
 
 impl FlowWorkerActor {
-	pub fn new<F>(engine_factory: F, engine: StandardEngine, catalog: Catalog) -> Self
+	pub fn new<F>(engine_factory: F, engine: StandardEngine, catalog: Catalog, flow_catalog: FlowCatalog) -> Self
 	where
 		F: FnOnce() -> FlowEngine + Send + 'static,
 	{
 		Self {
 			engine,
 			catalog,
+			flow_catalog,
 			engine_factory: Mutex::new(Some(Box::new(engine_factory))),
 		}
 	}
@@ -98,7 +67,7 @@ pub struct FlowState {
 
 impl Actor for FlowWorkerActor {
 	type State = FlowState;
-	type Message = FlowMsg;
+	type Message = FlowMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		let factory = self.engine_factory.lock().unwrap().take();
@@ -110,7 +79,7 @@ impl Actor for FlowWorkerActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			FlowMsg::Process {
+			FlowMessage::Process {
 				batch,
 				reply,
 			} => {
@@ -125,7 +94,7 @@ impl Actor for FlowWorkerActor {
 				};
 				(reply)(resp);
 			}
-			FlowMsg::Tick {
+			FlowMessage::Tick {
 				flow_ids,
 				timestamp,
 				state_version,
@@ -143,14 +112,16 @@ impl Actor for FlowWorkerActor {
 				};
 				(reply)(resp);
 			}
-			FlowMsg::Register {
-				flow,
+			FlowMessage::Register {
+				flow_id,
 				reply,
 			} => {
-				let result = self
-					.engine
-					.begin_command(IdentityId::system())
-					.and_then(|mut txn| state.flow_engine.register(&mut txn, flow));
+				let result = self.engine.begin_command(IdentityId::system()).and_then(|mut txn| {
+					let (flow, _) = self
+						.flow_catalog
+						.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)?;
+					state.flow_engine.register(&mut txn, flow)
+				});
 
 				let resp = match result {
 					Ok(_) => FlowResponse::Success {

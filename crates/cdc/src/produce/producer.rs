@@ -26,7 +26,7 @@ use reifydb_runtime::{
 	actor::{
 		context::Context,
 		mailbox::ActorRef,
-		system::{ActorConfig, ActorHandle, ActorSystem},
+		system::{ActorConfig, ActorSystem},
 		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
@@ -48,16 +48,7 @@ use crate::{
 /// Default interval between CDC cleanup attempts (30 seconds)
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(30);
 
-/// Message type for the CDC producer actor.
-#[derive(Clone, Debug)]
-pub enum CdcProduceMsg {
-	Produce {
-		version: CommitVersion,
-		changed_at: DateTime,
-		deltas: Vec<Delta>,
-	},
-	Tick,
-}
+use reifydb_core::actors::cdc::{CdcProduceHandle, CdcProduceMessage};
 
 /// Actor that processes CDC work items.
 ///
@@ -477,11 +468,11 @@ where
 	H: CdcHost,
 {
 	type State = CdcProducerState;
-	type Message = CdcProduceMsg;
+	type Message = CdcProduceMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		debug!("CDC producer actor started");
-		let timer_handle = ctx.schedule_repeat(CLEANUP_INTERVAL, CdcProduceMsg::Tick);
+		let timer_handle = ctx.schedule_repeat(CLEANUP_INTERVAL, CdcProduceMessage::Tick);
 		CdcProducerState {
 			_timer_handle: Some(timer_handle),
 		}
@@ -494,14 +485,14 @@ where
 		}
 
 		match msg {
-			CdcProduceMsg::Produce {
+			CdcProduceMessage::Produce {
 				version,
 				changed_at,
 				deltas,
 			} => {
 				self.process(version, changed_at, deltas);
 			}
-			CdcProduceMsg::Tick => {
+			CdcProduceMessage::Tick => {
 				self.try_cleanup();
 			}
 		}
@@ -521,12 +512,12 @@ where
 
 /// Event listener that forwards PostCommitEvent to the CDC producer actor.
 pub struct CdcProducerEventListener {
-	actor_ref: ActorRef<CdcProduceMsg>,
+	actor_ref: ActorRef<CdcProduceMessage>,
 	clock: Clock,
 }
 
 impl CdcProducerEventListener {
-	pub fn new(actor_ref: ActorRef<CdcProduceMsg>, clock: Clock) -> Self {
+	pub fn new(actor_ref: ActorRef<CdcProduceMessage>, clock: Clock) -> Self {
 		Self {
 			actor_ref,
 			clock,
@@ -536,7 +527,7 @@ impl CdcProducerEventListener {
 
 impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	fn on(&self, event: &PostCommitEvent) {
-		let msg = CdcProduceMsg::Produce {
+		let msg = CdcProduceMessage::Produce {
 			version: *event.version(),
 			changed_at: DateTime::from_nanos(self.clock.now_nanos()),
 			deltas: event.deltas().iter().cloned().collect(),
@@ -558,7 +549,7 @@ pub fn spawn_cdc_producer<S, T, H>(
 	transaction_store: T,
 	host: H,
 	event_bus: EventBus,
-) -> ActorHandle<CdcProduceMsg>
+) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
 	T: MultiVersionGetPrevious + Send + Sync + 'static,
@@ -692,7 +683,7 @@ pub mod tests {
 		}];
 
 		handle.actor_ref()
-			.send(CdcProduceMsg::Produce {
+			.send(CdcProduceMessage::Produce {
 				version: CommitVersion(1),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,
@@ -743,7 +734,7 @@ pub mod tests {
 		];
 
 		handle.actor_ref()
-			.send(CdcProduceMsg::Produce {
+			.send(CdcProduceMessage::Produce {
 				version: CommitVersion(2),
 				changed_at: DateTime::from_nanos(12345000),
 				deltas,

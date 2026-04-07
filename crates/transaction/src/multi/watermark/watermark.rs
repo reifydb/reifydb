@@ -19,44 +19,14 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{actors::watermark::WatermarkMessage, common::CommitVersion};
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
-	sync::{condvar::Condvar, mutex::Mutex},
+	sync::waiter::WaiterHandle,
 };
 use tracing::instrument;
 
-use super::actor::{WatermarkActor, WatermarkMsg, WatermarkShared};
-
-/// Handle for waiting on a specific version to complete
-#[derive(Debug)]
-pub struct WaiterHandle {
-	notified: Mutex<bool>,
-	condvar: Condvar,
-}
-
-impl WaiterHandle {
-	fn new() -> Self {
-		Self {
-			notified: Mutex::new(false),
-			condvar: Condvar::new(),
-		}
-	}
-
-	pub(crate) fn notify(&self) {
-		let mut guard = self.notified.lock();
-		*guard = true;
-		self.condvar.notify_one();
-	}
-
-	fn wait_timeout(&self, timeout: Duration) -> bool {
-		let mut guard = self.notified.lock();
-		if *guard {
-			return true;
-		}
-		!self.condvar.wait_for(&mut guard, timeout).timed_out()
-	}
-}
+use super::actor::{WatermarkActor, WatermarkShared};
 
 /// WaterMark is used to keep track of the minimum un-finished index. Typically,
 /// an index k becomes finished or "done" according to a WaterMark once
@@ -64,7 +34,7 @@ impl WaiterHandle {
 ///  1. as many times as `begin(k)` has, AND
 ///  2. a positive number of times.
 pub struct WaterMark {
-	actor: ActorRef<WatermarkMsg>,
+	actor: ActorRef<WatermarkMessage>,
 	shared: Arc<WatermarkShared>,
 }
 
@@ -103,7 +73,7 @@ impl WaterMark {
 		// Update last_index to the maximum
 		self.shared.last_index.fetch_max(version.0, Ordering::SeqCst);
 
-		let _ = self.actor.send(WatermarkMsg::Begin {
+		let _ = self.actor.send(WatermarkMessage::Begin {
 			version: version.0,
 		});
 	}
@@ -111,7 +81,7 @@ impl WaterMark {
 	/// Sets a single version as done.
 	#[instrument(name = "transaction::watermark::done", level = "trace", skip(self), fields(index = version.0))]
 	pub fn done(&self, version: CommitVersion) {
-		let _ = self.actor.send(WatermarkMsg::Done {
+		let _ = self.actor.send(WatermarkMessage::Done {
 			version: version.0,
 		});
 	}
@@ -156,7 +126,7 @@ impl WaterMark {
 		let waiter = Arc::new(WaiterHandle::new());
 
 		if self.actor
-			.send(WatermarkMsg::WaitFor {
+			.send(WatermarkMessage::WaitFor {
 				version: index.0,
 				waiter: waiter.clone(),
 			})

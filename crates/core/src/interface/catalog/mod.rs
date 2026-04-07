@@ -25,6 +25,7 @@ pub mod source;
 pub mod subscription;
 pub mod sumtype;
 pub mod table;
+pub mod task;
 pub mod test;
 pub mod token;
 pub mod view;

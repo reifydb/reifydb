@@ -4,7 +4,10 @@
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_core::{
-	common::CommitVersion, encoded::row::EncodedRow, interface::catalog::shape::ShapeId, key::row::RowKey,
+	common::CommitVersion,
+	encoded::row::EncodedRow,
+	interface::{catalog::shape::ShapeId, store::EntryKind},
+	key::row::RowKey,
 	row::RowTtl,
 };
 use reifydb_type::{Result, util::cowvec::CowVec};
@@ -12,7 +15,7 @@ use reifydb_type::{Result, util::cowvec::CowVec};
 use super::ScanStats;
 use crate::{
 	hot::storage::HotStorage,
-	tier::{EntryKind, RangeCursor, TierStorage},
+	tier::{RangeCursor, TierStorage},
 };
 
 /// A row identified as expired during scanning.

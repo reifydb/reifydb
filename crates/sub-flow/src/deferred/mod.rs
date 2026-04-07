@@ -7,7 +7,6 @@
 //! trigger view updates in background workers.
 
 pub(crate) mod coordinator;
-pub(crate) mod instruction;
 pub(crate) mod lag;
 pub(crate) mod pool;
 pub(crate) mod state;

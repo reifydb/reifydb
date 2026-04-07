@@ -8,27 +8,11 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
-};
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
 /// A batch of key-value entries grouped by entry kind, used for atomic multi-table writes.
 pub type TierBatch = HashMap<EntryKind, Vec<(CowVec<u8>, Option<CowVec<u8>>)>>;
-
-/// Identifies a logical table/namespace in storage.
-///
-/// The store layer routes keys to the appropriate storage based on key type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EntryKind {
-	/// Multi-version storage for general data
-	Multi,
-	/// Per-source table for row data
-	Source(ShapeId),
-	/// Per-operator table for flow node state
-	Operator(FlowNodeId),
-}
 
 /// A raw storage entry with version.
 ///

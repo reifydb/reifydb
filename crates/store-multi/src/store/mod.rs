@@ -18,7 +18,8 @@ pub mod router;
 pub mod version;
 pub mod worker;
 
-use worker::{DropActor, DropMessage, DropWorkerConfig};
+use reifydb_core::actors::drop::DropMessage;
+use worker::{DropActor, DropWorkerConfig};
 
 use crate::Result;
 

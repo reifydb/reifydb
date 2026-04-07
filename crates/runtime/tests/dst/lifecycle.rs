@@ -14,7 +14,7 @@ fn immediate_stop_on_first_message() {
 	let system = test_system();
 	let handle = system.spawn("counter", CounterActor);
 
-	handle.actor_ref.send(CounterMsg::Stop).unwrap();
+	handle.actor_ref.send(CounterMessage::Stop).unwrap();
 
 	assert!(matches!(
 		system.step(),
@@ -24,7 +24,7 @@ fn immediate_stop_on_first_message() {
 	));
 
 	assert_eq!(system.alive_count(), 0);
-	assert!(handle.actor_ref.send(CounterMsg::Inc).is_err());
+	assert!(handle.actor_ref.send(CounterMessage::Inc).is_err());
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn post_stop_called_on_directive_stop() {
 		},
 	);
 
-	handle.actor_ref.send(PostStopMsg::Stop).unwrap();
+	handle.actor_ref.send(PostStopMessage::Stop).unwrap();
 	system.run_until_idle();
 
 	assert!(*stopped.lock().unwrap());
@@ -55,7 +55,7 @@ fn post_stop_called_on_panic() {
 		},
 	);
 
-	handle.actor_ref.send(PostStopMsg::Boom).unwrap();
+	handle.actor_ref.send(PostStopMessage::Boom).unwrap();
 	system.run_until_idle();
 
 	assert!(*stopped.lock().unwrap());
@@ -82,10 +82,10 @@ fn send_to_dead_actor_returns_closed() {
 	let system = test_system();
 	let handle = system.spawn("counter", CounterActor);
 
-	handle.actor_ref.send(CounterMsg::Stop).unwrap();
+	handle.actor_ref.send(CounterMessage::Stop).unwrap();
 	system.run_until_idle();
 
-	let result = handle.actor_ref.send(CounterMsg::Inc);
+	let result = handle.actor_ref.send(CounterMessage::Inc);
 	assert!(result.is_err());
 }
 
@@ -102,7 +102,7 @@ fn panic_does_not_kill_system() {
 		},
 	);
 
-	panicker.actor_ref.send(PanicMsg::Boom).unwrap();
+	panicker.actor_ref.send(PanicMessage::Boom).unwrap();
 	logger.actor_ref.send("still_alive".into()).unwrap();
 
 	system.run_until_idle();
@@ -117,7 +117,7 @@ fn panic_payload_is_captured() {
 	let system = test_system();
 	let handle = system.spawn("panicker", PanicActor);
 
-	handle.actor_ref.send(PanicMsg::Boom).unwrap();
+	handle.actor_ref.send(PanicMessage::Boom).unwrap();
 
 	match system.step() {
 		StepResult::Panicked {
@@ -195,9 +195,9 @@ fn shutdown_cancels_all_actors() {
 	system.shutdown();
 
 	assert_eq!(system.alive_count(), 0);
-	assert!(h1.actor_ref.send(CounterMsg::Inc).is_err());
-	assert!(h2.actor_ref.send(CounterMsg::Inc).is_err());
-	assert!(h3.actor_ref.send(CounterMsg::Inc).is_err());
+	assert!(h1.actor_ref.send(CounterMessage::Inc).is_err());
+	assert!(h2.actor_ref.send(CounterMessage::Inc).is_err());
+	assert!(h3.actor_ref.send(CounterMessage::Inc).is_err());
 }
 
 #[test]
@@ -226,7 +226,7 @@ fn spawn_during_handling() {
 		},
 	);
 
-	handle.actor_ref.send(SpawnChildMsg::SpawnAndSend("child_msg".into())).unwrap();
+	handle.actor_ref.send(SpawnChildMessage::SpawnAndSend("child_msg".into())).unwrap();
 
 	system.run_until_idle();
 
@@ -246,7 +246,7 @@ fn spawn_during_shutdown_must_fail() {
 	let handle = system.spawn("late_comer", CounterActor);
 
 	assert!(
-		handle.actor_ref.send(CounterMsg::Inc).is_err(),
+		handle.actor_ref.send(CounterMessage::Inc).is_err(),
 		"Should not be able to send to actor spawned after shutdown"
 	);
 

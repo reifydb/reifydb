@@ -5,18 +5,21 @@
 //!
 //! This module provides an actor-based implementation of the worker pool:
 //! - [`PoolActor`]: Supervises N FlowActors and routes work to them
-//! - [`PoolMsg`]: Messages the pool can receive (RegisterFlow, Submit, SubmitToWorker, WorkerReply)
+//! - [`FlowPoolMessage`]: Messages the pool can receive (RegisterFlow, Submit, SubmitToWorker, WorkerReply)
 //! - [`PoolResponse`]: Response sent back through callbacks
 
 use std::{collections::BTreeMap, mem::replace};
 
 use reifydb_core::{
+	actors::{
+		flow::{FlowMessage, FlowPoolMessage, FlowResponse, PoolResponse, WorkerBatch},
+		pending::{Pending, PendingWrite},
+	},
 	common::CommitVersion,
 	encoded::shape::RowShape,
 	interface::{catalog::flow::FlowId, change::Change},
 	internal,
 };
-use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -28,58 +31,6 @@ use reifydb_runtime::{
 };
 use reifydb_type::{util::hex::encode, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
-
-use super::{
-	instruction::WorkerBatch,
-	worker::{FlowMsg, FlowResponse},
-};
-use crate::transaction::pending::{Pending, PendingWrite};
-
-/// Messages for the pool actor
-pub enum PoolMsg {
-	/// Register a new flow (routes to appropriate worker)
-	RegisterFlow {
-		flow: FlowDag,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Submit batches to multiple workers
-	Submit {
-		batches: BTreeMap<usize, WorkerBatch>,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Submit to a specific worker
-	SubmitToWorker {
-		worker_id: usize,
-		batch: WorkerBatch,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Process periodic tick for time-based maintenance
-	Tick {
-		ticks: BTreeMap<usize, Vec<FlowId>>,
-		timestamp: DateTime,
-		state_version: CommitVersion,
-		reply: Box<dyn FnOnce(PoolResponse) + Send>,
-	},
-	/// Async reply from a FlowActor worker
-	WorkerReply {
-		worker_id: usize,
-		response: FlowResponse,
-	},
-}
-
-/// Response from the pool actor
-pub enum PoolResponse {
-	/// Operation succeeded with pending writes, pending shapes, and view changes
-	Success {
-		pending: Pending,
-		pending_shapes: Vec<RowShape>,
-		view_changes: Vec<Change>,
-	},
-	/// Registration succeeded
-	RegisterSuccess,
-	/// Operation failed with error message
-	Error(String),
-}
 
 /// Phase of the pool actor state machine
 enum Phase {
@@ -103,12 +54,12 @@ enum Phase {
 
 /// Pool actor - supervises worker actors and routes work.
 pub struct PoolActor {
-	refs: Vec<ActorRef<FlowMsg>>,
+	refs: Vec<ActorRef<FlowMessage>>,
 	clock: Clock,
 }
 
 impl PoolActor {
-	pub fn new(refs: Vec<ActorRef<FlowMsg>>, clock: Clock) -> Self {
+	pub fn new(refs: Vec<ActorRef<FlowMessage>>, clock: Clock) -> Self {
 		Self {
 			refs,
 			clock,
@@ -123,7 +74,7 @@ pub struct PoolState {
 
 impl Actor for PoolActor {
 	type State = PoolState;
-	type Message = PoolMsg;
+	type Message = FlowPoolMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		PoolState {
@@ -133,8 +84,8 @@ impl Actor for PoolActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			PoolMsg::RegisterFlow {
-				flow,
+			FlowPoolMessage::RegisterFlow {
+				flow_id,
 				reply,
 			} => {
 				if !matches!(state.phase, Phase::Idle) {
@@ -142,20 +93,19 @@ impl Actor for PoolActor {
 					return Directive::Continue;
 				}
 
-				let flow_id = flow.id;
 				let worker_id = (flow_id.0 as usize) % self.refs.len();
 
 				let self_ref = ctx.self_ref().clone();
 				let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-					let _ = self_ref.send(PoolMsg::WorkerReply {
+					let _ = self_ref.send(FlowPoolMessage::WorkerReply {
 						worker_id,
 						response: resp,
 					});
 				});
 
 				if self.refs[worker_id]
-					.send(FlowMsg::Register {
-						flow,
+					.send(FlowMessage::Register {
+						flow_id,
 						reply: callback,
 					})
 					.is_err()
@@ -169,7 +119,7 @@ impl Actor for PoolActor {
 					is_register: true,
 				};
 			}
-			PoolMsg::Submit {
+			FlowPoolMessage::Submit {
 				batches,
 				reply,
 			} => {
@@ -180,7 +130,7 @@ impl Actor for PoolActor {
 
 				self.handle_submit_async(state, ctx, batches, reply);
 			}
-			PoolMsg::SubmitToWorker {
+			FlowPoolMessage::SubmitToWorker {
 				worker_id,
 				batch,
 				reply,
@@ -199,14 +149,14 @@ impl Actor for PoolActor {
 
 				let self_ref = ctx.self_ref().clone();
 				let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-					let _ = self_ref.send(PoolMsg::WorkerReply {
+					let _ = self_ref.send(FlowPoolMessage::WorkerReply {
 						worker_id,
 						response: resp,
 					});
 				});
 
 				if self.refs[worker_id]
-					.send(FlowMsg::Process {
+					.send(FlowMessage::Process {
 						batch,
 						reply: callback,
 					})
@@ -221,7 +171,7 @@ impl Actor for PoolActor {
 					is_register: false,
 				};
 			}
-			PoolMsg::Tick {
+			FlowPoolMessage::Tick {
 				ticks,
 				timestamp,
 				state_version,
@@ -234,7 +184,7 @@ impl Actor for PoolActor {
 
 				self.handle_tick_async(state, ctx, ticks, timestamp, state_version, reply);
 			}
-			PoolMsg::WorkerReply {
+			FlowPoolMessage::WorkerReply {
 				worker_id,
 				response,
 			} => {
@@ -259,7 +209,7 @@ impl PoolActor {
 	fn handle_submit_async(
 		&self,
 		state: &mut PoolState,
-		ctx: &Context<PoolMsg>,
+		ctx: &Context<FlowPoolMessage>,
 		batches: BTreeMap<usize, WorkerBatch>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	) {
@@ -277,14 +227,14 @@ impl PoolActor {
 
 			let self_ref = ctx.self_ref().clone();
 			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(PoolMsg::WorkerReply {
+				let _ = self_ref.send(FlowPoolMessage::WorkerReply {
 					worker_id,
 					response: resp,
 				});
 			});
 
 			if self.refs[worker_id]
-				.send(FlowMsg::Process {
+				.send(FlowMessage::Process {
 					batch,
 					reply: callback,
 				})
@@ -309,7 +259,7 @@ impl PoolActor {
 	fn handle_tick_async(
 		&self,
 		state: &mut PoolState,
-		ctx: &Context<PoolMsg>,
+		ctx: &Context<FlowPoolMessage>,
 		ticks: BTreeMap<usize, Vec<FlowId>>,
 		timestamp: DateTime,
 		state_version: CommitVersion,
@@ -325,14 +275,14 @@ impl PoolActor {
 
 			let self_ref = ctx.self_ref().clone();
 			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(PoolMsg::WorkerReply {
+				let _ = self_ref.send(FlowPoolMessage::WorkerReply {
 					worker_id,
 					response: resp,
 				});
 			});
 
 			if self.refs[worker_id]
-				.send(FlowMsg::Tick {
+				.send(FlowMessage::Tick {
 					flow_ids,
 					timestamp,
 					state_version,

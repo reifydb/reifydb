@@ -4,6 +4,7 @@
 use std::{mem, ops::Bound, time::Duration};
 
 use reifydb_core::{
+	actors::cdc::CdcPollMessage,
 	common::CommitVersion,
 	encoded::key::EncodedKey,
 	interface::cdc::{Cdc, CdcConsumerId, SystemChange},
@@ -20,15 +21,6 @@ use tracing::{debug, error};
 
 use super::{checkpoint::CdcCheckpoint, consumer::CdcConsume, host::CdcHost};
 use crate::storage::CdcStore;
-
-pub enum PollMsg {
-	/// Trigger a poll for CDC events
-	Poll,
-	/// Retry watermark readiness check
-	CheckWatermark,
-	/// Async response from the consumer
-	ConsumeResponse(Result<()>),
-}
 
 /// Configuration for the poll actor
 #[derive(Debug, Clone)]
@@ -87,7 +79,7 @@ pub enum PollState {
 
 impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C> {
 	type State = PollState;
-	type Message = PollMsg;
+	type Message = CdcPollMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
 		debug!(
@@ -96,14 +88,14 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 		);
 
 		// Send initial poll message to start the loop
-		let _ = ctx.self_ref().send(PollMsg::Poll);
+		let _ = ctx.self_ref().send(CdcPollMessage::Poll);
 
 		PollState::Ready
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			PollMsg::Poll => {
+			CdcPollMessage::Poll => {
 				// Ignore Poll if we're already waiting for watermark or consume
 				if !matches!(*state, PollState::Ready) {
 					return Directive::Continue;
@@ -122,7 +114,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 							"[Consumer {:?}] Error getting current version: {}",
 							self.config.consumer_id, e
 						);
-						ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+						ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 						return Directive::Continue;
 					}
 				};
@@ -136,10 +128,10 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 						current_version,
 						retries_remaining: 4,
 					};
-					ctx.schedule_once(Duration::from_millis(50), || PollMsg::CheckWatermark);
+					ctx.schedule_once(Duration::from_millis(50), || CdcPollMessage::CheckWatermark);
 				}
 			}
-			PollMsg::CheckWatermark => {
+			CdcPollMessage::CheckWatermark => {
 				if let PollState::WaitingForWatermark {
 					current_version,
 					retries_remaining,
@@ -167,13 +159,13 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 							retries_remaining: retries_remaining - 1,
 						};
 						ctx.schedule_once(Duration::from_millis(50), || {
-							PollMsg::CheckWatermark
+							CdcPollMessage::CheckWatermark
 						});
 					}
 				}
 				// If not in WaitingForWatermark phase, ignore
 			}
-			PollMsg::ConsumeResponse(result) => {
+			CdcPollMessage::ConsumeResponse(result) => {
 				// Only handle if we're waiting for a consume response
 				if let PollState::WaitingForConsume {
 					latest_version,
@@ -195,7 +187,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	/// Start consuming a batch: fetch CDCs, filter, and send to consumer asynchronously.
 	/// If no data is available, schedules the next poll directly.
-	fn start_consume(&self, state: &mut PollState, ctx: &Context<PollMsg>) {
+	fn start_consume(&self, state: &mut PollState, ctx: &Context<CdcPollMessage>) {
 		*state = PollState::Ready;
 
 		let safe_version = self.host.done_until();
@@ -204,7 +196,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			Ok(q) => q,
 			Err(e) => {
 				error!("[Consumer {:?}] Error beginning query: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 				return;
 			}
 		};
@@ -213,7 +205,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			Ok(c) => c,
 			Err(e) => {
 				error!("[Consumer {:?}] Error fetching checkpoint: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 				return;
 			}
 		};
@@ -223,7 +215,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 
 		if safe_version <= checkpoint {
 			// Nothing safe to fetch yet
-			ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 			return;
 		}
 
@@ -231,13 +223,13 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			Ok(t) => t,
 			Err(e) => {
 				error!("[Consumer {:?}] Error fetching CDCs: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 				return;
 			}
 		};
 
 		if transactions.is_empty() {
-			ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+			ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 			return;
 		}
 
@@ -309,7 +301,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 				}
 			}
 			// More events likely available
-			let _ = ctx.self_ref().send(PollMsg::Poll);
+			let _ = ctx.self_ref().send(CdcPollMessage::Poll);
 			return;
 		}
 
@@ -322,7 +314,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		// Send to consumer with a callback that delivers ConsumeResponse back to self
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
-			let _ = self_ref.send(PollMsg::ConsumeResponse(result));
+			let _ = self_ref.send(CdcPollMessage::ConsumeResponse(result));
 		});
 
 		self.consumer.consume(relevant_cdcs, reply);
@@ -332,7 +324,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	fn finish_consume(
 		&self,
 		state: &mut PollState,
-		ctx: &Context<PollMsg>,
+		ctx: &Context<CdcPollMessage>,
 		latest_version: CommitVersion,
 		count: usize,
 		result: Result<()>,
@@ -355,14 +347,14 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 										if count > 0 {
 											// More events likely available
 											// - poll again immediately
-											let _ = ctx
-												.self_ref()
-												.send(PollMsg::Poll);
+											let _ = ctx.self_ref().send(
+												CdcPollMessage::Poll,
+											);
 										} else {
 											ctx.schedule_once(
 												self.config
 													.poll_interval,
-												|| PollMsg::Poll,
+												|| CdcPollMessage::Poll,
 											);
 										}
 									}
@@ -373,7 +365,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 										);
 										ctx.schedule_once(
 											self.config.poll_interval,
-											|| PollMsg::Poll,
+											|| CdcPollMessage::Poll,
 										);
 									}
 								}
@@ -385,7 +377,7 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 								);
 								let _ = transaction.rollback();
 								ctx.schedule_once(self.config.poll_interval, || {
-									PollMsg::Poll
+									CdcPollMessage::Poll
 								});
 							}
 						}
@@ -395,13 +387,13 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 							"[Consumer {:?}] Error beginning checkpoint transaction: {}",
 							self.config.consumer_id, e
 						);
-						ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+						ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 					}
 				}
 			}
 			Err(e) => {
 				error!("[Consumer {:?}] Error consuming events: {}", self.config.consumer_id, e);
-				ctx.schedule_once(self.config.poll_interval, || PollMsg::Poll);
+				ctx.schedule_once(self.config.poll_interval, || CdcPollMessage::Poll);
 			}
 		}
 	}

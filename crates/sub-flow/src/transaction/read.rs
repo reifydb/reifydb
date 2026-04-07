@@ -14,6 +14,7 @@ use std::{
 use collections::BTreeMap;
 use iter::Peekable;
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	common::CommitVersion,
 	encoded::{
 		key::{EncodedKey, EncodedKeyRange},
@@ -25,7 +26,7 @@ use reifydb_core::{
 use reifydb_type::Result;
 use vec::IntoIter;
 
-use super::{FlowTransaction, PendingWrite};
+use super::FlowTransaction;
 
 /// Determines which query snapshot to read from inside a FlowTransaction.
 pub(crate) enum ReadFrom {

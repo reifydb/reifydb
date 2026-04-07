@@ -24,7 +24,7 @@ use tracing::{info, instrument};
 
 use crate::{
 	coordinator,
-	coordinator::CoordinatorMessage,
+	coordinator::TaskCoordinatorMessage,
 	handle::TaskHandle,
 	registry::{TaskEntry, TaskRegistry},
 	task::ScheduledTask,
@@ -37,7 +37,7 @@ pub struct TaskSubsystem {
 	/// Handle to interact with the task scheduler
 	handle: Option<TaskHandle>,
 	/// Sender to the coordinator
-	coordinator_tx: Option<Sender<CoordinatorMessage>>,
+	coordinator_tx: Option<Sender<TaskCoordinatorMessage>>,
 	/// Join handle for the coordinator task
 	coordinator_handle: Option<JoinHandle<()>>,
 	/// Shared runtime for spawning tasks
@@ -141,7 +141,7 @@ impl Subsystem for TaskSubsystem {
 
 		// Send shutdown message to coordinator
 		if let Some(coordinator_tx) = self.coordinator_tx.take() {
-			let _ = coordinator_tx.blocking_send(CoordinatorMessage::Shutdown);
+			let _ = coordinator_tx.blocking_send(TaskCoordinatorMessage::Shutdown);
 		}
 
 		// Wait for the coordinator task to finish

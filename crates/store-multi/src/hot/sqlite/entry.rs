@@ -3,7 +3,7 @@
 
 //! Table name mapping for SQLite backend.
 
-use crate::tier::EntryKind;
+use reifydb_core::interface::store::EntryKind;
 
 pub(super) fn entry_id_to_name(table: EntryKind) -> String {
 	match table {

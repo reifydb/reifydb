@@ -7,13 +7,12 @@
 
 use reifydb_core::{
 	encoded::key::{EncodedKey, EncodedKeyRange},
+	interface::store::EntryKind,
 	key::{
 		EncodableKeyRange, Key, flow_node_internal_state::FlowNodeInternalStateKeyRange,
 		flow_node_state::FlowNodeStateKeyRange, kind::KeyKind, row::RowKeyRange,
 	},
 };
-
-use crate::tier::EntryKind;
 
 /// Classify a key to determine which table it belongs to.
 pub fn classify_key(key: &EncodedKey) -> EntryKind {

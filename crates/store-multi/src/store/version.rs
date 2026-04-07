@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use crate::tier::{EntryKind, TierStorage};
+use crate::tier::TierStorage;
 
 /// Result of a versioned get operation
 #[derive(Debug, Clone)]

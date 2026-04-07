@@ -10,7 +10,21 @@ use crate::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
+	interface::catalog::{flow::FlowNodeId, shape::ShapeId},
 };
+
+/// Identifies a logical table/namespace in storage.
+///
+/// The store layer routes keys to the appropriate storage based on key type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum EntryKind {
+	/// Multi-version storage for general data
+	Multi,
+	/// Per-source table for row data
+	Source(ShapeId),
+	/// Per-operator table for flow node state
+	Operator(FlowNodeId),
+}
 
 #[derive(Debug, Clone)]
 pub struct MultiVersionRow {

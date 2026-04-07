@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_core::interface::catalog::task::TaskId;
 use tokio::sync::mpsc;
 
 use crate::{
-	coordinator::CoordinatorMessage,
+	coordinator::TaskCoordinatorMessage,
 	registry::{TaskInfo, TaskRegistry},
-	task::{ScheduledTask, TaskId},
+	task::ScheduledTask,
 };
 
 /// Handle for interacting with the task scheduler at runtime
 #[derive(Clone)]
 pub struct TaskHandle {
 	registry: TaskRegistry,
-	coordinator_tx: mpsc::Sender<CoordinatorMessage>,
+	coordinator_tx: mpsc::Sender<TaskCoordinatorMessage>,
 }
 
 impl TaskHandle {
-	pub(crate) fn new(registry: TaskRegistry, coordinator_tx: mpsc::Sender<CoordinatorMessage>) -> Self {
+	pub(crate) fn new(registry: TaskRegistry, coordinator_tx: mpsc::Sender<TaskCoordinatorMessage>) -> Self {
 		Self {
 			registry,
 			coordinator_tx,
@@ -28,7 +29,7 @@ impl TaskHandle {
 		let task_id = task.id;
 
 		self.coordinator_tx
-			.send(CoordinatorMessage::Register(task))
+			.send(TaskCoordinatorMessage::Register(task))
 			.await
 			.map_err(|e| format!("Failed to register task: {}", e))?;
 
@@ -37,7 +38,7 @@ impl TaskHandle {
 
 	pub async fn unregister_task(&self, task_id: TaskId) -> Result<(), String> {
 		self.coordinator_tx
-			.send(CoordinatorMessage::Unregister(task_id))
+			.send(TaskCoordinatorMessage::Unregister(task_id))
 			.await
 			.map_err(|e| format!("Failed to unregister task: {}", e))?;
 

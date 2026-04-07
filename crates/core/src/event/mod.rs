@@ -86,7 +86,7 @@ struct EventEnvelope {
 	event: Box<dyn Any + Send>,
 }
 
-enum EventBusMsg {
+enum EventBusMessage {
 	Emit(EventEnvelope),
 	Register {
 		installer: EventListenerInstaller,
@@ -98,7 +98,7 @@ struct EventBusActor;
 
 impl Actor for EventBusActor {
 	type State = HashMap<TypeId, Box<dyn EventListenerList>>;
-	type Message = EventBusMsg;
+	type Message = EventBusMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		HashMap::new()
@@ -106,17 +106,17 @@ impl Actor for EventBusActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			EventBusMsg::Emit(envelope) => {
+			EventBusMessage::Emit(envelope) => {
 				if let Some(list) = state.get(&envelope.type_id) {
 					list.on_any(envelope.event);
 				}
 			}
-			EventBusMsg::Register {
+			EventBusMessage::Register {
 				installer,
 			} => {
 				installer(state);
 			}
-			EventBusMsg::WaitForCompletion(tx) => {
+			EventBusMessage::WaitForCompletion(tx) => {
 				let _ = tx.send(());
 			}
 		}
@@ -126,7 +126,7 @@ impl Actor for EventBusActor {
 
 #[derive(Clone)]
 pub struct EventBus {
-	actor_ref: ActorRef<EventBusMsg>,
+	actor_ref: ActorRef<EventBusMessage>,
 	_actor_system: ActorSystem,
 }
 
@@ -152,7 +152,7 @@ impl EventBus {
 			list.as_any_mut().downcast_mut::<EventListenerListImpl<E>>().unwrap().add(listener);
 		});
 
-		let _ = self.actor_ref.send(EventBusMsg::Register {
+		let _ = self.actor_ref.send(EventBusMessage::Register {
 			installer,
 		});
 	}
@@ -162,7 +162,7 @@ impl EventBus {
 		E: Event,
 	{
 		let type_id = TypeId::of::<E>();
-		let _ = self.actor_ref.send(EventBusMsg::Emit(EventEnvelope {
+		let _ = self.actor_ref.send(EventBusMessage::Emit(EventEnvelope {
 			type_id,
 			event: event.into_any(),
 		}));
@@ -170,7 +170,7 @@ impl EventBus {
 
 	pub fn wait_for_completion(&self) {
 		let (tx, rx) = sync::mpsc::channel();
-		let _ = self.actor_ref.send(EventBusMsg::WaitForCompletion(tx));
+		let _ = self.actor_ref.send(EventBusMessage::WaitForCompletion(tx));
 		let _ = rx.recv();
 	}
 }

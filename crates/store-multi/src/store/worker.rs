@@ -19,6 +19,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{StorageDrop, StorageStatsRecordedEvent},
 	},
+	interface::store::EntryKind,
 };
 use reifydb_runtime::{
 	actor::{
@@ -34,10 +35,7 @@ use reifydb_type::util::cowvec::CowVec;
 use tracing::{Span, debug, error, instrument};
 
 use super::drop::find_keys_to_drop;
-use crate::{
-	hot::storage::HotStorage,
-	tier::{EntryKind, TierStorage},
-};
+use crate::{hot::storage::HotStorage, tier::TierStorage};
 
 /// Configuration for the drop worker.
 #[derive(Debug, Clone)]
@@ -57,35 +55,7 @@ impl Default for DropWorkerConfig {
 	}
 }
 
-/// A request to drop old versions of a key.
-#[derive(Debug, Clone)]
-pub struct DropRequest {
-	/// The table containing the key.
-	pub table: EntryKind,
-	/// The logical key (without version suffix).
-	pub key: CowVec<u8>,
-	/// Drop versions below this threshold (if Some).
-	pub up_to_version: Option<CommitVersion>,
-	/// Keep this many most recent versions (if Some).
-	pub keep_last_versions: Option<usize>,
-	/// The commit version that created this drop request.
-	pub commit_version: CommitVersion,
-	/// A version being written in the same batch (to avoid race).
-	pub pending_version: Option<CommitVersion>,
-}
-
-/// Messages for the drop actor.
-#[derive(Clone)]
-pub enum DropMessage {
-	/// A single drop request to process.
-	Request(DropRequest),
-	/// A batch of drop requests to process.
-	Batch(Vec<DropRequest>),
-	/// Periodic tick for flushing batches.
-	Tick,
-	/// Shutdown the actor.
-	Shutdown,
-}
+use reifydb_core::actors::drop::{DropMessage, DropRequest};
 
 /// Actor that processes drop operations asynchronously.
 pub struct DropActor {

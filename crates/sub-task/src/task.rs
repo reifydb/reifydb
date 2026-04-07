@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{
-	error::Error,
-	fmt,
-	future::Future,
-	pin::Pin,
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
-};
+use std::{error::Error, fmt, future::Future, pin::Pin, sync::Arc};
+
+use reifydb_core::interface::catalog::task::TaskId;
 
 use crate::{context::TaskContext, schedule::Schedule};
 
@@ -21,30 +14,6 @@ type SyncTaskFn = Arc<dyn Fn(TaskContext) -> Result<(), Box<dyn Error + Send>> +
 type AsyncTaskFn = Arc<
 	dyn Fn(TaskContext) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send>>> + Send>> + Send + Sync,
 >;
-
-/// Unique identifier for a scheduled task
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TaskId(u64);
-
-impl TaskId {
-	/// Generate a new unique task ID
-	pub fn new() -> Self {
-		static COUNTER: AtomicU64 = AtomicU64::new(1);
-		Self(COUNTER.fetch_add(1, Ordering::Relaxed))
-	}
-}
-
-impl Default for TaskId {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-impl fmt::Display for TaskId {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "task-{}", self.0)
-	}
-}
 
 /// Defines the type of work a task performs
 #[derive(Clone)]

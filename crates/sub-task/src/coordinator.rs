@@ -3,6 +3,7 @@
 
 use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync::Arc};
 
+use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, context::clock::Instant};
 use tokio::{select, sync::mpsc, task::spawn_blocking, time};
@@ -11,12 +12,12 @@ use tracing::{debug, error, info};
 use crate::{
 	context::TaskContext,
 	registry::{TaskEntry, TaskRegistry},
-	task::{ScheduledTask, TaskExecutor, TaskId, TaskWork},
+	task::{ScheduledTask, TaskExecutor, TaskWork},
 };
 
 /// Messages sent to the coordinator task
 #[derive(Debug)]
-pub enum CoordinatorMessage {
+pub enum TaskCoordinatorMessage {
 	/// Register a new task
 	Register(ScheduledTask),
 	/// Unregister a task by ID
@@ -53,7 +54,7 @@ impl PartialOrd for HeapEntry {
 /// Run the coordinator loop
 pub async fn run_coordinator(
 	registry: TaskRegistry,
-	mut rx: mpsc::Receiver<CoordinatorMessage>,
+	mut rx: mpsc::Receiver<TaskCoordinatorMessage>,
 	runtime: SharedRuntime,
 	engine: StandardEngine,
 ) {
@@ -142,7 +143,7 @@ pub async fn run_coordinator(
 		    // Handle coordinator messages
 		    Some(msg) = rx.recv() => {
 			match msg {
-			    CoordinatorMessage::Register(task) => {
+			    TaskCoordinatorMessage::Register(task) => {
 				let task_id = task.id;
 				let next_execution = runtime.clock().instant() + task.schedule.initial_delay();
 
@@ -161,7 +162,7 @@ pub async fn run_coordinator(
 				});
 			    }
 
-			    CoordinatorMessage::Unregister(task_id) => {
+			    TaskCoordinatorMessage::Unregister(task_id) => {
 				info!("Unregistering task: {}", task_id);
 
 				// Remove from registry
@@ -177,11 +178,11 @@ pub async fn run_coordinator(
 				}
 			    }
 
-			    CoordinatorMessage::Shutdown => {
+			    TaskCoordinatorMessage::Shutdown => {
 				info!("Task coordinator shutting down");
 				break;
 			    }
-			CoordinatorMessage::TaskCompleted{ .. } => {}}
+			TaskCoordinatorMessage::TaskCompleted{ .. } => {}}
 		    }
 
 		    else => {

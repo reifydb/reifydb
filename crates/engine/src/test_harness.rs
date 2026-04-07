@@ -12,10 +12,11 @@ use reifydb_catalog::{
 	materialized::MaterializedCatalog,
 };
 use reifydb_cdc::{
-	produce::producer::{CdcProduceMsg, CdcProducerEventListener, spawn_cdc_producer},
+	produce::producer::{CdcProducerEventListener, spawn_cdc_producer},
 	storage::CdcStore,
 };
 use reifydb_core::{
+	actors::cdc::CdcProduceHandle,
 	event::{
 		EventBus,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
@@ -31,7 +32,7 @@ use reifydb_metric_old::worker::{
 use reifydb_routine::{function::default_functions, procedure::registry::Procedures};
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
-	actor::system::{ActorHandle, ActorSystem},
+	actor::system::ActorSystem,
 	context::{
 		RuntimeContext,
 		clock::{Clock, MockClock},
@@ -240,7 +241,7 @@ impl TestEngineBuilder {
 				cdc_handle.actor_ref().clone(),
 				runtime.clock().clone(),
 			));
-			ioc_for_cdc.register_service::<Arc<ActorHandle<CdcProduceMsg>>>(Arc::new(cdc_handle));
+			ioc_for_cdc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 		}
 
 		TestEngine {

@@ -7,13 +7,10 @@
 //! writing tombstones or generating CDC events. It's used for internal cleanup
 //! operations like maintaining single-version semantics for flow node state.
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::util::cowvec::CowVec;
 
-use crate::{
-	Result,
-	tier::{EntryKind, TierStorage},
-};
+use crate::{Result, tier::TierStorage};
 
 /// Information about an entry to be dropped.
 #[derive(Debug, Clone)]

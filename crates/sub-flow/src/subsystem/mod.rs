@@ -21,6 +21,7 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
+	actors::flow::{FlowCoordinatorHandle, FlowHandle, FlowPoolHandle},
 	interface::{
 		WithEventBus,
 		cdc::{Cdc, CdcConsumerId},
@@ -32,7 +33,7 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorHandle, context::RuntimeContext};
+use reifydb_runtime::{SharedRuntime, context::RuntimeContext};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
@@ -45,11 +46,11 @@ use crate::{
 	builder::FlowConfig,
 	catalog::FlowCatalog,
 	deferred::{
-		coordinator::{CoordinatorActor, CoordinatorMsg, FlowConsumeRef, extract_new_flow_ids},
+		coordinator::{CoordinatorActor, FlowConsumeRef, extract_new_flow_ids},
 		lag::FlowLags,
-		pool::{PoolActor, PoolMsg},
+		pool::PoolActor,
 		tracker::ShapeVersionTracker,
-		worker::{FlowMsg, FlowWorkerActor},
+		worker::FlowWorkerActor,
 	},
 	engine::FlowEngine,
 	transactional::{
@@ -121,9 +122,9 @@ impl CdcConsume for FlowConsumeDispatcher {
 /// Flow subsystem - single-threaded flow processing.
 pub struct FlowSubsystem {
 	consumer: PollConsumer<StandardEngine, FlowConsumeDispatcher>,
-	worker_handles: Vec<ActorHandle<FlowMsg>>,
-	pool_handle: Option<ActorHandle<PoolMsg>>,
-	coordinator_handle: Option<ActorHandle<CoordinatorMsg>>,
+	worker_handles: Vec<FlowHandle>,
+	pool_handle: Option<FlowPoolHandle>,
+	coordinator_handle: Option<FlowCoordinatorHandle>,
 	transactional_flow_engine: Arc<RwLock<FlowEngine>>,
 	running: bool,
 }
@@ -170,11 +171,20 @@ impl FlowSubsystem {
 
 		let actor_system = engine.actor_system();
 
+		// Shared flow catalog: clones share the same cache so the dispatcher,
+		// coordinator, and workers see the same flow-cache state.
+		let flow_catalog = FlowCatalog::new(engine.catalog());
+
 		let mut worker_refs = Vec::with_capacity(num_workers);
 		let mut worker_handles = Vec::with_capacity(num_workers);
 		for i in 0..num_workers {
 			let worker_factory = factory_builder();
-			let worker = FlowWorkerActor::new(worker_factory, engine.clone(), engine.catalog());
+			let worker = FlowWorkerActor::new(
+				worker_factory,
+				engine.clone(),
+				engine.catalog(),
+				flow_catalog.clone(),
+			);
 			let handle = actor_system.spawn(&format!("flow-worker-{}", i), worker);
 			worker_refs.push(handle.actor_ref().clone());
 			worker_handles.push(handle);
@@ -183,10 +193,6 @@ impl FlowSubsystem {
 		let pool = PoolActor::new(worker_refs, clock.clone());
 		let pool_handle = actor_system.spawn("flow-pool", pool);
 		let pool_ref = pool_handle.actor_ref().clone();
-
-		// Shared flow catalog: clones share the same cache so the dispatcher
-		// and coordinator see the same flow-cache state.
-		let flow_catalog = FlowCatalog::new(engine.catalog());
 
 		let coordinator = CoordinatorActor::new(
 			engine.clone(),

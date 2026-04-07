@@ -18,33 +18,23 @@ use std::{
 	},
 };
 
-use reifydb_runtime::actor::{
-	context::Context,
-	system::ActorConfig,
-	traits::{Actor, Directive},
+use reifydb_runtime::{
+	actor::{
+		context::Context,
+		system::ActorConfig,
+		traits::{Actor, Directive},
+	},
+	sync::waiter::WaiterHandle,
 };
 
-use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD, watermark::WaiterHandle};
+use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
 
 // Maximum orphaned done() entries before cleanup
 const MAX_ORPHANED: usize = 10000;
 // Threshold for cleaning up old orphaned entries
 const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
 
-/// Messages for the watermark actor
-#[derive(Debug)]
-pub enum WatermarkMsg {
-	Begin {
-		version: u64,
-	},
-	Done {
-		version: u64,
-	},
-	WaitFor {
-		version: u64,
-		waiter: Arc<WaiterHandle>,
-	},
-}
+use reifydb_core::actors::watermark::WatermarkMessage;
 
 /// Shared state for fast reads without message passing
 pub struct WatermarkShared {
@@ -68,7 +58,7 @@ pub struct WatermarkState {
 
 impl Actor for WatermarkActor {
 	type State = WatermarkState;
-	type Message = WatermarkMsg;
+	type Message = WatermarkMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		WatermarkState {
@@ -82,17 +72,17 @@ impl Actor for WatermarkActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			WatermarkMsg::Begin {
+			WatermarkMessage::Begin {
 				version,
 			} => {
 				state.process_begin(version, &self.shared.done_until);
 			}
-			WatermarkMsg::Done {
+			WatermarkMessage::Done {
 				version,
 			} => {
 				state.process_done(version, &self.shared.done_until);
 			}
-			WatermarkMsg::WaitFor {
+			WatermarkMessage::WaitFor {
 				version,
 				waiter,
 			} => {

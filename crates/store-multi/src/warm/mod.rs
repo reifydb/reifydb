@@ -7,10 +7,10 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_type::{Result, util::cowvec::CowVec};
 
-use crate::tier::{EntryKind, RangeBatch, RangeCursor, TierBackend, TierStorage};
+use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
 /// Warm storage tier.
 ///

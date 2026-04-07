@@ -264,7 +264,7 @@ mod tests {
 
 	impl Actor for CounterActor {
 		type State = i64;
-		type Message = CounterMsg;
+		type Message = CounterMessage;
 
 		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 			0
@@ -277,10 +277,10 @@ mod tests {
 			_ctx: &Context<Self::Message>,
 		) -> Directive {
 			match msg {
-				CounterMsg::Inc => *state += 1,
-				CounterMsg::Dec => *state -= 1,
-				CounterMsg::Set(v) => *state = v,
-				CounterMsg::Stop => return Directive::Stop,
+				CounterMessage::Inc => *state += 1,
+				CounterMessage::Dec => *state -= 1,
+				CounterMessage::Set(v) => *state = v,
+				CounterMessage::Stop => return Directive::Stop,
 			}
 			Directive::Continue
 		}
@@ -291,7 +291,7 @@ mod tests {
 	}
 
 	#[derive(Debug)]
-	enum CounterMsg {
+	enum CounterMessage {
 		Inc,
 		Dec,
 		Set(i64),
@@ -302,9 +302,9 @@ mod tests {
 	fn test_harness_basic() {
 		let mut harness = TestHarness::new(CounterActor);
 
-		harness.send(CounterMsg::Inc);
-		harness.send(CounterMsg::Inc);
-		harness.send(CounterMsg::Inc);
+		harness.send(CounterMessage::Inc);
+		harness.send(CounterMessage::Inc);
+		harness.send(CounterMessage::Inc);
 
 		assert_eq!(harness.mailbox_len(), 3);
 
@@ -319,9 +319,9 @@ mod tests {
 	fn test_harness_stops_on_stop() {
 		let mut harness = TestHarness::new(CounterActor);
 
-		harness.send(CounterMsg::Inc);
-		harness.send(CounterMsg::Stop);
-		harness.send(CounterMsg::Inc); // Should not be processed
+		harness.send(CounterMessage::Inc);
+		harness.send(CounterMessage::Stop);
+		harness.send(CounterMessage::Inc); // Should not be processed
 
 		let flows = harness.process_all();
 
@@ -335,8 +335,8 @@ mod tests {
 	fn test_harness_process_one() {
 		let mut harness = TestHarness::new(CounterActor);
 
-		harness.send(CounterMsg::Set(42));
-		harness.send(CounterMsg::Inc);
+		harness.send(CounterMessage::Set(42));
+		harness.send(CounterMessage::Inc);
 
 		assert_eq!(harness.process_one(), Some(Directive::Continue));
 		assert_eq!(*harness.state(), 42);

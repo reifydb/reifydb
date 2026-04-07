@@ -9,12 +9,12 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::interface::cdc::CdcConsumerId;
-use reifydb_runtime::actor::system::{ActorHandle, ActorSystem};
+use reifydb_core::{actors::cdc::CdcPollHandle, interface::cdc::CdcConsumerId};
+use reifydb_runtime::actor::system::ActorSystem;
 use reifydb_type::Result;
 
 use super::{
-	actor::{PollActor, PollActorConfig, PollMsg},
+	actor::{PollActor, PollActorConfig},
 	consumer::{CdcConsume, CdcConsumer},
 	host::CdcHost,
 };
@@ -61,7 +61,7 @@ pub struct PollConsumer<H: CdcHost, C: CdcConsume + Send + 'static> {
 	running: Arc<AtomicBool>,
 	actor_system: ActorSystem,
 	/// Handle to the poll actor - must be joined on stop for proper cleanup
-	handle: Option<ActorHandle<PollMsg>>,
+	handle: Option<CdcPollHandle>,
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + 'static> PollConsumer<H, C> {

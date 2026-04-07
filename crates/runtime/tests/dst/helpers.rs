@@ -37,7 +37,7 @@ pub struct CounterActor;
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub enum CounterMsg {
+pub enum CounterMessage {
 	Inc,
 	Dec,
 	Set(i64),
@@ -46,7 +46,7 @@ pub enum CounterMsg {
 
 impl Actor for CounterActor {
 	type State = i64;
-	type Message = CounterMsg;
+	type Message = CounterMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		0
@@ -54,10 +54,10 @@ impl Actor for CounterActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			CounterMsg::Inc => *state += 1,
-			CounterMsg::Dec => *state -= 1,
-			CounterMsg::Set(v) => *state = v,
-			CounterMsg::Stop => return Directive::Stop,
+			CounterMessage::Inc => *state += 1,
+			CounterMessage::Dec => *state -= 1,
+			CounterMessage::Set(v) => *state = v,
+			CounterMessage::Stop => return Directive::Stop,
 		}
 		Directive::Continue
 	}
@@ -117,14 +117,14 @@ pub struct PanicActor;
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum PanicMsg {
+pub enum PanicMessage {
 	Ok,
 	Boom,
 }
 
 impl Actor for PanicActor {
 	type State = u64;
-	type Message = PanicMsg;
+	type Message = PanicMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 		0
@@ -132,11 +132,11 @@ impl Actor for PanicActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			PanicMsg::Ok => {
+			PanicMessage::Ok => {
 				*state += 1;
 				Directive::Continue
 			}
-			PanicMsg::Boom => panic!("actor boom"),
+			PanicMessage::Boom => panic!("actor boom"),
 		}
 	}
 }
@@ -147,15 +147,15 @@ pub struct PostStopActor {
 
 impl Actor for PostStopActor {
 	type State = ();
-	type Message = PostStopMsg;
+	type Message = PostStopMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			PostStopMsg::Stop => Directive::Stop,
-			PostStopMsg::Boom => panic!("post_stop test boom"),
-			PostStopMsg::Noop => Directive::Continue,
+			PostStopMessage::Stop => Directive::Stop,
+			PostStopMessage::Boom => panic!("post_stop test boom"),
+			PostStopMessage::Noop => Directive::Continue,
 		}
 	}
 
@@ -166,7 +166,7 @@ impl Actor for PostStopActor {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum PostStopMsg {
+pub enum PostStopMessage {
 	Stop,
 	Boom,
 	Noop,
@@ -177,19 +177,19 @@ pub struct SpawnChildActor {
 }
 
 #[derive(Debug)]
-pub enum SpawnChildMsg {
+pub enum SpawnChildMessage {
 	SpawnAndSend(String),
 }
 
 impl Actor for SpawnChildActor {
 	type State = ();
-	type Message = SpawnChildMsg;
+	type Message = SpawnChildMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
 
 	fn handle(&self, _state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			SpawnChildMsg::SpawnAndSend(text) => {
+			SpawnChildMessage::SpawnAndSend(text) => {
 				let child = ctx.system().spawn(
 					"child",
 					LogActor {
@@ -226,11 +226,11 @@ pub struct TickActor {
 }
 
 #[derive(Debug, Clone)]
-pub struct TickMsg(pub u64);
+pub struct TickMessage(pub u64);
 
 impl Actor for TickActor {
 	type State = ();
-	type Message = TickMsg;
+	type Message = TickMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
 

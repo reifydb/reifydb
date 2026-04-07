@@ -22,6 +22,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
+	actors::cdc::CdcProduceHandle,
 	event::{
 		EventBus,
 		metric::{CdcStatsDroppedEvent, CdcStatsRecordedEvent, StorageStatsRecordedEvent},
@@ -416,7 +417,7 @@ impl DatabaseBuilder {
 			cdc_handle.actor_ref().clone(),
 			runtime.clock().clone(),
 		));
-		self.ioc.register_service::<Arc<reifydb_runtime::actor::system::ActorHandle<reifydb_cdc::produce::producer::CdcProduceMsg>>>(Arc::new(cdc_handle));
+		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
 
 		// Collect all versions
 		let mut all_versions = vec![

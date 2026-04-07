@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_runtime::context::clock::Instant;
 
-use crate::task::{ScheduledTask, TaskId};
+use crate::task::ScheduledTask;
 
 /// Entry in the task registry tracking execution state
 #[derive(Debug, Clone)]

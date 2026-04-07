@@ -8,12 +8,11 @@
 use std::{cmp::Ordering, collections::btree_map::Range as BTreeMapRange};
 
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	common::CommitVersion,
 	encoded::key::EncodedKey,
 	interface::store::{MultiVersionBatch, MultiVersionRow},
 };
-
-use super::PendingWrite;
 
 /// Iterator that merges pending writes with committed range query results
 ///

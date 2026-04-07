@@ -237,7 +237,7 @@ mod tests {
 	struct CounterActor;
 
 	#[derive(Debug)]
-	enum CounterMsg {
+	enum CounterMessage {
 		Inc,
 		Get(sync::mpsc::Sender<i64>),
 		Stop,
@@ -245,7 +245,7 @@ mod tests {
 
 	impl Actor for CounterActor {
 		type State = i64;
-		type Message = CounterMsg;
+		type Message = CounterMessage;
 
 		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 			0
@@ -258,11 +258,11 @@ mod tests {
 			_ctx: &Context<Self::Message>,
 		) -> Directive {
 			match msg {
-				CounterMsg::Inc => *state += 1,
-				CounterMsg::Get(tx) => {
+				CounterMessage::Inc => *state += 1,
+				CounterMessage::Get(tx) => {
 					let _ = tx.send(*state);
 				}
-				CounterMsg::Stop => return Directive::Stop,
+				CounterMessage::Stop => return Directive::Stop,
 			}
 			Directive::Continue
 		}
@@ -274,17 +274,17 @@ mod tests {
 		let handle = system.spawn("counter", CounterActor);
 
 		let actor_ref = handle.actor_ref().clone();
-		actor_ref.send(CounterMsg::Inc).unwrap();
-		actor_ref.send(CounterMsg::Inc).unwrap();
-		actor_ref.send(CounterMsg::Inc).unwrap();
+		actor_ref.send(CounterMessage::Inc).unwrap();
+		actor_ref.send(CounterMessage::Inc).unwrap();
+		actor_ref.send(CounterMessage::Inc).unwrap();
 
 		let (tx, rx) = sync::mpsc::channel();
-		actor_ref.send(CounterMsg::Get(tx)).unwrap();
+		actor_ref.send(CounterMessage::Get(tx)).unwrap();
 
 		let value = rx.recv().unwrap();
 		assert_eq!(value, 3);
 
-		actor_ref.send(CounterMsg::Stop).unwrap();
+		actor_ref.send(CounterMessage::Stop).unwrap();
 		handle.join().unwrap();
 	}
 

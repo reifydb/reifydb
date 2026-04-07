@@ -21,6 +21,7 @@ use std::{
 use rayon::prelude::*;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	actors::pending::{Pending, PendingWrite},
 	encoded::shape::RowShape,
 	interface::{
 		catalog::{flow::FlowId, shape::ShapeId},
@@ -42,10 +43,7 @@ use tracing::warn;
 
 use crate::{
 	engine::FlowEngine,
-	transaction::{
-		FlowTransaction, TransactionalParams,
-		pending::{Pending, PendingWrite},
-	},
+	transaction::{FlowTransaction, TransactionalParams},
 	transactional::registrar::TransactionalFlowRegistrar,
 };
 

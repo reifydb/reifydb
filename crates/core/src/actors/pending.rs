@@ -9,7 +9,7 @@ use std::{
 	ops::RangeBounds,
 };
 
-use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
+use crate::encoded::{key::EncodedKey, row::EncodedRow};
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
@@ -79,7 +79,6 @@ impl Pending {
 pub mod tests {
 	use std::vec;
 
-	use reifydb_core::encoded::{key::EncodedKey, row::EncodedRow};
 	use reifydb_type::util::cowvec::CowVec;
 
 	use super::*;

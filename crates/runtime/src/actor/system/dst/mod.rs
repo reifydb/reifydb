@@ -554,7 +554,7 @@ mod tests {
 	struct CounterActor;
 
 	#[derive(Debug)]
-	enum CounterMsg {
+	enum CounterMessage {
 		Inc,
 		Dec,
 		Stop,
@@ -562,7 +562,7 @@ mod tests {
 
 	impl Actor for CounterActor {
 		type State = i64;
-		type Message = CounterMsg;
+		type Message = CounterMessage;
 
 		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 			0
@@ -575,9 +575,9 @@ mod tests {
 			_ctx: &Context<Self::Message>,
 		) -> Directive {
 			match msg {
-				CounterMsg::Inc => *state += 1,
-				CounterMsg::Dec => *state -= 1,
-				CounterMsg::Stop => return Directive::Stop,
+				CounterMessage::Inc => *state += 1,
+				CounterMessage::Dec => *state -= 1,
+				CounterMessage::Stop => return Directive::Stop,
 			}
 			Directive::Continue
 		}
@@ -587,11 +587,11 @@ mod tests {
 	struct OrderActor;
 
 	#[derive(Debug, Clone)]
-	struct OrderMsg(u64);
+	struct OrderMessage(u64);
 
 	impl Actor for OrderActor {
 		type State = Vec<u64>;
-		type Message = OrderMsg;
+		type Message = OrderMessage;
 
 		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 			Vec::new()
@@ -612,14 +612,14 @@ mod tests {
 	struct PanicActor;
 
 	#[derive(Debug)]
-	enum PanicMsg {
+	enum PanicMessage {
 		Ok,
 		Boom,
 	}
 
 	impl Actor for PanicActor {
 		type State = u64;
-		type Message = PanicMsg;
+		type Message = PanicMessage;
 
 		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
 			0
@@ -632,11 +632,11 @@ mod tests {
 			_ctx: &Context<Self::Message>,
 		) -> Directive {
 			match msg {
-				PanicMsg::Ok => {
+				PanicMessage::Ok => {
 					*state += 1;
 					Directive::Continue
 				}
-				PanicMsg::Boom => panic!("actor boom"),
+				PanicMessage::Boom => panic!("actor boom"),
 			}
 		}
 	}
@@ -697,9 +697,9 @@ mod tests {
 		let system = test_system();
 		let handle = system.spawn("counter", CounterActor);
 
-		handle.actor_ref.send(CounterMsg::Inc).unwrap();
-		handle.actor_ref.send(CounterMsg::Inc).unwrap();
-		handle.actor_ref.send(CounterMsg::Inc).unwrap();
+		handle.actor_ref.send(CounterMessage::Inc).unwrap();
+		handle.actor_ref.send(CounterMessage::Inc).unwrap();
+		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 
 		// Step three times.
 		for _ in 0..3 {
@@ -752,7 +752,7 @@ mod tests {
 
 		// Schedule a timer for 100ms.
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-		ctx.schedule_once(Duration::from_millis(100), || OrderMsg(42));
+		ctx.schedule_once(Duration::from_millis(100), || OrderMessage(42));
 
 		// No messages yet.
 		assert!(matches!(system.step(), StepResult::Idle));
@@ -845,8 +845,8 @@ mod tests {
 		let system = test_system();
 		let handle = system.spawn("panic", PanicActor);
 
-		handle.actor_ref.send(PanicMsg::Ok).unwrap();
-		handle.actor_ref.send(PanicMsg::Boom).unwrap();
+		handle.actor_ref.send(PanicMessage::Ok).unwrap();
+		handle.actor_ref.send(PanicMessage::Boom).unwrap();
 
 		// First message succeeds.
 		assert!(matches!(
@@ -866,7 +866,7 @@ mod tests {
 		}
 
 		// Actor is dead, further sends should fail.
-		assert!(handle.actor_ref.send(PanicMsg::Ok).is_err());
+		assert!(handle.actor_ref.send(PanicMessage::Ok).is_err());
 		assert_eq!(system.alive_count(), 0);
 	}
 
@@ -875,9 +875,9 @@ mod tests {
 		let system = test_system();
 		let handle = system.spawn("counter", CounterActor);
 
-		handle.actor_ref.send(CounterMsg::Inc).unwrap();
-		handle.actor_ref.send(CounterMsg::Stop).unwrap();
-		handle.actor_ref.send(CounterMsg::Inc).unwrap(); // queued before stop processed
+		handle.actor_ref.send(CounterMessage::Inc).unwrap();
+		handle.actor_ref.send(CounterMessage::Stop).unwrap();
+		handle.actor_ref.send(CounterMessage::Inc).unwrap(); // queued before stop processed
 
 		assert!(matches!(
 			system.step(),
@@ -896,7 +896,7 @@ mod tests {
 		assert!(matches!(system.step(), StepResult::Idle));
 
 		// Further sends fail.
-		assert!(handle.actor_ref.send(CounterMsg::Inc).is_err());
+		assert!(handle.actor_ref.send(CounterMessage::Inc).is_err());
 		assert_eq!(system.alive_count(), 0);
 	}
 

@@ -9,7 +9,7 @@
 
 use std::{collections::HashMap, ops::Bound, sync::Arc};
 
-use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal};
+use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_type::{Result, error, util::cowvec::CowVec};
 use rusqlite::{
@@ -23,7 +23,7 @@ use super::{
 	entry::entry_id_to_name,
 	query::{build_versioned_range_query, version_to_bytes},
 };
-use crate::tier::{EntryKind, RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
+use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierBatch, TierStorage};
 
 /// SQLite-based primitive storage implementation with MVCC versioning.
 ///

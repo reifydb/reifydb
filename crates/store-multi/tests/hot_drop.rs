@@ -5,12 +5,15 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
+	interface::{
+		catalog::{flow::FlowNodeId, id::TableId, shape::ShapeId},
+		store::EntryKind,
+	},
 	util::encoding::{binary::decode_binary, format::raw::Raw},
 };
 use reifydb_store_multi::{
 	hot::storage::HotStorage,
-	tier::{EntryKind, RangeCursor, TierStorage},
+	tier::{RangeCursor, TierStorage},
 };
 use reifydb_testing::{
 	tempdir::temp_dir,

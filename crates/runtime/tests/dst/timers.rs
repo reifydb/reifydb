@@ -228,7 +228,7 @@ fn schedule_tick_uses_mock_clock() {
 	);
 
 	let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx.schedule_tick(Duration::from_millis(100), |nanos| TickMsg(nanos));
+	ctx.schedule_tick(Duration::from_millis(100), |nanos| TickMessage(nanos));
 
 	// Advance 350ms — ticks at 100ms, 200ms, 300ms.
 	system.advance_time(Duration::from_millis(350));
@@ -342,10 +342,10 @@ fn timers_must_be_cancelled_when_actor_stops() {
 	// Our LogActor doesn't stop. Let's use CounterActor.
 	let counter = system.spawn("counter", CounterActor);
 	let ctx_c = Context::new(counter.actor_ref.clone(), system.clone(), system.cancellation_token());
-	ctx_c.schedule_repeat(std::time::Duration::from_millis(100), CounterMsg::Inc);
+	ctx_c.schedule_repeat(std::time::Duration::from_millis(100), CounterMessage::Inc);
 
 	// Stop it.
-	counter.actor_ref.send(CounterMsg::Stop).unwrap();
+	counter.actor_ref.send(CounterMessage::Stop).unwrap();
 	system.run_until_idle();
 	assert_eq!(system.alive_count(), 1); // only LogActor alive
 

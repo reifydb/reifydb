@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
+	actors::ttl::RowTtlMessage as Message,
 	event::row::RowsExpiredEvent,
 	interface::catalog::{config::ConfigKey, shape::ShapeId},
 	row::{RowTtlAnchor, RowTtlCleanupMode},
@@ -20,15 +21,6 @@ use tracing::{debug, info, trace, warn};
 
 use super::{ListRowTtls, ScanStats, scanner};
 use crate::{store::StandardMultiStore, tier::RangeCursor};
-
-/// Messages handled by the row TTL actor.
-#[derive(Debug, Clone)]
-pub enum Message {
-	/// Periodic tick triggers a full scan cycle.
-	Tick(DateTime),
-	/// Shutdown gracefully.
-	Shutdown,
-}
 
 /// Holds state for the chunked, stateful scanner.
 #[derive(Default)]

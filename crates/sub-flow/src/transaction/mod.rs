@@ -3,10 +3,10 @@
 
 use std::{collections::HashMap, mem};
 
-use pending::{Pending, PendingWrite};
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	encoded::{key::EncodedKey, row::EncodedRow, shape::RowShape},
 	interface::{
@@ -84,7 +84,6 @@ use reifydb_transaction::{
 };
 use tracing::instrument;
 
-pub mod pending;
 pub mod range;
 pub mod read;
 pub mod state;

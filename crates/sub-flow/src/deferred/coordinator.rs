@@ -5,7 +5,7 @@
 //!
 //! This module provides:
 //! - [`CoordinatorActor`]: Processes CDC events and coordinates flow workers
-//! - [`CoordinatorMsg`] -- Messages (Consume, PoolReply)
+//! - [`FlowCoordinatorMessage`] -- Messages (Consume, PoolReply)
 //! - [`FlowConsumeRef`]: Thin `CdcConsume` impl that forwards to the actor
 
 use std::{cmp::min, collections, collections::BTreeMap, fmt, mem, ops::Bound, sync::Arc, time::Duration};
@@ -15,6 +15,10 @@ use reifydb_cdc::{
 	storage::CdcStore,
 };
 use reifydb_core::{
+	actors::{
+		flow::{FlowInstruction, FlowPoolMessage, PoolResponse, WorkerBatch},
+		pending::{Pending, PendingWrite},
+	},
 	common::CommitVersion,
 	encoded::{key::EncodedKey, shape::RowShape},
 	interface::{
@@ -44,19 +48,11 @@ use reifydb_type::{
 };
 use tracing::{Span, debug, field, info, instrument, warn};
 
-use super::{
-	instruction::{FlowInstruction, WorkerBatch},
-	pool::{PoolMsg, PoolResponse},
-	state::FlowStates,
-	tracker::ShapeVersionTracker,
-};
-use crate::{
-	catalog::FlowCatalog,
-	transaction::pending::{Pending, PendingWrite},
-};
+use super::{state::FlowStates, tracker::ShapeVersionTracker};
+use crate::catalog::FlowCatalog;
 
 pub(crate) struct FlowConsumeRef {
-	pub actor_ref: ActorRef<CoordinatorMsg>,
+	pub actor_ref: ActorRef<FlowCoordinatorMessage>,
 	pub consumer_key: EncodedKey,
 }
 
@@ -64,7 +60,7 @@ impl CdcConsume for FlowConsumeRef {
 	fn consume(&self, cdcs: Vec<Cdc>, reply: Box<dyn FnOnce(Result<()>) + Send>) {
 		let current_version = cdcs.last().map(|c| c.version).unwrap_or(CommitVersion(0));
 
-		let result = self.actor_ref.send(CoordinatorMsg::Consume {
+		let result = self.actor_ref.send(FlowCoordinatorMessage::Consume {
 			cdcs,
 			consumer_key: self.consumer_key.clone(),
 			current_version,
@@ -73,7 +69,7 @@ impl CdcConsume for FlowConsumeRef {
 
 		if let Err(send_err) = result {
 			// Extract the reply callback from the failed message and call it with an error
-			if let CoordinatorMsg::Consume {
+			if let FlowCoordinatorMessage::Consume {
 				reply,
 				..
 			} = send_err.into_inner()
@@ -84,22 +80,7 @@ impl CdcConsume for FlowConsumeRef {
 	}
 }
 
-/// Messages for the coordinator actor
-pub enum CoordinatorMsg {
-	/// Consume CDC events and process them through flows
-	Consume {
-		cdcs: Vec<Cdc>,
-		/// Consumer checkpoint key (for persisting the consumer-level checkpoint)
-		consumer_key: EncodedKey,
-		/// Current version for backfill processing
-		current_version: CommitVersion,
-		reply: Box<dyn FnOnce(Result<()>) + Send>,
-	},
-	/// Async reply from PoolActor
-	PoolReply(PoolResponse),
-	/// Periodic tick for time-based maintenance
-	Tick,
-}
+use reifydb_core::actors::flow::FlowCoordinatorMessage;
 
 /// Context needed to resume processing after an async pool reply.
 struct ConsumeContext {
@@ -158,7 +139,7 @@ fn coordinator_error(msg: impl fmt::Display) -> Result<()> {
 pub struct CoordinatorActor {
 	engine: StandardEngine,
 	catalog: FlowCatalog,
-	pool: ActorRef<PoolMsg>,
+	pool: ActorRef<FlowPoolMessage>,
 	tracker: Arc<ShapeVersionTracker>,
 	cdc_store: CdcStore,
 	num_workers: usize,
@@ -169,7 +150,7 @@ impl CoordinatorActor {
 	pub fn new(
 		engine: StandardEngine,
 		catalog: FlowCatalog,
-		pool_ref: ActorRef<PoolMsg>,
+		pool_ref: ActorRef<FlowPoolMessage>,
 		tracker: Arc<ShapeVersionTracker>,
 		cdc_store: CdcStore,
 		num_workers: usize,
@@ -197,10 +178,10 @@ pub struct CoordinatorState {
 
 impl Actor for CoordinatorActor {
 	type State = CoordinatorState;
-	type Message = CoordinatorMsg;
+	type Message = FlowCoordinatorMessage;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		ctx.schedule_once(Duration::from_secs(1), || CoordinatorMsg::Tick);
+		ctx.schedule_once(Duration::from_secs(1), || FlowCoordinatorMessage::Tick);
 
 		CoordinatorState {
 			states: FlowStates::new(),
@@ -212,7 +193,7 @@ impl Actor for CoordinatorActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			CoordinatorMsg::Consume {
+			FlowCoordinatorMessage::Consume {
 				cdcs,
 				consumer_key,
 				current_version,
@@ -220,14 +201,14 @@ impl Actor for CoordinatorActor {
 			} => {
 				self.handle_consume(state, ctx, cdcs, consumer_key, current_version, reply);
 			}
-			CoordinatorMsg::PoolReply(response) => {
+			FlowCoordinatorMessage::PoolReply(response) => {
 				self.handle_pool_reply(state, ctx, response);
 			}
-			CoordinatorMsg::Tick => {
+			FlowCoordinatorMessage::Tick => {
 				if matches!(state.phase, Phase::Idle) {
 					self.handle_tick(state, ctx);
 				}
-				ctx.schedule_once(Duration::from_secs(1), || CoordinatorMsg::Tick);
+				ctx.schedule_once(Duration::from_secs(1), || FlowCoordinatorMessage::Tick);
 			}
 		}
 		Directive::Continue
@@ -250,7 +231,7 @@ impl CoordinatorActor {
 	fn handle_consume(
 		&self,
 		state: &mut CoordinatorState,
-		ctx: &Context<CoordinatorMsg>,
+		ctx: &Context<FlowCoordinatorMessage>,
 		cdcs: Vec<Cdc>,
 		consumer_key: EncodedKey,
 		current_version: CommitVersion,
@@ -375,12 +356,12 @@ impl CoordinatorActor {
 
 			let self_ref = ctx.self_ref().clone();
 			let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(CoordinatorMsg::PoolReply(resp));
+				let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
 			});
 
 			if self.pool
-				.send(PoolMsg::RegisterFlow {
-					flow,
+				.send(FlowPoolMessage::RegisterFlow {
+					flow_id,
 					reply: callback,
 				})
 				.is_err()
@@ -400,7 +381,7 @@ impl CoordinatorActor {
 	fn handle_pool_reply(
 		&self,
 		state: &mut CoordinatorState,
-		ctx: &Context<CoordinatorMsg>,
+		ctx: &Context<FlowCoordinatorMessage>,
 		response: PoolResponse,
 	) {
 		let phase = mem::replace(&mut state.phase, Phase::Idle);
@@ -451,12 +432,12 @@ impl CoordinatorActor {
 
 					let self_ref = ctx.self_ref().clone();
 					let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-						let _ = self_ref.send(CoordinatorMsg::PoolReply(resp));
+						let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
 					});
 
 					if self.pool
-						.send(PoolMsg::RegisterFlow {
-							flow,
+						.send(FlowPoolMessage::RegisterFlow {
+							flow_id,
 							reply: callback,
 						})
 						.is_err()
@@ -562,7 +543,7 @@ impl CoordinatorActor {
 	fn proceed_to_submit(
 		&self,
 		state: &mut CoordinatorState,
-		ctx: &Context<CoordinatorMsg>,
+		ctx: &Context<FlowCoordinatorMessage>,
 		mut consume_ctx: ConsumeContext,
 	) {
 		if let Some(to_version) = consume_ctx.latest_version {
@@ -618,11 +599,11 @@ impl CoordinatorActor {
 			if !worker_batches.is_empty() {
 				let self_ref = ctx.self_ref().clone();
 				let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-					let _ = self_ref.send(CoordinatorMsg::PoolReply(resp));
+					let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
 				});
 
 				if self.pool
-					.send(PoolMsg::Submit {
+					.send(FlowPoolMessage::Submit {
 						batches: worker_batches,
 						reply: callback,
 					})
@@ -658,7 +639,7 @@ impl CoordinatorActor {
 	fn proceed_to_backfill(
 		&self,
 		state: &mut CoordinatorState,
-		ctx: &Context<CoordinatorMsg>,
+		ctx: &Context<FlowCoordinatorMessage>,
 		mut consume_ctx: ConsumeContext,
 	) {
 		if consume_ctx.latest_version.is_none() {
@@ -695,7 +676,7 @@ impl CoordinatorActor {
 	fn advance_next_backfill_flow(
 		&self,
 		state: &mut CoordinatorState,
-		ctx: &Context<CoordinatorMsg>,
+		ctx: &Context<FlowCoordinatorMessage>,
 		mut flows: Vec<FlowId>,
 		mut consume_ctx: ConsumeContext,
 	) {
@@ -800,11 +781,11 @@ impl CoordinatorActor {
 
 			let self_ref = ctx.self_ref().clone();
 			let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-				let _ = self_ref.send(CoordinatorMsg::PoolReply(resp));
+				let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
 			});
 
 			if self.pool
-				.send(PoolMsg::SubmitToWorker {
+				.send(FlowPoolMessage::SubmitToWorker {
 					worker_id,
 					batch: worker_batch,
 					reply: callback,
@@ -1091,7 +1072,7 @@ impl CoordinatorActor {
 		}
 	}
 
-	fn handle_tick(&self, state: &mut CoordinatorState, ctx: &Context<CoordinatorMsg>) {
+	fn handle_tick(&self, state: &mut CoordinatorState, ctx: &Context<FlowCoordinatorMessage>) {
 		let now = self.clock.instant();
 		let timestamp = DateTime::from_timestamp_millis(self.clock.now_millis()).unwrap();
 
@@ -1120,11 +1101,11 @@ impl CoordinatorActor {
 
 		let self_ref = ctx.self_ref().clone();
 		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
-			let _ = self_ref.send(CoordinatorMsg::PoolReply(resp));
+			let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
 		});
 
 		if self.pool
-			.send(PoolMsg::Tick {
+			.send(FlowPoolMessage::Tick {
 				ticks: due_flows,
 				timestamp,
 				state_version,
