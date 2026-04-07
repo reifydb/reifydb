@@ -10,7 +10,7 @@
 use std::{thread, time::Duration};
 
 use reifydb_core::{execution::ExecutionResult, interface::catalog::token::Token};
-use reifydb_type::{error::Error, params::Params, value::identity::IdentityId};
+use reifydb_type::{params::Params, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::engine::StandardEngine;
@@ -76,17 +76,18 @@ impl RetryStrategy {
 		}
 	}
 
-	pub fn execute<F>(&self, rql: &str, mut f: F) -> Result<ExecutionResult, Error>
+	pub fn execute<F>(&self, _rql: &str, mut f: F) -> ExecutionResult
 	where
-		F: FnMut() -> Result<ExecutionResult, Error>,
+		F: FnMut() -> ExecutionResult,
 	{
-		let mut last_err = None;
+		let mut last_result = None;
 		for attempt in 0..self.max_attempts {
-			match f() {
-				Ok(res) => return Ok(res),
-				Err(err) if err.code == "TXN_001" => {
+			let result = f();
+			match &result.error {
+				None => return result,
+				Some(err) if err.code == "TXN_001" => {
 					warn!(attempt = attempt + 1, "Transaction conflict detected, retrying");
-					last_err = Some(err);
+					last_result = Some(result);
 					if attempt + 1 < self.max_attempts {
 						match &self.backoff {
 							Backoff::None => {}
@@ -101,15 +102,12 @@ impl RetryStrategy {
 						}
 					}
 				}
-				Err(mut err) => {
-					err.with_statement(rql.to_string());
-					return Err(err);
+				Some(_) => {
+					return result;
 				}
 			}
 		}
-		let mut err = last_err.unwrap();
-		err.with_statement(rql.to_string());
-		Err(err)
+		last_result.unwrap()
 	}
 }
 
@@ -187,20 +185,20 @@ impl Session {
 
 	/// Execute a read-only query.
 	#[instrument(name = "session::query", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<ExecutionResult, Error> {
+	pub fn query(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
 		self.engine.query_as(self.identity, rql, params.into())
 	}
 
 	/// Execute a transactional command (DML + Query) with retry on conflict.
 	#[instrument(name = "session::command", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<ExecutionResult, Error> {
+	pub fn command(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
 		let params = params.into();
 		self.retry.execute(rql, || self.engine.command_as(self.identity, rql, params.clone()))
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation with retry on conflict.
 	#[instrument(name = "session::admin", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> Result<ExecutionResult, Error> {
+	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
 		let params = params.into();
 		self.retry.execute(rql, || self.engine.admin_as(self.identity, rql, params.clone()))
 	}

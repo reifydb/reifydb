@@ -104,7 +104,7 @@ use crate::{
 /// any component (procedures, ProcedureContext, tests, etc.) to execute
 /// RQL through a transaction without a direct dependency on the engine crate.
 pub trait RqlExecutor: Send + Sync {
-	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<ExecutionResult>;
+	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult;
 }
 
 pub mod admin;
@@ -453,11 +453,11 @@ impl<'a> Transaction<'a> {
 	/// Execute RQL within this transaction using the attached executor.
 	///
 	/// Panics if no `RqlExecutor` has been set on the underlying transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<ExecutionResult> {
+	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
 		let executor = self.executor_clone().expect("RqlExecutor not set");
 		let mut tx = self.reborrow();
 		let result = executor.rql(&mut tx, rql, params);
-		if let Err(ref e) = result {
+		if let Some(ref e) = result.error {
 			self.poison(*e.0.clone());
 		}
 		result

@@ -54,8 +54,12 @@ fn main() {
 	// Execute a query within the session context
 	// Sessions can maintain state across multiple operations
 	log_query("map { yet_another_answer: 20 * 2 + 2 }");
-	let result = session.query("map { yet_another_answer: 20 * 2 + 2 }", Params::None).unwrap();
-	for frame in result.frames {
+	let r = session.query("map { yet_another_answer: 20 * 2 + 2 }", Params::None);
+	if let Some(e) = r.error {
+		panic!("query failed: {e:?}");
+	}
+	let frames = r.frames;
+	for frame in frames {
 		info!("{}", frame);
 	}
 

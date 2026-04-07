@@ -184,11 +184,17 @@ impl AdminTransaction {
 	/// Execute RQL within this transaction using the attached executor.
 	///
 	/// Panics if no `RqlExecutor` has been set on this transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<ExecutionResult> {
-		self.check_active()?;
+	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.check_active() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: Default::default(),
+			};
+		}
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		let result = executor.rql(&mut Transaction::Admin(self), rql, params);
-		if let Err(ref e) = result {
+		if let Some(ref e) = result.error {
 			self.poison(*e.0.clone());
 		}
 		result

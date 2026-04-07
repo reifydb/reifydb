@@ -78,49 +78,55 @@ impl TestEngine {
 
 	/// Run an admin RQL statement as system identity. Panics on error.
 	pub fn admin(&self, rql: &str) -> Vec<Frame> {
-		self.engine
-			.admin_as(IdentityId::system(), rql, Params::None)
-			.map(|r| r.frames)
-			.unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"))
+		let r = self.engine.admin_as(IdentityId::system(), rql, Params::None);
+		if let Some(e) = r.error {
+			panic!("admin failed: {e:?}\nrql: {rql}")
+		}
+		r.frames
 	}
 
 	/// Run a command RQL statement as system identity. Panics on error.
 	pub fn command(&self, rql: &str) -> Vec<Frame> {
-		self.engine
-			.command_as(IdentityId::system(), rql, Params::None)
-			.map(|r| r.frames)
-			.unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"))
+		let r = self.engine.command_as(IdentityId::system(), rql, Params::None);
+		if let Some(e) = r.error {
+			panic!("command failed: {e:?}\nrql: {rql}")
+		}
+		r.frames
 	}
 
 	/// Run a query RQL statement as system identity. Panics on error.
 	pub fn query(&self, rql: &str) -> Vec<Frame> {
-		self.engine
-			.query_as(IdentityId::system(), rql, Params::None)
-			.map(|r| r.frames)
-			.unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"))
+		let r = self.engine.query_as(IdentityId::system(), rql, Params::None);
+		if let Some(e) = r.error {
+			panic!("query failed: {e:?}\nrql: {rql}")
+		}
+		r.frames
 	}
 
 	/// Run an admin statement expecting an error. Panics if it succeeds.
 	pub fn admin_err(&self, rql: &str) -> String {
-		match self.engine.admin_as(IdentityId::system(), rql, Params::None) {
-			Err(e) => format!("{e:?}"),
-			Ok(_) => panic!("Expected error but admin succeeded\nrql: {rql}"),
+		let r = self.engine.admin_as(IdentityId::system(), rql, Params::None);
+		match r.error {
+			Some(e) => format!("{e:?}"),
+			None => panic!("Expected error but admin succeeded\nrql: {rql}"),
 		}
 	}
 
 	/// Run a command statement expecting an error. Panics if it succeeds.
 	pub fn command_err(&self, rql: &str) -> String {
-		match self.engine.command_as(IdentityId::system(), rql, Params::None) {
-			Err(e) => format!("{e:?}"),
-			Ok(_) => panic!("Expected error but command succeeded\nrql: {rql}"),
+		let r = self.engine.command_as(IdentityId::system(), rql, Params::None);
+		match r.error {
+			Some(e) => format!("{e:?}"),
+			None => panic!("Expected error but command succeeded\nrql: {rql}"),
 		}
 	}
 
 	/// Run a query statement expecting an error. Panics if it succeeds.
 	pub fn query_err(&self, rql: &str) -> String {
-		match self.engine.query_as(IdentityId::system(), rql, Params::None) {
-			Err(e) => format!("{e:?}"),
-			Ok(_) => panic!("Expected error but query succeeded\nrql: {rql}"),
+		let r = self.engine.query_as(IdentityId::system(), rql, Params::None);
+		match r.error {
+			Some(e) => format!("{e:?}"),
+			None => panic!("Expected error but query succeeded\nrql: {rql}"),
 		}
 	}
 

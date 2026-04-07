@@ -72,10 +72,12 @@ impl Procedure for CompleteJobRunProcedure {
 		}
 
 		// Get the job_run to find run_id and job_id
-		let job_run_result = tx.rql(
-			&format!("FROM forge::job_runs | FILTER id == uuid::v4(\"{job_run_id_str}\")"),
-			Params::None,
-		)?;
+		let job_run_result = tx
+			.rql(
+				&format!("FROM forge::job_runs | FILTER id == uuid::v4(\"{job_run_id_str}\")"),
+				Params::None,
+			)
+			.check()?;
 
 		let job_run_row = job_run_result.first().and_then(|f| f.rows().next()).ok_or_else(|| {
 			ProcedureError::ExecutionFailed {
@@ -104,7 +106,8 @@ impl Procedure for CompleteJobRunProcedure {
 				 FILTER id == uuid::v4(\"{job_run_id_str}\")"
 			),
 			Params::None,
-		)?;
+		)
+		.check()?;
 
 		if status_str == "succeeded" {
 			// Check blocked job_runs in this run and unblock those whose deps are all satisfied
@@ -115,7 +118,8 @@ impl Procedure for CompleteJobRunProcedure {
 				&format!("UPDATE forge::step_runs {{ status: \"skipped\" }} \
 					 FILTER job_run_id == uuid::v4(\"{job_run_id_str}\") AND status == \"pending\""),
 				Params::None,
-			)?;
+			)
+			.check()?;
 
 			// Transitively skip all dependent job_runs
 			skip_dependents(tx, &run_id, &job_id)?;
@@ -127,18 +131,20 @@ impl Procedure for CompleteJobRunProcedure {
 				"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status != \"succeeded\" AND status != \"failed\" AND status != \"skipped\""
 			),
 			Params::None,
-		)?;
+		).check()?;
 
 		let all_terminal = non_terminal.first().is_none_or(|f| f.rows().next().is_none());
 
 		if all_terminal {
 			// Check if any job_run failed
-			let any_failed = tx.rql(
-				&format!(
-					"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status == \"failed\""
-				),
-				Params::None,
-			)?;
+			let any_failed = tx
+				.rql(
+					&format!(
+						"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status == \"failed\""
+					),
+					Params::None,
+				)
+				.check()?;
 
 			let run_status = if any_failed.first().is_some_and(|f| f.rows().next().is_some()) {
 				"failed"
@@ -152,7 +158,8 @@ impl Procedure for CompleteJobRunProcedure {
 					 FILTER id == uuid::v4(\"{run_id}\")"
 				),
 				Params::None,
-			)?;
+			)
+			.check()?;
 		}
 
 		Ok(Columns::single_row([
@@ -173,10 +180,14 @@ fn missing_field(table: &str, field: &str) -> reifydb_type::error::Error {
 /// For each blocked job_run in this run, check if all its dependencies have succeeded.
 /// If so, transition it to "pending".
 fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> TypeResult<()> {
-	let blocked = tx.rql(
-		&format!("FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status == \"blocked\""),
-		Params::None,
-	)?;
+	let blocked = tx
+		.rql(
+			&format!(
+				"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND status == \"blocked\""
+			),
+			Params::None,
+		)
+		.check()?;
 
 	if let Some(frame) = blocked.first() {
 		for row in frame.rows() {
@@ -190,12 +201,14 @@ fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> TypeResult<()> 
 				.ok_or_else(|| missing_field("job_runs", "job_id"))?;
 
 			// Get all dependencies for this job
-			let deps = tx.rql(
-				&format!(
-					"FROM forge::job_dependencies | FILTER job_id == uuid::v4(\"{blocked_job_id}\")"
-				),
-				Params::None,
-			)?;
+			let deps = tx
+				.rql(
+					&format!(
+						"FROM forge::job_dependencies | FILTER job_id == uuid::v4(\"{blocked_job_id}\")"
+					),
+					Params::None,
+				)
+				.check()?;
 
 			let mut all_deps_satisfied = true;
 
@@ -214,7 +227,7 @@ fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> TypeResult<()> 
 							"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND job_id == uuid::v4(\"{dep_job_id}\") AND status == \"succeeded\""
 						),
 						Params::None,
-					)?;
+					).check()?;
 
 					if dep_job_run.first().is_none_or(|f| f.rows().next().is_none()) {
 						all_deps_satisfied = false;
@@ -228,7 +241,8 @@ fn unblock_ready_jobs(tx: &mut Transaction<'_>, run_id: &str) -> TypeResult<()> 
 					&format!("UPDATE forge::job_runs {{ status: \"pending\" }} \
 						 FILTER id == uuid::v4(\"{blocked_job_run_id}\")"),
 					Params::None,
-				)?;
+				)
+				.check()?;
 			}
 		}
 	}
@@ -246,12 +260,14 @@ fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) 
 		i += 1;
 
 		// Find jobs that depend on this one
-		let dependents = tx.rql(
-			&format!(
-				"FROM forge::job_dependencies | FILTER depends_on_job_id == uuid::v4(\"{current_job_id}\")"
-			),
-			Params::None,
-		)?;
+		let dependents = tx
+			.rql(
+				&format!(
+					"FROM forge::job_dependencies | FILTER depends_on_job_id == uuid::v4(\"{current_job_id}\")"
+				),
+				Params::None,
+			)
+			.check()?;
 
 		if let Some(frame) = dependents.first() {
 			for row in frame.rows() {
@@ -271,7 +287,7 @@ fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) 
 						 FILTER run_id == uuid::v4(\"{run_id}\") AND job_id == uuid::v4(\"{dependent_job_id}\") AND status != \"succeeded\" AND status != \"failed\""
 					),
 					Params::None,
-				)?;
+				).check()?;
 
 				// Skip step_runs for the skipped job_run
 				let skipped_job_runs = tx.rql(
@@ -279,7 +295,7 @@ fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) 
 						"FROM forge::job_runs | FILTER run_id == uuid::v4(\"{run_id}\") AND job_id == uuid::v4(\"{dependent_job_id}\") AND status == \"skipped\""
 					),
 					Params::None,
-				)?;
+				).check()?;
 
 				if let Some(jr_frame) = skipped_job_runs.first() {
 					for jr_row in jr_frame.rows() {
@@ -291,7 +307,8 @@ fn skip_dependents(tx: &mut Transaction<'_>, run_id: &str, failed_job_id: &str) 
 							&format!("UPDATE forge::step_runs {{ status: \"skipped\" }} \
 								 FILTER job_run_id == uuid::v4(\"{jr_id}\") AND status == \"pending\""),
 							Params::None,
-						)?;
+						)
+						.check()?;
 					}
 				}
 			}

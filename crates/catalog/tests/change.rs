@@ -60,7 +60,7 @@ impl Runner for CatalogRunner {
 				args.reject_rest()?;
 
 				let txn = self.primary_txn();
-				txn.rql(&rql, Params::None).map(|r| r.frames)?;
+				txn.rql(&rql, Params::None).check()?;
 			}
 
 			"replicate" => {
@@ -96,7 +96,7 @@ impl Runner for CatalogRunner {
 				let rql = args.next_pos().ok_or("query requires an RQL string")?.value.clone();
 				args.reject_rest()?;
 
-				let result = self.replica.query_as(IdentityId::system(), &rql, Params::None)?;
+				let result = self.replica.query_as(IdentityId::system(), &rql, Params::None).check()?;
 				for frame in result.iter() {
 					write!(output, "{}", frame)?;
 				}

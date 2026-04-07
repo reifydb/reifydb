@@ -34,6 +34,7 @@ use reifydb_core::{
 			vtable::{VTable, VTableId},
 		},
 	},
+	metric::ExecutionMetrics,
 };
 use reifydb_metric_old::metric::MetricReader;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
@@ -126,91 +127,162 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
-		self.reject_if_read_only()?;
-		(|| {
-			let mut txn = self.begin_admin(identity)?;
-			let result = self.executor.admin(
-				&mut txn,
-				Admin {
-					rql,
-					params,
-				},
-			)?;
-			txn.commit()?;
-			Ok(result)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.reject_if_read_only() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		let mut txn = match self.begin_admin(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_statement(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.admin(
+			&mut txn,
+			Admin {
+				rql,
+				params,
+			},
+		);
+		if outcome.is_ok()
+			&& let Err(mut e) = txn.commit()
+		{
+			e.with_statement(rql.to_string());
+			outcome.error = Some(e);
+		}
+		if let Some(ref mut e) = outcome.error {
+			e.with_statement(rql.to_string());
+		}
+		outcome
 	}
 
 	#[instrument(name = "engine::command_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
-		self.reject_if_read_only()?;
-		(|| {
-			let mut txn = self.begin_command(identity)?;
-			let result = self.executor.command(
-				&mut txn,
-				Command {
-					rql,
-					params,
-				},
-			)?;
-			txn.commit()?;
-			Ok(result)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.reject_if_read_only() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		let mut txn = match self.begin_command(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_statement(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.command(
+			&mut txn,
+			Command {
+				rql,
+				params,
+			},
+		);
+		if outcome.is_ok()
+			&& let Err(mut e) = txn.commit()
+		{
+			e.with_statement(rql.to_string());
+			outcome.error = Some(e);
+		}
+		if let Some(ref mut e) = outcome.error {
+			e.with_statement(rql.to_string());
+		}
+		outcome
 	}
 
 	#[instrument(name = "engine::query_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
-		(|| {
-			let mut txn = self.begin_query(identity)?;
-			self.executor.query(
-				&mut txn,
-				Query {
-					rql,
-					params,
-				},
-			)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		let mut txn = match self.begin_query(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_statement(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.query(
+			&mut txn,
+			Query {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_statement(rql.to_string());
+		}
+		outcome
 	}
 
 	#[instrument(name = "engine::subscribe_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn subscribe_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
-		(|| {
-			let mut txn = self.begin_query(identity)?;
-			self.executor.subscription(
-				&mut txn,
-				Subscription {
-					rql,
-					params,
-				},
-			)
-		})()
-		.map_err(|mut err: Error| {
-			err.with_statement(rql.to_string());
-			err
-		})
+	pub fn subscribe_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		let mut txn = match self.begin_query(identity) {
+			Ok(t) => t,
+			Err(mut e) => {
+				e.with_statement(rql.to_string());
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.subscription(
+			&mut txn,
+			Subscription {
+				rql,
+				params,
+			},
+		);
+		if let Some(ref mut e) = outcome.error {
+			e.with_statement(rql.to_string());
+		}
+		outcome
 	}
 
 	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure_as", level = "debug", skip(self, params), fields(name = %name))]
-	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<ExecutionResult> {
-		self.reject_if_read_only()?;
-		let mut txn = self.begin_command(identity)?;
-		let result = self.executor.call_procedure(&mut txn, name, &params)?;
-		txn.commit()?;
-		Ok(result)
+	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> ExecutionResult {
+		if let Err(e) = self.reject_if_read_only() {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
+		let mut txn = match self.begin_command(identity) {
+			Ok(t) => t,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let mut outcome = self.executor.call_procedure(&mut txn, name, &params);
+		if outcome.is_ok()
+			&& let Err(e) = txn.commit()
+		{
+			outcome.error = Some(e);
+		}
+		outcome
 	}
 
 	/// Register a user-defined virtual table.

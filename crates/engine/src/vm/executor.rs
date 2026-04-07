@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, result::Result as StdResult, sync::Arc, time::Duration};
 
 use bumpalo::Bump;
 use reifydb_catalog::{catalog::Catalog, vtable::system::flow_operator_store::SystemFlowOperatorStore};
@@ -103,7 +103,7 @@ impl Executor {
 }
 
 impl RqlExecutor for Executor {
-	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<ExecutionResult> {
+	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult {
 		Executor::rql(self, tx, rql, params)
 	}
 }
@@ -159,6 +159,21 @@ fn populate_identity(symbols: &mut SymbolTable, catalog: &Catalog, tx: &mut Tran
 /// Execute a list of compiled units, tracking output frames separately.
 type CompiledUnitsResult = (Vec<Frame>, Vec<Frame>, SymbolTable, Vec<StatementMetric>);
 
+/// Error from `execute_compiled_units` that preserves partial metrics.
+struct ExecutionFailure {
+	error: Error,
+	partial_metrics: Vec<StatementMetric>,
+}
+
+/// Build `ExecutionMetrics` from a list of statement metrics.
+fn build_metrics(statements: Vec<StatementMetric>) -> ExecutionMetrics {
+	let fps: Vec<_> = statements.iter().map(|m| m.fingerprint).collect();
+	ExecutionMetrics {
+		request_fingerprint: fingerprint_request(&fps),
+		statements,
+	}
+}
+
 /// Returns (output_results, last_result, final_symbols, metrics).
 fn execute_compiled_units(
 	services: &Arc<Services>,
@@ -166,7 +181,9 @@ fn execute_compiled_units(
 	compiled_list: &[Compiled],
 	params: &Params,
 	mut symbols: SymbolTable,
-) -> Result<CompiledUnitsResult> {
+	compile_duration: Duration,
+) -> StdResult<CompiledUnitsResult, ExecutionFailure> {
+	let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
 	let mut result = vec![];
 	let mut output_results: Vec<Frame> = Vec::new();
 	let mut metrics = Vec::new();
@@ -175,17 +192,28 @@ fn execute_compiled_units(
 		result.clear();
 		let mut vm = Vm::new(symbols);
 		let start = services.runtime_context.clock.instant();
-		vm.run(services, tx, &compiled.instructions, params, &mut result)?;
+		let run_result = vm.run(services, tx, &compiled.instructions, params, &mut result);
 		let execute_duration = start.elapsed();
 		symbols = vm.symbols;
 
 		metrics.push(StatementMetric {
 			fingerprint: compiled.fingerprint,
 			normalized_rql: compiled.normalized_rql.clone(),
-			compile_duration_us: 0, // Not tracked per-statement in Ready case yet
+			compile_duration_us,
 			execute_duration_us: execute_duration.as_micros() as u64,
-			rows_affected: result.len() as u64, // Rough approximation
+			rows_affected: if run_result.is_ok() {
+				extract_rows_affected(&result)
+			} else {
+				0
+			},
 		});
+
+		if let Err(error) = run_result {
+			return Err(ExecutionFailure {
+				error,
+				partial_metrics: metrics,
+			});
+		}
 
 		if compiled.is_output {
 			output_results.append(&mut result);
@@ -199,6 +227,31 @@ fn execute_compiled_units(
 fn merge_results(mut output_results: Vec<Frame>, mut remaining: Vec<Frame>) -> Vec<Frame> {
 	output_results.append(&mut remaining);
 	output_results
+}
+
+/// Extract the actual rows-affected count from a DML result.
+///
+/// DML handlers (INSERT/UPDATE/DELETE) emit a single summary frame with a
+/// column named "inserted", "updated", or "deleted" containing the count as
+/// a `Uint8` value. When that pattern is detected, return the real count.
+/// Otherwise fall back to the number of frames (correct for SELECT, DDL, etc.).
+fn extract_rows_affected(result: &[Frame]) -> u64 {
+	if result.len() == 1 {
+		let frame = &result[0];
+		for col in &frame.columns {
+			match col.name.as_str() {
+				"inserted" | "updated" | "deleted" => {
+					if col.data.len() == 1
+						&& let Value::Uint8(n) = col.data.get_value(0)
+					{
+						return n;
+					}
+				}
+				_ => {}
+			}
+		}
+	}
+	result.len() as u64
 }
 
 impl Executor {
@@ -215,8 +268,17 @@ impl Executor {
 	/// This is the universal RQL execution interface: it compiles and runs
 	/// arbitrary RQL within whatever transaction variant the caller provides.
 	#[instrument(name = "executor::rql", level = "debug", skip(self, tx, params), fields(rql = %rql))]
-	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<ExecutionResult> {
-		let mut symbols = self.setup_symbols(&params, tx)?;
+	pub fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> ExecutionResult {
+		let mut symbols = match self.setup_symbols(&params, tx) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
 		let start_compile = self.0.runtime_context.clock.instant();
 		let compiled_list = match self.compiler.compile_with_policy(tx, rql, inject_read_policies) {
@@ -226,16 +288,22 @@ impl Executor {
 			}
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, rql, params)? {
-					return Ok(ExecutionResult {
+				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+					return ExecutionResult {
 						frames,
+						error: None,
 						metrics: ExecutionMetrics::default(),
-					});
+					};
 				}
-				return Err(err);
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
 		let compile_duration = start_compile.elapsed();
+		let compile_duration_us = compile_duration.as_micros() as u64 / compiled_list.len().max(1) as u64;
 
 		let mut result = vec![];
 		let mut metrics = Vec::new();
@@ -243,68 +311,101 @@ impl Executor {
 			result.clear();
 			let mut vm = Vm::new(symbols);
 			let start_execute = self.0.runtime_context.clock.instant();
-			vm.run(&self.0, tx, &compiled.instructions, &params, &mut result)?;
+			let run_result = vm.run(&self.0, tx, &compiled.instructions, &params, &mut result);
 			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
 
 			metrics.push(StatementMetric {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql.clone(),
-				compile_duration_us: compile_duration.as_micros() as u64 / compiled_list.len() as u64, /* Apportioned */
+				compile_duration_us,
 				execute_duration_us: execute_duration.as_micros() as u64,
-				rows_affected: result.len() as u64,
+				rows_affected: if run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
 			});
+
+			if let Err(e) = run_result {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: build_metrics(metrics),
+				};
+			}
 		}
 
-		let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-		let request_fingerprint = fingerprint_request(&fps);
-
-		Ok(ExecutionResult {
+		ExecutionResult {
 			frames: result,
-			metrics: ExecutionMetrics {
-				request_fingerprint,
-				statements: metrics,
-			},
-		})
+			error: None,
+			metrics: build_metrics(metrics),
+		}
 	}
 
 	#[instrument(name = "executor::admin", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> Result<ExecutionResult> {
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Admin(&mut *txn))?;
+	pub fn admin(&self, txn: &mut AdminTransaction, cmd: Admin<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Admin(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Admin(&mut *txn),
 			"admin",
 			true,
-		)?;
+		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
 
+		let start_compile = self.0.runtime_context.clock.instant();
 		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_read_policies) {
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, cmd.rql, cmd.params)? {
-					return Ok(ExecutionResult {
+				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
+					return ExecutionResult {
 						frames,
+						error: None,
 						metrics: ExecutionMetrics::default(),
-					});
+					};
 				}
-				Err(err)
+				ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				}
 			}
 			Ok(CompilationResult::Ready(compiled)) => {
-				let (output, remaining, _, metrics) = execute_compiled_units(
+				let compile_duration = start_compile.elapsed();
+				match execute_compiled_units(
 					&self.0,
 					&mut Transaction::Admin(txn),
 					&compiled,
 					&cmd.params,
 					symbols,
-				)?;
-				let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-				Ok(ExecutionResult {
-					frames: merge_results(output, remaining),
-					metrics: ExecutionMetrics {
-						request_fingerprint: fingerprint_request(&fps),
-						statements: metrics,
+					compile_duration,
+				) {
+					Ok((output, remaining, _, metrics)) => ExecutionResult {
+						frames: merge_results(output, remaining),
+						error: None,
+						metrics: build_metrics(metrics),
 					},
-				})
+					Err(f) => ExecutionResult {
+						frames: vec![],
+						error: Some(f.error),
+						metrics: build_metrics(f.partial_metrics),
+					},
+				}
 			}
 			Ok(CompilationResult::Incremental(mut state)) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
@@ -314,55 +415,103 @@ impl Executor {
 				let mut output_results: Vec<Frame> = Vec::new();
 				let mut symbols = symbols;
 				let mut metrics = Vec::new();
-				while let Some(compiled) = self.compiler.compile_next_with_policy(
-					&mut Transaction::Admin(txn),
-					&mut state,
-					&policy,
-				)? {
+				loop {
+					let start_incr = self.0.runtime_context.clock.instant();
+					let next = match self.compiler.compile_next_with_policy(
+						&mut Transaction::Admin(txn),
+						&mut state,
+						&policy,
+					) {
+						Ok(n) => n,
+						Err(e) => {
+							return ExecutionResult {
+								frames: vec![],
+								error: Some(e),
+								metrics: build_metrics(metrics),
+							};
+						}
+					};
+					let compile_duration = start_incr.elapsed();
+
+					let Some(compiled) = next else {
+						break;
+					};
+
 					result.clear();
 					let mut tx = Transaction::Admin(txn);
 					let mut vm = Vm::new(symbols);
 					let start_execute = self.0.runtime_context.clock.instant();
-					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
+					let run_result = vm.run(
+						&self.0,
+						&mut tx,
+						&compiled.instructions,
+						&cmd.params,
+						&mut result,
+					);
 					let execute_duration = start_execute.elapsed();
 					symbols = vm.symbols;
 
 					metrics.push(StatementMetric {
 						fingerprint: compiled.fingerprint,
 						normalized_rql: compiled.normalized_rql,
-						compile_duration_us: 0, // Incremental compilation time not tracked yet
+						compile_duration_us: compile_duration.as_micros() as u64,
 						execute_duration_us: execute_duration.as_micros() as u64,
-						rows_affected: result.len() as u64,
+						rows_affected: if run_result.is_ok() {
+							extract_rows_affected(&result)
+						} else {
+							0
+						},
 					});
+
+					if let Err(e) = run_result {
+						return ExecutionResult {
+							frames: vec![],
+							error: Some(e),
+							metrics: build_metrics(metrics),
+						};
+					}
 
 					if compiled.is_output {
 						output_results.append(&mut result);
 					}
 				}
-				let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-				Ok(ExecutionResult {
+				ExecutionResult {
 					frames: merge_results(output_results, result),
-					metrics: ExecutionMetrics {
-						request_fingerprint: fingerprint_request(&fps),
-						statements: metrics,
-					},
-				})
+					error: None,
+					metrics: build_metrics(metrics),
+				}
 			}
 		}
 	}
 
 	#[instrument(name = "executor::test", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> Result<ExecutionResult> {
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Test(Box::new(txn.reborrow())))?;
+	pub fn test(&self, txn: &mut TestTransaction<'_>, cmd: Test<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Test(Box::new(txn.reborrow()))) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
 		let session_type = txn.session_type.clone();
 		let session_default_deny = txn.session_default_deny;
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Test(Box::new(txn.reborrow())),
 			&session_type,
 			session_default_deny,
-		)?;
+		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
 
+		let start_compile = self.0.runtime_context.clock.instant();
 		match self.compiler.compile_with_policy(
 			&mut Transaction::Test(Box::new(txn.reborrow())),
 			cmd.rql,
@@ -370,30 +519,40 @@ impl Executor {
 		) {
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, cmd.rql, cmd.params)? {
-					return Ok(ExecutionResult {
+				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
+					return ExecutionResult {
 						frames,
+						error: None,
 						metrics: ExecutionMetrics::default(),
-					});
+					};
 				}
-				Err(err)
+				ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				}
 			}
 			Ok(CompilationResult::Ready(compiled)) => {
-				let (output, remaining, _, metrics) = execute_compiled_units(
+				let compile_duration = start_compile.elapsed();
+				match execute_compiled_units(
 					&self.0,
 					&mut Transaction::Test(Box::new(txn.reborrow())),
 					&compiled,
 					&cmd.params,
 					symbols,
-				)?;
-				let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-				Ok(ExecutionResult {
-					frames: merge_results(output, remaining),
-					metrics: ExecutionMetrics {
-						request_fingerprint: fingerprint_request(&fps),
-						statements: metrics,
+					compile_duration,
+				) {
+					Ok((output, remaining, _, metrics)) => ExecutionResult {
+						frames: merge_results(output, remaining),
+						error: None,
+						metrics: build_metrics(metrics),
 					},
-				})
+					Err(f) => ExecutionResult {
+						frames: vec![],
+						error: Some(f.error),
+						metrics: build_metrics(f.partial_metrics),
+					},
+				}
 			}
 			Ok(CompilationResult::Incremental(mut state)) => {
 				let policy = constrain_policy(|plans, bump, cat, tx| {
@@ -403,70 +562,135 @@ impl Executor {
 				let mut output_results: Vec<Frame> = Vec::new();
 				let mut symbols = symbols;
 				let mut metrics = Vec::new();
-				while let Some(compiled) = self.compiler.compile_next_with_policy(
-					&mut Transaction::Test(Box::new(txn.reborrow())),
-					&mut state,
-					&policy,
-				)? {
+				loop {
+					let start_incr = self.0.runtime_context.clock.instant();
+					let next = match self.compiler.compile_next_with_policy(
+						&mut Transaction::Test(Box::new(txn.reborrow())),
+						&mut state,
+						&policy,
+					) {
+						Ok(n) => n,
+						Err(e) => {
+							return ExecutionResult {
+								frames: vec![],
+								error: Some(e),
+								metrics: build_metrics(metrics),
+							};
+						}
+					};
+					let compile_duration = start_incr.elapsed();
+
+					let Some(compiled) = next else {
+						break;
+					};
+
 					result.clear();
 					let mut tx = Transaction::Test(Box::new(txn.reborrow()));
 					let mut vm = Vm::new(symbols);
 					let start_execute = self.0.runtime_context.clock.instant();
-					vm.run(&self.0, &mut tx, &compiled.instructions, &cmd.params, &mut result)?;
+					let run_result = vm.run(
+						&self.0,
+						&mut tx,
+						&compiled.instructions,
+						&cmd.params,
+						&mut result,
+					);
 					let execute_duration = start_execute.elapsed();
 					symbols = vm.symbols;
 
 					metrics.push(StatementMetric {
 						fingerprint: compiled.fingerprint,
 						normalized_rql: compiled.normalized_rql,
-						compile_duration_us: 0,
+						compile_duration_us: compile_duration.as_micros() as u64,
 						execute_duration_us: execute_duration.as_micros() as u64,
-						rows_affected: result.len() as u64,
+						rows_affected: if run_result.is_ok() {
+							extract_rows_affected(&result)
+						} else {
+							0
+						},
 					});
+
+					if let Err(e) = run_result {
+						return ExecutionResult {
+							frames: vec![],
+							error: Some(e),
+							metrics: build_metrics(metrics),
+						};
+					}
 
 					if compiled.is_output {
 						output_results.append(&mut result);
 					}
 				}
-				let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-				Ok(ExecutionResult {
+				ExecutionResult {
 					frames: merge_results(output_results, result),
-					metrics: ExecutionMetrics {
-						request_fingerprint: fingerprint_request(&fps),
-						statements: metrics,
-					},
-				})
+					error: None,
+					metrics: build_metrics(metrics),
+				}
 			}
 		}
 	}
 
 	#[instrument(name = "executor::subscription", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn subscription(&self, txn: &mut QueryTransaction, cmd: Subscription<'_>) -> Result<ExecutionResult> {
+	pub fn subscription(&self, txn: &mut QueryTransaction, cmd: Subscription<'_>) -> ExecutionResult {
 		// Pre-compilation validation: parse and check statement constraints
 		let bump = Bump::new();
-		let statements = parse_str(&bump, cmd.rql)?;
+		let statements = match parse_str(&bump, cmd.rql) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
 		if statements.len() != 1 {
-			return Err(Error(Box::new(subscription::single_statement_required(
-				"Subscription endpoint requires exactly one statement",
-			))));
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(Error(Box::new(subscription::single_statement_required(
+					"Subscription endpoint requires exactly one statement",
+				)))),
+				metrics: ExecutionMetrics::default(),
+			};
 		}
 
 		let statement = &statements[0];
 		if statement.nodes.len() != 1 || !statement.nodes[0].is_subscription_ddl() {
-			return Err(Error(Box::new(subscription::invalid_statement(
-				"Subscription endpoint only supports CREATE SUBSCRIPTION or DROP SUBSCRIPTION",
-			))));
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(Error(Box::new(subscription::invalid_statement(
+					"Subscription endpoint only supports CREATE SUBSCRIPTION or DROP SUBSCRIPTION",
+				)))),
+				metrics: ExecutionMetrics::default(),
+			};
 		}
 
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Query(&mut *txn))?;
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Query(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
 			"subscription",
 			true,
-		)?;
+		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
 
+		let start_compile = self.0.runtime_context.clock.instant();
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			cmd.rql,
@@ -476,31 +700,63 @@ impl Executor {
 			Ok(CompilationResult::Incremental(_)) => {
 				unreachable!("Single subscription statement should not require incremental compilation")
 			}
-			Err(err) => return Err(err),
+			Err(err) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
 		};
+		let compile_duration = start_compile.elapsed();
 
-		let (output, remaining, _, metrics) =
-			execute_compiled_units(&self.0, &mut Transaction::Query(txn), &compiled, &cmd.params, symbols)?;
-		let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-		Ok(ExecutionResult {
-			frames: merge_results(output, remaining),
-			metrics: ExecutionMetrics {
-				request_fingerprint: fingerprint_request(&fps),
-				statements: metrics,
+		match execute_compiled_units(
+			&self.0,
+			&mut Transaction::Query(txn),
+			&compiled,
+			&cmd.params,
+			symbols,
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
 			},
-		})
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
 	}
 
 	#[instrument(name = "executor::command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
-	pub fn command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> Result<ExecutionResult> {
-		let symbols = self.setup_symbols(&cmd.params, &mut Transaction::Command(&mut *txn))?;
+	pub fn command(&self, txn: &mut CommandTransaction, cmd: Command<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&cmd.params, &mut Transaction::Command(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Command(&mut *txn),
 			"command",
 			false,
-		)?;
+		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
 
+		let start_compile = self.0.runtime_context.clock.instant();
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Command(txn),
 			cmd.rql,
@@ -513,53 +769,80 @@ impl Executor {
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
 				if self.0.remote_registry.is_some() && remote::is_remote_query(&err) {
-					return Err(Error(Box::new(Diagnostic {
-						code: "REMOTE_002".to_string(),
-						message: "Write operations on remote namespaces are not supported"
-							.to_string(),
-						help: Some("Use the remote instance directly for write operations"
-							.to_string()),
-						..Default::default()
-					})));
+					return ExecutionResult {
+						frames: vec![],
+						error: Some(Error(Box::new(Diagnostic {
+							code: "REMOTE_002".to_string(),
+							message: "Write operations on remote namespaces are not supported"
+								.to_string(),
+							help: Some("Use the remote instance directly for write operations"
+								.to_string()),
+							..Default::default()
+						}))),
+						metrics: ExecutionMetrics::default(),
+					};
 				}
-				return Err(err);
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
+		let compile_duration = start_compile.elapsed();
 
-		let (output, remaining, _, metrics) = execute_compiled_units(
+		match execute_compiled_units(
 			&self.0,
 			&mut Transaction::Command(txn),
 			&compiled,
 			&cmd.params,
 			symbols,
-		)?;
-		let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-		Ok(ExecutionResult {
-			frames: merge_results(output, remaining),
-			metrics: ExecutionMetrics {
-				request_fingerprint: fingerprint_request(&fps),
-				statements: metrics,
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
 			},
-		})
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
 	}
 
 	/// Call a procedure by fully-qualified name (e.g., "banking.transfer_funds").
 	#[instrument(name = "executor::call_procedure", level = "debug", skip(self, txn, params), fields(name = %name))]
-	pub fn call_procedure(
-		&self,
-		txn: &mut CommandTransaction,
-		name: &str,
-		params: &Params,
-	) -> Result<ExecutionResult> {
+	pub fn call_procedure(&self, txn: &mut CommandTransaction, name: &str, params: &Params) -> ExecutionResult {
 		let rql = format!("CALL {}()", name);
-		let symbols = self.setup_symbols(params, &mut Transaction::Command(&mut *txn))?;
-
-		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), &rql)? {
-			CompilationResult::Ready(compiled) => compiled,
-			CompilationResult::Incremental(_) => {
-				unreachable!("CALL statements should not require incremental compilation")
+		let symbols = match self.setup_symbols(params, &mut Transaction::Command(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
+
+		let start_compile = self.0.runtime_context.clock.instant();
+		let compiled = match self.compiler.compile(&mut Transaction::Command(txn), &rql) {
+			Ok(CompilationResult::Ready(compiled)) => compiled,
+			Ok(CompilationResult::Incremental(_)) => {
+				unreachable!("CALL statements should not require incremental compilation")
+			}
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
+		let compile_duration = start_compile.elapsed();
+		let compile_duration_us = compile_duration.as_micros() as u64 / compiled.len().max(1) as u64;
 
 		let mut result = vec![];
 		let mut metrics = Vec::new();
@@ -569,39 +852,64 @@ impl Executor {
 			let mut tx = Transaction::Command(txn);
 			let mut vm = Vm::new(symbols);
 			let start_execute = self.0.runtime_context.clock.instant();
-			vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result)?;
+			let run_result = vm.run(&self.0, &mut tx, &compiled.instructions, params, &mut result);
 			let execute_duration = start_execute.elapsed();
 			symbols = vm.symbols;
 
 			metrics.push(StatementMetric {
 				fingerprint: compiled.fingerprint,
 				normalized_rql: compiled.normalized_rql.clone(),
-				compile_duration_us: 0,
+				compile_duration_us,
 				execute_duration_us: execute_duration.as_micros() as u64,
-				rows_affected: result.len() as u64,
+				rows_affected: if run_result.is_ok() {
+					extract_rows_affected(&result)
+				} else {
+					0
+				},
 			});
+
+			if let Err(e) = run_result {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: build_metrics(metrics),
+				};
+			}
 		}
 
-		let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-		Ok(ExecutionResult {
+		ExecutionResult {
 			frames: result,
-			metrics: ExecutionMetrics {
-				request_fingerprint: fingerprint_request(&fps),
-				statements: metrics,
-			},
-		})
+			error: None,
+			metrics: build_metrics(metrics),
+		}
 	}
 
 	#[instrument(name = "executor::query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
-	pub fn query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> Result<ExecutionResult> {
-		let symbols = self.setup_symbols(&qry.params, &mut Transaction::Query(&mut *txn))?;
+	pub fn query(&self, txn: &mut QueryTransaction, qry: Query<'_>) -> ExecutionResult {
+		let symbols = match self.setup_symbols(&qry.params, &mut Transaction::Query(&mut *txn)) {
+			Ok(s) => s,
+			Err(e) => {
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(e),
+					metrics: ExecutionMetrics::default(),
+				};
+			}
+		};
 
-		PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
+		if let Err(e) = PolicyEvaluator::new(&self.0, &symbols).enforce_session_policy(
 			&mut Transaction::Query(&mut *txn),
 			"query",
 			false,
-		)?;
+		) {
+			return ExecutionResult {
+				frames: vec![],
+				error: Some(e),
+				metrics: ExecutionMetrics::default(),
+			};
+		}
 
+		let start_compile = self.0.runtime_context.clock.instant();
 		let compiled = match self.compiler.compile_with_policy(
 			&mut Transaction::Query(txn),
 			qry.rql,
@@ -613,25 +921,40 @@ impl Executor {
 			}
 			Err(err) => {
 				#[cfg(not(target_arch = "wasm32"))]
-				if let Some(frames) = self.try_forward_remote_query(&err, qry.rql, qry.params)? {
-					return Ok(ExecutionResult {
+				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, qry.rql, qry.params) {
+					return ExecutionResult {
 						frames,
+						error: None,
 						metrics: ExecutionMetrics::default(),
-					});
+					};
 				}
-				return Err(err);
+				return ExecutionResult {
+					frames: vec![],
+					error: Some(err),
+					metrics: ExecutionMetrics::default(),
+				};
 			}
 		};
+		let compile_duration = start_compile.elapsed();
 
-		let (output, remaining, _, metrics) =
-			execute_compiled_units(&self.0, &mut Transaction::Query(txn), &compiled, &qry.params, symbols)?;
-		let fps: Vec<_> = metrics.iter().map(|m| m.fingerprint).collect();
-		Ok(ExecutionResult {
-			frames: merge_results(output, remaining),
-			metrics: ExecutionMetrics {
-				request_fingerprint: fingerprint_request(&fps),
-				statements: metrics,
+		match execute_compiled_units(
+			&self.0,
+			&mut Transaction::Query(txn),
+			&compiled,
+			&qry.params,
+			symbols,
+			compile_duration,
+		) {
+			Ok((output, remaining, _, metrics)) => ExecutionResult {
+				frames: merge_results(output, remaining),
+				error: None,
+				metrics: build_metrics(metrics),
 			},
-		})
+			Err(f) => ExecutionResult {
+				frames: vec![],
+				error: Some(f.error),
+				metrics: build_metrics(f.partial_metrics),
+			},
+		}
 	}
 }

@@ -70,13 +70,11 @@ pub unsafe extern "C" fn host_rql(
 			let tx = &mut *(ctx_ref.txn_ptr as *mut Transaction<'_>);
 
 			// Execute RQL
-			let result = match tx.rql(rql_str, params) {
-				Ok(r) => r,
-				Err(e) => {
-					error!("host_rql: rql execution failed: {}", e);
-					return FFI_ERROR_INTERNAL;
-				}
-			};
+			let result = tx.rql(rql_str, params);
+			if let Some(ref e) = result.error {
+				error!("host_rql: rql execution failed: {}", e);
+				return FFI_ERROR_INTERNAL;
+			}
 
 			// Serialize result frames with postcard
 			let result_bytes = match to_stdvec(&result.frames) {

@@ -52,10 +52,12 @@ impl Procedure for RunPipelineProcedure {
 		};
 
 		// Validate pipeline exists
-		let pipelines = tx.rql(
-			&format!("FROM forge::pipelines | FILTER id == uuid::v4(\"{pipeline_id_str}\")"),
-			Params::None,
-		)?;
+		let pipelines = tx
+			.rql(
+				&format!("FROM forge::pipelines | FILTER id == uuid::v4(\"{pipeline_id_str}\")"),
+				Params::None,
+			)
+			.check()?;
 		if pipelines.is_empty() || pipelines[0].rows().next().is_none() {
 			return Err(ProcedureError::ExecutionFailed {
 				procedure: Fragment::internal("forge::run_pipeline"),
@@ -71,15 +73,18 @@ impl Procedure for RunPipelineProcedure {
 				 status: \"pending\", triggered_by: \"manual\", started_at: datetime::now() }}]"
 			),
 			Params::None,
-		)?;
+		)
+		.check()?;
 
 		// Query all jobs for this pipeline
-		let jobs = tx.rql(
-			&format!(
-				"FROM forge::jobs | FILTER pipeline_id == uuid::v4(\"{pipeline_id_str}\") | SORT {{position:ASC}}"
-			),
-			Params::None,
-		)?;
+		let jobs = tx
+			.rql(
+				&format!(
+					"FROM forge::jobs | FILTER pipeline_id == uuid::v4(\"{pipeline_id_str}\") | SORT {{position:ASC}}"
+				),
+				Params::None,
+			)
+			.check()?;
 
 		if let Some(job_frame) = jobs.first() {
 			for job_row in job_frame.rows() {
@@ -91,12 +96,14 @@ impl Procedure for RunPipelineProcedure {
 				})?;
 
 				// Check if this job has any dependencies
-				let deps = tx.rql(
-					&format!(
-						"FROM forge::job_dependencies | FILTER job_id == uuid::v4(\"{job_id}\")"
-					),
-					Params::None,
-				)?;
+				let deps = tx
+					.rql(
+						&format!(
+							"FROM forge::job_dependencies | FILTER job_id == uuid::v4(\"{job_id}\")"
+						),
+						Params::None,
+					)
+					.check()?;
 
 				let has_deps = deps.first().is_some_and(|f| f.rows().next().is_some());
 				let job_run_status = if has_deps {
@@ -112,15 +119,18 @@ impl Procedure for RunPipelineProcedure {
 						 run_id: uuid::v4(\"{run_id}\"), job_id: uuid::v4(\"{job_id}\"), \
 						 status: \"{job_run_status}\" }}]"),
 					Params::None,
-				)?;
+				)
+				.check()?;
 
 				// Query steps for this job and create step_runs
-				let steps = tx.rql(
-					&format!(
-						"FROM forge::steps | FILTER job_id == uuid::v4(\"{job_id}\") | SORT {{position:ASC}}"
-					),
-					Params::None,
-				)?;
+				let steps = tx
+					.rql(
+						&format!(
+							"FROM forge::steps | FILTER job_id == uuid::v4(\"{job_id}\") | SORT {{position:ASC}}"
+						),
+						Params::None,
+					)
+					.check()?;
 
 				if let Some(step_frame) = steps.first() {
 					for step_row in step_frame.rows() {
@@ -141,7 +151,8 @@ impl Procedure for RunPipelineProcedure {
 								 job_run_id: uuid::v4(\"{job_run_id}\"), status: \"pending\" }}]"
 							),
 							Params::None,
-						)?;
+						)
+						.check()?;
 					}
 				}
 			}

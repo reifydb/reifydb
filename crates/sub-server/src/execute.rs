@@ -13,12 +13,11 @@ use reifydb_core::{execution::ExecutionResult, metric::ExecutionMetrics};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_type::{
-	error::{Diagnostic, Error},
+	error::Diagnostic,
 	params::Params,
 	value::{duration::Duration as ReifyDuration, frame::frame::Frame, identity::IdentityId},
 };
 use tokio::{task::spawn_blocking, time};
-use tracing::warn;
 
 use crate::interceptor::{Operation, RequestContext, RequestInterceptorChain, ResponseContext};
 
@@ -67,35 +66,25 @@ impl fmt::Display for ExecuteError {
 
 impl error::Error for ExecuteError {}
 
-impl From<Error> for ExecuteError {
-	fn from(err: Error) -> Self {
-		ExecuteError::Engine {
-			diagnostic: Arc::new(err.diagnostic()),
-			statement: String::new(),
-		}
-	}
-}
-
 /// Result type for execute operations.
 pub type ExecuteResult<T> = Result<T, ExecuteError>;
 
-/// Retry a closure up to 3 times on `TXN_001` transaction conflict errors.
-fn retry_on_conflict<F>(mut f: F) -> Result<ExecutionResult, Error>
-where
-	F: FnMut() -> Result<ExecutionResult, Error>,
-{
-	let mut last_err = None;
-	for attempt in 0..3u32 {
-		match f() {
-			Ok(res) => return Ok(res),
-			Err(err) if err.code == "TXN_001" => {
-				warn!(attempt = attempt + 1, "Transaction conflict detected, retrying");
-				last_err = Some(err);
-			}
-			Err(err) => return Err(err),
-		}
+/// Result of a raw engine dispatch: metrics are always present.
+type RawResult = (ExecuteResult<Vec<Frame>>, ExecutionMetrics, Duration);
+
+/// Convert an `ExecutionResult` into the raw result tuple.
+fn result_to_raw(result: ExecutionResult) -> (Result<Vec<Frame>, ExecuteError>, ExecutionMetrics) {
+	let metrics = result.metrics;
+	match result.error {
+		None => (Ok(result.frames), metrics),
+		Some(err) => (
+			Err(ExecuteError::Engine {
+				diagnostic: Arc::new(err.diagnostic()),
+				statement: String::new(),
+			}),
+			metrics,
+		),
 	}
-	Err(last_err.unwrap())
 }
 
 async fn raw_query(
@@ -105,16 +94,19 @@ async fn raw_query(
 	params: Params,
 	timeout: Duration,
 	clock: Clock,
-) -> ExecuteResult<(Vec<Frame>, ExecutionMetrics, Duration)> {
-	let task = spawn_blocking(move || -> (Result<ExecutionResult, Error>, Duration) {
+) -> RawResult {
+	let task = spawn_blocking(move || -> (ExecutionResult, Duration) {
 		let t = clock.instant();
 		let r = engine.query_as(identity, &query, params);
 		(r, t.elapsed())
 	});
 	match time::timeout(timeout, task).await {
-		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok((result, compute))) => result.map(|r| (r.frames, r.metrics, compute)).map_err(ExecuteError::from),
-		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+		Err(_elapsed) => (Err(ExecuteError::Timeout), ExecutionMetrics::default(), Duration::ZERO),
+		Ok(Ok((outcome, compute))) => {
+			let (result, metrics) = result_to_raw(outcome);
+			(result, metrics, compute)
+		}
+		Ok(Err(_join_error)) => (Err(ExecuteError::Cancelled), ExecutionMetrics::default(), Duration::ZERO),
 	}
 }
 
@@ -125,16 +117,19 @@ async fn raw_command(
 	params: Params,
 	timeout: Duration,
 	clock: Clock,
-) -> ExecuteResult<(Vec<Frame>, ExecutionMetrics, Duration)> {
-	let task = spawn_blocking(move || -> (Result<ExecutionResult, Error>, Duration) {
+) -> RawResult {
+	let task = spawn_blocking(move || -> (ExecutionResult, Duration) {
 		let t = clock.instant();
-		let r = retry_on_conflict(|| engine.command_as(identity, &statements, params.clone()));
+		let r = engine.command_as(identity, &statements, params);
 		(r, t.elapsed())
 	});
 	match time::timeout(timeout, task).await {
-		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok((result, compute))) => result.map(|r| (r.frames, r.metrics, compute)).map_err(ExecuteError::from),
-		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+		Err(_elapsed) => (Err(ExecuteError::Timeout), ExecutionMetrics::default(), Duration::ZERO),
+		Ok(Ok((outcome, compute))) => {
+			let (result, metrics) = result_to_raw(outcome);
+			(result, metrics, compute)
+		}
+		Ok(Err(_join_error)) => (Err(ExecuteError::Cancelled), ExecutionMetrics::default(), Duration::ZERO),
 	}
 }
 
@@ -145,16 +140,19 @@ async fn raw_admin(
 	params: Params,
 	timeout: Duration,
 	clock: Clock,
-) -> ExecuteResult<(Vec<Frame>, ExecutionMetrics, Duration)> {
-	let task = spawn_blocking(move || -> (Result<ExecutionResult, Error>, Duration) {
+) -> RawResult {
+	let task = spawn_blocking(move || -> (ExecutionResult, Duration) {
 		let t = clock.instant();
-		let r = retry_on_conflict(|| engine.admin_as(identity, &statements, params.clone()));
+		let r = engine.admin_as(identity, &statements, params);
 		(r, t.elapsed())
 	});
 	match time::timeout(timeout, task).await {
-		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok((result, compute))) => result.map(|r| (r.frames, r.metrics, compute)).map_err(ExecuteError::from),
-		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+		Err(_elapsed) => (Err(ExecuteError::Timeout), ExecutionMetrics::default(), Duration::ZERO),
+		Ok(Ok((outcome, compute))) => {
+			let (result, metrics) = result_to_raw(outcome);
+			(result, metrics, compute)
+		}
+		Ok(Err(_join_error)) => (Err(ExecuteError::Cancelled), ExecutionMetrics::default(), Duration::ZERO),
 	}
 }
 
@@ -165,16 +163,19 @@ async fn raw_subscription(
 	params: Params,
 	timeout: Duration,
 	clock: Clock,
-) -> ExecuteResult<(Vec<Frame>, ExecutionMetrics, Duration)> {
-	let task = spawn_blocking(move || -> (Result<ExecutionResult, Error>, Duration) {
+) -> RawResult {
+	let task = spawn_blocking(move || -> (ExecutionResult, Duration) {
 		let t = clock.instant();
-		let r = retry_on_conflict(|| engine.subscribe_as(identity, &statement, params.clone()));
+		let r = engine.subscribe_as(identity, &statement, params);
 		(r, t.elapsed())
 	});
 	match time::timeout(timeout, task).await {
-		Err(_elapsed) => Err(ExecuteError::Timeout),
-		Ok(Ok((result, compute))) => result.map(|r| (r.frames, r.metrics, compute)).map_err(ExecuteError::from),
-		Ok(Err(_join_error)) => Err(ExecuteError::Cancelled),
+		Err(_elapsed) => (Err(ExecuteError::Timeout), ExecutionMetrics::default(), Duration::ZERO),
+		Ok(Ok((outcome, compute))) => {
+			let (result, metrics) = result_to_raw(outcome);
+			(result, metrics, compute)
+		}
+		Ok(Err(_join_error)) => (Err(ExecuteError::Cancelled), ExecutionMetrics::default(), Duration::ZERO),
 	}
 }
 
@@ -212,7 +213,7 @@ pub async fn execute(
 		None
 	};
 
-	let result = match operation {
+	let (result, metrics, compute_duration) = match operation {
 		Operation::Query => raw_query(engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await,
 		Operation::Command => {
 			raw_command(engine, combined, ctx.identity, ctx.params, timeout, clock.clone()).await
@@ -224,12 +225,6 @@ pub async fn execute(
 	};
 
 	let duration = start.elapsed();
-
-	// Separate frames from compute_duration
-	let (result, metrics, compute_duration) = match result {
-		Ok((frames, m, cd)) => (Ok(frames), m, cd),
-		Err(e) => (Err(e), ExecutionMetrics::default(), duration),
-	};
 
 	// Post-execute interceptors
 	if let Some((identity, statements, params, metadata)) = response_parts {

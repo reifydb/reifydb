@@ -37,26 +37,29 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// First create a remote namespace
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE REMOTE NAMESPACE remote_ns WITH { grpc: 'localhost:50051' }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
 		// Alter the grpc address
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "ALTER REMOTE NAMESPACE remote_ns WITH { grpc: 'newhost:50051' }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "ALTER REMOTE NAMESPACE remote_ns WITH { grpc: 'newhost:50051' }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Utf8("remote_ns".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Boolean(true));

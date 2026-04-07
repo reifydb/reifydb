@@ -141,7 +141,7 @@ pub async fn create_subscription(
 /// Synchronous cleanup: drop subscription via DDL.
 pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: SubscriptionId) -> TypeResult<()> {
 	let rql = format!("drop subscription if exists subscription_{};", subscription_id.0);
-	engine.admin_as(IdentityId::system(), &rql, Params::None).map(|r| r.frames)?;
+	engine.admin_as(IdentityId::system(), &rql, Params::None).check()?;
 	Ok(())
 }
 

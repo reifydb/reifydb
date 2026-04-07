@@ -320,10 +320,10 @@ impl WasmDB {
 		let params = Params::None;
 
 		// Execute query
-		let frames = self.inner.query_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
 		// Convert frames to JavaScript array of objects
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute an admin operation (DDL + DML + Query) and return results
@@ -346,9 +346,9 @@ impl WasmDB {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		let frames = self.inner.admin_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute a command (DML) and return results
@@ -360,9 +360,10 @@ impl WasmDB {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.command_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute query with JSON parameters
@@ -382,9 +383,9 @@ impl WasmDB {
 		// Parse JavaScript params to Rust Params
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.query_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute admin with JSON parameters
@@ -394,9 +395,9 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.admin_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result = self.inner.admin_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute command with JSON parameters
@@ -406,20 +407,22 @@ impl WasmDB {
 
 		let params = utils::parse_params(params_js)?;
 
-		let frames = self.inner.command_as(identity, rql, params).map_err(|e| JsError::from_error(&e))?;
+		let result =
+			self.inner.command_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		utils::frames_to_js(&frames)
+		utils::frames_to_js(&result)
 	}
 
 	/// Execute a command and return Display-formatted text output
 	#[wasm_bindgen(js_name = commandText)]
 	pub fn command_text(&self, rql: &str) -> Result<String, JsValue> {
-		let frames = self
+		let result = self
 			.inner
 			.command_as(self.session.current_identity(), rql, Params::None)
+			.check()
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in frames.iter() {
+		for frame in result.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
@@ -428,12 +431,13 @@ impl WasmDB {
 	/// Execute an admin operation and return Display-formatted text output
 	#[wasm_bindgen(js_name = adminText)]
 	pub fn admin_text(&self, rql: &str) -> Result<String, JsValue> {
-		let frames = self
+		let result = self
 			.inner
 			.admin_as(self.session.current_identity(), rql, Params::None)
+			.check()
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in frames.iter() {
+		for frame in result.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
@@ -442,12 +446,13 @@ impl WasmDB {
 	/// Execute a query and return Display-formatted text output
 	#[wasm_bindgen(js_name = queryText)]
 	pub fn query_text(&self, rql: &str) -> Result<String, JsValue> {
-		let frames = self
+		let result = self
 			.inner
 			.query_as(self.session.current_identity(), rql, Params::None)
+			.check()
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in frames.iter() {
+		for frame in result.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)

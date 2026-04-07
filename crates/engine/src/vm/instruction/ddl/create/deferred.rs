@@ -189,34 +189,39 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction_with_internal_shape();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE TABLE test_namespace::src { id: Int4 }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1028));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
@@ -224,16 +229,15 @@ pub mod tests {
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Creating the same view again should return error
-		let err = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
-					params: Params::default(),
-				},
-			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_003");
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
+				params: Params::default(),
+			},
+		);
+		assert!(r.is_err());
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_003");
 	}
 
 	#[test]
@@ -241,66 +245,76 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction_with_internal_shape();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
-		instance.admin(
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE another_shape",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE TABLE test_namespace::src { id: Int4 }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
-		instance.admin(
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE TABLE another_shape::src { id: Int4 }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DEFERRED VIEW test_namespace::test_view { id: Int4 } AS { FROM test_namespace::src }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1029));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DEFERRED VIEW another_shape::test_view { id: Int4 } AS { FROM another_shape::src }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DEFERRED VIEW another_shape::test_view { id: Int4 } AS { FROM another_shape::src }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1031));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));

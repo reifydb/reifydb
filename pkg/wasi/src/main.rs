@@ -241,10 +241,10 @@ fn main() {
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.command_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
+				match b.engine.command_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
 						let mut output = String::new();
-						for frame in frames.iter() {
+						for frame in result.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&serde_json::json!({"ok": output}));
@@ -260,10 +260,10 @@ fn main() {
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.admin_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
+				match b.engine.admin_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
 						let mut output = String::new();
-						for frame in frames.iter() {
+						for frame in result.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&serde_json::json!({"ok": output}));
@@ -279,10 +279,10 @@ fn main() {
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.query_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
+				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
 						let mut output = String::new();
-						for frame in frames.iter() {
+						for frame in result.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&serde_json::json!({"ok": output}));
@@ -298,9 +298,9 @@ fn main() {
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
-				match b.engine.query_as(IdentityId::root(), rql, Params::None) {
-					Ok(frames) => {
-						let count: usize = frames
+				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
+					Ok(result) => {
+						let count: usize = result
 							.iter()
 							.flat_map(|f| f.columns.first())
 							.map(|c| c.data.len())

@@ -90,16 +90,17 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// First creation should succeed
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE NAMESPACE my_shape",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE my_shape",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
@@ -107,31 +108,31 @@ pub mod tests {
 
 		// Creating the same namespace again with `IF NOT EXISTS`
 		// should not error and return the same id
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE NAMESPACE IF NOT EXISTS my_shape",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE IF NOT EXISTS my_shape",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
 
 		// Creating the same namespace again without `IF NOT EXISTS`
 		// should return error
-		let err = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE NAMESPACE my_shape",
-					params: Params::default(),
-				},
-			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_001");
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE NAMESPACE my_shape",
+				params: Params::default(),
+			},
+		);
+		assert!(r.is_err());
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_001");
 	}
 }

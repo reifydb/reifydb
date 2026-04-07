@@ -61,20 +61,29 @@ fn test_rql_select_through_all_transaction_types() {
 
 	// Admin
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-	let frames = txn.rql("FROM ns::t", Params::None).unwrap();
-	assert_eq!(extract_rows(&frames), expected);
+	let r = txn.rql("FROM ns::t", Params::None);
+	if let Some(e) = r.error {
+		panic!("{e:?}");
+	}
+	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
 
 	// Command
 	let mut txn = t.begin_command(IdentityId::system()).unwrap();
-	let frames = txn.rql("FROM ns::t", Params::None).unwrap();
-	assert_eq!(extract_rows(&frames), expected);
+	let r = txn.rql("FROM ns::t", Params::None);
+	if let Some(e) = r.error {
+		panic!("{e:?}");
+	}
+	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
 
 	// Query
 	let mut txn = t.begin_query(IdentityId::system()).unwrap();
-	let frames = txn.rql("FROM ns::t", Params::None).unwrap();
-	assert_eq!(extract_rows(&frames), expected);
+	let r = txn.rql("FROM ns::t", Params::None);
+	if let Some(e) = r.error {
+		panic!("{e:?}");
+	}
+	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
 
 	// (Subscription testing covered by admin above)
@@ -88,7 +97,10 @@ fn test_rql_insert_and_commit() {
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-		txn.rql(r#"INSERT ns::t [{ id: 1, name: "alice" }]"#, Params::None).unwrap();
+		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "alice" }]"#, Params::None);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 		txn.commit().unwrap();
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![(1, "alice".to_string())]);
 	}
@@ -99,7 +111,10 @@ fn test_rql_insert_and_commit() {
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 		let mut txn = t.begin_command(IdentityId::system()).unwrap();
-		txn.rql(r#"INSERT ns::t [{ id: 2, name: "bob" }]"#, Params::None).unwrap();
+		let r = txn.rql(r#"INSERT ns::t [{ id: 2, name: "bob" }]"#, Params::None);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 		txn.commit().unwrap();
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![(2, "bob".to_string())]);
 	}
@@ -110,7 +125,10 @@ fn test_rql_insert_and_commit() {
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-		txn.rql(r#"INSERT ns::t [{ id: 3, name: "charlie" }]"#, Params::None).unwrap();
+		let r = txn.rql(r#"INSERT ns::t [{ id: 3, name: "charlie" }]"#, Params::None);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 		txn.commit().unwrap();
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![(3, "charlie".to_string())]);
 	}
@@ -126,23 +144,32 @@ fn test_rql_error_poisons_transaction() {
 		match label {
 			"admin" => {
 				let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-				txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None).unwrap();
-				let err = txn.rql(r#"INSERT nonexistent::table [{ id: 1 }]"#, Params::None);
-				assert!(err.is_err());
+				let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None);
+				if let Some(e) = r.error {
+					panic!("{e:?}");
+				}
+				let r = txn.rql(r#"INSERT nonexistent::table [{ id: 1 }]"#, Params::None);
+				assert!(r.is_err());
 				assert!(txn.commit().is_err(), "commit after poison must fail for {label}");
 			}
 			"command" => {
 				let mut txn = t.begin_command(IdentityId::system()).unwrap();
-				txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None).unwrap();
-				let err = txn.rql(r#"INSERT nonexistent::table [{ id: 1 }]"#, Params::None);
-				assert!(err.is_err());
+				let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None);
+				if let Some(e) = r.error {
+					panic!("{e:?}");
+				}
+				let r = txn.rql(r#"INSERT nonexistent::table [{ id: 1 }]"#, Params::None);
+				assert!(r.is_err());
 				assert!(txn.commit().is_err(), "commit after poison must fail for {label}");
 			}
 			"subscription" => {
 				let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-				txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None).unwrap();
-				let err = txn.rql(r#"INSERT nonexistent::table [{ id: 1 }]"#, Params::None);
-				assert!(err.is_err());
+				let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "row1" }]"#, Params::None);
+				if let Some(e) = r.error {
+					panic!("{e:?}");
+				}
+				let r = txn.rql(r#"INSERT nonexistent::table [{ id: 1 }]"#, Params::None);
+				assert!(r.is_err());
 				assert!(txn.commit().is_err(), "commit after poison must fail for {label}");
 			}
 			_ => unreachable!(),
@@ -164,7 +191,10 @@ fn test_drop_without_commit_rolls_back() {
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-		txn.rql(r#"INSERT ns::t [{ id: 1, name: "alice" }]"#, Params::None).unwrap();
+		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "alice" }]"#, Params::None);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 		drop(txn);
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![]);
 	}
@@ -175,7 +205,10 @@ fn test_drop_without_commit_rolls_back() {
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 		let mut txn = t.begin_command(IdentityId::system()).unwrap();
-		txn.rql(r#"INSERT ns::t [{ id: 1, name: "bob" }]"#, Params::None).unwrap();
+		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "bob" }]"#, Params::None);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 		drop(txn);
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![]);
 	}
@@ -186,7 +219,10 @@ fn test_drop_without_commit_rolls_back() {
 		t.admin("CREATE NAMESPACE ns");
 		t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
-		txn.rql(r#"INSERT ns::t [{ id: 1, name: "charlie" }]"#, Params::None).unwrap();
+		let r = txn.rql(r#"INSERT ns::t [{ id: 1, name: "charlie" }]"#, Params::None);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 		drop(txn);
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![]);
 	}
@@ -294,6 +330,9 @@ fn test_transaction_enum_rql() {
 
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let mut tx = Transaction::Admin(&mut txn);
-	let frames = tx.rql("FROM ns::t", Params::None).unwrap();
-	assert_eq!(extract_rows(&frames), vec![(1i64, "alice".to_string())]);
+	let r = tx.rql("FROM ns::t", Params::None);
+	if let Some(e) = r.error {
+		panic!("{e:?}");
+	}
+	assert_eq!(extract_rows(&r), vec![(1i64, "alice".to_string())]);
 }

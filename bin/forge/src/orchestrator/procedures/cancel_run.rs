@@ -53,27 +53,31 @@ impl Procedure for CancelRunProcedure {
 			&format!("UPDATE forge::runs {{ status: \"cancelled\", finished_at: datetime::now() }} \
 				 FILTER id == uuid::v4(\"{run_id_str}\")"),
 			Params::None,
-		)?;
+		)
+		.check()?;
 
 		// Skip all pending and blocked job_runs
 		tx.rql(
 			&format!("UPDATE forge::job_runs {{ status: \"skipped\" }} \
 				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"pending\""),
 			Params::None,
-		)?;
+		)
+		.check()?;
 
 		tx.rql(
 			&format!("UPDATE forge::job_runs {{ status: \"skipped\" }} \
 				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"blocked\""),
 			Params::None,
-		)?;
+		)
+		.check()?;
 
 		// Skip all pending step_runs
 		tx.rql(
 			&format!("UPDATE forge::step_runs {{ status: \"skipped\" }} \
 				 FILTER run_id == uuid::v4(\"{run_id_str}\") AND status == \"pending\""),
 			Params::None,
-		)?;
+		)
+		.check()?;
 
 		Ok(Columns::single_row([
 			("run_id", Value::Utf8(run_id_str)),

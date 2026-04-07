@@ -73,23 +73,27 @@ mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE TABLE app::users { id: Int4, name: Utf8 }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
 		(instance, txn)
 	}
@@ -98,16 +102,17 @@ mod tests {
 	fn test_alter_table_add_column() {
 		let (instance, mut txn) = setup();
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "ALTER TABLE app::users ADD COLUMN email: Utf8",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "ALTER TABLE app::users ADD COLUMN email: Utf8",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("ADD COLUMN".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("app".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("users".to_string()));
@@ -118,16 +123,17 @@ mod tests {
 	fn test_alter_table_drop_column() {
 		let (instance, mut txn) = setup();
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "ALTER TABLE app::users DROP COLUMN name",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "ALTER TABLE app::users DROP COLUMN name",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("DROP COLUMN".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("app".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("users".to_string()));
@@ -138,16 +144,17 @@ mod tests {
 	fn test_alter_table_rename_column() {
 		let (instance, mut txn) = setup();
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "ALTER TABLE app::users RENAME COLUMN name TO full_name",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "ALTER TABLE app::users RENAME COLUMN name TO full_name",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Utf8("RENAME COLUMN".to_string()));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("app".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("users".to_string()));
@@ -158,31 +165,29 @@ mod tests {
 	fn test_alter_table_drop_nonexistent_column() {
 		let (instance, mut txn) = setup();
 
-		let err = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "ALTER TABLE app::users DROP COLUMN nonexistent",
-					params: Params::default(),
-				},
-			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_039");
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "ALTER TABLE app::users DROP COLUMN nonexistent",
+				params: Params::default(),
+			},
+		);
+		assert!(r.is_err());
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_039");
 	}
 
 	#[test]
 	fn test_alter_table_rename_nonexistent_column() {
 		let (instance, mut txn) = setup();
 
-		let err = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "ALTER TABLE app::users RENAME COLUMN nonexistent TO new_name",
-					params: Params::default(),
-				},
-			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_039");
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "ALTER TABLE app::users RENAME COLUMN nonexistent TO new_name",
+				params: Params::default(),
+			},
+		);
+		assert!(r.is_err());
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_039");
 	}
 }

@@ -49,12 +49,17 @@ fn test_row_ttl_replication_sync() {
 	let mut txn = primary.begin_admin(IdentityId::system()).unwrap();
 
 	// 2. Create table with TTL
-	txn.rql("CREATE NAMESPACE test", Default::default()).unwrap();
-	txn.rql(
+	let r = txn.rql("CREATE NAMESPACE test", Default::default());
+	if let Some(e) = r.error {
+		panic!("{e:?}");
+	}
+	let r = txn.rql(
 		"CREATE TABLE test::users { id: int4 } WITH { ttl: { duration: '1m', on: created, mode: drop } }",
 		Default::default(),
-	)
-	.unwrap();
+	);
+	if let Some(e) = r.error {
+		panic!("{e:?}");
+	}
 
 	// 3. Capture changes
 	let changes = deltas_to_system_changes(&txn);

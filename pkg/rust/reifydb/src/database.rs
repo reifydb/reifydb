@@ -34,7 +34,7 @@ use crate::{
 	Migration,
 	boot::Bootloader,
 	health::{ComponentHealth, HealthMonitor},
-	session::{RetryStrategy, Session},
+	session::Session,
 	subsystem::Subsystems,
 };
 
@@ -260,25 +260,29 @@ impl Database {
 
 	/// Execute an admin (DDL + DML + Query) operation as root user.
 	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryStrategy::default()
-			.execute(rql, || engine.admin_as(IdentityId::root(), rql, params.clone()))
-			.map(|r| r.frames)
+		let r = self.engine.admin_as(IdentityId::root(), rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a transactional command (DML + Query) as root user.
 	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryStrategy::default()
-			.execute(rql, || engine.command_as(IdentityId::root(), rql, params.clone()))
-			.map(|r| r.frames)
+		let r = self.engine.command_as(IdentityId::root(), rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a read-only query as root user.
 	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.query_as(IdentityId::root(), rql, params.into()).map(|r| r.frames)
+		let r = self.engine.query_as(IdentityId::root(), rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation as a specific identity.
@@ -288,11 +292,11 @@ impl Database {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryStrategy::default()
-			.execute(rql, || engine.admin_as(identity, rql, params.clone()))
-			.map(|r| r.frames)
+		let r = self.engine.admin_as(identity, rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a transactional command (DML + Query) as a specific identity.
@@ -302,11 +306,11 @@ impl Database {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
-		let params = params.into();
-		let engine = &self.engine;
-		RetryStrategy::default()
-			.execute(rql, || engine.command_as(identity, rql, params.clone()))
-			.map(|r| r.frames)
+		let r = self.engine.command_as(identity, rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	/// Execute a read-only query as a specific identity.
@@ -316,7 +320,11 @@ impl Database {
 		rql: &str,
 		params: impl Into<Params>,
 	) -> reifydb_type::Result<Vec<Frame>> {
-		self.engine.query_as(identity, rql, params.into()).map(|r| r.frames)
+		let r = self.engine.query_as(identity, rql, params.into());
+		match r.error {
+			Some(e) => Err(e),
+			None => Ok(r.frames),
+		}
 	}
 
 	pub fn await_signal(&self) -> Result<()> {

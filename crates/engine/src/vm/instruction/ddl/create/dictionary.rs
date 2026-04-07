@@ -64,55 +64,58 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DICTIONARY IF NOT EXISTS test_namespace::test_dictionary FOR Utf8 AS Uint4",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DICTIONARY IF NOT EXISTS test_namespace::test_dictionary FOR Utf8 AS Uint4",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(false));
 
-		let err = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
-					params: Params::default(),
-				},
-			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_006");
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
+				params: Params::default(),
+			},
+		);
+		assert!(r.is_err());
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_006");
 	}
 
 	#[test]
@@ -120,48 +123,54 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
-		instance.admin(
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE another_shape",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DICTIONARY test_namespace::test_dictionary FOR Utf8 AS Uint4",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE DICTIONARY another_shape::test_dictionary FOR Utf8 AS Uint4",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE DICTIONARY another_shape::test_dictionary FOR Utf8 AS Uint4",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_dictionary".to_string()));

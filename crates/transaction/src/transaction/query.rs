@@ -94,7 +94,7 @@ impl QueryTransaction {
 	/// Execute RQL within this transaction using the attached executor.
 	///
 	/// Panics if no `RqlExecutor` has been set on this transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<ExecutionResult> {
+	pub fn rql(&mut self, rql: &str, params: Params) -> ExecutionResult {
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		executor.rql(&mut Transaction::Query(self), rql, params)
 	}

@@ -132,42 +132,44 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Create namespace first
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
 		// First creation should succeed
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Creating the same table again should return error
-		let err = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
-					params: Params::default(),
-				},
-			)
-			.unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_003");
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
+				params: Params::default(),
+			},
+		);
+		assert!(r.is_err());
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_003");
 	}
 
 	#[test]
@@ -176,50 +178,56 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 
 		// Create both namespaces
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE test_namespace",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
-		instance.admin(
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE another_shape",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
 		// Create table in first namespace
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE test_namespace::test_table { id: Int4 }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
 		// Create table with same name in different namespace
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE TABLE another_shape::test_table { id: Int4 }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE another_shape::test_table { id: Int4 }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
@@ -231,34 +239,39 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
@@ -268,34 +281,39 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE ENUM app::Status { Active, Inactive, Pending }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "CREATE TABLE app::tasks { id: Int4, status: app::Status }",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "CREATE TABLE app::tasks { id: Int4, status: app::Status }",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
@@ -305,43 +323,50 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[2].get_value(0), Value::Uint8(1));
 	}
 
@@ -350,43 +375,50 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE ENUM app::Status { Active, Inactive, Pending }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE TABLE app::tasks { id: Int4, status: app::Status }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "INSERT app::tasks [{ id: 1, status: app::Status::Active }]",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
-		let frame = &frames[0];
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "INSERT app::tasks [{ id: 1, status: app::Status::Active }]",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
+		let frame = &r[0];
 		assert_eq!(frame[2].get_value(0), Value::Uint8(1));
 	}
 
@@ -395,72 +427,85 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE NAMESPACE app",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE ENUM app::Shape { Circle { radius: Float8 }, Rectangle { width: Float8, height: Float8 } }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "CREATE TABLE app::drawings { id: Int4, shape: app::Shape }",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "INSERT app::drawings [{ id: 1, shape: app::Shape::Circle { radius: 5.0 } }]",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "INSERT app::drawings [{ id: 2, shape: app::Shape::Rectangle { width: 3.0, height: 4.0 } }]",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		instance.admin(
+		let r = instance.admin(
 			&mut txn,
 			Admin {
 				rql: "INSERT app::drawings [{ id: 3, shape: app::Shape::Circle { radius: 10.0 } }]",
 				params: Params::default(),
 			},
-		)
-		.unwrap();
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		let frames = instance
-			.admin(
-				&mut txn,
-				Admin {
-					rql: "FROM app::drawings | FILTER shape IS app::Shape::Circle",
-					params: Params::default(),
-				},
-			)
-			.unwrap();
+		let r = instance.admin(
+			&mut txn,
+			Admin {
+				rql: "FROM app::drawings | FILTER shape IS app::Shape::Circle",
+				params: Params::default(),
+			},
+		);
+		if let Some(e) = r.error {
+			panic!("{e:?}");
+		}
 
-		assert!(!frames.is_empty());
-		let frame = &frames[0];
+		assert!(!r.is_empty());
+		let frame = &r[0];
 		let id_col = frame.columns.iter().find(|c| c.name == "id").expect("id column");
 		assert_eq!(id_col.data.len(), 2);
 		let mut ids: Vec<Value> = (0..2).map(|i| id_col.get_value(i)).collect();
