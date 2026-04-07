@@ -34,7 +34,7 @@
 //!         -> Pin<Box<dyn Future<Output = ()> + Send + '_>>
 //!     {
 //!         Box::pin(async move {
-//!             tracing::info!(duration_ms = ctx.duration.as_millis(), "query executed");
+//!             tracing::info!("query executed: {:?}", ctx.total);
 //!         })
 //!     }
 //! }
@@ -44,10 +44,14 @@
 //!     .build()?;
 //! ```
 
-use std::{collections::HashMap, future::Future, panic::AssertUnwindSafe, pin::Pin, sync::Arc, time::Duration};
+use std::{collections::HashMap, future::Future, panic::AssertUnwindSafe, pin::Pin, sync::Arc};
 
 use futures_util::FutureExt;
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_core::metric::ExecutionMetrics;
+use reifydb_type::{
+	params::Params,
+	value::{duration::Duration, identity::IdentityId},
+};
 use tracing::error;
 
 use crate::execute::ExecuteError;
@@ -140,6 +144,8 @@ pub struct ResponseContext {
 	pub operation: Operation,
 	/// The RQL statements that were executed.
 	pub statements: Vec<String>,
+	/// Rich metrics for each statement in the request.
+	pub metrics: ExecutionMetrics,
 	/// Query parameters.
 	pub params: Params,
 	/// Protocol-agnostic request metadata.
@@ -147,9 +153,9 @@ pub struct ResponseContext {
 	/// Execution result: Ok(frame_count) or Err with the error message.
 	pub result: Result<usize, String>,
 	/// Wall-clock execution duration.
-	pub duration: Duration,
+	pub total: Duration,
 	/// Compute-only duration (excludes queue wait and scheduling overhead).
-	pub compute_duration: Duration,
+	pub compute: Duration,
 }
 
 /// Async trait for request-level interceptors.

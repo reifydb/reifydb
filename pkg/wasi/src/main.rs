@@ -244,7 +244,7 @@ fn main() {
 				match b.engine.command_as(IdentityId::root(), rql, Params::None) {
 					Ok(frames) => {
 						let mut output = String::new();
-						for frame in &frames {
+						for frame in frames.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&serde_json::json!({"ok": output}));
@@ -263,7 +263,7 @@ fn main() {
 				match b.engine.admin_as(IdentityId::root(), rql, Params::None) {
 					Ok(frames) => {
 						let mut output = String::new();
-						for frame in &frames {
+						for frame in frames.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&serde_json::json!({"ok": output}));
@@ -282,7 +282,7 @@ fn main() {
 				match b.engine.query_as(IdentityId::root(), rql, Params::None) {
 					Ok(frames) => {
 						let mut output = String::new();
-						for frame in &frames {
+						for frame in frames.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&serde_json::json!({"ok": output}));

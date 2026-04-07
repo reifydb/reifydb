@@ -27,6 +27,7 @@ pub struct AstStatement<'bump> {
 	pub nodes: Vec<Ast<'bump>>,
 	pub has_pipes: bool,
 	pub is_output: bool,
+	pub rql: &'bump str,
 }
 
 impl<'bump> AstStatement<'bump> {

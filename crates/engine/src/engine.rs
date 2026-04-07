@@ -25,6 +25,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::{catalog::namespace_not_found, engine::read_only_rejection},
 	event::{Event, EventBus},
+	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
 		catalog::{
@@ -47,7 +48,7 @@ use reifydb_type::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId},
+	value::{constraint::TypeConstraint, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -125,11 +126,11 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
 		self.reject_if_read_only()?;
 		(|| {
 			let mut txn = self.begin_admin(identity)?;
-			let frames = self.executor.admin(
+			let result = self.executor.admin(
 				&mut txn,
 				Admin {
 					rql,
@@ -137,7 +138,7 @@ impl StandardEngine {
 				},
 			)?;
 			txn.commit()?;
-			Ok(frames)
+			Ok(result)
 		})()
 		.map_err(|mut err: Error| {
 			err.with_statement(rql.to_string());
@@ -146,11 +147,11 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::command_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
 		self.reject_if_read_only()?;
 		(|| {
 			let mut txn = self.begin_command(identity)?;
-			let frames = self.executor.command(
+			let result = self.executor.command(
 				&mut txn,
 				Command {
 					rql,
@@ -158,7 +159,7 @@ impl StandardEngine {
 				},
 			)?;
 			txn.commit()?;
-			Ok(frames)
+			Ok(result)
 		})()
 		.map_err(|mut err: Error| {
 			err.with_statement(rql.to_string());
@@ -167,7 +168,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::query_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn query_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
 		(|| {
 			let mut txn = self.begin_query(identity)?;
 			self.executor.query(
@@ -185,17 +186,16 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::subscribe_as", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn subscribe_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn subscribe_as(&self, identity: IdentityId, rql: &str, params: Params) -> Result<ExecutionResult> {
 		(|| {
 			let mut txn = self.begin_query(identity)?;
-			let frames = self.executor.subscription(
+			self.executor.subscription(
 				&mut txn,
 				Subscription {
 					rql,
 					params,
 				},
-			)?;
-			Ok(frames)
+			)
 		})()
 		.map_err(|mut err: Error| {
 			err.with_statement(rql.to_string());
@@ -205,12 +205,12 @@ impl StandardEngine {
 
 	/// Call a procedure by fully-qualified name.
 	#[instrument(name = "engine::procedure_as", level = "debug", skip(self, params), fields(name = %name))]
-	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> Result<ExecutionResult> {
 		self.reject_if_read_only()?;
 		let mut txn = self.begin_command(identity)?;
-		let frames = self.executor.call_procedure(&mut txn, name, &params)?;
+		let result = self.executor.call_procedure(&mut txn, name, &params)?;
 		txn.commit()?;
-		Ok(frames)
+		Ok(result)
 	}
 
 	/// Register a user-defined virtual table.

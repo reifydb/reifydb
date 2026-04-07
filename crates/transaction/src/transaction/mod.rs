@@ -10,6 +10,7 @@ use reifydb_core::{
 		key::{EncodedKey, EncodedKeyRange},
 		row::EncodedRow,
 	},
+	execution::ExecutionResult,
 	interface::{
 		catalog::shape::ShapeId,
 		change::{Change, Diff},
@@ -22,7 +23,7 @@ use reifydb_type::{
 	Result,
 	error::Diagnostic,
 	params::Params,
-	value::{datetime::DateTime, frame::frame::Frame, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId},
 };
 
 use crate::{
@@ -103,7 +104,7 @@ use crate::{
 /// any component (procedures, ProcedureContext, tests, etc.) to execute
 /// RQL through a transaction without a direct dependency on the engine crate.
 pub trait RqlExecutor: Send + Sync {
-	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<Vec<Frame>>;
+	fn rql(&self, tx: &mut Transaction<'_>, rql: &str, params: Params) -> Result<ExecutionResult>;
 }
 
 pub mod admin;
@@ -452,7 +453,7 @@ impl<'a> Transaction<'a> {
 	/// Execute RQL within this transaction using the attached executor.
 	///
 	/// Panics if no `RqlExecutor` has been set on the underlying transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<ExecutionResult> {
 		let executor = self.executor_clone().expect("RqlExecutor not set");
 		let mut tx = self.reborrow();
 		let result = executor.rql(&mut tx, rql, params);

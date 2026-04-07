@@ -6,7 +6,7 @@ use reifydb_engine::test_prelude::*;
 /// Run an RQL script and return the result frames.
 fn run_script(rql: &str) -> Vec<Frame> {
 	let t = TestEngine::new();
-	t.query_as(IdentityId::system(), rql, Default::default()).unwrap()
+	t.query_as(IdentityId::system(), rql, Default::default()).map(|r| r.frames).unwrap()
 }
 
 /// Extract a single i64 scalar from the first frame's first column.

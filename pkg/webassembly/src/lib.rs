@@ -419,7 +419,7 @@ impl WasmDB {
 			.command_as(self.session.current_identity(), rql, Params::None)
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in &frames {
+		for frame in frames.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
@@ -433,7 +433,7 @@ impl WasmDB {
 			.admin_as(self.session.current_identity(), rql, Params::None)
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in &frames {
+		for frame in frames.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
@@ -447,7 +447,7 @@ impl WasmDB {
 			.query_as(self.session.current_identity(), rql, Params::None)
 			.map_err(|e| JsError::from_error(&e))?;
 		let mut output = String::new();
-		for frame in &frames {
+		for frame in frames.iter() {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)

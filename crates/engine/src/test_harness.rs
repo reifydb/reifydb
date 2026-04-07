@@ -80,6 +80,7 @@ impl TestEngine {
 	pub fn admin(&self, rql: &str) -> Vec<Frame> {
 		self.engine
 			.admin_as(IdentityId::system(), rql, Params::None)
+			.map(|r| r.frames)
 			.unwrap_or_else(|e| panic!("admin failed: {e:?}\nrql: {rql}"))
 	}
 
@@ -87,6 +88,7 @@ impl TestEngine {
 	pub fn command(&self, rql: &str) -> Vec<Frame> {
 		self.engine
 			.command_as(IdentityId::system(), rql, Params::None)
+			.map(|r| r.frames)
 			.unwrap_or_else(|e| panic!("command failed: {e:?}\nrql: {rql}"))
 	}
 
@@ -94,6 +96,7 @@ impl TestEngine {
 	pub fn query(&self, rql: &str) -> Vec<Frame> {
 		self.engine
 			.query_as(IdentityId::system(), rql, Params::None)
+			.map(|r| r.frames)
 			.unwrap_or_else(|e| panic!("query failed: {e:?}\nrql: {rql}"))
 	}
 

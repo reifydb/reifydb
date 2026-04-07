@@ -88,6 +88,7 @@ impl<'bump> Parser<'bump> {
 				nodes,
 				has_pipes,
 				is_output: false,
+				rql: "", // Internal statement
 			})
 		} else {
 			// Statement: APPEND $x FROM table | FILTER ...

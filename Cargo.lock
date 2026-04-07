@@ -2551,6 +2551,7 @@ dependencies = [
  "reifydb-derive",
  "reifydb-engine",
  "reifydb-extension",
+ "reifydb-metric",
  "reifydb-metric-old",
  "reifydb-routine",
  "reifydb-rql",
@@ -2559,6 +2560,7 @@ dependencies = [
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-flow",
+ "reifydb-sub-metric",
  "reifydb-sub-replication",
  "reifydb-sub-server",
  "reifydb-sub-server-admin",
@@ -2987,6 +2989,22 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_bytes",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-metric"
+version = "0.4.9"
+dependencies = [
+ "crossbeam-channel",
+ "futures-util",
+ "reifydb-core",
+ "reifydb-metric",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-sub-server",
+ "reifydb-type",
+ "serde",
  "tracing",
 ]
 

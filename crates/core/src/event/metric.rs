@@ -6,7 +6,12 @@
 //! These events are emitted when storage operations occur that need stats tracking.
 //! The metrics worker listens to these events and updates storage statistics.
 
-use crate::{common::CommitVersion, encoded::key::EncodedKey};
+use reifydb_type::value::{datetime::DateTime, duration::Duration};
+use serde::{Deserialize, Serialize};
+
+use crate::{
+	common::CommitVersion, encoded::key::EncodedKey, fingerprint::RequestFingerprint, metric::StatementMetric,
+};
 
 define_event! {
 	/// Emitted when storage operations are committed that need stats tracking.
@@ -67,5 +72,33 @@ define_event! {
 	pub struct CdcStatsDroppedEvent {
 		pub entries: Vec<CdcEntryDrop>,
 		pub version: CommitVersion,
+	}
+}
+
+/// Detailed telemetry specific to the type of request executed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Request {
+	Query {
+		fingerprint: RequestFingerprint,
+		statements: Vec<StatementMetric>,
+	},
+	Command {
+		fingerprint: RequestFingerprint,
+		statements: Vec<StatementMetric>,
+	},
+	Admin {
+		fingerprint: RequestFingerprint,
+		statements: Vec<StatementMetric>,
+	},
+}
+
+define_event! {
+	/// Emitted when a server request execution is completed.
+	pub struct RequestExecutedEvent {
+		pub request: Request,
+		pub total: Duration,
+		pub compute: Duration,
+		pub success: bool,
+		pub timestamp: DateTime,
 	}
 }

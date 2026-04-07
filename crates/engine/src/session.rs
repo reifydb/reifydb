@@ -9,12 +9,8 @@
 
 use std::{thread, time::Duration};
 
-use reifydb_core::interface::catalog::token::Token;
-use reifydb_type::{
-	error::Error,
-	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId},
-};
+use reifydb_core::{execution::ExecutionResult, interface::catalog::token::Token};
+use reifydb_type::{error::Error, params::Params, value::identity::IdentityId};
 use tracing::{instrument, warn};
 
 use crate::engine::StandardEngine;
@@ -80,14 +76,14 @@ impl RetryStrategy {
 		}
 	}
 
-	pub fn execute<F>(&self, rql: &str, mut f: F) -> Result<Vec<Frame>, Error>
+	pub fn execute<F>(&self, rql: &str, mut f: F) -> Result<ExecutionResult, Error>
 	where
-		F: FnMut() -> Result<Vec<Frame>, Error>,
+		F: FnMut() -> Result<ExecutionResult, Error>,
 	{
 		let mut last_err = None;
 		for attempt in 0..self.max_attempts {
 			match f() {
-				Ok(frames) => return Ok(frames),
+				Ok(res) => return Ok(res),
 				Err(err) if err.code == "TXN_001" => {
 					warn!(attempt = attempt + 1, "Transaction conflict detected, retrying");
 					last_err = Some(err);
@@ -191,20 +187,20 @@ impl Session {
 
 	/// Execute a read-only query.
 	#[instrument(name = "session::query", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, Error> {
+	pub fn query(&self, rql: &str, params: impl Into<Params>) -> Result<ExecutionResult, Error> {
 		self.engine.query_as(self.identity, rql, params.into())
 	}
 
 	/// Execute a transactional command (DML + Query) with retry on conflict.
 	#[instrument(name = "session::command", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, Error> {
+	pub fn command(&self, rql: &str, params: impl Into<Params>) -> Result<ExecutionResult, Error> {
 		let params = params.into();
 		self.retry.execute(rql, || self.engine.command_as(self.identity, rql, params.clone()))
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation with retry on conflict.
 	#[instrument(name = "session::admin", level = "debug", skip(self, params), fields(rql = %rql))]
-	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, Error> {
+	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> Result<ExecutionResult, Error> {
 		let params = params.into();
 		self.retry.execute(rql, || self.engine.admin_as(self.identity, rql, params.clone()))
 	}

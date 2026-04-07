@@ -5,6 +5,7 @@ use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc, time};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	fingerprint::StatementFingerprint,
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 	util::lru::LruCache,
 };
@@ -24,6 +25,7 @@ use crate::{
 	bump::{Bump, BumpBox, BumpVec},
 	error::RqlError,
 	expression::{Expression, ParameterExpression, PrefixOperator},
+	fingerprint::statement::{fingerprint_statement, normalize_statement},
 	instruction::{Addr, CompiledClosure, CompiledFunction, Instruction, ScopeType},
 	nodes,
 	nodes::CompiledViewStorageKind,
@@ -56,6 +58,8 @@ where
 pub struct Compiled {
 	pub instructions: Vec<Instruction>,
 	pub is_output: bool,
+	pub fingerprint: StatementFingerprint,
+	pub normalized_rql: String,
 }
 
 /// Result of compiling a query.
@@ -122,10 +126,14 @@ impl Compiler {
 		let mut plans = Vec::new();
 		for statement in statements {
 			let is_output = statement.is_output;
+			let fingerprint = fingerprint_statement(&statement);
+			let normalized_rql = normalize_statement(&statement);
 			if let Some(physical) = plan(&bump, &self.0.catalog, tx, statement)? {
 				plans.push(Compiled {
 					instructions: compile_instructions(physical)?,
 					is_output,
+					fingerprint,
+					normalized_rql,
 				});
 			}
 		}
@@ -155,10 +163,14 @@ impl Compiler {
 
 		let statement = statements.into_iter().nth(idx).unwrap();
 		let is_output = statement.is_output;
+		let fingerprint = fingerprint_statement(&statement);
+		let normalized_rql = normalize_statement(&statement);
 		if let Some(physical) = plan(&bump, &self.0.catalog, tx, statement)? {
 			Ok(Some(Compiled {
 				instructions: compile_instructions(physical)?,
 				is_output,
+				fingerprint,
+				normalized_rql,
 			}))
 		} else {
 			self.compile_next(tx, state)
@@ -199,10 +211,14 @@ impl Compiler {
 		let mut plans = Vec::new();
 		for statement in statements {
 			let is_output = statement.is_output;
+			let fingerprint = fingerprint_statement(&statement);
+			let normalized_rql = normalize_statement(&statement);
 			if let Some(physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
 				plans.push(Compiled {
 					instructions: compile_instructions(physical)?,
 					is_output,
+					fingerprint,
+					normalized_rql,
 				});
 			}
 		}
@@ -237,10 +253,14 @@ impl Compiler {
 
 		let statement = statements.into_iter().nth(idx).unwrap();
 		let is_output = statement.is_output;
+		let fingerprint = fingerprint_statement(&statement);
+		let normalized_rql = normalize_statement(&statement);
 		if let Some(physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
 			Ok(Some(Compiled {
 				instructions: compile_instructions(physical)?,
 				is_output,
+				fingerprint,
+				normalized_rql,
 			}))
 		} else {
 			self.compile_next_with_policy(tx, state, policy)

@@ -839,6 +839,7 @@ impl<'bump> Parser<'bump> {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "", // Internal statement
 			})
 		} else {
 			None
@@ -923,6 +924,7 @@ impl<'bump> Parser<'bump> {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "", // Internal statement
 			})
 		} else {
 			None
@@ -1016,6 +1018,7 @@ impl<'bump> Parser<'bump> {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "", // Internal statement
 			})
 		} else {
 			None
@@ -2064,6 +2067,7 @@ impl<'bump> Parser<'bump> {
 				nodes: query_nodes,
 				has_pipes,
 				is_output: false,
+				rql: "", // Internal statement
 			}))
 		} else {
 			Ok(None)

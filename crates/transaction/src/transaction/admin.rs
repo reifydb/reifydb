@@ -11,6 +11,7 @@ use reifydb_core::{
 		row::EncodedRow,
 	},
 	event::EventBus,
+	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
 		change::{Change, ChangeOrigin},
@@ -22,7 +23,7 @@ use reifydb_type::{
 	Result,
 	error::Diagnostic,
 	params::Params,
-	value::{datetime::DateTime, frame::frame::Frame, identity::IdentityId},
+	value::{datetime::DateTime, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -183,7 +184,7 @@ impl AdminTransaction {
 	/// Execute RQL within this transaction using the attached executor.
 	///
 	/// Panics if no `RqlExecutor` has been set on this transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<ExecutionResult> {
 		self.check_active()?;
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		let result = executor.rql(&mut Transaction::Admin(self), rql, params);

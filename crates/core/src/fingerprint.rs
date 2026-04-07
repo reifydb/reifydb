@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 /// Two executions of `FROM t FILTER {x == 1}` and
 /// `FROM t FILTER {x == 2}` produce the same fingerprint.
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct StatementFingerprint(pub Hash128);
 
@@ -63,6 +63,68 @@ impl From<StatementFingerprint> for Hash128 {
 }
 
 impl From<u128> for StatementFingerprint {
+	fn from(value: u128) -> Self {
+		Self(Hash128(value))
+	}
+}
+
+/// Stable identity for an entire request (batch of statements).
+///
+/// Computed by combining the fingerprints of all individual statements
+/// in the request, preserving order.
+#[repr(transparent)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct RequestFingerprint(pub Hash128);
+
+impl Deref for RequestFingerprint {
+	type Target = u128;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0.0
+	}
+}
+
+impl RequestFingerprint {
+	#[inline]
+	pub const fn new(value: u128) -> Self {
+		Self(Hash128(value))
+	}
+
+	#[inline]
+	pub const fn as_u128(&self) -> u128 {
+		self.0.0
+	}
+
+	#[inline]
+	pub const fn to_le_bytes(&self) -> [u8; 16] {
+		self.0.0.to_le_bytes()
+	}
+
+	#[inline]
+	pub const fn from_le_bytes(bytes: [u8; 16]) -> Self {
+		Self(Hash128(u128::from_le_bytes(bytes)))
+	}
+
+	#[inline]
+	pub fn to_hex(&self) -> String {
+		format!("0x{:032x}", self.0.0)
+	}
+}
+
+impl From<Hash128> for RequestFingerprint {
+	fn from(hash: Hash128) -> Self {
+		Self(hash)
+	}
+}
+
+impl From<RequestFingerprint> for Hash128 {
+	fn from(fp: RequestFingerprint) -> Self {
+		fp.0
+	}
+}
+
+impl From<u128> for RequestFingerprint {
 	fn from(value: u128) -> Self {
 		Self(Hash128(value))
 	}

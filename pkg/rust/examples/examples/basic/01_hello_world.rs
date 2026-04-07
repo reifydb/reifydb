@@ -30,7 +30,8 @@ fn main() {
 	// Commands can modify the database state and return results
 	// The MAP command creates a result set with computed values
 	log_query("MAP { answer: 42 }");
-	for frame in db.command_as_root("MAP { answer: 42 }", Params::None).unwrap() {
+	let frames = db.command_as_root("MAP { answer: 42 }", Params::None).unwrap();
+	for frame in frames {
 		info!("{}", frame);
 	}
 
@@ -38,7 +39,8 @@ fn main() {
 	// Queries are read-only operations that cannot modify database state
 	// They're useful for retrieving and computing data without side effects
 	log_query("Map { another_answer: 40 + 2 }");
-	for frame in db.query_as_root("Map { another_answer: 40 + 2 }", Params::None).unwrap() {
+	let frames = db.query_as_root("Map { another_answer: 40 + 2 }", Params::None).unwrap();
+	for frame in frames {
 		info!("{}", frame);
 	}
 
@@ -52,7 +54,8 @@ fn main() {
 	// Execute a query within the session context
 	// Sessions can maintain state across multiple operations
 	log_query("map { yet_another_answer: 20 * 2 + 2 }");
-	for frame in session.query("map { yet_another_answer: 20 * 2 + 2 }", Params::None).unwrap() {
+	let result = session.query("map { yet_another_answer: 20 * 2 + 2 }", Params::None).unwrap();
+	for frame in result.frames {
 		info!("{}", frame);
 	}
 

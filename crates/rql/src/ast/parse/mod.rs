@@ -167,6 +167,12 @@ impl<'bump> Parser<'bump> {
 
 	/// Parse a single statement (possibly with pipes)
 	pub(crate) fn parse_statement(&mut self) -> Result<AstStatement<'bump>> {
+		let start_offset = if let Ok(current) = self.current() {
+			current.fragment.offset()
+		} else {
+			self.source.len()
+		};
+
 		// Check for OUTPUT prefix
 		let is_output = if !self.is_eof() && self.current()?.is_keyword(Keyword::Output) {
 			self.advance()?;
@@ -218,15 +224,24 @@ impl<'bump> Parser<'bump> {
 			}
 		}
 
+		let rql = self.source_since(start_offset);
+
 		Ok(AstStatement {
 			nodes,
 			has_pipes,
 			is_output,
+			rql,
 		})
 	}
 
 	/// Parse statement content without handling termination (for use within other constructs)
 	pub(crate) fn parse_statement_content(&mut self) -> Result<AstStatement<'bump>> {
+		let start_offset = if let Ok(current) = self.current() {
+			current.fragment.offset()
+		} else {
+			self.source.len()
+		};
+
 		let mut nodes = Vec::with_capacity(8);
 		let mut has_pipes = false;
 		loop {
@@ -254,10 +269,13 @@ impl<'bump> Parser<'bump> {
 			}
 		}
 
+		let rql = self.source_since(start_offset);
+
 		Ok(AstStatement {
 			nodes,
 			has_pipes,
 			is_output: false,
+			rql,
 		})
 	}
 

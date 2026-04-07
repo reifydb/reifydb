@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_core::fingerprint::StatementFingerprint;
+use reifydb_core::fingerprint::{RequestFingerprint, StatementFingerprint};
 
-use super::{
-	request::{RequestFingerprint, fingerprint_request},
-	statement::fingerprint_statement,
-};
+use super::{request::fingerprint_request, statement::fingerprint_statement};
 use crate::{ast::parse_str, bump::Bump};
 
 fn fp(query: &str) -> StatementFingerprint {

@@ -1,0 +1,17 @@
+[package]
+name = "reifydb-sub-metric"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-metric = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-sub-server = { workspace = true }
+reifydb-rql = { workspace = true }
+reifydb-type = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+futures-util = { workspace = true }
+crossbeam-channel = { workspace = true }

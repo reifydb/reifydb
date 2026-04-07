@@ -30,6 +30,7 @@ members = [
     "crates/wasm",
     # Subsystem crates
     "crates/sub-api",
+    "crates/sub-metric",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -90,6 +91,7 @@ default-members = [
     "crates/wasm",
     # Subsystem crates
     "crates/sub-api",
+    "crates/sub-metric",
     "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-task",
@@ -191,6 +193,7 @@ reifydb-macro-impl = { version = "0.4.9", path = "crates/macro-impl" }
 
 # Subsystems
 reifydb-sub-api = { version = "0.4.9", path = "crates/sub-api" }
+reifydb-sub-metric = { version = "0.4.9", path = "crates/sub-metric" }
 reifydb-sub-server-admin = { version = "0.4.9", path = "crates/sub-server-admin" }
 reifydb-sub-flow = { version = "0.4.9", path = "crates/sub-flow" }
 reifydb-sub-task = { version = "0.4.9", path = "crates/sub-task" }

@@ -403,6 +403,7 @@ impl<'bump> Compiler<'bump> {
 			nodes: vec![iterable_ast],
 			has_pipes: false,
 			is_output: false,
+			rql: "", // Internal statement
 		};
 		let iterable = self.compile(iterable_stmt, tx)?;
 		let body = self.compile_block(ast.body, tx)?;

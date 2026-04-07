@@ -6,7 +6,7 @@ use std::{path::PathBuf, sync::Arc};
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::materialized::MaterializedCatalog;
 use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
-use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig};
+use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -246,7 +246,7 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database> {
+	pub fn build(mut self) -> crate::Result<Database> {
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		let runtime = SharedRuntime::from_config(runtime_config);
 
@@ -262,14 +262,25 @@ impl ServerBuilder {
 			Arc::new(materialized_catalog.clone()),
 		);
 
-		let mut database_builder = DatabaseBuilder::new(materialized_catalog, multi, single, eventbus)
+		let mut database_builder = DatabaseBuilder::new(materialized_catalog, multi, single, eventbus.clone())
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime.clone())
-			.with_actor_system(actor_system)
+			.with_actor_system(actor_system.clone())
 			.with_stores(multi_store, single_store);
 
 		#[cfg(feature = "sub_server")]
 		{
+			let registry = Arc::new(reifydb_metric::registry::MetricRegistry::new());
+			let accumulator = Arc::new(reifydb_metric::accumulator::StatementStatsAccumulator::new());
+			let metrics_interceptor = reifydb_sub_metric::spawn::spawn_metric_collector(
+				&actor_system,
+				&eventbus,
+				registry,
+				accumulator,
+				Clock::Real,
+			);
+			self.request_interceptors.push(Arc::new(metrics_interceptor));
+
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
 		}

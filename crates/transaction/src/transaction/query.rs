@@ -6,6 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::CommitVersion,
 	encoded::key::{EncodedKey, EncodedKeyRange},
+	execution::ExecutionResult,
 	interface::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
@@ -39,7 +40,7 @@ use reifydb_core::{
 use reifydb_type::{
 	Result,
 	params::Params,
-	value::{dictionary::DictionaryId, frame::frame::Frame, identity::IdentityId, sumtype::SumTypeId},
+	value::{dictionary::DictionaryId, identity::IdentityId, sumtype::SumTypeId},
 };
 use tracing::instrument;
 
@@ -93,7 +94,7 @@ impl QueryTransaction {
 	/// Execute RQL within this transaction using the attached executor.
 	///
 	/// Panics if no `RqlExecutor` has been set on this transaction.
-	pub fn rql(&mut self, rql: &str, params: Params) -> Result<Vec<Frame>> {
+	pub fn rql(&mut self, rql: &str, params: Params) -> Result<ExecutionResult> {
 		let executor = self.executor.clone().expect("RqlExecutor not set");
 		executor.rql(&mut Transaction::Query(self), rql, params)
 	}
