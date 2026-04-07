@@ -24,6 +24,10 @@ export interface HttpClientOptions {
     token?: string;
 }
 
+export interface RequestOptions {
+    signal?: AbortSignal;
+}
+
 export class HttpClient {
     private options: HttpClientOptions;
 
@@ -35,25 +39,33 @@ export class HttpClient {
         return new HttpClient(options);
     }
 
-    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
-        return this.login("password", identity, {password});
+    async loginWithPassword(identity: string, password: string, reqOpts?: RequestOptions): Promise<LoginResult> {
+        return this.login("password", identity, {password}, reqOpts);
     }
 
-    async loginWithToken(identity: string, token: string): Promise<LoginResult> {
-        return this.login("token", identity, {token});
+    async loginWithToken(identity: string, token: string, reqOpts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", identity, {token}, reqOpts);
     }
 
-    async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
+    async login(method: string, identity: string, credentials: Record<string, string>, reqOpts?: RequestOptions): Promise<LoginResult> {
         const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
+        
+        let signal = controller.signal;
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            // Polyfill or fallback if AbortSignal.any is missing
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({method, credentials: {identifier: identity, ...credentials}}),
-                signal: controller.signal,
+                signal,
             });
 
             clearTimeout(timeout);
@@ -68,12 +80,12 @@ export class HttpClient {
             return {token: body.token, identity: body.identity};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Login timeout");
+            if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
             throw err;
         }
     }
 
-    async logout(): Promise<void> {
+    async logout(reqOpts?: RequestOptions): Promise<void> {
         if (!this.options.token) {
             return;
         }
@@ -82,13 +94,20 @@ export class HttpClient {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+        let signal = controller.signal;
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        }
+
         try {
             const response = await fetch(`${this.options.url}/v1/logout`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.options.token}`,
                 },
-                signal: controller.signal,
+                signal,
             });
 
             clearTimeout(timeout);
@@ -101,7 +120,7 @@ export class HttpClient {
             this.options = {...this.options, token: undefined};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Logout timeout");
+            if (err.name === 'AbortError') throw new Error("Logout timeout or aborted");
             throw err;
         }
     }
@@ -109,7 +128,8 @@ export class HttpClient {
     async admin<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        shapes: S
+        shapes: S,
+        reqOpts?: RequestOptions
     ): Promise<FrameResults<S>> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -120,7 +140,7 @@ export class HttpClient {
             ? encodeParams(params)
             : undefined;
 
-        const result = await this.send('admin', outputStatements, encodedParams);
+        const result = await this.send('admin', outputStatements, encodedParams, reqOpts);
 
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
             const frameShape = shapes[frameIndex];
@@ -136,7 +156,8 @@ export class HttpClient {
     async command<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        shapes: S
+        shapes: S,
+        reqOpts?: RequestOptions
     ): Promise<FrameResults<S>> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -147,7 +168,7 @@ export class HttpClient {
             ? encodeParams(params)
             : undefined;
 
-        const result = await this.send('command', outputStatements, encodedParams);
+        const result = await this.send('command', outputStatements, encodedParams, reqOpts);
 
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
             const frameShape = shapes[frameIndex];
@@ -163,7 +184,8 @@ export class HttpClient {
     async query<const S extends readonly ShapeNode[]>(
         statements: string | string[],
         params: any,
-        shapes: S
+        shapes: S,
+        reqOpts?: RequestOptions
     ): Promise<FrameResults<S>> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -174,7 +196,7 @@ export class HttpClient {
             ? encodeParams(params)
             : undefined;
 
-        const result = await this.send('query', outputStatements, encodedParams);
+        const result = await this.send('query', outputStatements, encodedParams, reqOpts);
 
         const transformedFrames = result.map((frame: any, frameIndex: number) => {
             const frameShape = shapes[frameIndex];
@@ -187,10 +209,17 @@ export class HttpClient {
         return transformedFrames as FrameResults<S>;
     }
 
-    private async send(endpoint: string, statements: string[], params: any): Promise<any> {
+    private async send(endpoint: string, statements: string[], params: any, reqOpts?: RequestOptions): Promise<any> {
         const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        let signal = controller.signal;
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -210,7 +239,7 @@ export class HttpClient {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal,
                 credentials: 'include',
             });
 

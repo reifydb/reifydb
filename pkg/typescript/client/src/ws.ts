@@ -41,6 +41,7 @@ export interface WsClientOptions {
     token?: string;
     maxReconnectAttempts?: number;
     reconnectDelayMs?: number;
+    signal?: AbortSignal;
 }
 
 interface SubscriptionState<T = any> {
@@ -83,6 +84,10 @@ export class WsClient {
     }
 
     static async connect(options: WsClientOptions): Promise<WsClient> {
+        if (options.signal?.aborted) {
+            throw new Error("AbortError");
+        }
+
         const socket = await createWebSocket(options.url);
 
         // Wait for connection to open if not already open, with timeout
@@ -90,29 +95,48 @@ export class WsClient {
             const connectionTimeoutMs = 30000; // 30 second connection timeout
             await new Promise<void>((resolve, reject) => {
                 const connectionTimeout = setTimeout(() => {
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                    cleanup();
                     socket.close();
                     reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
                 }, connectionTimeoutMs);
 
+                const onAbort = () => {
+                    cleanup();
+                    socket.close();
+                    reject(new Error("AbortError"));
+                };
+
                 const onOpen = () => {
-                    clearTimeout(connectionTimeout);
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                    cleanup();
                     resolve();
                 };
 
                 const onError = () => {
-                    clearTimeout(connectionTimeout);
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                    cleanup();
                     reject(new Error("WebSocket connection failed"));
                 };
 
+                const cleanup = () => {
+                    clearTimeout(connectionTimeout);
+                    socket.removeEventListener("open", onOpen);
+                    socket.removeEventListener("error", onError);
+                    if (options.signal) {
+                        options.signal.removeEventListener("abort", onAbort);
+                    }
+                };
+
+                if (options.signal) {
+                    options.signal.addEventListener("abort", onAbort);
+                }
+                
                 socket.addEventListener("open", onOpen);
                 socket.addEventListener("error", onError);
             });
+        }
+
+        if (options.signal?.aborted) {
+            socket.close();
+            throw new Error("AbortError");
         }
 
         if (options.token) {

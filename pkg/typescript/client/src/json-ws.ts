@@ -26,6 +26,7 @@ export interface JsonWsClientOptions {
     maxReconnectAttempts?: number;
     reconnectDelayMs?: number;
     unwrap?: boolean;
+    signal?: AbortSignal;
 }
 
 type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | LogoutResponse;
@@ -58,35 +59,58 @@ export class JsonWebsocketClient {
     }
 
     static async connect(options: JsonWsClientOptions): Promise<JsonWebsocketClient> {
+        if (options.signal?.aborted) {
+            throw new Error("AbortError");
+        }
+        
         const socket = await createWebSocket(options.url);
 
         if (socket.readyState !== 1) {
             const connectionTimeoutMs = 30000;
             await new Promise<void>((resolve, reject) => {
                 const connectionTimeout = setTimeout(() => {
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                    cleanup();
                     socket.close();
                     reject(new Error(`WebSocket connection timeout after ${connectionTimeoutMs}ms`));
                 }, connectionTimeoutMs);
 
+                const onAbort = () => {
+                    cleanup();
+                    socket.close();
+                    reject(new Error("AbortError"));
+                };
+
                 const onOpen = () => {
-                    clearTimeout(connectionTimeout);
-                    socket.removeEventListener("open", onOpen);
-                    socket.removeEventListener("error", onError);
+                    cleanup();
                     resolve();
                 };
 
                 const onError = () => {
+                    cleanup();
+                    reject(new Error("WebSocket connection failed"));
+                };
+
+                const cleanup = () => {
                     clearTimeout(connectionTimeout);
                     socket.removeEventListener("open", onOpen);
                     socket.removeEventListener("error", onError);
-                    reject(new Error("WebSocket connection failed"));
+                    if (options.signal) {
+                        options.signal.removeEventListener("abort", onAbort);
+                    }
                 };
+
+                if (options.signal) {
+                    options.signal.addEventListener("abort", onAbort);
+                }
 
                 socket.addEventListener("open", onOpen);
                 socket.addEventListener("error", onError);
             });
+        }
+
+        if (options.signal?.aborted) {
+            socket.close();
+            throw new Error("AbortError");
         }
 
         if (options.token) {

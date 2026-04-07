@@ -15,6 +15,10 @@ export interface JsonHttpClientOptions {
     unwrap?: boolean;
 }
 
+export interface RequestOptions {
+    signal?: AbortSignal;
+}
+
 export class JsonHttpClient {
     private options: JsonHttpClientOptions;
 
@@ -26,25 +30,32 @@ export class JsonHttpClient {
         return new JsonHttpClient(options);
     }
 
-    async loginWithPassword(identity: string, password: string): Promise<LoginResult> {
-        return this.login("password", identity, {password});
+    async loginWithPassword(identity: string, password: string, reqOpts?: RequestOptions): Promise<LoginResult> {
+        return this.login("password", identity, {password}, reqOpts);
     }
 
-    async loginWithToken(identity: string, token: string): Promise<LoginResult> {
-        return this.login("token", identity, {token});
+    async loginWithToken(identity: string, token: string, reqOpts?: RequestOptions): Promise<LoginResult> {
+        return this.login("token", identity, {token}, reqOpts);
     }
 
-    async login(method: string, identity: string, credentials: Record<string, string>): Promise<LoginResult> {
+    async login(method: string, identity: string, credentials: Record<string, string>, reqOpts?: RequestOptions): Promise<LoginResult> {
         const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        let signal = controller.signal;
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({method, credentials: {identifier: identity, ...credentials}}),
-                signal: controller.signal,
+                signal,
             });
 
             clearTimeout(timeout);
@@ -59,12 +70,12 @@ export class JsonHttpClient {
             return {token: body.token, identity: body.identity};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Login timeout");
+            if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
             throw err;
         }
     }
 
-    async logout(): Promise<void> {
+    async logout(reqOpts?: RequestOptions): Promise<void> {
         if (!this.options.token) {
             return;
         }
@@ -73,13 +84,20 @@ export class JsonHttpClient {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+        let signal = controller.signal;
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        }
+
         try {
             const response = await fetch(`${this.options.url}/v1/logout`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.options.token}`,
                 },
-                signal: controller.signal,
+                signal,
             });
 
             clearTimeout(timeout);
@@ -92,7 +110,7 @@ export class JsonHttpClient {
             this.options = {...this.options, token: undefined};
         } catch (err: any) {
             clearTimeout(timeout);
-            if (err.name === 'AbortError') throw new Error("Logout timeout");
+            if (err.name === 'AbortError') throw new Error("Logout timeout or aborted");
             throw err;
         }
     }
@@ -100,6 +118,7 @@ export class JsonHttpClient {
     async admin(
         statements: string | string[],
         params?: any,
+        reqOpts?: RequestOptions
     ): Promise<any> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -110,12 +129,13 @@ export class JsonHttpClient {
             ? encodeParams(params)
             : undefined;
 
-        return this.send('admin', outputStatements, encodedParams);
+        return this.send('admin', outputStatements, encodedParams, reqOpts);
     }
 
     async command(
         statements: string | string[],
         params?: any,
+        reqOpts?: RequestOptions
     ): Promise<any> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -126,12 +146,13 @@ export class JsonHttpClient {
             ? encodeParams(params)
             : undefined;
 
-        return this.send('command', outputStatements, encodedParams);
+        return this.send('command', outputStatements, encodedParams, reqOpts);
     }
 
     async query(
         statements: string | string[],
         params?: any,
+        reqOpts?: RequestOptions
     ): Promise<any> {
         const statementArray = Array.isArray(statements) ? statements : [statements];
         const outputStatements = statementArray.length > 1
@@ -142,13 +163,20 @@ export class JsonHttpClient {
             ? encodeParams(params)
             : undefined;
 
-        return this.send('query', outputStatements, encodedParams);
+        return this.send('query', outputStatements, encodedParams, reqOpts);
     }
 
-    private async send(endpoint: string, statements: string[], params: any): Promise<any> {
+    private async send(endpoint: string, statements: string[], params: any, reqOpts?: RequestOptions): Promise<any> {
         const timeoutMs = this.options.timeoutMs ?? 30_000;
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        let signal = controller.signal;
+        if (reqOpts?.signal && typeof AbortSignal !== 'undefined' && 'any' in AbortSignal) {
+            signal = (AbortSignal as any).any([controller.signal, reqOpts.signal]);
+        } else if (reqOpts?.signal) {
+            reqOpts.signal.addEventListener('abort', () => controller.abort());
+        }
 
         const headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -173,7 +201,7 @@ export class JsonHttpClient {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
-                signal: controller.signal,
+                signal,
                 credentials: 'include',
             });
 
