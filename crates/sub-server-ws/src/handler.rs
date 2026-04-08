@@ -4,21 +4,27 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
-use reifydb_auth::service::AuthResponse;
 use reifydb_core::{
-	interface::catalog::id::SubscriptionId as DbSubscriptionId, value::frame::response::convert_frames,
+	actors::{
+		server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse},
+		ws::WsMessage,
+	},
+	interface::catalog::id::SubscriptionId,
+	metric::ExecutionMetrics,
+	value::frame::response::convert_frames,
 };
+use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel};
 use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
-	execute::{ExecuteError, execute},
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
+	execute::ExecuteError,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata, ResponseContext},
 	response::resolve_response_json,
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
 use reifydb_type::{
 	params::Params,
-	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
+	value::{duration::Duration as ReifyDuration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::{
@@ -33,6 +39,7 @@ use tracing::{debug, error, info, warn};
 use uuid::Builder;
 
 use crate::{
+	actor::WsServerActor,
 	protocol::{Request, RequestPayload},
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, Response, ServerPush},
 	subscription::{
@@ -42,22 +49,6 @@ use crate::{
 };
 
 /// Handle a single WebSocket connection.
-///
-/// This function:
-/// 1. Completes the WebSocket handshake
-/// 2. Manages authentication state per connection
-/// 3. Routes messages to appropriate handler
-/// 4. Handles subscription push messages
-/// 5. Responds to shutdown signals
-/// 6. Cleans up subscriptions on disconnect
-///
-/// # Arguments
-///
-/// * `stream` - Raw TCP stream from accept
-/// * `state` - Shared application state
-/// * `registry` - Subscription registry for push notifications
-/// * `poller` - Subscription poller for consuming subscription data
-/// * `shutdown` - Watch channel for shutdown signal
 pub async fn handle_connection(
 	stream: TcpStream,
 	state: AppState,
@@ -89,6 +80,11 @@ pub async fn handle_connection(
 
 	debug!("WebSocket connection {} established from {:?}", connection_id, peer);
 	let (mut sender, mut receiver) = ws_stream.split();
+
+	// Spawn per-connection actor
+	let actor = WsServerActor::new(state.engine_clone(), state.auth_service().clone(), state.clock().clone());
+	let actor_handle = state.actor_system().spawn(&format!("ws-{}", connection_id), actor);
+	let actor_ref = actor_handle.actor_ref().clone();
 
 	// Channel for receiving push messages from the registry
 	let (push_tx, mut push_rx) = mpsc::unbounded_channel::<PushMessage>();
@@ -139,6 +135,7 @@ pub async fn handle_connection(
 							&text,
 							&mut ConnectionContext {
 								state: &state,
+								actor_ref: &actor_ref,
 								identity: &mut identity,
 								auth_token: &mut auth_token,
 								connection_id,
@@ -186,6 +183,9 @@ pub async fn handle_connection(
 		}
 	}
 
+	// Drop actor handle — actor stops
+	drop(actor_handle);
+
 	// Abort all remote proxy tasks
 	for (_, handle) in remote_tasks {
 		handle.abort();
@@ -196,7 +196,6 @@ pub async fn handle_connection(
 
 	// Cleanup database subscriptions for each subscription
 	for subscription_id in subscription_ids {
-		// Delete the subscription and its associated flow from database
 		if let Err(e) = cleanup_subscription(&state, subscription_id).await {
 			warn!("Failed to cleanup subscription {} from database: {:?}", subscription_id, e);
 		}
@@ -211,6 +210,7 @@ type ConnectionId = Uuid7;
 /// Groups the shared connection state passed to message processing and subscription handlers.
 pub(crate) struct ConnectionContext<'a> {
 	pub state: &'a AppState,
+	pub actor_ref: &'a ActorRef<WsMessage>,
 	pub identity: &'a mut Option<IdentityId>,
 	pub auth_token: &'a mut Option<String>,
 	pub connection_id: ConnectionId,
@@ -221,9 +221,6 @@ pub(crate) struct ConnectionContext<'a> {
 }
 
 /// Process a single WebSocket message.
-///
-/// Parses the message and routes to the appropriate handler based on type.
-/// Returns None if no response should be sent (e.g., for internal errors already logged).
 async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option<String> {
 	let request: Request = match from_str(text) {
 		Ok(r) => r,
@@ -236,8 +233,20 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 		RequestPayload::Auth(auth) => {
 			if let Some(method) = auth.method.as_deref() {
 				let credentials = auth.credentials.unwrap_or_default();
-				match conn.state.auth_service().authenticate(method, credentials) {
-					Ok(AuthResponse::Authenticated {
+
+				// Dispatch auth through actor
+				let (reply, receiver) = reply_channel();
+				conn.actor_ref
+					.send(WsMessage::Authenticate {
+						method: method.to_string(),
+						credentials,
+						reply,
+					})
+					.ok()
+					.expect("actor mailbox closed");
+
+				match receiver.recv().await {
+					Ok(ServerAuthResponse::Authenticated {
 						identity: id,
 						token,
 					}) => {
@@ -246,17 +255,20 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 						Some(Response::auth_authenticated(&request.id, token, id.to_string())
 							.to_json())
 					}
-					Ok(AuthResponse::Challenge {
+					Ok(ServerAuthResponse::Challenge {
 						challenge_id,
 						payload,
 					}) => Some(Response::auth_challenge(&request.id, challenge_id, payload).to_json()),
-					Ok(AuthResponse::Failed {
+					Ok(ServerAuthResponse::Failed {
 						reason,
 					}) => Some(build_error(&request.id, "AUTH_FAILED", &reason)),
-					Err(e) => Some(build_error(&request.id, "AUTH_ERROR", &e.to_string())),
+					Ok(ServerAuthResponse::Error(reason)) => {
+						Some(build_error(&request.id, "AUTH_ERROR", &reason))
+					}
+					Err(_) => Some(build_error(&request.id, "INTERNAL_ERROR", "actor stopped")),
 				}
 			} else {
-				// Token validation flow (existing behavior)
+				// Token validation flow (existing behavior — stays outside actor)
 				match extract_identity_from_ws_auth(conn.state.auth_service(), auth.token.as_deref()) {
 					Ok(id) => {
 						*conn.identity = Some(id);
@@ -296,33 +308,19 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let timeout = conn.state.query_timeout();
-			let metadata = build_ws_metadata(conn.auth_token);
 
-			let ctx = RequestContext {
-				identity: id,
-				operation: Operation::Admin,
-				statements: a.statements,
+			execute_via_actor(
+				conn,
+				&request.id,
+				id,
+				Operation::Admin,
+				a.statements,
 				params,
-				metadata,
-			};
-
-			match execute(
-				conn.state.request_interceptors(),
-				conn.state.engine_clone(),
-				ctx,
-				timeout,
-				conn.state.clock(),
+				format.as_deref(),
+				unwrap,
+				|id, content_type, body| Response::admin(id, content_type, body).to_json(),
 			)
 			.await
-			{
-				Ok((frames, _duration)) => {
-					let (content_type, body) =
-						build_response_body(frames, format.as_deref(), unwrap);
-					Some(Response::admin(&request.id, content_type, body).to_json())
-				}
-				Err(e) => Some(error_to_response(&request.id, e)),
-			}
 		}
 
 		RequestPayload::Query(q) => {
@@ -346,33 +344,19 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let timeout = conn.state.query_timeout();
-			let metadata = build_ws_metadata(conn.auth_token);
 
-			let ctx = RequestContext {
-				identity: id,
-				operation: Operation::Query,
-				statements: q.statements,
+			execute_via_actor(
+				conn,
+				&request.id,
+				id,
+				Operation::Query,
+				q.statements,
 				params,
-				metadata,
-			};
-
-			match execute(
-				conn.state.request_interceptors(),
-				conn.state.engine_clone(),
-				ctx,
-				timeout,
-				conn.state.clock(),
+				format.as_deref(),
+				unwrap,
+				|id, content_type, body| Response::query(id, content_type, body).to_json(),
 			)
 			.await
-			{
-				Ok((frames, _duration)) => {
-					let (content_type, body) =
-						build_response_body(frames, format.as_deref(), unwrap);
-					Some(Response::query(&request.id, content_type, body).to_json())
-				}
-				Err(e) => Some(error_to_response(&request.id, e)),
-			}
 		}
 
 		RequestPayload::Command(c) => {
@@ -396,46 +380,49 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
 				},
 			};
-			let timeout = conn.state.query_timeout();
-			let metadata = build_ws_metadata(conn.auth_token);
 
-			let ctx = RequestContext {
-				identity: id,
-				operation: Operation::Command,
-				statements: c.statements,
+			execute_via_actor(
+				conn,
+				&request.id,
+				id,
+				Operation::Command,
+				c.statements,
 				params,
-				metadata,
-			};
-
-			match execute(
-				conn.state.request_interceptors(),
-				conn.state.engine_clone(),
-				ctx,
-				timeout,
-				conn.state.clock(),
+				format.as_deref(),
+				unwrap,
+				|id, content_type, body| Response::command(id, content_type, body).to_json(),
 			)
 			.await
-			{
-				Ok((frames, _duration)) => {
-					let (content_type, body) =
-						build_response_body(frames, format.as_deref(), unwrap);
-					Some(Response::command(&request.id, content_type, body).to_json())
-				}
-				Err(e) => Some(error_to_response(&request.id, e)),
-			}
 		}
 
 		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await,
 
 		RequestPayload::Logout => {
 			if let Some(token) = conn.auth_token.as_ref() {
-				let revoked = conn.state.auth_service().revoke_token(token);
-				if revoked {
-					*conn.identity = Some(IdentityId::anonymous());
-					*conn.auth_token = None;
-					Some(Response::logout(&request.id).to_json())
-				} else {
-					Some(build_error(&request.id, "LOGOUT_FAILED", "Token revocation failed"))
+				let (reply, receiver) = reply_channel();
+				conn.actor_ref
+					.send(WsMessage::Logout {
+						token: token.clone(),
+						reply,
+					})
+					.ok()
+					.expect("actor mailbox closed");
+
+				match receiver.recv().await {
+					Ok(ServerLogoutResponse::Ok) => {
+						*conn.identity = Some(IdentityId::anonymous());
+						*conn.auth_token = None;
+						Some(Response::logout(&request.id).to_json())
+					}
+					Ok(ServerLogoutResponse::InvalidToken) => Some(build_error(
+						&request.id,
+						"LOGOUT_FAILED",
+						"Token revocation failed",
+					)),
+					Ok(ServerLogoutResponse::Error(reason)) => {
+						Some(build_error(&request.id, "LOGOUT_FAILED", &reason))
+					}
+					Err(_) => Some(build_error(&request.id, "INTERNAL_ERROR", "actor stopped")),
 				}
 			} else {
 				Some(build_error(&request.id, "AUTH_REQUIRED", "No active session to logout"))
@@ -454,7 +441,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			}
 
 			let subscription_id = match unsub.subscription_id.parse::<u64>() {
-				Ok(id) => DbSubscriptionId(id),
+				Ok(id) => SubscriptionId(id),
 				Err(_) => {
 					return Some(build_error(
 						&request.id,
@@ -468,7 +455,6 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			let removed = conn.registry.unsubscribe(subscription_id);
 
 			if removed {
-				// Cleanup the subscription from the database
 				if let Err(e) = cleanup_subscription(conn.state, subscription_id).await {
 					warn!(
 						"Failed to cleanup subscription {} from database: {:?}",
@@ -479,13 +465,114 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				info!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			} else {
-				// Already removed (e.g., by cleanup_connection) — treat as success
 				info!(
 					"Connection {} unsubscribe for {} (already removed)",
 					conn.connection_id, subscription_id
 				);
 				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
 			}
+		}
+	}
+}
+
+/// Execute a query/command/admin via the actor with interceptors and response formatting.
+#[allow(clippy::too_many_arguments)]
+async fn execute_via_actor(
+	conn: &mut ConnectionContext<'_>,
+	request_id: &str,
+	identity: IdentityId,
+	operation: Operation,
+	statements: Vec<String>,
+	params: Params,
+	format: Option<&str>,
+	unwrap: bool,
+	build_response: impl FnOnce(&str, String, JsonValue) -> String,
+) -> Option<String> {
+	let query_timeout = conn.state.query_timeout();
+	let metadata = build_ws_metadata(conn.auth_token);
+
+	let mut ctx = RequestContext {
+		identity,
+		operation,
+		statements,
+		params,
+		metadata,
+	};
+
+	// Pre-interceptors
+	if !conn.state.request_interceptors().is_empty()
+		&& let Err(e) = conn.state.request_interceptors().pre_execute(&mut ctx).await
+	{
+		return Some(error_to_response(request_id, e));
+	}
+
+	// Build message and send to actor
+	let (reply, receiver) = reply_channel();
+	let msg = match ctx.operation {
+		Operation::Query => WsMessage::Query {
+			identity: ctx.identity,
+			statements: ctx.statements.clone(),
+			params: ctx.params.clone(),
+			reply,
+		},
+		Operation::Command => WsMessage::Command {
+			identity: ctx.identity,
+			statements: ctx.statements.clone(),
+			params: ctx.params.clone(),
+			reply,
+		},
+		Operation::Admin => WsMessage::Admin {
+			identity: ctx.identity,
+			statements: ctx.statements.clone(),
+			params: ctx.params.clone(),
+			reply,
+		},
+		Operation::Subscribe => unreachable!("subscribe uses a different path"),
+	};
+
+	conn.actor_ref.send(msg).ok().expect("actor mailbox closed");
+
+	// Await reply with timeout
+	match timeout(query_timeout, receiver.recv()).await {
+		Ok(Ok(ServerResponse::Success {
+			frames,
+			duration,
+		})) => {
+			// Post-interceptors
+			if !conn.state.request_interceptors().is_empty() {
+				let response_ctx = ResponseContext {
+					identity: ctx.identity,
+					operation: ctx.operation,
+					statements: ctx.statements,
+					params: ctx.params,
+					metadata: ctx.metadata,
+					metrics: ExecutionMetrics::default(),
+					result: Ok(frames.len()),
+					total: ReifyDuration::from_nanoseconds(duration.as_nanos() as i64)
+						.unwrap_or_default(),
+					compute: ReifyDuration::from_nanoseconds(duration.as_nanos() as i64)
+						.unwrap_or_default(),
+				};
+				conn.state.request_interceptors().post_execute(&response_ctx).await;
+			}
+
+			let (content_type, body) = build_response_body(frames, format, unwrap);
+			Some(build_response(request_id, content_type, body))
+		}
+		Ok(Ok(ServerResponse::EngineError {
+			diagnostic,
+			statement,
+		})) => {
+			let mut diag = *diagnostic;
+			if diag.statement.is_none() && !statement.is_empty() {
+				diag.statement = Some(statement);
+			}
+			Some(Response::error(request_id, diag).to_json())
+		}
+		Ok(Err(_)) => Some(build_error(request_id, "INTERNAL_ERROR", "actor stopped")),
+		Err(_) => {
+			Some(Response::internal_error(request_id, "QUERY_TIMEOUT", "Query execution timed out")
+				.to_json())
 		}
 	}
 }
@@ -520,7 +607,6 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 			diagnostic,
 			statement,
 		} => {
-			// Create a copy of the diagnostic with the statement attached
 			let mut diag = (*diagnostic).clone();
 			if diag.statement.is_none() && !statement.is_empty() {
 				diag.statement = Some(statement);
@@ -536,9 +622,6 @@ pub(crate) fn build_error(id: &str, code: &str, message: &str) -> String {
 }
 
 /// Build response body with content_type based on format parameter.
-///
-/// When `format` is `Some("json")`, resolves the body column to raw JSON.
-/// Otherwise, converts frames to the standard frame format.
 fn build_response_body(frames: Vec<Frame>, format: Option<&str>, unwrap: bool) -> (String, JsonValue) {
 	if format == Some("json") {
 		match resolve_response_json(frames, unwrap) {

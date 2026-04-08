@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+#[cfg(not(reifydb_single_threaded))]
 use std::sync::mpsc;
 
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_client::GrpcClient;
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_runtime::SharedRuntime;
-use reifydb_type::{
-	error::{Diagnostic, Error},
-	params::Params,
-	value::frame::frame::Frame,
-};
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_type::error::Diagnostic;
+use reifydb_type::error::Error;
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_type::{params::Params, value::frame::frame::Frame};
 
+#[cfg(not(reifydb_single_threaded))]
 pub struct RemoteRegistry {
 	runtime: SharedRuntime,
 }
 
+#[cfg(not(reifydb_single_threaded))]
 impl RemoteRegistry {
 	pub fn new(runtime: SharedRuntime) -> Self {
 		Self {
@@ -30,6 +35,7 @@ impl RemoteRegistry {
 		token: Option<&str>,
 	) -> Result<Vec<Frame>, Error> {
 		let client = self.connect(address, token)?;
+
 		let params_opt = match &params {
 			Params::None => None,
 			_ => Some(params),

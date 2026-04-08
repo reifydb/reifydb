@@ -9,11 +9,13 @@ use axum::{
 	Router,
 	routing::{get, post},
 };
-use reifydb_sub_server::state::AppState;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::handlers::{handle_admin, handle_authenticate, handle_command, handle_logout, handle_query, health};
+use crate::{
+	handlers::{handle_admin, handle_authenticate, handle_command, handle_logout, handle_query, health},
+	state::HttpServerState,
+};
 
 /// Create the HTTP router with all endpoints and middleware.
 ///
@@ -39,7 +41,7 @@ use crate::handlers::{handle_admin, handle_authenticate, handle_command, handle_
 /// # Returns
 ///
 /// Configured Axum Router ready to serve requests.
-pub fn router(state: AppState) -> Router {
+pub fn router(state: HttpServerState) -> Router {
 	let max_connections = state.max_connections();
 	let admin_enabled = state.admin_enabled();
 

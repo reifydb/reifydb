@@ -20,8 +20,12 @@ use std::collections::HashMap;
 #[cfg(any(feature = "http", feature = "ws"))]
 use std::sync::Arc;
 
+#[cfg(all(feature = "dst", feature = "grpc", reifydb_single_threaded))]
+pub use grpc::DstGrpcClient;
 #[cfg(feature = "grpc")]
 pub use grpc::{GrpcClient, GrpcSubscription};
+#[cfg(all(feature = "dst", feature = "http", reifydb_single_threaded))]
+pub use http::DstHttpClient;
 #[cfg(feature = "http")]
 pub use http::HttpClient;
 // Re-export derive macro
@@ -48,6 +52,8 @@ pub use reifydb_type::{
 };
 #[cfg(any(feature = "http", feature = "ws"))]
 use serde::{Deserialize, Serialize};
+#[cfg(all(feature = "dst", feature = "ws", reifydb_single_threaded))]
+pub use ws::DstWsClient;
 #[cfg(feature = "ws")]
 pub use ws::WsClient;
 

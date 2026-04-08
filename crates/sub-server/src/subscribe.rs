@@ -9,7 +9,7 @@ use reifydb_type::{
 	Result as TypeResult,
 	error::Error,
 	params::Params,
-	value::{Value, identity::IdentityId},
+	value::{Value, frame::frame::Frame, identity::IdentityId},
 };
 use tokio::task::spawn_blocking;
 use tracing::{debug, error};
@@ -136,6 +136,28 @@ pub async fn create_subscription(
 		})
 		.map(CreateSubscriptionResult::Local)
 		.ok_or(CreateSubscriptionError::ExtractionFailed)
+}
+
+/// Extract the subscription ID from frames returned by `engine.subscribe_as`.
+///
+/// The engine returns a single-row frame with a `subscription_id` column
+/// containing a `Value::Uint8(id)`.
+pub fn extract_subscription_id(frames: &[Frame]) -> Option<SubscriptionId> {
+	let frame = frames.first()?;
+	frame.columns
+		.iter()
+		.find(|c| c.name == "subscription_id")
+		.and_then(|col| {
+			if !col.data.is_empty() {
+				Some(col.data.get_value(0))
+			} else {
+				None
+			}
+		})
+		.and_then(|value| match value {
+			Value::Uint8(id) => Some(SubscriptionId(id)),
+			_ => None,
+		})
 }
 
 /// Synchronous cleanup: drop subscription via DDL.

@@ -233,7 +233,7 @@ impl TestEngineBuilder {
 				procedures: Procedures::empty(),
 				transforms: Transforms::empty(),
 				ioc,
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
 		);

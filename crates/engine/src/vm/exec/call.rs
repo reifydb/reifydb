@@ -120,12 +120,12 @@ impl Vm {
 				};
 				self.call_test_procedure(ctx, &proc_def, args, name, func_name)
 			}
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(reifydb_single_threaded))]
 			Some(ResolvedProcedure::Remote {
 				address,
 				token,
 			}) => self.call_remote_procedure(services, args, name, func_name, &address, token.as_deref()),
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(reifydb_single_threaded)]
 			Some(ResolvedProcedure::Remote {
 				..
 			}) => Err(TypeError::Procedure {
@@ -341,7 +341,7 @@ impl Vm {
 		Ok(())
 	}
 
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(reifydb_single_threaded))]
 	fn call_remote_procedure(
 		&mut self,
 		services: &Arc<Services>,

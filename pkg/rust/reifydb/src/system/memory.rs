@@ -7,6 +7,7 @@ use std::ptr;
 use std::{fs, io};
 use std::{mem, process::exit, time::Duration};
 
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{
 	context::TaskContext,
 	schedule::Schedule,
@@ -14,7 +15,9 @@ use reifydb_sub_task::{
 };
 use tracing::{debug, error};
 
+#[cfg(not(reifydb_single_threaded))]
 const MEMORY_KILL_THRESHOLD_PERCENT: f32 = 90.0;
+#[cfg(not(reifydb_single_threaded))]
 const MEMORY_CHECK_INTERVAL: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
@@ -149,7 +152,7 @@ impl MemoryWatchdog {
 	}
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos")))]
 pub fn create_memory_watchdog_task() -> ScheduledTask {
 	ScheduledTask::builder("memory-watchdog")
 		.schedule(Schedule::FixedInterval(MEMORY_CHECK_INTERVAL))

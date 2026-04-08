@@ -7,6 +7,9 @@ authors.workspace = true
 repository.workspace = true
 description = "CDC-based replication subsystem for ReifyDB"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [features]
 default = []
 

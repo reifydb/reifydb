@@ -26,3 +26,6 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 num_cpus = { workspace = true }
 tokio = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

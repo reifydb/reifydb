@@ -546,6 +546,7 @@ impl TryFromValueCoerce for f64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::approx_constant)]
 pub mod tests {
 	use super::*;
 	use crate::value::{ordered_f32::OrderedF32, ordered_f64::OrderedF64};

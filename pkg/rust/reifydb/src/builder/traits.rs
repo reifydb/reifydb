@@ -20,7 +20,7 @@ pub trait WithSubsystem: Sized {
 	where
 		F: FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static;
 
-	#[cfg(feature = "sub_replication")]
+	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	fn with_replication<F, C>(self, configurator: F) -> Self
 	where
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,

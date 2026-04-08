@@ -196,7 +196,7 @@ mod tests {
 	#[test]
 	fn test_no_trailing_zeros() {
 		// Ensure we don't produce trailing zeros after trimming
-		let v = 1.20000000000000000f64;
+		let v = 1.2f64;
 		let s = format_f64(v);
 		assert!(!s.ends_with('0') || s == "0", "got: {}", s);
 	}

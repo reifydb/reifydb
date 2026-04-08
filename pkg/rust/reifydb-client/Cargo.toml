@@ -19,13 +19,21 @@ required-features = ["ws"]
 
 [features]
 default = []
+dst = ["dep:reifydb-core", "dep:reifydb-runtime"]
 grpc = ["dep:tonic", "dep:tonic-prost", "dep:prost", "dep:uuid", "dep:num-bigint"]
 http = ["dep:reqwest"]
 ws = ["dep:tokio-tungstenite", "dep:futures-util"]
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-type = { workspace = true }
 reifydb-client-derive = { workspace = true }
+
+# DST client
+reifydb-core = { workspace = true, optional = true }
+reifydb-runtime = { workspace = true, optional = true }
 
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.143" }
@@ -49,7 +57,10 @@ num-bigint = { workspace = true, optional = true }
 
 [dev-dependencies]
 reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "sub_server_grpc", "sub_flow"] }
-reifydb-client = { path = ".", features = ["grpc", "http", "ws"] }
+reifydb-client = { path = ".", features = ["grpc", "http", "ws", "dst"] }
+reifydb-sub-server-http = { workspace = true }
+reifydb-sub-server-grpc = { workspace = true }
+reifydb-sub-server-ws = { workspace = true }
 reifydb-testing = { workspace = true }
 test_each_file = { version = "0.3.5" }
 tokio = { workspace = true }

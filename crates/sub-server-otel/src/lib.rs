@@ -80,5 +80,7 @@
 //! ```
 
 pub mod config;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;

@@ -14,14 +14,15 @@ use reifydb_auth::service::AuthService;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
 use reifydb_sub_api::subsystem::HealthStatus;
-#[cfg(feature = "sub_flow")]
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
-#[cfg(feature = "sub_server_grpc")]
+#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 use reifydb_sub_server_grpc::subsystem::GrpcSubsystem;
-#[cfg(feature = "sub_server_http")]
+#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 use reifydb_sub_server_http::subsystem::HttpSubsystem;
-#[cfg(feature = "sub_server_ws")]
+#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 use reifydb_sub_server_ws::subsystem::WsSubsystem;
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 use reifydb_type::{
 	Result,
@@ -51,22 +52,22 @@ pub struct Database {
 }
 
 impl Database {
-	#[cfg(feature = "sub_flow")]
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server_grpc")]
+	#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 	pub fn sub_server_grpc(&self) -> Option<&GrpcSubsystem> {
 		self.subsystem::<GrpcSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server_http")]
+	#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 	pub fn sub_server_http(&self) -> Option<&HttpSubsystem> {
 		self.subsystem::<HttpSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server_ws")]
+	#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 	pub fn sub_server_ws(&self) -> Option<&WsSubsystem> {
 		self.subsystem::<WsSubsystem>()
 	}
@@ -74,6 +75,7 @@ impl Database {
 	/// Get a handle to the task scheduler subsystem
 	///
 	/// Returns None if the task subsystem is not registered or not running
+	#[cfg(not(reifydb_single_threaded))]
 	pub fn task_handle(&self) -> Option<TaskHandle> {
 		self.subsystem::<TaskSubsystem>().and_then(|subsystem| subsystem.handle())
 	}

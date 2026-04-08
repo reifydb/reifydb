@@ -24,9 +24,9 @@ use tokio::{
 	net::TcpListener,
 	sync::{Notify, oneshot, watch},
 };
-use tokio_stream::wrappers::TcpListenerStream;
+use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
 use tonic::transport::Server;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
 	builder::{PrimaryConfig, ReplicaConfig, ReplicationConfig},
@@ -139,7 +139,14 @@ impl ReplicationSubsystem {
 		self.runtime.spawn(async move {
 			running.store(true, Ordering::SeqCst);
 
-			let incoming = TcpListenerStream::new(listener);
+			let incoming = TcpListenerStream::new(listener).map(|result| {
+				if let Ok(ref stream) = result
+					&& let Err(e) = stream.set_nodelay(true)
+				{
+					warn!("Failed to set TCP_NODELAY: {e}");
+				}
+				result
+			});
 
 			let result = Server::builder()
 				.add_service(ReifyDbReplicationServer::new(service))

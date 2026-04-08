@@ -47,8 +47,16 @@
 //! http.start()?;
 //! ```
 
+pub mod actor;
+#[cfg(not(reifydb_single_threaded))]
 pub mod error;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
+#[cfg(not(reifydb_single_threaded))]
 pub mod handlers;
+#[cfg(not(reifydb_single_threaded))]
 pub mod routes;
+#[cfg(not(reifydb_single_threaded))]
+pub mod state;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;

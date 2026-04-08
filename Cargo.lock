@@ -2656,8 +2656,14 @@ dependencies = [
  "num-bigint",
  "prost",
  "reifydb",
+ "reifydb-build",
  "reifydb-client",
  "reifydb-client-derive",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-sub-server-grpc",
+ "reifydb-sub-server-http",
+ "reifydb-sub-server-ws",
  "reifydb-testing",
  "reifydb-type",
  "reqwest 0.13.2",
@@ -3013,6 +3019,7 @@ name = "reifydb-sub-replication"
 version = "0.4.9"
 dependencies = [
  "prost",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
@@ -3037,6 +3044,7 @@ dependencies = [
  "num_cpus",
  "once_cell",
  "reifydb-auth",
+ "reifydb-build",
  "reifydb-catalog",
  "reifydb-client",
  "reifydb-core",
@@ -3054,6 +3062,7 @@ name = "reifydb-sub-server-admin"
 version = "0.4.9"
 dependencies = [
  "axum",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3076,6 +3085,7 @@ dependencies = [
  "num-bigint",
  "prost",
  "reifydb-auth",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3099,6 +3109,7 @@ version = "0.4.9"
 dependencies = [
  "axum",
  "reifydb-auth",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3120,6 +3131,7 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3139,6 +3151,7 @@ dependencies = [
  "dashmap",
  "futures-util",
  "reifydb-auth",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3181,6 +3194,7 @@ name = "reifydb-sub-task"
 version = "0.4.9"
 dependencies = [
  "dashmap",
+ "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",

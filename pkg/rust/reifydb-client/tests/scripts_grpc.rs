@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+#![cfg(not(reifydb_single_threaded))]
 
 mod common;
 

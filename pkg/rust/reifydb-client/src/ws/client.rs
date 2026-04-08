@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 use futures_util::{SinkExt, StreamExt};
 use reifydb_type::{error::Error, params::Params};
 use tokio::sync::{Mutex, mpsc, oneshot};
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{connect_async_with_config, tungstenite::Message};
 
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, LoginResult,
@@ -49,7 +49,7 @@ impl WsClient {
 			url.to_string()
 		};
 
-		let (ws_stream, _) = connect_async(&url).await.unwrap(); // FIXME better error handling
+		let (ws_stream, _) = connect_async_with_config(&url, None, true).await.unwrap(); // FIXME better error handling
 
 		let (write, read) = ws_stream.split();
 

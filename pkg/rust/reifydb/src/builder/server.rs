@@ -11,21 +11,20 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(feature = "sub_replication")]
-use reifydb_sub_replication::{
-	builder::{ReplicationConfig, ReplicationConfigurator},
-	factory::ReplicationSubsystemFactory,
-};
-#[cfg(feature = "sub_server")]
+use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
+use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
-#[cfg(feature = "sub_server_admin")]
+#[cfg(all(feature = "sub_server_admin", not(reifydb_single_threaded)))]
 use reifydb_sub_server_admin::{config::AdminConfigurator, factory::AdminSubsystemFactory};
-#[cfg(feature = "sub_server_grpc")]
+#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 use reifydb_sub_server_grpc::factory::{GrpcConfigurator, GrpcSubsystemFactory};
-#[cfg(feature = "sub_server_http")]
+#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 use reifydb_sub_server_http::factory::{HttpConfigurator, HttpSubsystemFactory};
-#[cfg(feature = "sub_server_otel")]
+#[cfg(all(feature = "sub_server_otel", not(reifydb_single_threaded)))]
 use reifydb_sub_server_otel::{config::OtelConfigurator, factory::OtelSubsystemFactory, subsystem::OtelSubsystem};
-#[cfg(feature = "sub_server_ws")]
+#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
@@ -37,7 +36,7 @@ use crate::{
 	api::{StorageFactory, transaction},
 };
 
-#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 type OtelTracingConfig = (
 	Box<dyn FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static>,
 	Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>,
@@ -48,7 +47,7 @@ pub struct ServerBuilder {
 	runtime_config: Option<SharedRuntimeConfig>,
 	migrations: Vec<Migration>,
 	interceptors: InterceptorBuilder,
-	#[cfg(feature = "sub_server")]
+	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	request_interceptors: Vec<Arc<dyn RequestInterceptor>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	functions_configurator:
@@ -65,7 +64,7 @@ pub struct ServerBuilder {
 	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
-	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	otel_tracing_config: Option<OtelTracingConfig>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 }
@@ -77,7 +76,7 @@ impl ServerBuilder {
 			runtime_config: None,
 			migrations: Vec::new(),
 			interceptors: InterceptorBuilder::new(),
-			#[cfg(feature = "sub_server")]
+			#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 			request_interceptors: Vec::new(),
 			subsystem_factories: Vec::new(),
 			functions_configurator: None,
@@ -91,7 +90,11 @@ impl ServerBuilder {
 			flow_configurator: None,
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
-			#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+			#[cfg(all(
+				feature = "sub_tracing",
+				feature = "sub_server_otel",
+				not(reifydb_single_threaded)
+			))]
 			otel_tracing_config: None,
 			auth_configurator: None,
 		}
@@ -149,7 +152,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add a gRPC subsystem.
-	#[cfg(feature = "sub_server_grpc")]
+	#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 	pub fn with_grpc<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(GrpcConfigurator) -> GrpcConfigurator + Send + 'static,
@@ -160,7 +163,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add an HTTP subsystem.
-	#[cfg(feature = "sub_server_http")]
+	#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 	pub fn with_http<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(HttpConfigurator) -> HttpConfigurator + Send + 'static,
@@ -171,7 +174,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add a WebSocket subsystem.
-	#[cfg(feature = "sub_server_ws")]
+	#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 	pub fn with_ws<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(WsConfigurator) -> WsConfigurator + Send + 'static,
@@ -182,7 +185,7 @@ impl ServerBuilder {
 	}
 
 	/// Configure and add an OpenTelemetry subsystem.
-	#[cfg(feature = "sub_server_otel")]
+	#[cfg(all(feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	pub fn with_otel<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static,
@@ -215,7 +218,7 @@ impl ServerBuilder {
 	///     )
 	///     .build()?;
 	/// ```
-	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	pub fn with_tracing_otel<O, F>(mut self, otel_configurator: O, tracing_configurator: F) -> Self
 	where
 		O: FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static,
@@ -230,13 +233,13 @@ impl ServerBuilder {
 	///
 	/// Interceptors are called in registration order for `pre_execute`,
 	/// and in reverse order for `post_execute`.
-	#[cfg(feature = "sub_server")]
+	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	pub fn with_request_interceptor<I: RequestInterceptor>(mut self, interceptor: I) -> Self {
 		self.request_interceptors.push(Arc::new(interceptor));
 		self
 	}
 
-	#[cfg(feature = "sub_server_admin")]
+	#[cfg(all(feature = "sub_server_admin", not(reifydb_single_threaded)))]
 	pub fn with_admin<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(AdminConfigurator) -> AdminConfigurator + Send + 'static,
@@ -268,7 +271,7 @@ impl ServerBuilder {
 			.with_actor_system(actor_system.clone())
 			.with_stores(multi_store, single_store);
 
-		#[cfg(feature = "sub_server")]
+		#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 		{
 			let registry = Arc::new(reifydb_metric::registry::MetricRegistry::new());
 			let accumulator = Arc::new(reifydb_metric::accumulator::StatementStatsAccumulator::new());
@@ -310,7 +313,7 @@ impl ServerBuilder {
 			database_builder = database_builder.with_procedure_dir(dir);
 		}
 
-		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 		if let Some((otel_configurator, tracing_configurator)) = self.otel_tracing_config {
 			use reifydb_sub_api::subsystem::Subsystem;
 
@@ -337,7 +340,7 @@ impl ServerBuilder {
 			}
 		}
 
-		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel")))]
+		#[cfg(not(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded))))]
 		{
 			#[cfg(feature = "sub_tracing")]
 			{
@@ -383,7 +386,7 @@ impl WithSubsystem for ServerBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_replication")]
+	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	fn with_replication<F, C>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,

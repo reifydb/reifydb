@@ -15,6 +15,7 @@
 
 pub mod context;
 pub mod mailbox;
+pub mod reply;
 pub mod system;
 pub mod testing;
 pub mod timers;

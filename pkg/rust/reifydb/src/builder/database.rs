@@ -31,7 +31,9 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{EngineVersion, engine::StandardEngine, remote::RemoteRegistry, vm::services::EngineConfig};
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_engine::remote::RemoteRegistry;
+use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
 use reifydb_metric_old::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
@@ -48,12 +50,12 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{builder::FlowConfigurator, subsystem::factory::FlowSubsystemFactory};
 #[cfg(feature = "sub_replication")]
-use reifydb_sub_replication::{
-	builder::{ReplicationConfig, ReplicationConfigurator},
-	factory::ReplicationSubsystemFactory,
-};
-#[cfg(feature = "sub_server")]
+use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
+use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
@@ -64,9 +66,9 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 };
 
-use crate::{
-	Migration, database::Database, health::HealthMonitor, subsystem::Subsystems, system::tasks::create_system_tasks,
-};
+#[cfg(not(reifydb_single_threaded))]
+use crate::system::tasks::create_system_tasks;
+use crate::{Migration, database::Database, health::HealthMonitor, subsystem::Subsystems};
 
 pub struct DatabaseBuilder {
 	interceptors: InterceptorBuilder,
@@ -92,6 +94,7 @@ pub struct DatabaseBuilder {
 	flow_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_replication")]
 	replication_factory: Option<Box<dyn SubsystemFactory>>,
+	#[cfg(not(reifydb_single_threaded))]
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	migrations: Vec<Migration>,
@@ -131,6 +134,7 @@ impl DatabaseBuilder {
 			flow_factory: None,
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
+			#[cfg(not(reifydb_single_threaded))]
 			task_factory: None,
 			auth_configurator: None,
 			migrations: Vec::new(),
@@ -162,7 +166,7 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_replication")]
+	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	pub fn with_replication<F, C>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
@@ -188,7 +192,7 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_server")]
+	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	pub fn with_request_interceptor_chain(self, chain: RequestInterceptorChain) -> Self {
 		self.ioc.register_service(chain);
 		self
@@ -287,6 +291,7 @@ impl DatabaseBuilder {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
+		#[cfg(not(reifydb_single_threaded))]
 		if let Some(ref factory) = self.task_factory {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
@@ -374,6 +379,7 @@ impl DatabaseBuilder {
 		};
 
 		// Create RemoteRegistry for forwarding queries to remote namespaces
+		#[cfg(not(reifydb_single_threaded))]
 		let remote_registry = RemoteRegistry::new(runtime.clone());
 
 		// Create engine before CDC worker (CDC worker needs engine for cleanup)
@@ -389,6 +395,7 @@ impl DatabaseBuilder {
 				procedures,
 				transforms,
 				ioc: self.ioc.clone(),
+				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: Some(remote_registry),
 			},
 		);
@@ -473,6 +480,7 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
+		#[cfg(not(reifydb_single_threaded))]
 		{
 			let factory = self.task_factory.unwrap_or_else(|| {
 				Box::new(TaskSubsystemFactory::with_config(TaskConfig::new(create_system_tasks())))

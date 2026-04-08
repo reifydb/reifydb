@@ -5,10 +5,20 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod actor;
+#[cfg(not(reifydb_single_threaded))]
 pub mod convert;
+#[cfg(not(reifydb_single_threaded))]
 pub mod error;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
+#[cfg(not(reifydb_single_threaded))]
 pub mod generated;
+#[cfg(not(reifydb_single_threaded))]
+pub mod server_state;
+#[cfg(not(reifydb_single_threaded))]
 pub mod service;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subscription;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;

@@ -12,7 +12,7 @@ use std::{
 	},
 };
 
-use axum::serve;
+use axum::{serve, serve::ListenerExt};
 use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -21,7 +21,7 @@ use reifydb_runtime::SharedRuntime;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::{Result, error::Error};
 use tokio::{net::TcpListener, sync::oneshot};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{routes::router, state::AdminState};
 
@@ -142,6 +142,11 @@ impl Subsystem for AdminSubsystem {
 
 			// Create router and serve
 			let app = router(state);
+			let listener = listener.tap_io(|tcp_stream| {
+				if let Err(e) = tcp_stream.set_nodelay(true) {
+					warn!("Failed to set TCP_NODELAY: {e}");
+				}
+			});
 			let server = serve(listener, app).with_graceful_shutdown(async {
 				shutdown_rx.await.ok();
 				info!("Admin server received shutdown signal");

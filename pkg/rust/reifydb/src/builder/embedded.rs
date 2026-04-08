@@ -12,10 +12,9 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(feature = "sub_replication")]
-use reifydb_sub_replication::{
-	builder::{ReplicationConfig, ReplicationConfigurator},
-	factory::ReplicationSubsystemFactory,
-};
+use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
+use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
@@ -256,7 +255,7 @@ impl WithSubsystem for EmbeddedBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_replication")]
+	#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 	fn with_replication<F, C>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,

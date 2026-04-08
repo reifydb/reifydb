@@ -7,8 +7,12 @@
 
 pub mod builder;
 pub mod convert;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
 pub mod generated;
+#[cfg(not(reifydb_single_threaded))]
 pub mod primary;
+#[cfg(not(reifydb_single_threaded))]
 pub mod replica;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;

@@ -1,20 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use std::collections::HashMap;
 use std::collections::VecDeque;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_type::fragment::Fragment;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_type::{params::Params, value::Value};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use crate::vm::stack::Variable;
 use crate::{
 	Result,
@@ -46,7 +46,7 @@ impl RemoteFetchNode {
 
 impl QueryNode for RemoteFetchNode {
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
-		#[cfg(not(target_arch = "wasm32"))]
+		#[cfg(not(reifydb_single_threaded))]
 		{
 			if let Some(ref registry) = _ctx.services.remote_registry {
 				// Resolve local variables for remote execution

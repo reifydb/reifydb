@@ -24,12 +24,13 @@ use tokio::{
 	net::TcpListener,
 	sync::{oneshot, watch},
 };
-use tokio_stream::wrappers::TcpListenerStream;
+use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
 use tonic::transport::Server;
 use tracing::{error, info};
 
 use crate::{
-	generated::reify_db_server::ReifyDbServer, service::ReifyDbService, subscription::GrpcSubscriptionRegistry,
+	generated::reify_db_server::ReifyDbServer, server_state::GrpcServerState, service::ReifyDbService,
+	subscription::GrpcSubscriptionRegistry,
 };
 
 pub struct GrpcSubsystem {
@@ -182,8 +183,13 @@ impl Subsystem for GrpcSubsystem {
 			runtime.spawn(async move {
 				running.store(true, Ordering::SeqCst);
 
-				let service = ReifyDbService::new(state, false, registry, sub_shutdown_rx);
-				let incoming = TcpListenerStream::new(listener);
+				let server_state = GrpcServerState::new(state);
+				let service = ReifyDbService::new(server_state, false, registry, sub_shutdown_rx);
+				let incoming = TcpListenerStream::new(listener).map(|result| {
+					result.inspect(|stream| {
+						let _ = stream.set_nodelay(true);
+					})
+				});
 
 				let result = Server::builder()
 					.add_service(ReifyDbServer::new(service))
@@ -239,14 +245,23 @@ impl Subsystem for GrpcSubsystem {
 			let (admin_shutdown_tx, admin_shutdown_rx) = oneshot::channel();
 			let (admin_complete_tx, admin_complete_rx) = oneshot::channel();
 
-			let admin_state = self.state.clone();
+			let admin_app_state = self.state.clone();
+			let admin_server_state = GrpcServerState::new(admin_app_state);
 			let admin_registry = self.registry.as_ref().unwrap().clone();
 			let admin_sub_shutdown_rx = self.subscription_shutdown_tx.as_ref().unwrap().subscribe();
 
 			runtime.spawn(async move {
-				let admin_service =
-					ReifyDbService::new(admin_state, true, admin_registry, admin_sub_shutdown_rx);
-				let incoming = TcpListenerStream::new(admin_listener);
+				let admin_service = ReifyDbService::new(
+					admin_server_state,
+					true,
+					admin_registry,
+					admin_sub_shutdown_rx,
+				);
+				let incoming = TcpListenerStream::new(admin_listener).map(|result| {
+					result.inspect(|stream| {
+						let _ = stream.set_nodelay(true);
+					})
+				});
 
 				let result = Server::builder()
 					.add_service(ReifyDbServer::new(admin_service))

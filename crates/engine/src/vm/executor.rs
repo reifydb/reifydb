@@ -23,7 +23,7 @@ use reifydb_transaction::transaction::{
 	RqlExecutor, TestTransaction, Transaction, admin::AdminTransaction, command::CommandTransaction,
 	query::QueryTransaction,
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use reifydb_type::error::Diagnostic;
 use reifydb_type::{
 	error::Error,
@@ -32,7 +32,7 @@ use reifydb_type::{
 };
 use tracing::instrument;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use crate::remote;
 use crate::{
 	Result,
@@ -89,7 +89,7 @@ impl Executor {
 
 	/// If the error is a REMOTE_001 and we have a RemoteRegistry, forward the query.
 	/// Returns `Ok(Some(frames))` if forwarded, `Ok(None)` if not a remote query.
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(reifydb_single_threaded))]
 	fn try_forward_remote_query(&self, err: &Error, rql: &str, params: Params) -> Result<Option<Vec<Frame>>> {
 		if let Some(ref registry) = self.0.remote_registry
 			&& remote::is_remote_query(err)
@@ -287,7 +287,7 @@ impl Executor {
 				unreachable!("incremental compilation not supported in rql()")
 			}
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
 					return ExecutionResult {
 						frames,
@@ -371,7 +371,7 @@ impl Executor {
 		let start_compile = self.0.runtime_context.clock.instant();
 		match self.compiler.compile_with_policy(&mut Transaction::Admin(txn), cmd.rql, inject_read_policies) {
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
 					return ExecutionResult {
 						frames,
@@ -518,7 +518,7 @@ impl Executor {
 			inject_read_policies,
 		) {
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, cmd.rql, cmd.params) {
 					return ExecutionResult {
 						frames,
@@ -767,7 +767,7 @@ impl Executor {
 				unreachable!("DDL statements require admin transactions, not command transactions")
 			}
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				if self.0.remote_registry.is_some() && remote::is_remote_query(&err) {
 					return ExecutionResult {
 						frames: vec![],
@@ -920,7 +920,7 @@ impl Executor {
 				unreachable!("DDL statements require admin transactions, not query transactions")
 			}
 			Err(err) => {
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, qry.rql, qry.params) {
 					return ExecutionResult {
 						frames,
@@ -937,14 +937,16 @@ impl Executor {
 		};
 		let compile_duration = start_compile.elapsed();
 
-		match execute_compiled_units(
+		let exec_result = execute_compiled_units(
 			&self.0,
 			&mut Transaction::Query(txn),
 			&compiled,
 			&qry.params,
 			symbols,
 			compile_duration,
-		) {
+		);
+
+		match exec_result {
 			Ok((output, remaining, _, metrics)) => ExecutionResult {
 				frames: merge_results(output, remaining),
 				error: None,

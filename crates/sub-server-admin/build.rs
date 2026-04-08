@@ -4,8 +4,11 @@
 use std::{env, fs, io, io::Write, path, path::Path};
 
 use fs::create_dir_all;
+use reifydb_build::emit_target_cfg;
 
 fn main() {
+	emit_target_cfg();
+
 	// Only rebuild if webapp source changes
 	println!("cargo:rerun-if-changed=webapp/src");
 	println!("cargo:rerun-if-changed=webapp/package.json");

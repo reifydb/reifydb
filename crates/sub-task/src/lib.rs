@@ -6,10 +6,14 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod context;
+#[cfg(not(reifydb_single_threaded))]
 pub mod coordinator;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
+#[cfg(not(reifydb_single_threaded))]
 pub mod handle;
 pub mod registry;
 pub mod schedule;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;
 pub mod task;

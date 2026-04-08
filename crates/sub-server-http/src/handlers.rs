@@ -8,7 +8,7 @@
 //! - `/v1/query` - Execute read-only queries
 //! - `/v1/command` - Execute write commands
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
 	Json,
@@ -16,20 +16,30 @@ use axum::{
 	http::{HeaderMap, StatusCode, header},
 	response::{IntoResponse, Response},
 };
-use reifydb_auth::service::AuthResponse as EngineAuthResponse;
-use reifydb_core::value::frame::response::{ResponseFrame, convert_frames};
+use reifydb_core::{
+	actors::{
+		http::HttpMessage,
+		server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse},
+	},
+	metric::ExecutionMetrics,
+	value::frame::response::{ResponseFrame, convert_frames},
+};
+use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
-	execute::execute,
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
+	execute::ExecuteError,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata, ResponseContext},
 	response::resolve_response_json,
-	state::AppState,
 	wire::WireParams,
 };
-use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_type::{
+	params::Params,
+	value::{duration::Duration as ReifyDuration, identity::IdentityId},
+};
 use serde::{Deserialize, Serialize};
+use tokio::time::timeout;
 
-use crate::error::AppError;
+use crate::{error::AppError, state::HttpServerState};
 
 /// Request body for query and command endpoints.
 #[derive(Debug, Deserialize)]
@@ -119,14 +129,27 @@ pub struct AuthenticateResponse {
 }
 
 pub async fn handle_authenticate(
-	State(state): State<AppState>,
+	State(state): State<HttpServerState>,
 	Json(request): Json<AuthenticateRequest>,
 ) -> Result<Response, AppError> {
-	match state.auth_service().authenticate(&request.method, request.credentials) {
-		Ok(EngineAuthResponse::Authenticated {
+	let (reply, receiver) = reply_channel();
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref
+		.send(HttpMessage::Authenticate {
+			method: request.method,
+			credentials: request.credentials,
+			reply,
+		})
+		.ok()
+		.ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
+
+	let auth_response = receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))?;
+
+	match auth_response {
+		ServerAuthResponse::Authenticated {
 			identity,
 			token,
-		}) => Ok((
+		} => Ok((
 			StatusCode::OK,
 			Json(AuthenticateResponse {
 				status: "authenticated".to_string(),
@@ -138,10 +161,10 @@ pub async fn handle_authenticate(
 			}),
 		)
 			.into_response()),
-		Ok(EngineAuthResponse::Challenge {
+		ServerAuthResponse::Challenge {
 			challenge_id,
 			payload,
-		}) => Ok((
+		} => Ok((
 			StatusCode::OK,
 			Json(AuthenticateResponse {
 				status: "challenge".to_string(),
@@ -153,9 +176,9 @@ pub async fn handle_authenticate(
 			}),
 		)
 			.into_response()),
-		Ok(EngineAuthResponse::Failed {
+		ServerAuthResponse::Failed {
 			reason,
-		}) => Ok((
+		} => Ok((
 			StatusCode::UNAUTHORIZED,
 			Json(AuthenticateResponse {
 				status: "failed".to_string(),
@@ -167,7 +190,7 @@ pub async fn handle_authenticate(
 			}),
 		)
 			.into_response()),
-		Err(e) => Ok((
+		ServerAuthResponse::Error(reason) => Ok((
 			StatusCode::INTERNAL_SERVER_ERROR,
 			Json(AuthenticateResponse {
 				status: "failed".to_string(),
@@ -175,14 +198,14 @@ pub async fn handle_authenticate(
 				identity: None,
 				challenge_id: None,
 				payload: None,
-				reason: Some(e.to_string()),
+				reason: Some(reason),
 			}),
 		)
 			.into_response()),
 	}
 }
 
-pub async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, AppError> {
+pub async fn handle_logout(State(state): State<HttpServerState>, headers: HeaderMap) -> Result<Response, AppError> {
 	let auth_header = headers.get("authorization").ok_or(AppError::Auth(AuthError::MissingCredentials))?;
 	let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;
 	let token = auth_str.strip_prefix("Bearer ").ok_or(AppError::Auth(AuthError::InvalidHeader))?.trim();
@@ -191,18 +214,28 @@ pub async fn handle_logout(State(state): State<AppState>, headers: HeaderMap) ->
 		return Err(AppError::Auth(AuthError::InvalidToken));
 	}
 
-	let revoked = state.auth_service().revoke_token(token);
+	let (reply, receiver) = reply_channel();
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref
+		.send(HttpMessage::Logout {
+			token: token.to_string(),
+			reply,
+		})
+		.ok()
+		.ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
 
-	if revoked {
-		Ok((
+	let logout_response = receiver.recv().await.map_err(|_| AppError::Internal("actor stopped".into()))?;
+
+	match logout_response {
+		ServerLogoutResponse::Ok => Ok((
 			StatusCode::OK,
 			Json(LogoutResponse {
 				status: "ok".to_string(),
 			}),
 		)
-			.into_response())
-	} else {
-		Err(AppError::Auth(AuthError::InvalidToken))
+			.into_response()),
+		ServerLogoutResponse::InvalidToken => Err(AppError::Auth(AuthError::InvalidToken)),
+		ServerLogoutResponse::Error(reason) => Err(AppError::Internal(reason)),
 	}
 }
 
@@ -218,31 +251,8 @@ fn build_metadata(headers: &HeaderMap) -> RequestMetadata {
 }
 
 /// Execute a read-only query.
-///
-/// # Authentication
-///
-/// Supported via one of:
-/// - `Authorization: Bearer <token>` header
-/// - No credentials (anonymous access)
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///   "statements": ["FROM users FILTER id = $1"],
-///   "params": {"$1": 42}
-/// }
-/// ```
-///
-/// # Response
-///
-/// ```json
-/// {
-///   "frames": [...]
-/// }
-/// ```
 pub async fn handle_query(
-	State(state): State<AppState>,
+	State(state): State<HttpServerState>,
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
@@ -251,17 +261,8 @@ pub async fn handle_query(
 }
 
 /// Execute an admin operation.
-///
-/// Admin operations include DDL (CREATE TABLE, ALTER, etc.), DML (INSERT, UPDATE, DELETE),
-/// and read queries. This is the most privileged execution level.
-///
-/// # Authentication
-///
-/// Supported via one of:
-/// - `Authorization: Bearer <token>` header
-/// - No credentials (anonymous access)
 pub async fn handle_admin(
-	State(state): State<AppState>,
+	State(state): State<HttpServerState>,
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
@@ -270,16 +271,8 @@ pub async fn handle_admin(
 }
 
 /// Execute a write command.
-///
-/// Commands include INSERT, UPDATE, and DELETE statements.
-///
-/// # Authentication
-///
-/// Supported via one of:
-/// - `Authorization: Bearer <token>` header
-/// - No credentials (anonymous access)
 pub async fn handle_command(
-	State(state): State<AppState>,
+	State(state): State<HttpServerState>,
 	Query(format_params): Query<FormatParams>,
 	headers: HeaderMap,
 	Json(request): Json<StatementRequest>,
@@ -288,8 +281,11 @@ pub async fn handle_command(
 }
 
 /// Shared implementation for query, admin, and command handlers.
+///
+/// Dispatches to the HttpServerActor for engine execution.
+/// Interceptors run before and after the actor dispatch.
 async fn execute_and_respond(
-	state: &AppState,
+	state: &HttpServerState,
 	operation: Operation,
 	headers: &HeaderMap,
 	request: StatementRequest,
@@ -302,7 +298,7 @@ async fn execute_and_respond(
 		Some(wp) => wp.into_params().map_err(AppError::InvalidParams)?,
 	};
 
-	let ctx = RequestContext {
+	let mut ctx = RequestContext {
 		identity,
 		operation,
 		statements: request.statements,
@@ -310,9 +306,81 @@ async fn execute_and_respond(
 		metadata,
 	};
 
-	let (frames, duration) =
-		execute(state.request_interceptors(), state.engine_clone(), ctx, state.query_timeout(), state.clock())
-			.await?;
+	// Pre-execute interceptors
+	if !state.request_interceptors().is_empty() {
+		state.request_interceptors().pre_execute(&mut ctx).await?;
+	}
+
+	let start = state.clock().instant();
+
+	// Build message and send to per-request actor
+	let (reply, receiver) = reply_channel();
+	let msg = match ctx.operation {
+		Operation::Query => HttpMessage::Query {
+			identity: ctx.identity,
+			statements: ctx.statements.clone(),
+			params: ctx.params.clone(),
+			reply,
+		},
+		Operation::Command => HttpMessage::Command {
+			identity: ctx.identity,
+			statements: ctx.statements.clone(),
+			params: ctx.params.clone(),
+			reply,
+		},
+		Operation::Admin => HttpMessage::Admin {
+			identity: ctx.identity,
+			statements: ctx.statements.clone(),
+			params: ctx.params.clone(),
+			reply,
+		},
+		Operation::Subscribe => unreachable!("HTTP does not support subscribe"),
+	};
+
+	let (actor_ref, _handle) = state.spawn_actor();
+	actor_ref.send(msg).ok().ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
+
+	// Await reply with timeout
+	let server_response = timeout(state.query_timeout(), receiver.recv())
+		.await
+		.map_err(|_| AppError::Execute(ExecuteError::Timeout))?
+		.map_err(|_| AppError::Internal("actor stopped".into()))?;
+
+	let wall_duration = start.elapsed();
+
+	// Convert ServerResponse
+	let (frames, compute_duration) = match server_response {
+		ServerResponse::Success {
+			frames,
+			duration,
+		} => (frames, duration),
+		ServerResponse::EngineError {
+			diagnostic,
+			statement,
+		} => {
+			return Err(AppError::Execute(ExecuteError::Engine {
+				diagnostic: Arc::from(diagnostic),
+				statement,
+			}));
+		}
+	};
+
+	// Post-execute interceptors
+	if !state.request_interceptors().is_empty() {
+		let response_ctx = ResponseContext {
+			identity: ctx.identity,
+			operation: ctx.operation,
+			statements: ctx.statements,
+			params: ctx.params,
+			metadata: ctx.metadata,
+			metrics: ExecutionMetrics::default(),
+			result: Ok(frames.len()),
+			total: ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default(),
+			compute: ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64)
+				.unwrap_or_default(),
+		};
+		state.request_interceptors().post_execute(&response_ctx).await;
+	}
 
 	let mut response = if format_params.format.as_deref() == Some("json") {
 		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
@@ -324,7 +392,7 @@ async fn execute_and_respond(
 		})
 		.into_response()
 	};
-	response.headers_mut().insert("x-duration-ms", duration.as_millis().to_string().parse().unwrap());
+	response.headers_mut().insert("x-duration-ms", wall_duration.as_millis().to_string().parse().unwrap());
 	Ok(response)
 }
 
@@ -333,7 +401,7 @@ async fn execute_and_respond(
 /// Tries in order:
 /// 1. Authorization header (Bearer token)
 /// 2. Falls back to anonymous identity
-fn extract_identity(state: &AppState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
+fn extract_identity(state: &HttpServerState, headers: &HeaderMap) -> Result<IdentityId, AppError> {
 	// Try Authorization header
 	if let Some(auth_header) = headers.get("authorization") {
 		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(AuthError::InvalidHeader))?;

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2025 ReifyDB
-// This file is licensed under the MIT, see license.md file
-
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
+// === Native (network) test helpers ===
+#[cfg(not(reifydb_single_threaded))]
 use reifydb::{Database, SharedRuntimeConfig, WithSubsystem, server};
 use reifydb_client::{Frame, Params, Value};
 use reifydb_testing::testscript::command::Command;
+#[cfg(not(reifydb_single_threaded))]
 use tokio::runtime::Runtime;
 
+#[cfg(not(reifydb_single_threaded))]
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 	server::memory()
 		.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
@@ -25,6 +25,7 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 
 /// Start server and return WebSocket admin port
 #[allow(dead_code)]
+#[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	server.admin_as_root(
@@ -37,6 +38,7 @@ pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Databa
 
 /// Start server and return gRPC admin port
 #[allow(dead_code)]
+#[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	server.admin_as_root(
@@ -49,6 +51,7 @@ pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Data
 
 /// Start server and return HTTP admin port
 #[allow(dead_code)]
+#[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	server.admin_as_root(
@@ -58,6 +61,138 @@ pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Data
 	.unwrap();
 	Ok(server.sub_server_http().unwrap().admin_port().unwrap())
 }
+
+/// Clean up server instance
+#[cfg(not(reifydb_single_threaded))]
+pub fn cleanup_server(mut server: Option<Database>) {
+	if let Some(mut srv) = server.take() {
+		let _ = srv.stop();
+		drop(srv);
+	}
+}
+
+// === DST test helpers ===
+
+#[cfg(reifydb_single_threaded)]
+use reifydb::{Database, SharedRuntimeConfig, embedded};
+#[cfg(reifydb_single_threaded)]
+use reifydb_client::{DstGrpcClient, DstHttpClient, DstWsClient};
+#[cfg(reifydb_single_threaded)]
+use reifydb_core::actors::server::{ServerAuthResponse, ServerResponse};
+#[cfg(reifydb_single_threaded)]
+use reifydb_runtime::actor::{
+	reply::reply_channel,
+	system::{ActorHandle, ActorSystem},
+};
+#[cfg(reifydb_single_threaded)]
+use reifydb_sub_server_grpc::actor::GrpcServerActor;
+#[cfg(reifydb_single_threaded)]
+use reifydb_sub_server_http::actor::HttpServerActor;
+#[cfg(reifydb_single_threaded)]
+use reifydb_sub_server_ws::actor::WsServerActor;
+#[cfg(reifydb_single_threaded)]
+use reifydb_type::value::identity::IdentityId;
+
+#[cfg(reifydb_single_threaded)]
+pub struct DstTestContext {
+	pub db: Database,
+	pub system: ActorSystem,
+	pub identity: IdentityId,
+	// Keep actor handles alive so actors aren't stopped
+	_http_handle: ActorHandle<reifydb_core::actors::http::HttpMessage>,
+	_grpc_handle: ActorHandle<reifydb_core::actors::grpc::GrpcMessage>,
+	_ws_handle: ActorHandle<reifydb_core::actors::ws::WsMessage>,
+	pub http_client: DstHttpClient,
+	pub grpc_client: DstGrpcClient,
+	pub ws_client: DstWsClient,
+}
+
+#[cfg(reifydb_single_threaded)]
+impl DstTestContext {
+	pub fn new() -> Self {
+		let db = embedded::memory()
+			.with_runtime_config(SharedRuntimeConfig::default().deterministic_testing(0))
+			.build()
+			.unwrap();
+
+		db.admin_as_root(
+			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
+			reifydb_type::params::Params::None,
+		)
+		.unwrap();
+
+		let engine = db.engine().clone();
+		let auth_service = db.auth_service().clone();
+		let system = db.shared_runtime().actor_system();
+		let clock = db.shared_runtime().clock().clone();
+
+		// Spawn server actors
+		let http_handle = system.spawn(
+			"http-server",
+			HttpServerActor::new(engine.clone(), auth_service.clone(), clock.clone()),
+		);
+		let grpc_handle = system.spawn(
+			"grpc-server",
+			GrpcServerActor::new(engine.clone(), auth_service.clone(), clock.clone()),
+		);
+		let ws_handle = system
+			.spawn("ws-server", WsServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
+
+		let http_client = DstHttpClient::new(http_handle.actor_ref().clone(), system.clone());
+		let grpc_client = DstGrpcClient::new(grpc_handle.actor_ref().clone(), system.clone());
+		let ws_client = DstWsClient::new(ws_handle.actor_ref().clone(), system.clone());
+
+		// Authenticate to get identity
+		let auth_response = http_client.authenticate(
+			"token".to_string(),
+			HashMap::from([("token".to_string(), "mysecrettoken".to_string())]),
+		);
+		let identity = match auth_response {
+			ServerAuthResponse::Authenticated {
+				identity,
+				..
+			} => identity,
+			ServerAuthResponse::Failed {
+				reason,
+			} => panic!("authentication failed: {}", reason),
+			ServerAuthResponse::Error(e) => panic!("authentication error: {}", e),
+			ServerAuthResponse::Challenge {
+				..
+			} => panic!("unexpected challenge response"),
+		};
+
+		Self {
+			db,
+			system,
+			identity,
+			_http_handle: http_handle,
+			_grpc_handle: grpc_handle,
+			_ws_handle: ws_handle,
+			http_client,
+			grpc_client,
+			ws_client,
+		}
+	}
+}
+
+#[cfg(reifydb_single_threaded)]
+pub fn dst_response_to_result(response: ServerResponse) -> Result<Vec<Frame>, Box<dyn Error>> {
+	match response {
+		ServerResponse::Success {
+			frames,
+			..
+		} => Ok(frames),
+		ServerResponse::EngineError {
+			diagnostic,
+			..
+		} => {
+			let err = reifydb_type::error::Error(diagnostic);
+			Err(err.to_string().into())
+		}
+	}
+}
+
+// === Shared helpers (used by both native and DST) ===
 
 /// Parse RQL command from testscript Command
 #[allow(dead_code)]
@@ -147,12 +282,4 @@ pub fn write_frames(frames: Vec<Frame>) -> Result<String, Box<dyn Error>> {
 		writeln!(output, "{}", frame).unwrap();
 	}
 	Ok(output)
-}
-
-/// Clean up server instance
-pub fn cleanup_server(mut server: Option<Database>) {
-	if let Some(mut srv) = server.take() {
-		let _ = srv.stop();
-		drop(srv);
-	}
 }

@@ -20,7 +20,7 @@ use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_store_single::SingleStore;
 use reifydb_type::value::sumtype::VariantRef;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(reifydb_single_threaded))]
 use crate::remote::RemoteRegistry;
 
 /// Configuration bundle for engine services.
@@ -33,7 +33,7 @@ pub struct EngineConfig {
 	pub procedures: Procedures,
 	pub transforms: Transforms,
 	pub ioc: IocContainer,
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(reifydb_single_threaded))]
 	pub remote_registry: Option<RemoteRegistry>,
 }
 
@@ -53,7 +53,7 @@ pub struct Services {
 	pub stats_reader: MetricReader<SingleStore>,
 	pub ioc: IocContainer,
 	pub auth_registry: AuthenticationRegistry,
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(reifydb_single_threaded))]
 	pub remote_registry: Option<RemoteRegistry>,
 }
 
@@ -77,7 +77,7 @@ impl Services {
 			stats_reader,
 			ioc: config.ioc,
 			auth_registry,
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(reifydb_single_threaded))]
 			remote_registry: config.remote_registry,
 		}
 	}
@@ -101,7 +101,7 @@ impl Services {
 				procedures: Procedures::empty(),
 				transforms: Transforms::empty(),
 				ioc: IocContainer::new(),
-				#[cfg(not(target_arch = "wasm32"))]
+				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
 			SystemFlowOperatorStore::new(),

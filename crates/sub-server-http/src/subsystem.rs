@@ -15,7 +15,7 @@ use std::{
 	},
 };
 
-use axum::serve;
+use axum::{serve, serve::ListenerExt};
 use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
@@ -25,9 +25,9 @@ use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server::state::AppState;
 use reifydb_type::{Result, error::Error};
 use tokio::{net::TcpListener, sync::oneshot};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-use crate::routes::router;
+use crate::{routes::router, state::HttpServerState};
 
 /// HTTP server subsystem.
 ///
@@ -183,7 +183,7 @@ impl Subsystem for HttpSubsystem {
 			let (shutdown_tx, shutdown_rx) = oneshot::channel();
 			let (complete_tx, complete_rx) = oneshot::channel();
 
-			let state = self.state.clone();
+			let server_state = HttpServerState::new(self.state.clone());
 			let running = self.running.clone();
 
 			runtime.spawn(async move {
@@ -191,7 +191,12 @@ impl Subsystem for HttpSubsystem {
 				running.store(true, Ordering::SeqCst);
 
 				// Create router and serve (admin_enabled is false by default in state)
-				let app = router(state);
+				let app = router(server_state);
+				let listener = listener.tap_io(|tcp_stream| {
+					if let Err(e) = tcp_stream.set_nodelay(true) {
+						warn!("Failed to set TCP_NODELAY: {e}");
+					}
+				});
 				let server = serve(listener, app).with_graceful_shutdown(async {
 					shutdown_rx.await.ok();
 					info!("HTTP server received shutdown signal");
@@ -243,10 +248,16 @@ impl Subsystem for HttpSubsystem {
 
 			// Create admin state with admin_enabled = true, preserving interceptors
 			let admin_config = self.state.config().clone().admin_enabled(true);
-			let admin_state = self.state.clone_with_config(admin_config);
+			let admin_app_state = self.state.clone_with_config(admin_config);
+			let admin_server_state = HttpServerState::new(admin_app_state);
 
 			runtime.spawn(async move {
-				let app = router(admin_state);
+				let app = router(admin_server_state);
+				let admin_listener = admin_listener.tap_io(|tcp_stream| {
+					if let Err(e) = tcp_stream.set_nodelay(true) {
+						warn!("Failed to set TCP_NODELAY: {e}");
+					}
+				});
 				let server = serve(admin_listener, app).with_graceful_shutdown(async {
 					admin_shutdown_rx.await.ok();
 					info!("HTTP admin server received shutdown signal");

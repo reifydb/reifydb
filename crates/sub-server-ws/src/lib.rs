@@ -63,9 +63,16 @@
 //! ws.start()?;
 //! ```
 
+pub mod actor;
+#[cfg(not(reifydb_single_threaded))]
 pub mod factory;
+#[cfg(not(reifydb_single_threaded))]
 pub mod handler;
+#[cfg(not(reifydb_single_threaded))]
 pub mod protocol;
+#[cfg(not(reifydb_single_threaded))]
 pub mod response;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subscription;
+#[cfg(not(reifydb_single_threaded))]
 pub mod subsystem;
