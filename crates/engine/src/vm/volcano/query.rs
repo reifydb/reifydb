@@ -37,6 +37,11 @@ pub(crate) trait QueryNode: Send + Sync {
 
 	/// Get the headers of columns this node produces
 	fn headers(&self) -> Option<ColumnHeaders>;
+
+	/// Hint the maximum number of rows this scan needs to produce.
+	/// Scan operators override this to cap their batch size.
+	/// Non-scan operators ignore it (default no-op).
+	fn set_scan_limit(&mut self, _limit: usize) {}
 }
 
 #[derive(Clone)]
@@ -64,5 +69,9 @@ impl QueryNode for Box<dyn QueryNode> {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		(**self).headers()
+	}
+
+	fn set_scan_limit(&mut self, limit: usize) {
+		(**self).set_scan_limit(limit)
 	}
 }

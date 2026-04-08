@@ -38,6 +38,7 @@ pub(crate) struct TableScanNode {
 	shape: Option<RowShape>,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+	scan_limit: Option<usize>,
 }
 
 impl TableScanNode {
@@ -75,6 +76,7 @@ impl TableScanNode {
 			shape: None,
 			last_key: None,
 			exhausted: false,
+			scan_limit: None,
 		})
 	}
 
@@ -116,7 +118,10 @@ impl QueryNode for TableScanNode {
 			return Ok(None);
 		}
 
-		let batch_size = stored_ctx.batch_size;
+		let batch_size = match self.scan_limit {
+			Some(limit) => (limit as u64).min(stored_ctx.batch_size),
+			None => stored_ctx.batch_size,
+		};
 
 		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
 
@@ -207,7 +212,10 @@ impl QueryNode for TableScanNode {
 			return Ok(None);
 		}
 
-		let batch_size = stored_ctx.batch_size;
+		let batch_size = match self.scan_limit {
+			Some(limit) => (limit as u64).min(stored_ctx.batch_size),
+			None => stored_ctx.batch_size,
+		};
 
 		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
 
@@ -260,5 +268,9 @@ impl QueryNode for TableScanNode {
 
 		let shape = self.get_or_load_shape(rx, &encoded_rows[0])?;
 		Ok(Some(LazyBatch::new(encoded_rows, row_numbers, &shape, column_metas)))
+	}
+
+	fn set_scan_limit(&mut self, limit: usize) {
+		self.scan_limit = Some(limit);
 	}
 }

@@ -29,6 +29,7 @@ pub struct DictionaryScanNode {
 	headers: ColumnHeaders,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+	scan_limit: Option<usize>,
 }
 
 impl DictionaryScanNode {
@@ -44,6 +45,7 @@ impl DictionaryScanNode {
 			headers,
 			last_key: None,
 			exhausted: false,
+			scan_limit: None,
 		})
 	}
 }
@@ -64,7 +66,10 @@ impl QueryNode for DictionaryScanNode {
 			return Ok(None);
 		}
 
-		let batch_size = stored_ctx.batch_size;
+		let batch_size = match self.scan_limit {
+			Some(limit) => (limit as u64).min(stored_ctx.batch_size),
+			None => stored_ctx.batch_size,
+		};
 		let dict_def = self.dictionary.def();
 
 		// Create scan range for dictionary entries
@@ -142,6 +147,10 @@ impl QueryNode for DictionaryScanNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
+	}
+
+	fn set_scan_limit(&mut self, limit: usize) {
+		self.scan_limit = Some(limit);
 	}
 }
 

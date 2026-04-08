@@ -37,6 +37,7 @@ pub struct SeriesScanNode {
 	headers: ColumnHeaders,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
+	scan_limit: Option<usize>,
 }
 
 impl SeriesScanNode {
@@ -68,6 +69,7 @@ impl SeriesScanNode {
 			headers,
 			last_key: None,
 			exhausted: false,
+			scan_limit: None,
 		})
 	}
 }
@@ -87,7 +89,10 @@ impl QueryNode for SeriesScanNode {
 			return Ok(None);
 		}
 
-		let batch_size = stored_ctx.batch_size;
+		let batch_size = match self.scan_limit {
+			Some(limit) => (limit as u64).min(stored_ctx.batch_size),
+			None => stored_ctx.batch_size,
+		};
 		let series = self.series.def();
 		let has_tag = series.tag.is_some();
 
@@ -217,6 +222,10 @@ impl QueryNode for SeriesScanNode {
 
 	fn headers(&self) -> Option<ColumnHeaders> {
 		Some(self.headers.clone())
+	}
+
+	fn set_scan_limit(&mut self, limit: usize) {
+		self.scan_limit = Some(limit);
 	}
 }
 

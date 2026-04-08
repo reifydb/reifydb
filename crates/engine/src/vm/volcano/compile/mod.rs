@@ -143,7 +143,9 @@ pub(crate) fn compile<'a>(
 				let input_node = compile(*sort_node.input, rx, context);
 				return Box::new(TopKNode::new(input_node, sort_node.by, limit));
 			}
-			let input_node = compile(*input, rx, context);
+			let mut input_node = compile(*input, rx, context);
+			// Push limit hint into scan operators so they read fewer rows
+			input_node.set_scan_limit(limit);
 			Box::new(TakeNode::new(input_node, limit))
 		}
 
