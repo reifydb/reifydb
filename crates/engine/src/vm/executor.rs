@@ -937,14 +937,16 @@ impl Executor {
 		};
 		let compile_duration = start_compile.elapsed();
 
-		match execute_compiled_units(
+		let exec_result = execute_compiled_units(
 			&self.0,
 			&mut Transaction::Query(txn),
 			&compiled,
 			&qry.params,
 			symbols,
 			compile_duration,
-		) {
+		);
+
+		match exec_result {
 			Ok((output, remaining, _, metrics)) => ExecutionResult {
 				frames: merge_results(output, remaining),
 				error: None,

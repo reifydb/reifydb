@@ -30,6 +30,7 @@ impl RemoteRegistry {
 		token: Option<&str>,
 	) -> Result<Vec<Frame>, Error> {
 		let client = self.connect(address, token)?;
+
 		let params_opt = match &params {
 			Params::None => None,
 			_ => Some(params),

@@ -24,7 +24,7 @@ use tokio::{
 	net::TcpListener,
 	sync::{oneshot, watch},
 };
-use tokio_stream::wrappers::TcpListenerStream;
+use tokio_stream::{StreamExt, wrappers::TcpListenerStream};
 use tonic::transport::Server;
 use tracing::{error, info};
 
@@ -183,7 +183,12 @@ impl Subsystem for GrpcSubsystem {
 				running.store(true, Ordering::SeqCst);
 
 				let service = ReifyDbService::new(state, false, registry, sub_shutdown_rx);
-				let incoming = TcpListenerStream::new(listener);
+				let incoming = TcpListenerStream::new(listener).map(|result| {
+					result.map(|stream| {
+						let _ = stream.set_nodelay(true);
+						stream
+					})
+				});
 
 				let result = Server::builder()
 					.add_service(ReifyDbServer::new(service))
@@ -246,7 +251,12 @@ impl Subsystem for GrpcSubsystem {
 			runtime.spawn(async move {
 				let admin_service =
 					ReifyDbService::new(admin_state, true, admin_registry, admin_sub_shutdown_rx);
-				let incoming = TcpListenerStream::new(admin_listener);
+				let incoming = TcpListenerStream::new(admin_listener).map(|result| {
+					result.map(|stream| {
+						let _ = stream.set_nodelay(true);
+						stream
+					})
+				});
 
 				let result = Server::builder()
 					.add_service(ReifyDbServer::new(admin_service))

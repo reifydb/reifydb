@@ -50,7 +50,7 @@ pub struct GrpcClient {
 
 impl GrpcClient {
 	pub async fn connect(url: &str) -> Result<Self, Error> {
-		let channel = Channel::from_shared(url.to_string()).unwrap().connect().await.map_err(|e| {
+		let channel = Channel::from_shared(url.to_string()).unwrap().tcp_nodelay(true).connect().await.map_err(|e| {
 			Error(Box::new(Diagnostic {
 				code: "GRPC_CONNECT".to_string(),
 				message: format!("Failed to connect: {}", e),
@@ -212,6 +212,7 @@ impl GrpcClient {
 
 		let response = client.query(req).await.map_err(status_to_error)?;
 		let frames = proto_frames_to_frames(response.into_inner().frames);
+
 		Ok(QueryResult {
 			frames,
 		})
