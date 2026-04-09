@@ -2,10 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_core::{
-	encoded::{
-		key::EncodedKey,
-		shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
-	},
+	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	error::diagnostic::internal::internal,
 	key::shape::{RowShapeFieldKey, RowShapeKey},
 };
@@ -26,25 +23,11 @@ use crate::{
 	},
 };
 
-/// Compute all storage keys for a shape.
-///
-/// Single-version transactions require upfront key declaration for lock ordering.
-/// This computes the header key and all field keys for a given shape.
-fn compute_shape_keys(fingerprint: RowShapeFingerprint, field_count: usize) -> Vec<EncodedKey> {
-	let mut keys = Vec::with_capacity(1 + field_count);
-	keys.push(RowShapeKey::encoded(fingerprint));
-	for idx in 0..field_count {
-		keys.push(RowShapeFieldKey::encoded(fingerprint, idx as u16));
-	}
-	keys
-}
-
 impl Catalog {
 	/// Get an existing shape by fingerprint, or create and persist a new one.
 	///
 	/// This method is thread-safe with the following guarantees:
 	/// - Cache reads are lock-free (via SkipMap)
-	/// - Creates are serialized via SingleTransaction
 	/// - Double-check pattern prevents duplicate creates
 	#[instrument(
 		name = "catalog::row_shape::get_or_create",
@@ -71,16 +54,12 @@ impl Catalog {
 			return Ok(cached);
 		}
 
-		let keys = compute_shape_keys(fingerprint, shape.field_count());
-		let mut cmd = txn.begin_single_command(&keys)?;
-
-		if let Some(stored_shape) = find_row_shape_by_fingerprint(&mut cmd, fingerprint)? {
+		if let Some(stored_shape) = find_row_shape_by_fingerprint(txn, fingerprint)? {
 			self.materialized.cache_row_shape(stored_shape.clone());
 			return Ok(stored_shape);
 		}
 
-		create_row_shape(&mut cmd, &shape)?;
-		cmd.commit()?;
+		create_row_shape(txn, &shape)?;
 
 		self.materialized.cache_row_shape(shape.clone());
 
@@ -197,20 +176,17 @@ impl Catalog {
 
 	/// Persist previously collected pending shapes to storage.
 	///
-	/// For each shape, acquires a single-version write lock, checks if the shape
-	/// already exists in storage (idempotent), and writes it if not.
+	/// For each shape, checks if the shape already exists in storage (idempotent),
+	/// and writes it if not.
 	pub fn persist_pending_shapes(&self, txn: &mut Transaction<'_>, shapes: Vec<RowShape>) -> Result<()> {
 		for shape in shapes {
 			let fingerprint = shape.fingerprint();
-			let keys = compute_shape_keys(fingerprint, shape.field_count());
-			let mut cmd = txn.begin_single_command(&keys)?;
 
-			if find_row_shape_by_fingerprint(&mut cmd, fingerprint)?.is_some() {
+			if find_row_shape_by_fingerprint(txn, fingerprint)?.is_some() {
 				continue;
 			}
 
-			create_row_shape(&mut cmd, &shape)?;
-			cmd.commit()?;
+			create_row_shape(txn, &shape)?;
 		}
 		Ok(())
 	}
