@@ -7,7 +7,8 @@ use reifydb_type::{
 	params::Params,
 };
 use reqwest::Client as ReqwestClient;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::{from_str, json};
 
 use crate::{
 	AdminRequest, AdminResponse, AdminResult, ClientFrame, CommandRequest, CommandResponse, CommandResult,
@@ -16,7 +17,7 @@ use crate::{
 };
 
 /// HTTP-specific response format (server returns `{ "frames": [...] }`)
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, Deserialize)]
 struct HttpFrameResponse {
 	frames: Vec<ClientFrame>,
 }
@@ -25,21 +26,21 @@ impl HttpFrameResponse {
 	fn into_admin(self) -> AdminResponse {
 		AdminResponse {
 			content_type: "application/vnd.reifydb.frames+json".to_string(),
-			body: serde_json::json!({ "frames": self.frames }),
+			body: json!({ "frames": self.frames }),
 		}
 	}
 
 	fn into_command(self) -> CommandResponse {
 		CommandResponse {
 			content_type: "application/vnd.reifydb.frames+json".to_string(),
-			body: serde_json::json!({ "frames": self.frames }),
+			body: json!({ "frames": self.frames }),
 		}
 	}
 
 	fn into_query(self) -> QueryResponse {
 		QueryResponse {
 			content_type: "application/vnd.reifydb.frames+json".to_string(),
-			body: serde_json::json!({ "frames": self.frames }),
+			body: json!({ "frames": self.frames }),
 		}
 	}
 }
@@ -143,7 +144,7 @@ impl HttpClient {
 		method: &str,
 		credentials: HashMap<String, String>,
 	) -> Result<LoginResult, Error> {
-		let body = serde_json::json!({
+		let body = json!({
 			"method": method,
 			"credentials": credentials
 		});
@@ -152,7 +153,7 @@ impl HttpClient {
 		let response = self.inner.post(&url).json(&body).send().await.unwrap(); // FIXME better error handling
 		let response_body = response.text().await.unwrap(); // FIXME better error handling
 
-		let auth: HttpAuthenticateResponse = serde_json::from_str(&response_body).unwrap(); // FIXME better error handling
+		let auth: HttpAuthenticateResponse = from_str(&response_body).unwrap(); // FIXME better error handling
 
 		if auth.status == "authenticated" {
 			let token = auth.token.unwrap_or_default();
@@ -330,7 +331,7 @@ impl HttpClient {
 		let url = format!("{}/v1/admin", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
-		match serde_json::from_str::<HttpFrameResponse>(&response_body) {
+		match from_str::<HttpFrameResponse>(&response_body) {
 			Ok(response) => Ok(response.into_admin()),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
@@ -341,7 +342,7 @@ impl HttpClient {
 		let url = format!("{}/v1/command", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
-		match serde_json::from_str::<HttpFrameResponse>(&response_body) {
+		match from_str::<HttpFrameResponse>(&response_body) {
 			Ok(response) => Ok(response.into_command()),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
@@ -352,14 +353,14 @@ impl HttpClient {
 		let url = format!("{}/v1/query", self.base_url);
 		let response_body = self.send_request(&url, request).await?;
 
-		match serde_json::from_str::<HttpFrameResponse>(&response_body) {
+		match from_str::<HttpFrameResponse>(&response_body) {
 			Ok(response) => Ok(response.into_query()),
 			Err(_) => Err(self.parse_error_response(&response_body)),
 		}
 	}
 
 	/// Send an HTTP POST request and return the response body.
-	async fn send_request<T: serde::Serialize>(&self, url: &str, body: &T) -> Result<String, Error> {
+	async fn send_request<T: Serialize>(&self, url: &str, body: &T) -> Result<String, Error> {
 		let mut request = self.inner.post(url).json(body);
 
 		if let Some(ref token) = self.token {
@@ -374,7 +375,7 @@ impl HttpClient {
 	/// Parse an error response body into an Error.
 	fn parse_error_response(&self, body: &str) -> Error {
 		// Try parsing as HTTP error response format
-		if let Ok(http_err) = serde_json::from_str::<HttpErrorResponse>(body) {
+		if let Ok(http_err) = from_str::<HttpErrorResponse>(body) {
 			let diag = http_err.diagnostic.unwrap_or_else(|| Diagnostic {
 				code: http_err.code,
 				message: http_err.error,
@@ -384,7 +385,7 @@ impl HttpClient {
 		}
 
 		// Try parsing as diagnostic error response
-		if let Ok(err_response) = serde_json::from_str::<ErrResponse>(body) {
+		if let Ok(err_response) = from_str::<ErrResponse>(body) {
 			return Error(Box::new(err_response.diagnostic));
 		}
 

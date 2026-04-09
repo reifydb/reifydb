@@ -12,6 +12,7 @@ mod worker;
 mod workload;
 
 use std::{
+	process,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -23,16 +24,19 @@ use clap::Parser;
 use client::{Client, Operation};
 use config::{Config, Protocol};
 use metrics::Metrics;
+use num_cpus::get as get_num_cpus;
 use output::{clear_progress, print_header, print_progress, print_summary};
-use tokio::task::JoinSet;
+use rand::random;
+use reqwest::Client as ReqwestClient;
+use tokio::{runtime::Builder, spawn, task::JoinSet, time};
 use worker::Worker;
 use workload::create_workload;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() {
-	tokio::runtime::Builder::new_multi_thread()
-		.worker_threads(num_cpus::get())
+	Builder::new_multi_thread()
+		.worker_threads(get_num_cpus())
 		.max_blocking_threads(256)
 		.thread_name("load-test")
 		.enable_all()
@@ -41,7 +45,7 @@ fn main() {
 		.block_on(async {
 			if let Err(e) = async_main().await {
 				eprintln!("Error: {}", e);
-				std::process::exit(1);
+				process::exit(1);
 			}
 		});
 }
@@ -93,15 +97,15 @@ async fn async_main() -> Result<()> {
 
 	// Create shared HTTP client for connection pooling (HTTP only)
 	let shared_http_client = if matches!(config.protocol, Protocol::Http) {
-		Some(reqwest::Client::builder()
+		Some(ReqwestClient::builder()
 			.pool_max_idle_per_host(config.connections)
-			.timeout(std::time::Duration::from_secs(30))
+			.timeout(Duration::from_secs(30))
 			.build()?)
 	} else {
 		None
 	};
 
-	let seed = config.seed.unwrap_or_else(rand::random);
+	let seed = config.seed.unwrap_or_else(random);
 	let mut workers = Vec::with_capacity(config.connections);
 
 	for i in 0..config.connections {
@@ -157,10 +161,10 @@ async fn async_main() -> Result<()> {
 		let progress_metrics = Arc::clone(&metrics);
 		let progress_stop = Arc::clone(&stop_signal);
 
-		Some(tokio::spawn(async move {
+		Some(spawn(async move {
 			let mut last_count = 0u64;
 			loop {
-				tokio::time::sleep(Duration::from_secs(1)).await;
+				time::sleep(Duration::from_secs(1)).await;
 
 				if progress_stop.load(Ordering::Relaxed) {
 					break;
@@ -221,7 +225,7 @@ async fn async_main() -> Result<()> {
 
 	if let Some(handle) = progress_handle {
 		// Give progress reporter time to notice the stop signal
-		tokio::time::sleep(Duration::from_millis(100)).await;
+		time::sleep(Duration::from_millis(100)).await;
 		handle.abort();
 	}
 

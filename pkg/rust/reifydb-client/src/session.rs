@@ -23,20 +23,21 @@ use reifydb_type::{
 		uuid::parse::{parse_uuid4, parse_uuid7},
 	},
 };
+use serde_json::{Value, from_value};
 
-use crate::{AdminResult, CommandResult, QueryResult};
+use crate::{AdminResult, ClientFrame, CommandResult, QueryResult, Response, ResponsePayload};
 
 // Helper functions for parsing responses - made public for ws module
-pub fn parse_admin_response(response: crate::Response) -> Result<AdminResult, Error> {
+pub fn parse_admin_response(response: Response) -> Result<AdminResult, Error> {
 	match response.payload {
-		crate::ResponsePayload::Admin(admin_response) => Ok(AdminResult {
+		ResponsePayload::Admin(admin_response) => Ok(AdminResult {
 			frames: convert_envelope_response(admin_response.body),
 		}),
 		// Admin responses may come back as Command responses from the server
-		crate::ResponsePayload::Command(cmd_response) => Ok(AdminResult {
+		ResponsePayload::Command(cmd_response) => Ok(AdminResult {
 			frames: convert_envelope_response(cmd_response.body),
 		}),
-		crate::ResponsePayload::Err(err) => {
+		ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
 		}
 		other => {
@@ -46,12 +47,12 @@ pub fn parse_admin_response(response: crate::Response) -> Result<AdminResult, Er
 	}
 }
 
-pub fn parse_command_response(response: crate::Response) -> Result<CommandResult, Error> {
+pub fn parse_command_response(response: Response) -> Result<CommandResult, Error> {
 	match response.payload {
-		crate::ResponsePayload::Command(cmd_response) => Ok(CommandResult {
+		ResponsePayload::Command(cmd_response) => Ok(CommandResult {
 			frames: convert_envelope_response(cmd_response.body),
 		}),
-		crate::ResponsePayload::Err(err) => {
+		ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
 		}
 		other => {
@@ -61,15 +62,15 @@ pub fn parse_command_response(response: crate::Response) -> Result<CommandResult
 	}
 }
 
-pub fn parse_query_response(response: crate::Response) -> Result<QueryResult, Error> {
+pub fn parse_query_response(response: Response) -> Result<QueryResult, Error> {
 	match response.payload {
-		crate::ResponsePayload::Query(query_response) => {
+		ResponsePayload::Query(query_response) => {
 			let frames = convert_envelope_response(query_response.body);
 			Ok(QueryResult {
 				frames,
 			})
 		}
-		crate::ResponsePayload::Err(err) => {
+		ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
 		}
 		other => {
@@ -80,15 +81,15 @@ pub fn parse_query_response(response: crate::Response) -> Result<QueryResult, Er
 }
 
 /// Convert envelope body (which contains `{ "frames": [...] }`) to Vec<Frame>.
-fn convert_envelope_response(body: serde_json::Value) -> Vec<Frame> {
+fn convert_envelope_response(body: Value) -> Vec<Frame> {
 	// Extract the "frames" array from the body object
 	let frames_value = match body {
-		serde_json::Value::Object(ref map) => map.get("frames"),
+		Value::Object(ref map) => map.get("frames"),
 		_ => None,
 	};
 
-	let ws_frames: Vec<crate::ClientFrame> = match frames_value {
-		Some(v) => serde_json::from_value(v.clone()).unwrap_or_default(),
+	let ws_frames: Vec<ClientFrame> = match frames_value {
+		Some(v) => from_value(v.clone()).unwrap_or_default(),
 		None => return Vec::new(),
 	};
 

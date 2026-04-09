@@ -6,6 +6,7 @@ use reifydb_routine::procedure::{Procedure, context::ProcedureContext, error::Pr
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result as TypeResult,
+	error::Error as TypeError,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, r#type::Type},
@@ -169,7 +170,7 @@ impl Procedure for CompleteJobRunProcedure {
 	}
 }
 
-fn missing_field(table: &str, field: &str) -> reifydb_type::error::Error {
+fn missing_field(table: &str, field: &str) -> TypeError {
 	ProcedureError::ExecutionFailed {
 		procedure: Fragment::internal("forge::complete_job_run"),
 		reason: format!("{} row is missing required field '{}'", table, field),

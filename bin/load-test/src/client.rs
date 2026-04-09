@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 use reifydb_client::{HttpClient, WsClient};
+use reqwest::Client as ReqwestClient;
 
 use crate::config::Protocol;
 
@@ -33,7 +34,7 @@ impl Client {
 		protocol: Protocol,
 		url: &str,
 		token: Option<&str>,
-		http_client: Option<reqwest::Client>,
+		http_client: Option<ReqwestClient>,
 	) -> Result<Self, Error> {
 		match protocol {
 			Protocol::Http => {

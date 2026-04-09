@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_build::emit_target_cfg;
+
 fn main() {
-	reifydb_build::emit_target_cfg();
+	emit_target_cfg();
 }

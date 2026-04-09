@@ -4,14 +4,19 @@
 mod procedures;
 mod seed;
 
-use std::path::PathBuf;
+use std::{fs, path::PathBuf, thread};
 
 use axum::{
+	Router,
 	body::Body,
 	extract::Request,
+	http::StatusCode,
 	response::{IntoResponse, Response},
+	serve,
 };
 use reifydb::{WithSubsystem, server, sub_tracing::builder::TracingConfigurator};
+use tokio::{net::TcpListener, runtime::Runtime};
+use tracing::info;
 
 use crate::{cli::Cli, shared::shape};
 
@@ -39,13 +44,13 @@ pub fn start(cli: &Cli) {
 		.unwrap();
 
 	// Spawn Axum static file server for the SPA
-	std::thread::spawn(move || {
-		let rt = tokio::runtime::Runtime::new().unwrap();
+	thread::spawn(move || {
+		let rt = Runtime::new().unwrap();
 		rt.block_on(async {
-			let app = axum::Router::new().fallback(serve_spa);
-			let listener = tokio::net::TcpListener::bind(&http_addr).await.unwrap();
-			tracing::info!("Forge HTTP server listening on {}", http_addr);
-			axum::serve(listener, app).await.unwrap();
+			let app = Router::new().fallback(serve_spa);
+			let listener = TcpListener::bind(&http_addr).await.unwrap();
+			info!("Forge HTTP server listening on {}", http_addr);
+			serve(listener, app).await.unwrap();
 		});
 	});
 
@@ -72,7 +77,7 @@ async fn serve_spa(req: Request) -> Response {
 		dist_dir.join("index.html")
 	};
 
-	match std::fs::read(&target) {
+	match fs::read(&target) {
 		Ok(contents) => {
 			let mime = match target.extension().and_then(|e| e.to_str()) {
 				Some("html") => "text/html",
@@ -89,6 +94,6 @@ async fn serve_spa(req: Request) -> Response {
 			};
 			Response::builder().header("content-type", mime).body(Body::from(contents)).unwrap()
 		}
-		Err(_) => (axum::http::StatusCode::NOT_FOUND, "Not Found").into_response(),
+		Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
 	}
 }

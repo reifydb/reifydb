@@ -57,10 +57,13 @@ use reifydb_transaction::{
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
 use wasm_bindgen::prelude::*;
+use web_sys::console;
 
 mod error;
 mod utils;
 
+#[cfg(feature = "console_error_panic_hook")]
+use console_error_panic_hook::set_once as set_panic_hook;
 pub use error::JsError;
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_runtime::context::RuntimeContext;
@@ -87,7 +90,7 @@ impl LoginResult {
 
 // Debug helper to log to browser console
 fn console_log(msg: &str) {
-	web_sys::console::log_1(&msg.into());
+	console::log_1(&msg.into());
 }
 
 /// WebAssembly ReifyDB Engine
@@ -151,7 +154,7 @@ impl WasmDB {
 		// Set panic hook for better error messages in browser console
 
 		#[cfg(feature = "console_error_panic_hook")]
-		console_error_panic_hook::set_once();
+		set_panic_hook();
 
 		// WASM runtime with minimal threads (single-threaded)
 		let runtime = SharedRuntime::from_config(

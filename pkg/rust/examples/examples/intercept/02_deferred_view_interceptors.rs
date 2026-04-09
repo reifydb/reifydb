@@ -20,13 +20,12 @@ use std::{thread::sleep, time::Duration};
 use reifydb::{Params, WithInterceptorBuilder, WithSubsystem, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
-use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{
+	EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, registry, util::SubscriberInitExt,
+};
 
 fn main() {
-	tracing_subscriber::registry()
-		.with(fmt::layer().with_span_events(FmtSpan::CLOSE))
-		.with(EnvFilter::from_default_env())
-		.init();
+	registry().with(fmt::layer().with_span_events(FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
 
 	// Step 1: Create database with view interceptors configured
 	// The fluent API allows chaining interceptor registrations for views

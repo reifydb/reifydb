@@ -34,7 +34,12 @@ use reifydb_core::{
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_engine::remote::RemoteRegistry;
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
-use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
+#[cfg(reifydb_target = "native")]
+use reifydb_extension::procedure::ffi_loader::register_procedures_from_dir;
+use reifydb_extension::{
+	procedure::wasm_loader::register_wasm_procedures_from_dir,
+	transform::registry::{Transforms, TransformsConfigurator},
+};
 use reifydb_metric_old::worker::{
 	CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener,
 };
@@ -55,6 +60,8 @@ use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurato
 use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::RequestInterceptorChain;
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::factory::{TaskConfig, TaskSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
@@ -68,7 +75,7 @@ use reifydb_transaction::{
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
-use crate::{Migration, database::Database, health::HealthMonitor, subsystem::Subsystems};
+use crate::{Migration, Result, database::Database, health::HealthMonitor, subsystem::Subsystems};
 
 pub struct DatabaseBuilder {
 	interceptors: InterceptorBuilder,
@@ -271,7 +278,7 @@ impl DatabaseBuilder {
 		self.factories.len()
 	}
 
-	pub fn build(mut self) -> crate::Result<Database> {
+	pub fn build(mut self) -> Result<Database> {
 		let default_builder = default_functions();
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
@@ -352,19 +359,11 @@ impl DatabaseBuilder {
 
 			#[cfg(reifydb_target = "native")]
 			if let Some(dir) = &self.procedure_dir {
-				procedures_builder =
-					reifydb_extension::procedure::ffi_loader::register_procedures_from_dir(
-						dir,
-						procedures_builder,
-					)?;
+				procedures_builder = register_procedures_from_dir(dir, procedures_builder)?;
 			}
 
 			if let Some(dir) = &self.wasm_procedure_dir {
-				procedures_builder =
-					reifydb_extension::procedure::wasm_loader::register_wasm_procedures_from_dir(
-						dir,
-						procedures_builder,
-					)?;
+				procedures_builder = register_wasm_procedures_from_dir(dir, procedures_builder)?;
 			}
 
 			if let Some(configurator) = self.procedures_configurator {
@@ -467,7 +466,7 @@ impl DatabaseBuilder {
 
 		#[cfg(feature = "sub_flow")]
 		{
-			let factory = Box::new(reifydb_sub_subscription::subsystem::SubscriptionSubsystemFactory);
+			let factory = Box::new(SubscriptionSubsystemFactory);
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);

@@ -21,7 +21,7 @@ use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
-	Database, Migration,
+	Database, Migration, Result,
 	api::{StorageFactory, transaction},
 };
 
@@ -155,7 +155,7 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database> {
+	pub fn build(self) -> Result<Database> {
 		let runtime = match self.runtime {
 			Some(rt) => rt,
 			None => SharedRuntime::from_config(self.runtime_config.unwrap_or_default()),

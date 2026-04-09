@@ -5,7 +5,10 @@
 // Copyright (c) 2025 ReifyDB
 // This file is licensed under the MIT, see license.md file
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+	sync::atomic::{AtomicU64, Ordering},
+	time::{SystemTime, UNIX_EPOCH},
+};
 
 /// Generate a unique request ID
 #[allow(clippy::disallowed_methods)]
@@ -13,7 +16,7 @@ pub(crate) fn generate_request_id() -> String {
 	static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 	let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-	let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+	let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
 
 	format!("{}-{}", timestamp, count)
 }

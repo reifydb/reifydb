@@ -2,10 +2,18 @@
 // Copyright (c) 2025 ReifyDB
 use std::{collections::HashMap, sync::Arc};
 
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{
+	SinkExt, StreamExt,
+	stream::{SplitSink, SplitStream},
+};
 use reifydb_type::{error::Error, params::Params};
-use tokio::sync::{Mutex, mpsc, oneshot};
-use tokio_tungstenite::{connect_async_with_config, tungstenite::Message};
+use serde_json::{from_str, to_string};
+use tokio::{
+	net::TcpStream,
+	select, spawn,
+	sync::{Mutex, mpsc, oneshot},
+};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Message};
 
 use crate::{
 	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, LoginResult,
@@ -67,7 +75,7 @@ impl WsClient {
 
 		// Spawn the connection management task
 		let pending_clone = pending.clone();
-		tokio::spawn(async move {
+		spawn(async move {
 			Self::connection_loop(write, read, request_rx, shutdown_rx, pending_clone, change_tx).await;
 		});
 
@@ -81,33 +89,28 @@ impl WsClient {
 
 	/// Connection management loop
 	async fn connection_loop(
-		mut write: futures_util::stream::SplitSink<
-			tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-			Message,
-		>,
-		mut read: futures_util::stream::SplitStream<
-			tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
-		>,
+		mut write: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+		mut read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
 		mut request_rx: mpsc::Receiver<(Request, oneshot::Sender<Response>)>,
 		mut shutdown_rx: mpsc::Receiver<()>,
 		pending: PendingRequests,
 		change_tx: mpsc::Sender<ChangePayload>,
 	) {
 		loop {
-			tokio::select! {
+			select! {
 				// Handle incoming messages
 				Some(msg) = read.next() => {
 					match msg {
 						Ok(Message::Text(text)) => {
 							// First try to parse as Response (has id field)
-							if let Ok(response) = serde_json::from_str::<Response>(&text) {
+							if let Ok(response) = from_str::<Response>(&text) {
 								let mut pending_guard = pending.lock().await;
 								if let Some(tx) = pending_guard.remove(&response.id) {
 									let _ = tx.send(response);
 								}
 							}
 							// Then try to parse as ServerPush (no id field)
-							else if let Ok(push) = serde_json::from_str::<ServerPush>(&text) {
+							else if let Ok(push) = from_str::<ServerPush>(&text) {
 								match push {
 									ServerPush::Change(change) => {
 										let _ = change_tx.send(change).await;
@@ -139,7 +142,7 @@ impl WsClient {
 					}
 
 					// Send the request
-					if let Ok(json) = serde_json::to_string(&request)
+					if let Ok(json) = to_string(&request)
 						&& write.send(Message::Text(json.into())).await.is_err() {
 							break;
 						}

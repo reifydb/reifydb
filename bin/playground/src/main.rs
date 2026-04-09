@@ -5,10 +5,10 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-use reifydb::server;
+use reifydb::{Database, server};
 use reifydb_type::params::Params;
 
-fn admin(db: &reifydb::Database, label: &str, cmd: &str) {
+fn admin(db: &Database, label: &str, cmd: &str) {
 	println!("\n--- {label} ---");
 	println!("> {cmd}");
 	match db.admin_as_root(cmd, Params::None) {
@@ -21,7 +21,7 @@ fn admin(db: &reifydb::Database, label: &str, cmd: &str) {
 	}
 }
 
-fn query(db: &reifydb::Database, label: &str, cmd: &str) {
+fn query(db: &Database, label: &str, cmd: &str) {
 	println!("\n--- {label} ---");
 	println!("> {cmd}");
 	match db.query_as_root(cmd, Params::None) {
