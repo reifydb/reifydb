@@ -39,7 +39,7 @@
 //! let runtime = SharedRuntime::new(4);
 //!
 //! // Create application state
-//! let state = AdminState::new(engine, 1000, Duration::from_secs(30), false, None);
+//! let state = AdminState::new(engine, 1000, Duration::from_secs(30), false, None, clock, actor_system);
 //!
 //! // Create and start admin subsystem
 //! let mut admin = AdminSubsystem::with_runtime(
@@ -53,6 +53,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod actor;
 #[cfg(not(reifydb_single_threaded))]
 pub mod assets;
 pub mod config;

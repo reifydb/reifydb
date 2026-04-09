@@ -39,6 +39,10 @@ impl SubsystemFactory for AdminSubsystemFactory {
 
 		let config = (self.config_fn)();
 
+		let runtime = config.runtime.as_ref().unwrap_or(&ioc_runtime);
+		let actor_system = runtime.actor_system();
+		let clock = runtime.clock().clone();
+
 		// Create admin state from config
 		let state = AdminState::new(
 			engine,
@@ -46,6 +50,8 @@ impl SubsystemFactory for AdminSubsystemFactory {
 			config.request_timeout,
 			config.auth_required,
 			config.auth_token.clone(),
+			clock,
+			actor_system,
 		);
 
 		let subsystem =
