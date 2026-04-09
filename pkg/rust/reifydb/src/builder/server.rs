@@ -275,17 +275,20 @@ impl ServerBuilder {
 		{
 			let registry = Arc::new(reifydb_metric::registry::MetricRegistry::new());
 			let accumulator = Arc::new(reifydb_metric::accumulator::StatementStatsAccumulator::new());
-			let metrics_interceptor = reifydb_sub_metric::spawn::spawn_metric_collector(
-				&actor_system,
-				&eventbus,
-				registry,
-				accumulator,
+
+			let metrics_interceptor = reifydb_sub_metric::interceptor::RequestMetricsInterceptor::new(
+				eventbus.clone(),
+				accumulator.clone(),
 				Clock::Real,
 			);
 			self.request_interceptors.push(Arc::new(metrics_interceptor));
 
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
+
+			let metric_factory =
+				reifydb_sub_metric::factory::MetricSubsystemFactory::new(registry, accumulator);
+			database_builder = database_builder.add_subsystem_factory(Box::new(metric_factory));
 		}
 
 		if let Some(configurator) = self.auth_configurator {

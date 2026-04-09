@@ -13,7 +13,7 @@ set -e
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
-echo "Checking for inline qualified paths in /crates/..."
+echo "Checking for inline qualified paths in /crates/, /pkg/, and /bin/..."
 echo ""
 
 # Build pattern from vendor/ directory crate names (strip version suffixes, normalize hyphens)
@@ -27,15 +27,15 @@ if [ -d "$REPO_ROOT/vendor" ]; then
         | sed 's/|$//')
 fi
 
-# Find all .rs files in /crates/ (excluding specific paths)
-crates_files=$(find "$REPO_ROOT/crates" -name "*.rs" \
+# Find all .rs files in /crates/, /pkg/, and /bin/ (excluding specific paths)
+crates_files=$(find "$REPO_ROOT/crates" "$REPO_ROOT/pkg" "$REPO_ROOT/bin" -name "*.rs" \
     -not -path "*/tests/*" \
     -not -path "*/test_utils/*" \
     -not -path "*/vendor/*" \
     -not -path "*/generated/*" 2>/dev/null || true)
 
 if [ -z "$crates_files" ]; then
-    echo "No Rust files found in /crates/"
+    echo "No Rust files found in /crates/, /pkg/, or /bin/"
     exit 0
 fi
 

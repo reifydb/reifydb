@@ -92,7 +92,7 @@ fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encode
 	}
 }
 
-pub(crate) trait RingBufferOperations {
+pub trait RingBufferOperations {
 	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, row: EncodedRow) -> Result<RowNumber>;
 
 	fn insert_ringbuffer_at(

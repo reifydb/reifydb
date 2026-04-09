@@ -6,6 +6,7 @@ pub mod drop;
 pub mod flow;
 pub mod grpc;
 pub mod http;
+pub mod metric;
 pub mod pending;
 pub mod server;
 pub mod ttl;

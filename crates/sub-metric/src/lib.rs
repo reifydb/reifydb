@@ -6,6 +6,9 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod actor;
+pub mod bootstrap;
+pub mod factory;
 pub mod interceptor;
 pub mod listener;
-pub mod spawn;
+pub mod schema;
+pub mod subsystem;
