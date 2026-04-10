@@ -46,6 +46,7 @@ pub struct ReplicationSubsystem {
 	// Primary mode
 	shutdown_tx: Option<oneshot::Sender<()>>,
 	shutdown_complete_rx: Option<oneshot::Receiver<()>>,
+	stream_shutdown_tx: Option<watch::Sender<bool>>,
 	// Replica mode
 	replica_shutdown_tx: Option<watch::Sender<bool>>,
 	replica_complete_rx: Option<oneshot::Receiver<()>>,
@@ -68,6 +69,7 @@ impl ReplicationSubsystem {
 			actual_addr: RwLock::new(None),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
+			stream_shutdown_tx: None,
 			replica_shutdown_tx: None,
 			replica_complete_rx: None,
 		}
@@ -84,6 +86,7 @@ impl ReplicationSubsystem {
 			actual_addr: RwLock::new(None),
 			shutdown_tx: None,
 			shutdown_complete_rx: None,
+			stream_shutdown_tx: None,
 			replica_shutdown_tx: None,
 			replica_complete_rx: None,
 		}
@@ -134,7 +137,8 @@ impl ReplicationSubsystem {
 		let (complete_tx, complete_rx) = oneshot::channel();
 		let running = self.running.clone();
 
-		let service = ReplicationService::new(cdc_store, notify, batch_size);
+		let (stream_shutdown_tx, stream_shutdown_rx) = watch::channel(false);
+		let service = ReplicationService::new(cdc_store, notify, stream_shutdown_rx, batch_size);
 
 		self.runtime.spawn(async move {
 			running.store(true, Ordering::SeqCst);
@@ -167,6 +171,7 @@ impl ReplicationSubsystem {
 
 		self.shutdown_tx = Some(shutdown_tx);
 		self.shutdown_complete_rx = Some(complete_rx);
+		self.stream_shutdown_tx = Some(stream_shutdown_tx);
 		Ok(())
 	}
 
@@ -235,6 +240,12 @@ impl Subsystem for ReplicationSubsystem {
 	fn shutdown(&mut self) -> Result<()> {
 		match &self.config {
 			ReplicationConfig::Primary(_) => {
+				// Signal streaming tasks to exit first, so they drop their
+				// channel senders and allow the gRPC server's graceful
+				// shutdown to complete without waiting on open streams.
+				if let Some(tx) = self.stream_shutdown_tx.take() {
+					let _ = tx.send(true);
+				}
 				if let Some(tx) = self.shutdown_tx.take() {
 					let _ = tx.send(());
 				}

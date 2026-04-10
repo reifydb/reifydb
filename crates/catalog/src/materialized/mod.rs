@@ -18,6 +18,7 @@ pub mod ringbuffer;
 pub mod role;
 pub mod row_shape;
 pub mod row_ttl;
+pub mod series;
 pub mod shape_retention_strategy;
 pub mod sink;
 pub mod source;
@@ -39,7 +40,7 @@ use reifydb_core::{
 		handler::Handler,
 		id::{
 			HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, RingBufferId,
-			SinkId, SourceId, TableId, TestId, ViewId,
+			SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 		},
 		identity::{GrantedRole, Identity, Role, RoleId},
 		key::PrimaryKey,
@@ -48,6 +49,7 @@ use reifydb_core::{
 		policy::{Policy, PolicyId, PolicyOperation},
 		procedure::Procedure,
 		ringbuffer::RingBuffer,
+		series::Series,
 		shape::ShapeId,
 		sink::Sink,
 		source::Source,
@@ -88,6 +90,7 @@ pub type MultiVersionMigration = MultiVersionContainer<Migration>;
 pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
 pub type MultiVersionProcedure = MultiVersionContainer<Procedure>;
 pub type MultiVersionRingBuffer = MultiVersionContainer<RingBuffer>;
+pub type MultiVersionSeries = MultiVersionContainer<Series>;
 pub type MultiVersionTest = MultiVersionContainer<Test>;
 pub type MultiVersionSumType = MultiVersionContainer<SumType>;
 pub type MultiVersionIdentity = MultiVersionContainer<Identity>;
@@ -155,6 +158,10 @@ pub struct MaterializedCatalogInner {
 	pub(crate) ringbuffers: SkipMap<RingBufferId, MultiVersionRingBuffer>,
 	/// Index from (namespace_id, ringbuffer_name) to ringbuffer ID for fast name lookups
 	pub(crate) ringbuffers_by_name: SkipMap<(NamespaceId, String), RingBufferId>,
+	/// MultiVersion series definitions indexed by series ID
+	pub(crate) series: SkipMap<SeriesId, MultiVersionSeries>,
+	/// Index from (namespace_id, series_name) to series ID for fast name lookups
+	pub(crate) series_by_name: SkipMap<(NamespaceId, String), SeriesId>,
 	/// MultiVersion handler definitions indexed by handler ID
 	pub(crate) handlers: SkipMap<HandlerId, MultiVersionHandler>,
 	/// Index from (namespace_id, handler_name) to handler ID for fast name lookups
@@ -258,6 +265,8 @@ impl MaterializedCatalog {
 			sumtypes_by_name: SkipMap::new(),
 			ringbuffers: SkipMap::new(),
 			ringbuffers_by_name: SkipMap::new(),
+			series: SkipMap::new(),
+			series_by_name: SkipMap::new(),
 			handlers: SkipMap::new(),
 			handlers_by_name: SkipMap::new(),
 			handlers_by_variant: SkipMap::new(),

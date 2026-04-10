@@ -13,6 +13,7 @@ use std::{
 
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
+use reifydb_core::common::CommitVersion;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, pool::Pools};
 use reifydb_sub_api::subsystem::HealthStatus;
@@ -108,6 +109,12 @@ impl Database {
 
 	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
+	}
+
+	/// Returns the highest version written to the CDC store, or `CommitVersion(0)` if empty.
+	/// This may lag behind `engine().current_version()` because CDC production is async.
+	pub fn cdc_max_version(&self) -> CommitVersion {
+		self.engine.cdc_store().max_version().ok().flatten().unwrap_or(CommitVersion(0))
 	}
 
 	pub fn auth_service(&self) -> &AuthService {

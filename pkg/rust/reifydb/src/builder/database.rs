@@ -9,7 +9,9 @@ use reifydb_auth::{
 	service::{AuthConfigurator, AuthService, AuthServiceConfig},
 };
 use reifydb_catalog::{
-	CatalogVersion, bootstrap::bootstrap_database, catalog::Catalog, materialized::MaterializedCatalog,
+	CatalogVersion,
+	bootstrap::{bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog},
+	catalog::Catalog, materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -102,6 +104,7 @@ pub struct DatabaseBuilder {
 	task_factory: Option<Box<dyn SubsystemFactory>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
 	migrations: Vec<Migration>,
+	is_replica: bool,
 }
 
 impl DatabaseBuilder {
@@ -142,6 +145,7 @@ impl DatabaseBuilder {
 			task_factory: None,
 			auth_configurator: None,
 			migrations: Vec::new(),
+			is_replica: false,
 		}
 	}
 
@@ -271,6 +275,11 @@ impl DatabaseBuilder {
 		self
 	}
 
+	pub fn is_replica(mut self) -> Self {
+		self.is_replica = true;
+		self
+	}
+
 	pub fn subsystem_count(&self) -> usize {
 		self.factories.len()
 	}
@@ -309,7 +318,7 @@ impl DatabaseBuilder {
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		bootstrap_database(&multi, &single, &catalog, &eventbus)?;
+		load_materialized_catalog(&multi, &single, &catalog)?;
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());
@@ -376,13 +385,14 @@ impl DatabaseBuilder {
 		#[cfg(not(reifydb_single_threaded))]
 		let remote_registry = RemoteRegistry::new(runtime.clone());
 
-		// Create engine before CDC worker (CDC worker needs engine for cleanup)
+		// Create engine and CDC producer BEFORE bootstrap so that bootstrap
+		// commits produce CDC entries (PostCommitEvent is captured).
 		let engine = StandardEngine::new(
 			multi.clone(),
 			single.clone(),
 			eventbus.clone(),
 			self.interceptors.build(),
-			Catalog::new(catalog),
+			Catalog::new(catalog.clone()),
 			EngineConfig {
 				runtime_context: RuntimeContext::new(runtime.clock().clone(), runtime.rng().clone()),
 				functions,
@@ -409,9 +419,8 @@ impl DatabaseBuilder {
 		);
 		self.ioc = self.ioc.register(auth_service.clone());
 
-		// Spawn CDC producer actor and register event listener
-		// The handle is stored in IoC to keep it alive for the database lifetime
-		// Engine is passed for periodic cleanup based on consumer watermarks
+		// Spawn CDC producer and register PostCommitEvent listener BEFORE
+		// bootstrap so that bootstrap commits generate CDC entries.
 		let cdc_handle =
 			spawn_cdc_producer(&actor_system, cdc_store, multi_store, engine.clone(), eventbus.clone());
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
@@ -419,6 +428,12 @@ impl DatabaseBuilder {
 			runtime.clock().clone(),
 		));
 		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
+
+		// Bootstrap AFTER CDC producer is active so commits are captured.
+		if !self.is_replica {
+			bootstrap_root_identity(&multi, &single, &catalog, &eventbus)?;
+			bootstrap_system_procedures(&multi, &single, &catalog, &eventbus)?;
+		}
 
 		// Collect all versions
 		let mut all_versions = vec![

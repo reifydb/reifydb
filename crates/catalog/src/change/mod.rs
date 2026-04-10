@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 
-use crate::{Result, catalog::Catalog};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError};
 
 mod column;
 mod config;
@@ -24,6 +24,7 @@ mod policy;
 mod primary_key;
 mod retention;
 mod ringbuffer;
+mod row_shape;
 mod series;
 mod sink;
 mod source;
@@ -49,6 +50,7 @@ use primary_key::PrimaryKeyApplier;
 use retention::{OperatorRetentionStrategyApplier, ShapeRetentionStrategyApplier};
 use ringbuffer::RingBufferApplier;
 use role::RoleApplier;
+use row_shape::{RowShapeFieldApplier, RowShapeHeaderApplier};
 use series::SeriesApplier;
 use sink::SinkApplier;
 use source::SourceApplier;
@@ -66,7 +68,12 @@ pub trait CatalogChangeApplier {
 pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change: &SystemChange) -> Result<()> {
 	let kind = match Key::kind(change.key()) {
 		Some(k) => k,
-		None => return Ok(()),
+		None => {
+			return Err(CatalogChangeError::UnrecognizedKey {
+				raw: change.key().as_ref().to_vec(),
+			}
+			.into());
+		}
 	};
 
 	match kind {
@@ -94,6 +101,9 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 			dispatch::<OperatorRetentionStrategyApplier>(catalog, txn, change)
 		}
 		KeyKind::RowTtl => dispatch::<RowTtlApplier>(catalog, txn, change),
+
+		KeyKind::Shape => dispatch::<RowShapeHeaderApplier>(catalog, txn, change),
+		KeyKind::RowShapeField => dispatch::<RowShapeFieldApplier>(catalog, txn, change),
 
 		KeyKind::Column | KeyKind::Columns => dispatch::<ColumnApplier>(catalog, txn, change),
 

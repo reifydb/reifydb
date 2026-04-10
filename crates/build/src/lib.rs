@@ -42,7 +42,7 @@ use std::env;
 pub fn emit_target_cfg() {
 	let target = env::var("TARGET").unwrap_or_default();
 
-	let (reifydb_target, single_threaded) = if env::var("REIFYDB_DST").is_ok() {
+	let (reifydb_target, single_threaded) = if env::var("REIFYDB_DST").ok().is_some_and(|v| v == "1") {
 		("dst", true)
 	} else if target.contains("wasm32") && target.contains("wasi") {
 		("wasi", true)

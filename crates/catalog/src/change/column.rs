@@ -62,6 +62,12 @@ fn reload_parent_columns(catalog: &Catalog, txn: &mut Transaction<'_>, key: &Enc
 				catalog.materialized.set_ringbuffer(id, version, Some(rb));
 			}
 		}
+		ShapeId::Series(id) => {
+			if let Some(mut s) = catalog.materialized.find_series_at(id, version) {
+				s.columns = columns;
+				catalog.materialized.set_series(id, version, Some(s));
+			}
+		}
 		_ => {}
 	}
 

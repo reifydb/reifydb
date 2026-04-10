@@ -71,6 +71,8 @@ pub struct ServerBuilder {
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	otel_tracing_config: Option<OtelTracingConfig>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
+	#[cfg(feature = "sub_replication")]
+	is_replica: bool,
 }
 
 impl ServerBuilder {
@@ -94,6 +96,8 @@ impl ServerBuilder {
 			flow_configurator: None,
 			#[cfg(feature = "sub_replication")]
 			replication_factory: None,
+			#[cfg(feature = "sub_replication")]
+			is_replica: false,
 			#[cfg(all(
 				feature = "sub_tracing",
 				feature = "sub_server_otel",
@@ -275,6 +279,11 @@ impl ServerBuilder {
 			.with_actor_system(actor_system.clone())
 			.with_stores(multi_store, single_store);
 
+		#[cfg(feature = "sub_replication")]
+		if self.is_replica {
+			database_builder = database_builder.is_replica();
+		}
+
 		#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 		{
 			let registry = Arc::new(MetricRegistry::new());
@@ -396,7 +405,9 @@ impl WithSubsystem for ServerBuilder {
 		F: FnOnce(ReplicationConfigurator) -> C + Send + 'static,
 		C: Into<ReplicationConfig> + 'static,
 	{
-		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::new(configurator)));
+		let config = configurator(ReplicationConfigurator).into();
+		self.is_replica = matches!(config, ReplicationConfig::Replica(_));
+		self.replication_factory = Some(Box::new(ReplicationSubsystemFactory::from_config(config)));
 		self
 	}
 

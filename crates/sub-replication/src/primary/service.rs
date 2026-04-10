@@ -6,8 +6,8 @@ use std::{ops::Bound, sync::Arc};
 use reifydb_cdc::storage::CdcStore;
 use reifydb_core::common::CommitVersion;
 use tokio::{
-	spawn,
-	sync::{Notify, mpsc},
+	select, spawn,
+	sync::{Notify, mpsc, watch},
 };
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
@@ -24,14 +24,21 @@ use crate::{
 pub struct ReplicationService {
 	cdc_store: Arc<CdcStore>,
 	notify: Arc<Notify>,
+	shutdown_rx: watch::Receiver<bool>,
 	batch_size: u64,
 }
 
 impl ReplicationService {
-	pub fn new(cdc_store: CdcStore, notify: Arc<Notify>, batch_size: u64) -> Self {
+	pub fn new(
+		cdc_store: CdcStore,
+		notify: Arc<Notify>,
+		shutdown_rx: watch::Receiver<bool>,
+		batch_size: u64,
+	) -> Self {
 		Self {
 			cdc_store: Arc::new(cdc_store),
 			notify,
+			shutdown_rx,
 			batch_size,
 		}
 	}
@@ -56,6 +63,7 @@ impl ReifyDbReplication for ReplicationService {
 		let (tx, rx) = mpsc::channel(256);
 		let store = self.cdc_store.clone();
 		let notify = self.notify.clone();
+		let mut shutdown_rx = self.shutdown_rx.clone();
 
 		debug!(since_version = since.0, "Replica connected for CDC streaming");
 
@@ -92,8 +100,14 @@ impl ReifyDbReplication for ReplicationService {
 					}
 				}
 
-				// Wait for notification that new CDC entries were written
-				notified.await;
+				// Wait for new CDC entries, or exit on shutdown.
+				select! {
+					_ = notified => {}
+					_ = shutdown_rx.changed() => {
+						debug!("Streaming task shutting down");
+						return;
+					}
+				}
 			}
 		});
 

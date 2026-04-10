@@ -985,6 +985,11 @@ pub enum CatalogChangeError {
 	KeyDecodeFailed {
 		kind: KeyKind,
 	},
+
+	#[error("unrecognized key kind (raw: {raw:?})")]
+	UnrecognizedKey {
+		raw: Vec<u8>,
+	},
 }
 
 impl IntoDiagnostic for CatalogChangeError {
@@ -1000,6 +1005,22 @@ impl IntoDiagnostic for CatalogChangeError {
 				label: Some("key decode failure during replication".to_string()),
 				help: Some(
 					"this indicates a protocol mismatch between primary and replica — ensure both nodes are running the same version".to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			CatalogChangeError::UnrecognizedKey {
+				raw,
+			} => Diagnostic {
+				code: "CA_071".to_string(),
+				statement: None,
+				message: format!("unrecognized key kind (raw: {:?})", raw),
+				fragment: Fragment::None,
+				label: Some("unrecognized key kind during replication".to_string()),
+				help: Some(
+					"this indicates state inconsistency — ensure primary and replica are running the same version".to_string(),
 				),
 				column: None,
 				notes: vec![],

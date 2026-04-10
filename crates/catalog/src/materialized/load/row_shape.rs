@@ -21,7 +21,7 @@ pub(crate) fn load_row_shapes(rx: &mut Transaction<'_>, catalog: &MaterializedCa
 	Span::current().record("shape_count", shapes.len());
 
 	for shape in shapes {
-		catalog.cache_row_shape(shape);
+		catalog.set_row_shape(shape);
 	}
 
 	Ok(())

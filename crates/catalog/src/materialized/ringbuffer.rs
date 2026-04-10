@@ -41,6 +41,11 @@ impl MaterializedCatalog {
 		})
 	}
 
+	/// List the latest version of all ringbuffers.
+	pub fn list_ringbuffers(&self) -> Vec<RingBuffer> {
+		self.ringbuffers.iter().filter_map(|entry| entry.value().get_latest()).collect()
+	}
+
 	/// Find a ringbuffer by name in a namespace (returns latest version)
 	pub fn find_ringbuffer_by_name(&self, namespace: NamespaceId, name: &str) -> Option<RingBuffer> {
 		self.ringbuffers_by_name.get(&(namespace, name.to_string())).and_then(|entry| {

@@ -9,6 +9,7 @@ pub mod grpc;
 pub mod http;
 pub mod metric;
 pub mod pending;
+pub mod replication;
 pub mod server;
 pub mod ttl;
 pub mod watermark;

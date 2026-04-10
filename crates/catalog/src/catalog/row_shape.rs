@@ -55,13 +55,13 @@ impl Catalog {
 		}
 
 		if let Some(stored_shape) = find_row_shape_by_fingerprint(txn, fingerprint)? {
-			self.materialized.cache_row_shape(stored_shape.clone());
+			self.materialized.set_row_shape(stored_shape.clone());
 			return Ok(stored_shape);
 		}
 
 		create_row_shape(txn, &shape)?;
 
-		self.materialized.cache_row_shape(shape.clone());
+		self.materialized.set_row_shape(shape.clone());
 
 		Ok(shape)
 	}
@@ -141,7 +141,7 @@ impl Catalog {
 		let shape = RowShape::from_parts(fingerprint, fields);
 		Span::current().record("cache_hit", false);
 		Span::current().record("field_count", shape.field_count());
-		self.materialized.cache_row_shape(shape.clone());
+		self.materialized.set_row_shape(shape.clone());
 
 		Ok(Some(shape))
 	}
@@ -168,7 +168,7 @@ impl Catalog {
 			return cached;
 		}
 
-		self.materialized.cache_row_shape(shape.clone());
+		self.materialized.set_row_shape(shape.clone());
 		pending.push(shape.clone());
 
 		shape

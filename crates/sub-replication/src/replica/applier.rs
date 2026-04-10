@@ -4,13 +4,13 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use reifydb_catalog::change::apply_system_change;
-use reifydb_core::{common::CommitVersion, encoded::shape::RowShapeField};
+use reifydb_core::{common::CommitVersion, interface::cdc::SystemChange};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_transaction::transaction::{Transaction, replica::ReplicaTransaction};
-use reifydb_type::{Result, value::identity::IdentityId};
+use reifydb_type::Result;
 use tracing::debug;
 
-use crate::{convert::proto_entry_to_system_changes, generated::CdcEntry};
+use crate::{convert::proto_entry_to_system_changes, error::ReplicationError, generated::CdcEntry};
 
 /// Applies replicated CDC entries to local storage.
 pub struct ReplicaApplier {
@@ -27,61 +27,42 @@ impl ReplicaApplier {
 		}
 	}
 
-	/// Apply a single CDC entry: create a replica transaction, apply each
-	/// system change through the catalog, commit at the primary's version,
-	/// and advance the replica watermark.
-	pub fn apply(&self, entry: &CdcEntry) -> Result<()> {
-		let (version, system_changes) = proto_entry_to_system_changes(entry);
+	/// Apply domain-typed system changes at a given version: create a replica
+	/// transaction, apply each system change through the catalog, commit at
+	/// the primary's version, and advance the replica watermark.
+	pub fn apply_changes(&self, version: CommitVersion, system_changes: &[SystemChange]) -> Result<()> {
+		let last = self.last_applied.load(Ordering::Acquire);
+		if version.0 <= last {
+			return Err(ReplicationError::OutOfOrderVersion {
+				version,
+				last_applied: CommitVersion(last),
+			}
+			.into());
+		}
 
 		if system_changes.is_empty() {
 			self.engine.multi().advance_version_for_replica(version);
-			self.last_applied.store(version.0, Ordering::SeqCst);
+			self.last_applied.store(version.0, Ordering::Release);
 			return Ok(());
 		}
 
 		let catalog = self.engine.catalog();
 		let mut replica_txn = ReplicaTransaction::new(self.engine.multi_owned(), version)?;
-		for change in &system_changes {
+		for change in system_changes {
 			apply_system_change(&catalog, &mut Transaction::Replica(&mut replica_txn), change)?;
 		}
 		replica_txn.commit_at_version()?;
 		self.engine.multi().advance_version_for_replica(version);
 
-		self.ensure_shapes()?;
-
-		self.last_applied.store(version.0, Ordering::SeqCst);
+		self.last_applied.store(version.0, Ordering::Release);
 		debug!(version = version.0, "Replica applied CDC entry");
 		Ok(())
 	}
 
-	/// Ensure row shapes exist for all tables in the materialized catalog.
-	///
-	/// After catalog changes, tables have columns but their row shapes may
-	/// not exist in the replica's shape cache yet. This creates them via
-	/// `get_or_create_row_shape_pending` and persists them.
-	fn ensure_shapes(&self) -> Result<()> {
-		let catalog = self.engine.catalog();
-		let mut pending_shapes = Vec::new();
-
-		for table in catalog.materialized.list_tables() {
-			if table.columns.is_empty() {
-				continue;
-			}
-			let fields: Vec<RowShapeField> = table
-				.columns
-				.iter()
-				.map(|col| RowShapeField::new(col.name.clone(), col.constraint.clone()))
-				.collect();
-			catalog.get_or_create_row_shape_pending(&mut pending_shapes, fields);
-		}
-
-		if !pending_shapes.is_empty() {
-			let mut cmd = self.engine.begin_command(IdentityId::system())?;
-			catalog.persist_pending_shapes(&mut Transaction::Command(&mut cmd), pending_shapes)?;
-			cmd.commit()?;
-		}
-
-		Ok(())
+	/// Apply a single proto CDC entry (delegates to apply_changes after conversion).
+	pub fn apply(&self, entry: &CdcEntry) -> Result<()> {
+		let (version, system_changes) = proto_entry_to_system_changes(entry);
+		self.apply_changes(version, &system_changes)
 	}
 
 	/// Apply a batch of CDC entries in order.
@@ -94,6 +75,6 @@ impl ReplicaApplier {
 
 	/// Get the last successfully applied CDC entry version.
 	pub fn current_version(&self) -> CommitVersion {
-		CommitVersion(self.last_applied.load(Ordering::SeqCst))
+		CommitVersion(self.last_applied.load(Ordering::Acquire))
 	}
 }
