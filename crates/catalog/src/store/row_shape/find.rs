@@ -11,7 +11,7 @@ use reifydb_core::{
 		shape::{RowShapeFieldKey, RowShapeKey},
 	},
 };
-use reifydb_transaction::{single::write::SingleWriteTransaction, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	error::Error,
 	value::constraint::{FFITypeConstraint, TypeConstraint},
@@ -35,7 +35,7 @@ use crate::Result;
 	)
 )]
 pub(crate) fn find_row_shape_by_fingerprint(
-	txn: &mut SingleWriteTransaction,
+	txn: &mut Transaction<'_>,
 	fingerprint: RowShapeFingerprint,
 ) -> Result<Option<RowShape>> {
 	// Read shape header

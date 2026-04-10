@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use num_bigint::BigInt;
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
@@ -12,7 +13,7 @@ use reifydb_type::{
 		Value,
 		blob::Blob,
 		container::{
-			blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
+			any::AnyContainer, blob::BlobContainer, bool::BoolContainer, identity_id::IdentityIdContainer,
 			number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container, uuid::UuidContainer,
 		},
 		date::Date,
@@ -30,7 +31,14 @@ use reifydb_type::{
 		uuid::{Uuid4, Uuid7},
 	},
 };
-use tonic::{metadata::MetadataValue, transport::Channel};
+use serde_json::from_str as serde_json_from_str;
+use tonic::{
+	Request, Status,
+	codec::Streaming,
+	metadata::{Ascii, MetadataValue},
+	transport::Channel,
+};
+use uuid::Uuid;
 
 use super::generated::{
 	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
@@ -97,7 +105,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let response = client.authenticate(tonic::Request::new(request)).await.map_err(status_to_error)?;
+		let response = client.authenticate(Request::new(request)).await.map_err(status_to_error)?;
 		let inner = response.into_inner();
 
 		if inner.status == "authenticated" {
@@ -123,7 +131,7 @@ impl GrpcClient {
 
 		let request = ProtoLogoutRequest {};
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		client.logout(req).await.map_err(status_to_error)?;
@@ -138,7 +146,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.admin(req).await.map_err(status_to_error)?;
@@ -155,7 +163,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.admin(req).await.map_err(status_to_error)?;
@@ -172,7 +180,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.command(req).await.map_err(status_to_error)?;
@@ -193,7 +201,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.command(req).await.map_err(status_to_error)?;
@@ -210,7 +218,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.query(req).await.map_err(status_to_error)?;
@@ -228,7 +236,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.query(req).await.map_err(status_to_error)?;
@@ -244,7 +252,7 @@ impl GrpcClient {
 		};
 
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 
 		let response = client.subscribe(req).await.map_err(status_to_error)?;
@@ -281,16 +289,16 @@ impl GrpcClient {
 			subscription_id: subscription_id.to_string(),
 		};
 		let mut client = self.inner.clone();
-		let mut req = tonic::Request::new(request);
+		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 		client.unsubscribe(req).await.map_err(status_to_error)?;
 		Ok(())
 	}
 
-	fn attach_auth<T>(&self, request: &mut tonic::Request<T>) {
+	fn attach_auth<T>(&self, request: &mut Request<T>) {
 		if let Some(ref token) = self.token {
 			let bearer = format!("Bearer {}", token);
-			if let Ok(value) = bearer.parse::<MetadataValue<tonic::metadata::Ascii>>() {
+			if let Ok(value) = bearer.parse::<MetadataValue<Ascii>>() {
 				request.metadata_mut().insert("authorization", value);
 			}
 		}
@@ -299,7 +307,7 @@ impl GrpcClient {
 
 pub struct GrpcSubscription {
 	subscription_id: String,
-	stream: tonic::codec::Streaming<SubscriptionEvent>,
+	stream: Streaming<SubscriptionEvent>,
 }
 
 impl GrpcSubscription {
@@ -595,7 +603,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			let values: Vec<IdentityId> = data
 				.chunks_exact(16)
 				.map(|chunk| {
-					let uuid = uuid::Uuid::from_bytes(chunk.try_into().unwrap());
+					let uuid = Uuid::from_bytes(chunk.try_into().unwrap());
 					IdentityId(Uuid7(uuid))
 				})
 				.collect();
@@ -605,7 +613,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			let values: Vec<Uuid4> = data
 				.chunks_exact(16)
 				.map(|chunk| {
-					let uuid = uuid::Uuid::from_bytes(chunk.try_into().unwrap());
+					let uuid = Uuid::from_bytes(chunk.try_into().unwrap());
 					Uuid4(uuid)
 				})
 				.collect();
@@ -615,7 +623,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 			let values: Vec<Uuid7> = data
 				.chunks_exact(16)
 				.map(|chunk| {
-					let uuid = uuid::Uuid::from_bytes(chunk.try_into().unwrap());
+					let uuid = Uuid::from_bytes(chunk.try_into().unwrap());
 					Uuid7(uuid)
 				})
 				.collect();
@@ -641,7 +649,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				pos += 4;
 				let bytes = &data[pos..pos + len];
 				pos += len;
-				values.push(Int(num_bigint::BigInt::from_signed_bytes_le(bytes)));
+				values.push(Int(BigInt::from_signed_bytes_le(bytes)));
 			}
 			FrameColumnData::Int(NumberContainer::new(values))
 		}
@@ -653,7 +661,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				pos += 4;
 				let bytes = &data[pos..pos + len];
 				pos += len;
-				values.push(Uint(num_bigint::BigInt::from_signed_bytes_le(bytes)));
+				values.push(Uint(BigInt::from_signed_bytes_le(bytes)));
 			}
 			FrameColumnData::Uint(NumberContainer::new(values))
 		}
@@ -673,7 +681,7 @@ fn decode_column_data(ty: Type, data: &[u8], bitvec_bytes: &[u8]) -> FrameColumn
 				pos += consumed;
 				values.push(Box::new(val));
 			}
-			FrameColumnData::Any(reifydb_type::value::container::any::AnyContainer::new(values))
+			FrameColumnData::Any(AnyContainer::new(values))
 		}
 		Type::DictionaryId => {
 			// Fallback: store as Utf8 for now (dictionary IDs need context)
@@ -803,15 +811,15 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			(Value::Duration(Duration::new(months, days, nanos).unwrap()), pos + 16)
 		}
 		Type::IdentityId => {
-			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
+			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::IdentityId(IdentityId(Uuid7(uuid))), pos + 16)
 		}
 		Type::Uuid4 => {
-			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
+			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Uuid4(Uuid4(uuid)), pos + 16)
 		}
 		Type::Uuid7 => {
-			let uuid = uuid::Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
+			let uuid = Uuid::from_bytes(data[pos..pos + 16].try_into().unwrap());
 			(Value::Uuid7(Uuid7(uuid)), pos + 16)
 		}
 		Type::Blob => {
@@ -824,13 +832,13 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let bytes = &data[pos..pos + len];
-			(Value::Int(Int(num_bigint::BigInt::from_signed_bytes_le(bytes))), pos + len)
+			(Value::Int(Int(BigInt::from_signed_bytes_le(bytes))), pos + len)
 		}
 		Type::Uint => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
 			pos += 4;
 			let bytes = &data[pos..pos + len];
-			(Value::Uint(Uint(num_bigint::BigInt::from_signed_bytes_le(bytes))), pos + len)
+			(Value::Uint(Uint(BigInt::from_signed_bytes_le(bytes))), pos + len)
 		}
 		Type::Decimal => {
 			let len = u32::from_le_bytes(data[pos..pos + 4].try_into().unwrap()) as usize;
@@ -856,8 +864,8 @@ fn decode_any_value(data: &[u8]) -> (Value, usize) {
 	}
 }
 
-fn status_to_error(status: tonic::Status) -> Error {
-	if let Ok(diag) = serde_json::from_str::<Diagnostic>(status.message()) {
+fn status_to_error(status: Status) -> Error {
+	if let Ok(diag) = serde_json_from_str::<Diagnostic>(status.message()) {
 		return Error(Box::new(diag));
 	}
 	Error(Box::new(Diagnostic {

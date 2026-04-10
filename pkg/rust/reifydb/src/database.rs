@@ -7,9 +7,11 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread::sleep,
 	time::Duration,
 };
 
+use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, pool::Pools};
@@ -265,7 +267,7 @@ impl Database {
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation as root user.
-	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
+	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.admin_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -274,7 +276,7 @@ impl Database {
 	}
 
 	/// Execute a transactional command (DML + Query) as root user.
-	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
+	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.command_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -283,7 +285,7 @@ impl Database {
 	}
 
 	/// Execute a read-only query as root user.
-	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> reifydb_type::Result<Vec<Frame>> {
+	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.query_as(IdentityId::root(), rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -292,12 +294,7 @@ impl Database {
 	}
 
 	/// Execute an admin (DDL + DML + Query) operation as a specific identity.
-	pub fn admin_as(
-		&self,
-		identity: IdentityId,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> reifydb_type::Result<Vec<Frame>> {
+	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.admin_as(identity, rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -306,12 +303,7 @@ impl Database {
 	}
 
 	/// Execute a transactional command (DML + Query) as a specific identity.
-	pub fn command_as(
-		&self,
-		identity: IdentityId,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> reifydb_type::Result<Vec<Frame>> {
+	pub fn command_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.command_as(identity, rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -320,12 +312,7 @@ impl Database {
 	}
 
 	/// Execute a read-only query as a specific identity.
-	pub fn query_as(
-		&self,
-		identity: IdentityId,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> reifydb_type::Result<Vec<Frame>> {
+	pub fn query_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.query_as(identity, rql, params.into());
 		match r.error {
 			Some(e) => Err(e),
@@ -344,7 +331,7 @@ impl Database {
 		static RUNNING: AtomicBool = AtomicBool::new(true);
 		static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
 
-		extern "C" fn handle_signal(_sig: libc::c_int) {
+		extern "C" fn handle_signal(_sig: c_int) {
 			// SAFETY: Only async-signal-safe operations are allowed here.
 			// We only use atomic operations, which are signal-safe.
 			RUNNING.store(false, Ordering::SeqCst);
@@ -352,15 +339,15 @@ impl Database {
 		}
 
 		unsafe {
-			libc::signal(libc::SIGINT, handle_signal as libc::sighandler_t);
-			libc::signal(libc::SIGTERM, handle_signal as libc::sighandler_t);
-			libc::signal(libc::SIGQUIT, handle_signal as libc::sighandler_t);
-			libc::signal(libc::SIGHUP, handle_signal as libc::sighandler_t);
+			signal(SIGINT, handle_signal as sighandler_t);
+			signal(SIGTERM, handle_signal as sighandler_t);
+			signal(SIGQUIT, handle_signal as sighandler_t);
+			signal(SIGHUP, handle_signal as sighandler_t);
 		}
 
 		debug!("Waiting for termination signal...");
 		while RUNNING.load(Ordering::SeqCst) {
-			std::thread::sleep(Duration::from_millis(100));
+			sleep(Duration::from_millis(100));
 
 			// Log the signal reception outside the signal handler
 			if SIGNAL_RECEIVED.load(Ordering::SeqCst) {

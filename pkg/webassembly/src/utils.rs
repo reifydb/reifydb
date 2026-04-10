@@ -3,9 +3,12 @@
 
 //! Utility functions for WASM bindings
 
+use js_sys::{Array, JSON, Object, Reflect};
 use reifydb_core::value::frame::response::convert_frames;
 use reifydb_type::{params::Params, value::frame::frame::Frame};
+use serde_json::{Value as JsonValue, from_str as json_from_str};
 use wasm_bindgen::prelude::*;
+use web_sys::console;
 
 use crate::error::JsError;
 
@@ -16,17 +19,17 @@ use crate::error::JsError;
 pub fn frames_to_js(frames: &[Frame]) -> Result<JsValue, JsValue> {
 	let response_frames = convert_frames(frames);
 
-	let js_array = js_sys::Array::new();
+	let js_array = Array::new();
 
 	for response_frame in &response_frames {
 		let row_count = response_frame.columns.first().map_or(0, |c| c.payload.len());
 
 		for row_idx in 0..row_count {
-			let row_obj = js_sys::Object::new();
+			let row_obj = Object::new();
 
 			for column in &response_frame.columns {
 				let js_value = JsValue::from_str(&column.payload[row_idx]);
-				js_sys::Reflect::set(&row_obj, &JsValue::from_str(&column.name), &js_value)?;
+				Reflect::set(&row_obj, &JsValue::from_str(&column.name), &js_value)?;
 			}
 
 			js_array.push(&row_obj);
@@ -44,13 +47,12 @@ pub fn parse_params(params_js: JsValue) -> Result<Params, JsValue> {
 	}
 
 	// Try to parse as JSON
-	let json_str =
-		js_sys::JSON::stringify(&params_js).map_err(|_| JsError::from_message("Failed to stringify params"))?;
+	let json_str = JSON::stringify(&params_js).map_err(|_| JsError::from_message("Failed to stringify params"))?;
 
 	let json_str: String = json_str.into();
 
-	// Parse JSON string to serde_json::Value
-	let _json_value: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| JsError::from_error(&e))?;
+	// Parse JSON string to JsonValue
+	let _json_value: JsonValue = json_from_str(&json_str).map_err(|e| JsError::from_error(&e))?;
 
 	// Convert to Params
 	// For now, we'll use Params::None if conversion is complex
@@ -61,11 +63,11 @@ pub fn parse_params(params_js: JsValue) -> Result<Params, JsValue> {
 /// Log a message to browser console
 #[allow(unused)]
 pub fn log(message: &str) {
-	web_sys::console::log_1(&JsValue::from_str(message));
+	console::log_1(&JsValue::from_str(message));
 }
 
 /// Log an error to browser console
 #[allow(unused)]
 pub fn error(message: &str) {
-	web_sys::console::error_1(&JsValue::from_str(message));
+	console::error_1(&JsValue::from_str(message));
 }

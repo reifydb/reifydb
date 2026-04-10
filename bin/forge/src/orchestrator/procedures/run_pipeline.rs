@@ -9,6 +9,7 @@ use reifydb_type::{
 	params::Params,
 	value::{Value, r#type::Type},
 };
+use uuid::Uuid;
 
 /// Creates a new pipeline run with job_runs and step_runs for every job/step in the pipeline.
 ///
@@ -66,7 +67,7 @@ impl Procedure for RunPipelineProcedure {
 		}
 
 		// Create the run
-		let run_id = uuid::Uuid::new_v4();
+		let run_id = Uuid::new_v4();
 		tx.rql(
 			&format!(
 				"INSERT forge::runs [{{ id: uuid::v4(\"{run_id}\"), pipeline_id: uuid::v4(\"{pipeline_id_str}\"), \
@@ -113,7 +114,7 @@ impl Procedure for RunPipelineProcedure {
 				};
 
 				// Create job_run
-				let job_run_id = uuid::Uuid::new_v4();
+				let job_run_id = Uuid::new_v4();
 				tx.rql(
 					&format!("INSERT forge::job_runs [{{ id: uuid::v4(\"{job_run_id}\"), \
 						 run_id: uuid::v4(\"{run_id}\"), job_id: uuid::v4(\"{job_id}\"), \
@@ -142,7 +143,7 @@ impl Procedure for RunPipelineProcedure {
 								reason: "steps row is missing required field 'id'"
 									.to_string(),
 							})?;
-						let step_run_id = uuid::Uuid::new_v4();
+						let step_run_id = Uuid::new_v4();
 
 						tx.rql(
 							&format!(

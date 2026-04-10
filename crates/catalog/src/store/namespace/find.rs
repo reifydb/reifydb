@@ -75,7 +75,7 @@ pub mod tests {
 				.unwrap()
 				.unwrap();
 
-		assert_eq!(namespace.id(), NamespaceId(1025));
+		assert_eq!(namespace.id(), NamespaceId(16385));
 		assert_eq!(namespace.name(), "test_namespace");
 	}
 

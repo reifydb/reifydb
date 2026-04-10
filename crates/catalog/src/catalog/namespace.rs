@@ -388,6 +388,18 @@ impl Catalog {
 		Ok(namespace)
 	}
 
+	/// Create a namespace with a specific ID. Used for bootstrapping system namespaces.
+	pub fn create_namespace_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		to_create: NamespaceToCreate,
+	) -> Result<Namespace> {
+		let namespace = CatalogStore::create_namespace_with_id(txn, namespace_id, to_create.into())?;
+		txn.track_namespace_created(namespace.clone())?;
+		Ok(namespace)
+	}
+
 	#[instrument(name = "catalog::namespace::drop", level = "debug", skip(self, txn))]
 	pub fn drop_namespace(&self, txn: &mut AdminTransaction, namespace: Namespace) -> Result<()> {
 		CatalogStore::drop_namespace(txn, namespace.id())?;

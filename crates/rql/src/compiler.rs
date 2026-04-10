@@ -5,11 +5,11 @@ use std::{collections::HashSet, fmt, fmt::Debug, mem, sync::Arc, time};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
-	fingerprint::StatementFingerprint,
+	fingerprint::{CompilationFingerprint, StatementFingerprint},
 	interface::catalog::series::{SeriesKey, TimestampPrecision},
 	util::lru::LruCache,
 };
-use reifydb_runtime::hash::{Hash128, xxh3_128};
+use reifydb_runtime::hash::xxh3_128;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result,
@@ -80,7 +80,7 @@ pub struct Compiler(Arc<CompilerInner>);
 
 struct CompilerInner {
 	catalog: Catalog,
-	cache: LruCache<Hash128, Arc<Vec<Compiled>>>,
+	cache: LruCache<CompilationFingerprint, Arc<Vec<Compiled>>>,
 }
 
 impl Debug for CompilerInner {
@@ -102,9 +102,9 @@ impl Compiler {
 	}
 
 	pub fn compile(&self, tx: &mut Transaction<'_>, query: &str) -> Result<CompilationResult> {
-		let hash = xxh3_128(query.as_bytes());
+		let fingerprint = CompilationFingerprint::from(xxh3_128(query.as_bytes()));
 
-		if let Some(cached) = self.0.cache.get(&hash) {
+		if let Some(cached) = self.0.cache.get(&fingerprint) {
 			return Ok(CompilationResult::Ready(cached));
 		}
 
@@ -140,7 +140,7 @@ impl Compiler {
 
 		let arc_plans = Arc::new(plans);
 		if !has_ddl {
-			self.0.cache.put(hash, arc_plans.clone());
+			self.0.cache.put(fingerprint, arc_plans.clone());
 		}
 		Ok(CompilationResult::Ready(arc_plans))
 	}

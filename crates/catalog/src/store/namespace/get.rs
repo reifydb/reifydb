@@ -36,9 +36,10 @@ pub mod tests {
 		create_namespace(&mut txn, "namespace_two");
 		create_namespace(&mut txn, "namespace_three");
 
-		let result = CatalogStore::get_namespace(&mut Transaction::Admin(&mut txn), NamespaceId(1026)).unwrap();
+		let result =
+			CatalogStore::get_namespace(&mut Transaction::Admin(&mut txn), NamespaceId(16386)).unwrap();
 
-		assert_eq!(result.id(), NamespaceId(1026));
+		assert_eq!(result.id(), NamespaceId(16386));
 		assert_eq!(result.name(), "namespace_two");
 	}
 

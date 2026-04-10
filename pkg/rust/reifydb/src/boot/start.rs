@@ -14,11 +14,13 @@ use reifydb_store_multi::{MultiStore, ttl::actor::spawn_row_ttl_actor};
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_type::value::r#type::Type;
 
+use crate::Result;
+
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
 /// Ensures the storage version key exists and matches the expected version.
 /// On first boot, creates the version entry.
-pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> crate::Result<()> {
+pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 	let shape = RowShape::testing(&[Type::Uint1]);
 	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
@@ -45,7 +47,7 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> crate::Resul
 }
 
 /// Spawns background actors during the bootload phase.
-pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) -> crate::Result<()> {
+pub(crate) fn spawn_actors(engine: &StandardEngine, actor_system: &ActorSystem) -> Result<()> {
 	// Spawn background actors
 	let store = match engine.multi_owned().store() {
 		MultiStore::Standard(s) => s.clone(),

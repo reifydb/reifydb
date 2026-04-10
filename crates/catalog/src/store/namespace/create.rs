@@ -59,6 +59,30 @@ impl CatalogStore {
 
 		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
 	}
+
+	/// Create a namespace with a specific ID. Used for bootstrapping system namespaces.
+	/// Skips duplicate check — caller must ensure uniqueness.
+	pub(crate) fn create_namespace_with_id(
+		txn: &mut AdminTransaction,
+		namespace_id: NamespaceId,
+		to_create: NamespaceToCreate,
+	) -> Result<Namespace> {
+		let mut row = SHAPE.allocate();
+		SHAPE.set_u64(&mut row, ID, namespace_id);
+		SHAPE.set_utf8(&mut row, NAME, &to_create.name);
+		SHAPE.set_u64(&mut row, PARENT_ID, to_create.parent_id.0);
+		if let Some(ref grpc) = to_create.grpc {
+			SHAPE.set_utf8(&mut row, GRPC, grpc);
+		}
+		if let Some(ref token) = to_create.token {
+			SHAPE.set_utf8(&mut row, TOKEN, token);
+		}
+		SHAPE.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
+
+		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
+
+		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
+	}
 }
 
 #[cfg(test)]
@@ -83,7 +107,7 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_namespace(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id(), NamespaceId(1025));
+		assert_eq!(result.id(), NamespaceId(16385));
 		assert_eq!(result.name(), "test_namespace");
 
 		// Creating the same namespace again with `if_not_exists =

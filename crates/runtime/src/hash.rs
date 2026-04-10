@@ -57,6 +57,35 @@ impl Hash for Hash128 {
 	}
 }
 
+impl Hash128 {
+	/// Convert to a 32-character lowercase hex string (no prefix).
+	#[inline]
+	pub fn to_hex_string(self) -> String {
+		const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+		let mut buf = String::with_capacity(32);
+		let val = self.0;
+		for i in (0..32).rev() {
+			let nibble = ((val >> (i * 4)) & 0xf) as usize;
+			buf.push(HEX_DIGITS[nibble] as char);
+		}
+		buf
+	}
+
+	/// Convert to a 34-character lowercase hex string with "0x" prefix.
+	#[inline]
+	pub fn to_hex_string_prefixed(self) -> String {
+		const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+		let mut buf = String::with_capacity(34);
+		buf.push_str("0x");
+		let val = self.0;
+		for i in (0..32).rev() {
+			let nibble = ((val >> (i * 4)) & 0xf) as usize;
+			buf.push(HEX_DIGITS[nibble] as char);
+		}
+		buf
+	}
+}
+
 /// Compute xxHash3 64-bit hash of data.
 #[inline]
 pub fn xxh3_64(data: &[u8]) -> Hash64 {

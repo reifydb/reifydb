@@ -28,7 +28,7 @@ fn test_row_ttl_sync_to_materialized_catalog() {
 
 	// 2. Check if TTL is in MaterializedCatalog immediately
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
-	let ns_id = NamespaceId(1025); // 'test' namespace
+	let ns_id = NamespaceId(16385); // 'test' namespace
 	let table = catalog
 		.find_table_by_name(&mut Transaction::Admin(&mut txn), ns_id, "users")
 		.unwrap()
@@ -78,7 +78,7 @@ fn test_row_ttl_replication_sync() {
 	// Namespace ID should be 1025
 	let mut q_txn = replica.begin_admin(IdentityId::system()).unwrap();
 	let table = replica_catalog
-		.find_table_by_name(&mut Transaction::Admin(&mut q_txn), NamespaceId(1025), "users")
+		.find_table_by_name(&mut Transaction::Admin(&mut q_txn), NamespaceId(16385), "users")
 		.unwrap()
 		.expect("table not found on replica");
 	let shape = ShapeId::Table(table.id);

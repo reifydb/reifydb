@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, RingBufferId},
+		id::{ColumnId, NamespaceId, RingBufferId},
 		property::ColumnPropertyKind,
 		ringbuffer::RingBuffer,
 	},
@@ -160,6 +160,60 @@ impl CatalogStore {
 		ringbuffer_metadata::SHAPE.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
 
 		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
+
+		Ok(())
+	}
+
+	/// Create a ring buffer with a specific ID and column IDs. Used for bootstrapping system shapes.
+	/// Skips duplicate check — caller must ensure uniqueness.
+	pub(crate) fn create_ringbuffer_with_id(
+		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
+		to_create: RingBufferToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<RingBuffer> {
+		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+
+		let namespace_id = to_create.namespace;
+
+		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
+		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
+
+		let capacity = to_create.capacity;
+		let is_partitioned = !to_create.partition_by.is_empty();
+
+		Self::insert_ringbuffer_columns_with_ids(txn, ringbuffer_id, to_create, column_ids)?;
+		if !is_partitioned {
+			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+		}
+
+		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
+	}
+
+	fn insert_ringbuffer_columns_with_ids(
+		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
+		to_create: RingBufferToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<()> {
+		for (idx, (col, &col_id)) in to_create.columns.into_iter().zip(column_ids.iter()).enumerate() {
+			CatalogStore::create_column_with_id(
+				txn,
+				col_id,
+				ringbuffer_id,
+				ColumnToCreate {
+					fragment: Some(col.fragment.clone()),
+					namespace_name: String::new(),
+					shape_name: String::new(),
+					column: col.name.text().to_string(),
+					constraint: col.constraint,
+					properties: col.properties,
+					index: ColumnIndex(idx as u8),
+					auto_increment: col.auto_increment,
+					dictionary_id: col.dictionary_id,
+				},
+			)?;
+		}
 
 		Ok(())
 	}

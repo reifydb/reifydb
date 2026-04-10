@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, SeriesId},
+		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
 		series::{Series, SeriesKey},
 	},
@@ -158,6 +158,55 @@ impl CatalogStore {
 		series_metadata::SHAPE.set_u64(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
 
 		txn.set(&SeriesMetadataKey::encoded(series_id), row)?;
+
+		Ok(())
+	}
+
+	/// Create a series with a specific ID and column IDs. Used for bootstrapping system shapes.
+	/// Skips duplicate check — caller must ensure uniqueness.
+	pub(crate) fn create_series_with_id(
+		txn: &mut AdminTransaction,
+		series_id: SeriesId,
+		to_create: SeriesToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Series> {
+		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+
+		let namespace_id = to_create.namespace;
+
+		Self::store_series(txn, series_id, namespace_id, &to_create)?;
+		Self::link_series_to_namespace(txn, namespace_id, series_id, to_create.name.text())?;
+
+		Self::insert_series_columns_with_ids(txn, series_id, &to_create, column_ids)?;
+		Self::initialize_series_metadata(txn, series_id)?;
+
+		Self::get_series(&mut Transaction::Admin(&mut *txn), series_id)
+	}
+
+	fn insert_series_columns_with_ids(
+		txn: &mut AdminTransaction,
+		series_id: SeriesId,
+		to_create: &SeriesToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<()> {
+		for (idx, (col, &col_id)) in to_create.columns.iter().zip(column_ids.iter()).enumerate() {
+			CatalogStore::create_column_with_id(
+				txn,
+				col_id,
+				series_id,
+				ColumnToCreate {
+					fragment: Some(col.fragment.clone()),
+					namespace_name: String::new(),
+					shape_name: String::new(),
+					column: col.name.text().to_string(),
+					constraint: col.constraint.clone(),
+					properties: col.properties.clone(),
+					index: ColumnIndex(idx as u8),
+					auto_increment: col.auto_increment,
+					dictionary_id: col.dictionary_id,
+				},
+			)?;
+		}
 
 		Ok(())
 	}

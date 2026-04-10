@@ -3,6 +3,7 @@
 
 use reifydb::Database;
 use reifydb_type::params::Params;
+use tracing::{debug, info};
 
 const PIPELINE_ID: &str = "00000000-0000-4000-a000-000000000001";
 const JOB_CHECK_ID: &str = "00000000-0000-4000-a000-000000000002";
@@ -26,11 +27,11 @@ pub fn seed_default_pipeline(db: &Database) {
 		.unwrap_or_default();
 
 	if existing.first().is_some_and(|f| f.rows().next().is_some()) {
-		tracing::debug!("Default 'reifydb' pipeline already exists, skipping seed");
+		debug!("Default 'reifydb' pipeline already exists, skipping seed");
 		return;
 	}
 
-	tracing::info!("Seeding default 'reifydb' pipeline...");
+	info!("Seeding default 'reifydb' pipeline...");
 
 	db.admin_as_root(
 		&format!("INSERT forge::pipelines [{{ id: uuid::v4(\"{PIPELINE_ID}\"), \
@@ -82,7 +83,7 @@ pub fn seed_default_pipeline(db: &Database) {
 	)
 	.expect("Failed to seed step");
 
-	tracing::info!("Default 'reifydb' pipeline seeded successfully");
+	info!("Default 'reifydb' pipeline seeded successfully");
 
 	seed_dummy_pipeline(db);
 }
@@ -96,11 +97,11 @@ pub fn seed_dummy_pipeline(db: &Database) {
 		.unwrap_or_default();
 
 	if existing.first().is_some_and(|f| f.rows().next().is_some()) {
-		tracing::debug!("'dummy pipeline' already exists, skipping seed");
+		debug!("'dummy pipeline' already exists, skipping seed");
 		return;
 	}
 
-	tracing::info!("Seeding 'dummy pipeline'...");
+	info!("Seeding 'dummy pipeline'...");
 
 	db.admin_as_root(
 		&format!("INSERT forge::pipelines [{{ id: uuid::v4(\"{DUMMY_PIPELINE_ID}\"), \
@@ -136,5 +137,5 @@ pub fn seed_dummy_pipeline(db: &Database) {
 	)
 	.expect("Failed to seed dummy step 2");
 
-	tracing::info!("'dummy pipeline' seeded successfully");
+	info!("'dummy pipeline' seeded successfully");
 }

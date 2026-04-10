@@ -6,7 +6,10 @@ mod start;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::actor::system::ActorSystem;
 
-use crate::boot::start::{ensure_storage_version, spawn_actors};
+use crate::{
+	Result,
+	boot::start::{ensure_storage_version, spawn_actors},
+};
 
 pub struct Bootloader {
 	engine: StandardEngine,
@@ -23,7 +26,7 @@ impl Bootloader {
 }
 
 impl Bootloader {
-	pub fn load(&self) -> crate::Result<()> {
+	pub fn load(&self) -> Result<()> {
 		ensure_storage_version(&self.engine.single_owned())?;
 		spawn_actors(&self.engine, &self.actor_system)?;
 		Ok(())

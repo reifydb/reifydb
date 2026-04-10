@@ -129,7 +129,7 @@ pub mod tests {
 
 		let result = CatalogStore::create_sink(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, SinkId(1));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_sink");
 		assert_eq!(result.connector, "kafka");
 		assert_eq!(result.config, vec![("key".to_string(), "value".to_string())]);

@@ -19,7 +19,7 @@ use reifydb_store_multi::{
 use reifydb_store_single::{
 	SingleStore,
 	config::{HotConfig as SingleHotConfig, SingleStoreConfig},
-	hot::sqlite::config::SqliteConfig as SingleSqliteConfig,
+	hot::{sqlite::config::SqliteConfig as SingleSqliteConfig, tier::HotTier},
 };
 use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 
@@ -72,7 +72,7 @@ fn create_memory_store(actor_system: &ActorSystem) -> (MultiStore, SingleStore, 
 	});
 
 	// Create single-version store
-	let single_storage = reifydb_store_single::hot::tier::HotTier::memory();
+	let single_storage = HotTier::memory();
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		hot: Some(SingleHotConfig {
 			storage: single_storage,
@@ -124,7 +124,7 @@ fn create_sqlite_store(
 		DbPath::Tmpfs(p) => p.with_extension("").join("single.db"),
 	};
 	let single_config = SingleSqliteConfig::new(single_path);
-	let single_storage = reifydb_store_single::hot::tier::HotTier::sqlite(single_config);
+	let single_storage = HotTier::sqlite(single_config);
 	let single_store = SingleStore::standard(SingleStoreConfig {
 		hot: Some(SingleHotConfig {
 			storage: single_storage,

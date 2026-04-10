@@ -60,7 +60,7 @@ pub mod tests {
 			.unwrap()
 			.unwrap();
 
-		assert_eq!(result.id, ColumnId(8195));
+		assert_eq!(result.id, ColumnId(16387));
 		assert_eq!(result.name, "col_3");
 		assert_eq!(result.constraint.get_type(), Type::Int4);
 		assert_eq!(result.auto_increment, false);

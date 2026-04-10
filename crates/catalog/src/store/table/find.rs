@@ -89,13 +89,13 @@ pub mod tests {
 
 		let result = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1027),
+			NamespaceId(16387),
 			"table_two",
 		)
 		.unwrap()
 		.unwrap();
-		assert_eq!(result.id, TableId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
+		assert_eq!(result.id, TableId(16386));
+		assert_eq!(result.namespace, NamespaceId(16387));
 		assert_eq!(result.name, "table_two");
 	}
 
@@ -105,7 +105,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"some_table",
 		)
 		.unwrap();
@@ -126,7 +126,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"table_four_two",
 		)
 		.unwrap();

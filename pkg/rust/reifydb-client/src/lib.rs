@@ -52,6 +52,8 @@ pub use reifydb_type::{
 };
 #[cfg(any(feature = "http", feature = "ws"))]
 use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "http", feature = "ws"))]
+use serde_json::Value as JsonValue;
 #[cfg(all(feature = "dst", feature = "ws", reifydb_single_threaded))]
 pub use ws::DstWsClient;
 #[cfg(feature = "ws")]
@@ -103,7 +105,7 @@ pub struct WireValue {
 #[serde(untagged)]
 pub enum WireParams {
 	Positional(Vec<WireValue>),
-	Named(std::collections::HashMap<String, WireValue>),
+	Named(HashMap<String, WireValue>),
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -254,7 +256,7 @@ pub enum ResponsePayload {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AdminResponse {
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -281,14 +283,14 @@ pub struct ErrResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResponse {
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResponse {
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -342,5 +344,5 @@ pub enum ServerPush {
 pub struct ChangePayload {
 	pub subscription_id: String,
 	pub content_type: String,
-	pub body: serde_json::Value,
+	pub body: JsonValue,
 }

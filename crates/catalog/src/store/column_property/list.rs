@@ -92,7 +92,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16385)).unwrap();
 
 		let properties =
 			CatalogStore::list_column_properties(&mut Transaction::Admin(&mut txn), column.id).unwrap();

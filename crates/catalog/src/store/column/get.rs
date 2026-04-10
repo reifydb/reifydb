@@ -147,9 +147,9 @@ pub mod tests {
 		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
 		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
 
-		let result = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8194)).unwrap();
+		let result = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16386)).unwrap();
 
-		assert_eq!(result.id, ColumnId(8194));
+		assert_eq!(result.id, ColumnId(16386));
 		assert_eq!(result.name, "col_2");
 		assert_eq!(result.constraint.get_type(), Type::Int2);
 		assert_eq!(result.auto_increment, false);

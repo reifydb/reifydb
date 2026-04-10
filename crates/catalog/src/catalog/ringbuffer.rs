@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackRingBufferChangeOperations,
-		id::{NamespaceId, PrimaryKeyId, RingBufferId},
+		id::{ColumnId, NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
 		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
 	},
@@ -147,6 +147,24 @@ impl Catalog {
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer> {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
+		txn.track_ringbuffer_created(ringbuffer.clone())?;
+
+		let shape = RowShape::from(ringbuffer.columns.as_slice());
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+
+		Ok(ringbuffer)
+	}
+
+	/// Create a ring buffer with a specific ID and column IDs. Used for bootstrapping system shapes.
+	pub fn create_ringbuffer_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
+		to_create: RingBufferToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<RingBuffer> {
+		let ringbuffer =
+			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
 		let shape = RowShape::from(ringbuffer.columns.as_slice());

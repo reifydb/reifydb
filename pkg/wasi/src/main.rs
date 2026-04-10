@@ -12,6 +12,7 @@ use std::{
 	collections::HashMap,
 	error::Error,
 	fmt::Write as FmtWrite,
+	io,
 	io::{BufRead, Write},
 	sync::Arc,
 };
@@ -41,6 +42,7 @@ use reifydb_routine::{function::default_functions, procedure::default_procedures
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{
 	SharedRuntime, SharedRuntimeConfig,
+	actor::timers::drain_expired_timers,
 	context::{RuntimeContext, clock::Clock},
 };
 use reifydb_store_multi::{
@@ -56,6 +58,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
+use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
 struct Bridge {
 	engine: StandardEngine,
@@ -195,15 +198,15 @@ impl Drop for Bridge {
 	}
 }
 
-fn respond(obj: &serde_json::Value) {
-	let mut stdout = std::io::stdout().lock();
-	let _ = serde_json::to_writer(&mut stdout, obj);
+fn respond(obj: &JsonValue) {
+	let mut stdout = io::stdout().lock();
+	let _ = json_to_writer(&mut stdout, obj);
 	let _ = stdout.write_all(b"\n");
 	let _ = stdout.flush();
 }
 
 fn main() {
-	let stdin = std::io::stdin();
+	let stdin = io::stdin();
 	let reader = stdin.lock();
 	let mut bridge: Option<Bridge> = None;
 
@@ -216,16 +219,16 @@ fn main() {
 			continue;
 		}
 
-		let msg: serde_json::Value = match serde_json::from_str(&line) {
+		let msg: JsonValue = match json_from_str(&line) {
 			Ok(v) => v,
 			Err(e) => {
-				respond(&serde_json::json!({"err": format!("invalid JSON: {}", e)}));
+				respond(&json!({"err": format!("invalid JSON: {}", e)}));
 				continue;
 			}
 		};
 
 		// Fire any timers that expired while waiting for input (e.g. CDC poll timers).
-		reifydb_runtime::actor::timers::drain_expired_timers();
+		drain_expired_timers();
 
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -233,15 +236,15 @@ fn main() {
 			"new" => match Bridge::new() {
 				Ok(b) => {
 					bridge = Some(b);
-					respond(&serde_json::json!({"ok": "ready"}));
+					respond(&json!({"ok": "ready"}));
 				}
 				Err(e) => {
-					respond(&serde_json::json!({"err": format!("{}", e)}));
+					respond(&json!({"err": format!("{}", e)}));
 				}
 			},
 			"command" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
@@ -251,16 +254,16 @@ fn main() {
 						for frame in result.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
-						respond(&serde_json::json!({"ok": output}));
+						respond(&json!({"ok": output}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"admin" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
@@ -270,16 +273,16 @@ fn main() {
 						for frame in result.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
-						respond(&serde_json::json!({"ok": output}));
+						respond(&json!({"ok": output}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"query" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
@@ -289,16 +292,16 @@ fn main() {
 						for frame in result.iter() {
 							let _ = writeln!(output, "{}", frame);
 						}
-						respond(&serde_json::json!({"ok": output}));
+						respond(&json!({"ok": output}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"query_count" => {
 				let Some(b) = bridge.as_ref() else {
-					respond(&serde_json::json!({"err": "no database instance"}));
+					respond(&json!({"err": "no database instance"}));
 					continue;
 				};
 				let rql = msg.get("rql").and_then(|v| v.as_str()).unwrap_or("");
@@ -309,19 +312,19 @@ fn main() {
 							.flat_map(|f| f.columns.first())
 							.map(|c| c.data.len())
 							.sum();
-						respond(&serde_json::json!({"ok": count.to_string()}));
+						respond(&json!({"ok": count.to_string()}));
 					}
 					Err(e) => {
-						respond(&serde_json::json!({"err": format!("{}", e)}));
+						respond(&json!({"err": format!("{}", e)}));
 					}
 				}
 			}
 			"free" => {
 				bridge.take();
-				respond(&serde_json::json!({"ok": "freed"}));
+				respond(&json!({"ok": "freed"}));
 			}
 			other => {
-				respond(&serde_json::json!({"err": format!("unknown command: {}", other)}));
+				respond(&json!({"err": format!("unknown command: {}", other)}));
 			}
 		}
 	}

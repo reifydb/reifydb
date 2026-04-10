@@ -13,7 +13,7 @@ set -e
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
-echo "Checking for inline qualified paths in /crates/..."
+echo "Checking for inline qualified paths in /crates/, /pkg/, and /bin/..."
 echo ""
 
 # Build pattern from vendor/ directory crate names (strip version suffixes, normalize hyphens)
@@ -27,15 +27,15 @@ if [ -d "$REPO_ROOT/vendor" ]; then
         | sed 's/|$//')
 fi
 
-# Find all .rs files in /crates/ (excluding specific paths)
-crates_files=$(find "$REPO_ROOT/crates" -name "*.rs" \
+# Find all .rs files in /crates/, /pkg/, and /bin/ (excluding specific paths)
+crates_files=$(find "$REPO_ROOT/crates" "$REPO_ROOT/pkg" "$REPO_ROOT/bin" -name "*.rs" \
     -not -path "*/tests/*" \
     -not -path "*/test_utils/*" \
     -not -path "*/vendor/*" \
     -not -path "*/generated/*" 2>/dev/null || true)
 
 if [ -z "$crates_files" ]; then
-    echo "No Rust files found in /crates/"
+    echo "No Rust files found in /crates/, /pkg/, or /bin/"
     exit 0
 fi
 
@@ -50,6 +50,7 @@ while IFS= read -r file; do
         use_brace_depth = 0
         in_macro_rules = 0
         macro_brace_depth = 0
+        in_string_literal = 0
         if (vendor_pat != "") {
             external_regex = "(^|[^a-zA-Z0-9_$:])(std|" vendor_pat ")::[^<]"
         } else {
@@ -93,8 +94,32 @@ while IFS= read -r file; do
             line = substr(line, 1, RSTART - 1)
         }
 
+        # Handle multi-line string literals (e.g. format!("...\n..."))
+        if (in_string_literal) {
+            tmp = line
+            gsub(/\\\\/, "XX", tmp)
+            gsub(/\\"/, "XX", tmp)
+            if (match(tmp, /"/)) {
+                line = substr(line, RSTART + 1)
+                in_string_literal = 0
+            } else {
+                next
+            }
+        }
+
+        # Remove char literals containing quotes (e.g. SINGLE"SINGLE) before string detection
+        # \047 is octal for single-quote since the awk code is in a single-quoted bash string
+        gsub(/\047"\047/, "XXX", line)
+        # Neutralize escape sequences so \" does not break string stripping
+        gsub(/\\\\/, "XX", line)
+        gsub(/\\"/, "XX", line)
         # Remove string literals
         gsub(/"[^"]*"/, "", line)
+        # Detect start of multi-line string (unmatched opening quote)
+        if (index(line, "\"") > 0) {
+            sub(/".*$/, "", line)
+            in_string_literal = 1
+        }
 
         # Skip lines inside macro_rules! blocks (body lines need qualified paths for hygiene)
         if (in_macro_rules) {

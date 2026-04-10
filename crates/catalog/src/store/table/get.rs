@@ -44,10 +44,10 @@ pub mod tests {
 		create_table(&mut txn, "namespace_two", "table_two", &[]);
 		create_table(&mut txn, "namespace_three", "table_three", &[]);
 
-		let result = CatalogStore::get_table(&mut Transaction::Admin(&mut txn), TableId(1026)).unwrap();
+		let result = CatalogStore::get_table(&mut Transaction::Admin(&mut txn), TableId(16386)).unwrap();
 
-		assert_eq!(result.id, TableId(1026));
-		assert_eq!(result.namespace, NamespaceId(1027));
+		assert_eq!(result.id, TableId(16386));
+		assert_eq!(result.namespace, NamespaceId(16387));
 		assert_eq!(result.name, "table_two");
 	}
 

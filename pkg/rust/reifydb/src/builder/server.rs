@@ -5,11 +5,15 @@ use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::materialized::MaterializedCatalog;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
+use reifydb_metric::{accumulator::StatementStatsAccumulator, registry::MetricRegistry};
 use reifydb_routine::{function::registry::FunctionsConfigurator, procedure::registry::ProceduresConfigurator};
 use reifydb_runtime::{SharedRuntime, SharedRuntimeConfig, context::clock::Clock};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
+#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
+use reifydb_sub_metric::{factory::MetricSubsystemFactory, interceptor::RequestMetricsInterceptor};
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
@@ -32,7 +36,7 @@ use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::{
-	Database, Migration,
+	Database, Migration, Result,
 	api::{StorageFactory, transaction},
 };
 
@@ -249,7 +253,7 @@ impl ServerBuilder {
 		self
 	}
 
-	pub fn build(mut self) -> crate::Result<Database> {
+	pub fn build(mut self) -> Result<Database> {
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		let runtime = SharedRuntime::from_config(runtime_config);
 
@@ -273,19 +277,18 @@ impl ServerBuilder {
 
 		#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 		{
-			let registry = Arc::new(reifydb_metric::registry::MetricRegistry::new());
-			let accumulator = Arc::new(reifydb_metric::accumulator::StatementStatsAccumulator::new());
-			let metrics_interceptor = reifydb_sub_metric::spawn::spawn_metric_collector(
-				&actor_system,
-				&eventbus,
-				registry,
-				accumulator,
-				Clock::Real,
-			);
+			let registry = Arc::new(MetricRegistry::new());
+			let accumulator = Arc::new(StatementStatsAccumulator::new());
+
+			let metrics_interceptor =
+				RequestMetricsInterceptor::new(eventbus.clone(), accumulator.clone(), Clock::Real);
 			self.request_interceptors.push(Arc::new(metrics_interceptor));
 
 			let chain = RequestInterceptorChain::new(self.request_interceptors);
 			database_builder = database_builder.with_request_interceptor_chain(chain);
+
+			let metric_factory = MetricSubsystemFactory::new(registry, accumulator);
+			database_builder = database_builder.add_subsystem_factory(Box::new(metric_factory));
 		}
 
 		if let Some(configurator) = self.auth_configurator {
@@ -316,6 +319,7 @@ impl ServerBuilder {
 		#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 		if let Some((otel_configurator, tracing_configurator)) = self.otel_tracing_config {
 			use reifydb_sub_api::subsystem::Subsystem;
+			use tracing_opentelemetry::layer as otel_layer_fn;
 
 			let otel_config = otel_configurator(OtelConfigurator::new()).configure();
 			let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime.clone());
@@ -325,7 +329,7 @@ impl ServerBuilder {
 				otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
 
 			database_builder = database_builder.with_tracing(move |builder| {
-				let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+				let otel_layer = otel_layer_fn().with_tracer(tracer);
 				let builder_with_otel = builder.with_layer(otel_layer);
 				tracing_configurator(builder_with_otel)
 			});

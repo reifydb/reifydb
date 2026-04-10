@@ -3,8 +3,9 @@
 
 use std::io::{self, Write};
 
-use reifydb_client::{QueryResult, WsClient};
+use reifydb_client::{Frame, QueryResult, WsClient};
 use rustyline::{DefaultEditor, error::ReadlineError};
+use terminal_size::{Width, terminal_size};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -214,7 +215,7 @@ fn print_query_result(result: &QueryResult, display_mode: DisplayMode) {
 
 	// Get terminal width if in truncate mode
 	let max_width = match display_mode {
-		DisplayMode::Truncate => terminal_size::terminal_size().map(|(terminal_size::Width(w), _)| w as usize),
+		DisplayMode::Truncate => terminal_size().map(|(Width(w), _)| w as usize),
 		DisplayMode::Full => None,
 	};
 
@@ -233,7 +234,7 @@ fn print_query_result(result: &QueryResult, display_mode: DisplayMode) {
 	println!();
 }
 
-fn print_frame_truncated(frame: &reifydb_client::Frame, max_width: usize) {
+fn print_frame_truncated(frame: &Frame, max_width: usize) {
 	use reifydb_client::r#type::util::unicode::UnicodeWidthStr;
 
 	let row_count = frame.first().map_or(0, |c| c.data.len());

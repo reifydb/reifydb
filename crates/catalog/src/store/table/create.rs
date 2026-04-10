@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, TableId},
+		id::{ColumnId, NamespaceId, TableId},
 		property::ColumnPropertyKind,
 		shape::ShapeId,
 		table::Table,
@@ -136,6 +136,59 @@ impl CatalogStore {
 		}
 		Ok(())
 	}
+
+	/// Create a table with a specific ID and column IDs. Used for bootstrapping system shapes.
+	/// Skips duplicate check — caller must ensure uniqueness.
+	pub(crate) fn create_table_with_id(
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Table> {
+		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+
+		let namespace_id = to_create.namespace;
+
+		Self::store_table(txn, table_id, namespace_id, &to_create)?;
+		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
+
+		if let Some(retention_strategy) = &to_create.retention_strategy {
+			create_shape_retention_strategy(txn, ShapeId::Table(table_id), retention_strategy)?;
+		}
+
+		Self::insert_columns_with_ids(txn, table_id, to_create, column_ids)?;
+
+		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
+	}
+
+	fn insert_columns_with_ids(
+		txn: &mut AdminTransaction,
+		table: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<()> {
+		for (idx, (column_to_create, &col_id)) in
+			to_create.columns.into_iter().zip(column_ids.iter()).enumerate()
+		{
+			Self::create_column_with_id(
+				txn,
+				col_id,
+				table,
+				ColumnToCreate {
+					fragment: Some(column_to_create.fragment.clone()),
+					namespace_name: String::new(),
+					shape_name: String::new(),
+					column: column_to_create.name.text().to_string(),
+					constraint: column_to_create.constraint.clone(),
+					properties: column_to_create.properties.clone(),
+					index: ColumnIndex(idx as u8),
+					auto_increment: column_to_create.auto_increment,
+					dictionary_id: column_to_create.dictionary_id,
+				},
+			)?;
+		}
+		Ok(())
+	}
 }
 
 #[cfg(test)]
@@ -168,8 +221,8 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_table(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, TableId(1025));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.id, TableId(16385));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_table");
 
 		let err = CatalogStore::create_table(&mut txn, to_create).unwrap_err();
@@ -208,12 +261,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1025);
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16385);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1026);
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16386);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "another_table");
 	}
 }

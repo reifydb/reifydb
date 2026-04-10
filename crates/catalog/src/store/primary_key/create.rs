@@ -183,7 +183,7 @@ pub mod tests {
 		.unwrap();
 
 		// Verify the primary key was created
-		assert_eq!(primary_key_id, PrimaryKeyId(1));
+		assert_eq!(primary_key_id, PrimaryKeyId(16385));
 
 		// Find and verify the primary key
 		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id)
@@ -241,7 +241,7 @@ pub mod tests {
 		.unwrap();
 
 		// Verify the primary key was created
-		assert_eq!(primary_key_id, PrimaryKeyId(1));
+		assert_eq!(primary_key_id, PrimaryKeyId(16385));
 
 		// Find and verify the primary key
 		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), view.id())

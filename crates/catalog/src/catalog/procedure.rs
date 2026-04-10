@@ -305,4 +305,27 @@ impl Catalog {
 
 		Ok(procedure)
 	}
+
+	/// Create a procedure with a specific ID. Used for bootstrapping system procedures.
+	pub fn create_procedure_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		id: ProcedureId,
+		to_create: ProcedureToCreate,
+	) -> Result<Procedure> {
+		let procedure = Procedure {
+			id,
+			namespace: to_create.namespace,
+			name: to_create.name.text().to_string(),
+			params: to_create.params,
+			return_type: to_create.return_type,
+			body: to_create.body,
+			trigger: to_create.trigger,
+			is_test: to_create.is_test,
+		};
+
+		txn.track_procedure_created(procedure.clone())?;
+
+		Ok(procedure)
+	}
 }

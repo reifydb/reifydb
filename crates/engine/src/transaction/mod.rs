@@ -2,4 +2,4 @@
 // Copyright (c) 2025 ReifyDB
 
 #[allow(dead_code)]
-pub(crate) mod operation;
+pub mod operation;

@@ -262,8 +262,8 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id(), ViewId(1025));
-		assert_eq!(result.namespace(), NamespaceId(1025));
+		assert_eq!(result.id(), ViewId(16385));
+		assert_eq!(result.namespace(), NamespaceId(16385));
 		assert_eq!(result.name(), "test_view");
 
 		let err = CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
@@ -302,12 +302,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 1025);
+		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 16385);
 		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 1026);
+		assert_eq!(view_namespace::SHAPE.get_u64(row, view_namespace::ID), 16386);
 		assert_eq!(view_namespace::SHAPE.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 

@@ -44,10 +44,10 @@ pub mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::get_view(&mut Transaction::Admin(&mut txn), ViewId(1026)).unwrap();
+		let result = CatalogStore::get_view(&mut Transaction::Admin(&mut txn), ViewId(16386)).unwrap();
 
-		assert_eq!(result.id(), ViewId(1026));
-		assert_eq!(result.namespace(), NamespaceId(1027));
+		assert_eq!(result.id(), ViewId(16386));
+		assert_eq!(result.namespace(), NamespaceId(16387));
 		assert_eq!(result.name(), "view_two");
 	}
 

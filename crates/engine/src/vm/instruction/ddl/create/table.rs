@@ -155,7 +155,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
@@ -211,7 +211,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("test_namespace".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
@@ -228,7 +228,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("another_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_table".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
@@ -272,7 +272,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 
@@ -314,7 +314,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1026));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16386));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 	}
 
