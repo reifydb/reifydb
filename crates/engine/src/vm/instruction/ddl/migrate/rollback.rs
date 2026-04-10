@@ -44,7 +44,7 @@ pub(crate) fn execute_rollback_migration(
 	let applied: Vec<Migration> = migrations
 		.into_iter()
 		.filter(|m| {
-			let latest = events.iter().rfind(|e| e.migration_id == m.id);
+			let latest = events.iter().find(|e| e.migration_id == m.id);
 			matches!(latest, Some(e) if e.action == MigrationAction::Applied)
 		})
 		.collect();
@@ -101,10 +101,10 @@ pub(crate) fn execute_rollback_migration(
 			CompilationResult::Incremental(mut state) => {
 				let saved_ip = vm.ip;
 				let mut rollback_result = Vec::new();
-				while let Some(compiled_unit) = services.compiler.compile_next(
-					&mut Transaction::Admin(&mut *txn),
-					&mut state,
-				)? {
+				while let Some(compiled_unit) = services
+					.compiler
+					.compile_next(&mut Transaction::Admin(&mut *txn), &mut state)?
+				{
 					vm.ip = 0;
 					vm.run(
 						services,

@@ -57,7 +57,7 @@ impl BaseVTable for SystemMigrations {
 		let mut rollback_bodies = ColumnData::utf8_with_capacity(defs.len());
 
 		for def in &defs {
-			let latest = events.iter().rfind(|e| e.migration_id == def.id);
+			let latest = events.iter().find(|e| e.migration_id == def.id);
 
 			let action_str = match latest {
 				Some(e) => match e.action {
