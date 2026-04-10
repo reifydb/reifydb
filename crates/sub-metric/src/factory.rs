@@ -43,6 +43,6 @@ impl SubsystemFactory for MetricSubsystemFactory {
 		let listener = RequestMetricsEventListener::new(handle.actor_ref().clone());
 		event_bus.register::<RequestExecutedEvent, _>(listener);
 
-		Ok(Box::new(MetricSubsystem::new(engine)))
+		Ok(Box::new(MetricSubsystem::new()))
 	}
 }

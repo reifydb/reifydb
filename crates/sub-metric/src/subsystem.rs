@@ -10,24 +10,25 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_type::Result;
 use tracing::info;
 
-use crate::bootstrap::bootstrap_metric_ringbuffers;
-
 pub struct MetricSubsystem {
-	engine: StandardEngine,
 	running: Arc<AtomicBool>,
 }
 
-impl MetricSubsystem {
-	pub fn new(engine: StandardEngine) -> Self {
+impl Default for MetricSubsystem {
+	fn default() -> Self {
 		Self {
-			engine,
 			running: Arc::new(AtomicBool::new(false)),
 		}
+	}
+}
+
+impl MetricSubsystem {
+	pub fn new() -> Self {
+		Self::default()
 	}
 }
 
@@ -55,7 +56,6 @@ impl Subsystem for MetricSubsystem {
 			return Ok(());
 		}
 
-		bootstrap_metric_ringbuffers(&self.engine)?;
 		self.running.store(true, Ordering::SeqCst);
 		info!("Metric subsystem started");
 		Ok(())

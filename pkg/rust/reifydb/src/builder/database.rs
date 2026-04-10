@@ -9,10 +9,7 @@ use reifydb_auth::{
 	service::{AuthConfigurator, AuthService, AuthServiceConfig},
 };
 use reifydb_catalog::{
-	CatalogVersion,
-	bootstrap::{bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog},
-	catalog::Catalog,
-	materialized::MaterializedCatalog,
+	CatalogVersion, bootstrap::bootstrap_database, catalog::Catalog, materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{
@@ -312,9 +309,7 @@ impl DatabaseBuilder {
 		let single = self.ioc.resolve::<SingleTransaction>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		load_materialized_catalog(&multi, &single, &catalog)?;
-		bootstrap_root_identity(&multi, &single, &catalog, &eventbus)?;
-		bootstrap_system_procedures(&multi, &single, &catalog, &eventbus)?;
+		bootstrap_database(&multi, &single, &catalog, &eventbus)?;
 
 		let runtime = self.ioc.resolve::<SharedRuntime>()?;
 		let actor_system = self.actor_system.unwrap_or_else(|| runtime.actor_system().scope());

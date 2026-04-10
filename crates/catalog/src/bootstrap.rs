@@ -19,15 +19,38 @@ use reifydb_type::{
 	fragment::Fragment,
 	value::{constraint::TypeConstraint, identity::IdentityId, r#type::Type},
 };
+use tracing::info;
 
 use crate::{
 	CatalogStore, Result,
-	catalog::{Catalog, namespace::NamespaceToCreate, procedure::ProcedureToCreate},
+	catalog::{
+		Catalog,
+		namespace::NamespaceToCreate,
+		procedure::ProcedureToCreate,
+		ringbuffer::{RingBufferColumnToCreate, RingBufferToCreate},
+	},
 	materialized::{
 		MaterializedCatalog,
 		load::{MaterializedCatalogLoader, identity::load_identities},
 	},
 };
+
+/// Bootstrap the entire database: load catalog, create system objects.
+///
+/// This is the single entry point for all database bootstrapping.
+/// Called during `DatabaseBuilder::build()`.
+pub fn bootstrap_database(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &MaterializedCatalog,
+	eventbus: &EventBus,
+) -> Result<()> {
+	load_materialized_catalog(multi, single, catalog)?;
+	bootstrap_root_identity(multi, single, catalog, eventbus)?;
+	bootstrap_system_procedures(multi, single, catalog, eventbus)?;
+	bootstrap_metric_ringbuffers(multi, single, catalog, eventbus)?;
+	Ok(())
+}
 
 /// Load all catalog data from storage into MaterializedCatalog.
 pub fn load_materialized_catalog(
@@ -153,4 +176,116 @@ pub fn bootstrap_root_identity(
 	load_identities(&mut Transaction::Query(&mut qt), catalog)?;
 
 	Ok(())
+}
+
+/// Bootstrap the `system::metrics` namespace and its ring buffers.
+///
+/// Idempotent: skips creation if the namespace or ring buffers already exist.
+fn bootstrap_metric_ringbuffers(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &MaterializedCatalog,
+	eventbus: &EventBus,
+) -> Result<()> {
+	let catalog_api = Catalog::new(catalog.clone());
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+		Clock::Real,
+	)?;
+
+	// Find or create the system::metrics namespace
+	let ns_id = match catalog_api.find_namespace_by_path(&mut Transaction::Admin(&mut admin), "system::metrics")? {
+		Some(ns) => ns.id(),
+		None => {
+			let ns = catalog_api.create_namespace(
+				&mut admin,
+				NamespaceToCreate {
+					namespace_fragment: None,
+					name: "system::metrics".to_string(),
+					local_name: "metrics".to_string(),
+					parent_id: NamespaceId::SYSTEM,
+					token: None,
+					grpc: None,
+				},
+			)?;
+			info!("Created system::metrics namespace");
+			ns.id()
+		}
+	};
+
+	// Create request_history ring buffer if it doesn't exist
+	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "request_history")?.is_none()
+	{
+		catalog_api.create_ringbuffer(&mut admin, metric_request_history_schema(ns_id))?;
+		info!("Created system::metrics::request_history ring buffer");
+	}
+
+	// Create statement_stats ring buffer if it doesn't exist
+	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "statement_stats")?.is_none()
+	{
+		catalog_api.create_ringbuffer(&mut admin, metric_statement_stats_schema(ns_id))?;
+		info!("Created system::metrics::statement_stats ring buffer");
+	}
+
+	admin.commit()?;
+
+	Ok(())
+}
+
+const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
+const STATEMENT_STATS_CAPACITY: u64 = 5_000;
+
+fn metric_col(name: &str, ty: Type) -> RingBufferColumnToCreate {
+	RingBufferColumnToCreate {
+		name: Fragment::internal(name),
+		fragment: Fragment::internal(name),
+		constraint: TypeConstraint::unconstrained(ty),
+		properties: vec![],
+		auto_increment: false,
+		dictionary_id: None,
+	}
+}
+
+fn metric_request_history_schema(namespace: NamespaceId) -> RingBufferToCreate {
+	RingBufferToCreate {
+		name: Fragment::internal("request_history"),
+		namespace,
+		columns: vec![
+			metric_col("timestamp", Type::DateTime),
+			metric_col("operation", Type::Utf8),
+			metric_col("fingerprint", Type::Utf8),
+			metric_col("total_duration", Type::Duration),
+			metric_col("compute_duration", Type::Duration),
+			metric_col("success", Type::Boolean),
+			metric_col("statement_count", Type::Int8),
+			metric_col("normalized_rql", Type::Utf8),
+		],
+		capacity: REQUEST_HISTORY_CAPACITY,
+		partition_by: vec![],
+	}
+}
+
+fn metric_statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
+	RingBufferToCreate {
+		name: Fragment::internal("statement_stats"),
+		namespace,
+		columns: vec![
+			metric_col("snapshot_timestamp", Type::DateTime),
+			metric_col("fingerprint", Type::Utf8),
+			metric_col("normalized_rql", Type::Utf8),
+			metric_col("calls", Type::Int8),
+			metric_col("total_duration", Type::Duration),
+			metric_col("mean_duration", Type::Duration),
+			metric_col("max_duration", Type::Duration),
+			metric_col("min_duration", Type::Duration),
+			metric_col("total_rows", Type::Int8),
+			metric_col("errors", Type::Int8),
+		],
+		capacity: STATEMENT_STATS_CAPACITY,
+		partition_by: vec![],
+	}
 }

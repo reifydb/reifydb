@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{mem, sync::Arc, time::Duration};
+use std::{mem, sync::Arc, time::Duration as StdDuration};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -20,7 +20,10 @@ use reifydb_runtime::actor::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_type::{
 	Result as TypeResult,
-	value::{Value, datetime::DateTime, identity::IdentityId, row_number::RowNumber},
+	value::{
+		Value, datetime::DateTime, duration::Duration as ReifyDuration, identity::IdentityId,
+		row_number::RowNumber,
+	},
 };
 use tracing::{error, warn};
 
@@ -35,7 +38,7 @@ pub struct MetricCollectorActor {
 	accumulator: Arc<StatementStatsAccumulator>,
 	engine: StandardEngine,
 	catalog: Catalog,
-	flush_interval: Duration,
+	flush_interval: StdDuration,
 }
 
 impl MetricCollectorActor {
@@ -50,7 +53,7 @@ impl MetricCollectorActor {
 			accumulator,
 			engine,
 			catalog,
-			flush_interval: Duration::from_secs(10),
+			flush_interval: StdDuration::from_secs(10),
 		}
 	}
 
@@ -138,8 +141,8 @@ impl MetricCollectorActor {
 						Value::DateTime(*event.timestamp()),
 						Value::Utf8(operation.to_string()),
 						Value::Utf8(fingerprint.0.to_hex_string()),
-						Value::Int8(event.total().microseconds()),
-						Value::Int8(event.compute().microseconds()),
+						Value::Duration(*event.total()),
+						Value::Duration(*event.compute()),
 						Value::Boolean(*event.success()),
 						Value::Int8(statements.len() as i64),
 						Value::Utf8(normalized_rql.to_string()),
@@ -228,10 +231,22 @@ impl MetricCollectorActor {
 					Value::Utf8(_fingerprint.0.to_hex_string()),
 					Value::Utf8(stats.normalized_rql().to_string()),
 					Value::Int8(stats.calls() as i64),
-					Value::Int8(stats.total_duration_us() as i64),
-					Value::Int8(stats.mean_duration_us() as i64),
-					Value::Int8(stats.max_duration_us() as i64),
-					Value::Int8(stats.min_duration_us() as i64),
+					Value::Duration(
+						ReifyDuration::from_microseconds(stats.total_duration_us() as i64)
+							.unwrap(),
+					),
+					Value::Duration(
+						ReifyDuration::from_microseconds(stats.mean_duration_us() as i64)
+							.unwrap(),
+					),
+					Value::Duration(
+						ReifyDuration::from_microseconds(stats.max_duration_us() as i64)
+							.unwrap(),
+					),
+					Value::Duration(
+						ReifyDuration::from_microseconds(stats.min_duration_us() as i64)
+							.unwrap(),
+					),
 					Value::Int8(stats.total_rows() as i64),
 					Value::Int8(stats.errors() as i64),
 				],
