@@ -2661,6 +2661,7 @@ dependencies = [
  "reifydb-client-derive",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-sub-server",
  "reifydb-sub-server-grpc",
  "reifydb-sub-server-http",
  "reifydb-sub-server-ws",
@@ -2830,6 +2831,16 @@ dependencies = [
  "reifydb-type",
  "thiserror 2.0.18",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-remote-proxy"
+version = "0.4.9"
+dependencies = [
+ "reifydb-build",
+ "reifydb-client",
+ "reifydb-type",
+ "tokio",
 ]
 
 [[package]]
@@ -3045,12 +3056,8 @@ name = "reifydb-sub-server"
 version = "0.4.9"
 dependencies = [
  "futures-util",
- "num_cpus",
- "once_cell",
  "reifydb-auth",
  "reifydb-build",
- "reifydb-catalog",
- "reifydb-client",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-runtime",
@@ -3092,6 +3099,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-remote-proxy",
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",
@@ -3158,6 +3166,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-remote-proxy",
  "reifydb-runtime",
  "reifydb-sub-api",
  "reifydb-sub-server",

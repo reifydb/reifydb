@@ -18,6 +18,15 @@ use reifydb_type::{
 
 use crate::interface::catalog::id::SubscriptionId;
 
+/// The type of database operation being executed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Operation {
+	Query,
+	Command,
+	Admin,
+	Subscribe,
+}
+
 /// Handle to a server actor.
 pub type ServerHandle = ActorHandle<ServerMessage>;
 
@@ -120,4 +129,42 @@ pub enum ServerSubscribeResponse {
 		diagnostic: Box<Diagnostic>,
 		statement: String,
 	},
+}
+
+// ---------------------------------------------------------------------------
+// Pure helpers — shared by native dispatch and DST clients
+// ---------------------------------------------------------------------------
+
+/// Build the appropriate `ServerMessage` from operation parameters.
+///
+/// Used by both the native `dispatch()` function and DST clients to construct
+/// messages for the `ServerActor`.
+pub fn build_server_message(
+	operation: Operation,
+	identity: IdentityId,
+	statements: Vec<String>,
+	params: Params,
+	reply: Reply<ServerResponse>,
+) -> ServerMessage {
+	match operation {
+		Operation::Query => ServerMessage::Query {
+			identity,
+			statements,
+			params,
+			reply,
+		},
+		Operation::Command => ServerMessage::Command {
+			identity,
+			statements,
+			params,
+			reply,
+		},
+		Operation::Admin => ServerMessage::Admin {
+			identity,
+			statements,
+			params,
+			reply,
+		},
+		Operation::Subscribe => unreachable!("subscribe uses a different dispatch path"),
+	}
 }

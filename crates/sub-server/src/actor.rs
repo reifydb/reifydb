@@ -8,18 +8,20 @@
 //! the transport layer — this actor only does engine dispatch and auth.
 
 use reifydb_auth::service::{AuthResponse, AuthService};
-use reifydb_core::actors::server::{
-	ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
+use reifydb_core::{
+	actors::server::{
+		ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
+	},
+	execution::ExecutionResult,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{
-	actor::{
-		context::Context,
-		traits::{Actor, Directive},
-	},
-	context::clock::Clock,
+use reifydb_runtime::actor::{
+	context::Context,
+	reply::Reply,
+	traits::{Actor, Directive},
 };
-use reifydb_type::params::Params;
+use reifydb_runtime::context::clock::Clock;
+use reifydb_type::{params::Params, value::identity::IdentityId};
 
 use crate::subscribe::extract_subscription_id;
 
@@ -40,16 +42,11 @@ impl ServerActor {
 
 	fn dispatch_execute(
 		&self,
-		identity: reifydb_type::value::identity::IdentityId,
+		identity: IdentityId,
 		statements: Vec<String>,
 		params: Params,
-		reply: reifydb_runtime::actor::reply::Reply<ServerResponse>,
-		execute: impl FnOnce(
-			&StandardEngine,
-			reifydb_type::value::identity::IdentityId,
-			&str,
-			Params,
-		) -> reifydb_core::execution::ExecutionResult,
+		reply: Reply<ServerResponse>,
+		execute: impl FnOnce(&StandardEngine, IdentityId, &str, Params) -> ExecutionResult,
 	) {
 		let combined = statements.join("; ");
 		let t = self.clock.instant();

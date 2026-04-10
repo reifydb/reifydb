@@ -47,7 +47,7 @@
 use std::{collections::HashMap, future::Future, panic::AssertUnwindSafe, pin::Pin, sync::Arc};
 
 use futures_util::FutureExt;
-use reifydb_core::metric::ExecutionMetrics;
+use reifydb_core::{actors::server::Operation, metric::ExecutionMetrics};
 use reifydb_type::{
 	params::Params,
 	value::{duration::Duration, identity::IdentityId},
@@ -55,15 +55,6 @@ use reifydb_type::{
 use tracing::error;
 
 use crate::execute::ExecuteError;
-
-/// The type of database operation being executed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Operation {
-	Query,
-	Command,
-	Admin,
-	Subscribe,
-}
 
 /// The transport protocol used for the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

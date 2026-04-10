@@ -1,23 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! DST client for the server actor (WebSocket path).
+//! DST (deterministic simulation testing) client for the server actor.
+//!
+//! Provides a synchronous client that sends `ServerMessage`s to the unified
+//! `ServerActor` and reads replies after `run_until_idle()`. There is no
+//! protocol distinction in DST — all operations go through the same actor.
 
 use std::collections::HashMap;
 
 use reifydb_core::actors::server::{
-	ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
+	Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
+	build_server_message,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorSystem};
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
-/// Synchronous DST client for a single WebSocket connection actor.
-pub struct DstWsClient {
+pub struct DstClient {
 	actor_ref: ActorRef<ServerMessage>,
 	system: ActorSystem,
 }
 
-impl DstWsClient {
+impl DstClient {
 	pub fn new(actor_ref: ActorRef<ServerMessage>, system: ActorSystem) -> Self {
 		Self {
 			actor_ref,
@@ -32,34 +36,19 @@ impl DstWsClient {
 
 	pub fn query(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(ServerMessage::Query {
-			identity,
-			statements,
-			params,
-			reply,
-		});
+		self.send(build_server_message(Operation::Query, identity, statements, params, reply));
 		receiver.try_recv().expect("no reply from actor")
 	}
 
 	pub fn command(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(ServerMessage::Command {
-			identity,
-			statements,
-			params,
-			reply,
-		});
+		self.send(build_server_message(Operation::Command, identity, statements, params, reply));
 		receiver.try_recv().expect("no reply from actor")
 	}
 
 	pub fn admin(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(ServerMessage::Admin {
-			identity,
-			statements,
-			params,
-			reply,
-		});
+		self.send(build_server_message(Operation::Admin, identity, statements, params, reply));
 		receiver.try_recv().expect("no reply from actor")
 	}
 

@@ -59,13 +59,15 @@ pub enum CreateSubscriptionResult {
 }
 
 #[cfg(not(reifydb_single_threaded))]
+use reifydb_core::actors::server::Operation;
+#[cfg(not(reifydb_single_threaded))]
 use tokio::task::spawn_blocking;
 
 use crate::execute::ExecuteError;
 #[cfg(not(reifydb_single_threaded))]
 use crate::{
 	dispatch::dispatch_subscribe,
-	interceptor::{Operation, RequestContext, RequestMetadata},
+	interceptor::{RequestContext, RequestMetadata},
 	state::AppState,
 };
 

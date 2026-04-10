@@ -7,9 +7,9 @@
 //! and registering them with the registry and poller for real-time updates.
 
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::frame::response::convert_frames};
+use reifydb_remote_proxy::{connect_remote, proxy_remote};
 use reifydb_sub_server::{
 	interceptor::{Protocol, RequestMetadata},
-	remote::{connect_remote, proxy_remote},
 	subscribe::{CreateSubscriptionError, CreateSubscriptionResult::*, create_subscription},
 };
 use reifydb_type::value::identity::IdentityId;

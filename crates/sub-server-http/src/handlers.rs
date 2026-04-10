@@ -17,14 +17,14 @@ use axum::{
 	response::{IntoResponse, Response},
 };
 use reifydb_core::{
-	actors::server::{ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	value::frame::response::{ResponseFrame, convert_frames},
 };
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
 	dispatch::dispatch,
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
+	interceptor::{Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	wire::WireParams,
 };

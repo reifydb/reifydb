@@ -4,15 +4,15 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	actors::server::{ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::id::SubscriptionId,
 };
+use reifydb_remote_proxy::{connect_remote, proxy_remote};
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
 	dispatch::dispatch,
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
-	remote::{connect_remote, proxy_remote},
+	interceptor::{Protocol, RequestContext, RequestMetadata},
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};

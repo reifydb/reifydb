@@ -27,6 +27,8 @@ pub use reifydb_auth as auth;
 pub use reifydb_catalog as catalog;
 pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
+#[cfg(feature = "sub_server")]
+pub use reifydb_core::actors::server::Operation;
 pub use reifydb_core::event::EventBus;
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
@@ -60,8 +62,7 @@ pub use reifydb_sub_replication as sub_replication;
 pub use reifydb_sub_server as sub_server;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server::interceptor::{
-	Operation, Protocol, RequestContext, RequestInterceptor, RequestInterceptorChain, RequestMetadata,
-	ResponseContext,
+	Protocol, RequestContext, RequestInterceptor, RequestInterceptorChain, RequestMetadata, ResponseContext,
 };
 #[cfg(feature = "sub_server_admin")]
 pub use reifydb_sub_server_admin as sub_server_admin;

@@ -76,14 +76,11 @@ pub fn cleanup_server(mut server: Option<Database>) {
 #[cfg(reifydb_single_threaded)]
 use reifydb::{Database, SharedRuntimeConfig, embedded};
 #[cfg(reifydb_single_threaded)]
-use reifydb_client::{DstGrpcClient, DstHttpClient, DstWsClient};
+use reifydb_client::DstClient;
 #[cfg(reifydb_single_threaded)]
 use reifydb_core::actors::server::{ServerAuthResponse, ServerMessage, ServerResponse};
 #[cfg(reifydb_single_threaded)]
-use reifydb_runtime::actor::{
-	reply::reply_channel,
-	system::{ActorHandle, ActorSystem},
-};
+use reifydb_runtime::actor::system::{ActorHandle, ActorSystem};
 #[cfg(reifydb_single_threaded)]
 use reifydb_sub_server::actor::ServerActor;
 #[cfg(reifydb_single_threaded)]
@@ -94,13 +91,8 @@ pub struct DstTestContext {
 	pub db: Database,
 	pub system: ActorSystem,
 	pub identity: IdentityId,
-	// Keep actor handles alive so actors aren't stopped
-	_http_handle: ActorHandle<ServerMessage>,
-	_grpc_handle: ActorHandle<ServerMessage>,
-	_ws_handle: ActorHandle<ServerMessage>,
-	pub http_client: DstHttpClient,
-	pub grpc_client: DstGrpcClient,
-	pub ws_client: DstWsClient,
+	_handle: ActorHandle<ServerMessage>,
+	pub client: DstClient,
 }
 
 #[cfg(reifydb_single_threaded)]
@@ -122,20 +114,11 @@ impl DstTestContext {
 		let system = db.shared_runtime().actor_system();
 		let clock = db.shared_runtime().clock().clone();
 
-		// Spawn server actors
-		let http_handle = system
-			.spawn("http-server", ServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
-		let grpc_handle = system
-			.spawn("grpc-server", ServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
-		let ws_handle = system
-			.spawn("ws-server", ServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
-
-		let http_client = DstHttpClient::new(http_handle.actor_ref().clone(), system.clone());
-		let grpc_client = DstGrpcClient::new(grpc_handle.actor_ref().clone(), system.clone());
-		let ws_client = DstWsClient::new(ws_handle.actor_ref().clone(), system.clone());
+		let handle = system.spawn("server", ServerActor::new(engine, auth_service, clock));
+		let client = DstClient::new(handle.actor_ref().clone(), system.clone());
 
 		// Authenticate to get identity
-		let auth_response = http_client.authenticate(
+		let auth_response = client.authenticate(
 			"token".to_string(),
 			HashMap::from([("token".to_string(), "mysecrettoken".to_string())]),
 		);
@@ -157,12 +140,8 @@ impl DstTestContext {
 			db,
 			system,
 			identity,
-			_http_handle: http_handle,
-			_grpc_handle: grpc_handle,
-			_ws_handle: ws_handle,
-			http_client,
-			grpc_client,
-			ws_client,
+			_handle: handle,
+			client,
 		}
 	}
 }

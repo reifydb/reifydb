@@ -20,6 +20,7 @@ reifydb-subscription = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
+reifydb-remote-proxy = { workspace = true }
 
 dashmap = { workspace = true }
 

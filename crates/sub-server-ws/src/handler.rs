@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
-	actors::server::{ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::id::SubscriptionId,
 	value::frame::response::convert_frames,
 };
@@ -15,7 +15,7 @@ use reifydb_sub_server::{
 	auth::extract_identity_from_ws_auth,
 	dispatch::dispatch,
 	execute::ExecuteError,
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
+	interceptor::{Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	state::AppState,
 	subscribe::cleanup_subscription,

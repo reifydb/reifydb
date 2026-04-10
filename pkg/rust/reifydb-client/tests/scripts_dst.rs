@@ -13,11 +13,11 @@ use reifydb_client::Params;
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 
-pub struct DstWsRunner {
+pub struct DstRunner {
 	ctx: Option<DstTestContext>,
 }
 
-impl DstWsRunner {
+impl DstRunner {
 	pub fn new() -> Self {
 		Self {
 			ctx: None,
@@ -25,7 +25,7 @@ impl DstWsRunner {
 	}
 }
 
-impl testscript::runner::Runner for DstWsRunner {
+impl testscript::runner::Runner for DstRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let ctx = self.ctx.as_ref().ok_or("No DST context available")?;
 		let identity = ctx.identity;
@@ -34,49 +34,49 @@ impl testscript::runner::Runner for DstWsRunner {
 			"admin" => {
 				let rql = parse_rql(command);
 				println!("admin: {rql}");
-				let response = ctx.ws_client.admin(identity, vec![rql], Params::None);
+				let response = ctx.client.admin(identity, vec![rql], Params::None);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"command" => {
 				let rql = parse_rql(command);
 				println!("command: {rql}");
-				let response = ctx.ws_client.command(identity, vec![rql], Params::None);
+				let response = ctx.client.command(identity, vec![rql], Params::None);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"command_positional" => {
 				let (rql, params) = parse_positional_params(command);
 				println!("command_positional: {rql}");
-				let response = ctx.ws_client.command(identity, vec![rql], params);
+				let response = ctx.client.command(identity, vec![rql], params);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"command_named" => {
 				let (rql, params) = parse_named_params(command);
 				println!("command_named: {rql}");
-				let response = ctx.ws_client.command(identity, vec![rql], params);
+				let response = ctx.client.command(identity, vec![rql], params);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"query" => {
 				let rql = parse_rql(command);
 				println!("query: {rql}");
-				let response = ctx.ws_client.query(identity, vec![rql], Params::None);
+				let response = ctx.client.query(identity, vec![rql], Params::None);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"query_positional" => {
 				let (rql, params) = parse_positional_params(command);
 				println!("query_positional: {rql}");
-				let response = ctx.ws_client.query(identity, vec![rql], params);
+				let response = ctx.client.query(identity, vec![rql], params);
 				write_frames(dst_response_to_result(response)?)
 			}
 
 			"query_named" => {
 				let (rql, params) = parse_named_params(command);
 				println!("query_named: {rql}");
-				let response = ctx.ws_client.query(identity, vec![rql], params);
+				let response = ctx.client.query(identity, vec![rql], params);
 				write_frames(dst_response_to_result(response)?)
 			}
 
@@ -95,8 +95,8 @@ impl testscript::runner::Runner for DstWsRunner {
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_dst_ws => test_dst_ws }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_dst => test_dst }
 
-fn test_dst_ws(path: &Path) {
-	testscript::runner::run_path(&mut DstWsRunner::new(), path).unwrap()
+fn test_dst(path: &Path) {
+	testscript::runner::run_path(&mut DstRunner::new(), path).unwrap()
 }

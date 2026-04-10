@@ -3,15 +3,18 @@
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use reifydb_core::event::{
-	EventBus,
-	metric::{Request, RequestExecutedEvent},
+use reifydb_core::{
+	actors::server::Operation,
+	event::{
+		EventBus,
+		metric::{Request, RequestExecutedEvent},
+	},
 };
 use reifydb_metric::accumulator::StatementStatsAccumulator;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_sub_server::{
 	execute::ExecuteError,
-	interceptor::{Operation, RequestContext, RequestInterceptor, ResponseContext},
+	interceptor::{RequestContext, RequestInterceptor, ResponseContext},
 };
 use reifydb_type::value::datetime::DateTime;
 

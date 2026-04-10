@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
+#![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
+#![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 
-//! Shared remote subscription support.
+//! Remote subscription proxy.
 //!
 //! Provides connection and proxy logic for remote subscriptions,
 //! used by both gRPC and WebSocket server subsystems.

@@ -5,26 +5,22 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Common infrastructure for HTTP and WebSocket server subsystems"
+description = "Common infrastructure for server subsystems"
 
 [features]
 default = []
 
 [dependencies]
 reifydb-auth = { workspace = true }
-reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-client = { workspace = true, features = ["grpc"] }
 reifydb-type = { workspace = true }
 
 futures-util = { workspace = true }
-once_cell = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
-num_cpus = { workspace = true }
 tokio = { workspace = true }
 
 [build-dependencies]
