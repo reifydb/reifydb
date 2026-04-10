@@ -571,7 +571,7 @@ pub mod tests {
 			clock::{Clock, MockClock},
 			rng::Rng,
 		},
-		pool::{PoolConfig, Pools},
+		pool::Pools,
 	};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;

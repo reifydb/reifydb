@@ -24,4 +24,28 @@ impl Pools {
 	pub fn new(_config: PoolConfig) -> Self {
 		Self
 	}
+
+	/// Get a reference to the system pool (stub).
+	pub fn system_pool(&self) -> StubPool {
+		StubPool
+	}
+
+	/// Get a reference to the query pool (stub).
+	pub fn query_pool(&self) -> StubPool {
+		StubPool
+	}
+}
+
+/// Stub thread pool that executes closures inline.
+#[derive(Clone)]
+pub struct StubPool;
+
+impl StubPool {
+	/// Run `f` directly on the current thread.
+	pub fn install<F, R>(&self, f: F) -> R
+	where
+		F: FnOnce() -> R,
+	{
+		f()
+	}
 }

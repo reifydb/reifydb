@@ -16,12 +16,12 @@
 mod native;
 
 #[cfg(any(reifydb_single_threaded, reifydb_target = "dst"))]
-mod stub;
+mod wasm;
 
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
 pub use native::Pools;
 #[cfg(any(reifydb_single_threaded, reifydb_target = "dst"))]
-pub use stub::Pools;
+pub use wasm::Pools;
 
 /// Configuration for thread pool sizes.
 #[derive(Debug, Clone)]

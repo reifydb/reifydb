@@ -55,6 +55,8 @@ use crate::actor::mailbox::ActorRef;
 use crate::actor::mailbox::create_actor_ref;
 #[cfg(reifydb_target = "dst")]
 use crate::actor::mailbox::create_dst_mailbox;
+#[cfg(reifydb_target = "dst")]
+use crate::context::clock::MockClock;
 use crate::{
 	actor::{
 		context::{CancellationToken, Context},
@@ -255,7 +257,13 @@ impl<M: Send + 'static> TestContext<M> {
 
 		// Create an actor system for testing
 		let pools = Pools::new(PoolConfig::default());
-		let system = ActorSystem::new(pools, Clock::Real);
+
+		#[cfg(reifydb_target = "dst")]
+		let clock = Clock::Mock(MockClock::new(0));
+		#[cfg(not(reifydb_target = "dst"))]
+		let clock = Clock::Real;
+
+		let system = ActorSystem::new(pools, clock);
 
 		Context::new(actor_ref, system, self.cancel.clone())
 	}
