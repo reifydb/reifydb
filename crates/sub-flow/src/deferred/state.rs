@@ -63,11 +63,6 @@ impl FlowState {
 		self.status = FlowStatus::Active;
 	}
 
-	/// Transition the flow back to backfilling status.
-	pub fn deactivate(&mut self) {
-		self.status = FlowStatus::Backfilling;
-	}
-
 	/// Update the checkpoint to a new version.
 	pub fn update_checkpoint(&mut self, version: CommitVersion) {
 		self.checkpoint = version;

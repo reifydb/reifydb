@@ -474,13 +474,10 @@ impl CoordinatorActor {
 					}
 				}
 
-				// Collect checkpoints for active flows, skipping downstream flows
-				// whose upstream view-producing flows were just submitted.
+				// Collect checkpoints for active flows
 				if let Some(to_version) = consume_ctx.latest_version {
 					for flow_id in state.states.active_flow_ids() {
-						if !consume_ctx.downstream_flows.contains(&flow_id) {
-							consume_ctx.checkpoints.push((flow_id, to_version));
-						}
+						consume_ctx.checkpoints.push((flow_id, to_version));
 					}
 				}
 
@@ -547,7 +544,7 @@ impl CoordinatorActor {
 		mut consume_ctx: ConsumeContext,
 	) {
 		if let Some(to_version) = consume_ctx.latest_version {
-			let mut worker_batches = self.route_and_group_changes(
+			let worker_batches = self.route_and_group_changes(
 				state,
 				&consume_ctx.all_changes,
 				to_version,
@@ -555,46 +552,6 @@ impl CoordinatorActor {
 			);
 
 			Span::current().record("batch_count", worker_batches.len());
-
-			// Identify flows downstream of view-producing flows in this batch.
-			// Only mark consumers that were actually routed in this same batch.
-			// If a downstream flow is not scheduled here, there is nothing to demote:
-			// it can stay active and wait for the upstream view's own CDC.
-			let dependency_graph = state.analyzer.get_dependency_graph();
-			let submitted_flow_ids: collections::HashSet<FlowId> = worker_batches
-				.values()
-				.flat_map(|batch| batch.instructions.iter().map(|i| i.flow_id))
-				.collect();
-
-			for (view_id, producer_flow_id) in &dependency_graph.sink_views {
-				if submitted_flow_ids.contains(producer_flow_id)
-					&& let Some(consumer_flow_ids) = dependency_graph.source_views.get(view_id)
-				{
-					for fid in consumer_flow_ids {
-						if submitted_flow_ids.contains(fid) {
-							consume_ctx.downstream_flows.insert(*fid);
-						}
-					}
-				}
-			}
-			// Remove downstream flow instructions from batches — they would read
-			// stale (uncommitted) upstream view data. Demote them to Backfilling
-			// so they re-process in the next cycle with committed data.
-			if !consume_ctx.downstream_flows.is_empty() {
-				for batch in worker_batches.values_mut() {
-					batch.instructions
-						.retain(|i| !consume_ctx.downstream_flows.contains(&i.flow_id));
-				}
-				worker_batches.retain(|_, batch| !batch.instructions.is_empty());
-
-				for flow_id in &consume_ctx.downstream_flows {
-					if let Some(flow_state) = state.states.get_mut(flow_id)
-						&& flow_state.is_active()
-					{
-						flow_state.deactivate();
-					}
-				}
-			}
 
 			if !worker_batches.is_empty() {
 				let self_ref = ctx.self_ref().clone();
@@ -1030,23 +987,63 @@ impl CoordinatorActor {
 		state_version: CommitVersion,
 	) -> BTreeMap<usize, WorkerBatch> {
 		let start = self.clock.instant();
-		let mut worker_batches: BTreeMap<usize, WorkerBatch> = BTreeMap::new();
+		let dependency_graph = state.analyzer.get_dependency_graph();
 
 		let active_flow_ids: Vec<_> = state.states.active_flow_ids();
 		Span::current().record("active_flows", active_flow_ids.len());
 
+		// Build instructions for all active flows with relevant changes
+		let mut flow_instructions: BTreeMap<FlowId, FlowInstruction> = BTreeMap::new();
 		for flow_id in active_flow_ids {
 			let flow_changes = self.filter_cdc_for_flow(state, flow_id, changes);
-
 			if flow_changes.is_empty() {
 				continue;
 			}
+			flow_instructions.insert(flow_id, FlowInstruction::new(flow_id, to_version, flow_changes));
+		}
+		let submitted: collections::HashSet<FlowId> = flow_instructions.keys().copied().collect();
 
-			let worker_id = (flow_id.0 as usize) % self.num_workers;
+		// Use existing execution levels for topological ordering
+		let levels = state.analyzer.calculate_execution_levels(dependency_graph);
+		let ordered: Vec<FlowId> = levels
+			.iter()
+			.flat_map(|level| level.iter().filter(|id| submitted.contains(id)).copied())
+			.collect();
 
-			let batch = worker_batches.entry(worker_id).or_insert_with(|| WorkerBatch::new(state_version));
+		// Build upstream map from existing dependencies (filtered to submitted flows)
+		let mut upstream_of: BTreeMap<FlowId, FlowId> = BTreeMap::new();
+		for dep in &dependency_graph.dependencies {
+			if submitted.contains(&dep.source_flow) && submitted.contains(&dep.target_flow) {
+				upstream_of.entry(dep.target_flow).or_insert(dep.source_flow);
+			}
+		}
 
-			batch.add_instruction(FlowInstruction::new(flow_id, to_version, flow_changes));
+		// Route: downstream flows go to the same worker as their upstream
+		let mut flow_to_worker: BTreeMap<FlowId, usize> = BTreeMap::new();
+		for fid in &ordered {
+			let worker_id = match upstream_of.get(fid) {
+				Some(upstream) => flow_to_worker
+					.get(upstream)
+					.copied()
+					.unwrap_or_else(|| (upstream.0 as usize) % self.num_workers),
+				None => (fid.0 as usize) % self.num_workers,
+			};
+			flow_to_worker.insert(*fid, worker_id);
+		}
+
+		// Build batches in topological order so upstream instructions are
+		// processed before downstream ones within the same worker.  The
+		// worker accumulates `pending` across instructions, so the
+		// downstream flow naturally sees the upstream's writes.
+		let mut worker_batches: BTreeMap<usize, WorkerBatch> = BTreeMap::new();
+		for fid in ordered {
+			if let Some(instruction) = flow_instructions.remove(&fid) {
+				let worker_id = flow_to_worker[&fid];
+				let batch = worker_batches
+					.entry(worker_id)
+					.or_insert_with(|| WorkerBatch::new(state_version));
+				batch.add_instruction(instruction);
+			}
 		}
 
 		Span::current().record("batches", worker_batches.len());
