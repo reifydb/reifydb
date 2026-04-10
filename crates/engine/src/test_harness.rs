@@ -38,6 +38,7 @@ use reifydb_runtime::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
+	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -172,13 +173,18 @@ impl TestEngineBuilder {
 	}
 
 	pub fn build(self) -> TestEngine {
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let eventbus = EventBus::new(&actor_system);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory_with_eventbus(eventbus.clone());
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().async_threads(2).compute_threads(2).deterministic_testing(1000),
+			SharedRuntimeConfig::default()
+				.async_threads(2)
+				.system_threads(2)
+				.query_threads(2)
+				.deterministic_testing(1000),
 		);
 		let materialized_catalog = MaterializedCatalog::new();
 		let multi = MultiTransaction::new(
@@ -263,7 +269,8 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(1);
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(
@@ -292,7 +299,8 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
 
-	let actor_system = ActorSystem::new(1);
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let event_bus = EventBus::new(&actor_system);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let multi = MultiTransaction::new(

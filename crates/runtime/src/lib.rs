@@ -24,7 +24,8 @@
 //! // Or with custom configuration
 //! let config = SharedRuntimeConfig::default()
 //!     .async_threads(4)
-//!     .compute_threads(4);
+//!     .system_threads(4)
+//!     .query_threads(4);
 //! let runtime = SharedRuntime::from_config(config);
 //!
 //! // Spawn async work
@@ -43,19 +44,20 @@ pub mod context;
 
 pub mod hash;
 
+pub mod pool;
+
 pub mod sync;
 
 pub mod actor;
 
 #[cfg(not(reifydb_target = "dst"))]
 use std::future::Future;
-#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
-use std::{mem::ManuallyDrop, time::Duration};
 use std::{sync::Arc, thread::available_parallelism};
 
 use crate::{
 	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
+	pool::{PoolConfig, Pools},
 };
 
 /// Configuration for creating a [`SharedRuntime`].
@@ -63,8 +65,10 @@ use crate::{
 pub struct SharedRuntimeConfig {
 	/// Number of worker threads for async runtime (ignored in WASM)
 	pub async_threads: usize,
-	/// Number of worker threads for compute/actor pool (ignored in WASM)
-	pub compute_threads: usize,
+	/// Number of worker threads for the system pool (lightweight actors).
+	pub system_threads: usize,
+	/// Number of worker threads for the query pool (execution-heavy actors).
+	pub query_threads: usize,
 	/// Clock for time operations (defaults to real system clock)
 	pub clock: Clock,
 	/// Random number generator (defaults to OS entropy)
@@ -73,9 +77,11 @@ pub struct SharedRuntimeConfig {
 
 impl Default for SharedRuntimeConfig {
 	fn default() -> Self {
+		let cpus = available_parallelism().map_or(1, |n| n.get());
 		Self {
 			async_threads: 1,
-			compute_threads: available_parallelism().map_or(1, |n| n.get()),
+			system_threads: cpus.min(4),
+			query_threads: cpus,
 			clock: Clock::Real,
 			rng: context::rng::Rng::default(),
 		}
@@ -89,9 +95,15 @@ impl SharedRuntimeConfig {
 		self
 	}
 
-	/// Set the number of compute worker threads.
-	pub fn compute_threads(mut self, threads: usize) -> Self {
-		self.compute_threads = threads;
+	/// Set the number of system pool threads (lightweight actors).
+	pub fn system_threads(mut self, threads: usize) -> Self {
+		self.system_threads = threads;
+		self
+	}
+
+	/// Set the number of query pool threads (execution-heavy actors).
+	pub fn query_threads(mut self, threads: usize) -> Self {
+		self.query_threads = threads;
 		self
 	}
 
@@ -115,7 +127,7 @@ use std::{
 #[cfg(target_arch = "wasm32")]
 use futures_util::future::LocalBoxFuture;
 #[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
-use tokio::runtime::{self as tokio_runtime, Runtime};
+use tokio::runtime as tokio_runtime;
 #[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 use tokio::task::JoinHandle;
 
@@ -165,8 +177,8 @@ impl Error for WasmJoinError {}
 /// Inner shared state for the runtime (native).
 #[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 struct SharedRuntimeInner {
-	tokio: ManuallyDrop<Runtime>,
 	system: ActorSystem,
+	pools: Pools,
 	clock: Clock,
 	rng: context::rng::Rng,
 }
@@ -174,18 +186,8 @@ struct SharedRuntimeInner {
 #[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 impl Drop for SharedRuntimeInner {
 	fn drop(&mut self) {
-		// Shut down the actor system FIRST — actors may hold tokio
-		// JoinHandles or spawn tasks, so the runtime must still be alive.
 		self.system.shutdown();
 		let _ = self.system.join();
-
-		// SAFETY: drop is called exactly once; taking the Runtime here
-		// prevents its default Drop (which calls shutdown_background and
-		// does NOT wait). We call shutdown_timeout instead so that worker
-		// threads and I/O resources (epoll fd, timer fd, etc.) are fully
-		// reclaimed before this function returns.
-		let rt = unsafe { ManuallyDrop::take(&mut self.tokio) };
-		rt.shutdown_timeout(Duration::from_secs(5));
 	}
 }
 
@@ -193,6 +195,7 @@ impl Drop for SharedRuntimeInner {
 #[cfg(target_arch = "wasm32")]
 struct SharedRuntimeInner {
 	system: ActorSystem,
+	pools: Pools,
 	clock: Clock,
 	rng: context::rng::Rng,
 }
@@ -201,6 +204,7 @@ struct SharedRuntimeInner {
 #[cfg(reifydb_target = "dst")]
 struct SharedRuntimeInner {
 	system: ActorSystem,
+	pools: Pools,
 	clock: Clock,
 	rng: context::rng::Rng,
 }
@@ -218,48 +222,17 @@ pub struct SharedRuntime(Arc<SharedRuntimeInner>);
 
 impl SharedRuntime {
 	/// Create a new shared runtime from configuration.
-	///
-	/// # Panics
-	///
-	/// Panics if the runtime cannot be created (native only).
-	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let tokio = tokio_runtime::Builder::new_multi_thread()
-			.worker_threads(config.async_threads)
-			.thread_name("async")
-			.enable_all()
-			.build()
-			.expect("Failed to create tokio runtime");
-
-		let system = ActorSystem::with_clock(config.compute_threads, config.clock.clone());
-
-		Self(Arc::new(SharedRuntimeInner {
-			tokio: ManuallyDrop::new(tokio),
-			system,
-			clock: config.clock,
-			rng: config.rng,
-		}))
-	}
-
-	/// Create a new shared runtime from configuration (DST).
-	#[cfg(reifydb_target = "dst")]
-	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let system = ActorSystem::with_clock(config.compute_threads, config.clock.clone());
+		let pools = Pools::new(PoolConfig {
+			system_threads: config.system_threads,
+			query_threads: config.query_threads,
+			async_threads: config.async_threads,
+		});
+		let system = ActorSystem::new(pools.clone(), config.clock.clone());
 
 		Self(Arc::new(SharedRuntimeInner {
 			system,
-			clock: config.clock,
-			rng: config.rng,
-		}))
-	}
-
-	/// Create a new shared runtime from configuration.
-	#[cfg(target_arch = "wasm32")]
-	pub fn from_config(config: SharedRuntimeConfig) -> Self {
-		let system = ActorSystem::with_clock(config.compute_threads, config.clock.clone());
-
-		Self(Arc::new(SharedRuntimeInner {
-			system,
+			pools,
 			clock: config.clock,
 			rng: config.rng,
 		}))
@@ -280,14 +253,15 @@ impl SharedRuntime {
 		&self.0.rng
 	}
 
+	/// Get the pools.
+	pub fn pools(&self) -> Pools {
+		self.0.pools.clone()
+	}
+
 	/// Get a handle to the async runtime.
-	///
-	/// Returns a platform-specific handle type:
-	/// - Native: `tokio_runtime::Handle`
-	/// - WASM: `WasmHandle`
 	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn handle(&self) -> tokio_runtime::Handle {
-		self.0.tokio.handle().clone()
+		self.0.pools.handle()
 	}
 
 	/// Get a handle to the async runtime.
@@ -297,17 +271,13 @@ impl SharedRuntime {
 	}
 
 	/// Spawn a future onto the runtime.
-	///
-	/// Returns a platform-specific join handle type:
-	/// - Native: `JoinHandle`
-	/// - WASM: `WasmJoinHandle`
 	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
 	where
 		F: Future + Send + 'static,
 		F::Output: Send + 'static,
 	{
-		self.0.tokio.spawn(future)
+		self.0.pools.spawn(future)
 	}
 
 	/// Spawn a future onto the runtime.
@@ -323,19 +293,15 @@ impl SharedRuntime {
 	}
 
 	/// Block the current thread until the future completes.
-	///
-	/// **Note:** Not supported in WASM builds - will panic.
 	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
 	pub fn block_on<F>(&self, future: F) -> F::Output
 	where
 		F: Future,
 	{
-		self.0.tokio.block_on(future)
+		self.0.pools.block_on(future)
 	}
 
 	/// Block the current thread until the future completes.
-	///
-	/// **Note:** Not supported in WASM builds - will panic.
 	#[cfg(target_arch = "wasm32")]
 	pub fn block_on<F>(&self, _future: F) -> F::Output
 	where
@@ -357,7 +323,7 @@ mod tests {
 	use super::*;
 
 	fn test_config() -> SharedRuntimeConfig {
-		SharedRuntimeConfig::default().async_threads(2).compute_threads(2)
+		SharedRuntimeConfig::default().async_threads(2).system_threads(2).query_threads(2)
 	}
 
 	#[test]

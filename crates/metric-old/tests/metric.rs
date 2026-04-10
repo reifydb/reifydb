@@ -29,7 +29,11 @@ use reifydb_metric_old::{
 	multi::{MultiStorageStats, StorageStatsReader, Tier},
 	worker::{CdcStatsDroppedListener, CdcStatsListener, MetricsWorker, MetricsWorkerConfig, StorageStatsListener},
 };
-use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+};
 use reifydb_store_multi::{
 	config::{HotConfig, MultiStoreConfig},
 	hot::storage::HotStorage,
@@ -51,7 +55,8 @@ test_each_path! { in "crates/metric-old/tests/scripts/integration" as metric_sql
 
 fn test_memory(path: &Path) {
 	let data_storage = HotStorage::memory();
-	let actor_system = ActorSystem::new(1);
+	let pools = Pools::new(PoolConfig::default());
+	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let event_bus = EventBus::new(&actor_system);
 	let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 	let stats_waiter = StatsWaiter::new();
@@ -63,7 +68,8 @@ fn test_memory(path: &Path) {
 fn test_sqlite(path: &Path) {
 	temp_dir(|_db_path| {
 		let data_storage = HotStorage::sqlite_in_memory();
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let metrics_storage = StandardSingleStore::testing_memory_with_eventbus(event_bus.clone());
 		let stats_waiter = StatsWaiter::new();

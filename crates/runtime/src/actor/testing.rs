@@ -55,10 +55,14 @@ use crate::actor::mailbox::ActorRef;
 use crate::actor::mailbox::create_actor_ref;
 #[cfg(reifydb_target = "dst")]
 use crate::actor::mailbox::create_dst_mailbox;
-use crate::actor::{
-	context::{CancellationToken, Context},
-	system::ActorSystem,
-	traits::{Actor, Directive},
+use crate::{
+	actor::{
+		context::{CancellationToken, Context},
+		system::ActorSystem,
+		traits::{Actor, Directive},
+	},
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
 };
 
 /// Test harness for synchronous actor testing.
@@ -250,7 +254,8 @@ impl<M: Send + 'static> TestContext<M> {
 		};
 
 		// Create an actor system for testing
-		let system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let system = ActorSystem::new(pools, Clock::Real);
 
 		Context::new(actor_ref, system, self.cancel.clone())
 	}

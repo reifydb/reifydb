@@ -13,14 +13,17 @@ use reifydb_runtime::{
 		traits::{Actor, Directive},
 	},
 	context::clock::{Clock, MockClock},
+	pool::{PoolConfig, Pools},
 };
 
 pub fn test_system() -> ActorSystem {
-	ActorSystem::with_clock(1, Clock::Mock(MockClock::from_millis(0)))
+	let pools = Pools::new(PoolConfig::default());
+	ActorSystem::new(pools, Clock::Mock(MockClock::from_millis(0)))
 }
 
 pub fn test_system_with_seed(seed: u64) -> ActorSystem {
-	ActorSystem::with_clock(1, Clock::Mock(MockClock::from_millis(seed)))
+	let pools = Pools::new(PoolConfig::default());
+	ActorSystem::new(pools, Clock::Mock(MockClock::from_millis(seed)))
 }
 
 pub type SharedLog = Arc<Mutex<Vec<String>>>;

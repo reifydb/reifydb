@@ -7,6 +7,7 @@ use reifydb_core::event::EventBus;
 use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
+	pool::{PoolConfig, Pools},
 };
 use tracing::instrument;
 
@@ -94,12 +95,14 @@ impl Deref for StandardMultiStore {
 
 impl StandardMultiStore {
 	pub fn testing_memory() -> Self {
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
 	}
 
 	pub fn testing_memory_with_eventbus(event_bus: EventBus) -> Self {
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(MultiStoreConfig {
 			hot: Some(HotConfig {
 				storage: HotStorage::memory(),

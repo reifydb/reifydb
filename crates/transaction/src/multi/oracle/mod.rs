@@ -461,7 +461,7 @@ pub mod tests {
 	};
 
 	use reifydb_core::encoded::key::EncodedKeyRange;
-	use reifydb_runtime::context::clock::MockClock;
+	use reifydb_runtime::{context::clock::MockClock, pool::Pools};
 	use reifydb_type::value::Value;
 
 	use super::*;
@@ -501,7 +501,7 @@ pub mod tests {
 
 	fn create_test_oracle(start: impl Into<CommitVersion>) -> Oracle<MockVersionProvider> {
 		let clock = MockVersionProvider::new(start);
-		let actor_system = ActorSystem::new(1);
+		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 
 		struct DummyConfig;
 		impl GetConfig for DummyConfig {

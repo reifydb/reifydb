@@ -12,7 +12,7 @@ use std::sync::{
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
-use rayon::spawn;
+use rayon::ThreadPool;
 use tracing::debug;
 
 use super::{ActorSystem, JoinError};
@@ -40,6 +40,7 @@ struct ActorCell<A: Actor> {
 	schedule_state: AtomicU8,
 	completion_tx: Sender<()>,
 	done_tx: Sender<()>,
+	pool: Arc<ThreadPool>,
 }
 
 /// Transition the actor to SCHEDULED and submit a task to the pool if it was IDLE.
@@ -50,8 +51,9 @@ where
 	// IDLE → SCHEDULED: we must submit. SCHEDULED → NOTIFIED: already queued. NOTIFIED → NOTIFIED: no-op.
 	let prev = cell.schedule_state.fetch_max(SCHEDULED, Ordering::AcqRel);
 	if prev == IDLE {
+		let pool = Arc::clone(&cell.pool);
 		let cell = Arc::clone(cell);
-		spawn(move || run_batch(cell));
+		pool.spawn(move || run_batch(cell));
 	}
 }
 
@@ -140,15 +142,17 @@ where
 			match prev {
 				Ok(_) => {
 					// Was NOTIFIED, resubmit
+					let pool = Arc::clone(&cell.pool);
 					let cell2 = Arc::clone(&cell);
-					spawn(move || run_batch(cell2));
+					pool.spawn(move || run_batch(cell2));
 				}
 				Err(SCHEDULED) => {
 					// No new notifications — check if there are still messages
 					if !cell.rx.is_empty() || cell.cancel.is_cancelled() {
 						// Messages still pending, resubmit
+						let pool = Arc::clone(&cell.pool);
 						let cell2 = Arc::clone(&cell);
-						spawn(move || run_batch(cell2));
+						pool.spawn(move || run_batch(cell2));
 					} else {
 						// Go idle
 						cell.schedule_state.store(IDLE, Ordering::Release);
@@ -184,8 +188,13 @@ impl<M> PoolActorHandle<M> {
 	}
 }
 
-/// Spawn an actor on the shared pool.
-pub(super) fn spawn_on_pool<A: Actor>(system: &ActorSystem, name: &str, actor: A) -> PoolActorHandle<A::Message>
+/// Spawn an actor on the given thread pool.
+pub(super) fn spawn_on_pool<A: Actor>(
+	system: &ActorSystem,
+	name: &str,
+	actor: A,
+	pool: &Arc<ThreadPool>,
+) -> PoolActorHandle<A::Message>
 where
 	A::State: Send,
 {
@@ -210,6 +219,7 @@ where
 		schedule_state: AtomicU8::new(SCHEDULED),
 		completion_tx,
 		done_tx,
+		pool: Arc::clone(pool),
 	});
 
 	// Notify closure uses Weak to avoid ActorCell ↔ notify self-referential cycle.
@@ -229,7 +239,8 @@ where
 	// Spawn init + first batch on the pool
 	let actor_name = name.to_string();
 	let cell_for_init = Arc::clone(&cell);
-	spawn(move || {
+	let pool_for_init = Arc::clone(pool);
+	pool_for_init.spawn(move || {
 		debug!(actor = %actor_name, "Pool actor starting");
 
 		{

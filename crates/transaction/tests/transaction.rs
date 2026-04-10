@@ -33,6 +33,7 @@ use reifydb_runtime::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
+	pool::Pools,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
@@ -63,8 +64,8 @@ test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all 
 fn test_serializable(path: &Path) {
 	let multi_store = MultiStore::testing_memory();
 	let single_store = SingleStore::testing_memory();
-	let bus = EventBus::new(&ActorSystem::new(1));
-	let actor_system = ActorSystem::new(1);
+	let bus = EventBus::new(&ActorSystem::new(Pools::default(), Clock::Real));
+	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 	struct DefaultConfig;
 	impl GetConfig for DefaultConfig {
 		fn get_config(&self, key: ConfigKey) -> Value {

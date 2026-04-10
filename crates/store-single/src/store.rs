@@ -16,7 +16,11 @@ use reifydb_core::{
 	event::EventBus,
 	interface::store::SingleVersionRow,
 };
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+};
 use reifydb_type::util::{cowvec::CowVec, hex};
 use tracing::instrument;
 
@@ -65,7 +69,8 @@ impl Deref for StandardSingleStore {
 
 impl StandardSingleStore {
 	pub fn testing_memory() -> Self {
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::testing_memory_with_eventbus(EventBus::new(&actor_system))
 	}
 

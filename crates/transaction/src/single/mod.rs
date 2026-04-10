@@ -17,7 +17,11 @@ pub mod read;
 pub mod write;
 
 use read::{KeyReadLock, SingleReadTransaction};
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+};
 use reifydb_type::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
@@ -58,7 +62,8 @@ impl SingleTransaction {
 	}
 
 	pub fn testing() -> Self {
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		Self::new(SingleStore::testing_memory(), EventBus::new(&actor_system))
 	}
 

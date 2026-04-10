@@ -66,14 +66,19 @@ mod tests {
 		metric::StatementMetric,
 	};
 	use reifydb_metric::{accumulator::StatementStatsAccumulator, registry::MetricRegistry};
-	use reifydb_runtime::actor::system::ActorSystem;
+	use reifydb_runtime::{
+		actor::system::ActorSystem,
+		context::clock::Clock,
+		pool::{PoolConfig, Pools},
+	};
 	use reifydb_type::value::{datetime::DateTime, duration::Duration};
 
 	use super::{MetricCollectorActor, MetricMsg};
 
 	#[test]
 	fn test_actor_handles_messages() {
-		let system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let system = ActorSystem::new(pools, Clock::Real);
 		let registry = Arc::new(MetricRegistry::new());
 		let accumulator = Arc::new(StatementStatsAccumulator::new());
 

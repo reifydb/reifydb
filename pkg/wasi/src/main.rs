@@ -65,7 +65,11 @@ struct Bridge {
 impl Bridge {
 	fn new() -> Result<Self, Box<dyn Error>> {
 		let runtime = SharedRuntime::from_config(
-			SharedRuntimeConfig::default().async_threads(1).compute_threads(1).deterministic_testing(0),
+			SharedRuntimeConfig::default()
+				.async_threads(1)
+				.system_threads(1)
+				.query_threads(1)
+				.deterministic_testing(0),
 		);
 
 		let actor_system = runtime.actor_system();

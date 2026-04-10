@@ -34,6 +34,7 @@ use crate::{
 		traits::{Actor, Directive},
 	},
 	context::clock::{Clock, MockClock},
+	pool::Pools,
 };
 
 struct ReadyEntry {
@@ -177,17 +178,12 @@ unsafe impl Sync for ActorSystem {}
 impl ActorSystem {
 	/// Create a new DST actor system.
 	///
-	/// Pool threads parameter is ignored (single-threaded execution).
-	pub fn new(pool_threads: usize) -> Self {
-		Self::with_clock(pool_threads, Clock::Mock(MockClock::from_millis(0)))
-	}
-
-	/// Create a new DST actor system with a specific clock.
+	/// Pools are ignored in DST (single-threaded execution).
 	///
 	/// # Panics
 	///
 	/// Panics if `clock` is `Clock::Real`. DST requires a `MockClock`.
-	pub fn with_clock(_pool_threads: usize, clock: Clock) -> Self {
+	pub fn new(_pools: Pools, clock: Clock) -> Self {
 		let mock_clock = match &clock {
 			Clock::Mock(mc) => mc.clone(),
 			Clock::Real => panic!("DST actor system requires a MockClock, not Clock::Real"),
@@ -235,6 +231,13 @@ impl ActorSystem {
 		};
 		self.inner.children.borrow_mut().push(child.clone());
 		child
+	}
+
+	/// Get the pools for this system.
+	///
+	/// In DST, returns a zero-size marker (no real thread pools).
+	pub fn pools(&self) -> Pools {
+		Pools::default()
 	}
 
 	/// Get the cancellation token for this system.
@@ -359,6 +362,11 @@ impl ActorSystem {
 		ActorHandle {
 			actor_ref,
 		}
+	}
+
+	/// Spawn an actor on the query pool. In DST, same as [`spawn`].
+	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn(name, actor)
 	}
 
 	/// Process one message from the actor with the smallest logical timestamp.
@@ -550,6 +558,7 @@ mod tests {
 	use std::sync::{Arc, Mutex};
 
 	use super::*;
+	use crate::pool::{PoolConfig, Pools};
 
 	struct CounterActor;
 
@@ -689,7 +698,8 @@ mod tests {
 	}
 
 	fn test_system() -> ActorSystem {
-		ActorSystem::with_clock(1, Clock::Mock(MockClock::from_millis(0)))
+		let pools = Pools::new(PoolConfig::default());
+		ActorSystem::new(pools, Clock::Mock(MockClock::from_millis(0)))
 	}
 
 	#[test]

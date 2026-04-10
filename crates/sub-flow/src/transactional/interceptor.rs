@@ -149,20 +149,23 @@ pub(crate) fn execute_inline_flow_changes(
 			flow_txns.push((flow_id, relevant, flow_txn));
 		}
 
-		let results: Vec<Result<FlowResult>> = flow_txns
-			.into_par_iter()
-			.map(|(flow_id, relevant, mut flow_txn)| {
-				for change in relevant {
-					flow_engine.process(&mut flow_txn, change, flow_id)?;
-				}
+		let pools = engine.actor_system().pools();
+		let results: Vec<Result<FlowResult>> = pools.system_pool().install(|| {
+			flow_txns
+				.into_par_iter()
+				.map(|(flow_id, relevant, mut flow_txn)| {
+					for change in relevant {
+						flow_engine.process(&mut flow_txn, change, flow_id)?;
+					}
 
-				Ok(FlowResult {
-					view_entries: flow_txn.take_accumulator_entries(),
-					pending: flow_txn.take_pending(),
-					pending_shapes: flow_txn.take_pending_shapes(),
+					Ok(FlowResult {
+						view_entries: flow_txn.take_accumulator_entries(),
+						pending: flow_txn.take_pending(),
+						pending_shapes: flow_txn.take_pending_shapes(),
+					})
 				})
-			})
-			.collect();
+				.collect()
+		});
 
 		for result in results {
 			let result = result?;

@@ -26,6 +26,7 @@ use reifydb_runtime::{
 		clock::{Clock, MockClock},
 		rng::Rng,
 	},
+	pool::{PoolConfig, Pools},
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_type::{Result, util::hex, value::Value};
@@ -256,7 +257,8 @@ impl MultiTransaction {
 	pub fn testing() -> Self {
 		let multi_store = MultiStore::testing_memory();
 		let single_store = SingleStore::testing_memory();
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 
 		struct DummyConfig;

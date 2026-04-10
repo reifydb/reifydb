@@ -12,7 +12,7 @@ use std::{
 
 use reifydb_auth::service::AuthService;
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem};
+use reifydb_runtime::{SharedRuntime, actor::system::ActorSystem, pool::Pools};
 use reifydb_sub_api::subsystem::HealthStatus;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 use reifydb_sub_flow::subsystem::FlowSubsystem;
@@ -114,6 +114,10 @@ impl Database {
 
 	pub fn shared_runtime(&self) -> &SharedRuntime {
 		&self.shared_runtime
+	}
+
+	pub fn pools(&self) -> Pools {
+		self.actor_system.pools()
 	}
 
 	pub fn is_running(&self) -> bool {

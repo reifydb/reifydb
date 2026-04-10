@@ -27,7 +27,11 @@ use reifydb_core::{
 		format::{Formatter, raw::Raw},
 	},
 };
-use reifydb_runtime::actor::system::ActorSystem;
+use reifydb_runtime::{
+	actor::system::ActorSystem,
+	context::clock::Clock,
+	pool::{PoolConfig, Pools},
+};
 use reifydb_store_single::{
 	config::{HotConfig, SingleStoreConfig},
 	hot::tier::HotTier,
@@ -64,11 +68,13 @@ pub struct Runner {
 
 impl Runner {
 	fn new(storage: HotTier) -> Self {
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let store = StandardSingleStore::new(SingleStoreConfig {
 			hot: Some(HotConfig {
 				storage,
 			}),
-			event_bus: EventBus::new(&ActorSystem::new(1)),
+			event_bus: EventBus::new(&actor_system),
 		})
 		.unwrap();
 		Self {

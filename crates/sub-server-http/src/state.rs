@@ -41,7 +41,7 @@ impl HttpServerState {
 			self.state.auth_service().clone(),
 			self.state.clock().clone(),
 		);
-		let handle = self.state.actor_system().spawn("http-req", actor);
+		let handle = self.state.actor_system().spawn_query("http-req", actor);
 		let actor_ref = handle.actor_ref().clone();
 		(actor_ref, handle)
 	}

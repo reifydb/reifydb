@@ -12,13 +12,12 @@ use std::{
 	error, fmt,
 	fmt::{Debug, Formatter},
 	mem,
-	sync::{Arc, Mutex, Once},
+	sync::{Arc, Mutex},
 	time,
 	time::Duration,
 };
 
 use crossbeam_channel::{Receiver, RecvTimeoutError as CcRecvTimeoutError};
-use rayon::ThreadPoolBuilder;
 
 use crate::{
 	actor::{
@@ -26,6 +25,7 @@ use crate::{
 		traits::Actor,
 	},
 	context::clock::Clock,
+	pool::Pools,
 };
 
 /// Inner shared state for the actor system.
@@ -33,6 +33,7 @@ struct ActorSystemInner {
 	cancel: CancellationToken,
 	scheduler: SchedulerHandle,
 	clock: Clock,
+	pools: Pools,
 	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
 	done_rxs: Mutex<Vec<Receiver<()>>>,
@@ -50,31 +51,17 @@ pub struct ActorSystem {
 	inner: Arc<ActorSystemInner>,
 }
 
-static POOL_INIT: Once = Once::new();
-
 impl ActorSystem {
-	/// Create a new actor system with the given number of pool threads.
-	pub fn new(pool_threads: usize) -> Self {
-		Self::with_clock(pool_threads, Clock::Real)
-	}
-
-	/// Create a new actor system with a specific clock.
-	pub fn with_clock(pool_threads: usize, clock: Clock) -> Self {
-		POOL_INIT.call_once(|| {
-			ThreadPoolBuilder::new()
-				.num_threads(pool_threads)
-				.thread_name(|i| format!("actor-pool-{i}"))
-				.build_global()
-				.expect("failed to configure global rayon thread pool");
-		});
-
-		let scheduler = SchedulerHandle::new();
+	/// Create a new actor system with the given pools and clock.
+	pub fn new(pools: Pools, clock: Clock) -> Self {
+		let scheduler = SchedulerHandle::new(pools.system_pool().clone());
 
 		Self {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
 				scheduler,
 				clock,
+				pools,
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
@@ -89,6 +76,7 @@ impl ActorSystem {
 				cancel: self.inner.cancel.child_token(),
 				scheduler: self.inner.scheduler.shared(),
 				clock: self.inner.clock.clone(),
+				pools: self.inner.pools.clone(),
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
@@ -97,6 +85,11 @@ impl ActorSystem {
 		};
 		self.inner.children.lock().unwrap().push(child.clone());
 		child
+	}
+
+	/// Get the pools for this system.
+	pub fn pools(&self) -> Pools {
+		self.inner.pools.clone()
 	}
 
 	/// Get the cancellation token for this system.
@@ -184,14 +177,26 @@ impl ActorSystem {
 		&self.inner.clock
 	}
 
-	/// Spawn an actor on the shared work-stealing pool.
+	/// Spawn an actor on the system pool.
 	///
-	/// Returns a handle to the spawned actor.
+	/// Use this for lightweight actors that must never stall
+	/// (flow, CDC, watermark, metrics, etc.).
 	pub fn spawn<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
 	where
 		A::State: Send,
 	{
-		pool::spawn_on_pool(self, name, actor)
+		pool::spawn_on_pool(self, name, actor, self.inner.pools.system_pool())
+	}
+
+	/// Spawn an actor on the query pool.
+	///
+	/// Use this for execution-heavy actors that may block on engine calls
+	/// (WS, gRPC, HTTP server actors).
+	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message>
+	where
+		A::State: Send,
+	{
+		pool::spawn_on_pool(self, name, actor, self.inner.pools.query_pool())
 	}
 }
 
@@ -232,7 +237,15 @@ mod tests {
 	use std::sync;
 
 	use super::*;
-	use crate::actor::{context::Context, traits::Directive};
+	use crate::{
+		actor::{context::Context, traits::Directive},
+		pool::{PoolConfig, Pools},
+	};
+
+	fn test_system() -> ActorSystem {
+		let pools = Pools::new(PoolConfig::default());
+		ActorSystem::new(pools, Clock::Real)
+	}
 
 	struct CounterActor;
 
@@ -270,7 +283,7 @@ mod tests {
 
 	#[test]
 	fn test_spawn_and_send() {
-		let system = ActorSystem::new(1);
+		let system = test_system();
 		let handle = system.spawn("counter", CounterActor);
 
 		let actor_ref = handle.actor_ref().clone();
@@ -290,7 +303,7 @@ mod tests {
 
 	#[test]
 	fn test_shutdown_join() {
-		let system = ActorSystem::new(1);
+		let system = test_system();
 
 		// Spawn several actors
 		for i in 0..5 {

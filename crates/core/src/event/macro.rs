@@ -116,7 +116,11 @@ mod tests {
 		thread,
 	};
 
-	use reifydb_runtime::actor::system::ActorSystem;
+	use reifydb_runtime::{
+		actor::system::ActorSystem,
+		context::clock::Clock,
+		pool::{PoolConfig, Pools},
+	};
 
 	use crate::event::{Event, EventBus, EventListener};
 
@@ -204,7 +208,8 @@ mod tests {
 
 	#[test]
 	fn testine_event_with_event_bus() {
-		let actor_system = ActorSystem::new(1);
+		let pools = Pools::new(PoolConfig::default());
+		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 
 		// Create a listener for DefineTestEvent

@@ -571,6 +571,7 @@ pub mod tests {
 			clock::{Clock, MockClock},
 			rng::Rng,
 		},
+		pool::{PoolConfig, Pools},
 	};
 	use reifydb_store_multi::MultiStore;
 	use reifydb_store_single::SingleStore;
@@ -609,7 +610,7 @@ pub mod tests {
 		fn new() -> Self {
 			let multi_store = MultiStore::testing_memory();
 			let single_store = SingleStore::testing_memory();
-			let actor_system = ActorSystem::new(1);
+			let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 			let event_bus = EventBus::new(&actor_system);
 			let single = SingleTransaction::new(single_store, event_bus.clone());
 			let materialized_catalog = MaterializedCatalog::new();
@@ -672,7 +673,7 @@ pub mod tests {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
-		let actor_system = ActorSystem::new(1);
+		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus);
@@ -716,7 +717,7 @@ pub mod tests {
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let resolver = store;
-		let actor_system = ActorSystem::new(1);
+		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let event_bus = EventBus::new(&actor_system);
 		let host = TestCdcHost::new();
 		let handle = spawn_cdc_producer(&actor_system, storage.clone(), resolver, host, event_bus);

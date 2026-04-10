@@ -15,7 +15,7 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, bounded};
-use rayon::spawn;
+use rayon::ThreadPool;
 
 use super::{TimerHandle, next_timer_id};
 
@@ -93,24 +93,17 @@ pub struct SchedulerHandle {
 	join_handle: Option<JoinHandle<()>>,
 }
 
-impl Default for SchedulerHandle {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl SchedulerHandle {
 	/// Create and start a new scheduler.
 	///
-	/// The scheduler runs on a dedicated coordinator thread and dispatches
-	/// timer callbacks to the global rayon thread pool.
-	pub fn new() -> Self {
+	/// Timer callbacks are dispatched to the given rayon thread pool.
+	pub fn new(pool: Arc<ThreadPool>) -> Self {
 		let (command_tx, command_rx) = bounded(256);
 
 		let join_handle = thread::Builder::new()
 			.name("timer-scheduler".to_string())
 			.spawn(move || {
-				scheduler_loop(command_rx);
+				scheduler_loop(command_rx, pool);
 			})
 			.expect("failed to spawn timer scheduler thread");
 
@@ -189,7 +182,7 @@ impl Drop for SchedulerHandle {
 }
 
 /// The main scheduler loop running on the coordinator thread.
-fn scheduler_loop(command_rx: Receiver<SchedulerCommand>) {
+fn scheduler_loop(command_rx: Receiver<SchedulerCommand>, pool: Arc<ThreadPool>) {
 	let mut heap: BinaryHeap<TimerEntry> = BinaryHeap::new();
 
 	loop {
@@ -241,7 +234,7 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>) {
 					let deadline = if delay.is_zero() {
 						// Zero delay - fire immediately
 						if !cancelled.load(Ordering::SeqCst) {
-							spawn(callback);
+							pool.spawn(callback);
 						}
 						continue;
 					} else {
@@ -299,7 +292,7 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>) {
 				TimerKind::Once {
 					callback,
 				} => {
-					spawn(callback);
+					pool.spawn(callback);
 				}
 				TimerKind::Repeat {
 					callback,
@@ -308,8 +301,7 @@ fn scheduler_loop(command_rx: Receiver<SchedulerCommand>) {
 					let cancelled = entry.cancelled.clone();
 					let callback_clone = callback.clone();
 
-					// Dispatch callback to pool
-					spawn(move || {
+					pool.spawn(move || {
 						if !cancelled.load(Ordering::SeqCst) {
 							let continue_timer = callback_clone();
 							if !continue_timer {
@@ -341,12 +333,17 @@ mod tests {
 	use std::sync::{atomic::AtomicUsize, mpsc};
 
 	use parking_lot::Mutex;
+	use rayon::ThreadPoolBuilder;
+
+	fn test_pool() -> Arc<ThreadPool> {
+		Arc::new(ThreadPoolBuilder::new().num_threads(1).build().unwrap())
+	}
 
 	use super::*;
 
 	#[test]
 	fn test_schedule_once() {
-		let mut scheduler = SchedulerHandle::new();
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::from_millis(10), move || {
@@ -359,7 +356,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_once_zero_delay() {
-		let mut scheduler = SchedulerHandle::new();
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::ZERO, move || {
@@ -372,7 +369,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat() {
-		let mut scheduler = SchedulerHandle::new();
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -394,7 +391,7 @@ mod tests {
 
 	#[test]
 	fn test_schedule_repeat_stops_on_false() {
-		let mut scheduler = SchedulerHandle::new();
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let counter = Arc::new(AtomicUsize::new(0));
 		let counter_clone = counter.clone();
@@ -416,7 +413,7 @@ mod tests {
 
 	#[test]
 	fn test_cancel_before_fire() {
-		let mut scheduler = SchedulerHandle::new();
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let (tx, rx) = mpsc::channel();
 		let handle = scheduler.schedule_once(Duration::from_millis(50), move || {
@@ -434,7 +431,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_timers() {
-		let mut scheduler = SchedulerHandle::new();
+		let mut scheduler = SchedulerHandle::new(test_pool());
 
 		let results = Arc::new(Mutex::new(Vec::new()));
 

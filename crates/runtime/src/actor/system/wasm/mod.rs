@@ -22,6 +22,7 @@ use crate::{
 		traits::{Actor, Directive},
 	},
 	context::clock::Clock,
+	pool::Pools,
 };
 
 /// Inner shared state for the actor system.
@@ -43,13 +44,8 @@ pub struct ActorSystem {
 impl ActorSystem {
 	/// Create a new actor system.
 	///
-	/// Pool threads parameter is ignored in WASM.
-	pub fn new(pool_threads: usize) -> Self {
-		Self::with_clock(pool_threads, Clock::Real)
-	}
-
-	/// Create a new actor system with a specific clock.
-	pub fn with_clock(_pool_threads: usize, clock: Clock) -> Self {
+	/// Pools are ignored in WASM (single-threaded execution).
+	pub fn new(_pools: Pools, clock: Clock) -> Self {
 		Self {
 			inner: Arc::new(ActorSystemInner {
 				cancel: CancellationToken::new(),
@@ -69,6 +65,13 @@ impl ActorSystem {
 		};
 		self.inner.children.lock().unwrap().push(child.clone());
 		child
+	}
+
+	/// Get the pools for this system.
+	///
+	/// In WASM, returns a zero-size marker (no real thread pools).
+	pub fn pools(&self) -> Pools {
+		Pools::default()
 	}
 
 	/// Get the cancellation token for this system.
@@ -203,6 +206,11 @@ impl ActorSystem {
 		ActorHandle {
 			actor_ref,
 		}
+	}
+
+	/// Spawn an actor on the query pool. In WASM, same as [`spawn`].
+	pub fn spawn_query<A: Actor>(&self, name: &str, actor: A) -> ActorHandle<A::Message> {
+		self.spawn(name, actor)
 	}
 }
 

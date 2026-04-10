@@ -182,12 +182,17 @@ pub mod tests {
 		thread,
 	};
 
-	use reifydb_runtime::actor::system::ActorSystem;
+	use reifydb_runtime::{
+		actor::system::ActorSystem,
+		context::clock::Clock,
+		pool::{PoolConfig, Pools},
+	};
 
 	use crate::event::{Event, EventBus, EventListener};
 
 	fn test_actor_system() -> ActorSystem {
-		ActorSystem::new(1)
+		let pools = Pools::new(PoolConfig::default());
+		ActorSystem::new(pools, Clock::Real)
 	}
 
 	define_event! {
