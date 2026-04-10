@@ -88,8 +88,23 @@ pub(crate) fn execute_migrate(
 				}
 				vm.ip = saved_ip;
 			}
-			CompilationResult::Incremental(_) => {
-				return Err(internal_error!("Migration '{}' body requires more input", migration.name));
+			CompilationResult::Incremental(mut state) => {
+				let saved_ip = vm.ip;
+				let mut migration_result = Vec::new();
+				while let Some(compiled_unit) = services.compiler.compile_next(
+					&mut Transaction::Admin(&mut *txn),
+					&mut state,
+				)? {
+					vm.ip = 0;
+					vm.run(
+						services,
+						&mut Transaction::Admin(&mut *txn),
+						&compiled_unit.instructions,
+						params,
+						&mut migration_result,
+					)?;
+				}
+				vm.ip = saved_ip;
 			}
 		}
 

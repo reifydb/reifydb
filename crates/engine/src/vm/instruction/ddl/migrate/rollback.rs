@@ -98,11 +98,23 @@ pub(crate) fn execute_rollback_migration(
 				}
 				vm.ip = saved_ip;
 			}
-			CompilationResult::Incremental(_) => {
-				return Err(internal_error!(
-					"Migration '{}' rollback body requires more input",
-					migration.name
-				));
+			CompilationResult::Incremental(mut state) => {
+				let saved_ip = vm.ip;
+				let mut rollback_result = Vec::new();
+				while let Some(compiled_unit) = services.compiler.compile_next(
+					&mut Transaction::Admin(&mut *txn),
+					&mut state,
+				)? {
+					vm.ip = 0;
+					vm.run(
+						services,
+						&mut Transaction::Admin(&mut *txn),
+						&compiled_unit.instructions,
+						params,
+						&mut rollback_result,
+					)?;
+				}
+				vm.ip = saved_ip;
 			}
 		}
 
