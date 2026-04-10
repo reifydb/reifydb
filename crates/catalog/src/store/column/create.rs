@@ -43,7 +43,10 @@ fn encode_constraint(constraint: &Option<Constraint>) -> Vec<u8> {
 	}
 }
 
-use reifydb_core::interface::catalog::column::{Column, ColumnIndex};
+use reifydb_core::interface::catalog::{
+	column::{Column, ColumnIndex},
+	id::ColumnId,
+};
 
 use crate::{
 	CatalogStore, Result,
@@ -129,6 +132,54 @@ impl CatalogStore {
 		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
 
 		// Store dictionary_id (0 means no dictionary)
+		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
+		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
+
+		txn.set(&ColumnsKey::encoded(id), row)?;
+
+		let mut row = primitive_column::SHAPE.allocate();
+		primitive_column::SHAPE.set_u64(&mut row, primitive_column::ID, id);
+		primitive_column::SHAPE.set_utf8(&mut row, primitive_column::NAME, &column_to_create.column);
+		primitive_column::SHAPE.set_u8(&mut row, primitive_column::INDEX, column_to_create.index);
+		txn.set(&ColumnKey::encoded(shape, id), row)?;
+
+		for policy in column_to_create.properties {
+			Self::create_column_property(txn, id, policy)?;
+		}
+
+		Ok(Column {
+			id,
+			name: column_to_create.column,
+			constraint: column_to_create.constraint,
+			index: column_to_create.index,
+			properties: Self::list_column_properties(&mut Transaction::Admin(&mut *txn), id)?,
+			auto_increment: column_to_create.auto_increment,
+			dictionary_id: column_to_create.dictionary_id,
+		})
+	}
+
+	/// Create a column with a specific ID. Used for bootstrapping system shapes.
+	/// Skips duplicate check — caller must ensure uniqueness.
+	pub(crate) fn create_column_with_id(
+		txn: &mut AdminTransaction,
+		id: ColumnId,
+		shape: impl Into<ShapeId>,
+		column_to_create: ColumnToCreate,
+	) -> Result<Column> {
+		let shape = shape.into();
+
+		let mut row = column::SHAPE.allocate();
+		column::SHAPE.set_u64(&mut row, ID, id);
+		column::SHAPE.set_u64(&mut row, PRIMITIVE, shape);
+		column::SHAPE.set_utf8(&mut row, NAME, &column_to_create.column);
+		column::SHAPE.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
+		column::SHAPE.set_u8(&mut row, INDEX, column_to_create.index);
+		column::SHAPE.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
+
+		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
+		let blob = Blob::from(constraint_bytes);
+		column::SHAPE.set_blob(&mut row, CONSTRAINT, &blob);
+
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::SHAPE.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 

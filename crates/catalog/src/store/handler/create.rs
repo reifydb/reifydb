@@ -123,7 +123,7 @@ pub mod tests {
 		};
 
 		let result = CatalogStore::create_handler(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, HandlerId(1));
+		assert_eq!(result.id, HandlerId(1025));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_handler");
 		assert_eq!(result.variant.sumtype_id, SumTypeId(0));
@@ -148,7 +148,7 @@ pub mod tests {
 			},
 			body_source: String::new(),
 		};
-		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(1)
+		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(1025)
 
 		let to_create = HandlerToCreate {
 			namespace: namespace.id(),
@@ -159,7 +159,7 @@ pub mod tests {
 			},
 			body_source: String::new(),
 		};
-		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(2)
+		CatalogStore::create_handler(&mut txn, to_create).unwrap(); // HandlerId(1026)
 
 		let links: Vec<_> = txn
 			.range(NamespaceHandlerKey::full_scan(namespace.id()), 1024)
@@ -168,15 +168,15 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Descending order: HandlerId(2) encodes to smaller bytes → appears first
+		// Descending order: HandlerId(1026) encodes to smaller bytes → appears first
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 2);
+		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 1026);
 		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "another_handler");
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 1);
+		assert_eq!(handler_namespace::SHAPE.get_u64(row, handler_namespace::ID), 1025);
 		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "test_handler");
 	}
 }

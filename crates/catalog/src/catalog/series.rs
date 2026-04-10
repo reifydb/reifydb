@@ -5,7 +5,7 @@ use reifydb_core::{
 	encoded::shape::RowShape,
 	interface::catalog::{
 		change::CatalogTrackSeriesChangeOperations,
-		id::{NamespaceId, SeriesId},
+		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
 		series::{Series, SeriesKey, SeriesMetadata},
 	},
@@ -130,6 +130,23 @@ impl Catalog {
 	#[instrument(name = "catalog::series::create", level = "debug", skip(self, txn, to_create))]
 	pub fn create_series(&self, txn: &mut AdminTransaction, to_create: SeriesToCreate) -> Result<Series> {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
+		txn.track_series_created(series.clone())?;
+
+		let shape = RowShape::from(series.columns.as_slice());
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+
+		Ok(series)
+	}
+
+	/// Create a series with a specific ID and column IDs. Used for bootstrapping system shapes.
+	pub fn create_series_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		series_id: SeriesId,
+		to_create: SeriesToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Series> {
+		let series = CatalogStore::create_series_with_id(txn, series_id, to_create.into(), column_ids)?;
 		txn.track_series_created(series.clone())?;
 
 		let shape = RowShape::from(series.columns.as_slice());

@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackTableChangeOperations,
 		column::{Column, ColumnIndex},
-		id::{NamespaceId, PrimaryKeyId, TableId},
+		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
 		property::ColumnPropertyKind,
 		shape::ShapeId,
 		table::Table,
@@ -380,6 +380,51 @@ impl Catalog {
 			)?;
 
 			// txn.track_primary_key_created(pk_id, ShapeId::Table(table.id))?;
+
+			return CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id);
+		}
+
+		Ok(table)
+	}
+
+	/// Create a table with a specific ID and column IDs. Used for bootstrapping system shapes.
+	pub fn create_table_with_id(
+		&self,
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Table> {
+		let pk_columns = to_create.primary_key_columns.clone();
+
+		let table = CatalogStore::create_table_with_id(txn, table_id, to_create.into(), column_ids)?;
+		txn.track_table_created(table.clone())?;
+
+		let shape = RowShape::from(table.columns.as_slice());
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+
+		if let Some(pk_columns) = pk_columns {
+			let table_columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut *txn), table.id)?;
+			let pk_col_ids = pk_columns
+				.iter()
+				.map(|name| {
+					table_columns.iter().find(|c| &c.name == name).map(|c| c.id).ok_or_else(|| {
+						error!(internal!(
+							"Primary key column '{}' not found in table '{}'",
+							name,
+							table.name
+						))
+					})
+				})
+				.collect::<Result<Vec<_>>>()?;
+
+			let _pk_id = CatalogStore::create_primary_key(
+				txn,
+				PrimaryKeyToCreate {
+					shape: ShapeId::Table(table.id),
+					column_ids: pk_col_ids,
+				},
+			)?;
 
 			return CatalogStore::get_table(&mut Transaction::Admin(&mut *txn), table.id);
 		}

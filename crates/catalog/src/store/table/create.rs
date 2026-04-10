@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
-		id::{NamespaceId, TableId},
+		id::{ColumnId, NamespaceId, TableId},
 		property::ColumnPropertyKind,
 		shape::ShapeId,
 		table::Table,
@@ -125,6 +125,59 @@ impl CatalogStore {
 					fragment: Some(column_to_create.fragment.clone()),
 					namespace_name: namespace_name.clone(),
 					shape_name: to_create.name.text().to_string(),
+					column: column_to_create.name.text().to_string(),
+					constraint: column_to_create.constraint.clone(),
+					properties: column_to_create.properties.clone(),
+					index: ColumnIndex(idx as u8),
+					auto_increment: column_to_create.auto_increment,
+					dictionary_id: column_to_create.dictionary_id,
+				},
+			)?;
+		}
+		Ok(())
+	}
+
+	/// Create a table with a specific ID and column IDs. Used for bootstrapping system shapes.
+	/// Skips duplicate check — caller must ensure uniqueness.
+	pub(crate) fn create_table_with_id(
+		txn: &mut AdminTransaction,
+		table_id: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<Table> {
+		assert_eq!(column_ids.len(), to_create.columns.len(), "column_ids length must match columns length");
+
+		let namespace_id = to_create.namespace;
+
+		Self::store_table(txn, table_id, namespace_id, &to_create)?;
+		Self::link_table_to_namespace(txn, namespace_id, table_id, to_create.name.text())?;
+
+		if let Some(retention_strategy) = &to_create.retention_strategy {
+			create_shape_retention_strategy(txn, ShapeId::Table(table_id), retention_strategy)?;
+		}
+
+		Self::insert_columns_with_ids(txn, table_id, to_create, column_ids)?;
+
+		Self::get_table(&mut Transaction::Admin(&mut *txn), table_id)
+	}
+
+	fn insert_columns_with_ids(
+		txn: &mut AdminTransaction,
+		table: TableId,
+		to_create: TableToCreate,
+		column_ids: &[ColumnId],
+	) -> Result<()> {
+		for (idx, (column_to_create, &col_id)) in
+			to_create.columns.into_iter().zip(column_ids.iter()).enumerate()
+		{
+			Self::create_column_with_id(
+				txn,
+				col_id,
+				table,
+				ColumnToCreate {
+					fragment: Some(column_to_create.fragment.clone()),
+					namespace_name: String::new(),
+					shape_name: String::new(),
 					column: column_to_create.name.text().to_string(),
 					constraint: column_to_create.constraint.clone(),
 					properties: column_to_create.properties.clone(),

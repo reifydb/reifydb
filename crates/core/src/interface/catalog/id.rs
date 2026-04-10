@@ -13,6 +13,30 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct ColumnId(pub u64);
 
+impl ColumnId {
+	// request_history columns (IDs 1–8)
+	pub const REQUEST_HISTORY_TIMESTAMP: ColumnId = ColumnId(1);
+	pub const REQUEST_HISTORY_OPERATION: ColumnId = ColumnId(2);
+	pub const REQUEST_HISTORY_FINGERPRINT: ColumnId = ColumnId(3);
+	pub const REQUEST_HISTORY_TOTAL_DURATION: ColumnId = ColumnId(4);
+	pub const REQUEST_HISTORY_COMPUTE_DURATION: ColumnId = ColumnId(5);
+	pub const REQUEST_HISTORY_SUCCESS: ColumnId = ColumnId(6);
+	pub const REQUEST_HISTORY_STATEMENT_COUNT: ColumnId = ColumnId(7);
+	pub const REQUEST_HISTORY_NORMALIZED_RQL: ColumnId = ColumnId(8);
+
+	// statement_stats columns (IDs 9–18)
+	pub const STATEMENT_STATS_SNAPSHOT_TIMESTAMP: ColumnId = ColumnId(9);
+	pub const STATEMENT_STATS_FINGERPRINT: ColumnId = ColumnId(10);
+	pub const STATEMENT_STATS_NORMALIZED_RQL: ColumnId = ColumnId(11);
+	pub const STATEMENT_STATS_CALLS: ColumnId = ColumnId(12);
+	pub const STATEMENT_STATS_TOTAL_DURATION: ColumnId = ColumnId(13);
+	pub const STATEMENT_STATS_MEAN_DURATION: ColumnId = ColumnId(14);
+	pub const STATEMENT_STATS_MAX_DURATION: ColumnId = ColumnId(15);
+	pub const STATEMENT_STATS_MIN_DURATION: ColumnId = ColumnId(16);
+	pub const STATEMENT_STATS_TOTAL_ROWS: ColumnId = ColumnId(17);
+	pub const STATEMENT_STATS_ERRORS: ColumnId = ColumnId(18);
+}
+
 impl Deref for ColumnId {
 	type Target = u64;
 
@@ -513,6 +537,11 @@ impl<'de> Deserialize<'de> for PrimaryKeyId {
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct RingBufferId(pub u64);
 
+impl RingBufferId {
+	pub const REQUEST_HISTORY: RingBufferId = RingBufferId(1);
+	pub const STATEMENT_STATS: RingBufferId = RingBufferId(2);
+}
+
 impl Display for RingBufferId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(&self.0, f)
@@ -594,6 +623,10 @@ impl<'de> Deserialize<'de> for RingBufferId {
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct ProcedureId(pub u64);
+
+impl ProcedureId {
+	pub const SYSTEM_CONFIG_SET: ProcedureId = ProcedureId(1);
+}
 
 impl Display for ProcedureId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

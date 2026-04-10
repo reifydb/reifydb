@@ -112,7 +112,7 @@ pub mod tests {
 		)
 		.unwrap()
 		.unwrap();
-		assert_eq!(result.id, HandlerId(2));
+		assert_eq!(result.id, HandlerId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "handler_two");
 	}

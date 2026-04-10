@@ -69,9 +69,9 @@ pub mod tests {
 			"",
 		);
 
-		let result = CatalogStore::get_handler(&mut Transaction::Admin(&mut txn), HandlerId(2)).unwrap();
+		let result = CatalogStore::get_handler(&mut Transaction::Admin(&mut txn), HandlerId(1026)).unwrap();
 
-		assert_eq!(result.id, HandlerId(2));
+		assert_eq!(result.id, HandlerId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "handler_two");
 	}

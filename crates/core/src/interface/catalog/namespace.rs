@@ -9,6 +9,8 @@ impl NamespaceId {
 	pub const ROOT: NamespaceId = NamespaceId(0);
 	pub const SYSTEM: NamespaceId = NamespaceId(1);
 	pub const DEFAULT: NamespaceId = NamespaceId(2);
+	pub const SYSTEM_CONFIG: NamespaceId = NamespaceId(3);
+	pub const SYSTEM_METRICS: NamespaceId = NamespaceId(4);
 }
 
 #[derive(Debug, Clone, PartialEq)]

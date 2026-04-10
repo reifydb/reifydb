@@ -4,7 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
-		id::NamespaceId,
+		id::{ColumnId, NamespaceId, ProcedureId, RingBufferId},
 		procedure::{ProcedureParam, ProcedureTrigger},
 	},
 };
@@ -88,13 +88,14 @@ pub fn bootstrap_system_procedures(
 	let ns_id = match catalog_api.find_namespace_by_path(&mut Transaction::Admin(&mut admin), "system::config")? {
 		Some(ns) => ns.id(),
 		None => {
-			let ns = catalog_api.create_namespace(
+			let ns = catalog_api.create_namespace_with_id(
 				&mut admin,
+				NamespaceId::SYSTEM_CONFIG,
 				NamespaceToCreate {
 					namespace_fragment: None,
 					name: "system::config".to_string(),
 					local_name: "config".to_string(),
-					parent_id: NamespaceId(1),
+					parent_id: NamespaceId::SYSTEM,
 					token: None,
 					grpc: None,
 				},
@@ -104,10 +105,10 @@ pub fn bootstrap_system_procedures(
 	};
 
 	// Procedures are not persisted to storage, so create the procedure on every startup.
-	// The ID is allocated from the sequence (persistent) but the procedure data itself
-	// lives only in MaterializedCatalog for this session.
-	let proc_def = catalog_api.create_procedure(
+	// The procedure data lives only in MaterializedCatalog for this session.
+	let proc_def = catalog_api.create_procedure_with_id(
 		&mut admin,
+		ProcedureId::SYSTEM_CONFIG_SET,
 		ProcedureToCreate {
 			name: Fragment::internal("set"),
 			namespace: ns_id,
@@ -201,8 +202,9 @@ fn bootstrap_metric_ringbuffers(
 	let ns_id = match catalog_api.find_namespace_by_path(&mut Transaction::Admin(&mut admin), "system::metrics")? {
 		Some(ns) => ns.id(),
 		None => {
-			let ns = catalog_api.create_namespace(
+			let ns = catalog_api.create_namespace_with_id(
 				&mut admin,
+				NamespaceId::SYSTEM_METRICS,
 				NamespaceToCreate {
 					namespace_fragment: None,
 					name: "system::metrics".to_string(),
@@ -220,14 +222,44 @@ fn bootstrap_metric_ringbuffers(
 	// Create request_history ring buffer if it doesn't exist
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "request_history")?.is_none()
 	{
-		catalog_api.create_ringbuffer(&mut admin, metric_request_history_schema(ns_id))?;
+		catalog_api.create_ringbuffer_with_id(
+			&mut admin,
+			RingBufferId::REQUEST_HISTORY,
+			metric_request_history_schema(ns_id),
+			&[
+				ColumnId::REQUEST_HISTORY_TIMESTAMP,
+				ColumnId::REQUEST_HISTORY_OPERATION,
+				ColumnId::REQUEST_HISTORY_FINGERPRINT,
+				ColumnId::REQUEST_HISTORY_TOTAL_DURATION,
+				ColumnId::REQUEST_HISTORY_COMPUTE_DURATION,
+				ColumnId::REQUEST_HISTORY_SUCCESS,
+				ColumnId::REQUEST_HISTORY_STATEMENT_COUNT,
+				ColumnId::REQUEST_HISTORY_NORMALIZED_RQL,
+			],
+		)?;
 		info!("Created system::metrics::request_history ring buffer");
 	}
 
 	// Create statement_stats ring buffer if it doesn't exist
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "statement_stats")?.is_none()
 	{
-		catalog_api.create_ringbuffer(&mut admin, metric_statement_stats_schema(ns_id))?;
+		catalog_api.create_ringbuffer_with_id(
+			&mut admin,
+			RingBufferId::STATEMENT_STATS,
+			metric_statement_stats_schema(ns_id),
+			&[
+				ColumnId::STATEMENT_STATS_SNAPSHOT_TIMESTAMP,
+				ColumnId::STATEMENT_STATS_FINGERPRINT,
+				ColumnId::STATEMENT_STATS_NORMALIZED_RQL,
+				ColumnId::STATEMENT_STATS_CALLS,
+				ColumnId::STATEMENT_STATS_TOTAL_DURATION,
+				ColumnId::STATEMENT_STATS_MEAN_DURATION,
+				ColumnId::STATEMENT_STATS_MAX_DURATION,
+				ColumnId::STATEMENT_STATS_MIN_DURATION,
+				ColumnId::STATEMENT_STATS_TOTAL_ROWS,
+				ColumnId::STATEMENT_STATS_ERRORS,
+			],
+		)?;
 		info!("Created system::metrics::statement_stats ring buffer");
 	}
 

@@ -102,11 +102,11 @@ impl SystemSequence {
 	}
 
 	pub(crate) fn next_procedure_id(txn: &mut AdminTransaction) -> Result<ProcedureId> {
-		GeneratorU64::next(txn, &PROCEDURE_KEY, None).map(ProcedureId)
+		GeneratorU64::next(txn, &PROCEDURE_KEY, Some(1025)).map(ProcedureId)
 	}
 
 	pub(crate) fn next_handler_id(txn: &mut AdminTransaction) -> Result<HandlerId> {
-		GeneratorU64::next(txn, &HANDLER_KEY, None).map(HandlerId)
+		GeneratorU64::next(txn, &HANDLER_KEY, Some(1025)).map(HandlerId)
 	}
 
 	pub(crate) fn next_series_id(txn: &mut AdminTransaction) -> Result<SeriesId> {
