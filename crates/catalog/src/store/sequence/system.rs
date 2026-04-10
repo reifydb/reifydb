@@ -64,80 +64,83 @@ static TOKEN_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(TOK
 
 pub(crate) struct SystemSequence {}
 
+/// IDs 1–16384 (2^14) are reserved for system objects across all sequences.
+const SYSTEM_RESERVED: u64 = 16385;
+
 impl SystemSequence {
 	pub(crate) fn next_namespace_id(txn: &mut AdminTransaction) -> Result<NamespaceId> {
-		GeneratorU64::next(txn, &NAMESPACE_KEY, Some(1025)).map(NamespaceId)
+		GeneratorU64::next(txn, &NAMESPACE_KEY, Some(SYSTEM_RESERVED)).map(NamespaceId)
 	}
 
 	pub(crate) fn next_table_id(txn: &mut AdminTransaction) -> Result<TableId> {
-		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(TableId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(TableId)
 	}
 
 	pub(crate) fn next_column_id(txn: &mut AdminTransaction) -> Result<ColumnId> {
-		GeneratorU64::next(txn, &COLUMN_KEY, Some(8193)).map(ColumnId)
+		GeneratorU64::next(txn, &COLUMN_KEY, Some(SYSTEM_RESERVED)).map(ColumnId)
 	}
 
 	pub(crate) fn next_column_property_id(txn: &mut AdminTransaction) -> Result<ColumnPropertyId> {
-		GeneratorU64::next(txn, &COLUMN_PROPERTY_KEY, Some(1025)).map(ColumnPropertyId)
+		GeneratorU64::next(txn, &COLUMN_PROPERTY_KEY, Some(SYSTEM_RESERVED)).map(ColumnPropertyId)
 	}
 
 	pub(crate) fn next_view_id(txn: &mut AdminTransaction) -> Result<ViewId> {
-		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(ViewId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(ViewId)
 	}
 
 	pub(crate) fn next_primary_key_id(txn: &mut AdminTransaction) -> Result<PrimaryKeyId> {
-		GeneratorU64::next(txn, &PRIMARY_KEY_KEY, None).map(PrimaryKeyId)
+		GeneratorU64::next(txn, &PRIMARY_KEY_KEY, Some(SYSTEM_RESERVED)).map(PrimaryKeyId)
 	}
 
 	pub(crate) fn next_ringbuffer_id(txn: &mut AdminTransaction) -> Result<RingBufferId> {
-		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(RingBufferId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(RingBufferId)
 	}
 
 	pub(crate) fn next_dictionary_id(txn: &mut AdminTransaction) -> Result<DictionaryId> {
-		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(DictionaryId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(DictionaryId)
 	}
 
 	pub(crate) fn next_sumtype_id(txn: &mut AdminTransaction) -> Result<SumTypeId> {
-		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(SumTypeId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(SumTypeId)
 	}
 
 	pub(crate) fn next_procedure_id(txn: &mut AdminTransaction) -> Result<ProcedureId> {
-		GeneratorU64::next(txn, &PROCEDURE_KEY, Some(1025)).map(ProcedureId)
+		GeneratorU64::next(txn, &PROCEDURE_KEY, Some(SYSTEM_RESERVED)).map(ProcedureId)
 	}
 
 	pub(crate) fn next_handler_id(txn: &mut AdminTransaction) -> Result<HandlerId> {
-		GeneratorU64::next(txn, &HANDLER_KEY, Some(1025)).map(HandlerId)
+		GeneratorU64::next(txn, &HANDLER_KEY, Some(SYSTEM_RESERVED)).map(HandlerId)
 	}
 
 	pub(crate) fn next_series_id(txn: &mut AdminTransaction) -> Result<SeriesId> {
-		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(SeriesId)
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(SYSTEM_RESERVED)).map(SeriesId)
 	}
 
 	pub(crate) fn next_role_id(txn: &mut AdminTransaction) -> Result<RoleId> {
-		GeneratorU64::next(txn, &ROLE_KEY, Some(1025))
+		GeneratorU64::next(txn, &ROLE_KEY, Some(SYSTEM_RESERVED))
 	}
 
 	pub(crate) fn next_policy_id(txn: &mut AdminTransaction) -> Result<PolicyId> {
-		GeneratorU64::next(txn, &POLICY_KEY, Some(1025))
+		GeneratorU64::next(txn, &POLICY_KEY, Some(SYSTEM_RESERVED))
 	}
 
 	pub(crate) fn next_migration_id(txn: &mut AdminTransaction) -> Result<MigrationId> {
-		GeneratorU64::next(txn, &MIGRATION_KEY, None).map(MigrationId)
+		GeneratorU64::next(txn, &MIGRATION_KEY, Some(SYSTEM_RESERVED)).map(MigrationId)
 	}
 
 	pub(crate) fn next_migration_event_id(txn: &mut AdminTransaction) -> Result<MigrationEventId> {
-		GeneratorU64::next(txn, &MIGRATION_EVENT_KEY, None).map(MigrationEventId)
+		GeneratorU64::next(txn, &MIGRATION_EVENT_KEY, Some(SYSTEM_RESERVED)).map(MigrationEventId)
 	}
 
 	pub(crate) fn next_authentication_id(txn: &mut AdminTransaction) -> Result<AuthenticationId> {
-		GeneratorU64::next(txn, &AUTHENTICATION_KEY, None)
+		GeneratorU64::next(txn, &AUTHENTICATION_KEY, Some(SYSTEM_RESERVED))
 	}
 
 	pub(crate) fn next_test_id(txn: &mut AdminTransaction) -> Result<TestId> {
-		GeneratorU64::next(txn, &TEST_KEY, None).map(TestId)
+		GeneratorU64::next(txn, &TEST_KEY, Some(SYSTEM_RESERVED)).map(TestId)
 	}
 
 	pub(crate) fn next_token_id(txn: &mut AdminTransaction) -> Result<TokenId> {
-		GeneratorU64::next(txn, &TOKEN_KEY, None)
+		GeneratorU64::next(txn, &TOKEN_KEY, Some(SYSTEM_RESERVED))
 	}
 }

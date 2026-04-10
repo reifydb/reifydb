@@ -221,8 +221,8 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_table(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id, TableId(1025));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.id, TableId(16385));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_table");
 
 		let err = CatalogStore::create_table(&mut txn, to_create).unwrap_err();
@@ -261,12 +261,12 @@ pub mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1025);
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16385);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 1026);
+		assert_eq!(table_namespace::SHAPE.get_u64(row, table_namespace::ID), 16386);
 		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "another_table");
 	}
 }

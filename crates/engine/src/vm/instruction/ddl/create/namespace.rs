@@ -102,7 +102,7 @@ pub mod tests {
 		}
 		let frame = &r[0];
 
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 
@@ -119,7 +119,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 		let frame = &r[0];
-		assert_eq!(frame[0].get_value(0), Value::Uint8(1025));
+		assert_eq!(frame[0].get_value(0), Value::Uint8(16385));
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
 

@@ -258,16 +258,16 @@ pub mod test {
 		)
 		.unwrap();
 
-		let column_1 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
+		let column_1 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16385)).unwrap();
 
-		assert_eq!(column_1.id, 8193);
+		assert_eq!(column_1.id, 16385);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.constraint.get_type(), Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8194)).unwrap();
+		let column_2 = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16386)).unwrap();
 
-		assert_eq!(column_2.id, 8194);
+		assert_eq!(column_2.id, 16386);
 		assert_eq!(column_2.name, "col_2");
 		assert_eq!(column_2.constraint.get_type(), Type::Int2);
 		assert_eq!(column_2.auto_increment, false);
@@ -295,9 +295,9 @@ pub mod test {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(8193)).unwrap();
+		let column = CatalogStore::get_column(&mut Transaction::Admin(&mut txn), ColumnId(16385)).unwrap();
 
-		assert_eq!(column.id, ColumnId(8193));
+		assert_eq!(column.id, ColumnId(16385));
 		assert_eq!(column.name, "id");
 		assert_eq!(column.constraint.get_type(), Type::Uint8);
 		assert_eq!(column.auto_increment, true);

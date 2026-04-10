@@ -107,7 +107,7 @@ pub mod tests {
 
 		// First creation should succeed
 		let result = CatalogStore::create_namespace(&mut txn, to_create.clone()).unwrap();
-		assert_eq!(result.id(), NamespaceId(1025));
+		assert_eq!(result.id(), NamespaceId(16385));
 		assert_eq!(result.name(), "test_namespace");
 
 		// Creating the same namespace again with `if_not_exists =

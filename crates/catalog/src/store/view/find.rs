@@ -183,13 +183,13 @@ pub mod tests {
 
 		let result = CatalogStore::find_view_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1027),
+			NamespaceId(16387),
 			"view_two",
 		)
 		.unwrap()
 		.unwrap();
-		assert_eq!(result.id(), ViewId(1026));
-		assert_eq!(result.namespace(), NamespaceId(1027));
+		assert_eq!(result.id(), ViewId(16386));
+		assert_eq!(result.namespace(), NamespaceId(16387));
 		assert_eq!(result.name(), "view_two");
 	}
 
@@ -199,7 +199,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_view_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"some_view",
 		)
 		.unwrap();
@@ -220,7 +220,7 @@ pub mod tests {
 
 		let result = CatalogStore::find_view_by_name(
 			&mut Transaction::Admin(&mut txn),
-			NamespaceId(1025),
+			NamespaceId(16385),
 			"view_four_two",
 		)
 		.unwrap();

@@ -137,7 +137,7 @@ pub mod tests {
 		// First creation should succeed
 		let result = CatalogStore::create_flow(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, FlowId(1));
-		assert_eq!(result.namespace, NamespaceId(1025));
+		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_flow");
 		assert_eq!(result.status, FlowStatus::Active);
 
