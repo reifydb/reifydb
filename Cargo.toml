@@ -28,6 +28,7 @@ members = [
     "crates/transaction",
     "crates/type",
     "crates/wasm",
+    "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-metric",
@@ -90,6 +91,7 @@ default-members = [
     "crates/transaction",
     "crates/type",
     "crates/wasm",
+    "crates/wire-format",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-metric",
@@ -190,6 +192,7 @@ reifydb-testing = { version = "0.4.10", path = "crates/testing" }
 reifydb-transaction = { version = "0.4.10", path = "crates/transaction" }
 reifydb-type = { version = "0.4.10", path = "crates/type" }
 reifydb-wasm = { version = "0.4.10", path = "crates/wasm" }
+reifydb-wire-format = { version = "0.4.10", path = "crates/wire-format" }
 reifydb-macro = { version = "0.4.10", path = "crates/macro" }
 reifydb-macro-impl = { version = "0.4.10", path = "crates/macro-impl" }
 

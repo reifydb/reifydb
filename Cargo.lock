@@ -3361,6 +3361,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-wire-format"
+version = "0.4.10"
+dependencies = [
+ "bigdecimal",
+ "num-bigint",
+ "reifydb-type",
+ "uuid",
+]
+
+[[package]]
 name = "reqwest"
 version = "0.12.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"

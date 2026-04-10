@@ -1,0 +1,33 @@
+[package]
+name = "reifydb-wire-format"
+description = "RBCF (ReifyDB Binary Columnar Format) wire format encoder/decoder"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license = "Apache-2.0"
+
+[dependencies]
+reifydb-type = { workspace = true }
+num-bigint = { workspace = true }
+bigdecimal = { workspace = true }
+uuid = { workspace = true }
+
+[[test]]
+name = "plain"
+path = "tests/plain/mod.rs"
+
+[[test]]
+name = "dict"
+path = "tests/dict/mod.rs"
+
+[[test]]
+name = "rle"
+path = "tests/rle/mod.rs"
+
+[[test]]
+name = "delta"
+path = "tests/delta/mod.rs"
+
+[[test]]
+name = "delta_rle"
+path = "tests/delta_rle/mod.rs"
