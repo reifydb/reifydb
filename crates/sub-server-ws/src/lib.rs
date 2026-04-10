@@ -63,7 +63,6 @@
 //! ws.start()?;
 //! ```
 
-pub mod actor;
 #[cfg(not(reifydb_single_threaded))]
 pub mod factory;
 #[cfg(not(reifydb_single_threaded))]

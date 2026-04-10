@@ -78,18 +78,14 @@ use reifydb::{Database, SharedRuntimeConfig, embedded};
 #[cfg(reifydb_single_threaded)]
 use reifydb_client::{DstGrpcClient, DstHttpClient, DstWsClient};
 #[cfg(reifydb_single_threaded)]
-use reifydb_core::actors::server::{ServerAuthResponse, ServerResponse};
+use reifydb_core::actors::server::{ServerAuthResponse, ServerMessage, ServerResponse};
 #[cfg(reifydb_single_threaded)]
 use reifydb_runtime::actor::{
 	reply::reply_channel,
 	system::{ActorHandle, ActorSystem},
 };
 #[cfg(reifydb_single_threaded)]
-use reifydb_sub_server_grpc::actor::GrpcServerActor;
-#[cfg(reifydb_single_threaded)]
-use reifydb_sub_server_http::actor::HttpServerActor;
-#[cfg(reifydb_single_threaded)]
-use reifydb_sub_server_ws::actor::WsServerActor;
+use reifydb_sub_server::actor::ServerActor;
 #[cfg(reifydb_single_threaded)]
 use reifydb_type::value::identity::IdentityId;
 
@@ -99,9 +95,9 @@ pub struct DstTestContext {
 	pub system: ActorSystem,
 	pub identity: IdentityId,
 	// Keep actor handles alive so actors aren't stopped
-	_http_handle: ActorHandle<reifydb_core::actors::http::HttpMessage>,
-	_grpc_handle: ActorHandle<reifydb_core::actors::grpc::GrpcMessage>,
-	_ws_handle: ActorHandle<reifydb_core::actors::ws::WsMessage>,
+	_http_handle: ActorHandle<ServerMessage>,
+	_grpc_handle: ActorHandle<ServerMessage>,
+	_ws_handle: ActorHandle<ServerMessage>,
 	pub http_client: DstHttpClient,
 	pub grpc_client: DstGrpcClient,
 	pub ws_client: DstWsClient,
@@ -127,16 +123,12 @@ impl DstTestContext {
 		let clock = db.shared_runtime().clock().clone();
 
 		// Spawn server actors
-		let http_handle = system.spawn(
-			"http-server",
-			HttpServerActor::new(engine.clone(), auth_service.clone(), clock.clone()),
-		);
-		let grpc_handle = system.spawn(
-			"grpc-server",
-			GrpcServerActor::new(engine.clone(), auth_service.clone(), clock.clone()),
-		);
+		let http_handle = system
+			.spawn("http-server", ServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
+		let grpc_handle = system
+			.spawn("grpc-server", ServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
 		let ws_handle = system
-			.spawn("ws-server", WsServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
+			.spawn("ws-server", ServerActor::new(engine.clone(), auth_service.clone(), clock.clone()));
 
 		let http_client = DstHttpClient::new(http_handle.actor_ref().clone(), system.clone());
 		let grpc_client = DstGrpcClient::new(grpc_handle.actor_ref().clone(), system.clone());

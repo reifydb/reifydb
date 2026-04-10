@@ -1,33 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use reifydb_core::{
-	actors::{
-		grpc::GrpcMessage,
-		server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse},
-	},
+	actors::server::{ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::id::SubscriptionId,
-	metric::ExecutionMetrics,
 };
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
-	execute::ExecuteError,
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata, ResponseContext},
+	dispatch::dispatch,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	remote::{connect_remote, proxy_remote},
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
 };
-use reifydb_type::{
-	params::Params,
-	value::{duration::Duration as ReifyDuration, frame::frame::Frame, identity::IdentityId},
-};
+use reifydb_type::{params::Params, value::identity::IdentityId};
 use tokio::{
 	select, spawn,
 	sync::{mpsc, watch},
 	task::spawn_blocking,
-	time::timeout,
 };
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tonic::{Request, Response, Status, metadata::KeyAndValueRef};
@@ -97,88 +89,6 @@ impl ReifyDbService {
 			None => Ok(Params::None),
 			Some(p) => proto_params_to_params(p),
 		}
-	}
-
-	/// Dispatch a query/command/admin operation through the actor with interceptors.
-	async fn execute_via_actor(&self, mut ctx: RequestContext) -> Result<(Vec<Frame>, Duration), GrpcError> {
-		// Pre-interceptors
-		if !self.state.request_interceptors().is_empty() {
-			self.state.request_interceptors().pre_execute(&mut ctx).await.map_err(GrpcError::from)?;
-		}
-
-		let start = self.state.clock().instant();
-
-		// Build message and send to per-request actor
-		let (reply, receiver) = reply_channel();
-		let msg = match ctx.operation {
-			Operation::Query => GrpcMessage::Query {
-				identity: ctx.identity,
-				statements: ctx.statements.clone(),
-				params: ctx.params.clone(),
-				reply,
-			},
-			Operation::Command => GrpcMessage::Command {
-				identity: ctx.identity,
-				statements: ctx.statements.clone(),
-				params: ctx.params.clone(),
-				reply,
-			},
-			Operation::Admin => GrpcMessage::Admin {
-				identity: ctx.identity,
-				statements: ctx.statements.clone(),
-				params: ctx.params.clone(),
-				reply,
-			},
-			Operation::Subscribe => unreachable!("subscribe uses a different path"),
-		};
-
-		let (actor_ref, _handle) = self.state.spawn_actor();
-		actor_ref.send(msg).ok().ok_or_else(|| GrpcError::from(ExecuteError::Disconnected))?;
-
-		// Await reply with timeout
-		let server_response = timeout(self.state.query_timeout(), receiver.recv())
-			.await
-			.map_err(|_| GrpcError::from(ExecuteError::Timeout))?
-			.map_err(|_| GrpcError::from(ExecuteError::Disconnected))?;
-
-		let wall_duration = start.elapsed();
-
-		// Convert response
-		let (frames, compute_duration) = match server_response {
-			ServerResponse::Success {
-				frames,
-				duration,
-			} => (frames, duration),
-			ServerResponse::EngineError {
-				diagnostic,
-				statement,
-			} => {
-				return Err(GrpcError::from(ExecuteError::Engine {
-					diagnostic: Arc::from(diagnostic),
-					statement,
-				}));
-			}
-		};
-
-		// Post-interceptors
-		if !self.state.request_interceptors().is_empty() {
-			let response_ctx = ResponseContext {
-				identity: ctx.identity,
-				operation: ctx.operation,
-				statements: ctx.statements,
-				params: ctx.params,
-				metadata: ctx.metadata,
-				metrics: ExecutionMetrics::default(),
-				result: Ok(frames.len()),
-				total: ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64)
-					.unwrap_or_default(),
-				compute: ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64)
-					.unwrap_or_default(),
-			};
-			self.state.request_interceptors().post_execute(&response_ctx).await;
-		}
-
-		Ok((frames, wall_duration))
 	}
 
 	async fn subscribe_local(
@@ -287,7 +197,6 @@ impl ReifyDb for ReifyDbService {
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
-
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Admin,
@@ -296,8 +205,7 @@ impl ReifyDb for ReifyDbService {
 			metadata,
 		};
 
-		let (frames, _duration) = self.execute_via_actor(ctx).await?;
-
+		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 		Ok(Response::new(AdminResponse {
 			frames: frames_to_proto(frames),
 		}))
@@ -308,7 +216,6 @@ impl ReifyDb for ReifyDbService {
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
-
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Command,
@@ -317,8 +224,7 @@ impl ReifyDb for ReifyDbService {
 			metadata,
 		};
 
-		let (frames, _duration) = self.execute_via_actor(ctx).await?;
-
+		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 		Ok(Response::new(CommandResponse {
 			frames: frames_to_proto(frames),
 		}))
@@ -329,7 +235,6 @@ impl ReifyDb for ReifyDbService {
 		let metadata = Self::build_metadata(&request);
 		let inner = request.into_inner();
 		let params = Self::extract_params(inner.params)?;
-
 		let ctx = RequestContext {
 			identity,
 			operation: Operation::Query,
@@ -338,8 +243,7 @@ impl ReifyDb for ReifyDbService {
 			metadata,
 		};
 
-		let (frames, _duration) = self.execute_via_actor(ctx).await?;
-
+		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
 		Ok(Response::new(QueryResponse {
 			frames: frames_to_proto(frames),
 		}))
@@ -414,7 +318,7 @@ impl ReifyDb for ReifyDbService {
 		let (reply, receiver) = reply_channel();
 		let (actor_ref, _handle) = self.state.spawn_actor();
 		actor_ref
-			.send(GrpcMessage::Authenticate {
+			.send(ServerMessage::Authenticate {
 				method: inner.method,
 				credentials: inner.credentials,
 				reply,
@@ -465,7 +369,7 @@ impl ReifyDb for ReifyDbService {
 		let (reply, receiver) = reply_channel();
 		let (actor_ref, _handle) = self.state.spawn_actor();
 		actor_ref
-			.send(GrpcMessage::Logout {
+			.send(ServerMessage::Logout {
 				token,
 				reply,
 			})

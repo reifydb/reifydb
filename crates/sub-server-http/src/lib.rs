@@ -47,7 +47,6 @@
 //! http.start()?;
 //! ```
 
-pub mod actor;
 #[cfg(not(reifydb_single_threaded))]
 pub mod error;
 #[cfg(not(reifydb_single_threaded))]

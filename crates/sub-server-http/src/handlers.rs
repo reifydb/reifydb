@@ -8,7 +8,7 @@
 //! - `/v1/query` - Execute read-only queries
 //! - `/v1/command` - Execute write commands
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use axum::{
 	Json,
@@ -17,27 +17,19 @@ use axum::{
 	response::{IntoResponse, Response},
 };
 use reifydb_core::{
-	actors::{
-		http::HttpMessage,
-		server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse},
-	},
-	metric::ExecutionMetrics,
+	actors::server::{ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	value::frame::response::{ResponseFrame, convert_frames},
 };
 use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
-	execute::ExecuteError,
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata, ResponseContext},
+	dispatch::dispatch,
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	wire::WireParams,
 };
-use reifydb_type::{
-	params::Params,
-	value::{duration::Duration as ReifyDuration, identity::IdentityId},
-};
+use reifydb_type::{params::Params, value::identity::IdentityId};
 use serde::{Deserialize, Serialize};
-use tokio::time::timeout;
 
 use crate::{error::AppError, state::HttpServerState};
 
@@ -135,7 +127,7 @@ pub async fn handle_authenticate(
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
 	actor_ref
-		.send(HttpMessage::Authenticate {
+		.send(ServerMessage::Authenticate {
 			method: request.method,
 			credentials: request.credentials,
 			reply,
@@ -217,7 +209,7 @@ pub async fn handle_logout(State(state): State<HttpServerState>, headers: Header
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
 	actor_ref
-		.send(HttpMessage::Logout {
+		.send(ServerMessage::Logout {
 			token: token.to_string(),
 			reply,
 		})
@@ -282,8 +274,9 @@ pub async fn handle_command(
 
 /// Shared implementation for query, admin, and command handlers.
 ///
-/// Dispatches to the HttpServerActor for engine execution.
-/// Interceptors run before and after the actor dispatch.
+/// Dispatches to the ServerActor for engine execution via the shared
+/// `dispatch()` function which handles interceptors, timeout, and
+/// response conversion.
 async fn execute_and_respond(
 	state: &HttpServerState,
 	operation: Operation,
@@ -297,8 +290,7 @@ async fn execute_and_respond(
 		None => Params::None,
 		Some(wp) => wp.into_params().map_err(AppError::InvalidParams)?,
 	};
-
-	let mut ctx = RequestContext {
+	let ctx = RequestContext {
 		identity,
 		operation,
 		statements: request.statements,
@@ -306,82 +298,9 @@ async fn execute_and_respond(
 		metadata,
 	};
 
-	// Pre-execute interceptors
-	if !state.request_interceptors().is_empty() {
-		state.request_interceptors().pre_execute(&mut ctx).await?;
-	}
+	let (frames, wall_duration) = dispatch(state, ctx).await?;
 
-	let start = state.clock().instant();
-
-	// Build message and send to per-request actor
-	let (reply, receiver) = reply_channel();
-	let msg = match ctx.operation {
-		Operation::Query => HttpMessage::Query {
-			identity: ctx.identity,
-			statements: ctx.statements.clone(),
-			params: ctx.params.clone(),
-			reply,
-		},
-		Operation::Command => HttpMessage::Command {
-			identity: ctx.identity,
-			statements: ctx.statements.clone(),
-			params: ctx.params.clone(),
-			reply,
-		},
-		Operation::Admin => HttpMessage::Admin {
-			identity: ctx.identity,
-			statements: ctx.statements.clone(),
-			params: ctx.params.clone(),
-			reply,
-		},
-		Operation::Subscribe => unreachable!("HTTP does not support subscribe"),
-	};
-
-	let (actor_ref, _handle) = state.spawn_actor();
-	actor_ref.send(msg).ok().ok_or_else(|| AppError::Internal("actor mailbox closed".into()))?;
-
-	// Await reply with timeout
-	let server_response = timeout(state.query_timeout(), receiver.recv())
-		.await
-		.map_err(|_| AppError::Execute(ExecuteError::Timeout))?
-		.map_err(|_| AppError::Internal("actor stopped".into()))?;
-
-	let wall_duration = start.elapsed();
-
-	// Convert ServerResponse
-	let (frames, compute_duration) = match server_response {
-		ServerResponse::Success {
-			frames,
-			duration,
-		} => (frames, duration),
-		ServerResponse::EngineError {
-			diagnostic,
-			statement,
-		} => {
-			return Err(AppError::Execute(ExecuteError::Engine {
-				diagnostic: Arc::from(diagnostic),
-				statement,
-			}));
-		}
-	};
-
-	// Post-execute interceptors
-	if !state.request_interceptors().is_empty() {
-		let response_ctx = ResponseContext {
-			identity: ctx.identity,
-			operation: ctx.operation,
-			statements: ctx.statements,
-			params: ctx.params,
-			metadata: ctx.metadata,
-			metrics: ExecutionMetrics::default(),
-			result: Ok(frames.len()),
-			total: ReifyDuration::from_nanoseconds(wall_duration.as_nanos() as i64).unwrap_or_default(),
-			compute: ReifyDuration::from_nanoseconds(compute_duration.as_nanos() as i64)
-				.unwrap_or_default(),
-		};
-		state.request_interceptors().post_execute(&response_ctx).await;
-	}
-
+	// HTTP-specific response formatting
 	let mut response = if format_params.format.as_deref() == Some("json") {
 		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
 			.map_err(AppError::BadRequest)?;

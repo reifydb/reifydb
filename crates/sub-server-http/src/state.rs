@@ -5,11 +5,9 @@
 
 use std::ops::Deref;
 
-use reifydb_core::actors::http::HttpMessage;
+use reifydb_core::actors::server::ServerMessage;
 use reifydb_runtime::actor::{mailbox::ActorRef, system::ActorHandle};
 use reifydb_sub_server::state::AppState;
-
-use crate::actor::HttpServerActor;
 
 /// HTTP server state wrapping the shared `AppState`.
 ///
@@ -35,15 +33,8 @@ impl HttpServerState {
 	///
 	/// The caller must keep the `ActorHandle` alive until the reply is received;
 	/// dropping it shuts down the actor.
-	pub fn spawn_actor(&self) -> (ActorRef<HttpMessage>, ActorHandle<HttpMessage>) {
-		let actor = HttpServerActor::new(
-			self.state.engine_clone(),
-			self.state.auth_service().clone(),
-			self.state.clock().clone(),
-		);
-		let handle = self.state.actor_system().spawn_query("http-req", actor);
-		let actor_ref = handle.actor_ref().clone();
-		(actor_ref, handle)
+	pub fn spawn_actor(&self) -> (ActorRef<ServerMessage>, ActorHandle<ServerMessage>) {
+		self.state.spawn_server_actor()
 	}
 }
 

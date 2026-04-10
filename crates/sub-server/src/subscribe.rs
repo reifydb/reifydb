@@ -3,22 +3,21 @@
 
 use std::fmt;
 
-use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::id::SubscriptionId};
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_core::error::diagnostic::internal::internal;
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::engine::StandardEngine;
+#[cfg(not(reifydb_single_threaded))]
+use reifydb_type::error::Error;
 use reifydb_type::{
 	Result as TypeResult,
-	error::Error,
 	params::Params,
 	value::{Value, frame::frame::Frame, identity::IdentityId},
 };
-use tokio::task::spawn_blocking;
-use tracing::{debug, error};
-
-use crate::{
-	execute::{ExecuteError, execute},
-	interceptor::{Operation, RequestContext, RequestMetadata},
-	state::AppState,
-};
+#[cfg(not(reifydb_single_threaded))]
+use tracing::debug;
+#[allow(unused_imports)]
+use tracing::error;
 
 /// Error type for subscription creation.
 pub enum CreateSubscriptionError {
@@ -59,7 +58,19 @@ pub enum CreateSubscriptionResult {
 	},
 }
 
+#[cfg(not(reifydb_single_threaded))]
+use tokio::task::spawn_blocking;
+
+use crate::execute::ExecuteError;
+#[cfg(not(reifydb_single_threaded))]
+use crate::{
+	dispatch::dispatch_subscribe,
+	interceptor::{Operation, RequestContext, RequestMetadata},
+	state::AppState,
+};
+
 /// Execute `CREATE SUBSCRIPTION AS { query }` and extract the subscription ID from the result.
+#[cfg(not(reifydb_single_threaded))]
 pub async fn create_subscription(
 	state: &AppState,
 	identity: IdentityId,
@@ -77,9 +88,7 @@ pub async fn create_subscription(
 		metadata,
 	};
 
-	let (frames, _duration) =
-		execute(state.request_interceptors(), state.engine_clone(), ctx, state.query_timeout(), state.clock())
-			.await?;
+	let (frames, _duration) = dispatch_subscribe(state, ctx).await?;
 
 	let frame = frames.first().ok_or(CreateSubscriptionError::ExtractionFailed)?;
 
@@ -168,6 +177,7 @@ pub fn cleanup_subscription_sync(engine: &StandardEngine, subscription_id: Subsc
 }
 
 /// Async cleanup via a blocking task.
+#[cfg(not(reifydb_single_threaded))]
 pub async fn cleanup_subscription(state: &AppState, subscription_id: SubscriptionId) -> TypeResult<()> {
 	let engine = state.engine_clone();
 

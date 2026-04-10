@@ -1,39 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! DST client for the gRPC server actor.
+//! DST client for the server actor (gRPC path).
 
 use std::collections::HashMap;
 
-use reifydb_core::actors::{
-	grpc::GrpcMessage,
-	server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse, ServerSubscribeResponse},
+use reifydb_core::actors::server::{
+	ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorSystem};
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
-/// Synchronous DST client for the gRPC server actor.
+/// Synchronous DST client for the server actor.
 pub struct DstGrpcClient {
-	actor_ref: ActorRef<GrpcMessage>,
+	actor_ref: ActorRef<ServerMessage>,
 	system: ActorSystem,
 }
 
 impl DstGrpcClient {
-	pub fn new(actor_ref: ActorRef<GrpcMessage>, system: ActorSystem) -> Self {
+	pub fn new(actor_ref: ActorRef<ServerMessage>, system: ActorSystem) -> Self {
 		Self {
 			actor_ref,
 			system,
 		}
 	}
 
-	fn send(&self, msg: GrpcMessage) {
+	fn send(&self, msg: ServerMessage) {
 		self.actor_ref.send(msg).ok().expect("actor mailbox closed");
 		self.system.run_until_idle();
 	}
 
 	pub fn query(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(GrpcMessage::Query {
+		self.send(ServerMessage::Query {
 			identity,
 			statements,
 			params,
@@ -44,7 +43,7 @@ impl DstGrpcClient {
 
 	pub fn command(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(GrpcMessage::Command {
+		self.send(ServerMessage::Command {
 			identity,
 			statements,
 			params,
@@ -55,7 +54,7 @@ impl DstGrpcClient {
 
 	pub fn admin(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(GrpcMessage::Admin {
+		self.send(ServerMessage::Admin {
 			identity,
 			statements,
 			params,
@@ -66,7 +65,7 @@ impl DstGrpcClient {
 
 	pub fn subscribe(&self, identity: IdentityId, query: String) -> ServerSubscribeResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(GrpcMessage::Subscribe {
+		self.send(ServerMessage::Subscribe {
 			identity,
 			query,
 			reply,
@@ -76,7 +75,7 @@ impl DstGrpcClient {
 
 	pub fn authenticate(&self, method: String, credentials: HashMap<String, String>) -> ServerAuthResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(GrpcMessage::Authenticate {
+		self.send(ServerMessage::Authenticate {
 			method,
 			credentials,
 			reply,
@@ -86,7 +85,7 @@ impl DstGrpcClient {
 
 	pub fn logout(&self, token: String) -> ServerLogoutResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(GrpcMessage::Logout {
+		self.send(ServerMessage::Logout {
 			token,
 			reply,
 		});

@@ -1,42 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! DST client for the HTTP server actor.
-//!
-//! Provides a synchronous client that sends messages to the HttpServerActor
-//! and reads replies after `run_until_idle()`.
+//! DST client for the server actor (HTTP path).
 
 use std::collections::HashMap;
 
-use reifydb_core::actors::{
-	http::HttpMessage,
-	server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse},
-};
+use reifydb_core::actors::server::{ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse};
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel, system::ActorSystem};
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
-/// Synchronous DST client for the HTTP server actor.
+/// Synchronous DST client for the server actor.
 pub struct DstHttpClient {
-	actor_ref: ActorRef<HttpMessage>,
+	actor_ref: ActorRef<ServerMessage>,
 	system: ActorSystem,
 }
 
 impl DstHttpClient {
-	pub fn new(actor_ref: ActorRef<HttpMessage>, system: ActorSystem) -> Self {
+	pub fn new(actor_ref: ActorRef<ServerMessage>, system: ActorSystem) -> Self {
 		Self {
 			actor_ref,
 			system,
 		}
 	}
 
-	fn send(&self, msg: HttpMessage) {
+	fn send(&self, msg: ServerMessage) {
 		self.actor_ref.send(msg).ok().expect("actor mailbox closed");
 		self.system.run_until_idle();
 	}
 
 	pub fn query(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(HttpMessage::Query {
+		self.send(ServerMessage::Query {
 			identity,
 			statements,
 			params,
@@ -47,7 +41,7 @@ impl DstHttpClient {
 
 	pub fn command(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(HttpMessage::Command {
+		self.send(ServerMessage::Command {
 			identity,
 			statements,
 			params,
@@ -58,7 +52,7 @@ impl DstHttpClient {
 
 	pub fn admin(&self, identity: IdentityId, statements: Vec<String>, params: Params) -> ServerResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(HttpMessage::Admin {
+		self.send(ServerMessage::Admin {
 			identity,
 			statements,
 			params,
@@ -69,7 +63,7 @@ impl DstHttpClient {
 
 	pub fn authenticate(&self, method: String, credentials: HashMap<String, String>) -> ServerAuthResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(HttpMessage::Authenticate {
+		self.send(ServerMessage::Authenticate {
 			method,
 			credentials,
 			reply,
@@ -79,7 +73,7 @@ impl DstHttpClient {
 
 	pub fn logout(&self, token: String) -> ServerLogoutResponse {
 		let (reply, receiver) = reply_channel();
-		self.send(HttpMessage::Logout {
+		self.send(ServerMessage::Logout {
 			token,
 			reply,
 		});

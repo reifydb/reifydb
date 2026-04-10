@@ -5,26 +5,24 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::{
-	actors::{
-		server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse},
-		ws::WsMessage,
-	},
+	actors::server::{ServerAuthResponse, ServerLogoutResponse, ServerMessage},
 	interface::catalog::id::SubscriptionId,
-	metric::ExecutionMetrics,
 	value::frame::response::convert_frames,
 };
 use reifydb_runtime::actor::{mailbox::ActorRef, reply::reply_channel};
 use reifydb_sub_server::{
+	actor::ServerActor,
 	auth::extract_identity_from_ws_auth,
+	dispatch::dispatch,
 	execute::ExecuteError,
-	interceptor::{Operation, Protocol, RequestContext, RequestMetadata, ResponseContext},
+	interceptor::{Operation, Protocol, RequestContext, RequestMetadata},
 	response::resolve_response_json,
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
 use reifydb_type::{
 	params::Params,
-	value::{duration::Duration as ReifyDuration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
+	value::{frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
 use serde_json::{Value as JsonValue, from_str, json};
 use tokio::{
@@ -39,7 +37,6 @@ use tracing::{debug, error, info, warn};
 use uuid::Builder;
 
 use crate::{
-	actor::WsServerActor,
 	protocol::{Request, RequestPayload},
 	response::{CONTENT_TYPE_FRAMES, CONTENT_TYPE_JSON, Response, ServerPush},
 	subscription::{
@@ -82,8 +79,8 @@ pub async fn handle_connection(
 	let (mut sender, mut receiver) = ws_stream.split();
 
 	// Spawn per-connection actor
-	let actor = WsServerActor::new(state.engine_clone(), state.auth_service().clone(), state.clock().clone());
-	let actor_handle = state.actor_system().spawn_query(&format!("ws-{}", connection_id), actor);
+	let actor = ServerActor::new(state.engine_clone(), state.auth_service().clone(), state.clock().clone());
+	let actor_handle = state.actor_system().spawn(&format!("ws-{}", connection_id), actor);
 	let actor_ref = actor_handle.actor_ref().clone();
 
 	// Channel for receiving push messages from the registry
@@ -210,7 +207,7 @@ type ConnectionId = Uuid7;
 /// Groups the shared connection state passed to message processing and subscription handlers.
 pub(crate) struct ConnectionContext<'a> {
 	pub state: &'a AppState,
-	pub actor_ref: &'a ActorRef<WsMessage>,
+	pub actor_ref: &'a ActorRef<ServerMessage>,
 	pub identity: &'a mut Option<IdentityId>,
 	pub auth_token: &'a mut Option<String>,
 	pub connection_id: ConnectionId,
@@ -237,7 +234,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				// Dispatch auth through actor
 				let (reply, receiver) = reply_channel();
 				conn.actor_ref
-					.send(WsMessage::Authenticate {
+					.send(ServerMessage::Authenticate {
 						method: method.to_string(),
 						credentials,
 						reply,
@@ -309,7 +306,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				},
 			};
 
-			execute_via_actor(
+			execute_via_dispatch(
 				conn,
 				&request.id,
 				id,
@@ -345,7 +342,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				},
 			};
 
-			execute_via_actor(
+			execute_via_dispatch(
 				conn,
 				&request.id,
 				id,
@@ -381,7 +378,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				},
 			};
 
-			execute_via_actor(
+			execute_via_dispatch(
 				conn,
 				&request.id,
 				id,
@@ -401,7 +398,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			if let Some(token) = conn.auth_token.as_ref() {
 				let (reply, receiver) = reply_channel();
 				conn.actor_ref
-					.send(WsMessage::Logout {
+					.send(ServerMessage::Logout {
 						token: token.clone(),
 						reply,
 					})
@@ -475,9 +472,9 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 	}
 }
 
-/// Execute a query/command/admin via the actor with interceptors and response formatting.
+/// Execute a query/command/admin via the shared dispatch layer with response formatting.
 #[allow(clippy::too_many_arguments)]
-async fn execute_via_actor(
+async fn execute_via_dispatch(
 	conn: &mut ConnectionContext<'_>,
 	request_id: &str,
 	identity: IdentityId,
@@ -488,10 +485,8 @@ async fn execute_via_actor(
 	unwrap: bool,
 	build_response: impl FnOnce(&str, String, JsonValue) -> String,
 ) -> Option<String> {
-	let query_timeout = conn.state.query_timeout();
 	let metadata = build_ws_metadata(conn.auth_token);
-
-	let mut ctx = RequestContext {
+	let ctx = RequestContext {
 		identity,
 		operation,
 		statements,
@@ -499,81 +494,12 @@ async fn execute_via_actor(
 		metadata,
 	};
 
-	// Pre-interceptors
-	if !conn.state.request_interceptors().is_empty()
-		&& let Err(e) = conn.state.request_interceptors().pre_execute(&mut ctx).await
-	{
-		return Some(error_to_response(request_id, e));
-	}
-
-	// Build message and send to actor
-	let (reply, receiver) = reply_channel();
-	let msg = match ctx.operation {
-		Operation::Query => WsMessage::Query {
-			identity: ctx.identity,
-			statements: ctx.statements.clone(),
-			params: ctx.params.clone(),
-			reply,
-		},
-		Operation::Command => WsMessage::Command {
-			identity: ctx.identity,
-			statements: ctx.statements.clone(),
-			params: ctx.params.clone(),
-			reply,
-		},
-		Operation::Admin => WsMessage::Admin {
-			identity: ctx.identity,
-			statements: ctx.statements.clone(),
-			params: ctx.params.clone(),
-			reply,
-		},
-		Operation::Subscribe => unreachable!("subscribe uses a different path"),
-	};
-
-	conn.actor_ref.send(msg).ok().expect("actor mailbox closed");
-
-	// Await reply with timeout
-	match timeout(query_timeout, receiver.recv()).await {
-		Ok(Ok(ServerResponse::Success {
-			frames,
-			duration,
-		})) => {
-			// Post-interceptors
-			if !conn.state.request_interceptors().is_empty() {
-				let response_ctx = ResponseContext {
-					identity: ctx.identity,
-					operation: ctx.operation,
-					statements: ctx.statements,
-					params: ctx.params,
-					metadata: ctx.metadata,
-					metrics: ExecutionMetrics::default(),
-					result: Ok(frames.len()),
-					total: ReifyDuration::from_nanoseconds(duration.as_nanos() as i64)
-						.unwrap_or_default(),
-					compute: ReifyDuration::from_nanoseconds(duration.as_nanos() as i64)
-						.unwrap_or_default(),
-				};
-				conn.state.request_interceptors().post_execute(&response_ctx).await;
-			}
-
+	match dispatch(conn.state, ctx).await {
+		Ok((frames, _duration)) => {
 			let (content_type, body) = build_response_body(frames, format, unwrap);
 			Some(build_response(request_id, content_type, body))
 		}
-		Ok(Ok(ServerResponse::EngineError {
-			diagnostic,
-			statement,
-		})) => {
-			let mut diag = *diagnostic;
-			if diag.statement.is_none() && !statement.is_empty() {
-				diag.statement = Some(statement);
-			}
-			Some(Response::error(request_id, diag).to_json())
-		}
-		Ok(Err(_)) => Some(build_error(request_id, "INTERNAL_ERROR", "actor stopped")),
-		Err(_) => {
-			Some(Response::internal_error(request_id, "QUERY_TIMEOUT", "Query execution timed out")
-				.to_json())
-		}
+		Err(e) => Some(error_to_response(request_id, e)),
 	}
 }
 

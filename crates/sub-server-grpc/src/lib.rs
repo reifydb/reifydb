@@ -5,7 +5,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-pub mod actor;
 #[cfg(not(reifydb_single_threaded))]
 pub mod convert;
 #[cfg(not(reifydb_single_threaded))]

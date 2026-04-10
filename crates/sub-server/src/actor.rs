@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-//! Actor implementation for the gRPC server.
+//! Unified server actor for HTTP, gRPC, and WebSocket transports.
 //!
-//! Handles engine dispatch (query, command, admin, subscribe) and auth operations.
-//! Same `handle()` code runs in both native and DST modes.
+//! The same `handle()` code runs in both native (rayon pool) and DST modes.
+//! Protocol-specific concerns (serialization, HTTP status codes, etc.) live in
+//! the transport layer — this actor only does engine dispatch and auth.
 
 use reifydb_auth::service::{AuthResponse, AuthService};
-use reifydb_core::actors::{
-	grpc::GrpcMessage,
-	server::{ServerAuthResponse, ServerLogoutResponse, ServerResponse, ServerSubscribeResponse},
+use reifydb_core::actors::server::{
+	ServerAuthResponse, ServerLogoutResponse, ServerMessage, ServerResponse, ServerSubscribeResponse,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -19,16 +19,17 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_sub_server::subscribe::extract_subscription_id;
 use reifydb_type::params::Params;
 
-pub struct GrpcServerActor {
+use crate::subscribe::extract_subscription_id;
+
+pub struct ServerActor {
 	engine: StandardEngine,
 	auth_service: AuthService,
 	clock: Clock,
 }
 
-impl GrpcServerActor {
+impl ServerActor {
 	pub fn new(engine: StandardEngine, auth_service: AuthService, clock: Clock) -> Self {
 		Self {
 			engine,
@@ -36,80 +37,76 @@ impl GrpcServerActor {
 			clock,
 		}
 	}
+
+	fn dispatch_execute(
+		&self,
+		identity: reifydb_type::value::identity::IdentityId,
+		statements: Vec<String>,
+		params: Params,
+		reply: reifydb_runtime::actor::reply::Reply<ServerResponse>,
+		execute: impl FnOnce(
+			&StandardEngine,
+			reifydb_type::value::identity::IdentityId,
+			&str,
+			Params,
+		) -> reifydb_core::execution::ExecutionResult,
+	) {
+		let combined = statements.join("; ");
+		let t = self.clock.instant();
+		let result = execute(&self.engine, identity, &combined, params);
+		if let Some(err) = result.error {
+			reply.send(ServerResponse::EngineError {
+				diagnostic: Box::new(err.diagnostic()),
+				statement: combined,
+			});
+		} else {
+			reply.send(ServerResponse::Success {
+				frames: result.frames,
+				duration: t.elapsed(),
+			});
+		}
+	}
 }
 
-impl Actor for GrpcServerActor {
+impl Actor for ServerActor {
 	type State = ();
-	type Message = GrpcMessage;
+	type Message = ServerMessage;
 
 	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
 
-	fn handle(&self, _state: &mut (), msg: GrpcMessage, _ctx: &Context<GrpcMessage>) -> Directive {
+	fn handle(&self, _state: &mut (), msg: ServerMessage, _ctx: &Context<ServerMessage>) -> Directive {
 		match msg {
-			GrpcMessage::Query {
+			ServerMessage::Query {
 				identity,
 				statements,
 				params,
 				reply,
 			} => {
-				let combined = statements.join("; ");
-				let t = self.clock.instant();
-				let result = self.engine.query_as(identity, &combined, params);
-				if let Some(err) = result.error {
-					reply.send(ServerResponse::EngineError {
-						diagnostic: Box::new(err.diagnostic()),
-						statement: combined,
-					});
-				} else {
-					reply.send(ServerResponse::Success {
-						frames: result.frames,
-						duration: t.elapsed(),
-					});
-				}
+				self.dispatch_execute(identity, statements, params, reply, |e, id, s, p| {
+					e.query_as(id, s, p)
+				});
 			}
-			GrpcMessage::Command {
+			ServerMessage::Command {
 				identity,
 				statements,
 				params,
 				reply,
 			} => {
-				let combined = statements.join("; ");
-				let t = self.clock.instant();
-				let result = self.engine.command_as(identity, &combined, params);
-				if let Some(err) = result.error {
-					reply.send(ServerResponse::EngineError {
-						diagnostic: Box::new(err.diagnostic()),
-						statement: combined,
-					});
-				} else {
-					reply.send(ServerResponse::Success {
-						frames: result.frames,
-						duration: t.elapsed(),
-					});
-				}
+				self.dispatch_execute(identity, statements, params, reply, |e, id, s, p| {
+					e.command_as(id, s, p)
+				});
 			}
-			GrpcMessage::Admin {
+			ServerMessage::Admin {
 				identity,
 				statements,
 				params,
 				reply,
 			} => {
-				let combined = statements.join("; ");
-				let t = self.clock.instant();
-				let result = self.engine.admin_as(identity, &combined, params);
-				if let Some(err) = result.error {
-					reply.send(ServerResponse::EngineError {
-						diagnostic: Box::new(err.diagnostic()),
-						statement: combined,
-					});
-				} else {
-					reply.send(ServerResponse::Success {
-						frames: result.frames,
-						duration: t.elapsed(),
-					});
-				}
+				self.dispatch_execute(identity, statements, params, reply, |e, id, s, p| {
+					e.admin_as(id, s, p)
+				});
 			}
-			GrpcMessage::Subscribe {
+			ServerMessage::Subscribe {
 				identity,
 				query,
 				reply,
@@ -131,7 +128,7 @@ impl Actor for GrpcServerActor {
 					});
 				}
 			}
-			GrpcMessage::Authenticate {
+			ServerMessage::Authenticate {
 				method,
 				credentials,
 				reply,
@@ -157,7 +154,7 @@ impl Actor for GrpcServerActor {
 				}),
 				Err(e) => reply.send(ServerAuthResponse::Error(e.to_string())),
 			},
-			GrpcMessage::Logout {
+			ServerMessage::Logout {
 				token,
 				reply,
 			} => {

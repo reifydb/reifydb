@@ -9,13 +9,17 @@
 use std::time::Duration;
 
 use reifydb_auth::service::AuthService;
+use reifydb_core::actors::server::ServerMessage;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
-	actor::system::ActorSystem,
+	actor::{
+		mailbox::ActorRef,
+		system::{ActorHandle, ActorSystem},
+	},
 	context::{clock::Clock, rng::Rng},
 };
 
-use crate::interceptor::RequestInterceptorChain;
+use crate::{actor::ServerActor, interceptor::RequestInterceptorChain};
 
 /// Configuration for query execution.
 #[derive(Debug, Clone)]
@@ -214,6 +218,17 @@ impl AppState {
 	#[inline]
 	pub fn auth_service(&self) -> &AuthService {
 		&self.auth_service
+	}
+
+	/// Spawn a short-lived server actor for one request and return its ref + handle.
+	///
+	/// The caller must keep the `ActorHandle` alive until the reply is received;
+	/// dropping it shuts down the actor.
+	pub fn spawn_server_actor(&self) -> (ActorRef<ServerMessage>, ActorHandle<ServerMessage>) {
+		let actor = ServerActor::new(self.engine.clone(), self.auth_service.clone(), self.clock.clone());
+		let handle = self.actor_system.spawn("server-req", actor);
+		let actor_ref = handle.actor_ref().clone();
+		(actor_ref, handle)
 	}
 }
 
