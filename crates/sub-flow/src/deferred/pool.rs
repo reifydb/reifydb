@@ -171,6 +171,17 @@ impl Actor for PoolActor {
 					is_register: false,
 				};
 			}
+			FlowPoolMessage::Rebalance {
+				assignments,
+				reply,
+			} => {
+				if !matches!(state.phase, Phase::Idle) {
+					(reply)(PoolResponse::Error("Pool actor is busy".to_string()));
+					return Directive::Continue;
+				}
+
+				self.handle_rebalance_async(state, ctx, assignments, reply);
+			}
 			FlowPoolMessage::Tick {
 				ticks,
 				timestamp,
@@ -252,6 +263,51 @@ impl PoolActor {
 			view_changes: Vec::new(),
 			reply,
 			started_at: start,
+		};
+	}
+
+	/// Handle Rebalance by clearing all workers and re-registering assigned flows.
+	fn handle_rebalance_async(
+		&self,
+		state: &mut PoolState,
+		ctx: &Context<FlowPoolMessage>,
+		assignments: BTreeMap<usize, Vec<FlowId>>,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	) {
+		let worker_count = self.refs.len();
+
+		// Send Rebalance to every worker. Workers not in the assignments map
+		// receive an empty list (which just clears them).
+		for worker_id in 0..worker_count {
+			let flow_ids = assignments.get(&worker_id).cloned().unwrap_or_default();
+
+			let self_ref = ctx.self_ref().clone();
+			let callback: Box<dyn FnOnce(FlowResponse) + Send> = Box::new(move |resp| {
+				let _ = self_ref.send(FlowPoolMessage::WorkerReply {
+					worker_id,
+					response: resp,
+				});
+			});
+
+			if self.refs[worker_id]
+				.send(FlowMessage::Rebalance {
+					flow_ids,
+					reply: callback,
+				})
+				.is_err()
+			{
+				(reply)(PoolResponse::Error(format!("Worker {} stopped", worker_id)));
+				return;
+			}
+		}
+
+		state.phase = Phase::WaitingForWorkers {
+			pending_count: worker_count,
+			results: Vec::new(),
+			pending_shapes: Vec::new(),
+			view_changes: Vec::new(),
+			reply,
+			started_at: self.clock.instant(),
 		};
 	}
 

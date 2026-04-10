@@ -121,6 +121,10 @@ enum Phase {
 		flows: Vec<FlowId>,
 		ctx: ConsumeContext,
 	},
+	/// Rebalancing flow assignments across workers
+	Rebalancing {
+		ctx: ConsumeContext,
+	},
 	/// Waiting for tick results from pool
 	Ticking,
 }
@@ -174,6 +178,8 @@ pub struct CoordinatorState {
 	analyzer: FlowGraphAnalyzer,
 	phase: Phase,
 	tick_schedules: BTreeMap<FlowId, TickSchedule>,
+	/// Current worker assignment for each flow, kept in sync with the pool.
+	flow_assignments: BTreeMap<FlowId, usize>,
 }
 
 impl Actor for CoordinatorActor {
@@ -188,6 +194,7 @@ impl Actor for CoordinatorActor {
 			analyzer: FlowGraphAnalyzer::new(),
 			phase: Phase::Idle,
 			tick_schedules: BTreeMap::new(),
+			flow_assignments: BTreeMap::new(),
 		}
 	}
 
@@ -407,8 +414,7 @@ impl CoordinatorActor {
 				}
 
 				if remaining_flows.is_empty() {
-					// All flows registered, proceed to submit
-					self.proceed_to_submit(state, ctx, consume_ctx);
+					self.rebalance_flows(state, ctx, consume_ctx);
 				} else {
 					// Register next flow
 					let flow = remaining_flows.remove(0);
@@ -452,6 +458,19 @@ impl CoordinatorActor {
 					};
 				}
 			}
+			Phase::Rebalancing {
+				ctx: consume_ctx,
+			} => match response {
+				PoolResponse::Success {
+					..
+				}
+				| PoolResponse::RegisterSuccess => {
+					self.proceed_to_submit(state, ctx, consume_ctx);
+				}
+				PoolResponse::Error(e) => {
+					(consume_ctx.original_reply)(coordinator_error(e));
+				}
+			},
 			Phase::SubmittingBatches {
 				ctx: mut consume_ctx,
 			} => {
@@ -536,13 +555,18 @@ impl CoordinatorActor {
 		}
 	}
 
-	/// Transition to the submit-batches phase.
 	fn proceed_to_submit(
 		&self,
 		state: &mut CoordinatorState,
 		ctx: &Context<FlowCoordinatorMessage>,
 		mut consume_ctx: ConsumeContext,
 	) {
+		let optimal = self.compute_flow_assignments(state);
+		if optimal != state.flow_assignments {
+			self.rebalance_flows(state, ctx, consume_ctx);
+			return;
+		}
+
 		if let Some(to_version) = consume_ctx.latest_version {
 			let worker_batches = self.route_and_group_changes(
 				state,
@@ -1010,35 +1034,14 @@ impl CoordinatorActor {
 			.flat_map(|level| level.iter().filter(|id| submitted.contains(id)).copied())
 			.collect();
 
-		// Build upstream map from existing dependencies (filtered to submitted flows)
-		let mut upstream_of: BTreeMap<FlowId, FlowId> = BTreeMap::new();
-		for dep in &dependency_graph.dependencies {
-			if submitted.contains(&dep.source_flow) && submitted.contains(&dep.target_flow) {
-				upstream_of.entry(dep.target_flow).or_insert(dep.source_flow);
-			}
-		}
-
-		// Route: downstream flows go to the same worker as their upstream
-		let mut flow_to_worker: BTreeMap<FlowId, usize> = BTreeMap::new();
-		for fid in &ordered {
-			let worker_id = match upstream_of.get(fid) {
-				Some(upstream) => flow_to_worker
-					.get(upstream)
-					.copied()
-					.unwrap_or_else(|| (upstream.0 as usize) % self.num_workers),
-				None => (fid.0 as usize) % self.num_workers,
-			};
-			flow_to_worker.insert(*fid, worker_id);
-		}
-
-		// Build batches in topological order so upstream instructions are
-		// processed before downstream ones within the same worker.  The
-		// worker accumulates `pending` across instructions, so the
-		// downstream flow naturally sees the upstream's writes.
+		let flow_to_worker = &state.flow_assignments;
 		let mut worker_batches: BTreeMap<usize, WorkerBatch> = BTreeMap::new();
 		for fid in ordered {
 			if let Some(instruction) = flow_instructions.remove(&fid) {
-				let worker_id = flow_to_worker[&fid];
+				let worker_id = flow_to_worker
+					.get(&fid)
+					.copied()
+					.unwrap_or_else(|| (fid.0 as usize) % self.num_workers);
 				let batch = worker_batches
 					.entry(worker_id)
 					.or_insert_with(|| WorkerBatch::new(state_version));
@@ -1049,6 +1052,66 @@ impl CoordinatorActor {
 		Span::current().record("batches", worker_batches.len());
 		Span::current().record("elapsed_us", start.elapsed().as_micros() as u64);
 		worker_batches
+	}
+
+	fn compute_flow_assignments(&self, state: &CoordinatorState) -> BTreeMap<FlowId, usize> {
+		let dependency_graph = state.analyzer.get_dependency_graph();
+
+		let mut upstream_of: BTreeMap<FlowId, FlowId> = BTreeMap::new();
+		for dep in &dependency_graph.dependencies {
+			upstream_of.entry(dep.target_flow).or_insert(dep.source_flow);
+		}
+
+		let mut assignments: BTreeMap<FlowId, usize> = BTreeMap::new();
+		let levels = state.analyzer.calculate_execution_levels(dependency_graph);
+		for level in &levels {
+			for fid in level {
+				let worker_id = match upstream_of.get(fid) {
+					Some(upstream) => assignments
+						.get(upstream)
+						.copied()
+						.unwrap_or_else(|| (upstream.0 as usize) % self.num_workers),
+					None => (fid.0 as usize) % self.num_workers,
+				};
+				assignments.insert(*fid, worker_id);
+			}
+		}
+		assignments
+	}
+
+	fn rebalance_flows(
+		&self,
+		state: &mut CoordinatorState,
+		ctx: &Context<FlowCoordinatorMessage>,
+		consume_ctx: ConsumeContext,
+	) {
+		let assignments = self.compute_flow_assignments(state);
+		state.flow_assignments = assignments.clone();
+
+		let mut by_worker: BTreeMap<usize, Vec<FlowId>> = BTreeMap::new();
+		for (fid, wid) in &assignments {
+			by_worker.entry(*wid).or_default().push(*fid);
+		}
+
+		let self_ref = ctx.self_ref().clone();
+		let callback: Box<dyn FnOnce(PoolResponse) + Send> = Box::new(move |resp| {
+			let _ = self_ref.send(FlowCoordinatorMessage::PoolReply(resp));
+		});
+
+		if self.pool
+			.send(FlowPoolMessage::Rebalance {
+				assignments: by_worker,
+				reply: callback,
+			})
+			.is_err()
+		{
+			(consume_ctx.original_reply)(coordinator_error("Pool actor stopped"));
+			return;
+		}
+
+		state.phase = Phase::Rebalancing {
+			ctx: consume_ctx,
+		};
 	}
 
 	/// Register a tick schedule for a flow if it has a tick duration configured.

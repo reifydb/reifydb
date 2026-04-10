@@ -104,6 +104,10 @@ pub enum FlowMessage {
 		state_version: CommitVersion,
 		reply: Box<dyn FnOnce(FlowResponse) + Send>,
 	},
+	Rebalance {
+		flow_ids: Vec<FlowId>,
+		reply: Box<dyn FnOnce(FlowResponse) + Send>,
+	},
 }
 
 /// Response from the flow pool actor.
@@ -146,6 +150,10 @@ pub enum FlowPoolMessage {
 		ticks: BTreeMap<usize, Vec<FlowId>>,
 		timestamp: DateTime,
 		state_version: CommitVersion,
+		reply: Box<dyn FnOnce(PoolResponse) + Send>,
+	},
+	Rebalance {
+		assignments: BTreeMap<usize, Vec<FlowId>>,
 		reply: Box<dyn FnOnce(PoolResponse) + Send>,
 	},
 	/// Async reply from a FlowActor worker

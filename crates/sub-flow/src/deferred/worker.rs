@@ -116,11 +116,46 @@ impl Actor for FlowWorkerActor {
 				flow_id,
 				reply,
 			} => {
+				if state.flow_engine.flows.contains_key(&flow_id) {
+					(reply)(FlowResponse::Success {
+						pending: Pending::new(),
+						pending_shapes: Vec::new(),
+						view_changes: Vec::new(),
+					});
+				} else {
+					let result =
+						self.engine.begin_command(IdentityId::system()).and_then(|mut txn| {
+							let (flow, _) = self.flow_catalog.get_or_load_flow(
+								&mut Transaction::Command(&mut txn),
+								flow_id,
+							)?;
+							state.flow_engine.register(&mut txn, flow)
+						});
+
+					let resp = match result {
+						Ok(_) => FlowResponse::Success {
+							pending: Pending::new(),
+							pending_shapes: Vec::new(),
+							view_changes: Vec::new(),
+						},
+						Err(e) => FlowResponse::Error(e.to_string()),
+					};
+					(reply)(resp);
+				}
+			}
+			FlowMessage::Rebalance {
+				flow_ids,
+				reply,
+			} => {
+				state.flow_engine.clear();
 				let result = self.engine.begin_command(IdentityId::system()).and_then(|mut txn| {
-					let (flow, _) = self
-						.flow_catalog
-						.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)?;
-					state.flow_engine.register(&mut txn, flow)
+					for fid in flow_ids {
+						let (flow, _) = self
+							.flow_catalog
+							.get_or_load_flow(&mut Transaction::Command(&mut txn), fid)?;
+						state.flow_engine.register(&mut txn, flow)?;
+					}
+					Ok(())
 				});
 
 				let resp = match result {
