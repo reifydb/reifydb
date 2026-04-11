@@ -4,12 +4,12 @@
 
 use std::{env, error::Error};
 
-use reifydb_client::WsClient;
+use reifydb_client::{Encoding, WsClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	// Connect to the server
-	let mut client = WsClient::connect("ws://localhost:8090").await?;
+	let mut client = WsClient::connect("ws://localhost:8090", Encoding::Json).await?;
 
 	// Authenticate
 	let token = env::var("REIFYDB_TOKEN").unwrap_or_else(|_| "root".to_string());

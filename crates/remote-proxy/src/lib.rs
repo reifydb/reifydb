@@ -11,7 +11,7 @@
 
 use std::fmt;
 
-use reifydb_client::{GrpcClient, GrpcSubscription};
+use reifydb_client::{Encoding, GrpcClient, GrpcSubscription};
 use reifydb_type::value::frame::frame::Frame;
 use tokio::{
 	select,
@@ -53,8 +53,9 @@ pub async fn connect_remote(
 	query: &str,
 	token: Option<&str>,
 ) -> Result<RemoteSubscription, RemoteSubscriptionError> {
-	let mut client =
-		GrpcClient::connect(address).await.map_err(|e| RemoteSubscriptionError::Connect(e.to_string()))?;
+	let mut client = GrpcClient::connect(address, Encoding::Json)
+		.await
+		.map_err(|e| RemoteSubscriptionError::Connect(e.to_string()))?;
 	if let Some(t) = token {
 		client.authenticate(t);
 	}

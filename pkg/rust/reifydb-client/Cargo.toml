@@ -29,6 +29,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 reifydb-type = { workspace = true }
+reifydb-wire-format = { workspace = true }
 reifydb-client-derive = { workspace = true }
 
 # DST client

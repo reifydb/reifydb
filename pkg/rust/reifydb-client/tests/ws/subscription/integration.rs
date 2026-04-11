@@ -16,7 +16,7 @@ use std::{
 	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb_client::WsClient;
+use reifydb_client::{Encoding, WsClient};
 use tokio::{runtime::Runtime, time::sleep};
 
 use crate::{
@@ -222,7 +222,7 @@ fn test_concurrent_multiple_subscriptions() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table1 = unique_table_name("sub_conc_1");
@@ -262,7 +262,7 @@ fn test_concurrent_5_plus_subscriptions() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		const NUM_TABLES: usize = 5;
@@ -313,7 +313,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_reconn");
@@ -326,7 +326,7 @@ fn test_reconnection_resubscribe_after_disconnect() {
 		client.close().await.unwrap();
 
 		// Reconnect
-		let mut client2 = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client2 = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client2.authenticate("mysecrettoken").await.unwrap();
 
 		// Resubscribe
@@ -360,7 +360,7 @@ fn test_reconnection_multiple_subscriptions() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let tables: Vec<String> = (0..3).map(|i| unique_table_name(&format!("sub_reconn_m{}", i))).collect();
@@ -379,7 +379,7 @@ fn test_reconnection_multiple_subscriptions() {
 		// Close and reconnect
 		client.close().await.unwrap();
 
-		let mut client2 = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client2 = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client2.authenticate("mysecrettoken").await.unwrap();
 
 		// Resubscribe to all tables
@@ -422,7 +422,7 @@ fn test_error_invalid_query() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let result = client.subscribe("INVALID RQL SYNTAX HERE").await;
@@ -442,7 +442,7 @@ fn test_error_nonexistent_table() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let non_existent_table = format!(
@@ -467,7 +467,7 @@ fn test_error_invalid_subscription_id() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let fake_id = format!(
@@ -493,7 +493,7 @@ fn test_lifecycle_cleanup_on_disconnect() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_cleanup");
@@ -601,7 +601,7 @@ fn test_edge_rapid_successive_changes() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("sub_rapid");
@@ -642,7 +642,7 @@ fn test_stress_many_subscriptions_single_client() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		const NUM_SUBS: usize = 50;
@@ -694,7 +694,8 @@ fn test_stress_many_concurrent_clients() {
 		const NUM_CLIENTS: usize = 20;
 
 		// Setup shared table
-		let mut setup_client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut setup_client =
+			WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
 
 		let shared_table = unique_table_name("stress_concurrent");
@@ -711,7 +712,8 @@ fn test_stress_many_concurrent_clients() {
 			let counter = Arc::clone(&received_count);
 
 			let handle = tokio::spawn(async move {
-				let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await?;
+				let mut client =
+					WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await?;
 				client.authenticate("mysecrettoken").await?;
 
 				let _sub_id = client.subscribe(&format!("from test::{}", table)).await?;
@@ -731,7 +733,8 @@ fn test_stress_many_concurrent_clients() {
 		sleep(Duration::from_millis(500)).await;
 
 		// Trigger insert
-		let mut trigger_client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut trigger_client =
+			WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		trigger_client.authenticate("mysecrettoken").await.unwrap();
 		trigger_client.command(&format!("INSERT test::{} [{{ id: 999 }}]", shared_table), None).await.unwrap();
 		trigger_client.close().await.unwrap();
@@ -764,7 +767,7 @@ fn test_stress_rapid_subscribe_unsubscribe() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("stress_rapid");
@@ -807,7 +810,8 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		const NUM_CLIENTS: usize = 10;
 
 		// Setup shared table
-		let mut setup_client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut setup_client =
+			WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
 
 		let shared_table = unique_table_name("stress_disconnect");
@@ -816,7 +820,8 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 
 		// Connect multiple clients and disconnect without unsubscribing
 		for i in 0..NUM_CLIENTS {
-			let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+			let mut client =
+				WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
 			let _sub_id = client.subscribe(&format!("from test::{}", shared_table)).await.unwrap();
 
@@ -832,7 +837,7 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		sleep(Duration::from_millis(500)).await;
 
 		// Server should still be healthy
-		let mut new_client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut new_client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		new_client.authenticate("mysecrettoken").await.unwrap();
 
 		let sub_id = new_client.subscribe(&format!("from test::{}", shared_table)).await.unwrap();
@@ -862,7 +867,8 @@ fn test_stress_concurrent_connect_disconnect() {
 		const ITERATIONS_PER_TASK: usize = 5;
 
 		// Setup tables
-		let mut setup_client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut setup_client =
+			WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
 
 		let mut tables = Vec::new();
@@ -888,8 +894,11 @@ fn test_stress_concurrent_connect_disconnect() {
 					const MAX_RETRIES: usize = 3;
 
 					loop {
-						let mut client =
-							WsClient::connect(&format!("ws://[::1]:{}", port)).await?;
+						let mut client = WsClient::connect(
+							&format!("ws://[::1]:{}", port),
+							Encoding::Json,
+						)
+						.await?;
 						client.authenticate("mysecrettoken").await?;
 
 						match client.subscribe(&format!("from test::{}", table)).await {
@@ -941,7 +950,8 @@ fn test_stress_concurrent_connect_disconnect() {
 		assert_eq!(count, expected, "All {} connect/disconnect cycles should succeed, got {}", expected, count);
 
 		// Verify server is still healthy
-		let mut final_client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut final_client =
+			WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		final_client.authenticate("mysecrettoken").await.unwrap();
 
 		let sub_id = final_client.subscribe(&format!("from test::{}", tables[0])).await.unwrap();
@@ -968,7 +978,7 @@ fn test_stress_subscribe_receive_unsubscribe_cycles() {
 	let port = start_server_and_get_ws_port(&runtime, &mut server).unwrap();
 
 	runtime.block_on(async {
-		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		let table = unique_table_name("stress_full_cycle");
@@ -1007,7 +1017,8 @@ fn test_stress_connection_churn() {
 
 		// Rapidly connect and disconnect without doing any operations
 		for i in 0..NUM_CONNECTIONS {
-			let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+			let mut client =
+				WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
 			client.close().await.unwrap();
 
@@ -1017,7 +1028,8 @@ fn test_stress_connection_churn() {
 		}
 
 		// Verify server is still healthy
-		let mut final_client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+		let mut final_client =
+			WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 		final_client.authenticate("mysecrettoken").await.unwrap();
 
 		// Simple query to verify server is responsive
@@ -1040,7 +1052,8 @@ fn test_stress_connect_query_disconnect_cycles() {
 		const NUM_CYCLES: usize = 30;
 
 		for i in 0..NUM_CYCLES {
-			let mut client = WsClient::connect(&format!("ws://[::1]:{}", port)).await.unwrap();
+			let mut client =
+				WsClient::connect(&format!("ws://[::1]:{}", port), Encoding::Json).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
 
 			// Simple operation to verify connection works

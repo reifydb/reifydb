@@ -16,6 +16,7 @@ reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-wire-format = { workspace = true }
 
 futures-util = { workspace = true }
 serde = { workspace = true }

@@ -18,6 +18,7 @@ reifydb-runtime = { workspace = true }
 reifydb-sub-subscription = { workspace = true }
 reifydb-subscription = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-wire-format = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true }
 reifydb-remote-proxy = { workspace = true }

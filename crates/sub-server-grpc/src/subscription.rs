@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_type::value::frame::frame::Frame;
+use reifydb_wire_format::options::EncodeOptions;
 use tokio::sync::mpsc;
 use tonic::Status;
 use tracing::debug;
@@ -58,11 +59,14 @@ impl SubscriptionDelivery for GrpcSubscriptionRegistry {
 		};
 
 		let frames = vec![Frame::from(columns)];
+		let rbcf_payload =
+			reifydb_wire_format::encode::encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
 		let proto_frames = frames_to_proto(frames);
 
 		let event = SubscriptionEvent {
 			event: Some(subscription_event::Event::Change(ChangeEvent {
 				frames: proto_frames,
+				rbcf_payload,
 			})),
 		};
 

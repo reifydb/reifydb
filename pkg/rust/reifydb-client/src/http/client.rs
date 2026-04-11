@@ -5,6 +5,7 @@ use std::{collections::HashMap, time::Duration};
 use reifydb_type::{
 	error::{Diagnostic, Error},
 	params::Params,
+	value::frame::frame::Frame,
 };
 use reqwest::Client as ReqwestClient;
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,8 @@ use serde_json::{from_str, json};
 
 use crate::{
 	AdminRequest, AdminResponse, AdminResult, ClientFrame, CommandRequest, CommandResponse, CommandResult,
-	ErrResponse, LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload, params_to_wire,
+	Encoding, ErrResponse, LoginResult, QueryRequest, QueryResponse, QueryResult, Response, ResponsePayload,
+	params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
@@ -69,6 +71,7 @@ pub struct HttpClient {
 	inner: ReqwestClient,
 	base_url: String,
 	token: Option<String>,
+	encoding: Encoding,
 }
 
 impl HttpClient {
@@ -76,21 +79,15 @@ impl HttpClient {
 	///
 	/// # Arguments
 	/// * `url` - Base URL of the ReifyDB server (e.g., "http://localhost:8080")
-	///
-	/// # Example
-	/// ```no_run
-	/// use reifydb_client::HttpClient;
-	///
-	/// #[tokio::main]
-	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	/// 	let client = HttpClient::connect("http://localhost:8080").await?;
-	/// 	Ok(())
-	/// }
-	/// ```
-	pub async fn connect(url: &str) -> Result<Self, Error> {
-		// let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().map_err(|e| {
-		// 	Error(diagnostic::internal::internal(format!("Failed to create HTTP client: {}", e)))
-		// })?;
+	/// * `encoding` - Wire format encoding for responses
+	pub async fn connect(url: &str, encoding: Encoding) -> Result<Self, Error> {
+		if encoding == Encoding::Proto {
+			return Err(Error(Box::new(Diagnostic {
+				code: "INVALID_ENCODING".to_string(),
+				message: "Encoding::Proto is not supported for HttpClient".to_string(),
+				..Default::default()
+			})));
+		}
 
 		let inner = ReqwestClient::builder().timeout(Duration::from_secs(30)).build().unwrap(); // FIXME better error handling
 
@@ -101,6 +98,7 @@ impl HttpClient {
 			inner,
 			base_url,
 			token: None,
+			encoding,
 		})
 	}
 
@@ -109,13 +107,23 @@ impl HttpClient {
 	/// # Arguments
 	/// * `client` - Shared reqwest Client instance
 	/// * `url` - Base URL of the ReifyDB server
-	pub fn with_client(client: ReqwestClient, url: &str) -> Self {
+	/// * `encoding` - Wire format encoding for responses
+	pub fn with_client(client: ReqwestClient, url: &str, encoding: Encoding) -> Result<Self, Error> {
+		if encoding == Encoding::Proto {
+			return Err(Error(Box::new(Diagnostic {
+				code: "INVALID_ENCODING".to_string(),
+				message: "Encoding::Proto is not supported for HttpClient".to_string(),
+				..Default::default()
+			})));
+		}
+
 		let base_url = url.trim_end_matches('/').to_string();
-		Self {
+		Ok(Self {
 			inner: client,
 			base_url,
 			token: None,
-		}
+			encoding,
+		})
 	}
 
 	/// Set the authentication token for subsequent requests.
@@ -190,15 +198,19 @@ impl HttpClient {
 	}
 
 	/// Execute an admin (DDL + DML + Query) statement.
-	///
-	/// # Arguments
-	/// * `rql` - RQL statement to execute
-	/// * `params` - Optional parameters for the statement
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_wire),
+			format: None,
 		};
+
+		if self.encoding == Encoding::Rbcf {
+			let frames = self.send_rbcf("/v1/admin", &request).await?;
+			return Ok(AdminResult {
+				frames,
+			});
+		}
 
 		let response = self.send_admin(&request).await?;
 		let ws_response = Response {
@@ -213,7 +225,15 @@ impl HttpClient {
 		let request = AdminRequest {
 			statements: statements.into_iter().map(String::from).collect(),
 			params: params.and_then(params_to_wire),
+			format: None,
 		};
+
+		if self.encoding == Encoding::Rbcf {
+			let frames = self.send_rbcf("/v1/admin", &request).await?;
+			return Ok(AdminResult {
+				frames,
+			});
+		}
 
 		let response = self.send_admin(&request).await?;
 		let ws_response = Response {
@@ -224,29 +244,19 @@ impl HttpClient {
 	}
 
 	/// Execute a command (write) statement.
-	///
-	/// # Arguments
-	/// * `rql` - RQL statement to execute
-	/// * `params` - Optional parameters for the statement
-	///
-	/// # Example
-	/// ```no_run
-	/// use reifydb_client::HttpClient;
-	///
-	/// #[tokio::main]
-	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	/// 	let mut client = HttpClient::connect("http://localhost:8080").await?;
-	/// 	client.authenticate("mytoken");
-	///
-	/// 	let result = client.command("INSERT INTO users VALUES (1, 'Alice')", None).await?;
-	/// 	Ok(())
-	/// }
-	/// ```
 	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_wire),
+			format: None,
 		};
+
+		if self.encoding == Encoding::Rbcf {
+			let frames = self.send_rbcf("/v1/command", &request).await?;
+			return Ok(CommandResult {
+				frames,
+			});
+		}
 
 		let response = self.send_command(&request).await?;
 		let ws_response = Response {
@@ -257,32 +267,19 @@ impl HttpClient {
 	}
 
 	/// Execute a query (read) statement.
-	///
-	/// # Arguments
-	/// * `rql` - RQL query to execute
-	/// * `params` - Optional parameters for the query
-	///
-	/// # Example
-	/// ```no_run
-	/// use reifydb_client::HttpClient;
-	///
-	/// #[tokio::main]
-	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	/// 	let mut client = HttpClient::connect("http://localhost:8080").await?;
-	/// 	client.authenticate("mytoken");
-	///
-	/// 	let result = client.query("SELECT * FROM users", None).await?;
-	/// 	for frame in result.frames {
-	/// 		println!("{}", frame);
-	/// 	}
-	/// 	Ok(())
-	/// }
-	/// ```
 	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			statements: vec![rql.to_string()],
 			params: params.and_then(params_to_wire),
+			format: None,
 		};
+
+		if self.encoding == Encoding::Rbcf {
+			let frames = self.send_rbcf("/v1/query", &request).await?;
+			return Ok(QueryResult {
+				frames,
+			});
+		}
 
 		let response = self.send_query(&request).await?;
 		let ws_response = Response {
@@ -301,7 +298,15 @@ impl HttpClient {
 		let request = CommandRequest {
 			statements: statements.into_iter().map(String::from).collect(),
 			params: params.and_then(params_to_wire),
+			format: None,
 		};
+
+		if self.encoding == Encoding::Rbcf {
+			let frames = self.send_rbcf("/v1/command", &request).await?;
+			return Ok(CommandResult {
+				frames,
+			});
+		}
 
 		let response = self.send_command(&request).await?;
 		let ws_response = Response {
@@ -316,7 +321,15 @@ impl HttpClient {
 		let request = QueryRequest {
 			statements: statements.into_iter().map(String::from).collect(),
 			params: params.and_then(params_to_wire),
+			format: None,
 		};
+
+		if self.encoding == Encoding::Rbcf {
+			let frames = self.send_rbcf("/v1/query", &request).await?;
+			return Ok(QueryResult {
+				frames,
+			});
+		}
 
 		let response = self.send_query(&request).await?;
 		let ws_response = Response {
@@ -359,7 +372,20 @@ impl HttpClient {
 		}
 	}
 
-	/// Send an HTTP POST request and return the response body.
+	/// Send an RBCF request: append ?format=rbcf, decode binary response.
+	async fn send_rbcf<T: Serialize>(&self, path: &str, body: &T) -> Result<Vec<Frame>, Error> {
+		let url = format!("{}{}?format=rbcf", self.base_url, path);
+		let bytes = self.send_request_bytes(&url, body).await?;
+		reifydb_wire_format::decode::decode_frames(&bytes).map_err(|e| {
+			Error(Box::new(Diagnostic {
+				code: "RBCF_DECODE".to_string(),
+				message: format!("Failed to decode RBCF response: {}", e),
+				..Default::default()
+			}))
+		})
+	}
+
+	/// Send an HTTP POST request and return the response body as text.
 	async fn send_request<T: Serialize>(&self, url: &str, body: &T) -> Result<String, Error> {
 		let mut request = self.inner.post(url).json(body);
 
@@ -370,6 +396,24 @@ impl HttpClient {
 		let response = request.send().await.unwrap(); // FIXME better error handling
 
 		Ok(response.text().await.unwrap()) // FIXME better error handling
+	}
+
+	/// Send an HTTP POST request and return the response body as bytes.
+	async fn send_request_bytes<T: Serialize>(&self, url: &str, body: &T) -> Result<Vec<u8>, Error> {
+		let mut request = self.inner.post(url).json(body);
+
+		if let Some(ref token) = self.token {
+			request = request.bearer_auth(token);
+		}
+
+		let response = request.send().await.unwrap(); // FIXME better error handling
+
+		if !response.status().is_success() {
+			let body = response.text().await.unwrap();
+			return Err(self.parse_error_response(&body));
+		}
+
+		Ok(response.bytes().await.unwrap().to_vec()) // FIXME better error handling
 	}
 
 	/// Parse an error response body into an Error.
@@ -390,7 +434,6 @@ impl HttpClient {
 		}
 
 		// Fallback: return raw response as error
-		// Error(diagnostic::internal::internal(format!("Failed to parse response: {}", body)))
 		panic!("Failed to parse response: {}", body) // FIXME better error handling
 	}
 }

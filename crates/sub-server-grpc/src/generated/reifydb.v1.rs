@@ -13,6 +13,8 @@ pub struct AdminRequest {
 pub struct AdminResponse {
     #[prost(message, repeated, tag = "1")]
     pub frames: ::prost::alloc::vec::Vec<Frame>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub rbcf_payload: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CommandRequest {
@@ -25,6 +27,8 @@ pub struct CommandRequest {
 pub struct CommandResponse {
     #[prost(message, repeated, tag = "1")]
     pub frames: ::prost::alloc::vec::Vec<Frame>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub rbcf_payload: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct QueryRequest {
@@ -37,6 +41,8 @@ pub struct QueryRequest {
 pub struct QueryResponse {
     #[prost(message, repeated, tag = "1")]
     pub frames: ::prost::alloc::vec::Vec<Frame>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub rbcf_payload: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct SubscribeRequest {
@@ -67,6 +73,8 @@ pub struct SubscribedEvent {
 pub struct ChangeEvent {
     #[prost(message, repeated, tag = "1")]
     pub frames: ::prost::alloc::vec::Vec<Frame>,
+    #[prost(bytes = "vec", tag = "2")]
+    pub rbcf_payload: ::prost::alloc::vec::Vec<u8>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct UnsubscribeRequest {

@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path, sync::Arc};
 
 use reifydb::{Database, SharedRuntimeConfig, core::util::retry::retry, server};
-use reifydb_client::HttpClient;
+use reifydb_client::{Encoding, HttpClient};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -94,12 +94,15 @@ impl testscript::runner::Runner for HttpRunner {
 		let port = http.port().unwrap();
 		let admin_port = http.admin_port().unwrap();
 
-		let mut client = self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", port)))?;
+		let mut client = self
+			.runtime
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", port), Encoding::Json))?;
 		client.authenticate("mysecrettoken");
 		self.client = Some(client);
 
-		let mut admin_client =
-			self.runtime.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port)))?;
+		let mut admin_client = self
+			.runtime
+			.block_on(HttpClient::connect(&format!("http://[::1]:{}", admin_port), Encoding::Json))?;
 		admin_client.authenticate("mysecrettoken");
 		self.admin_client = Some(admin_client);
 

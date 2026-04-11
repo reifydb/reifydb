@@ -6,7 +6,11 @@ use futures_util::{
 	SinkExt, StreamExt,
 	stream::{SplitSink, SplitStream},
 };
-use reifydb_type::{error::Error, params::Params};
+use reifydb_type::{
+	error::{Diagnostic, Error},
+	params::Params,
+	value::frame::frame::Frame,
+};
 use serde_json::{from_str, to_string};
 use tokio::{
 	net::TcpStream,
@@ -16,22 +20,29 @@ use tokio::{
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config, tungstenite::Message};
 
 use crate::{
-	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, LoginResult,
+	AdminRequest, AdminResult, AuthRequest, ChangePayload, CommandRequest, CommandResult, Encoding, LoginResult,
 	QueryRequest, QueryResult, Request, RequestPayload, Response, ResponsePayload, ServerPush, SubscribeRequest,
 	UnsubscribeRequest, params_to_wire,
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 	utils::generate_request_id,
 };
 
-type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<Response>>>>;
+/// Internal response type that can carry either a JSON Response or decoded RBCF frames.
+enum ClientResponse {
+	Json(Response),
+	Frames(Vec<Frame>),
+}
+
+type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<ClientResponse>>>>;
 
 /// Async WebSocket client for ReifyDB
 pub struct WsClient {
-	request_tx: mpsc::Sender<(Request, oneshot::Sender<Response>)>,
+	request_tx: mpsc::Sender<(Request, oneshot::Sender<ClientResponse>)>,
 	shutdown_tx: Option<mpsc::Sender<()>>,
 	is_authenticated: bool,
 	/// Channel for receiving server-initiated Change messages.
 	change_rx: mpsc::Receiver<ChangePayload>,
+	encoding: Encoding,
 }
 
 impl WsClient {
@@ -39,18 +50,16 @@ impl WsClient {
 	///
 	/// # Arguments
 	/// * `url` - WebSocket URL of the ReifyDB server (e.g., "ws://localhost:8090")
-	///
-	/// # Example
-	/// ```no_run
-	/// use reifydb_client::WsClient;
-	///
-	/// #[tokio::main]
-	/// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	/// 	let client = WsClient::connect("ws://localhost:8090").await?;
-	/// 	Ok(())
-	/// }
-	/// ```
-	pub async fn connect(url: &str) -> Result<Self, Error> {
+	/// * `encoding` - Wire format encoding for responses
+	pub async fn connect(url: &str, encoding: Encoding) -> Result<Self, Error> {
+		if encoding == Encoding::Proto {
+			return Err(Error(Box::new(Diagnostic {
+				code: "INVALID_ENCODING".to_string(),
+				message: "Encoding::Proto is not supported for WsClient".to_string(),
+				..Default::default()
+			})));
+		}
+
 		let url = if !url.starts_with("ws://") && !url.starts_with("wss://") {
 			format!("ws://{}", url)
 		} else {
@@ -62,7 +71,7 @@ impl WsClient {
 		let (write, read) = ws_stream.split();
 
 		// Channel for sending requests
-		let (request_tx, request_rx) = mpsc::channel::<(Request, oneshot::Sender<Response>)>(32);
+		let (request_tx, request_rx) = mpsc::channel::<(Request, oneshot::Sender<ClientResponse>)>(32);
 
 		// Channel for shutdown signal
 		let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
@@ -84,6 +93,7 @@ impl WsClient {
 			shutdown_tx: Some(shutdown_tx),
 			is_authenticated: false,
 			change_rx,
+			encoding,
 		})
 	}
 
@@ -91,7 +101,7 @@ impl WsClient {
 	async fn connection_loop(
 		mut write: SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
 		mut read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-		mut request_rx: mpsc::Receiver<(Request, oneshot::Sender<Response>)>,
+		mut request_rx: mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
 		mut shutdown_rx: mpsc::Receiver<()>,
 		pending: PendingRequests,
 		change_tx: mpsc::Sender<ChangePayload>,
@@ -106,7 +116,7 @@ impl WsClient {
 							if let Ok(response) = from_str::<Response>(&text) {
 								let mut pending_guard = pending.lock().await;
 								if let Some(tx) = pending_guard.remove(&response.id) {
-									let _ = tx.send(response);
+									let _ = tx.send(ClientResponse::Json(response));
 								}
 							}
 							// Then try to parse as ServerPush (no id field)
@@ -114,6 +124,22 @@ impl WsClient {
 								match push {
 									ServerPush::Change(change) => {
 										let _ = change_tx.send(change).await;
+									}
+								}
+							}
+						}
+						Ok(Message::Binary(data)) => {
+							// RBCF binary envelope: [u32 LE id_len][id bytes][RBCF payload]
+							if data.len() >= 4 {
+								let id_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+								if data.len() >= 4 + id_len {
+									let id = String::from_utf8_lossy(&data[4..4 + id_len]).to_string();
+									let rbcf_data = &data[4 + id_len..];
+									if let Ok(frames) = reifydb_wire_format::decode::decode_frames(rbcf_data) {
+										let mut pending_guard = pending.lock().await;
+										if let Some(tx) = pending_guard.remove(&id) {
+											let _ = tx.send(ClientResponse::Frames(frames));
+										}
 									}
 								}
 							}
@@ -161,10 +187,16 @@ impl WsClient {
 		pending_guard.clear();
 	}
 
+	/// Compute the format field for requests based on encoding.
+	fn rbcf_format(&self) -> Option<String> {
+		if self.encoding == Encoding::Rbcf {
+			Some("rbcf".to_string())
+		} else {
+			None
+		}
+	}
+
 	/// Authenticate with the server using a bearer token.
-	///
-	/// # Arguments
-	/// * `token` - Bearer token for authentication
 	pub async fn authenticate(&mut self, token: &str) -> Result<(), Error> {
 		let id = generate_request_id();
 		let request = Request {
@@ -176,7 +208,7 @@ impl WsClient {
 			}),
 		};
 
-		let response = self.send_request(request).await?;
+		let response = self.send_request_json(request).await?;
 
 		match response.payload {
 			ResponsePayload::Auth(_) => {
@@ -188,8 +220,7 @@ impl WsClient {
 		}
 	}
 
-	/// Login with identifier and password. On success, stores the session token
-	/// for subsequent requests and returns the login result.
+	/// Login with identifier and password.
 	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
 		let mut credentials = HashMap::new();
 		credentials.insert("identifier".to_string(), identifier.to_string());
@@ -218,7 +249,7 @@ impl WsClient {
 			}),
 		};
 
-		let response = self.send_request(request).await?;
+		let response = self.send_request_json(request).await?;
 
 		match response.payload {
 			ResponsePayload::Auth(auth) => {
@@ -251,7 +282,7 @@ impl WsClient {
 			payload: RequestPayload::Logout,
 		};
 
-		let response = self.send_request(request).await?;
+		let response = self.send_request_json(request).await?;
 
 		match response.payload {
 			ResponsePayload::Logout(_) => {
@@ -264,10 +295,6 @@ impl WsClient {
 	}
 
 	/// Execute an admin (DDL + DML + Query) statement.
-	///
-	/// # Arguments
-	/// * `rql` - RQL statement to execute
-	/// * `params` - Optional parameters for the statement
 	pub async fn admin(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let id = generate_request_id();
 		let request = Request {
@@ -275,11 +302,16 @@ impl WsClient {
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: vec![rql.to_string()],
 				params: params.and_then(params_to_wire),
+				format: self.rbcf_format(),
 			}),
 		};
 
-		let response = self.send_request(request).await?;
-		parse_admin_response(response)
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames) => Ok(AdminResult {
+				frames,
+			}),
+			ClientResponse::Json(resp) => parse_admin_response(resp),
+		}
 	}
 
 	/// Execute multiple admin statements in a batch.
@@ -290,18 +322,19 @@ impl WsClient {
 			payload: RequestPayload::Admin(AdminRequest {
 				statements: statements.into_iter().map(String::from).collect(),
 				params: params.and_then(params_to_wire),
+				format: self.rbcf_format(),
 			}),
 		};
 
-		let response = self.send_request(request).await?;
-		parse_admin_response(response)
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames) => Ok(AdminResult {
+				frames,
+			}),
+			ClientResponse::Json(resp) => parse_admin_response(resp),
+		}
 	}
 
 	/// Execute a command (write) statement.
-	///
-	/// # Arguments
-	/// * `rql` - RQL statement to execute
-	/// * `params` - Optional parameters for the statement
 	pub async fn command(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let id = generate_request_id();
 		let request = Request {
@@ -309,18 +342,19 @@ impl WsClient {
 			payload: RequestPayload::Command(CommandRequest {
 				statements: vec![rql.to_string()],
 				params: params.and_then(params_to_wire),
+				format: self.rbcf_format(),
 			}),
 		};
 
-		let response = self.send_request(request).await?;
-		parse_command_response(response)
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames) => Ok(CommandResult {
+				frames,
+			}),
+			ClientResponse::Json(resp) => parse_command_response(resp),
+		}
 	}
 
 	/// Execute a query (read) statement.
-	///
-	/// # Arguments
-	/// * `rql` - RQL query to execute
-	/// * `params` - Optional parameters for the query
 	pub async fn query(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let id = generate_request_id();
 		let request = Request {
@@ -328,11 +362,16 @@ impl WsClient {
 			payload: RequestPayload::Query(QueryRequest {
 				statements: vec![rql.to_string()],
 				params: params.and_then(params_to_wire),
+				format: self.rbcf_format(),
 			}),
 		};
 
-		let response = self.send_request(request).await?;
-		parse_query_response(response)
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames) => Ok(QueryResult {
+				frames,
+			}),
+			ClientResponse::Json(resp) => parse_query_response(resp),
+		}
 	}
 
 	/// Execute multiple command statements in a batch.
@@ -347,11 +386,16 @@ impl WsClient {
 			payload: RequestPayload::Command(CommandRequest {
 				statements: statements.into_iter().map(String::from).collect(),
 				params: params.and_then(params_to_wire),
+				format: self.rbcf_format(),
 			}),
 		};
 
-		let response = self.send_request(request).await?;
-		parse_command_response(response)
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames) => Ok(CommandResult {
+				frames,
+			}),
+			ClientResponse::Json(resp) => parse_command_response(resp),
+		}
 	}
 
 	/// Execute multiple query statements in a batch.
@@ -362,20 +406,19 @@ impl WsClient {
 			payload: RequestPayload::Query(QueryRequest {
 				statements: statements.into_iter().map(String::from).collect(),
 				params: params.and_then(params_to_wire),
+				format: self.rbcf_format(),
 			}),
 		};
 
-		let response = self.send_request(request).await?;
-		parse_query_response(response)
+		match self.send_request(request).await? {
+			ClientResponse::Frames(frames) => Ok(QueryResult {
+				frames,
+			}),
+			ClientResponse::Json(resp) => parse_query_response(resp),
+		}
 	}
 
 	/// Subscribe to real-time changes for a query.
-	///
-	/// Returns the subscription ID. Use `recv()` or `try_recv()` to receive
-	/// Change messages from the server.
-	///
-	/// # Arguments
-	/// * `query` - RQL query to subscribe to
 	pub async fn subscribe(&self, query: &str) -> Result<String, Error> {
 		let id = generate_request_id();
 		let request = Request {
@@ -385,19 +428,15 @@ impl WsClient {
 			}),
 		};
 
-		let response = self.send_request(request).await?;
+		let response = self.send_request_json(request).await?;
 		match response.payload {
 			ResponsePayload::Subscribed(sub) => Ok(sub.subscription_id),
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			// _ => Err(Error(internal("Unexpected response type for subscribe"))),
 			_ => panic!("Unexpected response type for subscribe"), // FIXME better error handling
 		}
 	}
 
 	/// Unsubscribe from a subscription.
-	///
-	/// # Arguments
-	/// * `subscription_id` - The subscription ID returned from `subscribe()`
 	pub async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
 		let id = generate_request_id();
 		let request = Request {
@@ -407,37 +446,40 @@ impl WsClient {
 			}),
 		};
 
-		let response = self.send_request(request).await?;
+		let response = self.send_request_json(request).await?;
 		match response.payload {
 			ResponsePayload::Unsubscribed(_) => Ok(()),
 			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			// _ => Err(Error(internal("Unexpected response type for unsubscribe"))),
 			_ => panic!("Unexpected response type for unsubscribe"), // FIXME better error handling
 		}
 	}
 
 	/// Receive the next change notification, waiting if necessary.
-	///
-	/// Returns `None` if the connection is closed.
 	pub async fn recv(&mut self) -> Option<ChangePayload> {
 		self.change_rx.recv().await
 	}
 
 	/// Try to receive a change notification without blocking.
-	///
-	/// Returns `Ok(payload)` if a change is available, or an error if the
-	/// channel is empty or disconnected.
 	pub fn try_recv(&mut self) -> Result<ChangePayload, mpsc::error::TryRecvError> {
 		self.change_rx.try_recv()
 	}
 
-	/// Send a request and wait for the response.
-	async fn send_request(&self, request: Request) -> Result<Response, Error> {
+	/// Send a request and wait for the response (may be JSON or binary frames).
+	async fn send_request(&self, request: Request) -> Result<ClientResponse, Error> {
 		let (tx, rx) = oneshot::channel();
 
 		self.request_tx.send((request, tx)).await.unwrap(); // FIXME better error handling
 
 		Ok(rx.await.unwrap()) // FIXME better error handling
+	}
+
+	/// Send a request and expect a JSON response (for auth/subscribe/unsubscribe).
+	async fn send_request_json(&self, request: Request) -> Result<Response, Error> {
+		match self.send_request(request).await? {
+			ClientResponse::Json(resp) => Ok(resp),
+			ClientResponse::Frames(_) => panic!("unexpected binary response"), /* FIXME better error
+			                                                                    * handling */
+		}
 	}
 
 	/// Close the WebSocket connection gracefully.

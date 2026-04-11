@@ -5,7 +5,7 @@
 use std::sync::mpsc;
 
 #[cfg(not(reifydb_single_threaded))]
-use reifydb_client::GrpcClient;
+use reifydb_client::{Encoding, GrpcClient};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_runtime::SharedRuntime;
 #[cfg(not(reifydb_single_threaded))]
@@ -63,7 +63,7 @@ impl RemoteRegistry {
 		let (tx, rx) = mpsc::sync_channel(1);
 
 		self.runtime.spawn(async move {
-			let result = GrpcClient::connect(&address_owned).await;
+			let result = GrpcClient::connect(&address_owned, Encoding::Json).await;
 			let _ = tx.send(result);
 		});
 

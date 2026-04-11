@@ -8,7 +8,7 @@ use std::{error::Error, path::Path, sync::Arc};
 
 use common::{cleanup_server, create_server_instance, start_server_and_get_ws_port};
 use reifydb::{Database, core::util::retry::retry};
-use reifydb_client::WsClient;
+use reifydb_client::{Encoding, WsClient};
 use reifydb_testing::{testscript, testscript::command::Command};
 use test_each_file::test_each_path;
 use tokio::runtime::Runtime;
@@ -19,14 +19,16 @@ pub struct WsRunner {
 	instance: Option<Database>,
 	client: Option<WsClient>,
 	runtime: Arc<Runtime>,
+	encoding: Encoding,
 }
 
 impl WsRunner {
-	pub fn new(runtime: Arc<Runtime>) -> Self {
+	pub fn new(runtime: Arc<Runtime>, encoding: Encoding) -> Self {
 		Self {
 			instance: Some(create_server_instance(&runtime)),
 			client: None,
 			runtime,
+			encoding,
 		}
 	}
 }
@@ -100,7 +102,8 @@ impl testscript::runner::Runner for WsRunner {
 		let server = self.instance.as_mut().unwrap();
 		let port = start_server_and_get_ws_port(&self.runtime, server)?;
 
-		let mut client = self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port)))?;
+		let mut client =
+			self.runtime.block_on(WsClient::connect(&format!("ws://[::1]:{}", port), self.encoding))?;
 		self.runtime.block_on(client.authenticate("mysecrettoken"))?;
 
 		self.client = Some(client);
@@ -117,13 +120,23 @@ impl testscript::runner::Runner for WsRunner {
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_ws => test_ws }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_ws_json => test_ws_json }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as scripts_ws_rbcf => test_ws_rbcf }
 
-fn test_ws(path: &Path) {
+fn test_ws_json(path: &Path) {
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());
 		let _guard = runtime.enter();
-		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime)), path)
+		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime), Encoding::Json), path)
 	})
-	.expect("test failed")
+	.expect("test failed with Json");
+}
+
+fn test_ws_rbcf(path: &Path) {
+	retry(3, || {
+		let runtime = Arc::new(Runtime::new().unwrap());
+		let _guard = runtime.enter();
+		testscript::runner::run_path(&mut WsRunner::new(Arc::clone(&runtime), Encoding::Rbcf), path)
+	})
+	.expect("test failed with Rbcf");
 }

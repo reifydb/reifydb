@@ -16,6 +16,7 @@ use reifydb_sub_server::{
 	subscribe::{CreateSubscriptionResult, cleanup_subscription_sync, create_subscription},
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
+use reifydb_wire_format::{encode::encode_frames, options::EncodeOptions};
 use tokio::{
 	select, spawn,
 	sync::{mpsc, watch},
@@ -176,9 +177,12 @@ impl ReifyDbService {
 		// Spawn proxy: remote stream → local channel
 		let shutdown_rx = self.shutdown_rx.clone();
 		spawn(proxy_remote(remote_sub, tx, shutdown_rx, |frames| {
+			let rbcf_payload = reifydb_wire_format::encode::encode_frames(&frames, &EncodeOptions::fast())
+				.unwrap_or_default();
 			Ok(SubscriptionEvent {
 				event: Some(subscription_event::Event::Change(ChangeEvent {
 					frames: frames_to_proto(frames),
+					rbcf_payload,
 				})),
 			})
 		}));
@@ -206,8 +210,12 @@ impl ReifyDb for ReifyDbService {
 		};
 
 		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+
+		let rbcf_payload = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
+
 		Ok(Response::new(AdminResponse {
 			frames: frames_to_proto(frames),
+			rbcf_payload,
 		}))
 	}
 
@@ -225,8 +233,12 @@ impl ReifyDb for ReifyDbService {
 		};
 
 		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+
+		let rbcf_payload = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
+
 		Ok(Response::new(CommandResponse {
 			frames: frames_to_proto(frames),
+			rbcf_payload,
 		}))
 	}
 
@@ -244,8 +256,12 @@ impl ReifyDb for ReifyDbService {
 		};
 
 		let (frames, _duration) = dispatch(&self.state, ctx).await.map_err(GrpcError::from)?;
+
+		let rbcf_payload = encode_frames(&frames, &EncodeOptions::fast()).unwrap_or_default();
+
 		Ok(Response::new(QueryResponse {
 			frames: frames_to_proto(frames),
+			rbcf_payload,
 		}))
 	}
 

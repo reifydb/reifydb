@@ -2,6 +2,7 @@
 // Copyright (c) 2025 ReifyDB
 
 //! Shared test helpers and macros for wire-format encoding tests.
+#![allow(dead_code)]
 
 use reifydb_type::value::frame::{column::FrameColumn, data::FrameColumnData, frame::Frame};
 use reifydb_wire_format::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};

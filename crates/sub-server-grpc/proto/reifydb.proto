@@ -12,11 +12,11 @@ service ReifyDB {
 }
 
 message AdminRequest  { repeated string statements = 1; optional Params params = 2; }
-message AdminResponse { repeated Frame frames = 1; }
+message AdminResponse { repeated Frame frames = 1; bytes rbcf_payload = 2; }
 message CommandRequest  { repeated string statements = 1; optional Params params = 2; }
-message CommandResponse { repeated Frame frames = 1; }
+message CommandResponse { repeated Frame frames = 1; bytes rbcf_payload = 2; }
 message QueryRequest  { repeated string statements = 1; optional Params params = 2; }
-message QueryResponse { repeated Frame frames = 1; }
+message QueryResponse { repeated Frame frames = 1; bytes rbcf_payload = 2; }
 
 message SubscribeRequest { string query = 1; }
 message UnsubscribeRequest { string subscription_id = 1; }
@@ -28,7 +28,7 @@ message SubscriptionEvent {
   }
 }
 message SubscribedEvent { string subscription_id = 1; }
-message ChangeEvent { repeated Frame frames = 1; }
+message ChangeEvent { repeated Frame frames = 1; bytes rbcf_payload = 2; }
 
 message AuthenticateRequest {
   string method = 1;

@@ -16,7 +16,7 @@ use reifydb_sub_server::{
 	dispatch::dispatch,
 	execute::ExecuteError,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
-	response::resolve_response_json,
+	response::{encode_frames_rbcf, resolve_response_json},
 	state::AppState,
 	subscribe::cleanup_subscription,
 };
@@ -44,6 +44,12 @@ use crate::{
 		registry::{PushMessage, SubscriptionRegistry},
 	},
 };
+
+/// A WebSocket response that can be either text (JSON) or binary (RBCF).
+enum WsResponse {
+	Text(String),
+	Binary(Vec<u8>),
+}
 
 /// Handle a single WebSocket connection.
 pub async fn handle_connection(
@@ -142,11 +148,16 @@ pub async fn handle_connection(
 								shutdown: shutdown.clone(),
 							},
 						).await;
-						if let Some(resp) = response
-							&& sender.send(Message::Text(resp.into())).await.is_err() {
+						if let Some(resp) = response {
+							let msg = match resp {
+								WsResponse::Text(text) => Message::Text(text.into()),
+								WsResponse::Binary(data) => Message::Binary(data.into()),
+							};
+							if sender.send(msg).await.is_err() {
 								debug!("Failed to send response to {:?}", peer);
 								break;
 							}
+						}
 					}
 					Some(Ok(Message::Ping(data))) => {
 						if sender.send(Message::Pong(data)).await.is_err() {
@@ -161,6 +172,7 @@ pub async fn handle_connection(
 						break;
 					}
 					Some(Ok(Message::Binary(_))) => {
+						// Binary incoming messages not supported; outgoing binary (RBCF) is fine
 						let err = build_error("0", "UNSUPPORTED", "Binary messages not supported");
 						let _ = sender.send(Message::Text(err.into())).await;
 					}
@@ -218,11 +230,15 @@ pub(crate) struct ConnectionContext<'a> {
 }
 
 /// Process a single WebSocket message.
-async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option<String> {
+async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
 	let request: Request = match from_str(text) {
 		Ok(r) => r,
 		Err(e) => {
-			return Some(build_error("0", "PARSE_ERROR", &format!("Invalid JSON: {}", e)));
+			return Some(WsResponse::Text(build_error(
+				"0",
+				"PARSE_ERROR",
+				&format!("Invalid JSON: {}", e),
+			)));
 		}
 	};
 
@@ -249,20 +265,32 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					}) => {
 						*conn.identity = Some(id);
 						*conn.auth_token = Some(token.clone());
-						Some(Response::auth_authenticated(&request.id, token, id.to_string())
-							.to_json())
+						Some(WsResponse::Text(
+							Response::auth_authenticated(
+								&request.id,
+								token,
+								id.to_string(),
+							)
+							.to_json(),
+						))
 					}
 					Ok(ServerAuthResponse::Challenge {
 						challenge_id,
 						payload,
-					}) => Some(Response::auth_challenge(&request.id, challenge_id, payload).to_json()),
+					}) => Some(WsResponse::Text(
+						Response::auth_challenge(&request.id, challenge_id, payload).to_json(),
+					)),
 					Ok(ServerAuthResponse::Failed {
 						reason,
-					}) => Some(build_error(&request.id, "AUTH_FAILED", &reason)),
+					}) => Some(WsResponse::Text(build_error(&request.id, "AUTH_FAILED", &reason))),
 					Ok(ServerAuthResponse::Error(reason)) => {
-						Some(build_error(&request.id, "AUTH_ERROR", &reason))
+						Some(WsResponse::Text(build_error(&request.id, "AUTH_ERROR", &reason)))
 					}
-					Err(_) => Some(build_error(&request.id, "INTERNAL_ERROR", "actor stopped")),
+					Err(_) => Some(WsResponse::Text(build_error(
+						&request.id,
+						"INTERNAL_ERROR",
+						"actor stopped",
+					))),
 				}
 			} else {
 				// Token validation flow (existing behavior — stays outside actor)
@@ -270,29 +298,33 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					Ok(id) => {
 						*conn.identity = Some(id);
 						*conn.auth_token = auth.token;
-						Some(Response::auth(&request.id).to_json())
+						Some(WsResponse::Text(Response::auth(&request.id).to_json()))
 					}
 					Err(e) => {
 						*conn.identity = None;
-						Some(build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e)))
+						Some(WsResponse::Text(build_error(
+							&request.id,
+							"AUTH_FAILED",
+							&format!("{:?}", e),
+						)))
 					}
 				}
 			}
 		}
 
 		RequestPayload::Admin(_) if !conn.state.admin_enabled() => {
-			Some(build_error(&request.id, "NOT_FOUND", "Unknown request type"))
+			Some(WsResponse::Text(build_error(&request.id, "NOT_FOUND", "Unknown request type")))
 		}
 
 		RequestPayload::Admin(a) => {
 			let id: IdentityId = match conn.identity.as_ref() {
 				Some(id) => *id,
 				None => {
-					return Some(build_error(
+					return Some(WsResponse::Text(build_error(
 						&request.id,
 						"AUTH_REQUIRED",
 						"Authentication required",
-					));
+					)));
 				}
 			};
 
@@ -302,7 +334,13 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				None => Params::None,
 				Some(wp) => match wp.into_params() {
 					Ok(p) => p,
-					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
+					Err(e) => {
+						return Some(WsResponse::Text(build_error(
+							&request.id,
+							"INVALID_PARAMS",
+							&e,
+						)));
+					}
 				},
 			};
 
@@ -324,11 +362,11 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			let id: IdentityId = match conn.identity.as_ref() {
 				Some(id) => *id,
 				None => {
-					return Some(build_error(
+					return Some(WsResponse::Text(build_error(
 						&request.id,
 						"AUTH_REQUIRED",
 						"Authentication required",
-					));
+					)));
 				}
 			};
 
@@ -338,7 +376,13 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				None => Params::None,
 				Some(wp) => match wp.into_params() {
 					Ok(p) => p,
-					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
+					Err(e) => {
+						return Some(WsResponse::Text(build_error(
+							&request.id,
+							"INVALID_PARAMS",
+							&e,
+						)));
+					}
 				},
 			};
 
@@ -360,11 +404,11 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			let id: IdentityId = match conn.identity.as_ref() {
 				Some(id) => *id,
 				None => {
-					return Some(build_error(
+					return Some(WsResponse::Text(build_error(
 						&request.id,
 						"AUTH_REQUIRED",
 						"Authentication required",
-					));
+					)));
 				}
 			};
 
@@ -374,7 +418,13 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				None => Params::None,
 				Some(wp) => match wp.into_params() {
 					Ok(p) => p,
-					Err(e) => return Some(build_error(&request.id, "INVALID_PARAMS", &e)),
+					Err(e) => {
+						return Some(WsResponse::Text(build_error(
+							&request.id,
+							"INVALID_PARAMS",
+							&e,
+						)));
+					}
 				},
 			};
 
@@ -392,7 +442,7 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 			.await
 		}
 
-		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await,
+		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await.map(WsResponse::Text),
 
 		RequestPayload::Logout => {
 			if let Some(token) = conn.auth_token.as_ref() {
@@ -409,20 +459,30 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					Ok(ServerLogoutResponse::Ok) => {
 						*conn.identity = Some(IdentityId::anonymous());
 						*conn.auth_token = None;
-						Some(Response::logout(&request.id).to_json())
+						Some(WsResponse::Text(Response::logout(&request.id).to_json()))
 					}
-					Ok(ServerLogoutResponse::InvalidToken) => Some(build_error(
+					Ok(ServerLogoutResponse::InvalidToken) => Some(WsResponse::Text(build_error(
 						&request.id,
 						"LOGOUT_FAILED",
 						"Token revocation failed",
-					)),
-					Ok(ServerLogoutResponse::Error(reason)) => {
-						Some(build_error(&request.id, "LOGOUT_FAILED", &reason))
-					}
-					Err(_) => Some(build_error(&request.id, "INTERNAL_ERROR", "actor stopped")),
+					))),
+					Ok(ServerLogoutResponse::Error(reason)) => Some(WsResponse::Text(build_error(
+						&request.id,
+						"LOGOUT_FAILED",
+						&reason,
+					))),
+					Err(_) => Some(WsResponse::Text(build_error(
+						&request.id,
+						"INTERNAL_ERROR",
+						"actor stopped",
+					))),
 				}
 			} else {
-				Some(build_error(&request.id, "AUTH_REQUIRED", "No active session to logout"))
+				Some(WsResponse::Text(build_error(
+					&request.id,
+					"AUTH_REQUIRED",
+					"No active session to logout",
+				)))
 			}
 		}
 
@@ -434,17 +494,19 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 					"Connection {} unsubscribed from remote {}",
 					conn.connection_id, unsub.subscription_id
 				);
-				return Some(Response::unsubscribed(&request.id, unsub.subscription_id).to_json());
+				return Some(WsResponse::Text(
+					Response::unsubscribed(&request.id, unsub.subscription_id).to_json(),
+				));
 			}
 
 			let subscription_id = match unsub.subscription_id.parse::<u64>() {
 				Ok(id) => SubscriptionId(id),
 				Err(_) => {
-					return Some(build_error(
+					return Some(WsResponse::Text(build_error(
 						&request.id,
 						"INVALID_SUBSCRIPTION_ID",
 						"Invalid subscription ID format",
-					));
+					)));
 				}
 			};
 
@@ -460,13 +522,17 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Option
 				}
 
 				info!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
-				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
+				Some(WsResponse::Text(
+					Response::unsubscribed(&request.id, subscription_id.to_string()).to_json(),
+				))
 			} else {
 				info!(
 					"Connection {} unsubscribe for {} (already removed)",
 					conn.connection_id, subscription_id
 				);
-				Some(Response::unsubscribed(&request.id, subscription_id.to_string()).to_json())
+				Some(WsResponse::Text(
+					Response::unsubscribed(&request.id, subscription_id.to_string()).to_json(),
+				))
 			}
 		}
 	}
@@ -484,7 +550,7 @@ async fn execute_via_dispatch(
 	format: Option<&str>,
 	unwrap: bool,
 	build_response: impl FnOnce(&str, String, JsonValue) -> String,
-) -> Option<String> {
+) -> Option<WsResponse> {
 	let metadata = build_ws_metadata(conn.auth_token);
 	let ctx = RequestContext {
 		identity,
@@ -496,10 +562,29 @@ async fn execute_via_dispatch(
 
 	match dispatch(conn.state, ctx).await {
 		Ok((frames, _duration)) => {
+			if format == Some("rbcf") {
+				return match encode_frames_rbcf(&frames) {
+					Ok(rbcf_bytes) => {
+						let id_bytes = request_id.as_bytes();
+						let mut envelope =
+							Vec::with_capacity(4 + id_bytes.len() + rbcf_bytes.len());
+						envelope.extend_from_slice(&(id_bytes.len() as u32).to_le_bytes());
+						envelope.extend_from_slice(id_bytes);
+						envelope.extend_from_slice(&rbcf_bytes);
+						Some(WsResponse::Binary(envelope))
+					}
+					Err(e) => Some(WsResponse::Text(build_error(
+						request_id,
+						"ENCODE_ERROR",
+						&format!("RBCF encode error: {}", e),
+					))),
+				};
+			}
+
 			let (content_type, body) = build_response_body(frames, format, unwrap);
-			Some(build_response(request_id, content_type, body))
+			Some(WsResponse::Text(build_response(request_id, content_type, body)))
 		}
-		Err(e) => Some(error_to_response(request_id, e)),
+		Err(e) => Some(WsResponse::Text(error_to_response(request_id, e))),
 	}
 }
 

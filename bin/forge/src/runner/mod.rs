@@ -6,7 +6,7 @@ pub mod git;
 
 use std::process;
 
-use reifydb_client::{Frame, GrpcClient, GrpcSubscription};
+use reifydb_client::{Encoding, Frame, GrpcClient, GrpcSubscription};
 use tokio::{runtime::Runtime, spawn};
 use tracing::{error, info};
 use tracing_subscriber::fmt as tracing_fmt;
@@ -45,7 +45,7 @@ pub fn start(url: &str) {
 	rt.block_on(async move {
 		info!("Forge runner connecting to orchestrator at {}", url);
 
-		let mut client: GrpcClient = match GrpcClient::connect(url).await {
+		let mut client: GrpcClient = match GrpcClient::connect(url, Encoding::Json).await {
 			Ok(c) => c,
 			Err(e) => {
 				error!("Failed to connect to orchestrator: {}", e);

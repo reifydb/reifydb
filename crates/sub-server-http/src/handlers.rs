@@ -25,13 +25,15 @@ use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
 	dispatch::dispatch,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
-	response::resolve_response_json,
+	response::{encode_frames_rbcf, resolve_response_json},
 	wire::WireParams,
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
 use serde::{Deserialize, Serialize};
 
 use crate::{error::AppError, state::HttpServerState};
+
+const CONTENT_TYPE_RBCF: &str = "application/vnd.reifydb.rbcf";
 
 /// Request body for query and command endpoints.
 #[derive(Debug, Deserialize)]
@@ -300,8 +302,13 @@ async fn execute_and_respond(
 
 	let (frames, wall_duration) = dispatch(state, ctx).await?;
 
-	// HTTP-specific response formatting
-	let mut response = if format_params.format.as_deref() == Some("json") {
+	let mut response = if format_params.format.as_deref() == Some("rbcf") {
+		match encode_frames_rbcf(&frames) {
+			Ok(bytes) => (StatusCode::OK, [(header::CONTENT_TYPE, CONTENT_TYPE_RBCF.to_string())], bytes)
+				.into_response(),
+			Err(e) => return Err(AppError::BadRequest(format!("RBCF encode error: {}", e))),
+		}
+	} else if format_params.format.as_deref() == Some("json") {
 		let resolved = resolve_response_json(frames, format_params.unwrap.unwrap_or(false))
 			.map_err(AppError::BadRequest)?;
 		(StatusCode::OK, [(header::CONTENT_TYPE, resolved.content_type)], resolved.body).into_response()

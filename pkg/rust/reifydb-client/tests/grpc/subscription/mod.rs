@@ -3,7 +3,7 @@
 
 use std::{error::Error, future::Future, sync::Arc, time::Duration};
 
-use reifydb_client::{Frame, FrameColumn, GrpcClient, GrpcSubscription, Value};
+use reifydb_client::{Encoding, Frame, FrameColumn, GrpcClient, GrpcSubscription, Value};
 use tokio::{runtime::Runtime, time::timeout};
 
 use crate::common::{cleanup_server, create_server_instance, start_server_and_get_grpc_port};
@@ -97,7 +97,8 @@ impl SubscriptionTestHarness {
 		let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
 
 		runtime.block_on(async {
-			let mut client = GrpcClient::connect(&format!("http://[::1]:{}", port)).await.unwrap();
+			let mut client =
+				GrpcClient::connect(&format!("http://[::1]:{}", port), Encoding::Proto).await.unwrap();
 			client.authenticate("mysecrettoken");
 
 			let ctx = TestContext::new(client);

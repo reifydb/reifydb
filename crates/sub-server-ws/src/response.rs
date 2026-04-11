@@ -15,6 +15,7 @@ use serde_json::{Value as JsonValue, to_string};
 
 pub const CONTENT_TYPE_FRAMES: &str = "application/vnd.reifydb.frames+json";
 pub const CONTENT_TYPE_JSON: &str = "application/json";
+pub const CONTENT_TYPE_RBCF: &str = "application/vnd.reifydb.rbcf";
 
 /// WebSocket response envelope (matches client's `Response`)
 #[derive(Debug, Serialize)]

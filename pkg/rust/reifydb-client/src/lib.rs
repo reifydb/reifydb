@@ -3,6 +3,16 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
+
+/// Wire format encoding for client-server communication.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Encoding {
+	#[default]
+	Json,
+	Proto,
+	Rbcf,
+}
+
 #[cfg(all(feature = "dst", reifydb_single_threaded))]
 pub mod dst;
 #[cfg(feature = "grpc")]
@@ -189,6 +199,8 @@ pub enum RequestPayload {
 pub struct AdminRequest {
 	pub statements: Vec<String>,
 	pub params: Option<WireParams>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<String>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -207,6 +219,8 @@ pub struct AuthRequest {
 pub struct CommandRequest {
 	pub statements: Vec<String>,
 	pub params: Option<WireParams>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<String>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
@@ -214,6 +228,8 @@ pub struct CommandRequest {
 pub struct QueryRequest {
 	pub statements: Vec<String>,
 	pub params: Option<WireParams>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<String>,
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
