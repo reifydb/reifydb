@@ -60,13 +60,19 @@ use reifydb_transaction::{
 use reifydb_type::{params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
 
+enum BridgeProfile {
+	Default,
+	Testing,
+}
+
 struct Bridge {
 	engine: StandardEngine,
 	flow_subsystem: FlowSubsystem,
+	profile: BridgeProfile,
 }
 
 impl Bridge {
-	fn new() -> Result<Self, Box<dyn Error>> {
+	fn new(profile: BridgeProfile) -> Result<Self, Box<dyn Error>> {
 		let runtime = SharedRuntime::from_config(
 			SharedRuntimeConfig::default()
 				.async_threads(1)
@@ -187,6 +193,7 @@ impl Bridge {
 		Ok(Bridge {
 			engine,
 			flow_subsystem,
+			profile,
 		})
 	}
 }
@@ -232,15 +239,21 @@ fn main() {
 		let cmd = msg.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
 
 		match cmd {
-			"new" => match Bridge::new() {
-				Ok(b) => {
-					bridge = Some(b);
-					respond(&json!({"ok": "ready"}));
+			"new" => {
+				let profile = match msg.get("profile").and_then(|v| v.as_str()) {
+					Some("testing") => BridgeProfile::Testing,
+					_ => BridgeProfile::Default,
+				};
+				match Bridge::new(profile) {
+					Ok(b) => {
+						bridge = Some(b);
+						respond(&json!({"ok": "ready"}));
+					}
+					Err(e) => {
+						respond(&json!({"err": format!("{}", e)}));
+					}
 				}
-				Err(e) => {
-					respond(&json!({"err": format!("{}", e)}));
-				}
-			},
+			}
 			"command" => {
 				let Some(b) = bridge.as_ref() else {
 					respond(&json!({"err": "no database instance"}));
@@ -250,7 +263,11 @@ fn main() {
 				match b.engine.command_as(IdentityId::root(), rql, Params::None).check() {
 					Ok(result) => {
 						let mut output = String::new();
-						for frame in result.iter() {
+						for mut frame in result.frames {
+							if matches!(b.profile, BridgeProfile::Testing) {
+								frame.created_at.clear();
+								frame.updated_at.clear();
+							}
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&json!({"ok": output}));
@@ -269,7 +286,11 @@ fn main() {
 				match b.engine.admin_as(IdentityId::root(), rql, Params::None).check() {
 					Ok(result) => {
 						let mut output = String::new();
-						for frame in result.iter() {
+						for mut frame in result.frames {
+							if matches!(b.profile, BridgeProfile::Testing) {
+								frame.created_at.clear();
+								frame.updated_at.clear();
+							}
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&json!({"ok": output}));
@@ -288,7 +309,11 @@ fn main() {
 				match b.engine.query_as(IdentityId::root(), rql, Params::None).check() {
 					Ok(result) => {
 						let mut output = String::new();
-						for frame in result.iter() {
+						for mut frame in result.frames {
+							if matches!(b.profile, BridgeProfile::Testing) {
+								frame.created_at.clear();
+								frame.updated_at.clear();
+							}
 							let _ = writeln!(output, "{}", frame);
 						}
 						respond(&json!({"ok": output}));
