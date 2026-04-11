@@ -139,7 +139,6 @@ mod native {
 			ServerSubscribeResponse::Subscribed {
 				frames,
 				duration,
-				..
 			} => (frames, duration),
 			ServerSubscribeResponse::EngineError {
 				diagnostic,

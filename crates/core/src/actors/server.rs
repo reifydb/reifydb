@@ -16,8 +16,6 @@ use reifydb_type::{
 	value::{frame::frame::Frame, identity::IdentityId},
 };
 
-use crate::interface::catalog::id::SubscriptionId;
-
 /// The type of database operation being executed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operation {
@@ -120,7 +118,6 @@ pub enum ServerLogoutResponse {
 pub enum ServerSubscribeResponse {
 	/// Subscription created successfully.
 	Subscribed {
-		subscription_id: SubscriptionId,
 		frames: Vec<Frame>,
 		duration: Duration,
 	},

@@ -25,8 +25,6 @@ use reifydb_runtime::{
 };
 use reifydb_type::{params::Params, value::identity::IdentityId};
 
-use crate::subscribe::extract_subscription_id;
-
 pub struct ServerActor {
 	engine: StandardEngine,
 	auth_service: AuthService,
@@ -118,10 +116,7 @@ impl Actor for ServerActor {
 						statement: query,
 					});
 				} else {
-					let subscription_id = extract_subscription_id(&result.frames)
-						.expect("subscribe_as must return subscription_id in result frame");
 					reply.send(ServerSubscribeResponse::Subscribed {
-						subscription_id,
 						frames: result.frames,
 						duration: t.elapsed(),
 					});
