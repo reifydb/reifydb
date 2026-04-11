@@ -101,10 +101,19 @@ impl MultiWriteTransaction {
 
 		MultiVersionCommit::commit(&self.engine.store, deltas.clone(), commit_version)?;
 
-		self.tm.oracle.done_commit(commit_version);
 		self.tm.discard();
 
+		// Emit PostCommitEvent BEFORE marking the watermark as done.
+		// The CDC poll actor uses done_until() as the safe upper bound for
+		// fetching CDC entries from the store. If done_commit runs first,
+		// there is a window where done_until >= V but V's CDC has not been
+		// written to the store yet (because the CDC producer processes
+		// PostCommitEvents asynchronously). A concurrent commit on another
+		// thread could then produce a CDC entry at V+1 that the poll actor
+		// sees, causing it to advance its checkpoint past V and permanently
+		// skip V's CDC.
 		self.engine.event_bus.emit(PostCommitEvent::new(deltas, commit_version));
+		self.tm.oracle.done_commit(commit_version);
 
 		Ok(commit_version)
 	}
