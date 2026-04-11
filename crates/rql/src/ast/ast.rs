@@ -668,6 +668,7 @@ pub struct AstCreateDeferredView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<AstRowTtl<'bump>>,
 }
 
 #[derive(Debug)]
@@ -678,6 +679,7 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<AstRowTtl<'bump>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

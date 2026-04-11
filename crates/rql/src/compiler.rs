@@ -1026,6 +1026,7 @@ impl InstructionCompiler {
 					))),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					tick: node.tick.map(compile_tick_duration),
+					ttl: node.ttl,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1040,6 +1041,7 @@ impl InstructionCompiler {
 					))),
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					tick: node.tick.map(compile_tick_duration),
+					ttl: node.ttl,
 				}));
 				self.emit(Instruction::Emit);
 			}

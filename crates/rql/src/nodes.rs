@@ -176,6 +176,7 @@ pub struct CreateDeferredViewNode {
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug, Clone)]
@@ -187,6 +188,7 @@ pub struct CreateTransactionalViewNode {
 	pub as_clause: Box<QueryPlan>,
 	pub storage_kind: CompiledViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug, Clone)]

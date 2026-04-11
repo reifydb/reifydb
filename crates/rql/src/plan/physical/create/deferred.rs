@@ -47,6 +47,7 @@ impl<'bump> Compiler<'bump> {
 			as_clause: self.bump_box(physical_plan),
 			storage_kind: create.storage_kind,
 			tick: create.tick,
+			ttl: create.ttl,
 		}))
 	}
 }

@@ -881,12 +881,12 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH clause for tick configuration
-		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		// Parse optional WITH clause for tick/ttl configuration
+		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_tick_with_clause()?
 		} else {
-			None
+			(None, None)
 		};
 
 		// Parse optional AS clause
@@ -937,6 +937,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -952,7 +953,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, tick, ttl) = self.parse_view_storage_with_clause(hint)?;
 
 		// Parse optional AS clause
 		let as_clause = self.parse_view_as_clause()?;
@@ -964,6 +965,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -975,12 +977,12 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		// Parse optional WITH clause for tick configuration
-		let tick = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
+		// Parse optional WITH clause for tick/ttl configuration
+		let (tick, ttl) = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_tick_with_clause()?
 		} else {
-			None
+			(None, None)
 		};
 
 		// Parse optional AS clause
@@ -1031,6 +1033,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind: AstViewStorageKind::Table,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -1046,7 +1049,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, tick) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, tick, ttl) = self.parse_view_storage_with_clause(hint)?;
 
 		// Parse optional AS clause
 		let as_clause = self.parse_view_as_clause()?;
@@ -1058,6 +1061,7 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			tick,
+			ttl,
 		}))
 	}
 
@@ -2077,11 +2081,12 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<Duration>)> {
+	) -> Result<(AstViewStorageKind, Option<Duration>, Option<AstRowTtl<'bump>>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut tick: Option<Duration> = None;
+		let mut ttl: Option<AstRowTtl<'bump>> = None;
 
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
@@ -2156,11 +2161,14 @@ impl<'bump> Parser<'bump> {
 						"tick" => {
 							tick = Some(self.parse_tick_duration()?);
 						}
+						"ttl" => {
+							ttl = Some(self.parse_row_ttl()?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'propagate_evictions', 'partition_by', or 'tick'"
+									expected: "'capacity', 'propagate_evictions', 'partition_by', 'tick', or 'ttl'"
 										.to_string(),
 								},
 								message: format!(
@@ -2195,6 +2203,7 @@ impl<'bump> Parser<'bump> {
 						partition_by,
 					},
 					tick,
+					ttl,
 				))
 			}
 			ViewStorageKindHint::Series => {
@@ -2237,12 +2246,16 @@ impl<'bump> Parser<'bump> {
 						"tick" => {
 							tick = Some(self.parse_tick_duration()?);
 						}
+						"ttl" => {
+							ttl = Some(self.parse_row_ttl()?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'precision', or 'tick'"
-										.to_string(),
+									expected:
+										"'key', 'precision', 'tick', or 'ttl'"
+											.to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2265,17 +2278,19 @@ impl<'bump> Parser<'bump> {
 						precision,
 					},
 					tick,
+					ttl,
 				))
 			}
 		}
 	}
 
-	/// Parse a WITH clause containing only `tick` for table-backed views.
-	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m" }`.
-	fn parse_view_tick_with_clause(&mut self) -> Result<Option<Duration>> {
+	/// Parse a WITH clause containing `tick` and/or `ttl` for table-backed views.
+	/// Expects the WITH keyword to already be consumed. Parses `{ tick: "5m", ttl: { duration: "1m" } }`.
+	fn parse_view_tick_with_clause(&mut self) -> Result<(Option<Duration>, Option<AstRowTtl<'bump>>)> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut tick: Option<Duration> = None;
+		let mut ttl: Option<AstRowTtl<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2290,11 +2305,14 @@ impl<'bump> Parser<'bump> {
 				"tick" => {
 					tick = Some(self.parse_tick_duration()?);
 				}
+				"ttl" => {
+					ttl = Some(self.parse_row_ttl()?);
+				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'tick'".to_string(),
+							expected: "'tick' or 'ttl'".to_string(),
 						},
 						message: format!("unexpected key '{}' in WITH clause", other),
 						fragment,
@@ -2306,7 +2324,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
-		Ok(tick)
+		Ok((tick, ttl))
 	}
 
 	/// Parse a tick duration value (a string literal like "5m", "1h", "30s").

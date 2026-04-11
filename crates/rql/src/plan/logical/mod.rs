@@ -596,6 +596,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug)]
@@ -606,6 +607,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub as_clause: BumpVec<'bump, LogicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug)]

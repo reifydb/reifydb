@@ -26,6 +26,7 @@ use reifydb_core::{
 			ResolvedShape, ResolvedTable, ResolvedView,
 		},
 	},
+	row::RowTtl,
 	sort::SortKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -192,6 +193,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug)]
@@ -203,6 +205,7 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub as_clause: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub tick: Option<Duration>,
+	pub ttl: Option<RowTtl>,
 }
 
 #[derive(Debug)]

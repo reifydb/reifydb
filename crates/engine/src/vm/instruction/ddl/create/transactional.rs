@@ -8,10 +8,11 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 		view::ViewToCreate,
 	},
-	store::view::create::ViewStorageConfig,
+	store::{ttl::create::create_row_ttl, view::create::ViewStorageConfig},
 };
 use reifydb_core::{
-	error::diagnostic::catalog::view_already_exists, interface::catalog::change::CatalogTrackViewChangeOperations,
+	error::diagnostic::catalog::view_already_exists,
+	interface::catalog::{change::CatalogTrackViewChangeOperations, shape::ShapeId},
 	value::column::columns::Columns,
 };
 use reifydb_rql::nodes::{CompiledViewStorageKind, CreateTransactionalViewNode};
@@ -44,6 +45,23 @@ pub(crate) fn create_transactional_view(
 	}
 
 	let storage = create_underlying_primitive(services, txn, &plan)?;
+
+	if let Some(ttl) = &plan.ttl {
+		let shape_id = match &storage {
+			ViewStorageConfig::Table {
+				underlying,
+			} => ShapeId::Table(*underlying),
+			ViewStorageConfig::RingBuffer {
+				underlying,
+				..
+			} => ShapeId::RingBuffer(*underlying),
+			ViewStorageConfig::Series {
+				underlying,
+				..
+			} => ShapeId::Series(*underlying),
+		};
+		create_row_ttl(txn, shape_id, ttl)?;
+	}
 
 	let result = services.catalog.create_transactional_view(
 		txn,

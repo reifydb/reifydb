@@ -43,6 +43,8 @@ impl<'bump> Compiler<'bump> {
 			BumpVec::new_in(self.bump)
 		};
 
+		let ttl = ast.ttl.map(Self::compile_row_ttl).transpose()?;
+
 		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
 			view,
 			if_not_exists: false,
@@ -50,6 +52,7 @@ impl<'bump> Compiler<'bump> {
 			as_clause: with,
 			storage_kind: ast.storage_kind,
 			tick: ast.tick,
+			ttl,
 		}))
 	}
 }
