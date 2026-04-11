@@ -45,6 +45,7 @@ pub struct TableToCreate {
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
 	pub retention_strategy: Option<RetentionStrategy>,
+	pub underlying: bool,
 }
 
 impl CatalogStore {
@@ -92,6 +93,15 @@ impl CatalogStore {
 
 		// Initialize with no primary key
 		table::SHAPE.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
+		table::SHAPE.set_u8(
+			&mut row,
+			table::UNDERLYING,
+			if to_create.underlying {
+				1
+			} else {
+				0
+			},
+		);
 
 		txn.set(&TableKey::encoded(table), row)?;
 
@@ -217,6 +227,7 @@ pub mod tests {
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			retention_strategy: None,
+			underlying: false,
 		};
 
 		// First creation should succeed
@@ -239,6 +250,7 @@ pub mod tests {
 			name: Fragment::internal("test_table"),
 			columns: vec![],
 			retention_strategy: None,
+			underlying: false,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
@@ -248,6 +260,7 @@ pub mod tests {
 			name: Fragment::internal("another_table"),
 			columns: vec![],
 			retention_strategy: None,
+			underlying: false,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();

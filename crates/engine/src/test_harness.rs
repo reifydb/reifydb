@@ -365,6 +365,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 			],
 			retention_strategy: None,
 			primary_key_columns: None,
+			underlying: false,
 		},
 	)
 	.unwrap();

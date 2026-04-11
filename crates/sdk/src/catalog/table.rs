@@ -134,5 +134,6 @@ unsafe fn unmarshal_table(ffi_table: &TableFFI) -> Result<Table, FFIError> {
 		name,
 		columns,
 		primary_key,
+		underlying: false,
 	})
 }

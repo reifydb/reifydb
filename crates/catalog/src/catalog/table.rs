@@ -61,6 +61,7 @@ pub struct TableToCreate {
 	/// Optional primary key columns specified by name.
 	/// If provided, the Catalog will create a primary key after creating the table.
 	pub primary_key_columns: Option<Vec<String>>,
+	pub underlying: bool,
 }
 
 impl From<TableColumnToCreate> for StoreTableColumnToCreate {
@@ -83,6 +84,7 @@ impl From<TableToCreate> for StoreTableToCreate {
 			namespace: to_create.namespace,
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			retention_strategy: to_create.retention_strategy,
+			underlying: to_create.underlying,
 		}
 	}
 }

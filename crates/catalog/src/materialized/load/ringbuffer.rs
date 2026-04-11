@@ -55,6 +55,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
+	let underlying = ringbuffer::SHAPE.get_u8(&row, ringbuffer::UNDERLYING) != 0;
 	RingBuffer {
 		id,
 		name,
@@ -63,6 +64,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		capacity,
 		primary_key,
 		partition_by,
+		underlying,
 	}
 }
 

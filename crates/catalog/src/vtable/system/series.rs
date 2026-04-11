@@ -54,7 +54,8 @@ impl BaseVTable for SystemSeries {
 			return Ok(None);
 		}
 
-		let all_series = CatalogStore::list_series_all(txn)?;
+		let all_series: Vec<_> =
+			CatalogStore::list_series_all(txn)?.into_iter().filter(|s| !s.underlying).collect();
 
 		let mut ids = ColumnData::uint8_with_capacity(all_series.len());
 		let mut namespaces = ColumnData::uint8_with_capacity(all_series.len());

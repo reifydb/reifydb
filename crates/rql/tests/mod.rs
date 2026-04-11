@@ -69,6 +69,7 @@ impl Runner for TestRunner {
 							columns: vec![],
 							retention_strategy: None,
 							primary_key_columns: None,
+							underlying: false,
 						},
 					)
 					.unwrap();
@@ -81,6 +82,7 @@ impl Runner for TestRunner {
 							columns: vec![],
 							retention_strategy: None,
 							primary_key_columns: None,
+							underlying: false,
 						},
 					)
 					.unwrap();
@@ -109,6 +111,7 @@ impl Runner for TestRunner {
 							columns: vec![],
 							retention_strategy: None,
 							primary_key_columns: None,
+							underlying: false,
 						},
 					)
 					.unwrap();
@@ -138,6 +141,7 @@ impl Runner for TestRunner {
 							columns: vec![],
 							retention_strategy: None,
 							primary_key_columns: None,
+							underlying: false,
 						},
 					)
 					.unwrap();
@@ -150,6 +154,7 @@ impl Runner for TestRunner {
 							columns: vec![],
 							retention_strategy: None,
 							primary_key_columns: None,
+							underlying: false,
 						},
 					)
 					.unwrap();

@@ -39,6 +39,7 @@ impl CatalogStore {
 		let key_kind_raw = series::SHAPE.get_u8(&row, series::KEY_KIND);
 		let precision_raw = series::SHAPE.get_u8(&row, series::PRECISION);
 		let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
+		let underlying = series::SHAPE.get_u8(&row, series::UNDERLYING) != 0;
 
 		Ok(Some(Series {
 			id,
@@ -48,6 +49,7 @@ impl CatalogStore {
 			tag,
 			key,
 			primary_key: Self::find_primary_key(rx, id)?,
+			underlying,
 		}))
 	}
 

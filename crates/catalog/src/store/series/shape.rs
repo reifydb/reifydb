@@ -16,6 +16,7 @@ pub(crate) mod series {
 	pub(crate) const KEY_KIND: usize = 5;
 	pub(crate) const PRECISION: usize = 6;
 	pub(crate) const PRIMARY_KEY: usize = 7;
+	pub(crate) const UNDERLYING: usize = 8;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -27,6 +28,7 @@ pub(crate) mod series {
 			RowShapeField::unconstrained("key_kind", Type::Uint1),
 			RowShapeField::unconstrained("precision", Type::Uint1),
 			RowShapeField::unconstrained("primary_key", Type::Uint8),
+			RowShapeField::unconstrained("underlying", Type::Uint1),
 		])
 	});
 }

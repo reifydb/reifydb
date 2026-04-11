@@ -978,6 +978,7 @@ pub mod tests {
 				},
 			],
 			primary_key: None,
+			underlying: false,
 		}
 	}
 

@@ -26,13 +26,14 @@ impl CatalogStore {
 					let namespace_id =
 						NamespaceId(table::SHAPE.get_u64(&entry.row, table::NAMESPACE));
 					let name = table::SHAPE.get_utf8(&entry.row, table::NAME).to_string();
-					table_ids.push((table_id, namespace_id, name));
+					let underlying = table::SHAPE.get_u8(&entry.row, table::UNDERLYING) != 0;
+					table_ids.push((table_id, namespace_id, name, underlying));
 				}
 			}
 		}
 
 		// Now fetch details for each table
-		for (table_id, namespace_id, name) in table_ids {
+		for (table_id, namespace_id, name, underlying) in table_ids {
 			let primary_key = Self::find_primary_key(rx, table_id)?;
 			let columns = Self::list_columns(rx, table_id)?;
 
@@ -42,6 +43,7 @@ impl CatalogStore {
 				name,
 				columns,
 				primary_key,
+				underlying,
 			};
 
 			result.push(table);

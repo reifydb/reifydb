@@ -82,6 +82,7 @@ pub struct Series {
 	pub tag: Option<SumTypeId>,
 	pub key: SeriesKey,
 	pub primary_key: Option<PrimaryKey>,
+	pub underlying: bool,
 }
 
 impl Series {

@@ -95,6 +95,7 @@ pub fn create_table(
 			namespace: namespace.id(),
 			columns: columns.to_vec(),
 			retention_strategy: None,
+			underlying: false,
 		},
 	)
 	.unwrap()
@@ -181,6 +182,7 @@ pub fn create_ringbuffer(
 			capacity,
 			columns: columns.to_vec(),
 			partition_by: vec![],
+			underlying: false,
 		},
 	)
 	.unwrap()

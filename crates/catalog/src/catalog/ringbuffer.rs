@@ -45,6 +45,7 @@ pub struct RingBufferToCreate {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub underlying: bool,
 }
 
 impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
@@ -68,6 +69,7 @@ impl From<RingBufferToCreate> for StoreRingBufferToCreate {
 			columns: to_create.columns.into_iter().map(|c| c.into()).collect(),
 			capacity: to_create.capacity,
 			partition_by: to_create.partition_by,
+			underlying: to_create.underlying,
 		}
 	}
 }

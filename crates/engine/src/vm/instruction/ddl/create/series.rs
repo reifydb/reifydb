@@ -22,6 +22,7 @@ pub(crate) fn create_series(
 			columns: plan.columns,
 			tag: plan.tag,
 			key: plan.key,
+			underlying: false,
 		},
 	)?;
 

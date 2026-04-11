@@ -1797,6 +1797,7 @@ impl<'bump> Compiler<'bump> {
 							name: "_context".to_string(),
 							columns: vec![],
 							primary_key: None,
+							underlying: false,
 						};
 
 						let resolved_table = ResolvedTable::new(

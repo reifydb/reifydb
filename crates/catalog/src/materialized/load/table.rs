@@ -53,12 +53,14 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 	let namespace = NamespaceId(table::SHAPE.get_u64(&row, NAMESPACE));
 	let name = table::SHAPE.get_utf8(&row, NAME).to_string();
 
+	let underlying = table::SHAPE.get_u8(&row, table::UNDERLYING) != 0;
 	Table {
 		id,
 		name,
 		namespace,
 		columns: vec![],
 		primary_key,
+		underlying,
 	}
 }
 

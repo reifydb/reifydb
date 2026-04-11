@@ -19,6 +19,7 @@ pub struct RingBuffer {
 	pub capacity: u64,
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
+	pub underlying: bool,
 }
 
 impl RingBuffer {

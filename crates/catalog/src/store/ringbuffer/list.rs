@@ -17,7 +17,7 @@ impl CatalogStore {
 		let mut result = Vec::new();
 
 		// Collect ringbuffer data first to avoid holding stream borrow
-		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>)> = Vec::new();
+		let mut ringbuffer_data: Vec<(RingBufferId, NamespaceId, String, u64, Vec<String>, bool)> = Vec::new();
 		{
 			let stream = rx.range(RingBufferKey::full_scan(), 1024)?;
 
@@ -44,19 +44,23 @@ impl CatalogStore {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
 
+					let underlying =
+						ringbuffer::SHAPE.get_u8(&entry.row, ringbuffer::UNDERLYING) != 0;
+
 					ringbuffer_data.push((
 						ringbuffer_id,
 						namespace_id,
 						name,
 						capacity,
 						partition_by,
+						underlying,
 					));
 				}
 			}
 		}
 
 		// Now fetch additional details for each ringbuffer
-		for (ringbuffer_id, namespace_id, name, capacity, partition_by) in ringbuffer_data {
+		for (ringbuffer_id, namespace_id, name, capacity, partition_by, underlying) in ringbuffer_data {
 			let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
 			let columns = Self::list_columns(rx, ringbuffer_id)?;
 
@@ -68,6 +72,7 @@ impl CatalogStore {
 				columns,
 				primary_key,
 				partition_by,
+				underlying,
 			};
 
 			result.push(ringbuffer);
@@ -112,6 +117,7 @@ pub mod tests {
 			capacity: 100,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -122,6 +128,7 @@ pub mod tests {
 			capacity: 200,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
@@ -158,6 +165,7 @@ pub mod tests {
 			capacity: 100,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
@@ -168,6 +176,7 @@ pub mod tests {
 			capacity: 200,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 

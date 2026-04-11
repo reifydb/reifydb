@@ -50,6 +50,7 @@ pub(crate) fn create_table(services: &Services, txn: &mut AdminTransaction, plan
 			columns,
 			retention_strategy: None,
 			primary_key_columns: None,
+			underlying: false,
 		},
 	)?;
 	if let Some(ttl) = plan.ttl {

@@ -97,6 +97,7 @@ fn create_underlying_primitive(
 					columns,
 					retention_strategy: None,
 					primary_key_columns: None,
+					underlying: true,
 				},
 			)?;
 
@@ -130,6 +131,7 @@ fn create_underlying_primitive(
 					columns,
 					capacity: *capacity,
 					partition_by: partition_by.clone(),
+					underlying: true,
 				},
 			)?;
 
@@ -163,6 +165,7 @@ fn create_underlying_primitive(
 					columns,
 					tag: None,
 					key: key.clone(),
+					underlying: true,
 				},
 			)?;
 

@@ -65,6 +65,7 @@ fn decode_series(row: &EncodedRow, materialized: &MaterializedCatalog, version: 
 	} else {
 		None
 	};
+	let underlying = series::SHAPE.get_u8(row, series::UNDERLYING) != 0;
 
 	Series {
 		id,
@@ -74,5 +75,6 @@ fn decode_series(row: &EncodedRow, materialized: &MaterializedCatalog, version: 
 		tag,
 		key,
 		primary_key,
+		underlying,
 	}
 }

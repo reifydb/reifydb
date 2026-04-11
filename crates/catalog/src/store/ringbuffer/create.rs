@@ -46,6 +46,7 @@ pub struct RingBufferToCreate {
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
+	pub underlying: bool,
 }
 
 impl CatalogStore {
@@ -100,6 +101,15 @@ impl CatalogStore {
 		// Initialize with no primary key
 		ringbuffer::SHAPE.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
 		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, to_create.partition_by.join(","));
+		ringbuffer::SHAPE.set_u8(
+			&mut row,
+			ringbuffer::UNDERLYING,
+			if to_create.underlying {
+				1
+			} else {
+				0
+			},
+		);
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 
@@ -260,6 +270,7 @@ pub mod tests {
 				},
 			],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -285,6 +296,7 @@ pub mod tests {
 			capacity: 100,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -307,6 +319,7 @@ pub mod tests {
 			capacity: 50,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		// First creation should succeed
@@ -331,6 +344,7 @@ pub mod tests {
 			capacity: 10,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -341,6 +355,7 @@ pub mod tests {
 			capacity: 20,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -379,6 +394,7 @@ pub mod tests {
 			capacity: 500,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
@@ -407,6 +423,7 @@ pub mod tests {
 			capacity: 10,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
@@ -418,6 +435,7 @@ pub mod tests {
 			capacity: 1000,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
@@ -429,6 +447,7 @@ pub mod tests {
 			capacity: 1000000,
 			columns: vec![],
 			partition_by: vec![],
+			underlying: false,
 		};
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
@@ -477,6 +496,7 @@ pub mod tests {
 			capacity: 100,
 			columns: columns.clone(),
 			partition_by: vec![],
+			underlying: false,
 		};
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();

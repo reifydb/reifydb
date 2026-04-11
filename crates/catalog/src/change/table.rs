@@ -54,11 +54,13 @@ fn decode_table(row: &EncodedRow, materialized: &MaterializedCatalog, version: C
 	} else {
 		None
 	};
+	let underlying = table::SHAPE.get_u8(row, table::UNDERLYING) != 0;
 	Table {
 		id,
 		name,
 		namespace,
 		columns: vec![],
 		primary_key,
+		underlying,
 	}
 }
