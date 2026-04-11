@@ -35,17 +35,19 @@ use crate::{
 	},
 };
 
-/// Bootstrap the entire database: load catalog, create system objects.
+/// Bootstrap system objects: root identity, system procedures, metric ring buffers.
 ///
-/// This is the single entry point for all database bootstrapping.
-/// Called during `DatabaseBuilder::build()`.
-pub fn bootstrap_database(
+/// Must be called AFTER `load_materialized_catalog()`.
+/// Callers that need CDC to capture bootstrap commits should ensure the CDC
+/// producer is active before calling this function.
+///
+/// Skipped on replicas (they receive system objects via replication).
+pub fn bootstrap_system_objects(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,
 	eventbus: &EventBus,
 ) -> Result<()> {
-	load_materialized_catalog(multi, single, catalog)?;
 	bootstrap_root_identity(multi, single, catalog, eventbus)?;
 	bootstrap_system_procedures(multi, single, catalog, eventbus)?;
 	bootstrap_metric_ringbuffers(multi, single, catalog, eventbus)?;
@@ -182,7 +184,7 @@ pub fn bootstrap_root_identity(
 /// Bootstrap the `system::metrics` namespace and its ring buffers.
 ///
 /// Idempotent: skips creation if the namespace or ring buffers already exist.
-fn bootstrap_metric_ringbuffers(
+pub fn bootstrap_metric_ringbuffers(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
 	catalog: &MaterializedCatalog,

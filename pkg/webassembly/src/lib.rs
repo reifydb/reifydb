@@ -23,7 +23,7 @@ use reifydb_auth::{
 };
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_system_procedures, load_materialized_catalog},
+	bootstrap::{bootstrap_system_objects, load_materialized_catalog},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
@@ -219,7 +219,7 @@ impl WasmDB {
 		// Run shared bootstrap: load catalog, config defaults, system procedures, shapes
 		load_materialized_catalog(&multi, &single, &materialized_catalog)
 			.map_err(|e| JsError::from_error(&e))?;
-		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)
+		bootstrap_system_objects(&multi, &single, &materialized_catalog, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 
 		let procedures = default_procedures().configure();

@@ -20,7 +20,7 @@ use std::{
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
 	CatalogVersion,
-	bootstrap::{bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog},
+	bootstrap::{bootstrap_system_objects, load_materialized_catalog},
 	catalog::Catalog,
 	materialized::MaterializedCatalog,
 	system::SystemCatalog,
@@ -115,8 +115,7 @@ impl Bridge {
 		let ioc_ref = ioc.clone();
 
 		load_materialized_catalog(&multi, &single, &materialized_catalog)?;
-		bootstrap_root_identity(&multi, &single, &materialized_catalog, &eventbus)?;
-		bootstrap_system_procedures(&multi, &single, &materialized_catalog, &eventbus)?;
+		bootstrap_system_objects(&multi, &single, &materialized_catalog, &eventbus)?;
 
 		let procedures = default_procedures().configure();
 
