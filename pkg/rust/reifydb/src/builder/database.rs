@@ -11,7 +11,8 @@ use reifydb_auth::{
 use reifydb_catalog::{
 	CatalogVersion,
 	bootstrap::{bootstrap_root_identity, bootstrap_system_procedures, load_materialized_catalog},
-	catalog::Catalog, materialized::MaterializedCatalog,
+	catalog::Catalog,
+	materialized::MaterializedCatalog,
 	system::SystemCatalog,
 };
 use reifydb_cdc::{

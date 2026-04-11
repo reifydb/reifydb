@@ -131,10 +131,6 @@ pub enum ServerSubscribeResponse {
 	},
 }
 
-// ---------------------------------------------------------------------------
-// Pure helpers — shared by native dispatch and DST clients
-// ---------------------------------------------------------------------------
-
 /// Build the appropriate `ServerMessage` from operation parameters.
 ///
 /// Used by both the native `dispatch()` function and DST clients to construct

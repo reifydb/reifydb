@@ -8,10 +8,6 @@
 //! The async `dispatch()` / `dispatch_subscribe()` functions are the single
 //! entry points for native transport handlers.
 
-// ---------------------------------------------------------------------------
-// Native async dispatch
-// ---------------------------------------------------------------------------
-
 #[cfg(not(reifydb_single_threaded))]
 pub use native::{dispatch, dispatch_subscribe};
 
